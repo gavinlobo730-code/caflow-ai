@@ -205,8 +205,8 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-sm font-semibold text-[#0F172A]">GST registrations</h2>
-          <p className="text-[11px] text-[#64748B] mt-1 max-w-2xl">
+          <h2 className="text-sm font-semibold text-ps-ink">GST registrations</h2>
+          <p className="text-[11px] text-ps-label mt-1 max-w-2xl">
             One client, one legal person — and as many GSTINs as it is registered
             under. CGST Act s.25(1) makes registration state-wise and s.25(2)
             allows one per place of business, so each registration prepares and
@@ -235,10 +235,10 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
           and includes exempt supplies and exports, so a second registration's
           supplies count toward it — which is exactly why it is typed here and
           not summed from this client's ledger. */}
-      <div className="rounded-lg border border-[#E2E8F0] bg-white p-4 space-y-3">
+      <div className="rounded-lg border border-ps-border bg-white p-4 space-y-3">
         <div>
-          <h3 className="text-xs font-semibold text-[#0F172A]">Aggregate turnover</h3>
-          <p className="text-[11px] text-[#64748B] mt-1 max-w-2xl">
+          <h3 className="text-xs font-semibold text-ps-ink">Aggregate turnover</h3>
+          <p className="text-[11px] text-ps-label mt-1 max-w-2xl">
             CGST Act s.2(6) aggregate turnover, per financial year. GSTR-1 Table
             12&apos;s minimum HSN digits come off the <strong>preceding</strong>{" "}
             year&apos;s figure (Notification 78/2020-Central Tax): six digits above
@@ -253,7 +253,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
           <div className={`rounded-lg px-3 py-2 text-[11px] flex items-start gap-1.5 ${
             turnover.governing_turnover_paise === null
               ? "bg-amber-50 border border-amber-200 text-amber-900"
-              : "bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569]"}`}>
+              : "bg-ps-bg border border-ps-border text-ps-label"}`}>
             <Info size={12} className="shrink-0 mt-0.5" />
             <span>
               A return prepared today is governed by{" "}
@@ -268,20 +268,20 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
         {turnover && turnover.years.length > 0 && (
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-[#94A3B8] border-b border-[#F1F5F9]">
+              <tr className="text-left text-ps-hint border-b border-ps-muted">
                 <th className="py-1.5 font-semibold">Financial year</th>
                 <th className="py-1.5 font-semibold text-right">Aggregate turnover</th>
                 <th className="py-1.5 font-semibold">Source</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {turnover.years.map((y) => (
                 <tr key={y.id}>
-                  <td className="py-1.5 font-mono text-[#334155]">{y.financial_year}</td>
-                  <td className="py-1.5 text-right font-mono tabular-nums text-[#334155]">
+                  <td className="py-1.5 font-mono text-ps-body">{y.financial_year}</td>
+                  <td className="py-1.5 text-right font-mono tabular-nums text-ps-body">
                     ₹{Math.floor(y.aggregate_turnover_paise / 100).toLocaleString("en-IN")}
                   </td>
-                  <td className="py-1.5 text-[#64748B]">{y.source_note || "—"}</td>
+                  <td className="py-1.5 text-ps-label">{y.source_note || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -290,30 +290,30 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
 
         <div className="flex items-end gap-2 flex-wrap">
           <label className="text-xs">
-            <span className="block text-[#334155] font-medium mb-1">Financial year</span>
+            <span className="block text-ps-body font-medium mb-1">Financial year</span>
             <select value={tvForm.fy} onChange={(e) => setTvForm(f => ({ ...f, fy: e.target.value }))}
               aria-label="Financial year of the turnover"
-              className="px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg">
+              className="px-2.5 py-1.5 border border-ps-border rounded-lg">
               {financialYearChoicesAround(null, 8).map((fy) => (
                 <option key={fy} value={fy}>{fy}</option>
               ))}
             </select>
           </label>
           <label className="text-xs">
-            <span className="block text-[#334155] font-medium mb-1">Aggregate turnover (₹)</span>
+            <span className="block text-ps-body font-medium mb-1">Aggregate turnover (₹)</span>
             <input value={tvForm.amount} inputMode="decimal"
               onChange={(e) => setTvForm(f => ({ ...f, amount: e.target.value }))}
               aria-label="Aggregate turnover in rupees"
               placeholder="e.g. 6,50,00,000"
-              className="px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg w-44" />
+              className="px-2.5 py-1.5 border border-ps-border rounded-lg w-44" />
           </label>
           <label className="text-xs flex-1 min-w-[12rem]">
-            <span className="block text-[#334155] font-medium mb-1">Where it came from</span>
+            <span className="block text-ps-body font-medium mb-1">Where it came from</span>
             <input value={tvForm.note}
               onChange={(e) => setTvForm(f => ({ ...f, note: e.target.value }))}
               aria-label="Source of the turnover figure"
               placeholder="GSTR-9 Table 5N, audited accounts, …"
-              className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg" />
+              className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
           </label>
           <button onClick={saveTurnover} disabled={busy || !tvForm.fy || !tvForm.amount.trim()}
             className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
@@ -330,9 +330,9 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       )}
 
       {loading ? (
-        <p className="text-xs text-[#94A3B8]">Loading…</p>
+        <p className="text-xs text-ps-hint">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="text-xs text-[#94A3B8]">
+        <p className="text-xs text-ps-hint">
           No GSTIN is recorded for this client. Record it on the client record first —
           a GST return cannot be prepared without one.
         </p>
@@ -340,7 +340,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-left">
+              <tr className="border-b border-ps-muted text-ps-hint text-left">
                 <th className="py-2 font-semibold">GSTIN</th>
                 <th className="py-2 font-semibold">State</th>
                 <th className="py-2 font-semibold">Type</th>
@@ -349,13 +349,13 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                 <th className="py-2 font-semibold" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {rows.map((r) => (
                 <tr key={r.gstin} className="align-top">
                   <td className="py-2">
-                    <span className="font-mono text-[#1E293B]">{r.gstin}</span>
+                    <span className="font-mono text-ps-ink">{r.gstin}</span>
                     {r.trade_name && (
-                      <span className="block text-[10px] text-[#64748B]">{r.trade_name}</span>
+                      <span className="block text-[10px] text-ps-label">{r.trade_name}</span>
                     )}
                     {/* The primary is the client record's own GSTIN, so it is
                         shown and never editable here. */}
@@ -365,7 +365,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                       </span>
                     )}
                   </td>
-                  <td className="py-2 font-mono text-[#64748B]">{r.state_code}</td>
+                  <td className="py-2 font-mono text-ps-label">{r.state_code}</td>
                   <td className="py-2">
                     {pretty(r.registration_type)}
                     {/* A registration that files a DIFFERENT form says which
@@ -380,11 +380,11 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                   <td className="py-2">{pretty(r.filing_frequency)}</td>
                   <td className="py-2">
                     {r.effective_to
-                      ? <span className="text-[#64748B]">
+                      ? <span className="text-ps-label">
                           Cancelled {String(r.effective_to).slice(0, 10)}
                           {/* s.29: a cancelled registration still owes the returns
                               for every period it was live, so it stays listed. */}
-                          <span className="block text-[10px] text-[#94A3B8]">
+                          <span className="block text-[10px] text-ps-hint">
                             Returns for the periods it was live are still owed
                           </span>
                         </span>
@@ -396,7 +396,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                         {!r.effective_to && closing?.id !== r.id && (
                           <button onClick={() => setClosing({ id: r.id as string, on: "" })}
                             disabled={busy}
-                            className="px-2 py-1 text-[11px] border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] disabled:opacity-40">
+                            className="px-2 py-1 text-[11px] border border-ps-border rounded hover:bg-ps-bg disabled:opacity-40">
                             Cancelled…
                           </button>
                         )}
@@ -405,20 +405,20 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                             <input type="date" value={closing.on} autoFocus
                               aria-label={`Date ${r.gstin} was cancelled or surrendered`}
                               onChange={(e) => setClosing({ id: r.id as string, on: e.target.value })}
-                              className="px-1.5 py-1 text-[11px] border border-[#E2E8F0] rounded" />
+                              className="px-1.5 py-1 text-[11px] border border-ps-border rounded" />
                             <button onClick={() => handleClose(r, closing.on)}
                               disabled={busy || !closing.on}
                               className="px-2 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40">
                               Record
                             </button>
                             <button onClick={() => setClosing(null)} disabled={busy}
-                              className="px-1.5 py-1 text-[11px] text-[#94A3B8] hover:text-[#334155]">
+                              className="px-1.5 py-1 text-[11px] text-ps-hint hover:text-ps-body">
                               Cancel
                             </button>
                           </span>
                         )}
                         <button onClick={() => handleWithdraw(r)} disabled={busy}
-                          className="ml-1 px-2 py-1 text-[11px] text-[#94A3B8] hover:text-red-600 disabled:opacity-40">
+                          className="ml-1 px-2 py-1 text-[11px] text-ps-hint hover:text-red-600 disabled:opacity-40">
                           Remove
                         </button>
                       </>
@@ -434,30 +434,30 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       {showForm && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
           <div className="w-full max-w-md h-full bg-white shadow-xl flex flex-col">
-            <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between">
-              <p className="text-sm font-semibold text-[#0F172A]">Add a GST registration</p>
+            <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between">
+              <p className="text-sm font-semibold text-ps-ink">Add a GST registration</p>
               <button onClick={() => setShowForm(false)} aria-label="Close"
-                className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"><X size={16} /></button>
+                className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               <label className="text-xs block">
-                <span className="block text-[#334155] font-medium mb-1">GSTIN *</span>
+                <span className="block text-ps-body font-medium mb-1">GSTIN *</span>
                 <input value={form.gstin} maxLength={15}
                   onChange={(e) => setForm(f => ({ ...f, gstin: e.target.value.toUpperCase() }))}
                   placeholder="29AABCU9603R1ZJ"
-                  className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg font-mono" />
-                <span className="block text-[10px] text-[#94A3B8] mt-1 leading-tight">
+                  className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg font-mono" />
+                <span className="block text-[10px] text-ps-hint mt-1 leading-tight">
                   The state is the GSTIN&apos;s own first two characters and is not asked
                   for separately — a registration is state-wise.
                 </span>
               </label>
 
               <label className="text-xs block">
-                <span className="block text-[#334155] font-medium mb-1">Registration type</span>
+                <span className="block text-ps-body font-medium mb-1">Registration type</span>
                 <select value={form.registration_type}
                   onChange={(e) => setForm(f => ({ ...f, registration_type: e.target.value }))}
-                  className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg">
+                  className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg">
                   {(kinds?.registration_types ?? [{ value: form.registration_type, files_gstr1_and_3b: true, other_return_form: null }])
                     .map((t) => (
                       <option key={t.value} value={t.value}>{pretty(t.value)}</option>
@@ -475,10 +475,10 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
               </label>
 
               <label className="text-xs block">
-                <span className="block text-[#334155] font-medium mb-1">Filing frequency</span>
+                <span className="block text-ps-body font-medium mb-1">Filing frequency</span>
                 <select value={form.filing_frequency}
                   onChange={(e) => setForm(f => ({ ...f, filing_frequency: e.target.value }))}
-                  className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg">
+                  className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg">
                   {(kinds?.filing_frequencies ?? [form.filing_frequency]).map((v) => (
                     <option key={v} value={v}>{pretty(v)}</option>
                   ))}
@@ -486,27 +486,27 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
               </label>
 
               <label className="text-xs block">
-                <span className="block text-[#334155] font-medium mb-1">Trade name</span>
+                <span className="block text-ps-body font-medium mb-1">Trade name</span>
                 <input value={form.trade_name}
                   onChange={(e) => setForm(f => ({ ...f, trade_name: e.target.value }))}
                   placeholder="Bengaluru depot"
-                  className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg" />
-                <span className="block text-[10px] text-[#94A3B8] mt-1 leading-tight">
+                  className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
+                <span className="block text-[10px] text-ps-hint mt-1 leading-tight">
                   Two registrations in one state are told apart only by this.
                 </span>
               </label>
 
               <label className="text-xs block">
-                <span className="block text-[#334155] font-medium mb-1">Registered from</span>
+                <span className="block text-ps-body font-medium mb-1">Registered from</span>
                 <input type="date" value={form.effective_from}
                   onChange={(e) => setForm(f => ({ ...f, effective_from: e.target.value }))}
-                  className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                  className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
               </label>
             </div>
 
-            <div className="px-5 py-3 border-t border-[#F1F5F9] flex justify-end gap-2">
+            <div className="px-5 py-3 border-t border-ps-muted flex justify-end gap-2">
               <button onClick={() => setShowForm(false)}
-                className="px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">
+                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                 Cancel
               </button>
               <button onClick={handleSave} disabled={busy || !form.gstin.trim()}

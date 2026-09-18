@@ -277,16 +277,16 @@ export default function InventoryPage() {
 
   const allColumns: Column<StockItem>[] = [
     { key: "name", header: "Product", accessor: (i) => i.name, searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (i) => <span className="font-medium text-[#1E293B]">{i.name}</span> },
+      render: (i) => <span className="font-medium text-ps-ink">{i.name}</span> },
     { key: "hsn_sac", header: "HSN", accessor: (i) => i.hsn_sac ?? "", searchable: true,
-      render: (i) => <span className="font-mono text-[#64748B]">{i.hsn_sac ?? "—"}</span> },
+      render: (i) => <span className="font-mono text-ps-label">{i.hsn_sac ?? "—"}</span> },
     { key: "unit", header: "Unit", accessor: (i) => i.unit ?? "",
-      render: (i) => <span className="text-[#64748B]">{i.unit ?? "—"}</span> },
+      render: (i) => <span className="text-ps-label">{i.unit ?? "—"}</span> },
     { key: "stock_qty_units", header: "On Hand", accessor: (i) => i.stock_qty_units ?? 0, sortable: true, align: "right",
       render: (i) => {
         const qty = i.stock_qty_units ?? 0;
         return (
-          <span className={`inline-flex items-center gap-1 font-mono font-semibold ${qty < 0 ? "text-red-600" : "text-[#334155]"}`}>
+          <span className={`inline-flex items-center gap-1 font-mono font-semibold ${qty < 0 ? "text-red-600" : "text-ps-body"}`}>
             {isUntrackedOversold(i) && (
               <AlertTriangle size={12} className="text-amber-500 shrink-0"
                 aria-label="Cost not established — sold before a purchase or opening balance was recorded" />
@@ -297,7 +297,7 @@ export default function InventoryPage() {
       } },
     { key: "avg_cost_paise", header: "Avg Cost", accessor: (i) => i.avg_cost_paise ?? 0, sortable: true, align: "right",
       exportValue: (i) => (i.avg_cost_paise ?? 0) / 100,
-      render: (i) => <span className="font-mono text-[#64748B]">{formatServicePrice(i.avg_cost_paise) || "—"}</span> },
+      render: (i) => <span className="font-mono text-ps-label">{formatServicePrice(i.avg_cost_paise) || "—"}</span> },
     { key: "stock_value_paise", header: "Stock Value", accessor: (i) => i.stock_value_paise ?? 0, sortable: true, align: "right",
       exportValue: (i) => (i.stock_value_paise ?? 0) / 100,
       render: (i) => isUntrackedOversold(i) ? (
@@ -306,11 +306,11 @@ export default function InventoryPage() {
           Cost unknown
         </span>
       ) : (
-        <span className="font-mono font-semibold text-[#0F172A]">{formatServicePrice(i.stock_value_paise) || "₹0"}</span>
+        <span className="font-mono font-semibold text-ps-ink">{formatServicePrice(i.stock_value_paise) || "₹0"}</span>
       ) },
     { key: "is_active", header: "Status", accessor: (i) => (i.is_active ? "active" : "archived"),
       render: (i) => (
-        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${i.is_active ? "bg-green-50 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${i.is_active ? "bg-green-50 text-green-700" : "bg-ps-muted text-ps-label"}`}>
           {i.is_active ? "Active" : "Archived"}
         </span>
       ) },
@@ -338,7 +338,7 @@ export default function InventoryPage() {
   // against September would describe a different year.
   const asAtColumns: Column<StockItem>[] = [
     { key: "last_movement_date", header: "Last Moved", accessor: (i) => i.last_movement_date ?? "", sortable: true,
-      render: (i) => <span className="text-[#64748B]">{i.last_movement_date ?? "—"}</span> },
+      render: (i) => <span className="text-ps-label">{i.last_movement_date ?? "—"}</span> },
     { key: "days_idle", header: "Days Idle", accessor: (i) => daysIdle(i.last_movement_date, asAt) ?? -1,
       sortable: true, align: "right",
       exportValue: (i) => daysIdle(i.last_movement_date, asAt) ?? "",
@@ -346,7 +346,7 @@ export default function InventoryPage() {
         const d = daysIdle(i.last_movement_date, asAt);
         if (d === null) {
           return (
-            <span className="text-[10px] text-[#94A3B8]"
+            <span className="text-[10px] text-ps-hint"
                   title="No movement on or before this date — the item has never received or issued stock in this book.">
               never moved
             </span>
@@ -356,7 +356,7 @@ export default function InventoryPage() {
         // Schedule III fixes a slow-moving threshold; AS 2 requires stock at
         // the lower of cost and net realisable value on the CA's own
         // judgement, so this colours a row and decides nothing.
-        return <span className={`font-mono ${d >= 90 ? "text-amber-700 font-semibold" : "text-[#64748B]"}`}>{d}</span>;
+        return <span className={`font-mono ${d >= 90 ? "text-amber-700 font-semibold" : "text-ps-label"}`}>{d}</span>;
       } },
   ];
 
@@ -379,8 +379,8 @@ export default function InventoryPage() {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 px-6 pt-5 pb-3 flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-[#0F172A]">Inventory</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">
+          <p className="text-sm font-semibold text-ps-ink">Inventory</p>
+          <p className="text-xs text-ps-hint mt-0.5">
             {loadFailed
               ? "Couldn't load the stock register"
               : `${items.length} stock-tracked product${items.length !== 1 ? "s" : ""} · ${asAt ? `Closing value as at ${asAt}` : "Total value"} ${formatServicePrice(totalValue) || "₹0"}`}
@@ -388,11 +388,11 @@ export default function InventoryPage() {
         </div>
         <div className="flex items-end gap-3">
           <div>
-            <label htmlFor="stock-as-at" className="block text-[10px] font-medium text-[#94A3B8] mb-1">
+            <label htmlFor="stock-as-at" className="block text-[10px] font-medium text-ps-hint mb-1">
               As at
             </label>
             <input id="stock-as-at" type="date" value={asAt} onChange={(e) => setAsAt(e.target.value)}
-              className="px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           {asAt ? (
             <button onClick={() => setAsAt("")} className="text-xs text-blue-600 hover:underline pb-2">
@@ -403,7 +403,7 @@ export default function InventoryPage() {
                   className="px-3 py-[7px] text-xs border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-50 whitespace-nowrap disabled:opacity-50">
             {openingCount ? "Opening…" : "Physical count"}
           </button>
-          <button onClick={load} className="p-1.5 mb-0.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
+          <button onClick={load} className="p-1.5 mb-0.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
@@ -569,41 +569,41 @@ function StockLedgerDrillDown({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-brand-dark/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between shrink-0">
+        <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between shrink-0">
           <div>
-            <p className="text-sm font-semibold text-[#0F172A]">{item.name}</p>
-            <p className="text-[11px] text-[#94A3B8] mt-0.5">Stock movement ledger</p>
+            <p className="text-sm font-semibold text-ps-ink">{item.name}</p>
+            <p className="text-[11px] text-ps-hint mt-0.5">Stock movement ledger</p>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => setAdjustOpen(true)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]">
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
               <ClipboardEdit size={13} /> Adjust Stock
             </button>
             <button onClick={() => setWritedownOpen(true)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]">
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
               <TrendingDown size={13} /> Write Down to NRV
             </button>
-            <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155] text-xl leading-none" aria-label="Back">×</button>
+            <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Back">×</button>
           </div>
         </div>
 
-        <div className="px-5 py-3 border-b border-[#F1F5F9] flex items-end gap-3 flex-wrap shrink-0">
+        <div className="px-5 py-3 border-b border-ps-muted flex items-end gap-3 flex-wrap shrink-0">
           <div>
-            <label className="block text-[10px] font-medium text-[#94A3B8] mb-1">From</label>
+            <label className="block text-[10px] font-medium text-ps-hint mb-1">From</label>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-              className="px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label className="block text-[10px] font-medium text-[#94A3B8] mb-1">To</label>
+            <label className="block text-[10px] font-medium text-ps-hint mb-1">To</label>
             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-              className="px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <button onClick={() => { setStartDate(fyRange.start); setEndDate(fyRange.end); }} className="text-xs text-blue-600 hover:underline pb-1.5">
             Reset to FY {financialYear}
           </button>
-          {loading && <RefreshCw size={13} className="animate-spin text-[#94A3B8] mb-1.5" />}
+          {loading && <RefreshCw size={13} className="animate-spin text-ps-hint mb-1.5" />}
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
@@ -612,16 +612,16 @@ function StockLedgerDrillDown({
           ) : loadFailed ? (
             <div className="text-center py-10">
               <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the stock ledger — the request failed or timed out.</p>
-              <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
             </div>
           ) : lines.length === 0 ? (
-            <div className="text-center py-10 text-[#94A3B8] text-sm">
+            <div className="text-center py-10 text-ps-hint text-sm">
               No stock movements for this item in the selected range.
               {/* Nothing MOVED is not the same as holding nothing. A range with
                   no movements still opened and closed on a position, and a CA
                   reconciling stock needs to see it rather than an empty box. */}
               {opening ? (
-                <span className="block mt-2 text-[#64748B]">
+                <span className="block mt-2 text-ps-label">
                   Held {fmtQty(opening.qty_units)} throughout, valued at{" "}
                   {formatServicePrice(opening.value_paise) || "₹0"}.
                 </span>
@@ -630,7 +630,7 @@ function StockLedgerDrillDown({
           ) : (
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-ps-hint">
                   <th className="px-3 py-2 text-left font-semibold">Date</th>
                   <th className="px-3 py-2 text-left font-semibold">Type</th>
                   <th className="px-3 py-2 text-left font-semibold">Reference</th>
@@ -640,44 +640,44 @@ function StockLedgerDrillDown({
                   <th className="px-3 py-2 text-right font-semibold">Balance Value</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {opening ? (
-                  <tr className="bg-[#F8FAFC]">
-                    <td className="px-3 py-2 text-[#64748B] whitespace-nowrap">{opening.as_at ?? "—"}</td>
-                    <td className="px-3 py-2 text-[#334155] font-medium" colSpan={2}>Opening Balance</td>
+                  <tr className="bg-ps-bg">
+                    <td className="px-3 py-2 text-ps-label whitespace-nowrap">{opening.as_at ?? "—"}</td>
+                    <td className="px-3 py-2 text-ps-body font-medium" colSpan={2}>Opening Balance</td>
                     <td className="px-3 py-2" />
                     <td className="px-3 py-2" />
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-[#334155]">{fmtQty(opening.qty_units)}</td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-[#0F172A]">{formatServicePrice(opening.value_paise) || "₹0"}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-ps-body">{fmtQty(opening.qty_units)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-ps-ink">{formatServicePrice(opening.value_paise) || "₹0"}</td>
                   </tr>
                 ) : null}
                 {lines.map((l) => {
                   const delta = parseFloat(l.quantity_delta);
                   return (
-                    <tr key={l.id} className="hover:bg-[#F8FAFC]">
-                      <td className="px-3 py-2 text-[#64748B] whitespace-nowrap">{l.movement_date}</td>
-                      <td className="px-3 py-2 text-[#334155]">{MOVEMENT_LABELS[l.movement_type] ?? l.movement_type}</td>
-                      <td className="px-3 py-2 font-mono text-[#94A3B8]">{l.reference_no ?? "—"}</td>
+                    <tr key={l.id} className="hover:bg-ps-bg">
+                      <td className="px-3 py-2 text-ps-label whitespace-nowrap">{l.movement_date}</td>
+                      <td className="px-3 py-2 text-ps-body">{MOVEMENT_LABELS[l.movement_type] ?? l.movement_type}</td>
+                      <td className="px-3 py-2 font-mono text-ps-hint">{l.reference_no ?? "—"}</td>
                       <td className={`px-3 py-2 text-right font-mono ${delta >= 0 ? "text-green-700" : "text-red-700"}`}>
                         {delta >= 0 ? "+" : ""}{fmtQty(delta)}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-[#64748B]">{formatServicePrice(l.unit_cost_paise) || "—"}</td>
+                      <td className="px-3 py-2 text-right font-mono text-ps-label">{formatServicePrice(l.unit_cost_paise) || "—"}</td>
                       {/* balance_*, NOT running_*: the stored running totals are
                           chained in insertion order, so beside a date-ordered
                           list they do not add up. See the interface above. */}
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-[#334155]">{fmtQty(l.balance_qty_units)}</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-[#0F172A]">{formatServicePrice(l.balance_value_paise) || "₹0"}</td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold text-ps-body">{fmtQty(l.balance_qty_units)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold text-ps-ink">{formatServicePrice(l.balance_value_paise) || "₹0"}</td>
                     </tr>
                   );
                 })}
                 {closing ? (
-                  <tr className="bg-[#F8FAFC] border-t-2 border-[#E2E8F0]">
-                    <td className="px-3 py-2 text-[#64748B] whitespace-nowrap">{closing.as_at ?? "—"}</td>
-                    <td className="px-3 py-2 text-[#334155] font-medium" colSpan={2}>Closing Balance</td>
+                  <tr className="bg-ps-bg border-t-2 border-ps-border">
+                    <td className="px-3 py-2 text-ps-label whitespace-nowrap">{closing.as_at ?? "—"}</td>
+                    <td className="px-3 py-2 text-ps-body font-medium" colSpan={2}>Closing Balance</td>
                     <td className="px-3 py-2" />
                     <td className="px-3 py-2" />
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-[#334155]">{fmtQty(closing.qty_units)}</td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-[#0F172A]">{formatServicePrice(closing.value_paise) || "₹0"}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-ps-body">{fmtQty(closing.qty_units)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-ps-ink">{formatServicePrice(closing.value_paise) || "₹0"}</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -771,43 +771,43 @@ function AdjustStockModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-[110] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between">
-          <p className="text-sm font-semibold text-[#0F172A]">Adjust Stock — {item.name}</p>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155] text-xl leading-none" aria-label="Close">×</button>
+        <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between">
+          <p className="text-sm font-semibold text-ps-ink">Adjust Stock — {item.name}</p>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
         </div>
         <div className="p-5 space-y-3">
-          <p className="text-[11px] text-[#94A3B8]">
+          <p className="text-[11px] text-ps-hint">
             Currently {fmtQty(item.stock_qty_units)} on hand. This posts a journal entry immediately — review the details before saving.
           </p>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Direction</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Direction</label>
               <select value={direction} onChange={(e) => onDirectionChange(e.target.value as "increase" | "decrease")}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="decrease">Decrease (loss / write-off)</option>
                 <option value="increase">Increase (surplus found)</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Quantity *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Quantity *</label>
               <input type="number" min="0.001" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)}
-                placeholder="0" className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                placeholder="0" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Reason</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Reason</label>
             <select value={reason} onChange={(e) => onReasonChange(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
               {reasonOptions.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </div>
 
           {direction === "decrease" && (
-            <label className="flex items-start gap-2 text-xs text-[#475569] bg-amber-50 border border-amber-200 rounded-lg p-2.5 cursor-pointer">
+            <label className="flex items-start gap-2 text-xs text-ps-label bg-amber-50 border border-amber-200 rounded-lg p-2.5 cursor-pointer">
               <input type="checkbox" checked={reverseItc} onChange={(e) => setReverseItc(e.target.checked)} className="mt-0.5 rounded" />
               <span>
                 Reverse input tax credit (CGST Act §17(5)(h)). Approximated using this item&apos;s own GST rate — verify against the
@@ -818,27 +818,27 @@ function AdjustStockModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Date *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Date *</label>
               <input type="date" value={adjustmentDate} onChange={(e) => setAdjustmentDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Reference</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>
               <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="e.g. count sheet #"
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Notes</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-              placeholder="Details for the audit trail" className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              placeholder="Details for the audit trail" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
           {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-1">
-            <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
+            <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
             <button onClick={submit} disabled={saving}
               className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
               {saving && <Loader2 size={12} className="animate-spin" />} Save Adjustment
@@ -900,14 +900,14 @@ function NrvWritedownModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-[110] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between">
-          <p className="text-sm font-semibold text-[#0F172A]">Write Down to NRV — {item.name}</p>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155] text-xl leading-none" aria-label="Close">×</button>
+        <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between">
+          <p className="text-sm font-semibold text-ps-ink">Write Down to NRV — {item.name}</p>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
         </div>
         <div className="p-5 space-y-3">
-          <p className="text-[11px] text-[#94A3B8]">
+          <p className="text-[11px] text-ps-hint">
             AS-2 / Ind AS 2 / ICDS-II: inventory must be carried at the lower of cost or net realisable value. Quantity
             never changes — only the recorded value. Current average cost is {formatServicePrice(item.avg_cost_paise) || "₹0"}/unit
             on {fmtQty(qty)} units on hand.
@@ -915,14 +915,14 @@ function NrvWritedownModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Net realisable value / unit (₹) *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Net realisable value / unit (₹) *</label>
               <input type="text" inputMode="decimal" value={nrvPerUnit} onChange={(e) => setNrvPerUnit(e.target.value)}
-                placeholder="0.00" className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                placeholder="0.00" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Date *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Date *</label>
               <input type="date" value={writedownDate} onChange={(e) => setWritedownDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
@@ -935,27 +935,27 @@ function NrvWritedownModal({
               That isn&apos;t an amount — enter rupees per unit, like 120 or 120.50.
             </p>
           ) : nrvPaise !== null && nrvPaise >= avgCostPaise ? (
-            <p className="text-xs text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2.5">
+            <p className="text-xs text-ps-label bg-ps-bg border border-ps-border rounded-lg p-2.5">
               NRV is at or above the current average cost — no write-down needed; nothing will be posted.
             </p>
           ) : null}
 
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Reference</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>
             <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="e.g. valuation note #"
-              className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Notes</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-              placeholder="Basis for the NRV estimate" className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              placeholder="Basis for the NRV estimate" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
           {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-1">
-            <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
+            <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
             <button onClick={submit} disabled={saving}
               className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
               {saving && <Loader2 size={12} className="animate-spin" />} Save Write-down

@@ -224,16 +224,16 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Add MCA Filing</h3>
-          <button onClick={onClose}><X className="w-4 h-4 text-[#94A3B8]" /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">Add MCA Filing</h3>
+          <button onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>
         </div>
         {err && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{err}</p>}
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Client</label>
+            <label className="text-xs font-medium text-ps-body block mb-1">Client</label>
             <div className="w-full">
               <ClientLookup
                 clients={clients}
@@ -245,46 +245,46 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">CIN / LLPIN</label>
-            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="U17200MH2010PTC205678" value={cin} onChange={e => setCin(e.target.value.toUpperCase())} />
+            <label className="text-xs font-medium text-ps-body block mb-1">CIN / LLPIN</label>
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="U17200MH2010PTC205678" value={cin} onChange={e => setCin(e.target.value.toUpperCase())} />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Form Type</label>
-            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={formType} onChange={e => setFormType(e.target.value)}>
+            <label className="text-xs font-medium text-ps-body block mb-1">Form Type</label>
+            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={formType} onChange={e => setFormType(e.target.value)}>
               {FORM_TYPES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1">Period</label>
-              <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={period} onChange={e => setPeriod(e.target.value)} placeholder="FY 2025-26" />
+              <label className="text-xs font-medium text-ps-body block mb-1">Period</label>
+              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={period} onChange={e => setPeriod(e.target.value)} placeholder="FY 2025-26" />
             </div>
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1">Due Date</label>
-              <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+              <label className="text-xs font-medium text-ps-body block mb-1">Due Date</label>
+              <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={dueDate} onChange={e => setDueDate(e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1">Status</label>
-              <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={status} onChange={e => setStatus(e.target.value as FilingStatus)}>
+              <label className="text-xs font-medium text-ps-body block mb-1">Status</label>
+              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={status} onChange={e => setStatus(e.target.value as FilingStatus)}>
                 <option value="Pending">Pending</option>
                 <option value="Filed">Filed</option>
                 <option value="Overdue">Overdue</option>
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1">SRN (if filed)</label>
-              <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={srn} onChange={e => setSrn(e.target.value)} placeholder="SRN12345678" />
+              <label className="text-xs font-medium text-ps-body block mb-1">SRN (if filed)</label>
+              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={srn} onChange={e => setSrn(e.target.value)} placeholder="SRN12345678" />
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Notes</label>
-            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
+            <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg">Cancel</button>
+          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
           <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Saving…" : "Add Filing"}
           </button>
@@ -378,11 +378,11 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
-          <h3 className="text-base font-semibold text-[#0F172A]">Mark ROC Filings as Filed</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569] transition-colors">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+          <h3 className="text-base font-semibold text-ps-ink">Mark ROC Filings as Filed</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -397,33 +397,33 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
           </div>
 
           {rows.length === 0 ? (
-            <p className="text-sm text-[#64748B]">All selected filings are already marked as filed.</p>
+            <p className="text-sm text-ps-label">All selected filings are already marked as filed.</p>
           ) : (
             <>
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Date of Filing <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
                   value={filedDate}
                   onChange={(e) => setFiledDate(e.target.value)}
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="text-[10px] text-[#94A3B8] mt-1">Applied to all filings below.</p>
+                <p className="text-[10px] text-ps-hint mt-1">Applied to all filings below.</p>
               </div>
 
               <div className="space-y-3">
                 {rows.map((f) => (
-                  <div key={f.id} className="border border-[#E2E8F0] rounded-lg px-4 py-3 space-y-2">
-                    <div className="text-sm text-[#334155]">
+                  <div key={f.id} className="border border-ps-border rounded-lg px-4 py-3 space-y-2">
+                    <div className="text-sm text-ps-body">
                       <p className="font-medium">{f.client_name}</p>
-                      <p className="text-xs text-[#94A3B8] mt-0.5 font-mono">
+                      <p className="text-xs text-ps-hint mt-0.5 font-mono">
                         {f.company_cin} · {f.form_type} · Due {fmtDate(f.due_date)}
                       </p>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-[#334155] mb-1">
+                      <label className="block text-xs font-medium text-ps-body mb-1">
                         SRN (Service Request Number) <span className="text-red-500">*</span>
                       </label>
                       <input
@@ -431,7 +431,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
                         placeholder="SRN12345678"
                         value={srns[f.id] ?? ""}
                         onChange={(e) => setSrns((p) => ({ ...p, [f.id]: e.target.value }))}
-                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                   </div>
@@ -450,10 +450,10 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
+        <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
           >
             Cancel
           </button>
@@ -625,31 +625,31 @@ export default function MCAPage() {
       render: (c) => (
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center shrink-0"><Building2 className="w-3.5 h-3.5 text-blue-600" /></div>
-          <span className="text-sm font-medium text-[#0F172A]">{c.client_name}</span>
+          <span className="text-sm font-medium text-ps-ink">{c.client_name}</span>
         </div>
       ),
     },
     {
       key: "cin", header: "CIN", accessor: (c) => c.cin, searchable: true, sortable: true,
-      render: (c) => <span className="font-mono text-xs text-[#475569]">{c.cin}</span>,
+      render: (c) => <span className="font-mono text-xs text-ps-label">{c.cin}</span>,
     },
     {
       key: "incorp_date", header: "Incorp. Date", accessor: (c) => c.incorp_date, sortable: true,
-      render: (c) => <span className="text-xs text-[#475569]">{c.incorp_date ? fmtDate(c.incorp_date) : "—"}</span>,
+      render: (c) => <span className="text-xs text-ps-label">{c.incorp_date ? fmtDate(c.incorp_date) : "—"}</span>,
     },
     {
       key: "auth_capital_paise", header: "Auth. Capital", accessor: (c) => c.auth_capital_paise,
       sortable: true, align: "right", exportValue: (c) => c.auth_capital_paise / 100,
-      render: (c) => <span className="text-[#0F172A]">{fmtLakhs(c.auth_capital_paise)}</span>,
+      render: (c) => <span className="text-ps-ink">{fmtLakhs(c.auth_capital_paise)}</span>,
     },
     {
       key: "paidup_capital_paise", header: "Paid-up Capital", accessor: (c) => c.paidup_capital_paise,
       sortable: true, align: "right", exportValue: (c) => c.paidup_capital_paise / 100,
-      render: (c) => <span className="text-[#0F172A]">{fmtLakhs(c.paidup_capital_paise)}</span>,
+      render: (c) => <span className="text-ps-ink">{fmtLakhs(c.paidup_capital_paise)}</span>,
     },
     {
       key: "regd_office", header: "Regd. Office", accessor: (c) => c.regd_office,
-      render: (c) => <span className="text-xs text-[#475569]">{c.regd_office}</span>,
+      render: (c) => <span className="text-xs text-ps-label">{c.regd_office}</span>,
     },
   ], []);
 
@@ -658,11 +658,11 @@ export default function MCAPage() {
     {
       key: "client_name", header: "Company Name", accessor: (f) => f.client_name,
       searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (f) => <span className="font-medium text-[#0F172A]">{f.client_name}</span>,
+      render: (f) => <span className="font-medium text-ps-ink">{f.client_name}</span>,
     },
     {
       key: "company_cin", header: "CIN", accessor: (f) => f.company_cin ?? "", searchable: true,
-      render: (f) => <span className="font-mono text-xs text-[#475569]">{f.company_cin}</span>,
+      render: (f) => <span className="font-mono text-xs text-ps-label">{f.company_cin}</span>,
     },
     {
       key: "form_type", header: "Form Type", accessor: (f) => f.form_type, searchable: true, sortable: true,
@@ -674,19 +674,19 @@ export default function MCAPage() {
     },
     {
       key: "period", header: "Period", accessor: (f) => f.period,
-      render: (f) => <span className="text-xs text-[#475569]">{f.period}</span>,
+      render: (f) => <span className="text-xs text-ps-label">{f.period}</span>,
     },
     {
       key: "due_date", header: "Due Date", accessor: (f) => f.due_date, sortable: true,
-      render: (f) => <span className="text-xs text-[#475569]">{fmtDate(f.due_date)}</span>,
+      render: (f) => <span className="text-xs text-ps-label">{fmtDate(f.due_date)}</span>,
     },
     {
       key: "filed_date", header: "Filed Date", accessor: (f) => f.filed_date ?? "", sortable: true,
-      render: (f) => <span className="text-xs text-[#475569]">{f.filed_date ? fmtDate(f.filed_date) : "—"}</span>,
+      render: (f) => <span className="text-xs text-ps-label">{f.filed_date ? fmtDate(f.filed_date) : "—"}</span>,
     },
     {
       key: "srn", header: "SRN", accessor: (f) => f.srn ?? "",
-      render: (f) => <span className="font-mono text-xs text-[#475569]">{f.srn || "—"}</span>,
+      render: (f) => <span className="font-mono text-xs text-ps-label">{f.srn || "—"}</span>,
     },
     {
       key: "status", header: "Status", accessor: (f) => f.status, sortable: true,
@@ -724,27 +724,27 @@ export default function MCAPage() {
     {
       key: "name", header: "Name", accessor: (d) => d.name,
       searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (d) => <span className="font-medium text-[#0F172A]">{d.name}</span>,
+      render: (d) => <span className="font-medium text-ps-ink">{d.name}</span>,
     },
     {
       key: "din", header: "DIN", accessor: (d) => d.din, searchable: true, sortable: true,
-      render: (d) => <span className="font-mono text-xs text-[#475569]">{d.din}</span>,
+      render: (d) => <span className="font-mono text-xs text-ps-label">{d.din}</span>,
     },
     {
       key: "pan", header: "PAN", accessor: (d) => d.pan,
-      render: (d) => <span className="font-mono text-xs text-[#475569]">{d.pan}</span>,
+      render: (d) => <span className="font-mono text-xs text-ps-label">{d.pan}</span>,
     },
     {
       key: "designation", header: "Designation", accessor: (d) => d.designation,
-      render: (d) => <span className="text-xs text-[#475569]">{d.designation}</span>,
+      render: (d) => <span className="text-xs text-ps-label">{d.designation}</span>,
     },
     {
       key: "appointment_date", header: "Appointment Date", accessor: (d) => d.appointment_date, sortable: true,
-      render: (d) => <span className="text-xs text-[#475569]">{d.appointment_date ? fmtDate(d.appointment_date) : "—"}</span>,
+      render: (d) => <span className="text-xs text-ps-label">{d.appointment_date ? fmtDate(d.appointment_date) : "—"}</span>,
     },
     {
       key: "kyc_due_date", header: "KYC Due Date", accessor: (d) => d.kyc_due_date, sortable: true,
-      render: (d) => <span className="text-xs text-[#475569]">{d.kyc_due_date ? fmtDate(d.kyc_due_date) : "—"}</span>,
+      render: (d) => <span className="text-xs text-ps-label">{d.kyc_due_date ? fmtDate(d.kyc_due_date) : "—"}</span>,
     },
     {
       key: "kyc_status", header: "KYC Status", accessor: (d) => {
@@ -768,8 +768,8 @@ export default function MCAPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">MCA / ROC Module</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Ministry of Corporate Affairs — Companies Act 2013 compliance tracker</p>
+          <h1 className="text-xl font-semibold text-ps-ink">MCA / ROC Module</h1>
+          <p className="text-sm text-ps-label mt-0.5">Ministry of Corporate Affairs — Companies Act 2013 compliance tracker</p>
         </div>
         {activeTab === 1 && (
           <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-blue-600 text-white text-sm px-3 py-2 rounded-lg hover:bg-blue-700">
@@ -797,22 +797,22 @@ export default function MCAPage() {
           { icon: <AlertTriangle className="w-4 h-4 text-red-600" />, bg: "bg-red-50",    label: "Overdue Filings",       value: loading ? "—" : String(overdueCount), sub: "Past due date" },
           { icon: <Users className="w-4 h-4 text-purple-600" />,      bg: "bg-purple-50", label: "Directors KYC Due",     value: String(kycDueSoon), sub: "Within 30 days" },
         ].map(c => (
-          <div key={c.label} className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <div key={c.label} className="bg-white rounded-xl border border-ps-muted p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center`}>{c.icon}</div>
-              <span className="text-xs text-[#64748B]">{c.label}</span>
+              <span className="text-xs text-ps-label">{c.label}</span>
             </div>
-            <p className="text-lg font-semibold text-[#0F172A]">{c.value}</p>
-            <p className="text-xs text-[#94A3B8] mt-0.5">{c.sub}</p>
+            <p className="text-lg font-semibold text-ps-ink">{c.value}</p>
+            <p className="text-xs text-ps-hint mt-0.5">{c.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-[#F1F5F9]">
+      <div className="flex gap-1 border-b border-ps-muted">
         {TABS.map((tab, i) => (
           <button key={tab} onClick={() => setActiveTab(i)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-blue-600 text-blue-700" : "border-transparent text-[#64748B] hover:text-[#334155]"}`}>
+            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-blue-600 text-blue-700" : "border-transparent text-ps-label hover:text-ps-body"}`}>
             {tab}
           </button>
         ))}
@@ -822,8 +822,8 @@ export default function MCAPage() {
       {activeTab === 0 && (
         <div className="space-y-2">
           <div>
-            <h2 className="text-sm font-semibold text-[#0F172A]">Company Clients</h2>
-            <p className="text-xs text-[#94A3B8] mt-0.5">Companies Act 2013 — incorporated entities</p>
+            <h2 className="text-sm font-semibold text-ps-ink">Company Clients</h2>
+            <p className="text-xs text-ps-hint mt-0.5">Companies Act 2013 — incorporated entities</p>
           </div>
           <DataTable
             data={companies}
@@ -844,8 +844,8 @@ export default function MCAPage() {
       {activeTab === 1 && (
         <div className="space-y-2">
           <div>
-            <h2 className="text-sm font-semibold text-[#0F172A]">ROC Filing Tracker</h2>
-            <p className="text-xs text-[#94A3B8] mt-0.5">Companies Act 2013 — ROC/MCA filing obligations</p>
+            <h2 className="text-sm font-semibold text-ps-ink">ROC Filing Tracker</h2>
+            <p className="text-xs text-ps-hint mt-0.5">Companies Act 2013 — ROC/MCA filing obligations</p>
           </div>
           <DataTable
             data={filings}
@@ -864,11 +864,11 @@ export default function MCAPage() {
               f.status !== "Filed" ? (
                 <button onClick={() => openMarkFiledModal(f)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
               ) : (
-                <span className="text-xs text-[#94A3B8]">Done</span>
+                <span className="text-xs text-ps-hint">Done</span>
               )
             }
           />
-          <p className="text-[10px] text-[#94A3B8]">
+          <p className="text-[10px] text-ps-hint">
             {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
             All filings must be submitted manually on MCA21 portal. PracticeSync does not auto-submit.
           </p>
@@ -879,8 +879,8 @@ export default function MCAPage() {
       {activeTab === 2 && (
         <div className="space-y-2">
           <div>
-            <h2 className="text-sm font-semibold text-[#0F172A]">Director Master</h2>
-            <p className="text-xs text-[#94A3B8] mt-0.5">Director KYC due date: 30 Sep annually — Rule 12A Companies (Appointment and Qualification of Directors) Rules</p>
+            <h2 className="text-sm font-semibold text-ps-ink">Director Master</h2>
+            <p className="text-xs text-ps-hint mt-0.5">Director KYC due date: 30 Sep annually — Rule 12A Companies (Appointment and Qualification of Directors) Rules</p>
           </div>
           <DataTable
             data={directors}
@@ -909,14 +909,14 @@ export default function MCAPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {keyDeadlines().map(d => (
-              <div key={d.label} className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+              <div key={d.label} className="bg-white rounded-xl border border-ps-muted p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center"><Calendar className="w-4 h-4 text-blue-600" /></div>
-                  <span className="text-sm font-semibold text-[#0F172A]">{d.label}</span>
+                  <span className="text-sm font-semibold text-ps-ink">{d.label}</span>
                 </div>
                 <p className="text-base font-bold text-blue-600">{d.date}</p>
-                <p className="text-xs text-[#94A3B8] mt-1">{d.note}</p>
-                <p className={`text-xs font-medium mt-2 ${d.daysLeft < 30 ? "text-amber-600" : "text-[#64748B]"}`}>
+                <p className="text-xs text-ps-hint mt-1">{d.note}</p>
+                <p className={`text-xs font-medium mt-2 ${d.daysLeft < 30 ? "text-amber-600" : "text-ps-label"}`}>
                   {d.daysLeft > 0 ? `${d.daysLeft} days remaining` : "Past due"}
                 </p>
               </div>
@@ -934,11 +934,11 @@ export default function MCAPage() {
       {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
       {/* ================================================================== */}
       {filedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
-              <h3 className="text-base font-semibold text-[#0F172A]">Mark ROC Filing as Filed</h3>
-              <button onClick={() => setFiledModal(null)} className="text-[#94A3B8] hover:text-[#475569] transition-colors">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+              <h3 className="text-base font-semibold text-ps-ink">Mark ROC Filing as Filed</h3>
+              <button onClick={() => setFiledModal(null)} className="text-ps-hint hover:text-ps-label transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -952,15 +952,15 @@ export default function MCAPage() {
                 </p>
               </div>
 
-              <div className="text-sm text-[#334155] bg-[#F8FAFC] rounded-lg px-4 py-3">
+              <div className="text-sm text-ps-body bg-ps-bg rounded-lg px-4 py-3">
                 <p className="font-medium">{filedModal.filing.client_name}</p>
-                <p className="text-xs text-[#94A3B8] mt-0.5 font-mono">
+                <p className="text-xs text-ps-hint mt-0.5 font-mono">
                   {filedModal.filing.company_cin} · {filedModal.filing.form_type}
                 </p>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                <label className="block text-xs font-medium text-ps-body mb-1.5">
                   SRN (Service Request Number) <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -968,19 +968,19 @@ export default function MCAPage() {
                   placeholder="SRN12345678"
                   value={filedForm.srn}
                   onChange={(e) => setFiledForm((p) => ({ ...p, srn: e.target.value }))}
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Date of Filing <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
                   value={filedForm.filed_date}
                   onChange={(e) => setFiledForm((p) => ({ ...p, filed_date: e.target.value }))}
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -989,10 +989,10 @@ export default function MCAPage() {
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
               <button
                 onClick={() => setFiledModal(null)}
-                className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+                className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
               >
                 Cancel
               </button>

@@ -63,7 +63,7 @@ const FILING_STATUS_COLORS: Record<string, string> = {
   in_progress: "bg-blue-100 text-blue-700",
   filed:       "bg-green-100 text-green-700",
   overdue:     "bg-red-100 text-red-700",
-  na:          "bg-[#F1F5F9] text-[#64748B]",
+  na:          "bg-ps-muted text-ps-label",
 };
 
 // TDS27Q is here so a firm that HAS non-resident payees can filter to it. The
@@ -251,17 +251,17 @@ function DeadlinesContent() {
     {
       key: "gstin", header: "GSTIN", searchable: true, defaultHidden: true,
       accessor: (r) => clientGstinMap[r.client_id] ?? "",
-      render: (r) => <span className="font-mono text-xs text-[#64748B]">{clientGstinMap[r.client_id] || "—"}</span>,
+      render: (r) => <span className="font-mono text-xs text-ps-label">{clientGstinMap[r.client_id] || "—"}</span>,
     },
     {
       key: "compliance_type", header: "Type", sortable: true,
       accessor: (r) => r.compliance_type,
-      render: (r) => <span className="text-xs text-[#475569]">{r.compliance_type}</span>,
+      render: (r) => <span className="text-xs text-ps-label">{r.compliance_type}</span>,
     },
     {
       key: "period", header: "Period", accessor: (r) => r.period_start,
       render: (r) => (
-        <span className="text-xs text-[#64748B] whitespace-nowrap">
+        <span className="text-xs text-ps-label whitespace-nowrap">
           {formatDate(r.period_start)} – {formatDate(r.period_end)}
         </span>
       ),
@@ -269,7 +269,7 @@ function DeadlinesContent() {
     {
       key: "due_date", header: "Due Date", sortable: true, accessor: (r) => r.due_date,
       render: (r) => (
-        <span className={`text-xs whitespace-nowrap ${r.due_date < todayForDueDateColor && r.filing_status !== "filed" ? "text-red-600 font-medium" : "text-[#475569]"}`}>
+        <span className={`text-xs whitespace-nowrap ${r.due_date < todayForDueDateColor && r.filing_status !== "filed" ? "text-red-600 font-medium" : "text-ps-label"}`}>
           {formatDate(r.due_date)}
         </span>
       ),
@@ -278,7 +278,7 @@ function DeadlinesContent() {
       key: "filing_status", header: "Status", sortable: true, accessor: (r) => r.filing_status,
       render: (r) => (
         <div className="flex flex-col gap-1 items-start">
-          <Badge className={`text-xs ${FILING_STATUS_COLORS[r.filing_status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+          <Badge className={`text-xs ${FILING_STATUS_COLORS[r.filing_status] ?? "bg-ps-muted text-ps-label"}`}>
             {r.filing_status}
           </Badge>
         </div>
@@ -288,7 +288,7 @@ function DeadlinesContent() {
       key: "arn", header: "ARN",
       accessor: (r) => r.arn_number ?? "",
       render: (r) => (
-        <span className="text-xs text-[#64748B] font-mono">{r.arn_number ?? "—"}</span>
+        <span className="text-xs text-ps-label font-mono">{r.arn_number ?? "—"}</span>
       ),
     },
   ], [clientMap, clientGstinMap, todayForDueDateColor]);
@@ -354,7 +354,7 @@ function DeadlinesContent() {
   ) : (
     <Link
       href="/clients"
-      className="inline-flex items-center gap-1.5 px-4 py-2 border border-[#E2E8F0] text-[#475569] text-xs font-semibold rounded-lg hover:bg-[#F8FAFC] transition-colors"
+      className="inline-flex items-center gap-1.5 px-4 py-2 border border-ps-border text-ps-label text-xs font-semibold rounded-lg hover:bg-ps-bg transition-colors"
     >
       View Clients <ArrowRight size={13} />
     </Link>
@@ -372,8 +372,8 @@ function DeadlinesContent() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-[#0F172A]">{pageTitle}</h1>
-        <p className="text-sm text-[#64748B] mt-0.5">
+        <h1 className="text-xl font-semibold text-ps-ink">{pageTitle}</h1>
+        <p className="text-sm text-ps-label mt-0.5">
           Cross-client compliance calendar — triage here, file inside each client
         </p>
       </div>
@@ -385,8 +385,8 @@ function DeadlinesContent() {
               <div className={`w-8 h-8 rounded-lg ${s.bg} flex items-center justify-center mb-2`}>
                 <s.icon size={16} className={s.color} />
               </div>
-              <p className="text-2xl font-bold text-[#0F172A]">{s.value}</p>
-              <p className="text-xs text-[#64748B] mt-0.5 leading-tight">{s.label}</p>
+              <p className="text-2xl font-bold text-ps-ink">{s.value}</p>
+              <p className="text-xs text-ps-label mt-0.5 leading-tight">{s.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -420,7 +420,7 @@ function DeadlinesContent() {
               </button>
               <button
                 onClick={() => setMarkFiled(null)}
-                className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-md hover:bg-[#F1F5F9] bg-white"
+                className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white"
               >
                 Cancel
               </button>
@@ -482,7 +482,7 @@ function DeadlinesContent() {
 
       {/* No clients at all — extra guidance beyond the table's own empty state */}
       {records.length === 0 && clients.length === 0 && (
-        <div className="flex items-center gap-2 text-xs text-[#94A3B8]">
+        <div className="flex items-center gap-2 text-xs text-ps-hint">
           <Users size={13} /> Deadlines are tracked per-client.
         </div>
       )}

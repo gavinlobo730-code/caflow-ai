@@ -19,7 +19,7 @@ export function SettingsPanel() {
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
-        <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider">
+        <p className="text-[11px] font-semibold text-ps-hint uppercase tracking-wider">
           Settings
         </p>
       </div>
@@ -34,12 +34,12 @@ export function SettingsPanel() {
                 "flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-colors",
                 isActive
                   ? "bg-blue-50 text-blue-700 font-medium"
-                  : "text-[#475569] hover:bg-[#F8FAFC]"
+                  : "text-ps-label hover:bg-ps-bg"
               )}
             >
               <Icon
                 size={14}
-                className={isActive ? "text-blue-600" : "text-[#94A3B8]"}
+                className={isActive ? "text-blue-600" : "text-ps-hint"}
               />
               {label}
             </Link>

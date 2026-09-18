@@ -107,10 +107,10 @@ export default function RelationshipExplorerPage() {
   });
 
   return (
-    <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
+    <div className="p-6 space-y-5 bg-ps-bg min-h-full">
       <div>
-        <h1 className="text-2xl font-bold text-[#182350] flex items-center gap-2">
-          <Network size={20} className="text-[#182350]" />
+        <h1 className="text-2xl font-bold text-brand flex items-center gap-2">
+          <Network size={20} className="text-brand" />
           Relationship Explorer
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
@@ -131,7 +131,7 @@ export default function RelationshipExplorerPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search entities…"
-              className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
+              className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
             />
           </div>
           {loading ? (
@@ -153,7 +153,7 @@ export default function RelationshipExplorerPage() {
                   onClick={() => handleSelect(e)}
                   className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
                     selected?.id === e.id
-                      ? "bg-[#AFD2FA]/30 border-[#182350]/30"
+                      ? "bg-brand-light/30 border-brand/30"
                       : "bg-white border-gray-200 hover:bg-gray-50"
                   }`}
                 >
@@ -186,7 +186,7 @@ export default function RelationshipExplorerPage() {
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h2 className="text-base font-semibold text-[#182350]">{selected.full_name}</h2>
+                      <h2 className="text-base font-semibold text-brand">{selected.full_name}</h2>
                       <div className="flex items-center gap-3 mt-1">
                         <Badge className={`text-[10px] ${ENTITY_TYPE_COLORS[selected.entity_type] ?? "bg-gray-100 text-gray-600"}`}>
                           {selected.entity_type}
@@ -197,7 +197,7 @@ export default function RelationshipExplorerPage() {
                     </div>
                     <Link
                       href={`/relationships/${selected.id}`}
-                      className="text-xs text-[#182350] hover:text-[#182350]/70 flex items-center gap-1"
+                      className="text-xs text-brand hover:text-brand/70 flex items-center gap-1"
                     >
                       View Full Profile <ArrowRight size={12} />
                     </Link>
@@ -239,12 +239,12 @@ export default function RelationshipExplorerPage() {
                         return (
                           <div key={i} className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded-md">
                             <span className="text-xs text-gray-800">{selected.full_name}</span>
-                            <ArrowRight size={12} className="text-[#182350] shrink-0" />
-                            <Badge className="bg-[#182350]/10 text-[#182350] text-[10px]">{r.relationship_type}</Badge>
-                            <ArrowRight size={12} className="text-[#182350] shrink-0" />
+                            <ArrowRight size={12} className="text-brand shrink-0" />
+                            <Badge className="bg-brand/10 text-brand text-[10px]">{r.relationship_type}</Badge>
+                            <ArrowRight size={12} className="text-brand shrink-0" />
                             <button
                               onClick={() => { const e = entities.find((e) => e.id === otherId); if (e) handleSelect(e); }}
-                              className="text-xs text-[#182350] hover:underline"
+                              className="text-xs text-brand hover:underline"
                             >
                               {otherEntity?.full_name ?? otherId.slice(0, 12) + "…"}
                             </button>

@@ -65,7 +65,7 @@ function fmtDate(iso: string): string {
 
 function statusBadge(status: AuditStatus) {
   switch (status) {
-    case "not_started": return { cls: "text-[#475569] bg-[#F1F5F9]", icon: Clock, label: "Not Started" };
+    case "not_started": return { cls: "text-ps-label bg-ps-muted", icon: Clock, label: "Not Started" };
     case "in_progress": return { cls: "text-blue-700 bg-blue-50", icon: Clock, label: "In Progress" };
     case "completed": return { cls: "text-amber-700 bg-amber-50", icon: CheckCircle, label: "Completed" };
     case "filed": return { cls: "text-green-700 bg-green-50", icon: CheckCircle, label: "Filed" };
@@ -197,8 +197,8 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
       cashReceiptsPaise, cashPaymentsPaise, totalPaymentsPaise, isCompany]);
 
   function upd(patch: Partial<AuditFormState>) { setForm(f => ({ ...f, ...patch })); }
-  const inputCls = "w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
-  const lbl = "text-xs font-medium text-[#334155] block mb-1";
+  const inputCls = "w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
+  const lbl = "text-xs font-medium text-ps-body block mb-1";
 
   async function handleSave() {
     if (!form.clientId) { setError("Select a client"); return; }
@@ -246,11 +246,11 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-[#F1F5F9]">
-          <h3 className="text-sm font-semibold text-[#0F172A]">{editAudit ? "Edit Tax Audit" : "Add Tax Audit"}</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
+        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-ps-muted">
+          <h3 className="text-sm font-semibold text-ps-ink">{editAudit ? "Edit Tax Audit" : "Add Tax Audit"}</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <div className="px-6 py-4 space-y-3">
           {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
@@ -303,18 +303,18 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
               boxes is how a form stops being read. Absent, the base figure
               applies — the direction that cannot cause a missed audit. */}
           {form.nature === "business" && (
-            <div className="border border-[#E2E8F0] rounded-lg">
+            <div className="border border-ps-border rounded-lg">
               <button
                 type="button"
                 onClick={() => setShowProviso(v => !v)}
-                className="w-full text-left px-3 py-2 text-xs font-medium text-[#334155] flex items-center justify-between"
+                className="w-full text-left px-3 py-2 text-xs font-medium text-ps-body flex items-center justify-between"
               >
                 <span>Cash receipts and payments (the proviso to §44AB(a))</span>
-                <span className="text-[#94A3B8]">{showProviso ? "−" : "+"}</span>
+                <span className="text-ps-hint">{showProviso ? "−" : "+"}</span>
               </button>
               {showProviso && (
                 <div className="px-3 pb-3 space-y-3">
-                  <p className="text-xs text-[#64748B]">
+                  <p className="text-xs text-ps-label">
                     The proviso reads clause (a) with a higher figure where cash receipts
                     AND cash payments are each within a small share of their own aggregate.
                     Both sides are needed — the payments side has its own denominator,
@@ -351,24 +351,24 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
             <div className={`rounded-lg border px-3 py-2 space-y-2 ${
               applicability.required
                 ? "bg-amber-50 border-amber-200"
-                : "bg-[#F8FAFC] border-[#E2E8F0]"}`}>
-              <p className="text-xs font-medium text-[#0F172A]">{applicability.basis}</p>
+                : "bg-ps-bg border-ps-border"}`}>
+              <p className="text-xs font-medium text-ps-ink">{applicability.basis}</p>
               {applicability.required && applicability.report_due_date && (
-                <p className="text-xs text-[#334155]">
+                <p className="text-xs text-ps-body">
                   Report (Form {applicability.form_type}) due {applicability.report_due_date};
                   return due {applicability.return_due_date}. Explanation (ii) to §44AB puts
                   the report one month before the §139(1) date.
                 </p>
               )}
               {applicability.caveats.length > 0 && (
-                <ul className="text-xs text-[#64748B] list-disc pl-4 space-y-1">
+                <ul className="text-xs text-ps-label list-disc pl-4 space-y-1">
                   {applicability.caveats.map((c, i) => <li key={i}>{c}</li>)}
                 </ul>
               )}
               {/* Always shown, including on a "not required" answer: §44AB is
                   not exhausted by clauses (a) and (b), and an answer that
                   reads as if it were is the one a CA would rely on. */}
-              <details className="text-xs text-[#64748B]">
+              <details className="text-xs text-ps-label">
                 <summary className="cursor-pointer">
                   Limbs not tested here ({applicability.limbs_not_tested.length})
                 </summary>
@@ -409,8 +409,8 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
             </div>
           </div>
         </div>
-        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-[#F1F5F9] flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-white/[0.08]">Cancel</button>
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-muted flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
             {saving ? "Saving…" : editAudit ? "Update" : "Add Audit"}
           </button>
@@ -477,10 +477,10 @@ export default function TaxAuditPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-[#94A3B8] hover:text-[#475569]"><ChevronLeft size={18} /></Link>
+        <Link href="/income-tax" className="text-ps-hint hover:text-ps-label"><ChevronLeft size={18} /></Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-[#0F172A]">Tax Audit Tracker</h1>
-          <p className="text-sm text-[#64748B] mt-0.5" title={dueDates?.basis ?? undefined}>
+          <h1 className="text-xl font-semibold text-ps-ink">Tax Audit Tracker</h1>
+          <p className="text-sm text-ps-label mt-0.5" title={dueDates?.basis ?? undefined}>
             IT Act Section 44AB — Form 3CA/3CB/3CD
             {dueDates
               ? <> | Report due {fmtDate(dueDates.report_due_date)} · return due {fmtDate(dueDates.return_due_date)}</>
@@ -488,7 +488,7 @@ export default function TaxAuditPage() {
           </p>
         </div>
         <select value={fyFilter} onChange={e => setFyFilter(e.target.value)}
-          className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
           {FY_OPTIONS.map(f => <option key={f} value={f}>FY {f}</option>)}
         </select>
         <Button size="sm" onClick={() => setShowAdd(true)}>
@@ -514,8 +514,8 @@ export default function TaxAuditPage() {
           return (
             <Card key={s}>
               <CardContent className="pt-4 pb-3">
-                <p className="text-2xl font-bold text-[#0F172A]">{audits.filter(a => a.status === s).length}</p>
-                <p className="text-xs text-[#64748B] mt-0.5">{badge.label}</p>
+                <p className="text-2xl font-bold text-ps-ink">{audits.filter(a => a.status === s).length}</p>
+                <p className="text-xs text-ps-label mt-0.5">{badge.label}</p>
               </CardContent>
             </Card>
           );
@@ -529,14 +529,14 @@ export default function TaxAuditPage() {
         {loading ? (
           <TableSkeleton cols={9} bare />
         ) : audits.length === 0 ? (
-          <div className="p-10 text-center text-[#94A3B8] text-sm">
+          <div className="p-10 text-center text-ps-hint text-sm">
             No tax audits for FY {fyFilter}. Click &quot;Add Audit&quot; to track one.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[900px]">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-xs text-ps-hint">
                   <th className="px-5 py-3 text-left">Client</th>
                   <th className="px-3 py-3 text-left">Form</th>
                   <th className="px-3 py-3 text-right">Turnover</th>
@@ -548,14 +548,14 @@ export default function TaxAuditPage() {
                   <th className="px-5 py-3 text-left">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {audits.map(a => {
                   const badge = statusBadge(a.status);
                   const Icon = badge.icon;
                   return (
-                    <tr key={a.id} className="hover:bg-[#F8FAFC]">
+                    <tr key={a.id} className="hover:bg-ps-bg">
                       <td className="px-5 py-3 text-sm font-medium">{clientName(a.client_id)}</td>
-                      <td className="px-3 py-3 text-xs font-mono text-[#475569]">{a.form_type}</td>
+                      <td className="px-3 py-3 text-xs font-mono text-ps-label">{a.form_type}</td>
                       <td className="px-3 py-3 text-sm tabular-nums text-right">
                         {a.turnover_paise > 0 ? formatPaise(a.turnover_paise) : "—"}
                       </td>
@@ -564,10 +564,10 @@ export default function TaxAuditPage() {
                           <Icon size={11} /> {badge.label}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-xs text-[#475569]">{a.auditor_name ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs text-[#475569]">{a.audit_date ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs text-[#475569]">{a.filing_date ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs font-mono text-[#64748B] max-w-[120px] truncate" title={a.udin ?? undefined}>{a.udin ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs text-ps-label">{a.auditor_name ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs text-ps-label">{a.audit_date ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs text-ps-label">{a.filing_date ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs font-mono text-ps-label max-w-[120px] truncate" title={a.udin ?? undefined}>{a.udin ?? "—"}</td>
                       <td className="px-5 py-3">
                         <button onClick={() => setEditAudit(a)}
                           className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
@@ -583,7 +583,7 @@ export default function TaxAuditPage() {
         )}
       </Card>
 
-      <p className="text-xs text-[#94A3B8] text-center">
+      <p className="text-xs text-ps-hint text-center">
         {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
         All audit details are for internal tracking only. UDIN must be verified on the ICAI portal before report submission.
       </p>

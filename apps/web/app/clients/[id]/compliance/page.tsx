@@ -43,7 +43,7 @@ const FILING_STATUS_COLORS: Record<string, string> = {
   in_progress: "bg-blue-100 text-blue-700",
   filed: "bg-green-100 text-green-700",
   overdue: "bg-red-100 text-red-700",
-  na: "bg-[#F1F5F9] text-[#64748B]",
+  na: "bg-ps-muted text-ps-label",
 };
 
 interface MarkFiledForm {
@@ -104,7 +104,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
     open: "bg-red-100 text-red-700",
     in_progress: "bg-blue-100 text-blue-700",
     responded: "bg-green-100 text-green-700",
-    closed: "bg-[#F1F5F9] text-[#64748B]",
+    closed: "bg-ps-muted text-ps-label",
   };
 
   return (
@@ -120,7 +120,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {showExtract && (
-          <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+          <div className="border rounded p-4 bg-ps-bg space-y-3">
             <p className="text-xs font-medium text-amber-700">⚠ CA Review Required — AI extraction only. CA must approve before action.</p>
             <textarea placeholder="Paste government notice text here…"
               value={noticeText} onChange={(e) => setNoticeText(e.target.value)}
@@ -137,14 +137,14 @@ function NoticesSection({ clientId }: { clientId: string }) {
         {noticesError ? (
           <div className="text-center py-4 space-y-2">
             <p className="text-sm text-red-600 font-medium">{noticesError}</p>
-            <button onClick={loadNotices} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+            <button onClick={loadNotices} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
           </div>
         ) : notices.length === 0 ? (
-          <p className="text-sm text-[#94A3B8] text-center py-4">No government notices extracted yet.</p>
+          <p className="text-sm text-ps-hint text-center py-4">No government notices extracted yet.</p>
         ) : (
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="bg-[#F8FAFC] text-left text-xs">
+              <tr className="bg-ps-bg text-left text-xs">
                 <th className="px-3 py-2 border-b">Authority</th>
                 <th className="px-3 py-2 border-b">Type</th>
                 <th className="px-3 py-2 border-b">Reference</th>
@@ -155,7 +155,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
             </thead>
             <tbody>
               {notices.map((n) => (
-                <tr key={n.id as string} className="border-b hover:bg-[#F8FAFC]">
+                <tr key={n.id as string} className="border-b hover:bg-ps-bg">
                   <td className="px-3 py-2 font-medium text-xs">{n.authority as string}</td>
                   <td className="px-3 py-2 text-xs">{(n.notice_type as string)?.replace(/_/g, " ")}</td>
                   <td className="px-3 py-2 text-xs font-mono">{n.reference_no as string ?? "—"}</td>
@@ -398,7 +398,7 @@ export default function CompliancePage() {
             onClick={() => router.push(`/clients/${clientId}/compliance/${path}`)}
             className={`border rounded-lg p-4 text-left transition-colors ${color}`}>
             <p className="font-semibold text-sm">{label}</p>
-            <p className="text-xs text-[#64748B] mt-1">{desc}</p>
+            <p className="text-xs text-ps-label mt-1">{desc}</p>
           </button>
         ))}
       </div>
@@ -407,13 +407,13 @@ export default function CompliancePage() {
       {clientId && clientId !== "_placeholder" && <NoticesSection clientId={clientId} />}
 
       {/* Sub-tab filter */}
-      <div className="flex gap-0.5 bg-[#F8FAFC] rounded-lg p-1 w-fit">
+      <div className="flex gap-0.5 bg-ps-bg rounded-lg p-1 w-fit">
         {(["all", "gst", "tds", "income_tax", "mca"] as ComplianceSubTab[]).map((id) => (
           <button
             key={id}
             onClick={() => setSubTab(id)}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-              subTab === id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"
+              subTab === id ? "bg-white text-ps-ink shadow-sm" : "text-ps-label hover:text-ps-body"
             }`}
           >
             {id === "income_tax" ? "Income Tax" : id.toUpperCase()}
@@ -442,7 +442,7 @@ export default function CompliancePage() {
               </button>
               <button
                 onClick={() => setMarkFiled(null)}
-                className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-md hover:bg-[#F1F5F9]"
+                className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted"
               >
                 Cancel
               </button>
@@ -460,7 +460,7 @@ export default function CompliancePage() {
             <button
               onClick={() => downloadCsv("compliance-calendar.csv", toCsv(filtered, complianceExportColumns))}
               disabled={filtered.length === 0}
-              className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-2.5 py-1 rounded-md hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-2.5 py-1 rounded-md hover:bg-ps-bg disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download size={12} /> Export
             </button>
@@ -491,7 +491,7 @@ export default function CompliancePage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-xs text-ps-hint">
                   <th className="px-5 py-3 text-left font-semibold w-8">
                     <input
                       type="checkbox"
@@ -499,7 +499,7 @@ export default function CompliancePage() {
                       checked={filtered.length > 0 && selected.size === filtered.length}
                       ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < filtered.length; }}
                       onChange={toggleSelectAll}
-                      className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
+                      className="h-3.5 w-3.5 rounded border-ps-border-strong"
                     />
                   </th>
                   <th className="px-3 py-3 text-left font-semibold">Type</th>
@@ -510,37 +510,37 @@ export default function CompliancePage() {
                   <th className="px-5 py-3 text-left font-semibold">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {filtered.map((c) => (
-                  <tr key={c.id} className="hover:bg-[#F8FAFC]">
+                  <tr key={c.id} className="hover:bg-ps-bg">
                     <td className="px-5 py-3">
                       <input
                         type="checkbox"
                         aria-label={`Select ${c.compliance_type} filing`}
                         checked={selected.has(c.id)}
                         onChange={() => toggleRow(c.id)}
-                        className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
+                        className="h-3.5 w-3.5 rounded border-ps-border-strong"
                       />
                     </td>
-                    <td className="px-3 py-3 text-sm font-medium text-[#0F172A]">{c.compliance_type}</td>
-                    <td className="px-3 py-3 text-xs text-[#64748B]">
+                    <td className="px-3 py-3 text-sm font-medium text-ps-ink">{c.compliance_type}</td>
+                    <td className="px-3 py-3 text-xs text-ps-label">
                       {formatDate(c.period_start)} – {formatDate(c.period_end)}
                     </td>
                     <td
                       className={`px-3 py-3 text-xs whitespace-nowrap ${
                         c.due_date < today && c.filing_status !== "filed"
                           ? "text-red-600 font-medium"
-                          : "text-[#475569]"
+                          : "text-ps-label"
                       }`}
                     >
                       {formatDate(c.due_date)}
                     </td>
                     <td className="px-3 py-3">
-                      <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+                      <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-ps-muted text-ps-label"}`}>
                         {c.filing_status}
                       </Badge>
                     </td>
-                    <td className="px-3 py-3 text-xs text-[#64748B] font-mono">{c.arn_number ?? "—"}</td>
+                    <td className="px-3 py-3 text-xs text-ps-label font-mono">{c.arn_number ?? "—"}</td>
                     <td className="px-5 py-3">
                       {c.filing_status !== "filed" && (
                         <button
@@ -558,10 +558,10 @@ export default function CompliancePage() {
             {loadError ? (
               <div className="text-center py-12 space-y-2">
                 <p className="text-sm text-red-600 font-medium">{loadError}</p>
-                <button onClick={reloadCompliance} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button onClick={reloadCompliance} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </div>
             ) : filtered.length === 0 && (
-              <div className="text-center py-12 text-[#94A3B8] text-sm">No compliance entries</div>
+              <div className="text-center py-12 text-ps-hint text-sm">No compliance entries</div>
             )}
           </div>
           </>

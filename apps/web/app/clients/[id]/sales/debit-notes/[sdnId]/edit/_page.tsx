@@ -72,7 +72,7 @@ export default function SalesDebitNotePageClient() {
           { label: "New Debit Note" },
         ]}
         title="New Debit Note"
-        statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Draft</span>}
+        statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">Draft</span>}
       >
         <EmptyState
           title="No customers yet"
@@ -109,7 +109,7 @@ export default function SalesDebitNotePageClient() {
         { label: isNew ? "New Debit Note" : (note ? `Edit ${note.debit_note_no}` : "Edit Debit Note") },
       ]}
       title={isNew ? "New Debit Note" : (note ? `Edit ${note.debit_note_no}` : "Edit Debit Note")}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">{isNew ? "Draft" : (note ? note.status : "…")}</span>}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">{isNew ? "Draft" : (note ? note.status : "…")}</span>}
       toolbar={!error ? <InvoiceToolbarSkeleton /> : undefined}
       summary={!error ? <SummaryPanelSkeleton /> : undefined}
     >

@@ -204,18 +204,18 @@ export function AddEmployeeModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-[#0F172A]">{isEdit ? "Edit Employee" : "Add Employee"}</h2>
+          <h2 className="font-semibold text-ps-ink">{isEdit ? "Edit Employee" : "Add Employee"}</h2>
           <button onClick={onClose}><X size={16} /></button>
         </div>
         {err && <p className="text-red-600 text-sm mb-3">{err}</p>}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
             {isEdit || clientLocked ? (
-              <div className="w-full border rounded-lg px-3 py-2 text-sm bg-[#F8FAFC] text-[#64748B]">
+              <div className="w-full border rounded-lg px-3 py-2 text-sm bg-ps-bg text-ps-label">
                 {clients.find(c => c.id === form.client_id)?.client_name ?? "—"}
               </div>
             ) : (
@@ -231,81 +231,81 @@ export function AddEmployeeModal({
             )}
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Name *</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Name *</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">PAN</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">PAN</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm uppercase" value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value }))} maxLength={10} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Designation</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Designation</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))} />
           </div>
           <div>
-            <label htmlFor="employee-code" className="block text-xs font-medium text-[#334155] mb-1">Employee Code</label>
+            <label htmlFor="employee-code" className="block text-xs font-medium text-ps-body mb-1">Employee Code</label>
             <input id="employee-code" className="w-full border rounded-lg px-3 py-2 text-sm"
               placeholder="e.g. EMP001"
               value={form.employee_code} onChange={e => setForm(f => ({ ...f, employee_code: e.target.value }))} />
-            <p className="text-[10px] text-[#94A3B8] mt-1">
+            <p className="text-[10px] text-ps-hint mt-1">
               The client&apos;s own identifier. The bulk import is idempotent on it.
             </p>
           </div>
           <div>
-            <label htmlFor="date-of-birth" className="block text-xs font-medium text-[#334155] mb-1">Date of Birth</label>
+            <label htmlFor="date-of-birth" className="block text-xs font-medium text-ps-body mb-1">Date of Birth</label>
             <input id="date-of-birth" type="date" className="w-full border rounded-lg px-3 py-2 text-sm"
               value={form.date_of_birth} onChange={e => setForm(f => ({ ...f, date_of_birth: e.target.value }))} />
-            <p className="text-[10px] text-[#94A3B8] mt-1">
+            <p className="text-[10px] text-ps-hint mt-1">
               Not demographics — the old regime&apos;s nil band widens at 60 and again at 80.
             </p>
           </div>
           <div>
-            <label htmlFor="aadhaar" className="block text-xs font-medium text-[#334155] mb-1">Aadhaar</label>
+            <label htmlFor="aadhaar" className="block text-xs font-medium text-ps-body mb-1">Aadhaar</label>
             <input id="aadhaar" inputMode="numeric" maxLength={14} className="w-full border rounded-lg px-3 py-2 text-sm tabular-nums"
               placeholder={employee?.aadhaar_last4 ? `•••• •••• ${employee.aadhaar_last4}` : "12 digits"}
               value={form.aadhaar} onChange={e => setForm(f => ({ ...f, aadhaar: e.target.value }))} />
-            <p className="text-[10px] text-[#94A3B8] mt-1">
+            <p className="text-[10px] text-ps-hint mt-1">
               Only the last 4 digits are stored (UIDAI norms). Leave blank to keep what is on file.
             </p>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Gender</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Gender</label>
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}>
               <option value="">Not specified</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
               <option value="other">Other</option>
             </select>
-            <p className="text-[10px] text-[#94A3B8] mt-1">Used for Maharashtra PT — women earning ≤ ₹25,000/month are exempt.</p>
+            <p className="text-[10px] text-ps-hint mt-1">Used for Maharashtra PT — women earning ≤ ₹25,000/month are exempt.</p>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Basic Salary (Rs/month) *</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Basic Salary (Rs/month) *</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.basic_rs} onChange={e => setForm(f => ({ ...f, basic_rs: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">HRA %</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">HRA %</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.hra_percent} onChange={e => setForm(f => ({ ...f, hra_percent: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">DA %</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">DA %</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.da_percent} onChange={e => setForm(f => ({ ...f, da_percent: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Other Allowances (Rs)</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Other Allowances (Rs)</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.other_rs} onChange={e => setForm(f => ({ ...f, other_rs: e.target.value }))} />
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="pf" checked={form.pf_applicable} onChange={e => setForm(f => ({ ...f, pf_applicable: e.target.checked }))} />
             {/* The base is the s.2(88) wage aggregate, not basic — see the note on
                 the same label in app/payroll/page.tsx. */}
-            <label htmlFor="pf" className="text-sm text-[#334155]">PF Applicable (12% of PF wages)</label>
+            <label htmlFor="pf" className="text-sm text-ps-body">PF Applicable (12% of PF wages)</label>
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="esi" checked={form.esi_applicable} onChange={e => setForm(f => ({ ...f, esi_applicable: e.target.checked }))} />
-            <label htmlFor="esi" className="text-sm text-[#334155]">ESI Applicable (if &le; Rs 21,000)</label>
+            <label htmlFor="esi" className="text-sm text-ps-body">ESI Applicable (if &le; Rs 21,000)</label>
           </div>
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-[#334155] mb-1">Professional Tax (state)</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Professional Tax (state)</label>
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.pt_state} onChange={e => setForm(f => ({ ...f, pt_state: e.target.value }))}>
               {PT_STATES.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}
             </select>
@@ -319,9 +319,9 @@ export function AddEmployeeModal({
             <input type="checkbox" id="eps" className="mt-0.5"
               checked={form.eps_eligible}
               onChange={e => setForm(f => ({ ...f, eps_eligible: e.target.checked }))} />
-            <label htmlFor="eps" className="text-sm text-[#334155]">
+            <label htmlFor="eps" className="text-sm text-ps-body">
               EPS 1995 member
-              <span className="block text-[11px] text-[#94A3B8]">
+              <span className="block text-[11px] text-ps-hint">
                 Untick only where para 6 of the scheme (GSR 609(E), from
                 01-09-2014) excludes them — first joined EPF on or after that
                 date with pay above the wage ceiling. When ticked, 8.33% of the
@@ -333,9 +333,9 @@ export function AddEmployeeModal({
             <input type="checkbox" id="gratuity" className="mt-0.5"
               checked={form.gratuity_act_covered}
               onChange={e => setForm(f => ({ ...f, gratuity_act_covered: e.target.checked }))} />
-            <label htmlFor="gratuity" className="text-sm text-[#334155]">
+            <label htmlFor="gratuity" className="text-sm text-ps-body">
               Payment of Gratuity Act 1972 applies
-              <span className="block text-[11px] text-[#94A3B8]">
+              <span className="block text-[11px] text-ps-hint">
                 §1(3), and §1(3A) which keeps it applying once it has. It
                 decides which limb of IT Act §10(10) exempts a leaver&apos;s
                 gratuity — clause (ii) when covered, clause (iii) when not,
@@ -349,49 +349,49 @@ export function AddEmployeeModal({
               the s.192 projection are all finished and all refuse without
               these, and a blank whose consequence is unstated gets left blank. */}
           <div className="col-span-2 border-t pt-3 mt-1">
-            <p className="text-xs font-medium text-[#0F172A]">Statutory identifiers</p>
-            <p className="text-[11px] text-[#64748B]">
+            <p className="text-xs font-medium text-ps-ink">Statutory identifiers</p>
+            <p className="text-[11px] text-ps-label">
               Blank is allowed. Each one names what cannot be produced without it.
             </p>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">UAN</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">UAN</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.uan}
                    onChange={e => setForm(f => ({ ...f, uan: e.target.value }))} maxLength={12} inputMode="numeric" />
-            <p className="text-[10px] text-[#94A3B8] mt-0.5">12 digits. Without it this member cannot go in the EPFO ECR.</p>
+            <p className="text-[10px] text-ps-hint mt-0.5">12 digits. Without it this member cannot go in the EPFO ECR.</p>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">ESIC IP number</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">ESIC IP number</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.esi_number}
                    onChange={e => setForm(f => ({ ...f, esi_number: e.target.value }))} />
-            <p className="text-[10px] text-[#94A3B8] mt-0.5">Without it this member cannot go in the ESIC return.</p>
+            <p className="text-[10px] text-ps-hint mt-0.5">Without it this member cannot go in the ESIC return.</p>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Joining date</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Joining date</label>
             <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.joining_date}
                    onChange={e => setForm(f => ({ ...f, joining_date: e.target.value }))} />
-            <p className="text-[10px] text-[#94A3B8] mt-0.5">
+            <p className="text-[10px] text-ps-hint mt-0.5">
               Without it a mid-year joiner&apos;s tax is estimated over twelve months, not the months they actually work — which over-deducts.
             </p>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Department</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Department</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.department}
                    onChange={e => setForm(f => ({ ...f, department: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Bank account number</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Bank account number</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.bank_account_no}
                    onChange={e => setForm(f => ({ ...f, bank_account_no: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">IFSC</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">IFSC</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm uppercase" value={form.bank_ifsc}
                    onChange={e => setForm(f => ({ ...f, bank_ifsc: e.target.value }))} maxLength={11} />
-            <p className="text-[10px] text-[#94A3B8] mt-0.5">The account and IFSC are what a salary payment file is built from.</p>
+            <p className="text-[10px] text-ps-hint mt-0.5">The account and IFSC are what a salary payment file is built from.</p>
           </div>
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-[#334155] mb-1">Bank name</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Bank name</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.bank_name}
                    onChange={e => setForm(f => ({ ...f, bank_name: e.target.value }))} />
           </div>

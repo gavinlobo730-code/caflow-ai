@@ -196,19 +196,19 @@ export default function CashFlowForecastPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/reports" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/reports" className="text-ps-hint hover:text-ps-label">
           <ArrowLeft size={16} />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Cash Flow Forecast</h1>
-          <p className="text-sm text-[#94A3B8] mt-0.5">6-month projection based on unpaid invoices and loan EMIs</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Cash Flow Forecast</h1>
+          <p className="text-sm text-ps-hint mt-0.5">6-month projection based on unpaid invoices and loan EMIs</p>
         </div>
       </div>
 
       {/* Controls */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 flex flex-wrap items-end gap-4">
+      <div className="bg-white rounded-xl border border-ps-muted p-5 flex flex-wrap items-end gap-4">
         <div className="flex-1 min-w-[200px]">
-          <label className="block text-xs font-medium text-[#475569] mb-1">Client *</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Client *</label>
           <div className="w-full">
             <ClientLookup
               clients={clients}
@@ -221,14 +221,14 @@ export default function CashFlowForecastPage() {
         </div>
 
         <div className="w-52">
-          <label className="block text-xs font-medium text-[#475569] mb-1">Opening Cash Balance (₹)</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Opening Cash Balance (₹)</label>
           <input
             type="text"
             inputMode="decimal"
             value={openingBalanceInput}
             onChange={e => setOpeningBalanceInput(e.target.value)}
             placeholder="0"
-            className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
@@ -262,10 +262,10 @@ export default function CashFlowForecastPage() {
       {/* Table */}
       {rows.length > 0 && (
         <>
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8] bg-[#F8FAFC]">
+                <tr className="border-b border-ps-muted text-xs text-ps-hint bg-ps-bg">
                   <th className="px-5 py-3 text-left font-semibold">Month</th>
                   <th className="px-4 py-3 text-right font-semibold">Opening</th>
                   <th className="px-4 py-3 text-right font-semibold">Inflows</th>
@@ -274,14 +274,14 @@ export default function CashFlowForecastPage() {
                   <th className="px-5 py-3 text-left font-semibold">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {rows.map(row => (
                   <tr
                     key={row.label}
                     className={row.isSurplus ? "bg-green-50/40 hover:bg-green-50" : "bg-red-50/40 hover:bg-red-50"}
                   >
-                    <td className="px-5 py-3 font-medium text-[#0F172A] text-xs">{row.label}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-[#475569]">{fmt(row.opening)}</td>
+                    <td className="px-5 py-3 font-medium text-ps-ink text-xs">{row.label}</td>
+                    <td className="px-4 py-3 text-right font-mono text-xs text-ps-label">{fmt(row.opening)}</td>
                     <td className="px-4 py-3 text-right font-mono text-xs text-green-700 font-semibold">
                       {row.inflows > 0 ? `+${fmt(row.inflows)}` : fmt(row.inflows)}
                     </td>
@@ -311,12 +311,12 @@ export default function CashFlowForecastPage() {
           </div>
 
           {/* Bar chart — div widths, no external lib */}
-          <div className="bg-white rounded-xl border border-[#F1F5F9] p-5">
-            <h2 className="text-xs font-semibold text-[#334155] mb-4">Cash Flow Chart</h2>
+          <div className="bg-white rounded-xl border border-ps-muted p-5">
+            <h2 className="text-xs font-semibold text-ps-body mb-4">Cash Flow Chart</h2>
             <div className="space-y-4">
               {rows.map(row => (
                 <div key={row.label} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs text-[#64748B]">
+                  <div className="flex items-center justify-between text-xs text-ps-label">
                     <span className="w-14 shrink-0 font-medium">{row.label}</span>
                     <span className={`text-xs font-semibold ml-auto ${row.isSurplus ? "text-green-700" : "text-red-600"}`}>
                       {fmt(row.closing)}
@@ -324,14 +324,14 @@ export default function CashFlowForecastPage() {
                   </div>
                   <div className="flex gap-1 items-center">
                     {/* Inflows bar */}
-                    <div className="flex-1 h-3 bg-[#F8FAFC] rounded overflow-hidden">
+                    <div className="flex-1 h-3 bg-ps-bg rounded overflow-hidden">
                       <div
                         className="h-full bg-green-400 rounded transition-all duration-500"
                         style={{ width: `${Math.round((row.inflows / maxPaise) * 100)}%` }}
                       />
                     </div>
                     {/* Outflows bar */}
-                    <div className="flex-1 h-3 bg-[#F8FAFC] rounded overflow-hidden">
+                    <div className="flex-1 h-3 bg-ps-bg rounded overflow-hidden">
                       <div
                         className="h-full bg-red-400 rounded transition-all duration-500"
                         style={{ width: `${Math.round((row.outflows / maxPaise) * 100)}%` }}
@@ -340,7 +340,7 @@ export default function CashFlowForecastPage() {
                   </div>
                 </div>
               ))}
-              <div className="flex gap-4 text-xs text-[#94A3B8] pt-1">
+              <div className="flex gap-4 text-xs text-ps-hint pt-1">
                 <span className="flex items-center gap-1"><span className="w-3 h-2 bg-green-400 rounded inline-block" /> Inflows</span>
                 <span className="flex items-center gap-1"><span className="w-3 h-2 bg-red-400 rounded inline-block" /> Outflows</span>
               </div>

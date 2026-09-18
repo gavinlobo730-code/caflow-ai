@@ -34,7 +34,7 @@ const SEVERITY_ICONS: Record<InsightSeverity, React.ReactNode> = {
   high: <AlertTriangle size={14} className="text-orange-500" />,
   medium: <Clock size={14} className="text-amber-500" />,
   low: <Info size={14} className="text-blue-500" />,
-  info: <Info size={14} className="text-[#94A3B8]" />,
+  info: <Info size={14} className="text-ps-hint" />,
 };
 
 // Ordering used for the sortable "Severity" column (critical highest).
@@ -160,11 +160,11 @@ export default function NotificationsPage() {
           >
             <span className="flex items-center gap-1.5">
               {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />}
-              <span className={`text-sm leading-snug ${n.is_read ? "text-[#334155]" : "text-[#0F172A] font-semibold"}`}>
+              <span className={`text-sm leading-snug ${n.is_read ? "text-ps-body" : "text-ps-ink font-semibold"}`}>
                 {n.title}
               </span>
             </span>
-            <span className="block text-[12px] text-[#64748B] mt-0.5 line-clamp-2">{n.body}</span>
+            <span className="block text-[12px] text-ps-label mt-0.5 line-clamp-2">{n.body}</span>
             {n.action_url && (
               <a
                 href={n.action_url}
@@ -184,7 +184,7 @@ export default function NotificationsPage() {
       accessor: (n) => n.type,
       sortable: true,
       render: (n) => (
-        <Badge className="text-[10px] px-1.5 py-0 bg-[#F1F5F9] text-[#64748B]">
+        <Badge className="text-[10px] px-1.5 py-0 bg-ps-muted text-ps-label">
           {n.type.replace(/_/g, " ")}
         </Badge>
       ),
@@ -196,7 +196,7 @@ export default function NotificationsPage() {
       sortable: true,
       align: "center",
       render: (n) => (
-        <span className="inline-flex items-center gap-1 capitalize text-xs text-[#475569]">
+        <span className="inline-flex items-center gap-1 capitalize text-xs text-ps-label">
           {SEVERITY_ICONS[(n.severity as InsightSeverity) ?? "info"]}
           {n.severity ?? "info"}
         </span>
@@ -209,7 +209,7 @@ export default function NotificationsPage() {
       sortable: true,
       render: (n) =>
         n.is_read
-          ? <span className="text-xs text-[#94A3B8]">Read</span>
+          ? <span className="text-xs text-ps-hint">Read</span>
           : <span className="text-xs font-medium text-blue-600">Unread</span>,
     },
     {
@@ -219,7 +219,7 @@ export default function NotificationsPage() {
       sortable: true,
       align: "right",
       render: (n) => (
-        <span className="text-[11px] text-[#94A3B8] whitespace-nowrap" title={n.created_at}>
+        <span className="text-[11px] text-ps-hint whitespace-nowrap" title={n.created_at}>
           {timeAgo(n.created_at)}
         </span>
       ),
@@ -268,11 +268,11 @@ export default function NotificationsPage() {
     <div className="p-6 space-y-5 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <Bell size={18} className="text-[#334155]" />
+          <Bell size={18} className="text-ps-body" />
           <div>
-            <h1 className="text-xl font-semibold text-[#0F172A]">Notifications</h1>
+            <h1 className="text-xl font-semibold text-ps-ink">Notifications</h1>
             {unreadCount > 0 && (
-              <p className="text-sm text-[#64748B]">{unreadCount} unread</p>
+              <p className="text-sm text-ps-label">{unreadCount} unread</p>
             )}
           </div>
         </div>
@@ -293,7 +293,7 @@ export default function NotificationsPage() {
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
                 ? "border-blue-500/20 text-blue-600"
-                : "border-transparent text-[#64748B] hover:text-[#334155]"
+                : "border-transparent text-ps-label hover:text-ps-body"
             }`}
           >
             {t.label}
@@ -339,7 +339,7 @@ export default function NotificationsPage() {
             <button
               onClick={() => archiveOne(n.id)}
               title="Archive"
-              className="p-1.5 rounded text-[#94A3B8] hover:text-[#475569] hover:bg-[#F1F5F9] transition-all"
+              className="p-1.5 rounded text-ps-hint hover:text-ps-label hover:bg-ps-muted transition-all"
             >
               <Archive size={13} />
             </button>

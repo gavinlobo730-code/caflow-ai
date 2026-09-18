@@ -73,9 +73,9 @@ export function Drawer({
         className={`relative w-full ${widthClass} bg-white h-full shadow-xl overflow-y-auto outline-none`}
       >
         {title !== undefined && (
-          <div className="sticky top-0 bg-white border-b border-[#F1F5F9] px-5 py-3 flex items-center justify-between z-10">
-            <h3 className="text-sm font-semibold text-[#0F172A] font-mono">{title}</h3>
-            <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]" aria-label="Close">
+          <div className="sticky top-0 bg-white border-b border-ps-muted px-5 py-3 flex items-center justify-between z-10">
+            <h3 className="text-sm font-semibold text-ps-ink font-mono">{title}</h3>
+            <button onClick={onClose} className="text-ps-hint hover:text-ps-body" aria-label="Close">
               <X size={16} />
             </button>
           </div>

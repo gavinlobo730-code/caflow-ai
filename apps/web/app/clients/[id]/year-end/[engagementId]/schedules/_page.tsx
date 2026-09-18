@@ -158,13 +158,13 @@ export default function SchedulesPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Tab bar */}
       <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0">
-        <div className="flex gap-0.5 bg-[#F8FAFC] rounded-lg p-1 w-fit">
+        <div className="flex gap-0.5 bg-ps-bg rounded-lg p-1 w-fit">
           {SCHEDULE_TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
-                tab === t.id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"
+                tab === t.id ? "bg-white text-ps-ink shadow-sm" : "text-ps-label hover:text-ps-body"
               }`}
             >
               {t.label}
@@ -178,16 +178,16 @@ export default function SchedulesPage() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-[#334155]">
+              <p className="text-xs font-semibold text-ps-body">
                 {SCHEDULE_TABS.find((t) => t.id === tab)?.label} Schedule
               </p>
-              <p className="text-[10px] text-[#94A3B8] mt-0.5">
+              <p className="text-[10px] text-ps-hint mt-0.5">
                 All values derived from the General Ledger.
               </p>
             </div>
             <button
               onClick={forceReload}
-              className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
+              className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"
               title="Refresh"
             >
               <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
@@ -218,8 +218,8 @@ function ScheduleTable({ data }: { data: ScheduleData }) {
 
   if (!rows.length) {
     return (
-      <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-12">
-        <p className="text-sm text-[#64748B]">No data for this schedule.</p>
+      <div className="bg-white rounded-xl border border-ps-muted text-center py-12">
+        <p className="text-sm text-ps-label">No data for this schedule.</p>
         {/* THE SERVER'S REASON, where it has one. An empty schedule with the
             generic line below is a CLAIM — "this client has none" — and the
             commonest cause is that no ledger is mapped to the schedule at all,
@@ -229,7 +229,7 @@ function ScheduleTable({ data }: { data: ScheduleData }) {
             <p key={g} className="text-xs text-amber-700 mt-2 max-w-lg mx-auto">{g}</p>
           ))
         ) : (
-          <p className="text-xs text-[#94A3B8] mt-1">
+          <p className="text-xs text-ps-hint mt-1">
             Data will appear when transactions are posted to the General Ledger.
           </p>
         )}
@@ -248,11 +248,11 @@ function ScheduleTable({ data }: { data: ScheduleData }) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+            <tr className="border-b border-ps-muted text-ps-hint">
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -263,16 +263,16 @@ function ScheduleTable({ data }: { data: ScheduleData }) {
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F8FAFC]">
+          <tbody className="divide-y divide-ps-bg">
             {rows.map((row, ri) => (
-              <tr key={ri} className="hover:bg-[#F8FAFC]">
+              <tr key={ri} className="hover:bg-ps-bg">
                 {columns.map((col) => (
                   <td
                     key={col.key}
                     className={`px-4 py-2.5 ${
                       col.type === "amount"
-                        ? "text-right font-mono text-[#334155]"
-                        : "text-[#334155]"
+                        ? "text-right font-mono text-ps-body"
+                        : "text-ps-body"
                     }`}
                   >
                     {renderCell(row[col.key] as string | number | null, col.type)}
@@ -283,11 +283,11 @@ function ScheduleTable({ data }: { data: ScheduleData }) {
           </tbody>
           {totals && Object.keys(totals).length > 0 && (
             <tfoot>
-              <tr className="border-t-2 border-[#E2E8F0] font-semibold bg-[#F8FAFC]">
+              <tr className="border-t-2 border-ps-border font-semibold bg-ps-bg">
                 {columns.map((col, ci) => (
                   <td
                     key={col.key}
-                    className={`px-4 py-2.5 ${col.type === "amount" ? "text-right font-mono text-[#0F172A]" : "text-[#334155]"}`}
+                    className={`px-4 py-2.5 ${col.type === "amount" ? "text-right font-mono text-ps-ink" : "text-ps-body"}`}
                   >
                     {ci === 0
                       ? "Total"

@@ -116,10 +116,10 @@ export default function CrossClientMatchesPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 bg-[#F8FAFC] min-h-full">
+    <div className="p-6 space-y-6 bg-ps-bg min-h-full">
       <div>
-        <h1 className="text-2xl font-bold text-[#182350] flex items-center gap-2">
-          <Copy className="w-6 h-6 text-[#182350]" />
+        <h1 className="text-2xl font-bold text-brand flex items-center gap-2">
+          <Copy className="w-6 h-6 text-brand" />
           Cross-Client Matches
         </h1>
         <p className="text-sm text-gray-500 mt-1">
@@ -131,7 +131,7 @@ export default function CrossClientMatchesPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
-            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#182350]"
+            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-brand"
             placeholder="Search entity name…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -144,8 +144,8 @@ export default function CrossClientMatchesPage() {
               onClick={() => setFilter(f)}
               className={`px-3 py-2 rounded-lg text-xs font-medium capitalize transition-colors ${
                 filter === f
-                  ? "bg-[#182350] text-white"
-                  : "bg-white border border-gray-200 text-gray-500 hover:text-[#182350]"
+                  ? "bg-brand text-white"
+                  : "bg-white border border-gray-200 text-gray-500 hover:text-brand"
               }`}
             >
               {f}
@@ -156,7 +156,7 @@ export default function CrossClientMatchesPage() {
 
       {loading && (
         <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-[#182350] border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
         </div>
       )}
 

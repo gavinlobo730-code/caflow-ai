@@ -107,21 +107,21 @@ export function StockCountSheetPanel({
   const open = sheet?.session.status === "open";
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between px-5 py-4 border-b">
           <div className="flex items-center gap-2">
             <ClipboardCheck size={16} className="text-emerald-600" />
             <div>
-              <p className="text-sm font-semibold text-[#0F172A]">
+              <p className="text-sm font-semibold text-ps-ink">
                 Physical stock count — {sheet?.session.reference_no ?? ""}
               </p>
-              <p className="text-[11px] text-[#94A3B8]">
+              <p className="text-[11px] text-ps-hint">
                 Counted as at {sheet?.session.count_date ?? "—"} · {sheet?.session.status ?? ""}
               </p>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close"><X size={16} className="text-[#94A3B8]" /></button>
+          <button onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
         </div>
 
         <div className="px-5 py-4 space-y-3">
@@ -151,9 +151,9 @@ export function StockCountSheetPanel({
               {[["Counted", sheet.counted_count], ["Variances", sheet.variance_count],
                 ["Will post", sheet.postable_count], ["Needs you", sheet.blocked_count]]
                 .map(([label, n]) => (
-                <div key={label as string} className="bg-[#F8FAFC] rounded-lg px-3 py-2">
-                  <p className="text-[11px] text-[#64748B]">{label}</p>
-                  <p className="text-sm font-semibold text-[#0F172A]">{n}</p>
+                <div key={label as string} className="bg-ps-bg rounded-lg px-3 py-2">
+                  <p className="text-[11px] text-ps-label">{label}</p>
+                  <p className="text-sm font-semibold text-ps-ink">{n}</p>
                 </div>
               ))}
             </div>
@@ -165,10 +165,10 @@ export function StockCountSheetPanel({
             </p>
           ))}
 
-          <div className="overflow-x-auto border border-[#F1F5F9] rounded-lg">
+          <div className="overflow-x-auto border border-ps-muted rounded-lg">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-[#F8FAFC] text-[#64748B]">
+                <tr className="bg-ps-bg text-ps-label">
                   <th className="px-3 py-2 text-left font-semibold">Item</th>
                   <th className="px-3 py-2 text-right font-semibold">Books</th>
                   <th className="px-3 py-2 text-right font-semibold">Counted</th>
@@ -177,22 +177,22 @@ export function StockCountSheetPanel({
                   <th className="px-3 py-2 text-left font-semibold">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {(sheet?.lines ?? []).map((l: StockCountLine) => (
                   <tr key={l.service_catalogue_id} className="align-top">
                     <td className="px-3 py-2">
-                      <p className="font-medium text-[#1E293B]">{l.item_name}</p>
+                      <p className="font-medium text-ps-ink">{l.item_name}</p>
                       {l.caveats.map((c, i) => (
-                        <p key={i} className="text-[10px] text-[#64748B] italic">{c}</p>
+                        <p key={i} className="text-[10px] text-ps-label italic">{c}</p>
                       ))}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-[#475569]">
+                    <td className="px-3 py-2 text-right font-mono text-ps-label">
                       {l.current_qty_units}{l.unit ? ` ${l.unit}` : ""}
                     </td>
                     <td className="px-3 py-2 text-right">
                       {open ? (
                         <input
-                          className="w-24 border border-[#E2E8F0] rounded px-2 py-1 text-right font-mono"
+                          className="w-24 border border-ps-border rounded px-2 py-1 text-right font-mono"
                           aria-label={`Counted quantity for ${l.item_name}`}
                           value={typed[l.service_catalogue_id] ?? (l.counted_qty_units ?? "")}
                           onChange={(e) => setTyped((t) => ({ ...t, [l.service_catalogue_id]: e.target.value }))}
@@ -203,7 +203,7 @@ export function StockCountSheetPanel({
                     </td>
                     <td className={`px-3 py-2 text-right font-mono ${
                       l.direction === "decrease" ? "text-red-700"
-                        : l.direction === "increase" ? "text-emerald-700" : "text-[#94A3B8]"}`}>
+                        : l.direction === "increase" ? "text-emerald-700" : "text-ps-hint"}`}>
                       {l.variance_qty_units ?? "—"}
                     </td>
                     <td className="px-3 py-2">
@@ -213,7 +213,7 @@ export function StockCountSheetPanel({
                           otherwise. */}
                       {l.direction === "decrease" && open ? (
                         <select
-                          className="border border-[#E2E8F0] rounded px-2 py-1"
+                          className="border border-ps-border rounded px-2 py-1"
                           aria-label={`ITC reversal for ${l.item_name}`}
                           value={itc[l.service_catalogue_id]
                                  ?? (l.reverse_itc === null ? "" : l.reverse_itc ? "yes" : "no")}
@@ -224,7 +224,7 @@ export function StockCountSheetPanel({
                           <option value="no">No reversal</option>
                         </select>
                       ) : (
-                        <span className="text-[#94A3B8]">
+                        <span className="text-ps-hint">
                           {l.direction === "decrease"
                             ? (l.reverse_itc === null ? "—" : l.reverse_itc ? "Reversed" : "No reversal")
                             : "—"}
@@ -243,13 +243,13 @@ export function StockCountSheetPanel({
                           </p>
                         ))
                       ) : (
-                        <span className="text-[#94A3B8]">no variance</span>
+                        <span className="text-ps-hint">no variance</span>
                       )}
                     </td>
                   </tr>
                 ))}
                 {!sheet?.lines?.length && (
-                  <tr><td colSpan={6} className="px-3 py-8 text-center text-[#94A3B8]">
+                  <tr><td colSpan={6} className="px-3 py-8 text-center text-ps-hint">
                     No stock-tracked products on this sheet.
                   </td></tr>
                 )}
@@ -259,14 +259,14 @@ export function StockCountSheetPanel({
 
           {open && (
             <div className="flex items-center justify-between gap-3 border-t pt-3">
-              <p className="text-[11px] text-[#64748B]">
+              <p className="text-[11px] text-ps-label">
                 Posting writes one adjustment per varying line, all under{" "}
                 <span className="font-mono">{sheet?.session.reference_no}</span>, dated{" "}
                 {sheet?.session.count_date}. A line that needs you is left alone.
               </p>
               <div className="flex gap-2">
                 <button onClick={save} disabled={busy}
-                        className="px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">
+                        className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                   {busy ? "Saving…" : "Save counts"}
                 </button>
                 <button onClick={post} disabled={busy || !sheet?.postable_count}

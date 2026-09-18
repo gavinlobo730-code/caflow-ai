@@ -69,8 +69,8 @@ export default function ApprovalsPage() {
   return (
     <div className="p-6 max-w-4xl">
       <div className="flex items-center gap-2 mb-1">
-        <ShieldCheck size={18} className="text-[#182350]" />
-        <h1 className="text-lg font-semibold text-[#182350]">Approvals</h1>
+        <ShieldCheck size={18} className="text-brand" />
+        <h1 className="text-lg font-semibold text-brand">Approvals</h1>
       </div>
       <p className="text-[12px] text-gray-500 mb-4">
         Sensitive actions (user &amp; role changes, client assignments, master Chart-of-Accounts changes)
@@ -83,7 +83,7 @@ export default function ApprovalsPage() {
             key={t}
             onClick={() => setTab(t)}
             className={`px-3 py-2 text-[13px] font-medium border-b-2 -mb-px capitalize ${
-              tab === t ? "border-[#182350] text-[#182350]" : "border-transparent text-gray-500"
+              tab === t ? "border-brand text-brand" : "border-transparent text-gray-500"
             }`}
           >
             {t}
@@ -97,14 +97,14 @@ export default function ApprovalsPage() {
             <Lock size={20} className="text-amber-600" />
           </div>
           <div>
-            <p className="text-[14px] font-semibold text-[#182350]">Multi-factor authentication required</p>
+            <p className="text-[14px] font-semibold text-brand">Multi-factor authentication required</p>
             <p className="text-[12px] text-gray-500 mt-1 max-w-xs mx-auto">
               This area contains sensitive approval workflows. Enable MFA to continue.
             </p>
           </div>
           <Link
             href="/settings/security"
-            className="mt-1 px-4 py-2 rounded-lg bg-[#182350] text-white text-[12.5px] font-medium hover:bg-[#1e2d5e] transition-colors"
+            className="mt-1 px-4 py-2 rounded-lg bg-brand text-white text-[12.5px] font-medium hover:bg-[#1e2d5e] transition-colors"
           >
             Set Up MFA
           </Link>
@@ -125,7 +125,7 @@ export default function ApprovalsPage() {
           {items.map((r) => (
             <div key={r.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[13px] font-medium text-[#182350] truncate">{r.summary || r.request_type}</p>
+                <p className="text-[13px] font-medium text-brand truncate">{r.summary || r.request_type}</p>
                 <p className="text-[11px] text-gray-400 mt-0.5">
                   <span className="font-mono">{r.request_type}</span>
                   {r.requested_by_email ? ` · by ${r.requested_by_email}` : ""}
@@ -139,7 +139,7 @@ export default function ApprovalsPage() {
                 {r.status === "pending" && canApprove && (
                   <>
                     <button disabled={busy === r.id} onClick={() => act(r.id, "approve")}
-                      className="flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-lg bg-[#182350] text-white disabled:opacity-60">
+                      className="flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-lg bg-brand text-white disabled:opacity-60">
                       {busy === r.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Approve
                     </button>
                     <button disabled={busy === r.id} onClick={() => act(r.id, "reject")}

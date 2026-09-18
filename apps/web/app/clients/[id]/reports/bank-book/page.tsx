@@ -39,19 +39,19 @@ export default function BankBookReportPage() {
       <div className="min-w-0">
         <button
           onClick={() => router.push(`/clients/${clientId}/reports`)}
-          className="flex items-center gap-1 text-[11px] text-[#94A3B8] hover:text-[#64748B] mb-1.5"
+          className="flex items-center gap-1 text-[11px] text-ps-hint hover:text-ps-label mb-1.5"
         >
           <ArrowLeft size={12} /> Reports
         </button>
-        <h2 className="text-sm font-semibold text-[#1E293B]">Cash &amp; Bank Book</h2>
-        <p className="text-[11px] text-[#94A3B8] mt-0.5">
+        <h2 className="text-sm font-semibold text-ps-ink">Cash &amp; Bank Book</h2>
+        <p className="text-[11px] text-ps-hint mt-0.5">
           The bank ledger — running balance, cleared status, and the check against the
           statement&apos;s own balance column. To pass entries, go to Bank › Entries.
         </p>
       </div>
       <CashRegister clientId={clientId} />
       <div className="pt-1">
-        <h3 className="text-xs font-semibold text-[#1E293B] mb-2">Bank Book</h3>
+        <h3 className="text-xs font-semibold text-ps-ink mb-2">Bank Book</h3>
         <BankRegister clientId={clientId} />
       </div>
     </div>

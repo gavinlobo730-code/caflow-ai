@@ -34,7 +34,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  draft: "bg-[#F1F5F9] text-[#64748B]",
+  draft: "bg-ps-muted text-ps-label",
   validation_pending: "bg-amber-100 text-amber-700",
   validation_failed: "bg-red-100 text-red-700",
   validated: "bg-blue-100 text-blue-700",
@@ -147,10 +147,10 @@ export default function XBRLPage() {
     const name = (entity.entityType ?? "").trim();
     return (
       <div className="p-6 max-w-3xl mx-auto space-y-4">
-        <h2 className="text-sm font-semibold text-[#1E293B]">XBRL Engine</h2>
-        <div className="space-y-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-5">
-          <p className="text-sm font-medium text-[#0F172A]">XBRL filing does not apply to this client.</p>
-          <p className="text-xs leading-relaxed text-[#475569]">
+        <h2 className="text-sm font-semibold text-ps-ink">XBRL Engine</h2>
+        <div className="space-y-3 rounded-xl border border-ps-border bg-ps-bg p-5">
+          <p className="text-sm font-medium text-ps-ink">XBRL filing does not apply to this client.</p>
+          <p className="text-xs leading-relaxed text-ps-label">
             {name ? `This client is a ${name}. ` : "This client's entity type is not recorded. "}
             An XBRL package tags financial statements against Schedule III to the Companies Act 2013
             (§129) for filing with AOC-4 under §137, read with the Companies (Filing of Documents and
@@ -172,8 +172,8 @@ export default function XBRLPage() {
     <div className="p-6 max-w-3xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-[#1E293B]">XBRL Engine</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">Companies Act 2013, Schedule III — MCA_2023 taxonomy</p>
+          <h2 className="text-sm font-semibold text-ps-ink">XBRL Engine</h2>
+          <p className="text-xs text-ps-hint mt-0.5">Companies Act 2013, Schedule III — MCA_2023 taxonomy</p>
         </div>
         <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
@@ -189,17 +189,17 @@ export default function XBRLPage() {
       </div>
 
       {showCreate && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3">
-          <p className="text-xs font-semibold text-[#334155]">New XBRL Package</p>
+        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
+          <p className="text-xs font-semibold text-ps-body">New XBRL Package</p>
           <div>
-            <label className="text-[10px] text-[#64748B] mb-1 block">Financial Year</label>
+            <label className="text-[10px] text-ps-label mb-1 block">Financial Year</label>
             <select value={fy} onChange={e => setFy(e.target.value)}
-              className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
+              className="text-xs px-3 py-1.5 border border-ps-border rounded-lg">
               {FY_OPTIONS.map(f => <option key={f}>{f}</option>)}
             </select>
           </div>
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
+            <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
             <button onClick={handleCreate} disabled={actionInFlight}
               className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
@@ -213,26 +213,26 @@ export default function XBRLPage() {
       ) : loadError ? (
         <div className="bg-white rounded-xl border border-red-200 px-5 py-12 text-center space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : packages.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-2">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-2">
           <Code size={28} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-[#64748B]">No XBRL packages yet</p>
-          <p className="text-xs text-[#94A3B8]">Create a package to start XBRL generation.</p>
+          <p className="text-sm text-ps-label">No XBRL packages yet</p>
+          <p className="text-xs text-ps-hint">Create a package to start XBRL generation.</p>
         </div>
       ) : (
         <div className="space-y-2">
           {packages.map(pkg => (
             <button key={pkg.id}
               onClick={() => setSelected(pkg)}
-              className={`w-full bg-white rounded-xl border px-4 py-3 flex items-center gap-3 hover:bg-[#F8FAFC] text-left ${
-                selected?.id === pkg.id ? "border-blue-200" : "border-[#F1F5F9]"
+              className={`w-full bg-white rounded-xl border px-4 py-3 flex items-center gap-3 hover:bg-ps-bg text-left ${
+                selected?.id === pkg.id ? "border-blue-200" : "border-ps-muted"
               }`}>
               <Code size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-[#1E293B]">FY {pkg.financial_year} — {pkg.taxonomy_version}</p>
-                <p className="text-[10px] text-[#94A3B8]">v{pkg.version} · {new Date(pkg.created_at).toLocaleDateString("en-IN")}</p>
+                <p className="text-xs font-semibold text-ps-ink">FY {pkg.financial_year} — {pkg.taxonomy_version}</p>
+                <p className="text-[10px] text-ps-hint">v{pkg.version} · {new Date(pkg.created_at).toLocaleDateString("en-IN")}</p>
               </div>
               <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[pkg.status]}`}>
                 {pkg.status.replace(/_/g, " ")}
@@ -243,10 +243,10 @@ export default function XBRLPage() {
       )}
 
       {selected && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-4">
+        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-[#334155]">FY {selected.financial_year} Package</p>
-            <button onClick={() => setSelected(null)} className="text-[10px] text-[#94A3B8]">Close</button>
+            <p className="text-xs font-semibold text-ps-body">FY {selected.financial_year} Package</p>
+            <button onClick={() => setSelected(null)} className="text-[10px] text-ps-hint">Close</button>
           </div>
 
           {selected.validation_errors.length > 0 && (
@@ -271,7 +271,7 @@ export default function XBRLPage() {
                 </div>
               ))}
               {selected.missing_tags.length > 5 && (
-                <p className="text-[10px] text-[#94A3B8]">+{selected.missing_tags.length - 5} more missing tags</p>
+                <p className="text-[10px] text-ps-hint">+{selected.missing_tags.length - 5} more missing tags</p>
               )}
             </div>
           )}

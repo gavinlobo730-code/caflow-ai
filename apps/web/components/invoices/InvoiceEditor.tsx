@@ -738,7 +738,7 @@ export function InvoiceEditor({
       <button
         onClick={handleCancel}
         disabled={busy}
-        className="mr-auto text-xs px-3 py-1.5 text-[#64748B] hover:text-[#334155] disabled:opacity-50"
+        className="mr-auto text-xs px-3 py-1.5 text-ps-label hover:text-ps-body disabled:opacity-50"
       >
         Cancel
       </button>
@@ -755,14 +755,14 @@ export function InvoiceEditor({
       <button
         onClick={handleCancel}
         disabled={busy}
-        className="mr-auto text-xs px-3 py-1.5 text-[#64748B] hover:text-[#334155] disabled:opacity-50"
+        className="mr-auto text-xs px-3 py-1.5 text-ps-label hover:text-ps-body disabled:opacity-50"
       >
         Cancel
       </button>
       <button
         onClick={() => save("draft")}
         disabled={busy}
-        className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569] disabled:opacity-50 inline-flex items-center gap-1.5"
+        className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label disabled:opacity-50 inline-flex items-center gap-1.5"
       >
         {saving === "draft" && <Loader2 size={12} className="animate-spin" />} Save Draft
       </button>
@@ -786,8 +786,8 @@ export function InvoiceEditor({
   // ── Sticky summary panel ──────────────────────────────────────────────────────
   const outstanding = isEdit && existing ? totals.grand_total_paise - (existing.paid_paise ?? 0) : null;
   const summary = (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-2 text-xs">
-      <p className="font-semibold text-[#334155]">Summary{isForeign ? ` (${currency})` : ""}</p>
+    <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-2 text-xs">
+      <p className="font-semibold text-ps-body">Summary{isForeign ? ` (${currency})` : ""}</p>
       {/* CGST §15(3)(a): the discount is EXCLUDED from the value of supply, so
           the gross and the deduction are both shown and the taxable value is
           what is left. Showing only the net would hide the relief the section
@@ -801,16 +801,16 @@ export function InvoiceEditor({
       <Row label="Taxable value" value={fmtAmt(totals.taxable_paise)} />
       {!isLocked && (
         <div className="flex items-center gap-2 pt-1">
-          <label htmlFor="inv-doc-discount" className="text-[11px] text-[#475569] whitespace-nowrap">
+          <label htmlFor="inv-doc-discount" className="text-[11px] text-ps-label whitespace-nowrap">
             Discount on bill
           </label>
           <input id="inv-doc-discount" type="text" inputMode="decimal" value={docDiscount}
             onChange={(e) => setDocDiscount(e.target.value)}
             placeholder="0"
-            className="w-16 px-2 py-1 border border-[#E2E8F0] rounded text-right text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            className="w-16 px-2 py-1 border border-ps-border rounded text-right text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500" />
           <select value={docDiscountMode} aria-label="Discount on bill unit"
             onChange={(e) => setDocDiscountMode(e.target.value as "percent" | "amount")}
-            className="px-1.5 py-1 border border-[#E2E8F0] rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500">
+            className="px-1.5 py-1 border border-ps-border rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500">
             <option value="percent">%</option>
             <option value="amount">{isForeign ? currency : "₹"}</option>
           </select>
@@ -849,23 +849,23 @@ export function InvoiceEditor({
             type="checkbox"
             checked={roundOffEnabled}
             onChange={(e) => setRoundOffEnabled(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-[#CBD5E1] accent-[#0F172A]"
+            className="h-3.5 w-3.5 rounded border-ps-border-strong accent-brand-dark"
           />
-          <span className="text-[11px] text-[#475569]">Round total to nearest ₹1</span>
+          <span className="text-[11px] text-ps-label">Round total to nearest ₹1</span>
         </label>
       )}
-      <div className="flex justify-between font-semibold text-[#0F172A] border-t border-[#E2E8F0] pt-1.5 mt-1">
+      <div className="flex justify-between font-semibold text-ps-ink border-t border-ps-border pt-1.5 mt-1">
         <span>Grand Total{isForeign ? ` (${currency})` : ""}</span>
         <span className="font-mono">{fmtAmt(totals.grand_total_paise)}</span>
       </div>
       {isForeign && estimatedBasePaise != null && (
         <Row label="≈ INR total" value={fmt(estimatedBasePaise)} muted />
       )}
-      <div className="border-t border-[#F1F5F9] pt-2 mt-1 space-y-1.5">
+      <div className="border-t border-ps-muted pt-2 mt-1 space-y-1.5">
         <Row label="Due date" value={dueDate || "—"} />
         {outstanding != null && <Row label="Outstanding" value={fmtAmt(outstanding)} />}
       </div>
-      <p className="text-[10px] text-[#94A3B8] pt-1">
+      <p className="text-[10px] text-ps-hint pt-1">
         Preview — GST, round-off and the exact total are confirmed by the server on save.
       </p>
       {!isLocked && attempted && !validation.ok && (
@@ -892,21 +892,21 @@ export function InvoiceEditor({
     >
       <div className="space-y-5">
         {/* Party + metadata */}
-        <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <section className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Customer *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
               <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isLocked} />
-              {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Customer can&apos;t be changed once issued — issue a Credit Note to correct (CGST Act §34).</p>}
+              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Customer can&apos;t be changed once issued — issue a Credit Note to correct (CGST Act §34).</p>}
               {fieldErr(validation.errors.customer)}
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Invoice Number *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Invoice Number *</label>
               <input value={invoiceNo}
                 onChange={(e) => { numberTouched.current = true; setInvoiceNo(e.target.value); }}
                 disabled={isLocked}
                 placeholder="e.g. INV-0001" aria-label="Invoice number" maxLength={16}
-                className="w-full px-3 py-1.5 text-xs font-mono border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                className="w-full px-3 py-1.5 text-xs font-mono border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
               {fieldErr(validation.errors.invoiceNo)}
               {/* CGST Rule 46(b), server-decided, in three registers.
                   `gap` says the firm's own numbering settings cannot produce a
@@ -925,27 +925,27 @@ export function InvoiceEditor({
               )}
               {!isLocked && !isEdit && !numberSeries?.gap && !numberSeries?.format_problem
                 && !numberSeries?.sequence_warning && numberSeries?.suggested_number && (
-                <p className="mt-1 text-[10px] text-[#94A3B8]">
+                <p className="mt-1 text-[10px] text-ps-hint">
                   Next in your series ({numberSeries.series_head}…) — edit it if this
                   client&apos;s numbering differs.
                 </p>
               )}
               {isLocked && (
-                <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once issued.</p>
+                <p className="mt-1 text-[10px] text-ps-hint">Frozen once issued.</p>
               )}
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Invoice Date *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Invoice Date *</label>
               <input type="date" value={invoiceDate} onChange={(e) => onInvoiceDateChange(e.target.value)}
                 disabled={isLocked}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
               {fieldErr(validation.errors.invoiceDate)}
-              {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once issued — issue a Credit Note to correct (CGST Act §34).</p>}
+              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Frozen once issued — issue a Credit Note to correct (CGST Act §34).</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Payment Terms</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Payment Terms</label>
               <select value={termValue} onChange={(e) => onTermChange(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {termValue === "" && <option value="">— Select —</option>}
                 {PAYMENT_TERM_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label}</option>)}
                 <option value={CUSTOM_TERM}>Custom</option>
@@ -953,17 +953,17 @@ export function InvoiceEditor({
               {termCustom && (
                 <input type="number" min={0} value={creditDays} onChange={(e) => onCreditDaysChange(e.target.value)}
                   placeholder="Credit days" aria-label="Custom credit days"
-                  className="mt-1 w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="mt-1 w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               )}
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Due Date</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
               <input type="date" value={dueDate ?? ""} onChange={(e) => onDueDateChange(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <p className="mt-1 text-[10px] text-[#94A3B8]">Auto-set from terms; edit for a custom date.</p>
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <p className="mt-1 text-[10px] text-ps-hint">Auto-set from terms; edit for a custom date.</p>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Supply State</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Supply State</label>
               <StateLookup value={supplyStateCode ?? ""} onChange={onSupplyStateChange}
                 placeholder="— Select —" ariaLabel="Supply state" disabled={isLocked} />
               {fieldErr(validation.errors.supplyState)}
@@ -977,19 +977,19 @@ export function InvoiceEditor({
                   (IGST §12(2)(b)(ii)).
                 </p>
               )}
-              {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once issued (CGST Act §34).</p>}
+              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Frozen once issued (CGST Act §34).</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Reference</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>
               <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="PO number, ref…"
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="flex flex-col justify-end pb-1.5">
-              <label className={`flex items-center gap-2 text-xs text-[#475569] ${isLocked ? "opacity-50" : "cursor-pointer"}`}>
+              <label className={`flex items-center gap-2 text-xs text-ps-label ${isLocked ? "opacity-50" : "cursor-pointer"}`}>
                 <input type="checkbox" checked={isInterstate} disabled={isLocked} onChange={(e) => setIsInterstate(e.target.checked)} className="rounded" />
                 Interstate (IGST)
               </label>
-              <p className="mt-1 text-[10px] text-[#94A3B8]">
+              <p className="mt-1 text-[10px] text-ps-hint">
                 {isLocked
                   ? "Frozen once issued (CGST Act §34)."
                   : gstAuto
@@ -1003,36 +1003,36 @@ export function InvoiceEditor({
               the return this invoice lands in. Frozen once issued, matching the
               server's _SOFT_UPDATE_FIELDS — changing the table an issued invoice
               belongs to needs a credit note (CGST §34), not a silent edit. */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3 pt-3 border-t border-[#F1F5F9]">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3 pt-3 border-t border-ps-muted">
             <div>
-              <label htmlFor="inv-supply-type" className="block text-xs font-medium text-[#475569] mb-1">Supply Type</label>
+              <label htmlFor="inv-supply-type" className="block text-xs font-medium text-ps-label mb-1">Supply Type</label>
               <select id="inv-supply-type" value={supplyType} disabled={isLocked}
                 onChange={(e) => setSupplyType(e.target.value as SupplyType)}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
                 {SUPPLY_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <p className="mt-1 text-[10px] text-[#94A3B8]">
+              <p className="mt-1 text-[10px] text-ps-hint">
                 {isLocked ? "Frozen once issued (CGST Act §34)." : SUPPLY_TYPES.find((o) => o.value === supplyType)?.note}
               </p>
             </div>
             <div>
-              <label htmlFor="inv-invoice-type" className="block text-xs font-medium text-[#475569] mb-1">Invoice Type</label>
+              <label htmlFor="inv-invoice-type" className="block text-xs font-medium text-ps-label mb-1">Invoice Type</label>
               <select id="inv-invoice-type" value={invoiceType} disabled={isLocked}
                 onChange={(e) => setInvoiceType(e.target.value as InvoiceType)}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
                 {INVOICE_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <p className="mt-1 text-[10px] text-[#94A3B8]">
+              <p className="mt-1 text-[10px] text-ps-hint">
                 {isLocked ? "Frozen once issued (CGST Act §34)." : INVOICE_TYPES.find((o) => o.value === invoiceType)?.note}
               </p>
             </div>
             <div className="flex flex-col justify-end pb-1.5">
-              <label className={`flex items-center gap-2 text-xs text-[#475569] ${isLocked ? "opacity-50" : "cursor-pointer"}`}>
+              <label className={`flex items-center gap-2 text-xs text-ps-label ${isLocked ? "opacity-50" : "cursor-pointer"}`}>
                 <input type="checkbox" checked={isReverseCharge} disabled={isLocked}
                   onChange={(e) => setIsReverseCharge(e.target.checked)} className="rounded" />
                 Reverse charge
               </label>
-              <p className="mt-1 text-[10px] text-[#94A3B8]">
+              <p className="mt-1 text-[10px] text-ps-hint">
                 {isLocked ? "Frozen once issued (CGST Act §34)." : "The recipient pays the tax, not this client (CGST §9(3)/(4))."}
               </p>
             </div>
@@ -1049,10 +1049,10 @@ export function InvoiceEditor({
               would mean they could never be recorded at all. */}
           {(supplyType === "zero_rated" || supplyStateCode === "96")
             && invoiceType === "Regular" && (
-            <div className="mt-3 pt-3 border-t border-[#F1F5F9]">
-              <p className="text-xs font-medium text-[#475569] mb-2">
+            <div className="mt-3 pt-3 border-t border-ps-muted">
+              <p className="text-xs font-medium text-ps-label mb-2">
                 Shipping bill
-                <span className="ml-1 font-normal text-[#94A3B8]">
+                <span className="ml-1 font-normal text-ps-hint">
                   — GSTR-1 Table 6A. On an export made on payment of IGST this is
                   what the refund is matched against (CGST Rule 96(1)); customs
                   issues it after the invoice, so it can still be filled in once
@@ -1061,24 +1061,24 @@ export function InvoiceEditor({
               </p>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 <div>
-                  <label htmlFor="inv-sb-no" className="block text-xs font-medium text-[#475569] mb-1">Shipping bill no.</label>
+                  <label htmlFor="inv-sb-no" className="block text-xs font-medium text-ps-label mb-1">Shipping bill no.</label>
                   <input id="inv-sb-no" type="text" value={shippingBillNo}
                     onChange={(e) => setShippingBillNo(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label htmlFor="inv-sb-date" className="block text-xs font-medium text-[#475569] mb-1">Shipping bill date</label>
+                  <label htmlFor="inv-sb-date" className="block text-xs font-medium text-ps-label mb-1">Shipping bill date</label>
                   <input id="inv-sb-date" type="date" value={shippingBillDate}
                     onChange={(e) => setShippingBillDate(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label htmlFor="inv-port-code" className="block text-xs font-medium text-[#475569] mb-1">Port code</label>
+                  <label htmlFor="inv-port-code" className="block text-xs font-medium text-ps-label mb-1">Port code</label>
                   <input id="inv-port-code" type="text" value={portCode} maxLength={6}
                     onChange={(e) => setPortCode(e.target.value.toUpperCase())}
                     placeholder="INMAA1"
-                    className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase" />
-                  <p className="mt-1 text-[10px] text-[#94A3B8]">
+                    className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase" />
+                  <p className="mt-1 text-[10px] text-ps-hint">
                     ICEGATE port code, 6 characters.
                   </p>
                 </div>
@@ -1090,7 +1090,7 @@ export function InvoiceEditor({
               before issuing — these are the invoices that get filed in the wrong
               GSTR-1 table when nobody looks. Presentational only. */}
           {!isLocked && isNonStandard({ supplyType, invoiceType, isReverseCharge }) && (
-            <p className="mt-3 text-[11px] text-[#92400E] bg-[#FFFBEB] border border-[#FDE68A] rounded-lg px-3 py-2">
+            <p className="mt-3 text-[11px] text-[#92400E] bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2">
               This invoice is not an ordinary domestic taxable sale, so it will be reported
               in a different part of GSTR-1. Check the classification before issuing —
               it cannot be changed afterwards without a credit note.
@@ -1099,11 +1099,11 @@ export function InvoiceEditor({
 
           {/* Multi-currency (create-only) */}
           {!isEdit && mcActive && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-[#F1F5F9]">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-ps-muted">
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Currency</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
                 <select value={currency} onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
-                  className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">INR (default)</option>
                   {currencies.filter((c) => c.code !== "INR").map((c) => (
                     <option key={c.code} value={c.code}>{c.code}{c.display_name ? ` — ${c.display_name}` : ""}</option>
@@ -1112,10 +1112,10 @@ export function InvoiceEditor({
               </div>
               {isForeign && (
                 <div>
-                  <label className="block text-xs font-medium text-[#475569] mb-1">Exchange Rate *</label>
+                  <label className="block text-xs font-medium text-ps-label mb-1">Exchange Rate *</label>
                   <input type="number" min="0" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
                     placeholder={`1 ${currency} = ? INR`}
-                    className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono" />
+                    className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono" />
                   {fieldErr(validation.errors.exchangeRate)}
                 </div>
               )}
@@ -1137,30 +1137,30 @@ export function InvoiceEditor({
             cell. "Add line" and end-of-row Tab both create a new row whose
             first field is the Product/Service selector, never a blank
             Description box. */}
-        <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <section className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <h2 className="text-xs font-semibold text-[#334155]">Line items</h2>
+            <h2 className="text-xs font-semibold text-ps-body">Line items</h2>
             {!isLocked && (
               <label className="flex items-center gap-1.5 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={showCess}
                   onChange={(e) => setShowCess(e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-[#CBD5E1] accent-[#0F172A]"
+                  className="h-3.5 w-3.5 rounded border-ps-border-strong accent-brand-dark"
                 />
-                <span className="text-[11px] text-[#475569]">Compensation cess</span>
+                <span className="text-[11px] text-ps-label">Compensation cess</span>
               </label>
             )}
           </div>
           {isLocked && (
-            <p className="mb-2 text-[10px] text-[#94A3B8]">
+            <p className="mb-2 text-[10px] text-ps-hint">
               Frozen once issued — issue a Credit Note to correct a quantity, rate, or item (CGST Act §34). Units stay editable.
             </p>
           )}
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[900px]">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-ps-hint">
                   <th className="pb-2 text-left font-semibold w-40">Product/Service *</th>
                   <th className="pb-2 text-left font-semibold">Description</th>
                   <th className="pb-2 text-left font-semibold w-28">HSN/SAC</th>
@@ -1190,7 +1190,7 @@ export function InvoiceEditor({
                   <th className="pb-2 w-6" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {lines.map((line, idx) => {
                   // Same canonical mirror the summary uses, so the per-line
                   // column and the invoice total can never disagree with the
@@ -1257,7 +1257,7 @@ export function InvoiceEditor({
                           onKeyDown={(e) => onLineKeyDown(e, idx)}
                           disabled={isLocked}
                           placeholder="Description" aria-label={`Line ${idx + 1} description`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs disabled:bg-ps-bg disabled:text-ps-hint" />
                       </td>
                       <td className="py-1.5 pr-2">
                         {/* Auto-filled from the Product/Service pick; renders
@@ -1278,7 +1278,7 @@ export function InvoiceEditor({
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })}
                           onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked} aria-label={`Line ${idx + 1} quantity`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-ps-bg disabled:text-ps-hint" />
                       </td>
                       <td className="py-1.5 pr-2">
                         {/* Unit (UQC) only for goods — CGST Rule 46(h) requires
@@ -1293,18 +1293,18 @@ export function InvoiceEditor({
                         {(line.product?.kind === "good" || !!line.unit) ? (
                           <select value={line.unit} onChange={(e) => setLine(idx, { unit: e.target.value })}
                             aria-label={`Line ${idx + 1} unit`}
-                            className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs text-[#64748B]">
+                            className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none text-xs text-ps-label">
                             <option value="">Unit</option>
                             {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
                           </select>
                         ) : (
-                          <span className="text-[#CBD5E1]">—</span>
+                          <span className="text-ps-disabled">—</span>
                         )}
                       </td>
                       <td className="py-1.5 pr-2">
                         <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })}
                           onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-ps-bg disabled:text-ps-hint" />
                       </td>
                       <td className="py-1.5 pr-2">
                         {/* Last editable column: spreadsheet-style Tab here
@@ -1315,7 +1315,7 @@ export function InvoiceEditor({
                           onKeyDown={(e) => onGstKeyDown(e, idx)}
                           disabled={isLocked}
                           aria-label={`Line ${idx + 1} GST rate`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]">
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs disabled:bg-ps-bg disabled:text-ps-hint">
                           {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
@@ -1325,7 +1325,7 @@ export function InvoiceEditor({
                           onChange={(e) => setLine(idx, { discountPercent: e.target.value })}
                           onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked}
                           placeholder="0" aria-label={`Line ${idx + 1} discount percent`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-ps-bg disabled:text-ps-hint" />
                       </td>
                       {showCess && (
                         <>
@@ -1335,7 +1335,7 @@ export function InvoiceEditor({
                               onChange={(e) => setLine(idx, { cessPercent: e.target.value })}
                               onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked}
                               placeholder="0" aria-label={`Line ${idx + 1} compensation cess percent`}
-                              className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-ps-bg disabled:text-ps-hint" />
                           </td>
                           <td className="py-1.5 pr-2">
                             <input type="number" min="0" step="0.01"
@@ -1343,14 +1343,14 @@ export function InvoiceEditor({
                               onChange={(e) => setLine(idx, { cessPerUnit: e.target.value })}
                               onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked}
                               placeholder="0.00" aria-label={`Line ${idx + 1} compensation cess per unit`}
-                              className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-ps-bg disabled:text-ps-hint" />
                           </td>
                         </>
                       )}
-                      <td className="py-1.5 px-2 text-right font-mono text-[#334155]">{lineTotal > 0 ? fmtAmt(lineTotal) : "—"}</td>
+                      <td className="py-1.5 px-2 text-right font-mono text-ps-body">{lineTotal > 0 ? fmtAmt(lineTotal) : "—"}</td>
                       <td className="py-1.5">
                         {lines.length > 1 && !isLocked && (
-                          <button onClick={() => removeLine(idx)} className="text-[#CBD5E1] hover:text-red-600" aria-label="Remove line">
+                          <button onClick={() => removeLine(idx)} className="text-ps-disabled hover:text-red-600" aria-label="Remove line">
                             <Trash2 size={13} />
                           </button>
                         )}
@@ -1374,18 +1374,18 @@ export function InvoiceEditor({
         </section>
 
         {/* Notes */}
-        <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <label className="block text-xs font-medium text-[#475569] mb-1">Notes</label>
+        <section className="bg-white rounded-xl border border-ps-muted p-4">
+          <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
             placeholder="Optional notes shown on the invoice (terms, PO reference…)"
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           {isEdit && !isLocked && (
-            <p className="mt-2 text-[10px] text-[#94A3B8]">
+            <p className="mt-2 text-[10px] text-ps-hint">
               Editing a draft. GST is recomputed by the backend on save.
             </p>
           )}
           {isLocked && (
-            <p className="mt-2 text-[10px] text-[#94A3B8]">
+            <p className="mt-2 text-[10px] text-ps-hint">
               This invoice is issued — only reference, notes, payment terms, due date and line units can still change.
               To correct the amount, dates, customer or line items, issue a Credit Note instead (CGST Act §34).
             </p>
@@ -1402,7 +1402,7 @@ export function InvoiceEditor({
 
 function Row({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
-    <div className={`flex justify-between ${muted ? "text-[#94A3B8]" : "text-[#475569]"}`}>
+    <div className={`flex justify-between ${muted ? "text-ps-hint" : "text-ps-label"}`}>
       <span>{label}</span>
       <span className="font-mono">{value}</span>
     </div>

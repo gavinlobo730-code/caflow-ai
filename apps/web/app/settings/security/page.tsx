@@ -44,8 +44,8 @@ export default function SecuritySettingsPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-5">
       <div>
-        <h1 className="text-xl font-semibold text-[#0F172A]">Security</h1>
-        <p className="text-sm text-[#64748B] mt-0.5">Manage your password and two-factor authentication</p>
+        <h1 className="text-xl font-semibold text-ps-ink">Security</h1>
+        <p className="text-sm text-ps-label mt-0.5">Manage your password and two-factor authentication</p>
       </div>
       <ChangePasswordCard />
       <MfaCard />
@@ -128,10 +128,10 @@ function ChangePasswordCard() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
         <KeyRound size={15} className="text-blue-600" />
-        <h2 className="text-sm font-semibold text-[#0F172A]">Change Password</h2>
+        <h2 className="text-sm font-semibold text-ps-ink">Change Password</h2>
       </div>
 
       <div className="px-5 py-4 space-y-4">
@@ -144,7 +144,7 @@ function ChangePasswordCard() {
 
         {needsReauth ? (
           <div className="space-y-3">
-            <p className="text-sm text-[#334155]">
+            <p className="text-sm text-ps-body">
               For your security, we sent a verification code to your email. Enter it below to finish changing your password.
             </p>
             <div className="flex gap-2">
@@ -152,7 +152,7 @@ function ChangePasswordCard() {
                 value={reauthOtp}
                 onChange={(e) => setReauthOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
                 inputMode="numeric" maxLength={8} placeholder="123456"
-                className="w-36 text-center tracking-widest font-mono text-base border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-36 text-center tracking-widest font-mono text-base border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
                 onClick={verifyReauth}
@@ -163,7 +163,7 @@ function ChangePasswordCard() {
               </button>
               <button
                 onClick={() => { setNeedsReauth(false); setReauthOtp(""); }}
-                className="px-4 py-2 text-sm text-[#64748B] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+                className="px-4 py-2 text-sm text-ps-label border border-ps-border rounded-lg hover:bg-ps-bg"
               >
                 Cancel
               </button>
@@ -172,33 +172,33 @@ function ChangePasswordCard() {
         ) : (
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-[#475569]">Current password</label>
+              <label className="block text-xs font-medium text-ps-label">Current password</label>
               <input
                 type={showPw ? "text" : "password"} value={current} onChange={(e) => setCurrent(e.target.value)}
                 autoComplete="current-password"
-                className="w-full max-w-sm px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-[#475569]">New password</label>
+              <label className="block text-xs font-medium text-ps-label">New password</label>
               <div className="relative max-w-sm">
                 <input
                   type={showPw ? "text" : "password"} value={next} onChange={(e) => setNext(e.target.value)}
                   autoComplete="new-password" placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
-                  className="w-full px-3 py-2 pr-10 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 pr-10 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide passwords" : "Show passwords"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569]">
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
                   {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-[#475569]">Confirm new password</label>
+              <label className="block text-xs font-medium text-ps-label">Confirm new password</label>
               <input
                 type={showPw ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)}
                 autoComplete="new-password"
-                className="w-full max-w-sm px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <button
@@ -306,10 +306,10 @@ function MfaCard() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
         <ShieldCheck size={15} className="text-blue-600" />
-        <h2 className="text-sm font-semibold text-[#0F172A]">Two-Factor Authentication (TOTP)</h2>
+        <h2 className="text-sm font-semibold text-ps-ink">Two-Factor Authentication (TOTP)</h2>
         {mfaEnabled && (
           <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
             <CheckCircle2 size={11} /> Enabled
@@ -326,24 +326,24 @@ function MfaCard() {
           )}
 
           {loading ? (
-            <p className="text-sm text-[#94A3B8] flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading…</p>
+            <p className="text-sm text-ps-hint flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading…</p>
           ) : enrolling ? (
             /* ── Enrolment in progress: QR + verify ── */
             <div className="space-y-4">
-              <p className="text-sm text-[#334155]">
+              <p className="text-sm text-ps-body">
                 1. Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password…).
               </p>
               <div className="flex flex-col sm:flex-row gap-4 items-start">
                 {/* qr_code is an SVG data-URI returned by Supabase */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={enrolling.qr} alt="MFA QR code" className="w-44 h-44 border border-[#E2E8F0] rounded-lg bg-white" />
+                <img src={enrolling.qr} alt="MFA QR code" className="w-44 h-44 border border-ps-border rounded-lg bg-white" />
                 <div className="space-y-2">
-                  <p className="text-xs text-[#64748B]">Can&apos;t scan? Enter this key manually:</p>
-                  <code className="block text-xs font-mono bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2 break-all">{enrolling.secret}</code>
+                  <p className="text-xs text-ps-label">Can&apos;t scan? Enter this key manually:</p>
+                  <code className="block text-xs font-mono bg-ps-bg border border-ps-border rounded-lg px-3 py-2 break-all">{enrolling.secret}</code>
                 </div>
               </div>
               <div className="space-y-1.5">
-                <p className="text-sm text-[#334155]">2. Enter the 6-digit code from the app:</p>
+                <p className="text-sm text-ps-body">2. Enter the 6-digit code from the app:</p>
                 <div className="flex gap-2">
                   <input
                     value={code}
@@ -351,7 +351,7 @@ function MfaCard() {
                     inputMode="numeric"
                     maxLength={6}
                     placeholder="123456"
-                    className="w-36 text-center tracking-widest font-mono text-base border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-36 text-center tracking-widest font-mono text-base border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
                     onClick={verifyEnroll}
@@ -362,7 +362,7 @@ function MfaCard() {
                   </button>
                   <button
                     onClick={() => { setEnrolling(null); setCode(""); load(); }}
-                    className="px-4 py-2 text-sm text-[#64748B] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+                    className="px-4 py-2 text-sm text-ps-label border border-ps-border rounded-lg hover:bg-ps-bg"
                   >
                     Cancel
                   </button>
@@ -372,12 +372,12 @@ function MfaCard() {
           ) : mfaEnabled ? (
             /* ── Already enrolled: list + remove ── */
             <div className="space-y-3">
-              <p className="text-sm text-[#334155]">Your account is protected by an authenticator app.</p>
+              <p className="text-sm text-ps-body">Your account is protected by an authenticator app.</p>
               {verified.map((f) => (
-                <div key={f.id} className="flex items-center justify-between bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2.5">
+                <div key={f.id} className="flex items-center justify-between bg-ps-bg border border-ps-border rounded-lg px-3 py-2.5">
                   <div className="flex items-center gap-2.5">
-                    <Smartphone size={15} className="text-[#64748B]" />
-                    <span className="text-sm text-[#0F172A]">{f.friendly_name || "Authenticator app"}</span>
+                    <Smartphone size={15} className="text-ps-label" />
+                    <span className="text-sm text-ps-ink">{f.friendly_name || "Authenticator app"}</span>
                   </div>
                   <button
                     onClick={() => removeFactor(f.id)}
@@ -399,7 +399,7 @@ function MfaCard() {
           ) : (
             /* ── Not enrolled ── */
             <div className="space-y-3">
-              <p className="text-sm text-[#334155]">
+              <p className="text-sm text-ps-body">
                 Add an authenticator app to require a 6-digit code at sign-in. This is required for Partner accounts.
               </p>
               <button

@@ -22,7 +22,7 @@ export function StatCard({
 }: StatCardProps) {
   const content = (
     <div className={cn(
-      "relative bg-white rounded-2xl border border-[#E2E8F0] p-5 overflow-hidden card-hover",
+      "relative bg-white rounded-2xl border border-ps-border p-5 overflow-hidden card-hover",
       href && "cursor-pointer",
       alert && "ring-1 ring-red-200 border-red-100"
     )}>
@@ -30,13 +30,13 @@ export function StatCard({
         <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", iconColor)}>
           <Icon size={17} />
         </div>
-        {href && <ArrowUpRight size={14} className="text-[#CBD5E1] mt-1" />}
+        {href && <ArrowUpRight size={14} className="text-ps-disabled mt-1" />}
         {alert && !href && <span className="w-2 h-2 rounded-full bg-red-500 mt-1 shrink-0" />}
       </div>
-      <p className={cn("text-3xl font-bold mt-4 tracking-tight", alert ? "text-red-600" : "text-[#0F172A]")}>
+      <p className={cn("text-3xl font-bold mt-4 tracking-tight", alert ? "text-red-600" : "text-ps-ink")}>
         {typeof value === "number" ? value.toLocaleString("en-IN") : value}
       </p>
-      <p className="text-[12px] text-[#64748B] mt-1 font-medium leading-tight">{label}</p>
+      <p className="text-[12px] text-ps-label mt-1 font-medium leading-tight">{label}</p>
       {trend && (
         <div className={cn("flex items-center gap-1 mt-2 text-[12px] font-semibold", trend.up ? "text-emerald-600" : "text-red-500")}>
           {trend.up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}

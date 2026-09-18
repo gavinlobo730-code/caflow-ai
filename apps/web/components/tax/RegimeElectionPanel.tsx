@@ -80,7 +80,7 @@ export default function RegimeElectionPanel({
     ? "bg-red-50 border-red-200 text-red-900"
     : data.history_unknown || data.form_10iea_required
       ? "bg-amber-50 border-amber-200 text-amber-900"
-      : "bg-[#F8FAFC] border-[#E2E8F0] text-[#475569]";
+      : "bg-ps-bg border-ps-border text-ps-label";
 
   return (
     <div className={`rounded-lg border p-2.5 space-y-1.5 ${tone}`}>
@@ -116,15 +116,15 @@ export default function RegimeElectionPanel({
                     : [...p, `${previousFy(financialYear)}:${action}`])}
                 className={`text-[10px] px-2 py-0.5 rounded border ${
                   prior.some((x) => x.endsWith(`:${action}`))
-                    ? "bg-[#1E293B] text-white border-[#1E293B]"
-                    : "bg-white border-[#E2E8F0] text-[#475569]"}`}
+                    ? "bg-brand-dark text-white border-brand-dark"
+                    : "bg-white border-ps-border text-ps-label"}`}
               >
                 {action === "opted_out" ? "Opted out before" : "Withdrew before"}
               </button>
             ))}
             {prior.length > 0 && (
               <button type="button" onClick={() => setPrior([])}
-                className="text-[10px] px-2 py-0.5 rounded border bg-white border-[#E2E8F0] text-[#94A3B8]">
+                className="text-[10px] px-2 py-0.5 rounded border bg-white border-ps-border text-ps-hint">
                 Clear
               </button>
             )}

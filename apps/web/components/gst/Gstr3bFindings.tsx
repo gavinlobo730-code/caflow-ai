@@ -86,7 +86,7 @@ export function Gstr3bLateFiling({ lateFiling }: { lateFiling?: LateFilingBlock 
   const lf = lateFiling;
   if (!lf) return null;
   if (!lf.available) {
-    return <p className="text-xs text-[#94A3B8] border-t pt-2">{lf.reason}</p>;
+    return <p className="text-xs text-ps-hint border-t pt-2">{lf.reason}</p>;
   }
   const heads = (lf.interest_by_head ?? []).filter((h) => h.base_paise > 0);
   return (
@@ -185,11 +185,11 @@ export function Gstr3bUndeclarableRows({ rows = [] }: { rows?: UndeclarableRow[]
   if (rows.length === 0) return null;
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm space-y-2">
-      <p className="font-medium text-[#334155]">
+      <p className="font-medium text-ps-body">
         Nil because this product cannot derive it — {rows.length} row
         {rows.length === 1 ? "" : "s"}
       </p>
-      <p className="text-[11px] text-[#64748B]">
+      <p className="text-[11px] text-ps-label">
         These are filed as nil. That is correct for a client with none, and wrong
         for a client with any — nothing here can tell the two apart, so
         check each on the portal before you file.
@@ -197,9 +197,9 @@ export function Gstr3bUndeclarableRows({ rows = [] }: { rows?: UndeclarableRow[]
       <ul className="space-y-1.5">
         {rows.map((g) => (
           <li key={g.row} className="border-t border-slate-200 pt-1.5">
-            <span className="font-mono text-xs text-[#334155]">Table {g.row}</span>
-            <span className="text-xs text-[#475569]"> — {g.label}</span>
-            <p className="text-[11px] text-[#64748B] mt-0.5">{g.reason}</p>
+            <span className="font-mono text-xs text-ps-body">Table {g.row}</span>
+            <span className="text-xs text-ps-label"> — {g.label}</span>
+            <p className="text-[11px] text-ps-label mt-0.5">{g.reason}</p>
           </li>
         ))}
       </ul>

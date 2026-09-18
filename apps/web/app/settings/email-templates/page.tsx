@@ -176,20 +176,20 @@ function TemplateEditor({
       {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
       <div>
-        <label className="text-xs font-medium text-[#64748B] block mb-1">Subject <span className="text-red-500">*</span></label>
+        <label className="text-xs font-medium text-ps-label block mb-1">Subject <span className="text-red-500">*</span></label>
         <input
           type="text"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Email subject line"
-          className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+          className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
         />
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="text-xs font-medium text-[#64748B]">Body <span className="text-red-500">*</span></label>
-          <button onClick={resetToDefault} className="text-xs text-[#94A3B8] hover:text-[#475569] transition-colors">
+          <label className="text-xs font-medium text-ps-label">Body <span className="text-red-500">*</span></label>
+          <button onClick={resetToDefault} className="text-xs text-ps-hint hover:text-ps-label transition-colors">
             Reset to default
           </button>
         </div>
@@ -197,25 +197,25 @@ function TemplateEditor({
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={10}
-          className="w-full text-sm text-[#0F172A] font-mono border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] resize-none"
+          className="w-full text-sm text-ps-ink font-mono border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg resize-none"
         />
       </div>
 
       <div>
-        <p className="text-xs font-medium text-[#64748B] mb-2">Insert merge field</p>
+        <p className="text-xs font-medium text-ps-label mb-2">Insert merge field</p>
         <div className="flex flex-wrap gap-1.5">
           {MERGE_FIELDS.map(({ field }) => (
             <button
               key={field}
               onClick={() => insertMergeField(field)}
               title={`Insert ${field}`}
-              className="px-2.5 py-1 text-xs bg-[#F1F5F9] text-[#475569] rounded-md hover:bg-blue-50 hover:text-blue-700 border border-transparent hover:border-blue-200 transition-colors font-mono"
+              className="px-2.5 py-1 text-xs bg-ps-muted text-ps-label rounded-md hover:bg-blue-50 hover:text-blue-700 border border-transparent hover:border-blue-200 transition-colors font-mono"
             >
               {field}
             </button>
           ))}
         </div>
-        <p className="text-xs text-[#94A3B8] mt-1.5">Merge fields are replaced with real values when the email is sent.</p>
+        <p className="text-xs text-ps-hint mt-1.5">Merge fields are replaced with real values when the email is sent.</p>
       </div>
 
       <div className="flex justify-end pt-2">
@@ -298,11 +298,11 @@ export default function EmailTemplatesPage() {
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
         <div>
-          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] transition-colors mb-1">
+          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1">
             <ChevronLeft size={13} /> Settings
           </Link>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Email Templates</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Customize the emails sent to clients for invoices, engagements, and reminders.</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Email Templates</h1>
+          <p className="text-sm text-ps-label mt-0.5">Customize the emails sent to clients for invoices, engagements, and reminders.</p>
         </div>
 
         {loadError && !loading && (
@@ -316,9 +316,9 @@ export default function EmailTemplatesPage() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           {/* Tabs */}
-          <div className="border-b border-[#F1F5F9] overflow-x-auto">
+          <div className="border-b border-ps-muted overflow-x-auto">
             <div className="flex px-2 pt-2 gap-1 min-w-max">
               {TEMPLATE_TABS.map((tab) => (
                 <button
@@ -326,8 +326,8 @@ export default function EmailTemplatesPage() {
                   onClick={() => setActiveTab(tab.type)}
                   className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${
                     activeTab === tab.type
-                      ? "bg-[#F8FAFC] border border-b-0 border-[#E2E8F0] text-[#0F172A]"
-                      : "text-[#64748B] hover:text-[#334155]"
+                      ? "bg-ps-bg border border-b-0 border-ps-border text-ps-ink"
+                      : "text-ps-label hover:text-ps-body"
                   }`}
                 >
                   <Mail size={13} />
@@ -335,7 +335,7 @@ export default function EmailTemplatesPage() {
                   {templates[tab.type] ? (
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500 ml-0.5" title="Saved" />
                   ) : (
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#CBD5E1] ml-0.5" title="Using default" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-ps-border-strong ml-0.5" title="Using default" />
                   )}
                 </button>
               ))}
@@ -343,7 +343,7 @@ export default function EmailTemplatesPage() {
           </div>
 
           <div className="px-5 py-4">
-            <p className="text-xs text-[#94A3B8] mb-2">{activeTabInfo.desc}</p>
+            <p className="text-xs text-ps-hint mb-2">{activeTabInfo.desc}</p>
             {/* WHETHER THIS WORDING IS EVER SENT. The server's answer, rendered
                 where the CA is about to type — the alternative is four tabs
                 offered as equals with three of them inert, which is exactly the
@@ -359,7 +359,7 @@ export default function EmailTemplatesPage() {
               </p>
             )}
             {loading ? (
-              <div className="py-8 text-center text-sm text-[#94A3B8]">Loading…</div>
+              <div className="py-8 text-center text-sm text-ps-hint">Loading…</div>
             ) : (
               <TemplateEditor
                 key={activeTab}

@@ -41,7 +41,7 @@ function fmt(paise?: number | string | null) {
 }
 
 const FIELD =
-  "border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400";
 
 export default function ApplyStructureModal({
   structureId, structureName, clientId, employees, onClose, onApplied,
@@ -128,37 +128,37 @@ export default function ApplyStructureModal({
       onClick={onClose}>
       <div className="w-full max-w-[720px] max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-xl"
         onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-[#E2E8F0] px-5 py-3 flex items-start justify-between gap-3">
+        <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
           <div>
-            <p className="text-[14px] font-semibold text-[#1E293B]">Apply “{structureName}”</p>
-            <p className="text-[11px] text-[#94A3B8]">
+            <p className="text-[14px] font-semibold text-ps-ink">Apply “{structureName}”</p>
+            <p className="text-[11px] text-ps-hint">
               Writes a salary revision per employee, effective from the date below.
               Months already released keep the figures they were paid on.
             </p>
           </div>
           <button onClick={onClose}
-            className="text-[12px] text-[#64748B] border border-[#E2E8F0] rounded-lg px-2.5 py-1 hover:bg-[#F8FAFC] shrink-0">
+            className="text-[12px] text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
             Close
           </button>
         </div>
 
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-[11px] text-[#64748B] block">Effective from
+            <label className="text-[11px] text-ps-label block">Effective from
               <input type="date" value={effectiveFrom}
                 onChange={(e) => { setEffectiveFrom(e.target.value); setResult(null); }}
                 className={`${FIELD} w-full mt-1`} />
             </label>
-            <label className="text-[11px] text-[#64748B] block">Reason
+            <label className="text-[11px] text-ps-label block">Reason
               <input value={reason} onChange={(e) => setReason(e.target.value)}
                 placeholder="Annual revision, restructure…"
                 className={`${FIELD} w-full mt-1`} />
             </label>
           </div>
 
-          <div className="rounded-xl border border-[#E2E8F0]">
-            <div className="px-3 py-2 border-b border-[#F1F5F9] flex items-center justify-between">
-              <p className="text-[11px] font-semibold text-[#1E293B]">
+          <div className="rounded-xl border border-ps-border">
+            <div className="px-3 py-2 border-b border-ps-muted flex items-center justify-between">
+              <p className="text-[11px] font-semibold text-ps-ink">
                 Employees · {chosen} selected
               </p>
               <button
@@ -166,18 +166,18 @@ export default function ApplyStructureModal({
                   chosen === employees.length
                     ? {}
                     : Object.fromEntries(employees.map((e) => [e.id, true])))}
-                className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded-lg text-[#334155] hover:bg-[#F8FAFC]">
+                className="text-[11px] px-2 py-1 border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
                 {chosen === employees.length ? "Clear" : "Select all"}
               </button>
             </div>
             {employees.length === 0 ? (
-              <p className="p-4 text-[12px] text-[#94A3B8] text-center">
+              <p className="p-4 text-[12px] text-ps-hint text-center">
                 This client has no employees to apply a structure to.
               </p>
             ) : (
               <table className="w-full text-[11px]">
                 <thead>
-                  <tr className="text-left text-[#64748B] border-b border-[#F1F5F9]">
+                  <tr className="text-left text-ps-label border-b border-ps-muted">
                     <th className="px-3 py-1.5 w-8"></th>
                     <th className="px-3 py-1.5">Employee</th>
                     <th className="px-3 py-1.5 text-right">Current basic</th>
@@ -186,13 +186,13 @@ export default function ApplyStructureModal({
                 </thead>
                 <tbody>
                   {employees.map((e) => (
-                    <tr key={e.id} className="border-b border-[#F8FAFC]">
+                    <tr key={e.id} className="border-b border-ps-bg">
                       <td className="px-3 py-1.5">
                         <input type="checkbox" checked={!!picked[e.id]}
                           onChange={(ev) => { setPicked((p) => ({ ...p, [e.id]: ev.target.checked })); setResult(null); }} />
                       </td>
-                      <td className="px-3 py-1.5 text-[#1E293B]">{e.name}</td>
-                      <td className="px-3 py-1.5 text-right text-[#64748B]">{fmt(e.basic_paise)}</td>
+                      <td className="px-3 py-1.5 text-ps-ink">{e.name}</td>
+                      <td className="px-3 py-1.5 text-right text-ps-label">{fmt(e.basic_paise)}</td>
                       <td className="px-3 py-1.5">
                         <input value={gross[e.id] ?? ""} type="text" inputMode="decimal"
                           onChange={(ev) => { setGross((g) => ({ ...g, [e.id]: ev.target.value })); setResult(null); }}
@@ -237,7 +237,7 @@ export default function ApplyStructureModal({
               )}
               <table className="w-full text-[11px]">
                 <thead>
-                  <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+                  <tr className="text-left text-ps-label border-b border-ps-border">
                     <th className="py-1.5 pr-2">Employee</th>
                     <th className="py-1.5 pr-2 text-right">Gross</th>
                     <th className="py-1.5 pr-2 text-right">Basic</th>
@@ -247,8 +247,8 @@ export default function ApplyStructureModal({
                 </thead>
                 <tbody>
                   {result.employees.map((e) => (
-                    <tr key={e.employee_id} className="border-b border-[#F1F5F9]">
-                      <td className="py-1.5 pr-2 text-[#1E293B]">{e.name ?? e.employee_id}</td>
+                    <tr key={e.employee_id} className="border-b border-ps-muted">
+                      <td className="py-1.5 pr-2 text-ps-ink">{e.name ?? e.employee_id}</td>
                       <td className="py-1.5 pr-2 text-right">{fmt(e.monthly_gross_paise)}</td>
                       <td className="py-1.5 pr-2 text-right">{fmt(e.basic_paise as number)}</td>
                       <td className="py-1.5 pr-2 text-right">{fmt(e.hra_paise as number)}</td>
@@ -258,7 +258,7 @@ export default function ApplyStructureModal({
                 </tbody>
               </table>
               {result.preview && (
-                <p className="text-[11px] text-[#94A3B8]">
+                <p className="text-[11px] text-ps-hint">
                   Nothing has been written. Apply below to record a revision per employee.
                 </p>
               )}
@@ -272,14 +272,14 @@ export default function ApplyStructureModal({
 
           <div className="flex justify-end gap-2">
             <button onClick={() => send(true)} disabled={!ready || busy !== null}
-              className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+              className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
               {busy === "preview" ? "Computing…" : "Preview"}
             </button>
             {/* Apply is offered only AFTER a preview has come back, so nobody
                 writes a revision for a whole roster without having seen it. */}
             <button onClick={() => send(false)}
               disabled={!ready || busy !== null || !result?.preview}
-              className="px-3 py-1.5 text-[12px] rounded-lg bg-[#1E293B] text-white disabled:opacity-40">
+              className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
               {busy === "apply" ? "Applying…" : "Apply"}
             </button>
           </div>

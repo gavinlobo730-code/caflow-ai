@@ -78,7 +78,7 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-xs text-[#94A3B8]">
+      <div className="flex items-center gap-2 text-xs text-ps-hint">
         <Loader2 size={12} className="animate-spin" /> Cost formula…
       </div>
     );
@@ -86,27 +86,27 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
   if (!policy) return null;
 
   return (
-    <div className="border border-[#E2E8F0] rounded-lg bg-white">
+    <div className="border border-ps-border rounded-lg bg-white">
       <div className="px-4 py-3 flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <Scale size={13} className="text-[#64748B]" />
-            <p className="text-xs font-semibold text-[#0F172A]">Cost formula</p>
+            <Scale size={13} className="text-ps-label" />
+            <p className="text-xs font-semibold text-ps-ink">Cost formula</p>
             {!policy.is_recorded && (
               <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700 border border-amber-200">
                 Not recorded
               </span>
             )}
           </div>
-          <p className="text-xs text-[#475569] mt-1">{policy.label}</p>
+          <p className="text-xs text-ps-label mt-1">{policy.label}</p>
           {policy.unrecorded_means && (
-            <p className="text-[11px] text-[#64748B] mt-1.5 leading-relaxed">
+            <p className="text-[11px] text-ps-label mt-1.5 leading-relaxed">
               {policy.unrecorded_means}
             </p>
           )}
           {policy.methods_used.length > 1 && (
-            <div className="mt-2 text-[11px] text-[#64748B] leading-relaxed">
-              <p className="font-medium text-[#334155]">What actually priced the ledger</p>
+            <div className="mt-2 text-[11px] text-ps-label leading-relaxed">
+              <p className="font-medium text-ps-body">What actually priced the ledger</p>
               <ul className="mt-0.5 space-y-0.5">
                 {policy.methods_used.map((s) => (
                   <li key={s.method}>
@@ -119,38 +119,38 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
           )}
         </div>
         <button onClick={begin}
-                className="flex-shrink-0 px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+                className="flex-shrink-0 px-2.5 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
           {policy.is_recorded ? "Change" : "Record"}
         </button>
       </div>
 
       {open && (
-        <div className="border-t border-[#E2E8F0] px-4 py-3 space-y-3">
+        <div className="border-t border-ps-border px-4 py-3 space-y-3">
           <div>
-            <label htmlFor="cost-formula" className="block text-[10px] font-medium text-[#94A3B8] mb-1">
+            <label htmlFor="cost-formula" className="block text-[10px] font-medium text-ps-hint mb-1">
               Cost formula (AS-2 paragraph 14)
             </label>
             <select id="cost-formula" value={method} onChange={(e) => setMethod(e.target.value)}
-                    className="w-full px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
               {policy.methods.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </select>
           </div>
           <div>
-            <label htmlFor="cost-formula-from" className="block text-[10px] font-medium text-[#94A3B8] mb-1">
+            <label htmlFor="cost-formula-from" className="block text-[10px] font-medium text-ps-hint mb-1">
               Takes effect from
             </label>
             <input id="cost-formula-from" type="date" value={effectiveFrom}
                    onChange={(e) => setEffectiveFrom(e.target.value)}
-                   className="w-full px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <p className="text-[11px] text-[#64748B] mt-1 leading-relaxed">
+                   className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <p className="text-[11px] text-ps-label mt-1 leading-relaxed">
               A change is prospective. Nothing already priced is re-costed, so
               the date has to be after the last recorded movement — the start
               of the next period is the usual answer.
             </p>
           </div>
-          <p className="text-[11px] text-[#64748B] leading-relaxed">{policy.standard_cost_refused}</p>
+          <p className="text-[11px] text-ps-label leading-relaxed">{policy.standard_cost_refused}</p>
           {refusal && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-[11px] text-red-700 leading-relaxed">
               {refusal}
@@ -158,11 +158,11 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
           )}
           <div className="flex justify-end gap-2">
             <button onClick={() => setOpen(false)}
-                    className="px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+                    className="px-2.5 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
               Cancel
             </button>
             <button onClick={save} disabled={saving || !method}
-                    className="px-2.5 py-1.5 text-xs bg-[#0F172A] text-white rounded-lg hover:bg-[#1E293B] disabled:opacity-50">
+                    className="px-2.5 py-1.5 text-xs bg-brand-dark text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
               {saving ? "Saving…" : "Record"}
             </button>
           </div>

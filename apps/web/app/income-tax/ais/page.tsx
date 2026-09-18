@@ -85,7 +85,7 @@ function StatusBadge({ status }: { status: AISLine["status"] }) {
   if (status === "amount_mismatch")
     return <span className={`${base} bg-amber-100 text-amber-700`}><AlertTriangle className="w-3 h-3" /> Differs</span>;
   // Not a finding. It is the absence of one, and it reads that way.
-  return <span className={`${base} bg-[#F1F5F9] text-[#64748B]`}><HelpCircle className="w-3 h-3" /> Not reviewed</span>;
+  return <span className={`${base} bg-ps-muted text-ps-label`}><HelpCircle className="w-3 h-3" /> Not reviewed</span>;
 }
 
 const BLANK_MANUAL = { transaction_type: "Salary", payer: "", amount: "", tds: "" };
@@ -295,20 +295,20 @@ export default function AISPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <Link href="/income-tax" className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] mb-2 transition-colors">
+          <Link href="/income-tax" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label mb-2 transition-colors">
             <ArrowLeft className="w-3.5 h-3.5" /> Income Tax
           </Link>
-          <h1 className="text-xl font-semibold text-[#0F172A]">AIS review</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">AIS review</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             Annual Information Statement — IT Act §285BB
           </p>
         </div>
         {lines.length > 0 && (
           <div className="flex gap-2">
-            <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E2E8F0] text-[#334155] text-sm font-medium rounded-lg hover:bg-[#F8FAFC] transition-colors">
+            <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-white border border-ps-border text-ps-body text-sm font-medium rounded-lg hover:bg-ps-bg transition-colors">
               <Download className="w-4 h-4" /> CSV
             </button>
-            <button onClick={exportXLSX} className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E2E8F0] text-[#334155] text-sm font-medium rounded-lg hover:bg-[#F8FAFC] transition-colors">
+            <button onClick={exportXLSX} className="flex items-center gap-2 px-4 py-2 bg-white border border-ps-border text-ps-body text-sm font-medium rounded-lg hover:bg-ps-bg transition-colors">
               <Download className="w-4 h-4" /> Excel
             </button>
           </div>
@@ -316,32 +316,32 @@ export default function AISPage() {
       </div>
 
       {/* Client and assessment year */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="bg-white rounded-xl border border-ps-muted px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium text-[#334155] mb-1.5">Client</label>
+          <label className="block text-xs font-medium text-ps-body mb-1.5">Client</label>
           <select
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
-            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Select a client…</option>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#334155] mb-1.5">
+          <label className="block text-xs font-medium text-ps-body mb-1.5">
             Assessment year
           </label>
           <select
             value={assessmentYear}
             onChange={(e) => setAssessmentYear(e.target.value)}
-            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {years.map((y) => <option key={y} value={y}>AY {y}</option>)}
           </select>
           {/* The two labels look identical, so the one being reviewed is
               spelled out rather than left to be inferred. */}
-          <p className="text-xs text-[#94A3B8] mt-1">
+          <p className="text-xs text-ps-hint mt-1">
             Income of FY {financialYearForAy(assessmentYear) || "—"}
           </p>
         </div>
@@ -361,10 +361,10 @@ export default function AISPage() {
       )}
 
       {/* Upload */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-[#0F172A]">Step 1 — Upload the AIS JSON</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">
+          <h2 className="text-sm font-semibold text-ps-ink">Step 1 — Upload the AIS JSON</h2>
+          <p className="text-xs text-ps-hint mt-0.5">
             Download from <span className="font-mono">incometax.gov.in</span> → AIS → Download JSON
           </p>
         </div>
@@ -385,15 +385,15 @@ export default function AISPage() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
             className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-              clientId ? "border-[#E2E8F0] cursor-pointer hover:border-blue-300 hover:bg-blue-50/30"
-                       : "border-[#F1F5F9] cursor-not-allowed"}`}
+              clientId ? "border-ps-border cursor-pointer hover:border-blue-300 hover:bg-blue-50/30"
+                       : "border-ps-muted cursor-not-allowed"}`}
           >
-            <Upload className="w-8 h-8 text-[#CBD5E1] mx-auto mb-3" />
-            <p className="text-sm font-medium text-[#475569]">
+            <Upload className="w-8 h-8 text-ps-disabled mx-auto mb-3" />
+            <p className="text-sm font-medium text-ps-label">
               {clientId ? "Click to upload or drag & drop the AIS JSON"
                         : "Pick a client first"}
             </p>
-            <p className="text-xs text-[#94A3B8] mt-1">
+            <p className="text-xs text-ps-hint mt-1">
               The file is read on the server and kept against this client and year.
             </p>
           </div>
@@ -402,25 +402,25 @@ export default function AISPage() {
 
       {/* What the statement itself says */}
       {statement?.upload && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-muted px-5 py-4 space-y-3">
           <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs">
             <div>
-              <span className="text-[#94A3B8]">PAN on the statement</span>
-              <p className="font-mono text-sm text-[#0F172A]">
+              <span className="text-ps-hint">PAN on the statement</span>
+              <p className="font-mono text-sm text-ps-ink">
                 {statement.upload.pan ?? "—"}
               </p>
             </div>
             <div>
-              <span className="text-[#94A3B8]">Name on the statement</span>
-              <p className="text-sm text-[#0F172A]">{statement.upload.taxpayer_name ?? "—"}</p>
+              <span className="text-ps-hint">Name on the statement</span>
+              <p className="text-sm text-ps-ink">{statement.upload.taxpayer_name ?? "—"}</p>
             </div>
             <div>
-              <span className="text-[#94A3B8]">File</span>
-              <p className="text-sm text-[#0F172A]">{statement.upload.file_name ?? "—"}</p>
+              <span className="text-ps-hint">File</span>
+              <p className="text-sm text-ps-ink">{statement.upload.file_name ?? "—"}</p>
             </div>
             <div>
-              <span className="text-[#94A3B8]">Lines</span>
-              <p className="text-sm text-[#0F172A]">{statement.upload.record_count}</p>
+              <span className="text-ps-hint">Lines</span>
+              <p className="text-sm text-ps-ink">{statement.upload.record_count}</p>
             </div>
           </div>
           {statement.upload.problems?.length > 0 && (
@@ -434,7 +434,7 @@ export default function AISPage() {
             </div>
           )}
           {statement.uploads.length > 1 && (
-            <p className="text-xs text-[#64748B]">
+            <p className="text-xs text-ps-label">
               {statement.uploads.length} statements have been uploaded for AY {assessmentYear}.
               The most recent is shown; a line identical to one already worked on keeps its working.
             </p>
@@ -444,22 +444,22 @@ export default function AISPage() {
 
       {/* The lines */}
       {lines.length > 0 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-[#0F172A]">Step 2 — What the books carry</h2>
-              <p className="text-xs text-[#94A3B8] mt-0.5">
+              <h2 className="text-sm font-semibold text-ps-ink">Step 2 — What the books carry</h2>
+              <p className="text-xs text-ps-hint mt-0.5">
                 Leave a line blank until it has been looked at. A blank is not a nil.
               </p>
             </div>
-            <span className="text-xs text-[#64748B] font-medium">
+            <span className="text-xs text-ps-label font-medium">
               {lines.length} lines · AIS total {formatRupees(summary?.total_amount_paise ?? 0)}
             </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-[#F8FAFC] text-xs text-[#64748B] font-medium uppercase tracking-wider">
+                <tr className="bg-ps-bg text-xs text-ps-label font-medium uppercase tracking-wider">
                   <th className="px-5 py-2.5 text-left">Information category</th>
                   <th className="px-4 py-2.5 text-left">Payer / Deductor</th>
                   <th className="px-4 py-2.5 text-right">AIS amount</th>
@@ -471,31 +471,31 @@ export default function AISPage() {
                   <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {lines.map((line) => {
                   const diff = line.books_amount_paise === null
                     ? null : line.amount_paise - line.books_amount_paise;
                   return (
-                    <tr key={line.id} className="hover:bg-[#F8FAFC]/50 transition-colors align-top">
+                    <tr key={line.id} className="hover:bg-ps-bg/50 transition-colors align-top">
                       <td className="px-5 py-3">
-                        <p className="font-medium text-[#0F172A] text-xs">{line.transaction_type}</p>
-                        <p className="text-[11px] text-[#94A3B8] max-w-xs truncate">
+                        <p className="font-medium text-ps-ink text-xs">{line.transaction_type}</p>
+                        <p className="text-[11px] text-ps-hint max-w-xs truncate">
                           {line.information_label}
                         </p>
                         <span className={`mt-1 inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                           line.source === "json" ? "bg-purple-50 text-purple-700"
-                                                 : "bg-[#F1F5F9] text-[#475569]"}`}>
+                                                 : "bg-ps-muted text-ps-label"}`}>
                           {line.source === "json" ? "AIS (published)" : "Added by the firm"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-[#475569] text-xs max-w-xs truncate">{line.payer}</td>
-                      <td className="px-4 py-3 text-right text-[#0F172A] font-medium text-xs">
+                      <td className="px-4 py-3 text-ps-label text-xs max-w-xs truncate">{line.payer}</td>
+                      <td className="px-4 py-3 text-right text-ps-ink font-medium text-xs">
                         {formatRupees(line.amount_paise)}
                       </td>
-                      <td className="px-4 py-3 text-right text-[#475569] text-xs">
+                      <td className="px-4 py-3 text-right text-ps-label text-xs">
                         {line.tds_deducted_paise > 0
                           ? formatRupees(line.tds_deducted_paise)
-                          : <span className="text-[#CBD5E1]">—</span>}
+                          : <span className="text-ps-disabled">—</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <input
@@ -505,11 +505,11 @@ export default function AISPage() {
                           value={books[line.id] ?? ""}
                           onChange={(e) => setBooks((p) => ({ ...p, [line.id]: e.target.value }))}
                           onBlur={() => { void saveWorking(line); }}
-                          className="w-32 border border-[#E2E8F0] rounded-lg px-2 py-1 text-xs text-[#0F172A] text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-32 border border-ps-border rounded-lg px-2 py-1 text-xs text-ps-ink text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
                       <td className="px-4 py-3 text-right text-xs font-medium">
-                        {diff === null ? <span className="text-[#CBD5E1]">—</span>
+                        {diff === null ? <span className="text-ps-disabled">—</span>
                           : diff === 0 ? <span className="text-green-600">₹0.00</span>
                           : <span className="text-amber-600">{formatRupees(diff)}</span>}
                       </td>
@@ -541,7 +541,7 @@ export default function AISPage() {
                           value={notes[line.id] ?? ""}
                           onChange={(e) => setNotes((p) => ({ ...p, [line.id]: e.target.value }))}
                           onBlur={() => { void saveWorking(line); }}
-                          className="w-44 border border-[#E2E8F0] rounded-lg px-2 py-1 text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-44 border border-ps-border rounded-lg px-2 py-1 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -549,7 +549,7 @@ export default function AISPage() {
                           <button
                             onClick={() => { void removeLine(line); }}
                             disabled={busy}
-                            className="text-[#CBD5E1] hover:text-red-500 transition-colors disabled:opacity-40"
+                            className="text-ps-disabled hover:text-red-500 transition-colors disabled:opacity-40"
                             aria-label="Remove this line"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -574,42 +574,42 @@ export default function AISPage() {
             {showManual && (
               <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
                 <div>
-                  <label className="block text-xs font-medium text-[#334155] mb-1.5">Type</label>
+                  <label className="block text-xs font-medium text-ps-body mb-1.5">Type</label>
                   <select
                     value={manual.transaction_type}
                     onChange={(e) => setManual((p) => ({ ...p, transaction_type: e.target.value }))}
-                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                    className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                   >
                     {types.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#334155] mb-1.5">Payer / Deductor</label>
+                  <label className="block text-xs font-medium text-ps-body mb-1.5">Payer / Deductor</label>
                   <input
                     type="text"
                     value={manual.payer}
                     onChange={(e) => setManual((p) => ({ ...p, payer: e.target.value }))}
-                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                    className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#334155] mb-1.5">Amount (₹)</label>
+                  <label className="block text-xs font-medium text-ps-body mb-1.5">Amount (₹)</label>
                   <input
                     type="text"
                     inputMode="decimal"
                     value={manual.amount}
                     onChange={(e) => setManual((p) => ({ ...p, amount: e.target.value }))}
-                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                    className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#334155] mb-1.5">TDS (₹)</label>
+                  <label className="block text-xs font-medium text-ps-body mb-1.5">TDS (₹)</label>
                   <input
                     type="text"
                     inputMode="decimal"
                     value={manual.tds}
                     onChange={(e) => setManual((p) => ({ ...p, tds: e.target.value }))}
-                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                    className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
                 <button
@@ -627,22 +627,22 @@ export default function AISPage() {
 
       {/* What is open */}
       {summary && lines.length > 0 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50">
-            <h2 className="text-sm font-semibold text-[#0F172A]">Step 3 — What is still open</h2>
+            <h2 className="text-sm font-semibold text-ps-ink">Step 3 — What is still open</h2>
           </div>
           <div className="px-5 py-5 grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-[#F8FAFC] rounded-xl p-4">
-              <p className="text-xs text-[#64748B] font-medium uppercase tracking-wide mb-1">Total on the AIS</p>
-              <p className="text-lg font-semibold text-[#0F172A]">{formatRupees(summary.total_amount_paise)}</p>
-              <p className="text-[11px] text-[#94A3B8] mt-1">TDS {formatRupees(summary.total_tds_paise)}</p>
+            <div className="bg-ps-bg rounded-xl p-4">
+              <p className="text-xs text-ps-label font-medium uppercase tracking-wide mb-1">Total on the AIS</p>
+              <p className="text-lg font-semibold text-ps-ink">{formatRupees(summary.total_amount_paise)}</p>
+              <p className="text-[11px] text-ps-hint mt-1">TDS {formatRupees(summary.total_tds_paise)}</p>
             </div>
-            <div className="bg-[#F8FAFC] rounded-xl p-4">
-              <p className="text-xs text-[#64748B] font-medium uppercase tracking-wide mb-1">Not yet reviewed</p>
-              <p className="text-lg font-semibold text-[#334155]">
+            <div className="bg-ps-bg rounded-xl p-4">
+              <p className="text-xs text-ps-label font-medium uppercase tracking-wide mb-1">Not yet reviewed</p>
+              <p className="text-lg font-semibold text-ps-body">
                 {summary.not_reviewed_count} of {summary.line_count}
               </p>
-              <p className="text-[11px] text-[#94A3B8] mt-1">No conclusion is drawn about these.</p>
+              <p className="text-[11px] text-ps-hint mt-1">No conclusion is drawn about these.</p>
             </div>
             <div className="bg-red-50 rounded-xl p-4">
               <p className="text-xs text-red-600 font-medium uppercase tracking-wide mb-1">Not in the books</p>
@@ -665,7 +665,7 @@ export default function AISPage() {
 
           {summary.not_reviewed_count > 0 && (
             <div className="px-5 pb-5">
-              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3 text-xs text-[#475569]">
+              <div className="bg-ps-bg border border-ps-border rounded-xl px-4 py-3 text-xs text-ps-label">
                 {summary.not_reviewed_count} line{summary.not_reviewed_count === 1 ? "" : "s"} still
                 to look at. The two figures above cover only the lines already reviewed.
               </div>
@@ -687,12 +687,12 @@ export default function AISPage() {
       )}
 
       {!loading && lines.length === 0 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-14 text-center space-y-3">
+        <div className="bg-white rounded-xl border border-ps-muted px-5 py-14 text-center space-y-3">
           <FileText className="w-10 h-10 text-gray-200 mx-auto" />
-          <p className="text-sm font-medium text-[#475569]">
+          <p className="text-sm font-medium text-ps-label">
             {clientId ? `No AIS uploaded for AY ${assessmentYear}` : "Pick a client to begin"}
           </p>
-          <p className="text-xs text-[#94A3B8] max-w-sm mx-auto">
+          <p className="text-xs text-ps-hint max-w-sm mx-auto">
             Upload the AIS JSON downloaded from the income-tax portal. Everything read
             from it is kept against this client and year.
           </p>

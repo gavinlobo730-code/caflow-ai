@@ -259,11 +259,11 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Add GST Filing</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]">
+          <h3 className="text-sm font-semibold text-ps-ink">Add GST Filing</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -274,7 +274,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         {/* Client */}
         <div>
-          <label className="text-xs font-medium text-[#334155] block mb-1">Client</label>
+          <label className="text-xs font-medium text-ps-body block mb-1">Client</label>
           <div className="w-full">
             <ClientLookup
               clients={clients}
@@ -288,11 +288,11 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         {/* Return Type */}
         <div>
-          <label className="text-xs font-medium text-[#334155] block mb-1">Return Type</label>
+          <label className="text-xs font-medium text-ps-body block mb-1">Return Type</label>
           <select
             value={returnType}
             onChange={(e) => setReturnType(e.target.value as ReturnType)}
-            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {RETURN_TYPES.map((r) => (
               <option key={r} value={r}>{r}</option>
@@ -302,11 +302,11 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         {/* Period */}
         <div>
-          <label className="text-xs font-medium text-[#334155] block mb-1">Period</label>
+          <label className="text-xs font-medium text-ps-body block mb-1">Period</label>
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
-            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {MONTH_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -316,20 +316,20 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         {/* Due Date — auto-filled, editable */}
         <div>
-          <label className="text-xs font-medium text-[#334155] block mb-1">
+          <label className="text-xs font-medium text-ps-body block mb-1">
             Due Date
-            <span className="text-[#94A3B8] font-normal ml-1">(auto-filled, editable)</span>
+            <span className="text-ps-hint font-normal ml-1">(auto-filled, editable)</span>
           </label>
           <input
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
-            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {dueDateErr ? (
-            <p className="text-[10px] text-[#B45309] mt-1">{dueDateErr}</p>
+            <p className="text-[10px] text-state-attention mt-1">{dueDateErr}</p>
           ) : (
-            <p className="text-[10px] text-[#94A3B8] mt-1">
+            <p className="text-[10px] text-ps-hint mt-1">
               {returnType === "GSTR-1" && "CGST Act Section 37 — 11th of following month"}
               {returnType === "GSTR-3B" && "CGST Act Section 39 — 20th of following month"}
               {returnType === "GSTR-9" && "CGST Act Section 44 — 31st December following the end of the financial year"}
@@ -339,11 +339,11 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         {/* Status */}
         <div>
-          <label className="text-xs font-medium text-[#334155] block mb-1">Status</label>
+          <label className="text-xs font-medium text-ps-body block mb-1">Status</label>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as FilingStatus)}
-            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="Pending">Pending</option>
             <option value="Filed">Filed</option>
@@ -354,7 +354,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
         <div className="flex gap-2 pt-2">
           <button
             onClick={onClose}
-            className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]"
+            className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg"
           >
             Cancel
           </button>
@@ -463,13 +463,13 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
 
   if (rows.length === 0) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
-          <p className="text-sm text-[#334155] font-medium">Nothing to file</p>
-          <p className="text-xs text-[#64748B]">All selected filings are already marked as Filed.</p>
+          <p className="text-sm text-ps-body font-medium">Nothing to file</p>
+          <p className="text-xs text-ps-label">All selected filings are already marked as Filed.</p>
           <button
             onClick={onClose}
-            className="w-full border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]"
+            className="w-full border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg"
           >
             Close
           </button>
@@ -479,13 +479,13 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
-          <h3 className="text-base font-semibold text-[#0F172A]">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+          <h3 className="text-base font-semibold text-ps-ink">
             Mark {rows.length} Filing{rows.length > 1 ? "s" : ""} as Filed
           </h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569] transition-colors">
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -500,27 +500,27 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1.5">
+            <label className="block text-xs font-medium text-ps-body mb-1.5">
               Date of Filing <span className="text-red-500">*</span>
-              <span className="text-[#94A3B8] font-normal ml-1">(applied to all rows below)</span>
+              <span className="text-ps-hint font-normal ml-1">(applied to all rows below)</span>
             </label>
             <input
               type="date"
               value={filedDate}
               onChange={(e) => setFiledDate(e.target.value)}
-              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div className="space-y-2">
             {rows.map((f) => (
-              <div key={f.id} className="border border-[#E2E8F0] rounded-lg px-3 py-2.5 space-y-1.5">
-                <div className="text-sm text-[#334155]">
+              <div key={f.id} className="border border-ps-border rounded-lg px-3 py-2.5 space-y-1.5">
+                <div className="text-sm text-ps-body">
                   <span className="font-medium">{f.client_name}</span>
-                  <span className="text-[#94A3B8]"> · {f.return_type} · {f.period}</span>
+                  <span className="text-ps-hint"> · {f.return_type} · {f.period}</span>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-medium text-[#334155] mb-1">
+                  <label className="block text-[10px] font-medium text-ps-body mb-1">
                     Acknowledgement Number (ARN) <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -528,7 +528,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
                     placeholder="e.g. AA270125001234A"
                     value={arns[f.id] ?? ""}
                     onChange={(e) => setArns((p) => ({ ...p, [f.id]: e.target.value }))}
-                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   {rowErrors[f.id] && (
                     <p className="text-[10px] text-red-600 mt-1">{rowErrors[f.id]}</p>
@@ -543,10 +543,10 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
+        <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
           >
             Cancel
           </button>
@@ -771,11 +771,11 @@ export default function GSTPage() {
     {
       key: "client_name", header: "Client", accessor: (f) => f.client_name,
       searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (f) => <span className="font-medium text-[#0F172A]">{f.client_name}</span>,
+      render: (f) => <span className="font-medium text-ps-ink">{f.client_name}</span>,
     },
     {
       key: "gstin", header: "GSTIN", accessor: (f) => f.gstin ?? "", searchable: true,
-      render: (f) => <span className="font-mono text-xs text-[#64748B]">{f.gstin ?? "—"}</span>,
+      render: (f) => <span className="font-mono text-xs text-ps-label">{f.gstin ?? "—"}</span>,
     },
     {
       key: "return_type", header: "Return Type", accessor: (f) => f.return_type, sortable: true,
@@ -787,21 +787,21 @@ export default function GSTPage() {
     },
     {
       key: "period", header: "Period", accessor: (f) => f.period, sortable: true,
-      render: (f) => <span className="text-[#334155]">{f.period}</span>,
+      render: (f) => <span className="text-ps-body">{f.period}</span>,
     },
     {
       key: "due_date", header: "Due Date", accessor: (f) => f.due_date, sortable: true,
       render: (f) => (
         <div className="flex items-center gap-1.5">
-          <Clock className="w-3 h-3 text-[#CBD5E1]" />
-          <span className="text-xs text-[#475569]">{fmtDate(f.due_date)}</span>
+          <Clock className="w-3 h-3 text-ps-disabled" />
+          <span className="text-xs text-ps-label">{fmtDate(f.due_date)}</span>
         </div>
       ),
     },
     {
       key: "filed_date", header: "Filed Date", accessor: (f) => f.filed_date ?? "",
       sortable: true, defaultHidden: true,
-      render: (f) => <span className="text-xs text-[#475569]">{f.filed_date ? fmtDate(f.filed_date) : "—"}</span>,
+      render: (f) => <span className="text-xs text-ps-label">{f.filed_date ? fmtDate(f.filed_date) : "—"}</span>,
     },
     {
       key: "status", header: "Status", accessor: (f) => f.status, sortable: true,
@@ -833,22 +833,22 @@ export default function GSTPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">GST</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">GST</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             GSTR Filing Tracker — CGST Act Sections 37, 39, 44
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link
             href="/gst/gstr1"
-            className="flex items-center gap-1.5 text-xs bg-white border border-[#E2E8F0] text-[#334155] px-3 py-2 rounded-lg hover:bg-[#F8FAFC]"
+            className="flex items-center gap-1.5 text-xs bg-white border border-ps-border text-ps-body px-3 py-2 rounded-lg hover:bg-ps-bg"
           >
             <FileText className="w-3.5 h-3.5" />
             GSTR-1
           </Link>
           <Link
             href="/gst/gstr3b"
-            className="flex items-center gap-1.5 text-xs bg-white border border-[#E2E8F0] text-[#334155] px-3 py-2 rounded-lg hover:bg-[#F8FAFC]"
+            className="flex items-center gap-1.5 text-xs bg-white border border-ps-border text-ps-body px-3 py-2 rounded-lg hover:bg-ps-bg"
           >
             <Receipt className="w-3.5 h-3.5" />
             GSTR-3B
@@ -872,10 +872,10 @@ export default function GSTPage() {
       )}
 
       {/* Key Deadlines Banner — CGST Act Sections 37, 39, 44 */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+      <div className="bg-white rounded-xl border border-ps-muted p-4">
         <div className="flex items-center gap-2 mb-3">
-          <Calendar className="w-4 h-4 text-[#64748B]" />
-          <span className="text-xs font-semibold text-[#334155]">
+          <Calendar className="w-4 h-4 text-ps-label" />
+          <span className="text-xs font-semibold text-ps-body">
             Key GST Deadlines — {currentMonthName()} {currentYearNumber()}
           </span>
         </div>
@@ -895,56 +895,56 @@ export default function GSTPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
               <Users className="w-4 h-4 text-blue-600" />
             </div>
-            <span className="text-xs text-[#64748B]">Total GST Clients</span>
+            <span className="text-xs text-ps-label">Total GST Clients</span>
           </div>
-          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : totalClients}</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">With GST filings tracked</p>
+          <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : totalClients}</p>
+          <p className="text-xs text-ps-hint mt-0.5">With GST filings tracked</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
               <CheckCircle className="w-4 h-4 text-green-600" />
             </div>
-            <span className="text-xs text-[#64748B]">Filed This Month</span>
+            <span className="text-xs text-ps-label">Filed This Month</span>
           </div>
-          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : filedThisMonth}</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">{currentPeriod}</p>
+          <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : filedThisMonth}</p>
+          <p className="text-xs text-ps-hint mt-0.5">{currentPeriod}</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
               <Clock className="w-4 h-4 text-amber-600" />
             </div>
-            <span className="text-xs text-[#64748B]">Pending This Month</span>
+            <span className="text-xs text-ps-label">Pending This Month</span>
           </div>
-          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : pendingThisMonth}</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">{currentPeriod}</p>
+          <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : pendingThisMonth}</p>
+          <p className="text-xs text-ps-hint mt-0.5">{currentPeriod}</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
               <AlertCircle className="w-4 h-4 text-red-600" />
             </div>
-            <span className="text-xs text-[#64748B]">Overdue</span>
+            <span className="text-xs text-ps-label">Overdue</span>
           </div>
-          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : overdueCount}</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">All periods</p>
+          <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : overdueCount}</p>
+          <p className="text-xs text-ps-hint mt-0.5">All periods</p>
         </div>
       </div>
 
       {/* Filing Status — shared DataTable (search, filters, sort, pagination, export, prefs) */}
       <div className="space-y-2">
         <div>
-          <h2 className="text-sm font-semibold text-[#0F172A]">Filing Status</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">
+          <h2 className="text-sm font-semibold text-ps-ink">Filing Status</h2>
+          <p className="text-xs text-ps-hint mt-0.5">
             Per client · per return type · per period
           </p>
         </div>
@@ -990,7 +990,7 @@ export default function GSTPage() {
           }
         />
 
-        <p className="text-[10px] text-[#94A3B8]">
+        <p className="text-[10px] text-ps-hint">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           GSTR-1 (Section 37): 11th · GSTR-3B (Section 39): 20th · GSTR-9 (Section 44): 31 Dec ·
           PracticeSync does not auto-submit to the GST portal — always file manually after CA review.
@@ -1008,15 +1008,15 @@ export default function GSTPage() {
       )}
 
       {showAddModal && clients.length === 0 && (
-        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
-            <p className="text-sm text-[#334155] font-medium">No clients found</p>
-            <p className="text-xs text-[#64748B]">
+            <p className="text-sm text-ps-body font-medium">No clients found</p>
+            <p className="text-xs text-ps-label">
               Add clients in the Clients section before adding GST filings.
             </p>
             <button
               onClick={() => setShowAddModal(false)}
-              className="w-full border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]"
+              className="w-full border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg"
             >
               Close
             </button>
@@ -1029,11 +1029,11 @@ export default function GSTPage() {
       {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
       {/* ================================================================== */}
       {filedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
-              <h3 className="text-base font-semibold text-[#0F172A]">Mark {filedModal.filing.return_type} as Filed</h3>
-              <button onClick={() => setFiledModal(null)} className="text-[#94A3B8] hover:text-[#475569] transition-colors">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+              <h3 className="text-base font-semibold text-ps-ink">Mark {filedModal.filing.return_type} as Filed</h3>
+              <button onClick={() => setFiledModal(null)} className="text-ps-hint hover:text-ps-label transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1047,15 +1047,15 @@ export default function GSTPage() {
                 </p>
               </div>
 
-              <div className="text-sm text-[#334155] bg-[#F8FAFC] rounded-lg px-4 py-3">
+              <div className="text-sm text-ps-body bg-ps-bg rounded-lg px-4 py-3">
                 <p className="font-medium">{filedModal.filing.client_name}</p>
-                <p className="text-xs text-[#94A3B8] mt-0.5 font-mono">
+                <p className="text-xs text-ps-hint mt-0.5 font-mono">
                   {filedModal.filing.gstin ?? ""} · {filedModal.filing.period}
                 </p>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Acknowledgement Number (ARN) <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -1063,19 +1063,19 @@ export default function GSTPage() {
                   placeholder="e.g. AA270125001234A"
                   value={filedForm.arn}
                   onChange={(e) => setFiledForm((p) => ({ ...p, arn: e.target.value }))}
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Date of Filing <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
                   value={filedForm.filed_date}
                   onChange={(e) => setFiledForm((p) => ({ ...p, filed_date: e.target.value }))}
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -1084,10 +1084,10 @@ export default function GSTPage() {
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
               <button
                 onClick={() => setFiledModal(null)}
-                className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+                className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
               >
                 Cancel
               </button>

@@ -88,7 +88,7 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
       </p>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-xs text-[#334155] block mb-1">ARN from the portal</label>
+          <label className="text-xs text-ps-body block mb-1">ARN from the portal</label>
           <input
             value={arn}
             onChange={(e) => setArn(e.target.value)}
@@ -97,7 +97,7 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
           />
         </div>
         <div>
-          <label className="text-xs text-[#334155] block mb-1">Date filed</label>
+          <label className="text-xs text-ps-body block mb-1">Date filed</label>
           <input
             type="date"
             value={filedDate}
@@ -110,7 +110,7 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
           marking a return filed without the acknowledgement to hand must not
           be blocked from recording reality. The DATE is not — it is what the
           period lock and the §37(3) window key on. */}
-      <p className="text-xs text-[#64748B]">
+      <p className="text-xs text-ps-label">
         The ARN can be left blank and added later. The date cannot: the correction
         window under CGST §37(3) and the period lock are both measured from it.
       </p>
@@ -137,7 +137,7 @@ function rupees(paise: number) {
 type GSTTab = "dashboard" | "gstr1" | "amendments" | "gstr3b" | "itc" | "gstr2b" | "history" | "gstr9" | "registrations";
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-[#F1F5F9] text-[#334155]",
+  draft: "bg-ps-muted text-ps-body",
   validated: "bg-blue-100 text-blue-700",
   ca_approved: "bg-green-100 text-green-700",
   submitted: "bg-emerald-100 text-emerald-800",
@@ -213,16 +213,16 @@ function GSTR3BDetailDrawer({
       <div className="bg-white w-full max-w-4xl h-full overflow-y-auto shadow-xl">
         <div className="sticky top-0 bg-white border-b px-5 py-3 flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold text-[#1E293B]">{label}</p>
-            <p className="text-xs text-[#64748B]">Period {period} · the documents behind this figure</p>
+            <p className="text-sm font-semibold text-ps-ink">{label}</p>
+            <p className="text-xs text-ps-label">Period {period} · the documents behind this figure</p>
           </div>
           <div className="flex gap-2">
             <button onClick={exportCsv} disabled={!rows?.length}
-              className="text-xs px-3 py-1.5 border rounded hover:bg-[#F8FAFC] disabled:opacity-40">
+              className="text-xs px-3 py-1.5 border rounded hover:bg-ps-bg disabled:opacity-40">
               Export CSV
             </button>
             <button onClick={onClose}
-              className="text-xs px-3 py-1.5 border rounded hover:bg-[#F8FAFC]">Close</button>
+              className="text-xs px-3 py-1.5 border rounded hover:bg-ps-bg">Close</button>
           </div>
         </div>
 
@@ -241,7 +241,7 @@ function GSTR3BDetailDrawer({
           {rows === null && !error && <TableSkeleton rows={6} />}
 
           {rows && rows.length === 0 && (
-            <p className="text-sm text-[#94A3B8]">
+            <p className="text-sm text-ps-hint">
               No documents for this line in {period}. That is a real answer, not a failure —
               nothing was posted here.
             </p>
@@ -250,7 +250,7 @@ function GSTR3BDetailDrawer({
           {rows && rows.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead className="bg-[#F8FAFC] text-[#64748B]">
+                <thead className="bg-ps-bg text-ps-label">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Date</th>
                     <th className="px-3 py-2 text-left font-medium">Type</th>
@@ -265,9 +265,9 @@ function GSTR3BDetailDrawer({
                 </thead>
                 <tbody>
                   {rows.map((r, i) => (
-                    <tr key={String(r.id ?? i)} className="border-t hover:bg-[#F8FAFC]">
+                    <tr key={String(r.id ?? i)} className="border-t hover:bg-ps-bg">
                       <td className="px-3 py-1.5">{String(r.document_date ?? "")}</td>
-                      <td className="px-3 py-1.5 text-[#64748B]">{String(r.kind ?? "")}</td>
+                      <td className="px-3 py-1.5 text-ps-label">{String(r.kind ?? "")}</td>
                       <td className="px-3 py-1.5 font-mono">{String(r.document_no ?? "")}</td>
                       <td className="px-3 py-1.5">{String(r.party ?? "")}</td>
                       <td className="px-3 py-1.5 text-right font-mono">{rupees(Number(r.taxable_paise ?? 0))}</td>
@@ -279,7 +279,7 @@ function GSTR3BDetailDrawer({
                   ))}
                 </tbody>
                 {totals && (
-                  <tfoot className="bg-[#F8FAFC] font-semibold">
+                  <tfoot className="bg-ps-bg font-semibold">
                     <tr className="border-t-2">
                       <td className="px-3 py-2" colSpan={4}>Total</td>
                       <td className="px-3 py-2 text-right font-mono">{rupees(totals.taxable)}</td>
@@ -411,9 +411,9 @@ function GSTDashboard({ clientId }: { clientId: string }) {
                     : "bg-blue-50 text-blue-700 ring-blue-200"}`}>
           {quarterly ? "QRMP — quarterly returns, monthly payment" : "Monthly filer"}
         </span>
-        <span className="text-[#94A3B8]">Period {data.currentPeriod}</span>
+        <span className="text-ps-hint">Period {data.currentPeriod}</span>
         {quarterly && data.monthInQuarter && (
-          <span className="text-[#94A3B8]">· month {data.monthInQuarter} of the quarter</span>
+          <span className="text-ps-hint">· month {data.monthInQuarter} of the quarter</span>
         )}
         {quarterly && data.stateCategory === null && (
           <span className="px-2 py-1 rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200">
@@ -424,13 +424,13 @@ function GSTDashboard({ clientId }: { clientId: string }) {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded border p-4 bg-blue-50">
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-ps-label">
             GSTR-1 due date{quarterly ? " (quarter)" : ""}
           </p>
           <p className="font-semibold">{data.gstr1Due}</p>
         </div>
         <div className="rounded border p-4 bg-amber-50">
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-ps-label">
             GSTR-3B due date{quarterly ? " (quarter)" : ""}
           </p>
           <p className="font-semibold">{data.gstr3bDue}</p>
@@ -443,17 +443,17 @@ function GSTDashboard({ clientId }: { clientId: string }) {
       {quarterly && (
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded border p-4 bg-red-50">
-            <p className="text-xs text-[#64748B]">PMT-06 challan (tax is still paid monthly)</p>
+            <p className="text-xs text-ps-label">PMT-06 challan (tax is still paid monthly)</p>
             <p className="font-semibold">
               {data.pmt06Due ?? "Not due — this month's tax is paid with the quarterly return"}
             </p>
           </div>
           <div className="rounded border p-4">
-            <p className="text-xs text-[#64748B]">IFF — optional, B2B only</p>
+            <p className="text-xs text-ps-label">IFF — optional, B2B only</p>
             <p className="font-semibold">
               {data.iffDue ?? "Not applicable in the last month of a quarter"}
             </p>
-            <p className="text-[10px] text-[#94A3B8] mt-1">
+            <p className="text-[10px] text-ps-hint mt-1">
               Upload B2B invoices so the customer&apos;s ITC does not wait for the quarter.
               Nothing is due if it is not used.
             </p>
@@ -655,9 +655,9 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       </div>
 
       {showCompute && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">Compute GSTR-1 from Books</p>
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-ps-label">
             Derives GSTR-1 entirely from posted sales invoices and issued credit/debit notes,
             and reconciles the output tax to the General Ledger. No manual entry.
           </p>
@@ -690,9 +690,9 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   )}
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-sm">
-                  <div><p className="text-xs text-[#64748B]">Invoices</p><p className="font-medium">{computeResult.invoice_count as number}</p></div>
-                  <div><p className="text-xs text-[#64748B]">Taxable Total</p><p className="font-medium">{rupees(computeResult.taxable_total_paise as number)}</p></div>
-                  <div><p className="text-xs text-[#64748B]">Tax Total</p><p className="font-medium">{rupees(computeResult.tax_total_paise as number)}</p></div>
+                  <div><p className="text-xs text-ps-label">Invoices</p><p className="font-medium">{computeResult.invoice_count as number}</p></div>
+                  <div><p className="text-xs text-ps-label">Taxable Total</p><p className="font-medium">{rupees(computeResult.taxable_total_paise as number)}</p></div>
+                  <div><p className="text-xs text-ps-label">Tax Total</p><p className="font-medium">{rupees(computeResult.tax_total_paise as number)}</p></div>
                 </div>
                 {/* WHAT THE VALIDATOR SAID (GST-16). `gstr1_from_books` has run
                     it and returned `validation_errors`, `validation_warnings`
@@ -720,7 +720,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       )}
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">New GSTR-1</p>
           <input placeholder="Period (MMYYYY e.g. 042025)" value={period}
             onChange={(e) => setPeriod(e.target.value)}
@@ -757,7 +757,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       {loading ? <TableSkeleton cols={5} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#F8FAFC] text-left">
+            <tr className="bg-ps-bg text-left">
               <th className="px-3 py-2 border-b">Period</th>
               <th className="px-3 py-2 border-b">GSTIN</th>
               <th className="px-3 py-2 border-b">Taxable</th>
@@ -767,7 +767,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {returns.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
+              <tr key={r.id as string} className="border-b hover:bg-ps-bg">
                 <td className="px-3 py-2">{r.period as string}</td>
                 <td className="px-3 py-2 text-xs">{r.gstin as string}</td>
                 <td className="px-3 py-2">{rupees((r.total_taxable_paise as number) ?? 0)}</td>
@@ -779,7 +779,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "draft" && (
                     <button onClick={() => updateStatus(r.id as string, "validated")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9]">Validate</button>
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Validate</button>
                   )}
                   {r.status === "validated" && (
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
@@ -804,7 +804,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                     </button>
                   )}
                   {r.status === "submitted" && (
-                    <span className="text-xs text-[#64748B]">
+                    <span className="text-xs text-ps-label">
                       {(r.arn as string) ? `ARN ${r.arn as string}` : "filed — no ARN recorded"}
                     </span>
                   )}
@@ -814,10 +814,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
             {loadError ? (
               <tr><td colSpan={5} className="px-3 py-6 text-center">
                 <p className="text-sm text-red-600 font-medium">{loadError}</p>
-                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : returns.length === 0 && (
-              <tr><td colSpan={5} className="px-3 py-4 text-center text-[#94A3B8]">No GSTR-1 returns yet.</td></tr>
+              <tr><td colSpan={5} className="px-3 py-4 text-center text-ps-hint">No GSTR-1 returns yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -1100,9 +1100,9 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       </div>
 
       {showCompute && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">Compute GSTR-3B from Books</p>
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-ps-label">
             Derives GSTR-3B entirely from posted sales/purchase documents (including issued
             credit/debit notes) and reconciles output tax and ITC to the General Ledger.
           </p>
@@ -1114,7 +1114,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               <input type="date" value={filedOn} aria-label="Date filed"
                 onChange={(e) => setFiledOn(e.target.value)}
                 className="w-full border rounded px-3 py-1.5 text-sm" />
-              <p className="text-[10px] text-[#94A3B8] mt-0.5">
+              <p className="text-[10px] text-ps-hint mt-0.5">
                 Date filed — optional. Fill it to see §50 interest.
               </p>
             </div>
@@ -1151,14 +1151,14 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                   )}
                 </div>
                 <div className="grid grid-cols-4 gap-3 text-sm">
-                  <div><p className="text-xs text-[#64748B]">Tax Liability</p><p className="font-medium">{rupees(computeResult.tax_liability_paise as number)}</p></div>
-                  <div><p className="text-xs text-[#64748B]">ITC Claimed</p><p className="font-medium">{rupees(computeResult.itc_claimed_paise as number)}</p></div>
+                  <div><p className="text-xs text-ps-label">Tax Liability</p><p className="font-medium">{rupees(computeResult.tax_liability_paise as number)}</p></div>
+                  <div><p className="text-xs text-ps-label">ITC Claimed</p><p className="font-medium">{rupees(computeResult.itc_claimed_paise as number)}</p></div>
                   {/* The set-off residual, LABELLED as such. Beside it is a
                       "Tax Liability" tile that already includes the reverse
                       charge, so a bare "Net Tax" left this panel showing a
                       liability with 3.1(d) in it and a net without, and nothing
                       bridging the two. */}
-                  <div><p className="text-xs text-[#64748B]">After set-off</p><p className="font-medium">{rupees(computeResult.net_tax_paise as number)}</p></div>
+                  <div><p className="text-xs text-ps-label">After set-off</p><p className="font-medium">{rupees(computeResult.net_tax_paise as number)}</p></div>
                   {/* Net Tax of zero is true both when liability and credit cancel
                       out and when credit exceeds liability by lakhs. Apex's April
                       2026 showed zero over Rs 36,54,961.65 of unused credit, with
@@ -1166,7 +1166,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       computed in apps/api as the residual of the same set-off
                       that produced Net Tax, so the two cannot disagree. */}
                   <div>
-                    <p className="text-xs text-[#64748B]">Credit Carried Forward</p>
+                    <p className="text-xs text-ps-label">Credit Carried Forward</p>
                     <p className={cf > 0 ? "font-medium text-emerald-700" : "font-medium"}>{rupees(cf)}</p>
                   </div>
                 </div>
@@ -1176,30 +1176,30 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     §9(3)/(4) tax is cash, on top of whatever the set-off left.
                     This screen showed the residual alone and called it Net Tax,
                     which is the figure a CA would have carried to the payment. */}
-                <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-sm space-y-1">
+                <div className="rounded-lg border border-ps-border bg-ps-bg p-3 text-sm space-y-1">
                   <div className="flex justify-between">
-                    <span className="text-[#64748B]">Table 6 — payable after set-off</span>
+                    <span className="text-ps-label">Table 6 — payable after set-off</span>
                     <span className="font-mono">{rupees(computeResult.net_tax_paise as number)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-[#64748B]">
+                    <span className="text-ps-label">
                       Table 3.1(d) — reverse charge, payable in cash
                     </span>
                     <span className="font-mono">{rupees((computeResult.rcm_cash_paise as number) ?? 0)}</span>
                   </div>
-                  <div className="flex justify-between border-t border-[#E2E8F0] pt-1 font-semibold text-[#0F172A]">
+                  <div className="flex justify-between border-t border-ps-border pt-1 font-semibold text-ps-ink">
                     <span>Cash payable — the challan</span>
                     <span className="font-mono">{rupees((computeResult.cash_payable_paise as number) ?? (computeResult.net_tax_paise as number))}</span>
                   </div>
                   {((computeResult.rcm_cash_paise as number) ?? 0) > 0 && (
-                    <p className="text-[11px] text-[#64748B] pt-0.5">
+                    <p className="text-[11px] text-ps-label pt-0.5">
                       Input credit cannot pay reverse-charge tax (CGST §49(4) read with §2(82)),
                       so it is paid in cash whatever credit is available.
                     </p>
                   )}
                 </div>
                 {cf > 0 && (
-                  <p className="text-xs text-[#64748B]">
+                  <p className="text-xs text-ps-label">
                     Input credit exceeded this period&apos;s liability, so there is no tax to
                     pay from the credit ledger and {rupees(cf)} carries into the next return.
                   </p>
@@ -1230,12 +1230,12 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     Everything below already came back in `working` — it was
                     fetched and thrown away. */}
                 <details className="border rounded">
-                  <summary className="px-3 py-2 text-sm font-medium cursor-pointer select-none text-[#334155]">
+                  <summary className="px-3 py-2 text-sm font-medium cursor-pointer select-none text-ps-body">
                     Table-by-table breakdown
                   </summary>
                   {(() => {
                     const w = computeResult.working as Record<string, Record<string, number>> | undefined;
-                    if (!w) return <p className="px-3 pb-3 text-xs text-[#94A3B8]">No working available.</p>;
+                    if (!w) return <p className="px-3 pb-3 text-xs text-ps-hint">No working available.</p>;
                     const out = w.outward ?? {};
                     const itcW = w.itc ?? {};
                     const revP = (w.itc_reversal as unknown as { permanent_paise?: Record<string, number> })?.permanent_paise ?? {};
@@ -1254,8 +1254,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                                  drill?: string) => {
                       const total = (i ?? 0) + (c ?? 0) + (sg ?? 0);
                       return (
-                        <tr key={label} className="border-t hover:bg-[#F8FAFC]">
-                          <td className="px-3 py-1.5 text-[#475569]">
+                        <tr key={label} className="border-t hover:bg-ps-bg">
+                          <td className="px-3 py-1.5 text-ps-label">
                             {drill ? (
                               <button
                                 onClick={() => setDetail({
@@ -1277,7 +1277,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     return (
                       <div className="px-3 pb-3 overflow-x-auto">
                         <table className="w-full text-xs">
-                          <thead className="text-[#94A3B8]">
+                          <thead className="text-ps-hint">
                             <tr>
                               <th className="px-3 py-1.5 text-left font-medium">&nbsp;</th>
                               <th className="px-3 py-1.5 text-right font-medium">IGST</th>
@@ -1302,7 +1302,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                                  np.igst_paise, np.cgst_paise, np.sgst_paise)}
                           </tbody>
                         </table>
-                        <p className="text-[10px] text-[#94A3B8] mt-2">
+                        <p className="text-[10px] text-ps-hint mt-2">
                           Click a blue line to see the documents behind it — the detail
                           report, which sums to the figure beside it. 4(C) and Table 6 are
                           arithmetic over the lines above, so they have no documents of
@@ -1328,7 +1328,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       )}
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">New GSTR-3B</p>
           <input placeholder="Period (MMYYYY)" value={period}
             onChange={(e) => setPeriod(e.target.value)}
@@ -1350,7 +1350,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#F8FAFC] text-left">
+            <tr className="bg-ps-bg text-left">
               <th className="px-3 py-2 border-b">Period</th>
               <th className="px-3 py-2 border-b">Tax Liability</th>
               <th className="px-3 py-2 border-b">ITC Claimed</th>
@@ -1362,7 +1362,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {returns.flatMap((r) => [
-              <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
+              <tr key={r.id as string} className="border-b hover:bg-ps-bg">
                 <td className="px-3 py-2">{r.period as string}</td>
                 <td className="px-3 py-2">{rupees((r.tax_liability_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">{rupees((r.itc_claimed_paise as number) ?? 0)}</td>
@@ -1384,7 +1384,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                   {r.status === "draft" && (
                     <button onClick={() => updateStatus(r.id as string, "validated")}
                       disabled={busyRow === r.id}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9] disabled:opacity-40">
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted disabled:opacity-40">
                       {busyRow === r.id ? "Working…" : "Validate"}</button>
                   )}
                   {r.status === "validated" && (
@@ -1426,7 +1426,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       <button onClick={() => recheck(r.id as string)}
                         disabled={busyRow === r.id}
                         title="Check whether the books have changed since this was computed"
-                        className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9] disabled:opacity-40">
+                        className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted disabled:opacity-40">
                         {busyRow === r.id ? "…" : "Recheck"}
                       </button>
                       <button onClick={() => deleteReturn(r.id as string, r.period as string)}
@@ -1480,10 +1480,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             {loadError ? (
               <tr><td colSpan={6} className="px-3 py-6 text-center">
                 <p className="text-sm text-red-600 font-medium">{loadError}</p>
-                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : returns.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No GSTR-3B returns yet.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No GSTR-3B returns yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -1616,7 +1616,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div>
         <h3 className="font-medium">GSTR-2B Reconciliation</h3>
-        <p className="text-xs text-[#64748B] mt-0.5">
+        <p className="text-xs text-ps-label mt-0.5">
           Paste the GSTR-2B JSON exactly as downloaded from the portal. The purchase
           bills are read from this client&apos;s own books — nothing needs exporting.
         </p>
@@ -1626,7 +1626,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
           onChange={(e) => setPeriod(e.target.value)}
           className="w-full border rounded px-3 py-1.5 text-sm" />
         {saved && saved.record_count > 0 && (
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-ps-label">
             Last reconciled for this period: {saved.record_count} document(s) —{" "}
             {Object.entries(saved.by_status).map(([k, v]) => `${k}: ${v}`).join(", ")}.
           </p>
@@ -1664,7 +1664,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
               GSTIN {result.gstin} · 2B for {result.return_period_in_file}
               {result.generated_on ? ` · generated ${result.generated_on}` : ""}
             </p>
-            <p className="text-xs text-[#64748B] mt-0.5">
+            <p className="text-xs text-ps-label mt-0.5">
               {result.portal_document_count} document(s) in the file against{" "}
               {result.book_bill_count} bill(s) in the books for this period.
             </p>
@@ -1674,15 +1674,15 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
               "how much credit may I take this month". */}
           <div className="grid grid-cols-3 gap-3 text-sm">
             <div>
-              <p className="text-xs text-[#64748B]">Credit the books claim</p>
+              <p className="text-xs text-ps-label">Credit the books claim</p>
               <p className="font-medium">{rupees(summary.books_tax_paise)}</p>
             </div>
             <div>
-              <p className="text-xs text-[#64748B]">Available per GSTR-2B</p>
+              <p className="text-xs text-ps-label">Available per GSTR-2B</p>
               <p className="font-medium text-green-700">{rupees(summary.itc_available_per_2b_paise)}</p>
             </div>
             <div>
-              <p className="text-xs text-[#64748B]">At risk — supplier has not filed</p>
+              <p className="text-xs text-ps-label">At risk — supplier has not filed</p>
               <p className="font-medium text-red-700">{rupees(summary.itc_at_risk_paise)}</p>
             </div>
           </div>
@@ -1705,20 +1705,20 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
                 <button key={b.status} onClick={() => setBucket(b.status)}
                   title={b.hint}
                   className={`text-xs px-3 py-1.5 rounded-lg border ${
-                    bucket === b.status ? "border-blue-500 bg-blue-50" : "border-[#E2E8F0]"}`}>
+                    bucket === b.status ? "border-blue-500 bg-blue-50" : "border-ps-border"}`}>
                   <span className={b.tone}>{b.label}</span>{" "}
                   <span className="font-medium">{n}</span>
                 </button>
               );
             })}
           </div>
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-ps-label">
             {RECON_2B_BUCKETS.find((b) => b.status === bucket)?.hint}
           </p>
 
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="text-[#94A3B8] border-b">
+              <thead className="text-ps-hint border-b">
                 <tr>
                   <th className="text-left py-1.5 pr-3 font-medium">Supplier</th>
                   <th className="text-left py-1.5 pr-3 font-medium">Document</th>
@@ -1729,13 +1729,13 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
               </thead>
               <tbody>
                 {shown.length === 0 && (
-                  <tr><td colSpan={5} className="py-3 text-[#94A3B8]">Nothing in this bucket.</td></tr>
+                  <tr><td colSpan={5} className="py-3 text-ps-hint">Nothing in this bucket.</td></tr>
                 )}
                 {shown.map((m, i) => (
                   <tr key={i} className="border-b last:border-0">
                     <td className="py-1.5 pr-3">
                       {m.supplier_name || m.supplier_gstin || "—"}
-                      <span className="block text-[10px] text-[#94A3B8]">{m.supplier_gstin}</span>
+                      <span className="block text-[10px] text-ps-hint">{m.supplier_gstin}</span>
                     </td>
                     <td className="py-1.5 pr-3">
                       {m.document_number || m.bill_no || "—"}
@@ -1760,10 +1760,10 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
 
           {(result.defaulters?.length ?? 0) > 0 && (
             <div>
-              <p className="text-sm font-medium text-[#334155]">
+              <p className="text-sm font-medium text-ps-body">
                 Suppliers to chase — worst first
               </p>
-              <p className="text-xs text-[#64748B] mb-1">
+              <p className="text-xs text-ps-label mb-1">
                 Each of these has bills on our books that they have not filed. Until
                 they do, §16(2)(aa) holds the credit back.
               </p>
@@ -1807,7 +1807,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
   if (!data) return (
     <div className="text-center py-6 space-y-2">
       <p className="text-sm text-red-500">{loadError ?? "Failed to load filing history."}</p>
-      <button onClick={load} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+      <button onClick={load} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
     </div>
   );
 
@@ -1823,7 +1823,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
       <h3 className="font-medium">Filing History</h3>
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="bg-[#F8FAFC] text-left">
+          <tr className="bg-ps-bg text-left">
             <th className="px-3 py-2 border-b">Type</th>
             <th className="px-3 py-2 border-b">Period</th>
             <th className="px-3 py-2 border-b">ARN</th>
@@ -1832,7 +1832,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
         </thead>
         <tbody>
           {all.map((r) => (
-            <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
+            <tr key={r.id as string} className="border-b hover:bg-ps-bg">
               <td className="px-3 py-2 font-medium">{r.type as string}</td>
               <td className="px-3 py-2">{r.period as string}</td>
               <td className="px-3 py-2 text-xs">{(r.arn as string) ?? "—"}</td>
@@ -1844,7 +1844,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
             </tr>
           ))}
           {all.length === 0 && (
-            <tr><td colSpan={4} className="px-3 py-4 text-center text-[#94A3B8]">No filed returns yet.</td></tr>
+            <tr><td colSpan={4} className="px-3 py-4 text-center text-ps-hint">No filed returns yet.</td></tr>
           )}
         </tbody>
       </table>
@@ -1943,12 +1943,12 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
         <div className="space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
           <button onClick={load}
-            className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">
+            className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">
             Retry
           </button>
         </div>
       ) : !draft ? (
-        <p className="text-sm text-[#94A3B8]">
+        <p className="text-sm text-ps-hint">
           No GSTR-9 draft for FY {fy} yet. Drafts are saved from the year&apos;s
           reviewed GSTR-1 and GSTR-3B returns.
         </p>
@@ -1969,7 +1969,7 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
               ["Total tax", draft.total_tax_paise],
             ] as [string, unknown][]).map(([label, paise]) => (
               <div key={label} className="rounded border p-3">
-                <p className="text-xs text-[#64748B]">{label}</p>
+                <p className="text-xs text-ps-label">{label}</p>
                 <p className="font-medium">{rupees((paise as number) ?? 0)}</p>
               </div>
             ))}
@@ -2028,7 +2028,7 @@ export default function GSTWorkspacePage() {
   const [tab, setTab] = useState<GSTTab>("dashboard");
 
   if (!clientId || clientId === "_placeholder") {
-    return <p className="text-sm text-[#64748B] p-6">Select a client to view GST workspace.</p>;
+    return <p className="text-sm text-ps-label p-6">Select a client to view GST workspace.</p>;
   }
 
   return (
@@ -2046,7 +2046,7 @@ export default function GSTWorkspacePage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
                 ? "border-blue-600 text-blue-700"
-                : "border-transparent text-[#64748B] hover:text-[#334155]"
+                : "border-transparent text-ps-label hover:text-ps-body"
             }`}>
             {t.label}
           </button>

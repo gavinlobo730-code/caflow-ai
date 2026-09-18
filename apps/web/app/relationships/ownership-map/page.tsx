@@ -115,10 +115,10 @@ export default function OwnershipMapPage() {
   const OWNERSHIP_TYPES = ["Director", "Partner", "Trustee", "Proprietor", "Karta", "Member", "Shareholder"];
 
   return (
-    <div className="p-6 space-y-6 bg-[#F8FAFC] min-h-full">
+    <div className="p-6 space-y-6 bg-ps-bg min-h-full">
       <div>
-        <h1 className="text-2xl font-bold text-[#182350] flex items-center gap-2">
-          <PieChart className="w-6 h-6 text-[#182350]" />
+        <h1 className="text-2xl font-bold text-brand flex items-center gap-2">
+          <PieChart className="w-6 h-6 text-brand" />
           Ownership Map
         </h1>
         <p className="text-sm text-gray-500 mt-1">
@@ -132,7 +132,7 @@ export default function OwnershipMapPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
-              className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#182350]"
+              className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-brand"
               placeholder="Search entity…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -141,7 +141,7 @@ export default function OwnershipMapPage() {
 
           {loading && (
             <div className="flex items-center justify-center py-12">
-              <div className="w-5 h-5 border-2 border-[#182350] border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
             </div>
           )}
 
@@ -162,8 +162,8 @@ export default function OwnershipMapPage() {
                 onClick={() => selectEntity(e)}
                 className={`w-full text-left p-3 rounded-lg border transition-colors ${
                   selected?.id === e.id
-                    ? "bg-[#AFD2FA]/30 border-[#182350]/30"
-                    : "bg-white border-gray-200 hover:border-[#182350]/20"
+                    ? "bg-brand-light/30 border-brand/30"
+                    : "bg-white border-gray-200 hover:border-brand/20"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -194,7 +194,7 @@ export default function OwnershipMapPage() {
             <Card className="bg-white border-gray-200 shadow-sm">
               <CardContent className="p-5 space-y-5">
                 <div>
-                  <h2 className="text-lg font-semibold text-[#182350]">{selected.full_name}</h2>
+                  <h2 className="text-lg font-semibold text-brand">{selected.full_name}</h2>
                   <Badge
                     className={`mt-1 ${
                       ENTITY_TYPE_COLORS[selected.entity_type] ?? "bg-gray-100 text-gray-600"
@@ -209,7 +209,7 @@ export default function OwnershipMapPage() {
 
                 {detailLoading && (
                   <div className="flex items-center justify-center py-8">
-                    <div className="w-5 h-5 border-2 border-[#182350] border-t-transparent rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
                   </div>
                 )}
 
@@ -269,11 +269,11 @@ export default function OwnershipMapPage() {
                               >
                                 <Link
                                   href={`/relationships/${r.to_entity_id}`}
-                                  className="text-sm text-[#182350] hover:text-[#182350]/70"
+                                  className="text-sm text-brand hover:text-brand/70"
                                 >
                                   {r.to_entity_name ?? r.to_entity_id}
                                 </Link>
-                                <Badge className="bg-[#182350]/10 text-[#182350] text-xs">
+                                <Badge className="bg-brand/10 text-brand text-xs">
                                   {r.relationship_type}
                                 </Badge>
                               </div>
@@ -300,7 +300,7 @@ export default function OwnershipMapPage() {
                               >
                                 <Link
                                   href={`/relationships/${r.from_entity_id}`}
-                                  className="text-sm text-[#182350] hover:text-[#182350]/70"
+                                  className="text-sm text-brand hover:text-brand/70"
                                 >
                                   {r.from_entity_name ?? r.from_entity_id}
                                 </Link>

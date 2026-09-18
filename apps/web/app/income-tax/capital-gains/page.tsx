@@ -463,26 +463,26 @@ export default function CapitalGainsPage() {
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/income-tax" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft className="w-4 h-4" />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Capital Gains</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">IT Act Section 45 — Capital Gains Tax (Budget 2024 rates)</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Capital Gains</h1>
+          <p className="text-sm text-ps-label mt-0.5">IT Act Section 45 — Capital Gains Tax (Budget 2024 rates)</p>
         </div>
       </div>
 
       {/* Tab switcher */}
-      <div className="flex border-b border-[#E2E8F0]">
+      <div className="flex border-b border-ps-border">
         <button
           onClick={() => setActiveTab("calculator")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "calculator" ? "border-blue-600 text-blue-600" : "border-transparent text-[#64748B] hover:text-[#334155]"}`}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "calculator" ? "border-blue-600 text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"}`}
         >
           <Calculator className="w-4 h-4" /> Calculator
         </button>
         <button
           onClick={() => setActiveTab("register")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "register" ? "border-blue-600 text-blue-600" : "border-transparent text-[#64748B] hover:text-[#334155]"}`}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "register" ? "border-blue-600 text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"}`}
         >
           <BookOpen className="w-4 h-4" /> Register
         </button>
@@ -493,15 +493,15 @@ export default function CapitalGainsPage() {
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Input Form */}
-            <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
+            <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <Calculator className="w-4 h-4 text-blue-600" />
-                <h2 className="text-sm font-semibold text-[#0F172A]">Asset Details</h2>
+                <h2 className="text-sm font-semibold text-ps-ink">Asset Details</h2>
               </div>
 
               <div>
-                <label className="text-xs font-medium text-[#334155] block mb-1">Asset Type</label>
-                <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value as AnyCapitalGainsAssetType)}>
+                <label className="text-xs font-medium text-ps-body block mb-1">Asset Type</label>
+                <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value as AnyCapitalGainsAssetType)}>
                   {ASSET_TYPES_CALC.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
               </div>
@@ -515,15 +515,15 @@ export default function CapitalGainsPage() {
                   says so on the result. */}
               {askListing && (
                 <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">Listed on a recognised stock exchange in India?</label>
-                  <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <label className="text-xs font-medium text-ps-body block mb-1">Listed on a recognised stock exchange in India?</label>
+                  <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           aria-label="Listed security"
                           value={listedChoice} onChange={e => setListedChoice(e.target.value as "" | "listed" | "unlisted")}>
                     <option value="">Not recorded</option>
                     <option value="listed">Listed</option>
                     <option value="unlisted">Not listed</option>
                   </select>
-                  <p className="text-[11px] text-[#64748B] mt-1">
+                  <p className="text-[11px] text-ps-label mt-1">
                     Section 2(42A), proviso: a security listed in a recognised stock exchange
                     in India is long-term after 12 months; anything else needs 24.
                   </p>
@@ -535,11 +535,11 @@ export default function CapitalGainsPage() {
                   acquired before 01-02-2018. */}
               {askGrandfathering && (
                 <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">Fair market value on 31 Jan 2018 (₹) — the whole holding</label>
-                  <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <label className="text-xs font-medium text-ps-body block mb-1">Fair market value on 31 Jan 2018 (₹) — the whole holding</label>
+                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                          aria-label="Fair market value on 31 January 2018"
                          value={fmv2018Rupees} onChange={e => setFmv2018Rupees(e.target.value)} placeholder="Not recorded" />
-                  <p className="text-[11px] text-[#64748B] mt-1">
+                  <p className="text-[11px] text-ps-label mt-1">
                     Section 55(2)(ac): acquired before 1 February 2018, so the cost is deemed to
                     be the higher of the actual cost and the lower of this and the sale value.
                     Enter the value of the WHOLE holding sold, not a per-share price. Left
@@ -556,15 +556,15 @@ export default function CapitalGainsPage() {
                   in its note why it withheld the option, rather than claiming
                   a benefit nobody established a right to. */}
               <div>
-                <label className="text-xs font-medium text-[#334155] block mb-1">Assessee</label>
-                <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                <label className="text-xs font-medium text-ps-body block mb-1">Assessee</label>
+                <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         aria-label="Assessee type"
                         value={assesseeType} onChange={e => setAssesseeType(e.target.value as CapitalGainsAssesseeType)}>
                   <option value="unspecified">Not stated</option>
                   <option value="resident_individual_huf">Resident individual or HUF</option>
                   <option value="other">Company, LLP, firm or non-resident</option>
                 </select>
-                <p className="text-[11px] text-[#64748B] mt-1">
+                <p className="text-[11px] text-ps-label mt-1">
                   Section 112(1), fifth proviso: only a resident individual or HUF may pay the
                   lower of 12.5% without indexation and 20% with it, and only on immovable
                   property acquired before 23 July 2024.
@@ -573,36 +573,36 @@ export default function CapitalGainsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">Purchase Date</label>
-                  <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
+                  <label className="text-xs font-medium text-ps-body block mb-1">Purchase Date</label>
+                  <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">Sale Date</label>
-                  <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleDate} onChange={e => setSaleDate(e.target.value)} />
+                  <label className="text-xs font-medium text-ps-body block mb-1">Sale Date</label>
+                  <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleDate} onChange={e => setSaleDate(e.target.value)} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">Purchase Price (₹)</label>
-                  <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseRupees} onChange={e => setPurchaseRupees(e.target.value)} placeholder="0.00" />
+                  <label className="text-xs font-medium text-ps-body block mb-1">Purchase Price (₹)</label>
+                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseRupees} onChange={e => setPurchaseRupees(e.target.value)} placeholder="0.00" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">Sale Price (₹)</label>
-                  <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleRupees} onChange={e => setSaleRupees(e.target.value)} placeholder="0.00" />
+                  <label className="text-xs font-medium text-ps-body block mb-1">Sale Price (₹)</label>
+                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleRupees} onChange={e => setSaleRupees(e.target.value)} placeholder="0.00" />
                 </div>
               </div>
 
               {(assetType === "property" || assetType === "gold") && (
                 <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">Improvement Costs (₹) — optional</label>
-                  <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={improvementRupees} onChange={e => setImprovementRupees(e.target.value)} placeholder="0.00" />
+                  <label className="text-xs font-medium text-ps-body block mb-1">Improvement Costs (₹) — optional</label>
+                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={improvementRupees} onChange={e => setImprovementRupees(e.target.value)} placeholder="0.00" />
                 </div>
               )}
 
               {showCII && purchaseFY && saleFY && (
-                <div className="bg-[#F8FAFC] rounded-lg px-3 py-2">
-                  <p className="text-[10px] text-[#94A3B8]">
+                <div className="bg-ps-bg rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-ps-hint">
                     Purchase FY: {purchaseFY} (CII: {ciiByFy[purchaseFY] ?? "—"}) · Sale FY: {saleFY} (CII: {ciiByFy[saleFY] ?? "—"})
                   </p>
                 </div>
@@ -615,51 +615,51 @@ export default function CapitalGainsPage() {
                 <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{computeError}</div>
               )}
               {!result ? (
-                <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 flex items-center justify-center h-full min-h-[200px]">
+                <div className="bg-white rounded-xl border border-ps-muted p-5 flex items-center justify-center h-full min-h-[200px]">
                   <div className="text-center">
                     <Calculator className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                    <p className="text-sm text-[#94A3B8]">
+                    <p className="text-sm text-ps-hint">
                       {computing ? "Computing…" : "Enter asset details to compute capital gains"}
                     </p>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-                    <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wide mb-3">Classification</h3>
+                  <div className="bg-white rounded-xl border border-ps-muted p-4">
+                    <h3 className="text-xs font-semibold text-ps-label uppercase tracking-wide mb-3">Classification</h3>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <p className="text-xs text-[#94A3B8]">Holding Period</p>
-                        <p className="text-sm font-semibold text-[#0F172A]">{result.holding_months} months</p>
+                        <p className="text-xs text-ps-hint">Holding Period</p>
+                        <p className="text-sm font-semibold text-ps-ink">{result.holding_months} months</p>
                       </div>
                       <div>
-                        <p className="text-xs text-[#94A3B8]">Classification</p>
+                        <p className="text-xs text-ps-hint">Classification</p>
                         <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.is_long_term ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
                           {result.is_long_term ? "Long Term" : "Short Term"} Capital Gain
                         </span>
                       </div>
                       <div>
-                        <p className="text-xs text-[#94A3B8]">Capital Gain</p>
+                        <p className="text-xs text-ps-hint">Capital Gain</p>
                         <p className={`text-sm font-semibold ${result.gain_paise >= 0 ? "text-green-700" : "text-red-700"}`}>
                           {result.gain_paise >= 0 ? "+" : ""}₹{(result.gain_paise / 100).toLocaleString("en-IN")}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs text-[#94A3B8]">Applicable Rate</p>
-                        <p className="text-sm font-semibold text-[#0F172A]">{result.tax_rate_percent}%</p>
+                        <p className="text-xs text-ps-hint">Applicable Rate</p>
+                        <p className="text-sm font-semibold text-ps-ink">{result.tax_rate_percent}%</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-                    <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wide mb-3">Tax Computation</h3>
+                  <div className="bg-white rounded-xl border border-ps-muted p-4">
+                    <h3 className="text-xs font-semibold text-ps-label uppercase tracking-wide mb-3">Tax Computation</h3>
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-[#475569]">Sale Price</span>
+                        <span className="text-ps-label">Sale Price</span>
                         <span className="font-medium">₹{((salePaise ?? 0) / 100).toLocaleString("en-IN")}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-[#475569]">Cost of Acquisition</span>
+                        <span className="text-ps-label">Cost of Acquisition</span>
                         <span className="font-medium">₹{((purchasePaise ?? 0) / 100).toLocaleString("en-IN")}</span>
                       </div>
                       {/* IT-19. Where s.55(2)(ac) substituted the cost, the gain
@@ -667,32 +667,32 @@ export default function CapitalGainsPage() {
                           working has to show it or the panel does not add up. */}
                       {result.grandfathered_cost_is_applied && (
                         <div className="flex justify-between text-sm">
-                          <span className="text-[#475569]">Deemed cost — s.55(2)(ac)</span>
+                          <span className="text-ps-label">Deemed cost — s.55(2)(ac)</span>
                           <span className="font-medium">₹{((result.cost_of_acquisition_paise ?? 0) / 100).toLocaleString("en-IN")}</span>
                         </div>
                       )}
                       {(improvementPaise ?? 0) > 0 && (
                         <div className="flex justify-between text-sm">
-                          <span className="text-[#475569]">Improvement Cost</span>
+                          <span className="text-ps-label">Improvement Cost</span>
                           <span className="font-medium">₹{((improvementPaise ?? 0) / 100).toLocaleString("en-IN")}</span>
                         </div>
                       )}
-                      <div className="border-t border-[#F1F5F9] pt-2 flex justify-between text-sm font-semibold">
-                        <span className="text-[#1E293B]">Capital Gain</span>
+                      <div className="border-t border-ps-muted pt-2 flex justify-between text-sm font-semibold">
+                        <span className="text-ps-ink">Capital Gain</span>
                         <span className={result.gain_paise >= 0 ? "text-green-700" : "text-red-700"}>
                           ₹{(result.gain_paise / 100).toLocaleString("en-IN")}
                         </span>
                       </div>
 
                       {showIndexation && (
-                        <div className="mt-3 border-t border-dashed border-[#F1F5F9] pt-3">
-                          <p className="text-xs font-medium text-[#64748B] mb-2">With Indexation ({result.tax_with_indexation_percent}%)</p>
+                        <div className="mt-3 border-t border-dashed border-ps-muted pt-3">
+                          <p className="text-xs font-medium text-ps-label mb-2">With Indexation ({result.tax_with_indexation_percent}%)</p>
                           <div className="flex justify-between text-sm">
-                            <span className="text-[#475569]">Indexed Cost (CII {ciiByFy[purchaseFY] ?? "—"} → {ciiByFy[saleFY] ?? "—"})</span>
+                            <span className="text-ps-label">Indexed Cost (CII {ciiByFy[purchaseFY] ?? "—"} → {ciiByFy[saleFY] ?? "—"})</span>
                             <span>₹{(result.indexed_cost_paise / 100).toLocaleString("en-IN")}</span>
                           </div>
                           <div className="flex justify-between text-sm font-semibold mt-1">
-                            <span className="text-[#1E293B]">Gain (indexed)</span>
+                            <span className="text-ps-ink">Gain (indexed)</span>
                             <span className={result.gain_with_indexation_paise >= 0 ? "text-green-700" : "text-red-700"}>
                               ₹{(result.gain_with_indexation_paise / 100).toLocaleString("en-IN")}
                             </span>
@@ -707,21 +707,21 @@ export default function CapitalGainsPage() {
                     {showIndexation ? (
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="text-[#475569]">Tax without indexation ({result.tax_rate_percent}%)</span>
+                          <span className="text-ps-label">Tax without indexation ({result.tax_rate_percent}%)</span>
                           <span className="font-medium">{fmtRs(result.tax_without_indexation_paise)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-[#475569]">Tax with indexation ({result.tax_with_indexation_percent}%)</span>
+                          <span className="text-ps-label">Tax with indexation ({result.tax_with_indexation_percent}%)</span>
                           <span className="font-medium">{fmtRs(result.tax_with_indexation_paise ?? 0)}</span>
                         </div>
                         <div className="border-t border-blue-200 pt-2 flex justify-between">
-                          <span className="text-sm font-semibold text-[#1E293B]">Recommended (lower)</span>
+                          <span className="text-sm font-semibold text-ps-ink">Recommended (lower)</span>
                           <span className="text-lg font-bold text-blue-700">{fmtRs(result.tax_liability_paise)}</span>
                         </div>
                       </div>
                     ) : (
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-[#475569]">Tax @ {result.tax_rate_percent}%</span>
+                        <span className="text-sm text-ps-label">Tax @ {result.tax_rate_percent}%</span>
                         <span className="text-2xl font-bold text-blue-700">{fmtRs(result.tax_liability_paise)}</span>
                       </div>
                     )}
@@ -747,20 +747,20 @@ export default function CapitalGainsPage() {
                     </div>
                   )}
                   {(result.caveats?.length ?? 0) > 0 && (
-                    <div className="bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] p-3">
+                    <div className="bg-ps-bg rounded-lg border border-ps-border p-3">
                       <ul className="space-y-1">
                         {result.caveats!.map((c, i) => (
-                          <li key={i} className="text-xs text-[#475569]">{c}</li>
+                          <li key={i} className="text-xs text-ps-label">{c}</li>
                         ))}
                       </ul>
                     </div>
                   )}
                   {(result.grandfathering_working?.length ?? 0) > 0 && (
-                    <div className="bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] p-3">
-                      <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide mb-1">Section 55(2)(ac) working</p>
+                    <div className="bg-ps-bg rounded-lg border border-ps-border p-3">
+                      <p className="text-xs font-semibold text-ps-label uppercase tracking-wide mb-1">Section 55(2)(ac) working</p>
                       <ul className="space-y-1">
                         {result.grandfathering_working!.map((w, i) => (
-                          <li key={i} className="text-xs text-[#475569]">{w}</li>
+                          <li key={i} className="text-xs text-ps-label">{w}</li>
                         ))}
                       </ul>
                     </div>
@@ -785,10 +785,10 @@ export default function CapitalGainsPage() {
           </div>
 
           {/* CII Table */}
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-[#0F172A]">Cost Inflation Index (CII) Table</h2>
-              <p className="text-xs text-[#94A3B8] mt-0.5">IT Act Section 48 — Base year FY 2001-02 = 100</p>
+              <h2 className="text-sm font-semibold text-ps-ink">Cost Inflation Index (CII) Table</h2>
+              <p className="text-xs text-ps-hint mt-0.5">IT Act Section 48 — Base year FY 2001-02 = 100</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -796,8 +796,8 @@ export default function CapitalGainsPage() {
                   <tr>
                     {ciiYears.map(y => (
                       <td key={y} className={`px-3 py-2 text-center border-r border-gray-50 ${purchaseFY === y || saleFY === y ? "bg-blue-50" : ""}`}>
-                        <p className="text-[10px] text-[#94A3B8]">FY {y}</p>
-                        <p className="text-xs font-semibold text-[#0F172A]">{ciiByFy[y]}</p>
+                        <p className="text-[10px] text-ps-hint">FY {y}</p>
+                        <p className="text-xs font-semibold text-ps-ink">{ciiByFy[y]}</p>
                       </td>
                     ))}
                   </tr>
@@ -814,7 +814,7 @@ export default function CapitalGainsPage() {
           {/* Client selector + Add button */}
           <div className="flex items-end gap-4 flex-wrap">
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1">Client</label>
+              <label className="text-xs font-medium text-ps-body block mb-1">Client</label>
               <div className="min-w-[200px]">
                 <ClientLookup
                   clients={clients}
@@ -858,7 +858,7 @@ export default function CapitalGainsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-[#F8FAFC] text-xs text-[#64748B] uppercase tracking-wide">
+                    <tr className="bg-ps-bg text-xs text-ps-label uppercase tracking-wide">
                       <th className="px-4 py-3 text-left">Asset</th>
                       <th className="px-4 py-3 text-left">Type</th>
                       <th className="px-4 py-3 text-left">Purchase</th>
@@ -872,24 +872,24 @@ export default function CapitalGainsPage() {
                       <th className="px-4 py-3"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#F8FAFC]">
+                  <tbody className="divide-y divide-ps-bg">
                     {records.map(r => {
                       const gain = r.sale_value_paise - r.purchase_cost_paise - r.improvement_cost_paise;
                       return (
-                        <tr key={r.id} className="hover:bg-[#F8FAFC]">
-                          <td className="px-4 py-3 font-medium text-[#0F172A] max-w-[160px] truncate">{r.asset_description}</td>
-                          <td className="px-4 py-3 text-[#475569] text-xs">{ASSET_TYPES_REG.find(a => a.value === r.asset_type)?.label ?? r.asset_type}</td>
-                          <td className="px-4 py-3 text-[#475569]">{r.purchase_date}</td>
-                          <td className="px-4 py-3 text-[#475569]">{r.sale_date}</td>
-                          <td className="px-4 py-3 text-right text-[#334155]">{fmtRs(r.purchase_cost_paise)}</td>
-                          <td className="px-4 py-3 text-right text-[#334155]">{fmtRs(r.sale_value_paise)}</td>
-                          <td className="px-4 py-3 text-right text-[#475569] text-xs">{r.indexed_cost_paise != null ? fmtRs(r.indexed_cost_paise) : "—"}</td>
+                        <tr key={r.id} className="hover:bg-ps-bg">
+                          <td className="px-4 py-3 font-medium text-ps-ink max-w-[160px] truncate">{r.asset_description}</td>
+                          <td className="px-4 py-3 text-ps-label text-xs">{ASSET_TYPES_REG.find(a => a.value === r.asset_type)?.label ?? r.asset_type}</td>
+                          <td className="px-4 py-3 text-ps-label">{r.purchase_date}</td>
+                          <td className="px-4 py-3 text-ps-label">{r.sale_date}</td>
+                          <td className="px-4 py-3 text-right text-ps-body">{fmtRs(r.purchase_cost_paise)}</td>
+                          <td className="px-4 py-3 text-right text-ps-body">{fmtRs(r.sale_value_paise)}</td>
+                          <td className="px-4 py-3 text-right text-ps-label text-xs">{r.indexed_cost_paise != null ? fmtRs(r.indexed_cost_paise) : "—"}</td>
                           <td className="px-4 py-3 text-center">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.gain_type === "LTCG" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
                               {r.gain_type ?? "—"}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right text-[#334155]">{r.tax_rate_percent != null ? `${r.tax_rate_percent}%` : "—"}</td>
+                          <td className="px-4 py-3 text-right text-ps-body">{r.tax_rate_percent != null ? `${r.tax_rate_percent}%` : "—"}</td>
                           <td className="px-4 py-3 text-center">
                             <button onClick={() => openExemption(r)}
                                     className="text-xs px-2 py-1 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors whitespace-nowrap">
@@ -899,7 +899,7 @@ export default function CapitalGainsPage() {
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-col items-end gap-1">
                               <span className={`text-xs font-semibold ${gain >= 0 ? "text-green-700" : "text-red-700"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
-                              <button onClick={() => handleDeleteRecord(r.id)} className="text-[#CBD5E1] hover:text-red-500 transition-colors">
+                              <button onClick={() => handleDeleteRecord(r.id)} className="text-ps-disabled hover:text-red-500 transition-colors">
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             </div>
@@ -908,7 +908,7 @@ export default function CapitalGainsPage() {
                       );
                     })}
                     {records.length === 0 && (
-                      <tr><td colSpan={11} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No capital gains transactions recorded yet.</td></tr>
+                      <tr><td colSpan={11} className="px-4 py-8 text-center text-ps-hint text-sm">No capital gains transactions recorded yet.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -922,17 +922,17 @@ export default function CapitalGainsPage() {
               a claim is in time, s.54F's proportion and s.54EC's cap are all
               domain/income_tax/reinvestment_exemption.py's answers. */}
           {exemptFor && (
-            <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <h2 className="text-sm font-semibold text-[#0F172A]">
+                    <h2 className="text-sm font-semibold text-ps-ink">
                       Reinvestment exemption — {exemptFor.asset_description}
                     </h2>
                   </div>
                   <button onClick={() => { setExemptFor(null); setExemption(null); }} aria-label="Close">
-                    <X className="w-4 h-4 text-[#94A3B8]" />
+                    <X className="w-4 h-4 text-ps-hint" />
                   </button>
                 </div>
 
@@ -943,9 +943,9 @@ export default function CapitalGainsPage() {
 
                   {exemption && (
                     <div className="grid grid-cols-3 gap-3">
-                      <div className="bg-[#F8FAFC] rounded-lg px-3 py-2">
-                        <p className="text-[11px] text-[#64748B]">Gain (s. 48)</p>
-                        <p className="text-sm font-semibold text-[#0F172A]">{fmtRs(exemption.gain_paise)}</p>
+                      <div className="bg-ps-bg rounded-lg px-3 py-2">
+                        <p className="text-[11px] text-ps-label">Gain (s. 48)</p>
+                        <p className="text-sm font-semibold text-ps-ink">{fmtRs(exemption.gain_paise)}</p>
                       </div>
                       <div className="bg-emerald-50 rounded-lg px-3 py-2">
                         <p className="text-[11px] text-emerald-700">Exempt</p>
@@ -972,27 +972,27 @@ export default function CapitalGainsPage() {
 
                   {exemption?.claims?.map(c => (
                     <div key={c.id ?? c.section}
-                         className={`rounded-lg border px-3 py-2.5 space-y-1.5 ${c.allowed ? "border-emerald-200 bg-emerald-50/40" : "border-[#E2E8F0] bg-[#F8FAFC]"}`}>
+                         className={`rounded-lg border px-3 py-2.5 space-y-1.5 ${c.allowed ? "border-emerald-200 bg-emerald-50/40" : "border-ps-border bg-ps-bg"}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-medium text-[#0F172A]">
+                          <p className="text-sm font-medium text-ps-ink">
                             s. {c.section} — {c.new_asset_description}
                           </p>
-                          <p className="text-[11px] text-[#64748B]">{c.heading}</p>
+                          <p className="text-[11px] text-ps-label">{c.heading}</p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className={`text-sm font-semibold ${c.allowed ? "text-emerald-700" : "text-[#94A3B8]"}`}>
+                          <p className={`text-sm font-semibold ${c.allowed ? "text-emerald-700" : "text-ps-hint"}`}>
                             {c.allowed ? fmtRs(c.exemption_paise) : "Not allowed"}
                           </p>
                           {c.deadline && (
-                            <p className="text-[11px] text-[#64748B]">
+                            <p className="text-[11px] text-ps-label">
                               by {c.deadline}{c.within_time === false ? " — missed" : ""}
                             </p>
                           )}
                         </div>
                       </div>
                       {c.working.map((w, i) => (
-                        <p key={`w${i}`} className="text-[11px] text-[#475569]">{w}</p>
+                        <p key={`w${i}`} className="text-[11px] text-ps-label">{w}</p>
                       ))}
                       {c.gaps.map((g, i) => (
                         <p key={`g${i}`} className="text-[11px] text-amber-900 flex gap-1.5">
@@ -1000,11 +1000,11 @@ export default function CapitalGainsPage() {
                         </p>
                       ))}
                       {c.caveats.map((v, i) => (
-                        <p key={`c${i}`} className="text-[11px] text-[#64748B] italic">{v}</p>
+                        <p key={`c${i}`} className="text-[11px] text-ps-label italic">{v}</p>
                       ))}
                       {c.id && (
                         <button onClick={() => removeClaim(c.id as string)} disabled={exemptBusy}
-                                className="text-[11px] text-[#94A3B8] hover:text-red-500 transition-colors">
+                                className="text-[11px] text-ps-hint hover:text-red-500 transition-colors">
                           Delete this claim
                         </button>
                       )}
@@ -1012,17 +1012,17 @@ export default function CapitalGainsPage() {
                   ))}
 
                   {exemption && exemption.caveats.map((v, i) => (
-                    <p key={i} className="text-[11px] text-[#64748B] italic">{v}</p>
+                    <p key={i} className="text-[11px] text-ps-label italic">{v}</p>
                   ))}
 
                   {/* ── record a claim ─────────────────────────────────── */}
                   <div className="border-t pt-4 space-y-3">
-                    <p className="text-xs font-semibold text-[#334155]">Record a claim</p>
+                    <p className="text-xs font-semibold text-ps-body">Record a claim</p>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-medium text-[#334155] block mb-1">Section</label>
-                        <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                        <label className="text-xs font-medium text-ps-body block mb-1">Section</label>
+                        <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                 value={claimForm.section}
                                 onChange={e => setClaimForm(f => ({ ...f, section: e.target.value as ReinvestmentSection }))}>
                           {(sectionInfo.length
@@ -1031,13 +1031,13 @@ export default function CapitalGainsPage() {
                             <option key={sec} value={sec}>s. {sec}</option>
                           ))}
                         </select>
-                        <p className="text-[11px] text-[#64748B] mt-1">
+                        <p className="text-[11px] text-ps-label mt-1">
                           {sectionInfo.find(x => x.section === claimForm.section)?.new_asset ?? ""}
                         </p>
                       </div>
                       <div>
-                        <label className="text-xs font-medium text-[#334155] block mb-1">Bought by</label>
-                        <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                        <label className="text-xs font-medium text-ps-body block mb-1">Bought by</label>
+                        <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                 aria-label="Acquisition kind"
                                 value={claimForm.acquisition_kind}
                                 onChange={e => setClaimForm(f => ({ ...f, acquisition_kind: e.target.value as "" | AcquisitionKind }))}>
@@ -1050,8 +1050,8 @@ export default function CapitalGainsPage() {
                     </div>
 
                     <div>
-                      <label className="text-xs font-medium text-[#334155] block mb-1">What was bought *</label>
-                      <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                      <label className="text-xs font-medium text-ps-body block mb-1">What was bought *</label>
+                      <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                              value={claimForm.new_asset_description}
                              onChange={e => setClaimForm(f => ({ ...f, new_asset_description: e.target.value }))}
                              placeholder="e.g. Flat 402, Prabhat Residency, Pune" />
@@ -1059,14 +1059,14 @@ export default function CapitalGainsPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-medium text-[#334155] block mb-1">Cost (₹)</label>
-                        <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                        <label className="text-xs font-medium text-ps-body block mb-1">Cost (₹)</label>
+                        <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                value={claimForm.cost_rs}
                                onChange={e => setClaimForm(f => ({ ...f, cost_rs: e.target.value }))} placeholder="0" />
                       </div>
                       <div>
-                        <label className="text-xs font-medium text-[#334155] block mb-1">Acquired on</label>
-                        <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                        <label className="text-xs font-medium text-ps-body block mb-1">Acquired on</label>
+                        <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                aria-label="Acquisition date"
                                value={claimForm.acquisition_date}
                                onChange={e => setClaimForm(f => ({ ...f, acquisition_date: e.target.value }))} />
@@ -1075,16 +1075,16 @@ export default function CapitalGainsPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-medium text-[#334155] block mb-1">
+                        <label className="text-xs font-medium text-ps-body block mb-1">
                           Capital Gains Accounts Scheme (₹)
                         </label>
-                        <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                        <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                value={claimForm.cgas_rs}
                                onChange={e => setClaimForm(f => ({ ...f, cgas_rs: e.target.value }))} placeholder="0" />
                       </div>
                       <div>
-                        <label className="text-xs font-medium text-[#334155] block mb-1">Deposited on</label>
-                        <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                        <label className="text-xs font-medium text-ps-body block mb-1">Deposited on</label>
+                        <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                aria-label="CGAS deposit date"
                                value={claimForm.cgas_date}
                                onChange={e => setClaimForm(f => ({ ...f, cgas_date: e.target.value }))} />
@@ -1096,14 +1096,14 @@ export default function CapitalGainsPage() {
                         the assessee owned no other house. */}
                     {claimForm.section === "54F" && (
                       <div>
-                        <label className="text-xs font-medium text-[#334155] block mb-1">
+                        <label className="text-xs font-medium text-ps-body block mb-1">
                           Other residential houses owned on the date of transfer
                         </label>
-                        <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                        <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                value={claimForm.other_houses}
                                onChange={e => setClaimForm(f => ({ ...f, other_houses: e.target.value }))}
                                placeholder="Leave blank if not established" />
-                        <p className="text-[11px] text-[#64748B] mt-1">
+                        <p className="text-[11px] text-ps-label mt-1">
                           s. 54F needs this and no ledger holds it. Blank is not zero —
                           the working says the claim cannot be tested until it is recorded.
                         </p>
@@ -1111,10 +1111,10 @@ export default function CapitalGainsPage() {
                     )}
                     {claimForm.section === "54B" && (
                       <div>
-                        <label className="text-xs font-medium text-[#334155] block mb-1">
+                        <label className="text-xs font-medium text-ps-body block mb-1">
                           Farmed in the two years before the transfer?
                         </label>
-                        <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                        <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                 aria-label="Agricultural use in the two preceding years"
                                 value={claimForm.agri_use}
                                 onChange={e => setClaimForm(f => ({ ...f, agri_use: e.target.value as "" | "yes" | "no" }))}>
@@ -1132,7 +1132,7 @@ export default function CapitalGainsPage() {
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-[#94A3B8] border-t pt-3">
+                  <p className="text-[11px] text-ps-hint border-t pt-3">
                     Every figure and window here is written from knowledge rather than read
                     off the bare Act — this environment cannot reach incometax.gov.in.
                     Check s. 54EC&apos;s ₹50 lakh, the six-month and two- and three-year
@@ -1146,30 +1146,30 @@ export default function CapitalGainsPage() {
 
           {/* Add Transaction Modal */}
           {showModal && (
-            <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between px-5 py-4 border-b">
-                  <h2 className="text-sm font-semibold text-[#0F172A]">Add Capital Gains Transaction</h2>
-                  <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-[#94A3B8]" /></button>
+                  <h2 className="text-sm font-semibold text-ps-ink">Add Capital Gains Transaction</h2>
+                  <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
                 </div>
                 <div className="px-5 py-4 space-y-4">
                   {regError && <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg">{regError}</div>}
 
                   <div>
-                    <label className="text-xs font-medium text-[#334155] block mb-1">Asset Description *</label>
-                    <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_description} onChange={e => setRegForm(f => ({ ...f, asset_description: e.target.value }))} placeholder="e.g. Reliance Industries Ltd — 100 shares" />
+                    <label className="text-xs font-medium text-ps-body block mb-1">Asset Description *</label>
+                    <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_description} onChange={e => setRegForm(f => ({ ...f, asset_description: e.target.value }))} placeholder="e.g. Reliance Industries Ltd — 100 shares" />
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-[#334155] block mb-1">Asset Type *</label>
-                    <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value as CapitalGainsRegisterAssetType }))}>
+                    <label className="text-xs font-medium text-ps-body block mb-1">Asset Type *</label>
+                    <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value as CapitalGainsRegisterAssetType }))}>
                       {ASSET_TYPES_REG.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                     </select>
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-[#334155] block mb-1">Sold as</label>
-                    <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <label className="text-xs font-medium text-ps-body block mb-1">Sold as</label>
+                    <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                             aria-label="What was sold, for the s.54 family"
                             value={regForm.transferred_asset_nature}
                             onChange={e => setRegForm(f => ({ ...f, transferred_asset_nature: e.target.value as "" | TransferredAssetNature }))}>
@@ -1178,7 +1178,7 @@ export default function CapitalGainsPage() {
                         <option key={n} value={n}>{NATURE_LABELS[n] ?? n}</option>
                       ))}
                     </select>
-                    <p className="text-[11px] text-[#64748B] mt-1">
+                    <p className="text-[11px] text-ps-label mt-1">
                       Decides which of ss. 54, 54B, 54EC and 54F can reach this transfer.
                       &quot;Immovable property&quot; above cannot say — s. 54 reaches a residential
                       house and s. 54F reaches an asset that is not one.
@@ -1190,8 +1190,8 @@ export default function CapitalGainsPage() {
                       over-states the tax, and names the gap on the preview. */}
                   {listingIsAsked(regForm.asset_type) && (
                     <div>
-                      <label className="text-xs font-medium text-[#334155] block mb-1">Listed on a recognised stock exchange in India?</label>
-                      <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      <label className="text-xs font-medium text-ps-body block mb-1">Listed on a recognised stock exchange in India?</label>
+                      <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               aria-label="Register listed security"
                               value={regForm.listed}
                               onChange={e => setRegForm(f => ({ ...f, listed: e.target.value as "" | "listed" | "unlisted" }))}>
@@ -1199,7 +1199,7 @@ export default function CapitalGainsPage() {
                         <option value="listed">Listed</option>
                         <option value="unlisted">Not listed</option>
                       </select>
-                      <p className="text-[11px] text-[#64748B] mt-1">
+                      <p className="text-[11px] text-ps-label mt-1">
                         Section 2(42A), proviso — a listed security (other than a unit) is
                         long-term after 12 months, everything else after 24. &quot;Bonds&quot; above
                         cannot say which this is.
@@ -1208,15 +1208,15 @@ export default function CapitalGainsPage() {
                   )}
 
                   <div>
-                    <label className="text-xs font-medium text-[#334155] block mb-1">Assessee</label>
-                    <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <label className="text-xs font-medium text-ps-body block mb-1">Assessee</label>
+                    <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                             aria-label="Register assessee type"
                             value={regForm.assessee_type} onChange={e => setRegForm(f => ({ ...f, assessee_type: e.target.value as CapitalGainsAssesseeType }))}>
                       <option value="unspecified">Not stated</option>
                       <option value="resident_individual_huf">Resident individual or HUF</option>
                       <option value="other">Company, LLP, firm or non-resident</option>
                     </select>
-                    <p className="text-[11px] text-[#64748B] mt-1">
+                    <p className="text-[11px] text-ps-label mt-1">
                       Section 112(1), fifth proviso — decides whether the 20%-with-indexation
                       option is available on property acquired before 23 July 2024.
                     </p>
@@ -1224,12 +1224,12 @@ export default function CapitalGainsPage() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-[#334155] block mb-1">Purchase Date *</label>
-                      <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_date} onChange={e => setRegForm(f => ({ ...f, purchase_date: e.target.value }))} />
+                      <label className="text-xs font-medium text-ps-body block mb-1">Purchase Date *</label>
+                      <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_date} onChange={e => setRegForm(f => ({ ...f, purchase_date: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-[#334155] block mb-1">Sale Date *</label>
-                      <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_date} onChange={e => setRegForm(f => ({ ...f, sale_date: e.target.value }))} />
+                      <label className="text-xs font-medium text-ps-body block mb-1">Sale Date *</label>
+                      <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_date} onChange={e => setRegForm(f => ({ ...f, sale_date: e.target.value }))} />
                     </div>
                   </div>
 
@@ -1238,13 +1238,13 @@ export default function CapitalGainsPage() {
                       date is asked above it because it is half the test. */}
                   {grandfatheringIsAsked(regForm.asset_type, regForm.purchase_date) && (
                     <div>
-                      <label className="text-xs font-medium text-[#334155] block mb-1">Fair market value on 31 Jan 2018 (₹) — the whole holding</label>
-                      <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      <label className="text-xs font-medium text-ps-body block mb-1">Fair market value on 31 Jan 2018 (₹) — the whole holding</label>
+                      <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                              aria-label="Register fair market value on 31 January 2018"
                              value={regForm.fmv_31_01_2018_rs}
                              onChange={e => setRegForm(f => ({ ...f, fmv_31_01_2018_rs: e.target.value }))}
                              placeholder="Not recorded" />
-                      <p className="text-[11px] text-[#64748B] mt-1">
+                      <p className="text-[11px] text-ps-label mt-1">
                         Section 55(2)(ac) — acquired before 1 February 2018, so the cost is
                         deemed to be the higher of the actual cost and the lower of this and
                         the sale value. The WHOLE holding, not a per-share price. Left blank,
@@ -1256,45 +1256,45 @@ export default function CapitalGainsPage() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-[#334155] block mb-1">Purchase Cost (₹)</label>
-                      <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_cost_rs} onChange={e => setRegForm(f => ({ ...f, purchase_cost_rs: e.target.value }))} placeholder="0" />
+                      <label className="text-xs font-medium text-ps-body block mb-1">Purchase Cost (₹)</label>
+                      <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_cost_rs} onChange={e => setRegForm(f => ({ ...f, purchase_cost_rs: e.target.value }))} placeholder="0" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-[#334155] block mb-1">Sale Value (₹)</label>
-                      <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_value_rs} onChange={e => setRegForm(f => ({ ...f, sale_value_rs: e.target.value }))} placeholder="0" />
+                      <label className="text-xs font-medium text-ps-body block mb-1">Sale Value (₹)</label>
+                      <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_value_rs} onChange={e => setRegForm(f => ({ ...f, sale_value_rs: e.target.value }))} placeholder="0" />
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-[#334155] block mb-1">Improvement Cost (₹) — optional</label>
-                    <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.improvement_cost_rs} onChange={e => setRegForm(f => ({ ...f, improvement_cost_rs: e.target.value }))} placeholder="0" />
+                    <label className="text-xs font-medium text-ps-body block mb-1">Improvement Cost (₹) — optional</label>
+                    <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.improvement_cost_rs} onChange={e => setRegForm(f => ({ ...f, improvement_cost_rs: e.target.value }))} placeholder="0" />
                   </div>
 
                   {/* Server-computed preview (STCG/LTCG, rate, indexed cost) */}
                   {regPreview && (
                     <div className="bg-blue-50 rounded-lg px-4 py-3 space-y-1">
                       <div className="flex justify-between text-xs">
-                        <span className="text-[#475569]">Holding Period</span>
-                        <span className="font-medium text-[#0F172A]">{regPreview.holding_months} months</span>
+                        <span className="text-ps-label">Holding Period</span>
+                        <span className="font-medium text-ps-ink">{regPreview.holding_months} months</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-[#475569]">Classification</span>
+                        <span className="text-ps-label">Classification</span>
                         <span className={`font-semibold ${regPreview.gain_type === "LTCG" ? "text-green-700" : "text-amber-700"}`}>{regPreview.gain_type}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-[#475569]">Tax Rate</span>
-                        <span className="font-medium text-[#0F172A]">{regPreview.tax_rate_percent}%</span>
+                        <span className="text-ps-label">Tax Rate</span>
+                        <span className="font-medium text-ps-ink">{regPreview.tax_rate_percent}%</span>
                       </div>
                       {regPreview.grandfathered_cost_is_applied && (
                         <div className="flex justify-between text-xs">
-                          <span className="text-[#475569]">Deemed cost — s.55(2)(ac)</span>
-                          <span className="font-medium text-[#0F172A]">{fmtRs(regPreview.cost_of_acquisition_paise ?? 0)}</span>
+                          <span className="text-ps-label">Deemed cost — s.55(2)(ac)</span>
+                          <span className="font-medium text-ps-ink">{fmtRs(regPreview.cost_of_acquisition_paise ?? 0)}</span>
                         </div>
                       )}
                       {regForm.asset_type === "property" && (
                         <div className="flex justify-between text-xs">
-                          <span className="text-[#475569]">Indexed Cost</span>
-                          <span className="font-medium text-[#0F172A]">{fmtRs(regPreview.indexed_cost_paise)}</span>
+                          <span className="text-ps-label">Indexed Cost</span>
+                          <span className="font-medium text-ps-ink">{fmtRs(regPreview.indexed_cost_paise)}</span>
                         </div>
                       )}
                     </div>
@@ -1317,7 +1317,7 @@ export default function CapitalGainsPage() {
                   {(regPreview?.caveats?.length ?? 0) > 0 && (
                     <ul className="space-y-1">
                       {regPreview!.caveats!.map((c, i) => (
-                        <li key={i} className="text-xs text-[#475569]">{c}</li>
+                        <li key={i} className="text-xs text-ps-label">{c}</li>
                       ))}
                     </ul>
                   )}

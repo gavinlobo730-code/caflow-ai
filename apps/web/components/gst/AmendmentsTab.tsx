@@ -44,7 +44,7 @@ function money(paise?: number | null) {
 }
 
 const FIELD =
-  "border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-[13px] outline-none focus:border-blue-400";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-[13px] outline-none focus:border-blue-400";
 
 /** The §37(3)/§16(4) window, as the server graded it. Never recomputed here:
  *  the limit is 30 November following the FY OR the date GSTR-9 was furnished,
@@ -64,11 +64,11 @@ function WindowBadge({ window: w }: { window?: { status?: string; closes_on?: st
 }
 
 function HeadRow({ heads }: { heads?: GSTHeads }) {
-  if (!heads) return <span className="text-[#CBD5E1]">—</span>;
+  if (!heads) return <span className="text-ps-disabled">—</span>;
   return (
     <span className="font-mono text-[11px]">
       {money(heads.taxable_paise)}
-      <span className="text-[#94A3B8]">
+      <span className="text-ps-hint">
         {" "}· C {money(heads.cgst_paise)} · S {money(heads.sgst_paise)}
         {" "}· I {money(heads.igst_paise)}
         {heads.cess_paise ? ` · Cess ${money(heads.cess_paise)}` : ""}
@@ -82,15 +82,15 @@ function DocList({ title, why, docs }: {
 }) {
   if (!docs?.length) return null;
   return (
-    <div className="rounded-xl border border-[#E2E8F0] p-3">
-      <p className="text-[12px] font-semibold text-[#1E293B]">
-        {title} <span className="text-[#94A3B8] font-normal">· {docs.length}</span>
+    <div className="rounded-xl border border-ps-border p-3">
+      <p className="text-[12px] font-semibold text-ps-ink">
+        {title} <span className="text-ps-hint font-normal">· {docs.length}</span>
       </p>
-      <p className="text-[10px] text-[#94A3B8] mt-0.5 max-w-[80ch]">{why}</p>
+      <p className="text-[10px] text-ps-hint mt-0.5 max-w-[80ch]">{why}</p>
       <div className="overflow-x-auto mt-2">
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+            <tr className="text-left text-ps-label border-b border-ps-border">
               <th className="py-1.5 pr-2">Document</th>
               <th className="py-1.5 pr-2">Counterparty</th>
               <th className="py-1.5 pr-2">Declare in</th>
@@ -101,19 +101,19 @@ function DocList({ title, why, docs }: {
           </thead>
           <tbody>
             {docs.map((d, i) => (
-              <tr key={`${d.doc_no ?? "row"}-${i}`} className="border-b border-[#F1F5F9] align-top">
+              <tr key={`${d.doc_no ?? "row"}-${i}`} className="border-b border-ps-muted align-top">
                 <td className="py-1.5 pr-2">
-                  <span className="font-mono text-[#1E293B]">{d.doc_no ?? "—"}</span>
-                  {d.doc_date && <span className="block text-[10px] text-[#94A3B8]">{d.doc_date}</span>}
+                  <span className="font-mono text-ps-ink">{d.doc_no ?? "—"}</span>
+                  {d.doc_date && <span className="block text-[10px] text-ps-hint">{d.doc_date}</span>}
                   {d.filed_section && d.books_section && (
                     <span className="block text-[10px] text-amber-700">
                       {d.filed_section} → {d.books_section}
                     </span>
                   )}
                 </td>
-                <td className="py-1.5 pr-2 text-[#475569]">{d.counterparty ?? "—"}</td>
+                <td className="py-1.5 pr-2 text-ps-label">{d.counterparty ?? "—"}</td>
                 <td className="py-1.5 pr-2">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569]">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-label">
                     {d.declare_in ?? "—"}
                   </span>
                 </td>
@@ -175,13 +175,13 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
-        <p className="text-[12px] text-[#334155]">
+      <div className="rounded-xl border border-ps-border bg-ps-bg p-3">
+        <p className="text-[12px] text-ps-body">
           A filed GSTR-1 can never be revised (CGST Act §37). A correction is
           declared in a later return&apos;s amendment tables — <b>9A</b> invoices,
           {" "}<b>9C</b> credit and debit notes, <b>10</b> B2C-others.
         </p>
-        <p className="text-[10px] text-[#94A3B8] mt-1">
+        <p className="text-[10px] text-ps-hint mt-1">
           Nothing on this tab files anything or alters a return.
         </p>
       </div>
@@ -191,7 +191,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
       {/* ── 1. What drifted in a period already filed ────────────────────── */}
       <section className="space-y-3">
         <div className="flex items-end gap-2 flex-wrap">
-          <label className="text-[11px] text-[#64748B]">
+          <label className="text-[11px] text-ps-label">
             Filed period to check
             <input value={filedPeriod} placeholder="062026"
               onChange={(e) => setFiledPeriod(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
@@ -199,20 +199,20 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
           </label>
           <button onClick={() => run("exceptions", filedPeriod)}
             disabled={busy !== null || !isPeriod(filedPeriod)}
-            className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+            className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
             {busy === "exceptions" ? "Comparing…" : "Compare books to the return"}
           </button>
           {isPeriod(filedPeriod) && (
-            <span className="text-[11px] text-[#94A3B8] pb-1.5">{periodLabel(filedPeriod)}</span>
+            <span className="text-[11px] text-ps-hint pb-1.5">{periodLabel(filedPeriod)}</span>
           )}
         </div>
 
         {exceptions && exceptions.status !== "ok" && (
           <div className={`rounded-lg border p-3 ${
             exceptions.status === "payload_missing"
-              ? "border-amber-200 bg-amber-50" : "border-[#E2E8F0] bg-white"}`}>
+              ? "border-amber-200 bg-amber-50" : "border-ps-border bg-white"}`}>
             <p className={`text-[12px] ${
-              exceptions.status === "payload_missing" ? "text-amber-800" : "text-[#475569]"}`}>
+              exceptions.status === "payload_missing" ? "text-amber-800" : "text-ps-label"}`}>
               {exceptions.message}
             </p>
           </div>
@@ -227,12 +227,12 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
           ) : (
             <div className="space-y-3">
               <div className="flex items-center gap-3 flex-wrap text-[12px]">
-                <span className="font-semibold text-[#1E293B]">
+                <span className="font-semibold text-ps-ink">
                   {exceptions.finding_count} finding{exceptions.finding_count === 1 ? "" : "s"}
                 </span>
-                {exceptions.arn && <span className="text-[#94A3B8]">ARN {exceptions.arn}</span>}
+                {exceptions.arn && <span className="text-ps-hint">ARN {exceptions.arn}</span>}
                 {exceptions.totals && (
-                  <span className="text-[#475569]">
+                  <span className="text-ps-label">
                     Net difference <HeadRow heads={exceptions.totals.delta} />
                   </span>
                 )}
@@ -258,19 +258,19 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
                 docs={docs?.missing_from_return} />
 
               {!!exceptions.b2cs?.changed?.length && (
-                <div className="rounded-xl border border-[#E2E8F0] p-3">
-                  <p className="text-[12px] font-semibold text-[#1E293B]">
+                <div className="rounded-xl border border-ps-border p-3">
+                  <p className="text-[12px] font-semibold text-ps-ink">
                     B2C-others{" "}
-                    <span className="text-[#94A3B8] font-normal">
+                    <span className="text-ps-hint font-normal">
                       · {exceptions.b2cs.changed.length}
                     </span>
                   </p>
-                  <p className="text-[10px] text-[#94A3B8] mt-0.5 max-w-[80ch]">
+                  <p className="text-[10px] text-ps-hint mt-0.5 max-w-[80ch]">
                     {exceptions.b2cs.note}
                   </p>
                   <table className="w-full text-[11px] mt-2">
                     <thead>
-                      <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+                      <tr className="text-left text-ps-label border-b border-ps-border">
                         <th className="py-1.5 pr-2">Place of supply</th>
                         <th className="py-1.5 pr-2">Rate</th>
                         <th className="py-1.5 pr-2">Filed</th>
@@ -280,8 +280,8 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
                     </thead>
                     <tbody>
                       {exceptions.b2cs.changed.map((r, i) => (
-                        <tr key={i} className="border-b border-[#F1F5F9]">
-                          <td className="py-1.5 pr-2 text-[#1E293B]">
+                        <tr key={i} className="border-b border-ps-muted">
+                          <td className="py-1.5 pr-2 text-ps-ink">
                             {(r as { place_of_supply?: string }).place_of_supply ?? "—"}
                           </td>
                           <td className="py-1.5 pr-2">
@@ -302,9 +302,9 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
       </section>
 
       {/* ── 2. What the period being prepared has to carry ───────────────── */}
-      <section className="space-y-3 border-t border-[#E2E8F0] pt-5">
+      <section className="space-y-3 border-t border-ps-border pt-5">
         <div className="flex items-end gap-2 flex-wrap">
-          <label className="text-[11px] text-[#64748B]">
+          <label className="text-[11px] text-ps-label">
             Period being prepared
             <input value={targetPeriod} placeholder="072026"
               onChange={(e) => setTargetPeriod(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
@@ -312,26 +312,26 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
           </label>
           <button onClick={() => run("amendments", targetPeriod)}
             disabled={busy !== null || !isPeriod(targetPeriod)}
-            className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+            className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
             {busy === "amendments" ? "Checking…" : "What must this return carry?"}
           </button>
           <button onClick={() => run("build", targetPeriod)}
             disabled={busy !== null || !isPeriod(targetPeriod)}
-            className="px-3 py-1.5 text-[12px] rounded-lg bg-[#1E293B] text-white disabled:opacity-40">
+            className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
             {busy === "build" ? "Building…" : "Build GSTR-1 with amendments"}
           </button>
         </div>
 
         {amendments && (
           <div className="space-y-3">
-            <p className="text-[12px] text-[#334155]">
+            <p className="text-[12px] text-ps-body">
               {amendments.counts.amendments
                 ? <>Carrying <b>{amendments.counts.amendments}</b> amendment
                     {amendments.counts.amendments === 1 ? "" : "s"} from{" "}
                     {amendments.source_periods.map(periodLabel).join(", ")}.</>
                 : <>Nothing outstanding to amend into {periodLabel(amendments.period)}.</>}
               {amendments.as_of && (
-                <span className="text-[#94A3B8]"> As at {amendments.as_of}.</span>
+                <span className="text-ps-hint"> As at {amendments.as_of}.</span>
               )}
             </p>
 
@@ -381,11 +381,11 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
             )}
 
             {!!amendments.carry_forward?.length && (
-              <div className="rounded-lg border border-[#E2E8F0] bg-white p-3">
-                <p className="text-[11px] font-semibold text-[#1E293B]">
+              <div className="rounded-lg border border-ps-border bg-white p-3">
+                <p className="text-[11px] font-semibold text-ps-ink">
                   {amendments.carry_forward.length} to carry forward, not amend
                 </p>
-                <p className="text-[10px] text-[#94A3B8] mt-0.5 max-w-[80ch]">
+                <p className="text-[10px] text-ps-hint mt-0.5 max-w-[80ch]">
                   Raised after their period was filed, so never declared — there is
                   nothing to supersede and they belong in this period&apos;s ordinary
                   tables.
@@ -396,17 +396,17 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
         )}
 
         {built && (
-          <div className="rounded-xl border border-[#E2E8F0] p-3 space-y-2">
-            <p className="text-[12px] font-semibold text-[#1E293B]">
+          <div className="rounded-xl border border-ps-border p-3 space-y-2">
+            <p className="text-[12px] font-semibold text-ps-ink">
               GSTR-1 for {periodLabel(targetPeriod)}, with amendments merged
             </p>
-            <p className="text-[11px] text-[#475569]">
+            <p className="text-[11px] text-ps-label">
               Amendment sections in the payload:{" "}
               {built.amendments?.sections?.length
                 ? <b>{built.amendments.sections.join(", ")}</b>
-                : <span className="text-[#94A3B8]">none</span>}
+                : <span className="text-ps-hint">none</span>}
             </p>
-            <p className="text-[10px] text-[#94A3B8] max-w-[80ch]">
+            <p className="text-[10px] text-ps-hint max-w-[80ch]">
               Out-of-time corrections are excluded upstream, so nothing here can declare
               an amendment the law no longer allows. Documents needing a decision and
               invoices never declared stay OUT of the payload — neither is an amendment.
@@ -423,7 +423,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+                className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
                 Download the payload
               </button>
               <span className="text-[10px] text-amber-700">

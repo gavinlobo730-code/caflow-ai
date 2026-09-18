@@ -181,12 +181,12 @@ export default function CoaImportPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft size={18} />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Import Chart of Accounts</h1>
-          <p className="text-xs text-[#64748B] mt-0.5">Import from Tally, Busy, Zoho Books, QuickBooks or any Excel/CSV</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Import Chart of Accounts</h1>
+          <p className="text-xs text-ps-label mt-0.5">Import from Tally, Busy, Zoho Books, QuickBooks or any Excel/CSV</p>
         </div>
       </div>
 
@@ -203,11 +203,11 @@ export default function CoaImportPage() {
       {step === "upload" && (
         <div
           onClick={() => fileRef.current?.click()}
-          className="border-2 border-dashed border-[#CBD5E1] rounded-xl p-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors"
+          className="border-2 border-dashed border-ps-border-strong rounded-xl p-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors"
         >
-          <Upload size={28} className="mx-auto text-[#94A3B8] mb-3" />
-          <p className="text-sm font-medium text-[#334155]">Click to upload CSV or Excel file</p>
-          <p className="text-xs text-[#94A3B8] mt-1">Supports .csv, .txt (Excel paste)</p>
+          <Upload size={28} className="mx-auto text-ps-hint mb-3" />
+          <p className="text-sm font-medium text-ps-body">Click to upload CSV or Excel file</p>
+          <p className="text-xs text-ps-hint mt-1">Supports .csv, .txt (Excel paste)</p>
           <input ref={fileRef} type="file" accept=".csv,.txt,.tsv" className="hidden" onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
         </div>
       )}
@@ -227,37 +227,37 @@ export default function CoaImportPage() {
       {step === "preview" && preview.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-[#334155]">
+            <p className="text-sm font-medium text-ps-body">
               <FileText size={14} className="inline mr-1.5" />{fileName} — {preview.length} rows ready to import
             </p>
-            <button onClick={() => { setStep("upload"); setPreview([]); setFileName(null); setParseErrors([]); }} className="text-xs text-[#94A3B8] hover:text-[#475569] flex items-center gap-1">
+            <button onClick={() => { setStep("upload"); setPreview([]); setFileName(null); setParseErrors([]); }} className="text-xs text-ps-hint hover:text-ps-label flex items-center gap-1">
               <X size={12} /> Clear
             </button>
           </div>
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden max-h-72 overflow-y-auto">
+          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden max-h-72 overflow-y-auto">
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-[#F8FAFC]">
-                <tr className="text-[10px] text-[#94A3B8] border-b border-[#F1F5F9]">
+              <thead className="sticky top-0 bg-ps-bg">
+                <tr className="text-[10px] text-ps-hint border-b border-ps-muted">
                   <th className="px-4 py-2 text-left font-medium w-16">Code</th>
                   <th className="px-3 py-2 text-left font-medium">Name</th>
                   <th className="px-3 py-2 text-left font-medium">Type</th>
                   <th className="px-3 py-2 text-left font-medium">Group</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {preview.map((row, i) => (
-                  <tr key={i} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-2 font-mono text-[10px] text-[#94A3B8]">{row.account_code}</td>
-                    <td className="px-3 py-2 font-medium text-[#0F172A]">{row.account_name}</td>
-                    <td className="px-3 py-2 text-[#64748B]">{row.account_type}</td>
-                    <td className="px-3 py-2 text-[#64748B]">{row.parent_group || "—"}</td>
+                  <tr key={i} className="hover:bg-ps-bg">
+                    <td className="px-4 py-2 font-mono text-[10px] text-ps-hint">{row.account_code}</td>
+                    <td className="px-3 py-2 font-medium text-ps-ink">{row.account_name}</td>
+                    <td className="px-3 py-2 text-ps-label">{row.account_type}</td>
+                    <td className="px-3 py-2 text-ps-label">{row.parent_group || "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => { setStep("upload"); setPreview([]); setFileName(null); }} className="text-sm text-[#475569] border border-[#E2E8F0] px-4 py-2 rounded-md hover:bg-[#F8FAFC]">
+            <button onClick={() => { setStep("upload"); setPreview([]); setFileName(null); }} className="text-sm text-ps-label border border-ps-border px-4 py-2 rounded-md hover:bg-ps-bg">
               Cancel
             </button>
             <button onClick={runImport} disabled={importing} className="text-sm bg-blue-600 text-white px-5 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50">
@@ -276,9 +276,9 @@ export default function CoaImportPage() {
                 ? <CheckCircle size={18} className="text-green-600" />
                 : <AlertCircle size={18} className="text-amber-600" />
               }
-              <span className="text-sm font-semibold text-[#334155]">Import Complete</span>
+              <span className="text-sm font-semibold text-ps-body">Import Complete</span>
             </div>
-            <div className="text-xs space-y-1 text-[#475569]">
+            <div className="text-xs space-y-1 text-ps-label">
               <p>✅ {result.inserted} account{result.inserted !== 1 ? "s" : ""} imported</p>
               {result.skipped > 0 && <p>⏭ {result.skipped} skipped (duplicate codes already exist)</p>}
               {result.errors.length > 0 && <p>❌ {result.errors.length} error{result.errors.length !== 1 ? "s" : ""}</p>}
@@ -293,7 +293,7 @@ export default function CoaImportPage() {
             <Link href="/accounting/account-groups" className="text-sm bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
               View Chart of Accounts
             </Link>
-            <button onClick={() => { setStep("upload"); setPreview([]); setFileName(null); setResult(null); setParseErrors([]); }} className="text-sm text-[#475569] border border-[#E2E8F0] px-4 py-2 rounded-md hover:bg-[#F8FAFC]">
+            <button onClick={() => { setStep("upload"); setPreview([]); setFileName(null); setResult(null); setParseErrors([]); }} className="text-sm text-ps-label border border-ps-border px-4 py-2 rounded-md hover:bg-ps-bg">
               Import Another File
             </button>
           </div>

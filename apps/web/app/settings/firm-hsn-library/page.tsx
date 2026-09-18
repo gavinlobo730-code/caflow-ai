@@ -247,20 +247,20 @@ export default function FirmHsnLibraryPage() {
         )}
 
         <div>
-          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] transition-colors mb-1">
+          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1">
             <ChevronLeft size={13} /> Settings
           </Link>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h1 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2">
+              <h1 className="text-xl font-semibold text-ps-ink flex items-center gap-2">
                 <Hash size={18} className="text-violet-600" /> Firm HSN/SAC Library
                 {!loading && !error && (
-                  <span className="text-xs font-normal text-[#94A3B8]">
+                  <span className="text-xs font-normal text-ps-hint">
                     {items.length}{capped ? "+" : ""} code{items.length === 1 ? "" : "s"}
                   </span>
                 )}
               </h1>
-              <p className="text-sm text-[#64748B] mt-0.5">
+              <p className="text-sm text-ps-label mt-0.5">
                 The HSN/SAC codes your firm bills against. You add and curate every code here — Caflow does not ship a shared list or suggest a classification; every Product/Service and invoice line picks from this library.
                 {capped && (
                   <span className="block text-amber-600 mt-0.5">
@@ -272,14 +272,14 @@ export default function FirmHsnLibraryPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setImporting(true)}
-                className="flex items-center gap-1.5 text-sm border border-[#E2E8F0] text-[#475569] px-3.5 py-2 rounded-lg hover:bg-[#F8FAFC] whitespace-nowrap"
+                className="flex items-center gap-1.5 text-sm border border-ps-border text-ps-label px-3.5 py-2 rounded-lg hover:bg-ps-bg whitespace-nowrap"
               >
                 <Upload size={15} /> Import
               </button>
               <button
                 onClick={() => downloadCsv("firm-hsn-sac-library.csv", toCsv(items, EXPORT_COLUMNS))}
                 disabled={items.length === 0}
-                className="flex items-center gap-1.5 text-sm border border-[#E2E8F0] text-[#475569] px-3.5 py-2 rounded-lg hover:bg-[#F8FAFC] whitespace-nowrap disabled:opacity-50"
+                className="flex items-center gap-1.5 text-sm border border-ps-border text-ps-label px-3.5 py-2 rounded-lg hover:bg-ps-bg whitespace-nowrap disabled:opacity-50"
               >
                 <Download size={15} /> Export
               </button>
@@ -296,29 +296,29 @@ export default function FirmHsnLibraryPage() {
         {/* Search + filters */}
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ps-hint" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by code or description…"
-              className="w-full pl-8 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full pl-8 pr-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
             />
           </div>
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-            className="px-3 py-2 text-xs border border-[#E2E8F0] rounded-lg"
+            className="px-3 py-2 text-xs border border-ps-border rounded-lg"
           >
             <option value="all">All types</option>
             <option value="services">Services (SAC)</option>
             <option value="goods">Goods (HSN)</option>
           </select>
-          <div className="flex rounded-lg border border-[#E2E8F0] overflow-hidden text-xs">
+          <div className="flex rounded-lg border border-ps-border overflow-hidden text-xs">
             {(["active", "archived"] as Filter[]).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`px-3 py-2 capitalize ${filter === f ? "bg-violet-600 text-white" : "bg-white text-[#475569] hover:bg-[#F8FAFC]"}`}
+                className={`px-3 py-2 capitalize ${filter === f ? "bg-violet-600 text-white" : "bg-white text-ps-label hover:bg-ps-bg"}`}
               >
                 {f}
               </button>
@@ -346,18 +346,18 @@ export default function FirmHsnLibraryPage() {
         )}
 
         {/* List */}
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           {loading ? (
             <TableSkeleton cols={6} rows={4} bare />
           ) : error ? (
             <div className="p-8 text-center text-sm">
-              <p className="text-[#334155] font-medium">Couldn&apos;t load your library</p>
-              <button onClick={load} className="mt-2 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Retry</button>
+              <p className="text-ps-body font-medium">Couldn&apos;t load your library</p>
+              <button onClick={load} className="mt-2 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">Retry</button>
             </div>
           ) : items.length === 0 ? (
             <div className="p-10 text-center">
-              <Hash size={26} className="mx-auto mb-2 text-[#CBD5E1]" />
-              <p className="text-sm font-medium text-[#334155]">
+              <Hash size={26} className="mx-auto mb-2 text-ps-disabled" />
+              <p className="text-sm font-medium text-ps-body">
                 {q ? "No codes match your search" : filter === "archived" ? "No retired codes" : "Your library is empty"}
               </p>
               {!q && filter === "active" && (
@@ -370,7 +370,7 @@ export default function FirmHsnLibraryPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[640px]">
                 <thead>
-                  <tr className="text-[11px] text-[#94A3B8] border-b border-[#F1F5F9]">
+                  <tr className="text-[11px] text-ps-hint border-b border-ps-muted">
                     <th className="w-8 px-4 py-2">
                       <input
                         type="checkbox"
@@ -388,11 +388,11 @@ export default function FirmHsnLibraryPage() {
                     <th className="px-4 py-2 text-right font-semibold w-28"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
+                <tbody className="divide-y divide-ps-bg">
                   {items.map((r) => {
                     const active = filter === "active";
                     return (
-                      <tr key={r.id} className={active ? "" : "bg-[#FAFAFA] text-[#94A3B8]"}>
+                      <tr key={r.id} className={active ? "" : "bg-[#FAFAFA] text-ps-hint"}>
                         <td className="px-4 py-2.5">
                           <input
                             type="checkbox"
@@ -402,23 +402,23 @@ export default function FirmHsnLibraryPage() {
                             className="cursor-pointer accent-violet-600"
                           />
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-[#1E293B]">{r.hsn_code}</td>
+                        <td className="px-4 py-2.5 font-mono text-ps-ink">{r.hsn_code}</td>
                         <td className="px-4 py-2.5">
-                          <p className="text-[#1E293B] truncate max-w-[280px]">{r.description}</p>
+                          <p className="text-ps-ink truncate max-w-[280px]">{r.description}</p>
                         </td>
-                        <td className="px-4 py-2.5 text-[#64748B] capitalize">{r.hsn_type}</td>
-                        <td className="px-4 py-2.5 text-right text-[#334155]">
+                        <td className="px-4 py-2.5 text-ps-label capitalize">{r.hsn_type}</td>
+                        <td className="px-4 py-2.5 text-right text-ps-body">
                           {r.gst_rate_pct != null ? `${r.gst_rate_pct}%` : "—"}
                         </td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => setEditing(r)} className="p-1.5 text-[#64748B] hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
+                            <button onClick={() => setEditing(r)} className="p-1.5 text-ps-label hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
                             {active ? (
-                              <button disabled={actionInFlight} onClick={() => retire(r)} className="p-1.5 text-[#64748B] hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Retire"><Archive size={14} /></button>
+                              <button disabled={actionInFlight} onClick={() => retire(r)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Retire"><Archive size={14} /></button>
                             ) : (
-                              <button disabled={actionInFlight} onClick={() => restore(r)} className="p-1.5 text-[#64748B] hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
+                              <button disabled={actionInFlight} onClick={() => restore(r)} className="p-1.5 text-ps-label hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
                             )}
-                            <button disabled={actionInFlight} onClick={() => purgeSingle(r)} className="p-1.5 text-[#64748B] hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete permanently"><Trash2 size={14} /></button>
+                            <button disabled={actionInFlight} onClick={() => purgeSingle(r)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete permanently"><Trash2 size={14} /></button>
                           </div>
                         </td>
                       </tr>
@@ -491,28 +491,28 @@ function EditCodeModal({ row, onClose, onSaved, onError }: {
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
       <div className="relative w-full max-w-md bg-white rounded-xl shadow-xl p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-[#0F172A]">Edit {row.hsn_code}</h3>
+        <h3 className="text-sm font-semibold text-ps-ink">Edit {row.hsn_code}</h3>
         <label className="block space-y-1">
-          <span className="block text-xs font-medium text-[#475569]">Description</span>
+          <span className="block text-xs font-medium text-ps-label">Description</span>
           <input
             autoFocus
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+            className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
           />
         </label>
         <label className="block space-y-1">
-          <span className="block text-xs font-medium text-[#475569]">GST rate (optional)</span>
+          <span className="block text-xs font-medium text-ps-label">GST rate (optional)</span>
           <input
             type="number" min="0" max="100" step="0.01"
             value={gstRate}
             onChange={(e) => setGstRate(e.target.value === "" ? "" : parseFloat(e.target.value))}
             placeholder="Varies / not set"
-            className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+            className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
           />
         </label>
         <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
+          <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
           <button onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50">
             Save changes
           </button>

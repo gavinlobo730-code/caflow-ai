@@ -306,7 +306,7 @@ export function SalesDebitNoteEditor({
 
   const toolbar = (
     <>
-      <button onClick={handleCancel} disabled={busy} className="mr-auto text-xs px-3 py-1.5 text-[#64748B] hover:text-[#334155] disabled:opacity-50">
+      <button onClick={handleCancel} disabled={busy} className="mr-auto text-xs px-3 py-1.5 text-ps-label hover:text-ps-body disabled:opacity-50">
         Cancel
       </button>
       <button onClick={save} disabled={busy} className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
@@ -316,8 +316,8 @@ export function SalesDebitNoteEditor({
   );
 
   const summary = (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-2 text-xs">
-      <p className="font-semibold text-[#334155]">Summary</p>
+    <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-2 text-xs">
+      <p className="font-semibold text-ps-body">Summary</p>
       <Row label="Taxable value" value={fmt(totals.taxable_paise)} />
       {isInterstate ? (
         <Row label="IGST" value={fmt(totals.igst_paise)} />
@@ -327,19 +327,19 @@ export function SalesDebitNoteEditor({
           <Row label="SGST" value={fmt(totals.sgst_paise)} />
         </>
       )}
-      <p className="text-[10px] text-[#94A3B8]">
+      <p className="text-[10px] text-ps-hint">
         {isInterstate ? "Interstate — IGST" : "Intra-state — CGST + SGST"} (CGST Act §8)
       </p>
-      <div className="flex justify-between font-semibold text-[#0F172A] border-t border-[#E2E8F0] pt-1.5 mt-1">
+      <div className="flex justify-between font-semibold text-ps-ink border-t border-ps-border pt-1.5 mt-1">
         <span>Debit Note Total</span>
         <span className="font-mono">{fmt(totals.grand_total_paise)}</span>
       </div>
       {selectedInvoice && (
-        <p className="text-[10px] text-[#94A3B8] pt-1">
+        <p className="text-[10px] text-ps-hint pt-1">
           Invoice outstanding today: {fmt(invoiceOutstanding(selectedInvoice))} — a debit note has no ceiling; it adds to what&apos;s owed.
         </p>
       )}
-      <p className="text-[10px] text-[#94A3B8] pt-1">
+      <p className="text-[10px] text-ps-hint pt-1">
         Preview — GST is confirmed by the server on save.
       </p>
       {!isLocked && attempted && !validation.ok && (
@@ -359,30 +359,30 @@ export function SalesDebitNoteEditor({
         { label: isEdit ? `Edit ${existing?.debit_note_no || "Debit Note"}` : "New Debit Note" },
       ]}
       title={isEdit ? `Edit ${existing?.debit_note_no || "Debit Note"}` : "New Debit Note"}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">{isEdit ? (existing?.status ?? "draft") : "Draft"}</span>}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">{isEdit ? (existing?.status ?? "draft") : "Draft"}</span>}
       dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Unsaved changes</span> : undefined}
       toolbar={toolbar}
       summary={summary}
     >
       <div className="space-y-5">
         {/* Party + metadata */}
-        <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <section className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Customer *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
               <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isEdit} />
-              {isEdit && <p className="mt-1 text-[10px] text-[#94A3B8]">Customer can&apos;t be changed once a debit note exists.</p>}
+              {isEdit && <p className="mt-1 text-[10px] text-ps-hint">Customer can&apos;t be changed once a debit note exists.</p>}
               {fieldErr(validation.errors.customer)}
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">DN Date *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">DN Date *</label>
               <input type="date" value={dnDate} onChange={(e) => setDnDate(e.target.value)} disabled={isLocked}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
               {fieldErr(validation.errors.debitNoteDate)}
-              {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once issued — issue a fresh debit note to correct (CGST Act §34).</p>}
+              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Frozen once issued — issue a fresh debit note to correct (CGST Act §34).</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Against Invoice (optional)</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Against Invoice (optional)</label>
               <EntityLookup
                 items={openInvoices}
                 value={invoiceId}
@@ -398,29 +398,29 @@ export function SalesDebitNoteEditor({
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Reason</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Reason</label>
               <input value={reason} onChange={(e) => setReason(e.target.value)} disabled={isLocked} placeholder="Undercharged / rate correction / additional charges"
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
             </div>
             <div className="flex items-end pb-1.5">
-              <label className={`flex items-center gap-2 text-xs text-[#475569] ${isLocked ? "opacity-50" : "cursor-pointer"}`}>
+              <label className={`flex items-center gap-2 text-xs text-ps-label ${isLocked ? "opacity-50" : "cursor-pointer"}`}>
                 <input type="checkbox" checked={isInterstate} disabled={isLocked} onChange={(e) => setIsInterstate(e.target.checked)} className="rounded" />
                 Interstate (IGST)
               </label>
             </div>
             <div className="col-span-2 lg:col-span-3">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Notes</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes — not shown to the customer" rows={2}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
         </section>
 
         {/* Line items */}
-        <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <h2 className="text-xs font-semibold text-[#334155] mb-2">Line items</h2>
+        <section className="bg-white rounded-xl border border-ps-muted p-4">
+          <h2 className="text-xs font-semibold text-ps-body mb-2">Line items</h2>
           {isLocked && (
-            <p className="mb-2 text-[10px] text-[#94A3B8]">
+            <p className="mb-2 text-[10px] text-ps-hint">
               Frozen once issued — issue a fresh debit note to correct a quantity, rate, or item (CGST Act §34).
             </p>
           )}
@@ -428,7 +428,7 @@ export function SalesDebitNoteEditor({
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[760px]">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-ps-hint">
                   <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
                   <th className="pb-2 text-left font-semibold">Description</th>
                   <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
@@ -440,7 +440,7 @@ export function SalesDebitNoteEditor({
                   <th className="pb-2 w-6" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {lines.map((line, idx) => {
                   const g = previewTotals([line], isInterstate, false);
                   const invalid = attempted && !isValidLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
@@ -451,7 +451,7 @@ export function SalesDebitNoteEditor({
                       </td>
                       <td className="py-1.5 pr-2">
                         <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
                       </td>
                       <td className="py-1.5 px-1">
                         <HsnLookup clientId={clientId} value={line.hsn_sac} onChange={(v) => setLine(idx, { hsn_sac: v })}
@@ -460,28 +460,28 @@ export function SalesDebitNoteEditor({
                       </td>
                       <td className="py-1.5 px-1">
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label={`Line ${idx + 1} quantity`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
                       </td>
                       <td className="py-1.5 px-1">
                         <select value={line.unit || "NOS"} onChange={(e) => setLine(idx, { unit: e.target.value })} aria-label={`Line ${idx + 1} unit`}
-                          className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
+                          className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none text-xs">
                           {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
                         </select>
                       </td>
                       <td className="py-1.5 px-1">
                         <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
                       </td>
                       <td className="py-1.5 px-1">
                         <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseFloat(e.target.value) })} aria-label={`Line ${idx + 1} GST rate`}
-                          className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
+                          className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none text-xs">
                           {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
-                      <td className="py-1.5 px-2 text-right font-mono text-[#334155]">{g.grand_total_paise > 0 ? fmt(g.grand_total_paise) : "—"}</td>
+                      <td className="py-1.5 px-2 text-right font-mono text-ps-body">{g.grand_total_paise > 0 ? fmt(g.grand_total_paise) : "—"}</td>
                       <td className="py-1.5">
                         {lines.length > 1 && (
-                          <button onClick={() => removeLine(idx)} className="text-[#CBD5E1] hover:text-red-600" aria-label="Remove line">
+                          <button onClick={() => removeLine(idx)} className="text-ps-disabled hover:text-red-600" aria-label="Remove line">
                             <Trash2 size={13} />
                           </button>
                         )}
@@ -507,7 +507,7 @@ export function SalesDebitNoteEditor({
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between text-[#475569]">
+    <div className="flex justify-between text-ps-label">
       <span>{label}</span>
       <span className="font-mono">{value}</span>
     </div>

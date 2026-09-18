@@ -61,7 +61,7 @@ export default function AiInsightsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
-            <Sparkles size={15} className="text-[#B9915E]" />
+            <Sparkles size={15} className="text-gold" />
             AI Insights
           </CardTitle>
         </CardHeader>
@@ -69,7 +69,7 @@ export default function AiInsightsPage() {
           {loading ? (
             <div className="space-y-3" role="status" aria-label="Loading insights">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="rounded-lg border border-[#F1F5F9] px-4 py-3">
+                <div key={i} className="rounded-lg border border-ps-muted px-4 py-3">
                   <SkeletonText lines={2} />
                 </div>
               ))}
@@ -77,13 +77,13 @@ export default function AiInsightsPage() {
           ) : loadFailed ? (
             <div className="text-center py-12 space-y-2">
               <p className="text-sm text-red-600 font-medium">Couldn&apos;t load AI insights — the request failed or timed out.</p>
-              <button disabled={loading} onClick={load} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+              <button disabled={loading} onClick={load} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
             </div>
           ) : insights.length === 0 ? (
             <div className="text-center py-12 space-y-2">
               <Sparkles className="w-8 h-8 text-gray-200 mx-auto" />
-              <p className="text-sm text-[#94A3B8]">No AI insights yet</p>
-              <p className="text-xs text-[#CBD5E1]">
+              <p className="text-sm text-ps-hint">No AI insights yet</p>
+              <p className="text-xs text-ps-disabled">
                 Insights are generated automatically as activity is recorded for this client.
               </p>
             </div>

@@ -69,7 +69,7 @@ function formatMovement(bps: number | null): string {
  *  inventory is not good — and those stay neutral rather than being coloured on
  *  a guess. */
 function movementTone(bps: number | null, higherIsBetter: boolean | null): string {
-  if (bps === null || bps === 0 || higherIsBetter === null) return "text-[#94A3B8]";
+  if (bps === null || bps === 0 || higherIsBetter === null) return "text-ps-hint";
   const good = bps > 0 ? higherIsBetter : !higherIsBetter;
   return good ? "text-emerald-600" : "text-red-600";
 }
@@ -150,43 +150,43 @@ export default function ClientTrendPage() {
         <div className="min-w-0">
           <button
             onClick={() => router.push(`/clients/${clientId}/reports`)}
-            className="flex items-center gap-1 text-[11px] text-[#94A3B8] hover:text-[#64748B] mb-1.5"
+            className="flex items-center gap-1 text-[11px] text-ps-hint hover:text-ps-label mb-1.5"
           >
             <ArrowLeft size={12} /> Reports
           </button>
-          <h2 className="text-sm font-semibold text-[#1E293B]">Multi-year trend</h2>
-          <p className="text-[11px] text-[#94A3B8] mt-0.5">
+          <h2 className="text-sm font-semibold text-ps-ink">Multi-year trend</h2>
+          <p className="text-[11px] text-ps-hint mt-0.5">
             Schedule III captions and the clause (Q) ratios, year on year, with the
             movement between them
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <label className="text-[11px] text-[#64748B]">Years</label>
+          <label className="text-[11px] text-ps-label">Years</label>
           <select
             value={years}
             onChange={(e) => setYears(Number(e.target.value))}
-            className="text-[11px] border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[#334155] bg-white"
+            className="text-[11px] border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"
           >
             {YEAR_CHOICES.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
-          <label className="text-[11px] text-[#64748B]">to</label>
+          <label className="text-[11px] text-ps-label">to</label>
           <select
             value={toFy}
             onChange={(e) => setToFy(e.target.value)}
-            className="text-[11px] border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[#334155] bg-white"
+            className="text-[11px] border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"
           >
             {fyChoices.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
           <button
             onClick={load}
-            className="flex items-center gap-1.5 text-[11px] text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] rounded-lg px-2.5 py-1.5"
+            className="flex items-center gap-1.5 text-[11px] text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-2.5 py-1.5"
           >
             <RefreshCw size={12} /> Refresh
           </button>
           <button
             onClick={exportExcel}
             disabled={!trend || trend.fys.length === 0}
-            className="flex items-center gap-1.5 text-[11px] text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 disabled:opacity-40"
+            className="flex items-center gap-1.5 text-[11px] text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-2.5 py-1.5 disabled:opacity-40"
           >
             <Download size={12} /> Excel
           </button>
@@ -194,7 +194,7 @@ export default function ClientTrendPage() {
       </div>
 
       {loading && (
-        <div className="flex items-center gap-2 text-[11px] text-[#94A3B8] py-8">
+        <div className="flex items-center gap-2 text-[11px] text-ps-hint py-8">
           <Loader2 size={14} className="animate-spin" /> Building the window…
         </div>
       )}
@@ -251,22 +251,22 @@ export default function ClientTrendPage() {
           {trend.gaps.filter(
             (g) => g.code !== "years_without_records_dropped" && g.code !== "years_unreadable",
           ).length > 0 && (
-            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3 space-y-2">
+            <div className="bg-ps-bg border border-ps-border rounded-xl px-4 py-3 space-y-2">
               {trend.gaps
                 .filter((g) => g.code !== "years_without_records_dropped"
                             && g.code !== "years_unreadable")
                 .map((g) => (
                   <div key={g.code} className="flex items-start gap-2.5">
-                    <Info size={13} className="text-[#94A3B8] flex-shrink-0 mt-0.5" />
-                    <p className="text-[10px] text-[#64748B]">{g.message}</p>
+                    <Info size={13} className="text-ps-hint flex-shrink-0 mt-0.5" />
+                    <p className="text-[10px] text-ps-label">{g.message}</p>
                   </div>
                 ))}
             </div>
           )}
 
           {trend.fys.length === 0 ? (
-            <div className="bg-white rounded-xl border border-[#F1F5F9] px-4 py-10 text-center">
-              <p className="text-xs text-[#64748B]">
+            <div className="bg-white rounded-xl border border-ps-muted px-4 py-10 text-center">
+              <p className="text-xs text-ps-label">
                 Nothing is recorded against any of the years asked for.
               </p>
             </div>
@@ -289,7 +289,7 @@ export default function ClientTrendPage() {
 
 function ColumnHeads({ fys }: { fys: string[] }) {
   return (
-    <tr className="text-[10px] text-[#94A3B8]">
+    <tr className="text-[10px] text-ps-hint">
       <th className="text-left font-medium px-4 py-2">Particulars</th>
       {fys.map((fy) => (
         <th key={fy} className="text-right font-medium px-3 py-2 tabular-nums">{fy}</th>
@@ -302,10 +302,10 @@ function AmountTable({ title, note, fys, series }: {
   title: string; note: string; fys: string[]; series: TrendSeries[];
 }) {
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-50">
-        <p className="text-xs font-semibold text-[#334155]">{title}</p>
-        <p className="text-[10px] text-[#94A3B8] mt-0.5">{note}</p>
+        <p className="text-xs font-semibold text-ps-body">{title}</p>
+        <p className="text-[10px] text-ps-hint mt-0.5">{note}</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px]">
@@ -313,10 +313,10 @@ function AmountTable({ title, note, fys, series }: {
           <tbody className="divide-y divide-gray-50">
             {series.map((s) => (
               <tr key={s.key}>
-                <td className="px-4 py-2 text-[11px] text-[#334155]">{s.label}</td>
+                <td className="px-4 py-2 text-[11px] text-ps-body">{s.label}</td>
                 {s.values_paise.map((v, i) => (
                   <td key={fys[i]} className="px-3 py-2 text-right">
-                    <div className="text-[11px] tabular-nums text-[#1E293B]">{formatPaise(v)}</div>
+                    <div className="text-[11px] tabular-nums text-ps-ink">{formatPaise(v)}</div>
                     {/* Movement sits under the year it moved INTO, so the first
                         column has none — there is nothing before it. */}
                     {i > 0 && (
@@ -324,7 +324,7 @@ function AmountTable({ title, note, fys, series }: {
                         movementTone(s.movement_bps[i - 1], s.higher_is_better)}`}>
                         <MovementIcon bps={s.movement_bps[i - 1]} />{" "}
                         {formatMovement(s.movement_bps[i - 1])}
-                        <span className="text-[#CBD5E1]">
+                        <span className="text-ps-disabled">
                           {" "}({formatPaise(s.movement_paise[i - 1])})
                         </span>
                       </div>
@@ -342,10 +342,10 @@ function AmountTable({ title, note, fys, series }: {
 
 function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[] }) {
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-50">
-        <p className="text-xs font-semibold text-[#334155]">Ratios</p>
-        <p className="text-[10px] text-[#94A3B8] mt-0.5">
+        <p className="text-xs font-semibold text-ps-body">Ratios</p>
+        <p className="text-[10px] text-ps-hint mt-0.5">
           The same eleven ratios as the clause (Q) note, so a figure here cannot mean
           something different from the same figure there. The note is where the 25%
           movements are explained; this is the movement across the whole window.
@@ -359,8 +359,8 @@ function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[]
               <tr key={s.key}>
                 <td className="px-4 py-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-[#94A3B8] tabular-nums">{s.clause}</span>
-                    <span className="text-[11px] text-[#334155]">{s.label}</span>
+                    <span className="text-[10px] text-ps-hint tabular-nums">{s.clause}</span>
+                    <span className="text-[11px] text-ps-body">{s.label}</span>
                   </div>
                   {/* A gap is stated, never left blank — a dash reads as
                       "nothing to report", which is its opposite. */}
@@ -372,7 +372,7 @@ function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[]
                 </td>
                 {s.values_bps.map((v, i) => (
                   <td key={fys[i]} className="px-3 py-2 text-right">
-                    <div className="text-[11px] tabular-nums text-[#1E293B]">
+                    <div className="text-[11px] tabular-nums text-ps-ink">
                       {s.unavailable_reason && v === null ? "Not computed" : formatBps(v, s.unit)}
                     </div>
                     {/* Deliberately uncoloured. A ratio rising is not good or
@@ -381,7 +381,7 @@ function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[]
                         turnover up can be either. Colouring these would be the
                         page making a judgement it has no basis for. */}
                     {i > 0 && (
-                      <div className="text-[9px] tabular-nums text-[#94A3B8]">
+                      <div className="text-[9px] tabular-nums text-ps-hint">
                         {formatMovement(s.movement_bps[i - 1])}
                       </div>
                     )}

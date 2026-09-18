@@ -145,7 +145,7 @@ export function ClientContextPanel() {
       {/* ── Desktop sidebar ── */}
       <div
         className={cn(
-          "hidden md:flex flex-col h-full shrink-0 bg-[#182350] border-r border-white/10 transition-[width] duration-200 ease-in-out overflow-hidden",
+          "hidden md:flex flex-col h-full shrink-0 bg-brand border-r border-white/10 transition-[width] duration-200 ease-in-out overflow-hidden",
           collapsed ? "w-[52px]" : "w-[200px]"
         )}
       >
@@ -209,7 +209,7 @@ export function ClientContextPanel() {
       <button
         aria-label="Open navigation"
         onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-2.5 left-2.5 z-50 flex items-center justify-center w-8 h-8 rounded-lg bg-[#182350] text-slate-300 shadow-md"
+        className="md:hidden fixed top-2.5 left-2.5 z-50 flex items-center justify-center w-8 h-8 rounded-lg bg-brand text-slate-300 shadow-md"
       >
         <Menu size={16} />
       </button>
@@ -224,7 +224,7 @@ export function ClientContextPanel() {
           />
 
           {/* Drawer panel */}
-          <div className="md:hidden fixed left-0 top-0 h-full z-50 flex flex-col w-[220px] bg-[#182350] shadow-2xl">
+          <div className="md:hidden fixed left-0 top-0 h-full z-50 flex flex-col w-[220px] bg-brand shadow-2xl">
             <div className="flex items-center justify-between h-12 border-b border-white/10 px-3 shrink-0">
               <Link
                 href="/clients"

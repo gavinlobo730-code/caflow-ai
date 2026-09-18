@@ -155,10 +155,10 @@ export default function Section32Page() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-[#94A3B8] hover:text-[#475569]"><ChevronLeft size={18} /></Link>
+        <Link href="/income-tax" className="text-ps-hint hover:text-ps-label"><ChevronLeft size={18} /></Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-[#0F172A]">Depreciation under §32</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">Depreciation under §32</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             IT Act 1961 §32 — per block of assets, at the block&apos;s rate. Separate from
             the Companies Act Schedule II charge the accounts carry.
           </p>
@@ -170,16 +170,16 @@ export default function Section32Page() {
 
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="text-xs text-[#64748B]">Client</label>
+          <label className="text-xs text-ps-label">Client</label>
           <div className="mt-1 min-w-[220px]">
             <ClientLookup clients={clients} value={clientId} onChange={setClientId}
                           ariaLabel="Client" placeholder="Select client…" />
           </div>
         </div>
         <div>
-          <label className="text-xs text-[#64748B]">Previous year</label>
+          <label className="text-xs text-ps-label">Previous year</label>
           <select value={fy} onChange={e => setFy(e.target.value)}
-            className="block mt-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+            className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
             {FY_OPTIONS.map(f => <option key={f} value={f}>FY {f}</option>)}
           </select>
         </div>
@@ -188,8 +188,8 @@ export default function Section32Page() {
       {error && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-3 text-sm">{error}</div>}
 
       {!clientId ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
-          <p className="text-sm text-[#94A3B8]">Select a client to see its blocks.</p>
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16">
+          <p className="text-sm text-ps-hint">Select a client to see its blocks.</p>
         </div>
       ) : loading ? (
         <TableSkeleton cols={7} rows={3} />
@@ -267,8 +267,8 @@ export default function Section32Page() {
             ].map(s => (
               <Card key={s.label}>
                 <CardContent className="pt-4 pb-3">
-                  <p className={`text-lg font-bold tabular-nums ${s.red ? "text-amber-700" : "text-[#0F172A]"}`}>{s.value}</p>
-                  <p className="text-xs text-[#64748B] mt-0.5">{s.label}</p>
+                  <p className={`text-lg font-bold tabular-nums ${s.red ? "text-amber-700" : "text-ps-ink"}`}>{s.value}</p>
+                  <p className="text-xs text-ps-label mt-0.5">{s.label}</p>
                 </CardContent>
               </Card>
             ))}
@@ -278,16 +278,16 @@ export default function Section32Page() {
               it belongs in the capital-gains schedule, and §74 does not let a
               capital loss relieve business income anyway. */}
           {answer.short_term_capital_gain_paise !== 0 && (
-            <p className="text-xs text-[#64748B] flex items-start gap-1.5">
+            <p className="text-xs text-ps-label flex items-start gap-1.5">
               <Info size={13} className="shrink-0 mt-0.5" />
               The §50 figure is not part of the depreciation allowance. It is a capital
               gain or loss and belongs in the capital-gains schedule.
             </p>
           )}
 
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-x-auto">
+          <div className="bg-white rounded-xl border border-ps-muted overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="bg-[#F8FAFC] text-[#64748B]">
+              <thead className="bg-ps-bg text-ps-label">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">Block</th>
                   <th className="px-3 py-3 text-right font-semibold">Rate</th>
@@ -299,16 +299,16 @@ export default function Section32Page() {
                   <th className="px-4 py-3 text-right font-semibold">Closing WDV</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {answer.blocks.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-10 text-center text-[#94A3B8]">
+                  <tr><td colSpan={8} className="px-4 py-10 text-center text-ps-hint">
                     No blocks recorded for FY {fy}. Add one with its opening written-down
                     value from last year&apos;s return.
                   </td></tr>
                 ) : answer.blocks.map(b => (
                   <tr key={b.block_key} className="align-top">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-[#1E293B]">{b.block_key}</p>
+                      <p className="font-medium text-ps-ink">{b.block_key}</p>
                       {b.gaps.map((g, i) => (
                         <p key={i} className="text-[10px] text-amber-700 mt-0.5">{g}</p>
                       ))}
@@ -325,7 +325,7 @@ export default function Section32Page() {
                     <td className="px-3 py-3 text-right tabular-nums">
                       {formatPaise(b.additions_half_rate_paise)}
                       {b.additions_not_put_to_use_paise > 0 && (
-                        <span className="block text-[10px] text-[#94A3B8]">
+                        <span className="block text-[10px] text-ps-hint">
                           {formatPaise(b.additions_not_put_to_use_paise)} not yet put to use
                         </span>
                       )}
@@ -334,7 +334,7 @@ export default function Section32Page() {
                     <td className="px-3 py-3 text-right tabular-nums font-medium">
                       {formatPaise(b.depreciation_paise)}
                       {b.additional_depreciation_paise > 0 && (
-                        <span className="block text-[10px] text-[#94A3B8]">
+                        <span className="block text-[10px] text-ps-hint">
                           + {formatPaise(b.additional_depreciation_paise)} u/s 32(1)(iia)
                         </span>
                       )}
@@ -351,16 +351,16 @@ export default function Section32Page() {
                charges the wrong rate on the wrong base for the life of the
                asset, and no block silently drops its cost. */
             <div className="bg-white rounded-xl border border-amber-200 px-5 py-4 space-y-2">
-              <p className="text-sm font-medium text-[#1E293B]">
+              <p className="text-sm font-medium text-ps-ink">
                 Assets not assigned to a §32 block
               </p>
-              <p className="text-xs text-[#64748B]">
+              <p className="text-xs text-ps-label">
                 §2(11) groups by nature <em>and</em> rate, so the Schedule II category does
                 not decide it. Set the block on each asset in the fixed-asset register.
               </p>
               <ul className="space-y-1">
                 {answer.unclassified_assets.map(a => (
-                  <li key={a.asset_id} className="text-xs text-[#475569]">
+                  <li key={a.asset_id} className="text-xs text-ps-label">
                     <span className="font-medium">{a.asset_code ?? a.asset_name}</span>
                     {a.asset_category ? ` · ${a.asset_category}` : ""} · {formatPaise(a.purchase_cost_paise)}
                   </li>
@@ -425,46 +425,46 @@ function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
     }
   }
 
-  const input = "w-full mt-1 px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200";
+  const input = "w-full mt-1 px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200";
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-brand-dark/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div>
-          <h3 className="text-sm font-semibold text-[#0F172A]">Add a §32 block — FY {fy}</h3>
-          <p className="text-[11px] text-[#64748B] mt-1">
+          <h3 className="text-sm font-semibold text-ps-ink">Add a §32 block — FY {fy}</h3>
+          <p className="text-[11px] text-ps-label mt-1">
             A block is a group of assets of the same nature carrying the same rate (§2(11)),
             so its name and its rate are one decision. Its opening written-down value comes
             off last year&apos;s return.
           </p>
         </div>
 
-        <label className="block text-xs font-medium text-[#475569]">
+        <label className="block text-xs font-medium text-ps-label">
           Block
           <input className={input} value={blockKey} onChange={e => setBlockKey(e.target.value)}
                  placeholder="Plant &amp; Machinery 15%" />
         </label>
 
         <div className="grid grid-cols-2 gap-3">
-          <label className="block text-xs font-medium text-[#475569]">
+          <label className="block text-xs font-medium text-ps-label">
             Rate (%)
             <input className={input} type="number" min={0} max={100} step={1}
                    value={rate} onChange={e => setRate(e.target.value)} />
-            <span className="block text-[10px] text-[#94A3B8] mt-1">
+            <span className="block text-[10px] text-ps-hint mt-1">
               From Appendix I to the Income-tax Rules.
             </span>
           </label>
-          <label className="block text-xs font-medium text-[#475569]">
+          <label className="block text-xs font-medium text-ps-label">
             Opening WDV (₹)
             <input className={input} value={openingRs} onChange={e => setOpeningRs(e.target.value)}
                    placeholder="1250000" />
-            <span className="block text-[10px] text-[#94A3B8] mt-1">
+            <span className="block text-[10px] text-ps-hint mt-1">
               Off last year&apos;s return. A zero allows no depreciation at all.
             </span>
           </label>
         </div>
 
-        <label className="block text-xs font-medium text-[#475569]">
+        <label className="block text-xs font-medium text-ps-label">
           Does any asset of this block remain at 31 March?
           <select className={input} value={assetsRemain}
                   onChange={e => setAssetsRemain(e.target.value as "yes" | "no" | "unknown")}>
@@ -472,13 +472,13 @@ function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
             <option value="no">No — every asset has gone</option>
             <option value="unknown">Not established</option>
           </select>
-          <span className="block text-[10px] text-[#94A3B8] mt-1">
+          <span className="block text-[10px] text-ps-hint mt-1">
             §50 turns an emptied block into a short-term capital loss and allows no
             depreciation on it. A positive written-down value does not settle it.
           </span>
         </label>
 
-        <label className="block text-xs font-medium text-[#475569]">
+        <label className="block text-xs font-medium text-ps-label">
           Notes
           <input className={input} value={notes} onChange={e => setNotes(e.target.value)}
                  placeholder="Optional" />
@@ -487,7 +487,7 @@ function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
         {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded px-3 py-2">{error}</p>}
 
         <div className="flex gap-2 justify-end pt-1">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <Button size="sm" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save block"}</Button>
         </div>
       </div>

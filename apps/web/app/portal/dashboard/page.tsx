@@ -268,7 +268,7 @@ export default function PortalDashboardPage() {
     <div className="p-6 max-w-5xl">
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold text-[#182350]">Your Portal</h1>
+          <h1 className="text-lg font-semibold text-brand">Your Portal</h1>
           <p className="text-xs text-gray-500 mt-0.5">
             Welcome{dash?.contact.name ? `, ${dash.contact.name}` : ""}. Your secure workspace with your accountant.
           </p>
@@ -279,7 +279,7 @@ export default function PortalDashboardPage() {
             <select
               value={activeClient ?? ""}
               onChange={(e) => { setActiveClient(e.target.value || null); }}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-[#182350]">
+              className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-brand">
               <option value="">Select a client…</option>
               {memberships.map((m) => <option key={m.client_id} value={m.client_id}>{m.name ?? m.client_id}</option>)}
             </select>
@@ -288,7 +288,7 @@ export default function PortalDashboardPage() {
       </div>
 
       {memberships.length > 1 && !activeClient ? (
-        <div className="bg-[#F8FAFC] border border-dashed border-gray-200 rounded-xl p-8 text-center text-sm text-gray-500">
+        <div className="bg-ps-bg border border-dashed border-gray-200 rounded-xl p-8 text-center text-sm text-gray-500">
           You have access to {memberships.length} clients. Choose one above to continue.
         </div>
       ) : !dash ? (
@@ -300,15 +300,15 @@ export default function PortalDashboardPage() {
             <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <p className="text-[11px] uppercase tracking-wide text-gray-400">Total Outstanding</p>
-                <p className="mt-1 text-xl font-semibold text-[#182350]">{formatPaise(dues.total_outstanding_paise)}</p>
+                <p className="mt-1 text-xl font-semibold text-brand">{formatPaise(dues.total_outstanding_paise)}</p>
               </div>
               <div className={`rounded-xl border p-4 ${dues.overdue_paise > 0 ? "border-red-200 bg-red-50" : "border-gray-200 bg-white"}`}>
                 <p className="text-[11px] uppercase tracking-wide text-gray-400">Overdue</p>
-                <p className={`mt-1 text-xl font-semibold ${dues.overdue_paise > 0 ? "text-red-700" : "text-[#182350]"}`}>{formatPaise(dues.overdue_paise)}</p>
+                <p className={`mt-1 text-xl font-semibold ${dues.overdue_paise > 0 ? "text-red-700" : "text-brand"}`}>{formatPaise(dues.overdue_paise)}</p>
               </div>
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <p className="text-[11px] uppercase tracking-wide text-gray-400">Overdue Invoices</p>
-                <p className="mt-1 text-xl font-semibold text-[#182350]">{dues.overdue_count}</p>
+                <p className="mt-1 text-xl font-semibold text-brand">{dues.overdue_count}</p>
               </div>
             </div>
           )}
@@ -321,7 +321,7 @@ export default function PortalDashboardPage() {
               return (
                 <button key={s.key} onClick={() => setActive(s.key)}
                   className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition ${
-                    on ? "border-[#182350] bg-[#182350] text-white" : "border-gray-200 bg-white text-[#182350] hover:border-gray-300"}`}>
+                    on ? "border-brand bg-brand text-white" : "border-gray-200 bg-white text-brand hover:border-gray-300"}`}>
                   <Icon size={16} className={on ? "text-white" : "text-gray-400"} />
                   <span className="font-medium">{s.label}</span>
                 </button>
@@ -342,7 +342,7 @@ export default function PortalDashboardPage() {
                 <Table head={["Invoice", "Date", "Due", "Total", "Outstanding", "Status", ""]}>
                   {invoices.map((i) => (
                     <tr key={i.id} className="border-t border-gray-100">
-                      <td className="px-3 py-2 font-medium text-[#182350]">{i.invoice_no ?? "—"}</td>
+                      <td className="px-3 py-2 font-medium text-brand">{i.invoice_no ?? "—"}</td>
                       <td className="px-3 py-2 text-gray-500">{i.invoice_date ? formatDate(i.invoice_date) : "—"}</td>
                       <td className="px-3 py-2 text-gray-500">{i.due_date ? formatDate(i.due_date) : "—"}</td>
                       <td className="px-3 py-2 tabular-nums">{formatPaise(i.total_paise)}</td>
@@ -356,7 +356,7 @@ export default function PortalDashboardPage() {
                           </button>
                         )}
                         <button disabled={busy} onClick={() => downloadInvoice(i.id)}
-                          className="inline-flex items-center gap-1 text-xs text-[#182350] hover:underline disabled:opacity-40">
+                          className="inline-flex items-center gap-1 text-xs text-brand hover:underline disabled:opacity-40">
                           <Download size={13} /> PDF
                         </button>
                       </td>
@@ -380,9 +380,9 @@ export default function PortalDashboardPage() {
                     className="ml-1 block sm:inline border border-gray-200 rounded px-2 py-1 text-xs" />
                 </label>
                 <button disabled={busy} onClick={reloadStatement}
-                  className="rounded-lg border border-gray-200 px-3 py-1 text-xs text-[#182350] hover:border-gray-300 disabled:opacity-40">Apply</button>
+                  className="rounded-lg border border-gray-200 px-3 py-1 text-xs text-brand hover:border-gray-300 disabled:opacity-40">Apply</button>
                 <button disabled={busy} onClick={downloadStatement}
-                  className="inline-flex items-center gap-1 rounded-lg bg-[#182350] px-3 py-1 text-xs text-white disabled:opacity-40">
+                  className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1 text-xs text-white disabled:opacity-40">
                   <Download size={13} /> Download PDF
                 </button>
                 <span className="text-[11px] text-gray-400">Defaults to the current financial year.</span>
@@ -392,15 +392,15 @@ export default function PortalDashboardPage() {
               ) : (
                 <>
                   <div className="mb-2 flex gap-6 text-xs text-gray-500">
-                    <span>Opening: <span className="font-medium text-[#182350]">{formatPaise(statement.opening_balance_paise)}</span></span>
-                    <span>Closing: <span className="font-medium text-[#182350]">{formatPaise(statement.closing_balance_paise)}</span></span>
+                    <span>Opening: <span className="font-medium text-brand">{formatPaise(statement.opening_balance_paise)}</span></span>
+                    <span>Closing: <span className="font-medium text-brand">{formatPaise(statement.closing_balance_paise)}</span></span>
                   </div>
                   {statement.transactions.length === 0 ? <Empty label="No transactions in this period." /> : (
                     <Table head={["Date", "Particulars", "Debit", "Credit", "Balance"]}>
                       {statement.transactions.map((t, idx) => (
                         <tr key={idx} className="border-t border-gray-100">
                           <td className="px-3 py-2 text-gray-500">{formatDate(t.date)}</td>
-                          <td className="px-3 py-2 text-[#182350]">{t.particulars}</td>
+                          <td className="px-3 py-2 text-brand">{t.particulars}</td>
                           <td className="px-3 py-2 tabular-nums">{t.debit_paise ? formatPaise(t.debit_paise) : "—"}</td>
                           <td className="px-3 py-2 tabular-nums">{t.credit_paise ? formatPaise(t.credit_paise) : "—"}</td>
                           <td className="px-3 py-2 tabular-nums font-medium">{formatPaise(t.running_balance_paise)}</td>
@@ -420,7 +420,7 @@ export default function PortalDashboardPage() {
                 <Table head={["Invoice", "Status", "Sent"]}>
                   {reminders.map((r, idx) => (
                     <tr key={idx} className="border-t border-gray-100">
-                      <td className="px-3 py-2 font-medium text-[#182350]">{r.invoice_no ?? "—"}</td>
+                      <td className="px-3 py-2 font-medium text-brand">{r.invoice_no ?? "—"}</td>
                       <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
                       <td className="px-3 py-2 text-gray-500">{r.sent_at ? formatDate(r.sent_at) : (r.created_at ? formatDate(r.created_at) : "—")}</td>
                     </tr>
@@ -437,7 +437,7 @@ export default function PortalDashboardPage() {
                 <Table head={["Type", "Obligation", "Period", "Due", "Status"]}>
                   {compliance.map((c, idx) => (
                     <tr key={idx} className="border-t border-gray-100">
-                      <td className="px-3 py-2 font-medium text-[#182350]">{c.compliance_type ?? "—"}</td>
+                      <td className="px-3 py-2 font-medium text-brand">{c.compliance_type ?? "—"}</td>
                       <td className="px-3 py-2 text-gray-600">{c.obligation_type ?? "—"}</td>
                       <td className="px-3 py-2 text-gray-500">{c.period_label ?? "—"}</td>
                       <td className="px-3 py-2 text-gray-500">{c.due_date ? formatDate(c.due_date) : "—"}</td>
@@ -461,7 +461,7 @@ export default function PortalDashboardPage() {
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white">
-      <div className="border-b border-gray-100 px-4 py-2.5 text-sm font-semibold text-[#182350]">{title}</div>
+      <div className="border-b border-gray-100 px-4 py-2.5 text-sm font-semibold text-brand">{title}</div>
       <div className="p-3 overflow-x-auto">{children}</div>
     </div>
   );

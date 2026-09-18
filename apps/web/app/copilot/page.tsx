@@ -92,8 +92,8 @@ function MessageBubble({ msg, onRate }: { msg: Message; onRate: (id: string, rat
       <div className={`max-w-[85%] ${isUser ? "order-first" : ""}`}>
         <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
           isUser
-            ? "bg-[#182350] text-white rounded-tr-sm"
-            : "bg-white border border-[#E2E8F0] text-[#1E293B] rounded-tl-sm shadow-sm"
+            ? "bg-brand text-white rounded-tr-sm"
+            : "bg-white border border-ps-border text-ps-ink rounded-tl-sm shadow-sm"
         }`}>
           {msg.content.split("\n").map((line, i) => (
             <p key={i} className={line.startsWith("##") ? "font-semibold mt-2" : line.startsWith("- ") ? "pl-3" : ""}>{
@@ -103,20 +103,20 @@ function MessageBubble({ msg, onRate }: { msg: Message; onRate: (id: string, rat
         </div>
         {!isUser && (
           <div className="flex items-center gap-2 mt-1.5 px-1">
-            <span className="text-[10px] text-[#94A3B8]">{fmtTime(msg.created_at)}</span>
+            <span className="text-[10px] text-ps-hint">{fmtTime(msg.created_at)}</span>
             {msg.tokens_used && (
-              <span className="text-[10px] text-[#CBD5E1]">{msg.tokens_used} tokens</span>
+              <span className="text-[10px] text-ps-disabled">{msg.tokens_used} tokens</span>
             )}
             <div className="flex gap-1 ml-auto">
               <button
                 onClick={() => onRate(msg.id, 5)}
-                className={`p-1 rounded hover:bg-green-50 transition-colors ${msg.feedback_rating === 5 ? "text-green-600" : "text-[#CBD5E1] hover:text-green-500"}`}
+                className={`p-1 rounded hover:bg-green-50 transition-colors ${msg.feedback_rating === 5 ? "text-green-600" : "text-ps-disabled hover:text-green-500"}`}
               >
                 <ThumbsUp size={11} />
               </button>
               <button
                 onClick={() => onRate(msg.id, 1)}
-                className={`p-1 rounded hover:bg-red-50 transition-colors ${msg.feedback_rating === 1 ? "text-red-500" : "text-[#CBD5E1] hover:text-red-400"}`}
+                className={`p-1 rounded hover:bg-red-50 transition-colors ${msg.feedback_rating === 1 ? "text-red-500" : "text-ps-disabled hover:text-red-400"}`}
               >
                 <ThumbsDown size={11} />
               </button>
@@ -283,17 +283,17 @@ export default function CopilotPage() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#F8FAFC]">
+    <div className="h-screen flex flex-col bg-ps-bg">
       {/* Header */}
-      <div className="bg-white border-b border-[#E2E8F0] px-6 py-4 flex-shrink-0">
+      <div className="bg-white border-b border-ps-border px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#182350" }}>
               <Sparkles size={16} className="text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-[#182350]">AI Copilot</h1>
-              <p className="text-xs text-[#64748B]">Intelligent assistant for your CA practice</p>
+              <h1 className="text-lg font-semibold text-brand">AI Copilot</h1>
+              <p className="text-xs text-ps-label">Intelligent assistant for your CA practice</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -301,7 +301,7 @@ export default function CopilotPage() {
             <select
               value={contextType}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setContextType(e.target.value)}
-              className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#475569]"
+              className="text-xs px-3 py-1.5 border border-ps-border rounded-lg bg-white text-ps-label"
             >
               <option value="global">Global</option>
               <option value="compliance">Compliance</option>
@@ -309,16 +309,16 @@ export default function CopilotPage() {
               <option value="executive">Executive</option>
               <option value="relationship">Relationships</option>
             </select>
-            <div className="flex gap-1 border border-[#E2E8F0] rounded-lg p-0.5 bg-white">
+            <div className="flex gap-1 border border-ps-border rounded-lg p-0.5 bg-white">
               <button
                 onClick={() => setTab("chat")}
-                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${tab === "chat" ? "bg-[#182350] text-white" : "text-[#64748B] hover:text-[#334155]"}`}
+                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${tab === "chat" ? "bg-brand text-white" : "text-ps-label hover:text-ps-body"}`}
               >
                 Chat
               </button>
               <button
                 onClick={() => setTab("recommendations")}
-                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors relative ${tab === "recommendations" ? "bg-[#182350] text-white" : "text-[#64748B] hover:text-[#334155]"}`}
+                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors relative ${tab === "recommendations" ? "bg-brand text-white" : "text-ps-label hover:text-ps-body"}`}
               >
                 Insights
                 {recommendations.length > 0 && (
@@ -335,8 +335,8 @@ export default function CopilotPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* Sidebar — conversation history */}
-        <div className="w-64 bg-white border-r border-[#E2E8F0] flex flex-col flex-shrink-0">
-          <div className="p-3 border-b border-[#F1F5F9]">
+        <div className="w-64 bg-white border-r border-ps-border flex flex-col flex-shrink-0">
+          <div className="p-3 border-b border-ps-muted">
             <button disabled={actionInFlight}
               onClick={newConversation}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg text-white transition-colors"
@@ -350,10 +350,10 @@ export default function CopilotPage() {
             {conversationsError ? (
               <div className="text-center py-6 space-y-2">
                 <p className="text-xs text-red-600 font-medium px-2">{conversationsError}</p>
-                <button onClick={loadConversations} className="text-[11px] px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button onClick={loadConversations} className="text-[11px] px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </div>
             ) : conversations.length === 0 ? (
-              <p className="text-xs text-[#94A3B8] text-center py-6">No conversations yet</p>
+              <p className="text-xs text-ps-hint text-center py-6">No conversations yet</p>
             ) : (
               conversations.map((conv: Conversation) => (
                 <button disabled={actionInFlight}
@@ -361,19 +361,19 @@ export default function CopilotPage() {
                   onClick={() => openConversation(conv.id)}
                   className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors ${
                     activeConv === conv.id
-                      ? "bg-[#EFF6FF] text-[#182350]"
-                      : "hover:bg-[#F8FAFC] text-[#334155]"
+                      ? "bg-[#EFF6FF] text-brand"
+                      : "hover:bg-ps-bg text-ps-body"
                   }`}
                 >
                   <div className="flex items-start gap-2">
-                    <span className="mt-0.5 text-[#94A3B8] flex-shrink-0">
+                    <span className="mt-0.5 text-ps-hint flex-shrink-0">
                       {CONTEXT_ICONS[conv.context_type] || <MessageSquare size={14} />}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium line-clamp-2">{conv.title}</p>
                       <div className="flex items-center gap-1 mt-0.5">
-                        <Clock size={9} className="text-[#CBD5E1]" />
-                        <span className="text-[10px] text-[#CBD5E1]">
+                        <Clock size={9} className="text-ps-disabled" />
+                        <span className="text-[10px] text-ps-disabled">
                           {conv.last_message_at ? fmtTime(conv.last_message_at) : "new"}
                         </span>
                       </div>
@@ -398,8 +398,8 @@ export default function CopilotPage() {
                       style={{ backgroundColor: "#EFF6FF" }}>
                       <Sparkles size={28} style={{ color: "#182350" }} />
                     </div>
-                    <h2 className="text-lg font-semibold text-[#182350] mb-1">Ask your Copilot</h2>
-                    <p className="text-sm text-[#64748B] mb-6 max-w-sm">
+                    <h2 className="text-lg font-semibold text-brand mb-1">Ask your Copilot</h2>
+                    <p className="text-sm text-ps-label mb-6 max-w-sm">
                       Get instant answers about clients, compliance, GST, TDS, and more.
                     </p>
                     <div className="grid grid-cols-2 gap-2 max-w-lg">
@@ -407,7 +407,7 @@ export default function CopilotPage() {
                         <button disabled={actionInFlight}
                           key={i}
                           onClick={() => sendMessage(q)}
-                          className="text-left text-xs px-3 py-2.5 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#AFD2FA] hover:bg-[#EFF6FF] text-[#475569] transition-colors"
+                          className="text-left text-xs px-3 py-2.5 rounded-xl border border-ps-border bg-white hover:border-brand-light hover:bg-[#EFF6FF] text-ps-label transition-colors"
                         >
                           {q}
                         </button>
@@ -425,10 +425,10 @@ export default function CopilotPage() {
                           style={{ backgroundColor: "#182350" }}>
                           <Sparkles size={13} className="text-white" />
                         </div>
-                        <div className="bg-white border border-[#E2E8F0] rounded-2xl rounded-tl-sm px-4 py-3">
+                        <div className="bg-white border border-ps-border rounded-2xl rounded-tl-sm px-4 py-3">
                           <div className="flex gap-1">
                             {[0,1,2].map(i => (
-                              <div key={i} className="w-2 h-2 rounded-full bg-[#AFD2FA] animate-bounce"
+                              <div key={i} className="w-2 h-2 rounded-full bg-brand-light animate-bounce"
                                 style={{ animationDelay: `${i * 150}ms` }} />
                             ))}
                           </div>
@@ -442,13 +442,13 @@ export default function CopilotPage() {
 
               {/* Suggested questions (contextual) */}
               {messages.length > 0 && suggestions.length > 0 && (
-                <div className="px-6 py-2 border-t border-[#F1F5F9] bg-white">
+                <div className="px-6 py-2 border-t border-ps-muted bg-white">
                   <div className="flex gap-2 overflow-x-auto pb-1 max-w-3xl mx-auto">
                     {suggestions.slice(0,4).map((q: string, i: number) => (
                       <button disabled={actionInFlight}
                         key={i}
                         onClick={() => sendMessage(q)}
-                        className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] hover:bg-[#EFF6FF] hover:border-[#AFD2FA] text-[#475569] transition-colors whitespace-nowrap"
+                        className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-ps-border bg-ps-bg hover:bg-[#EFF6FF] hover:border-brand-light text-ps-label transition-colors whitespace-nowrap"
                       >
                         {q}
                       </button>
@@ -458,7 +458,7 @@ export default function CopilotPage() {
               )}
 
               {/* Input */}
-              <div className="px-6 py-4 border-t border-[#E2E8F0] bg-white flex-shrink-0">
+              <div className="px-6 py-4 border-t border-ps-border bg-white flex-shrink-0">
                 {chatError && (
                   <div className="max-w-3xl mx-auto mb-2 flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
                     <p className="text-xs text-red-700">{chatError}</p>
@@ -473,7 +473,7 @@ export default function CopilotPage() {
                       onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                       placeholder="Ask anything about your clients, compliance, GST, TDS..."
                       rows={1}
-                      className="w-full px-4 py-3 text-sm border border-[#E2E8F0] rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#AFD2FA] leading-relaxed"
+                      className="w-full px-4 py-3 text-sm border border-ps-border rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand-light leading-relaxed"
                       style={{ minHeight: "48px", maxHeight: "140px" }}
                     />
                   </div>
@@ -483,10 +483,10 @@ export default function CopilotPage() {
                     className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 transition-all"
                     style={{ backgroundColor: input.trim() ? "#182350" : "#E2E8F0" }}
                   >
-                    <Send size={15} className={input.trim() ? "text-white" : "text-[#94A3B8]"} />
+                    <Send size={15} className={input.trim() ? "text-white" : "text-ps-hint"} />
                   </button>
                 </div>
-                <p className="text-center text-[10px] text-[#CBD5E1] mt-2">
+                <p className="text-center text-[10px] text-ps-disabled mt-2">
                   AI responses are advisory — always verify with source documents. Never auto-submit to government portals.
                 </p>
               </div>
@@ -497,8 +497,8 @@ export default function CopilotPage() {
             <div className="flex-1 overflow-y-auto px-6 py-4">
               <div className="max-w-2xl mx-auto">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold text-[#182350]">AI Recommendations</h2>
-                  <button onClick={loadRecommendations} className="text-xs text-[#64748B] flex items-center gap-1 hover:text-[#182350]">
+                  <h2 className="font-semibold text-brand">AI Recommendations</h2>
+                  <button onClick={loadRecommendations} className="text-xs text-ps-label flex items-center gap-1 hover:text-brand">
                     <RefreshCw size={12} /> Refresh
                   </button>
                 </div>
@@ -507,39 +507,39 @@ export default function CopilotPage() {
                   <div className="text-center py-16">
                     <Star size={40} className="mx-auto text-red-300 mb-3" />
                     <p className="text-sm text-red-600 font-medium">{recommendationsError}</p>
-                    <button onClick={loadRecommendations} className="mt-3 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                    <button onClick={loadRecommendations} className="mt-3 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
                   </div>
                 ) : recommendations.length === 0 ? (
                   <div className="text-center py-16">
-                    <Star size={40} className="mx-auto text-[#CBD5E1] mb-3" />
-                    <p className="text-[#64748B]">No pending recommendations</p>
-                    <p className="text-sm text-[#94A3B8] mt-1">All insights have been actioned</p>
+                    <Star size={40} className="mx-auto text-ps-disabled mb-3" />
+                    <p className="text-ps-label">No pending recommendations</p>
+                    <p className="text-sm text-ps-hint mt-1">All insights have been actioned</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {recommendations.map((rec: Recommendation) => (
-                      <div key={rec.id} className="bg-white border border-[#E2E8F0] rounded-xl p-4">
+                      <div key={rec.id} className="bg-white border border-ps-border rounded-xl p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${PRIORITY_STYLES[rec.priority]}`}>
                                 {rec.priority.toUpperCase()}
                               </span>
-                              <span className="text-[10px] bg-[#F1F5F9] text-[#64748B] px-2 py-0.5 rounded-full">
+                              <span className="text-[10px] bg-ps-muted text-ps-label px-2 py-0.5 rounded-full">
                                 {REC_TYPE_LABELS[rec.recommendation_type] || rec.recommendation_type}
                               </span>
                               {rec.client_name && (
-                                <span className="text-[10px] text-[#94A3B8]">{rec.client_name}</span>
+                                <span className="text-[10px] text-ps-hint">{rec.client_name}</span>
                               )}
                             </div>
-                            <p className="font-medium text-[#182350] text-sm">{rec.title}</p>
-                            <p className="text-xs text-[#64748B] mt-1">{rec.description}</p>
+                            <p className="font-medium text-brand text-sm">{rec.title}</p>
+                            <p className="text-xs text-ps-label mt-1">{rec.description}</p>
                             {rec.rationale && (
-                              <p className="text-[11px] text-[#94A3B8] mt-1 italic">{rec.rationale}</p>
+                              <p className="text-[11px] text-ps-hint mt-1 italic">{rec.rationale}</p>
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#F1F5F9]">
+                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-ps-muted">
                           {rec.action_label && (
                             <button
                               onClick={() => actOnRecommendation(rec.id, "accept")}
@@ -553,14 +553,14 @@ export default function CopilotPage() {
                           <button
                             onClick={() => actOnRecommendation(rec.id, "snooze")}
                             disabled={actingRec === rec.id}
-                            className="text-xs px-3 py-1.5 rounded-lg font-medium border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50"
+                            className="text-xs px-3 py-1.5 rounded-lg font-medium border border-ps-border text-ps-label hover:bg-ps-bg disabled:opacity-50"
                           >
                             Snooze
                           </button>
                           <button
                             onClick={() => actOnRecommendation(rec.id, "dismiss")}
                             disabled={actingRec === rec.id}
-                            className="text-xs text-[#94A3B8] hover:text-[#64748B] px-2 py-1.5 disabled:opacity-50"
+                            className="text-xs text-ps-hint hover:text-ps-label px-2 py-1.5 disabled:opacity-50"
                           >
                             Dismiss
                           </button>

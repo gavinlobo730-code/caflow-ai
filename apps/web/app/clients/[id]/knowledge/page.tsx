@@ -53,10 +53,10 @@ export default function ClientKnowledgePage() {
     <div className="p-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Library size={18} className="text-[#182350]" />
-          <h1 className="text-lg font-semibold text-[#182350]">Client Knowledge</h1>
+          <Library size={18} className="text-brand" />
+          <h1 className="text-lg font-semibold text-brand">Client Knowledge</h1>
         </div>
-        <button onClick={load} className="text-gray-400 hover:text-[#182350]"><RefreshCw size={14} /></button>
+        <button onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
       </div>
       <div className="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-1.5 bg-white mb-4">
         <Search size={14} className="text-gray-400" />
@@ -69,7 +69,7 @@ export default function ClientKnowledgePage() {
           {articles.length === 0 && <p className="text-[12px] text-gray-400">No client-scoped articles.</p>}
           {articles.map((a) => (
             <div key={a.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
-              <p className="text-[13px] font-medium text-[#182350]">{a.title}</p>
+              <p className="text-[13px] font-medium text-brand">{a.title}</p>
               <p className="text-[11px] text-gray-400 mt-0.5">v{a.current_version}{a.tags && a.tags.length ? ` · ${a.tags.join(", ")}` : ""}</p>
             </div>
           ))}

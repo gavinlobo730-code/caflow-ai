@@ -132,9 +132,9 @@ const ENTITY_TYPES: EntityType[] = [
 
 const STAGE_COLORS: Record<Stage, { bg: string; header: string; badge: string }> = {
   Lead: {
-    bg: "bg-[#F8FAFC]",
-    header: "bg-[#F1F5F9] border-[#E2E8F0]",
-    badge: "bg-gray-100 text-[#334155]",
+    bg: "bg-ps-bg",
+    header: "bg-ps-muted border-ps-border",
+    badge: "bg-gray-100 text-ps-body",
   },
   "Engagement Drafted": {
     bg: "bg-violet-50",
@@ -404,15 +404,15 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#182350]/60 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
-          <h2 className="text-base font-semibold text-[#0F172A]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+          <h2 className="text-base font-semibold text-ps-ink">
             {initial ? "Edit Lead" : "Add Lead"}
           </h2>
           <button
             onClick={onClose}
-            className="text-[#94A3B8] hover:text-[#475569]"
+            className="text-ps-hint hover:text-ps-label"
           >
             <X size={18} />
           </button>
@@ -432,7 +432,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
 
           {/* Name */}
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">
+            <label className="block text-xs font-medium text-ps-body mb-1">
               Contact Name *
             </label>
             <input
@@ -440,14 +440,14 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="Full name"
-              className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
           {/* Phone + Email */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">
+              <label className="block text-xs font-medium text-ps-body mb-1">
                 Phone *
               </label>
               <input
@@ -458,11 +458,11 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
                 placeholder="10-digit mobile"
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">
+              <label className="block text-xs font-medium text-ps-body mb-1">
                 Email
               </label>
               <input
@@ -470,14 +470,14 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="email@example.com"
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
           </div>
 
           {/* Business Name */}
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">
+            <label className="block text-xs font-medium text-ps-body mb-1">
               Business Name *
             </label>
             <input
@@ -487,14 +487,14 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 setForm({ ...form, businessName: e.target.value })
               }
               placeholder="Business / firm name"
-              className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
           {/* Entity Type + Source */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">
+              <label className="block text-xs font-medium text-ps-body mb-1">
                 Entity Type *
               </label>
               <select
@@ -502,7 +502,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, entityType: e.target.value as EntityType })
                 }
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
                 {ENTITY_TYPES.map((t) => (
                   <option key={t}>{t}</option>
@@ -510,7 +510,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">
+              <label className="block text-xs font-medium text-ps-body mb-1">
                 Source *
               </label>
               <select
@@ -518,7 +518,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, source: e.target.value as Source })
                 }
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
                 {SOURCES.map((s) => (
                   <option key={s}>{s}</option>
@@ -529,7 +529,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
 
           {/* Monthly fee */}
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">
+            <label className="block text-xs font-medium text-ps-body mb-1">
               Estimated Monthly Fee (₹)
             </label>
             <input
@@ -543,14 +543,14 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 })
               }
               placeholder="e.g. 5000"
-              className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">
+              <label className="block text-xs font-medium text-ps-body mb-1">
                 Last Contact Date
               </label>
               <input
@@ -559,11 +559,11 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, lastContactDate: e.target.value })
                 }
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">
+              <label className="block text-xs font-medium text-ps-body mb-1">
                 Next Follow-up Date
               </label>
               <input
@@ -572,14 +572,14 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, nextFollowUpDate: e.target.value })
                 }
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
           </div>
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">
+            <label className="block text-xs font-medium text-ps-body mb-1">
               Notes
             </label>
             <textarea
@@ -587,7 +587,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={3}
               placeholder="Any additional context…"
-              className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
             />
           </div>
 
@@ -597,7 +597,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+              className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
@@ -639,27 +639,27 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
   const overdue = isOverdueOrToday(lead.nextFollowUpDate);
 
   return (
-    <div className="bg-white rounded-lg border border-[#E2E8F0] p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-lg border border-ps-border p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-[#0F172A] leading-tight">
+          <p className="text-sm font-semibold text-ps-ink leading-tight">
             {lead.name}
           </p>
-          <p className="text-xs text-[#64748B] truncate mt-0.5">
+          <p className="text-xs text-ps-label truncate mt-0.5">
             {lead.businessName}
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={() => onEdit(lead)}
-            className="text-xs text-[#94A3B8] hover:text-[#475569] px-1.5 py-0.5 rounded hover:bg-[#F1F5F9] transition-colors"
+            className="text-xs text-ps-hint hover:text-ps-label px-1.5 py-0.5 rounded hover:bg-ps-muted transition-colors"
           >
             Edit
           </button>
           <button
             onClick={() => onDelete(lead.id)}
-            className="text-[#CBD5E1] hover:text-red-500 transition-colors"
+            className="text-ps-disabled hover:text-red-500 transition-colors"
             aria-label="Delete lead"
           >
             <X size={14} />
@@ -669,24 +669,24 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
 
       {/* Meta */}
       <div className="space-y-1.5">
-        <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
+        <div className="flex items-center gap-1.5 text-xs text-ps-label">
           <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-medium">
             {lead.entityType}
           </span>
-          <span className="px-1.5 py-0.5 bg-[#F8FAFC] text-[#475569] rounded text-[10px] font-medium">
+          <span className="px-1.5 py-0.5 bg-ps-bg text-ps-label rounded text-[10px] font-medium">
             {lead.source}
           </span>
         </div>
 
         {lead.phone && (
-          <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
+          <div className="flex items-center gap-1.5 text-xs text-ps-label">
             <Phone size={11} className="shrink-0" />
             <span>{lead.phone}</span>
           </div>
         )}
 
         {lead.email && (
-          <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
+          <div className="flex items-center gap-1.5 text-xs text-ps-label">
             <Mail size={11} className="shrink-0" />
             <span className="truncate">{lead.email}</span>
           </div>
@@ -699,7 +699,7 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 text-xs text-[#94A3B8]">
+        <div className="flex items-center gap-1.5 text-xs text-ps-hint">
           <Calendar size={11} className="shrink-0" />
           <span>Last: {formatDate(lead.lastContactDate)}</span>
         </div>
@@ -707,7 +707,7 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
         {lead.nextFollowUpDate && (
           <div
             className={`flex items-center gap-1.5 text-xs font-medium ${
-              overdue ? "text-red-600" : "text-[#64748B]"
+              overdue ? "text-red-600" : "text-ps-label"
             }`}
           >
             <AlertCircle size={11} className="shrink-0" />
@@ -811,15 +811,15 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#182350]/60 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
             <UserCheck size={18} className="text-green-700" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-[#0F172A]">Convert to Client</h2>
-            <p className="text-xs text-[#64748B]">{lead.name} · {lead.businessName}</p>
+            <h2 className="text-base font-semibold text-ps-ink">Convert to Client</h2>
+            <p className="text-xs text-ps-label">{lead.name} · {lead.businessName}</p>
           </div>
         </div>
 
@@ -839,7 +839,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
               </div>
             )}
             <div className="flex gap-3">
-              <button onClick={onClose} className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC]">Close</button>
+              <button onClick={onClose} className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg">Close</button>
               <Link
                 href={`/clients/${done}/lifecycle/`}
                 onClick={onClose}
@@ -851,27 +851,27 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
           </div>
         ) : (
           <>
-            <p className="text-sm text-[#475569]">
+            <p className="text-sm text-ps-label">
               Creates a new client, engagement, and onboarding workflow for <strong>{lead.name}</strong>.
             </p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-[#64748B] font-medium">PAN (optional)</label>
+                <label className="text-xs text-ps-label font-medium">PAN (optional)</label>
                 <input
                   value={pan}
                   onChange={(e) => setPan(e.target.value.toUpperCase())}
                   maxLength={10}
-                  className="w-full mt-1 px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg text-[#0F172A] font-mono focus:outline-none focus:ring-2 focus:ring-green-500 uppercase"
+                  className="w-full mt-1 px-3 py-2 text-sm border border-ps-border rounded-lg text-ps-ink font-mono focus:outline-none focus:ring-2 focus:ring-green-500 uppercase"
                   placeholder="AAAAA9999A"
                 />
               </div>
               <div>
-                <label className="text-xs text-[#64748B] font-medium">GSTIN (optional)</label>
+                <label className="text-xs text-ps-label font-medium">GSTIN (optional)</label>
                 <input
                   value={gstin}
                   onChange={(e) => setGstin(e.target.value.toUpperCase())}
                   maxLength={15}
-                  className="w-full mt-1 px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg text-[#0F172A] font-mono focus:outline-none focus:ring-2 focus:ring-green-500 uppercase"
+                  className="w-full mt-1 px-3 py-2 text-sm border border-ps-border rounded-lg text-ps-ink font-mono focus:outline-none focus:ring-2 focus:ring-green-500 uppercase"
                   placeholder="22AAAAA0000A1Z5"
                 />
               </div>
@@ -882,7 +882,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
             <div className="flex gap-3 pt-1">
               <button
                 onClick={onClose}
-                className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors"
+                className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
               >
                 Cancel
               </button>
@@ -1009,17 +1009,17 @@ export default function PipelinePage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-[#94A3B8] mb-1">
-            <Link href="/clients" className="hover:text-[#475569]">
+          <div className="flex items-center gap-2 text-xs text-ps-hint mb-1">
+            <Link href="/clients" className="hover:text-ps-label">
               Clients
             </Link>
             <ChevronRight size={12} />
             <span>Pipeline</span>
           </div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">
+          <h1 className="text-xl font-semibold text-ps-ink">
             Prospect Pipeline
           </h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <p className="text-sm text-ps-label mt-0.5">
             Track and convert prospective clients through your sales funnel
           </p>
         </div>
@@ -1034,15 +1034,15 @@ export default function PipelinePage() {
 
       {/* Summary bar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="bg-white rounded-lg border border-[#F1F5F9] px-4 py-3">
-          <p className="text-xs text-[#64748B]">Total Leads</p>
-          <p className="text-xl font-bold text-[#0F172A] mt-0.5">
+        <div className="bg-white rounded-lg border border-ps-muted px-4 py-3">
+          <p className="text-xs text-ps-label">Total Leads</p>
+          <p className="text-xl font-bold text-ps-ink mt-0.5">
             <Users size={14} className="inline mr-1 text-blue-500" />
             {totalLeads}{leadsCapped ? "+" : ""}
           </p>
         </div>
-        <div className="bg-white rounded-lg border border-[#F1F5F9] px-4 py-3">
-          <p className="text-xs text-[#64748B]">Est. MRR (if all convert)</p>
+        <div className="bg-white rounded-lg border border-ps-muted px-4 py-3">
+          <p className="text-xs text-ps-label">Est. MRR (if all convert)</p>
           <p className="text-xl font-bold text-green-700 mt-0.5">
             {formatRupees(estimatedMRRPaise)}
           </p>
@@ -1052,10 +1052,10 @@ export default function PipelinePage() {
           return (
             <div
               key={stage}
-              className="bg-white rounded-lg border border-[#F1F5F9] px-4 py-3"
+              className="bg-white rounded-lg border border-ps-muted px-4 py-3"
             >
-              <p className="text-xs text-[#64748B]">{stage}</p>
-              <p className="text-xl font-bold text-[#0F172A] mt-0.5">{count}</p>
+              <p className="text-xs text-ps-label">{stage}</p>
+              <p className="text-xl font-bold text-ps-ink mt-0.5">{count}</p>
             </div>
           );
         })}
@@ -1120,7 +1120,7 @@ export default function PipelinePage() {
               {/* Column header */}
               <div className={`px-4 py-3 border-b ${colors.header}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-[#1E293B]">
+                  <span className="text-sm font-semibold text-ps-ink">
                     {stage}
                   </span>
                   <span
@@ -1134,7 +1134,7 @@ export default function PipelinePage() {
               {/* Cards */}
               <div className={`p-3 space-y-3 min-h-[200px] ${colors.bg}`}>
                 {stageLeads.length === 0 && (
-                  <div className="text-center py-10 text-xs text-[#94A3B8]">
+                  <div className="text-center py-10 text-xs text-ps-hint">
                     No leads in this stage
                   </div>
                 )}

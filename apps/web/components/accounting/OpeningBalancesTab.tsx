@@ -179,8 +179,8 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-sm font-semibold text-[#0F172A]">Opening balances, bill by bill</h2>
-          <p className="text-[11px] text-[#64748B] mt-1 max-w-2xl">
+          <h2 className="text-sm font-semibold text-ps-ink">Opening balances, bill by bill</h2>
+          <p className="text-[11px] text-ps-label mt-1 max-w-2xl">
             The opening balance on each customer and vendor is what the ledger
             carries. Ageing is per document, so record the invoices and bills
             still open at the opening date here — with the numbers and dates the
@@ -194,11 +194,11 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
         </button>
       </div>
 
-      <div className="inline-flex rounded-lg bg-[#F1F5F9] p-0.5">
+      <div className="inline-flex rounded-lg bg-ps-muted p-0.5">
         {(["receivable", "payable"] as Kind[]).map((k) => (
           <button key={k} onClick={() => setKind(k)}
             className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-              kind === k ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>
+              kind === k ? "bg-white text-ps-ink shadow-sm" : "text-ps-label hover:text-ps-body"}`}>
             {kinds?.kinds?.find((x) => x.value === k)?.label
               ?? (k === "receivable" ? "Receivable" : "Payable")}
           </button>
@@ -227,9 +227,9 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
             ["Documents recorded here", listing.documents_paise],
             ["Not broken up", listing.opening_balance_paise - listing.documents_paise],
           ].map(([label, value]) => (
-            <div key={label as string} className="border border-[#E2E8F0] rounded-lg px-3 py-2">
-              <p className="text-[10px] text-[#94A3B8] leading-tight">{label}</p>
-              <p className="text-sm font-semibold text-[#0F172A] tabular-nums mt-0.5">
+            <div key={label as string} className="border border-ps-border rounded-lg px-3 py-2">
+              <p className="text-[10px] text-ps-hint leading-tight">{label}</p>
+              <p className="text-sm font-semibold text-ps-ink tabular-nums mt-0.5">
                 {rupees(value as number)}
               </p>
             </div>
@@ -276,9 +276,9 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       )}
 
       {loading ? (
-        <p className="text-xs text-[#94A3B8]">Loading…</p>
+        <p className="text-xs text-ps-hint">Loading…</p>
       ) : !listing || listing.documents.length === 0 ? (
-        <p className="text-xs text-[#94A3B8]">
+        <p className="text-xs text-ps-hint">
           No opening documents recorded. Until they are, the opening balance
           appears in the ledger and in no ageing bucket.
         </p>
@@ -286,7 +286,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-left">
+              <tr className="border-b border-ps-muted text-ps-hint text-left">
                 <th className="py-2 font-semibold">{numberLabel}</th>
                 <th className="py-2 font-semibold">{partyLabel}</th>
                 <th className="py-2 font-semibold">Date</th>
@@ -295,17 +295,17 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
                 <th className="py-2 font-semibold" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {listing.documents.map((d) => (
                 <tr key={d.id}>
-                  <td className="py-2 font-mono text-[#1E293B]">{d.document_no}</td>
-                  <td className="py-2 text-[#334155]">{d.party_name ?? "—"}</td>
-                  <td className="py-2 text-[#64748B]">{d.document_date ?? "—"}</td>
-                  <td className="py-2 text-[#64748B]">{d.due_date ?? "—"}</td>
+                  <td className="py-2 font-mono text-ps-ink">{d.document_no}</td>
+                  <td className="py-2 text-ps-body">{d.party_name ?? "—"}</td>
+                  <td className="py-2 text-ps-label">{d.document_date ?? "—"}</td>
+                  <td className="py-2 text-ps-label">{d.due_date ?? "—"}</td>
                   <td className="py-2 text-right tabular-nums">{rupees(d.outstanding_paise)}</td>
                   <td className="py-2 text-right">
                     <button onClick={() => handleRemove(d.id, d.document_no)} disabled={busy}
-                      className="px-2 py-1 text-[11px] text-[#94A3B8] hover:text-red-600 disabled:opacity-40">
+                      className="px-2 py-1 text-[11px] text-ps-hint hover:text-red-600 disabled:opacity-40">
                       Remove
                     </button>
                   </td>
@@ -317,7 +317,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       )}
 
       {kinds?.section_194_aggregate && kind === "payable" && (
-        <p className="text-[10px] text-[#94A3B8] leading-tight max-w-2xl">
+        <p className="text-[10px] text-ps-hint leading-tight max-w-2xl">
           {kinds.section_194_aggregate}
         </p>
       )}
@@ -325,31 +325,31 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       {showForm && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
           <div className="w-full max-w-md h-full bg-white shadow-xl flex flex-col">
-            <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between">
-              <p className="text-sm font-semibold text-[#0F172A]">
+            <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between">
+              <p className="text-sm font-semibold text-ps-ink">
                 Add an opening {kind === "receivable" ? "invoice" : "bill"}
               </p>
               <button onClick={() => setShowForm(false)} aria-label="Close"
-                className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"><X size={16} /></button>
+                className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               <label className="text-xs block">
-                <span className="block text-[#334155] font-medium mb-1">{partyLabel} *</span>
+                <span className="block text-ps-body font-medium mb-1">{partyLabel} *</span>
                 <select value={form.party_id}
                   onChange={(e) => setForm((f) => ({ ...f, party_id: e.target.value }))}
-                  className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg">
+                  className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg">
                   <option value="">Select…</option>
                   {parties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </label>
 
               <label className="text-xs block">
-                <span className="block text-[#334155] font-medium mb-1">{numberLabel} *</span>
+                <span className="block text-ps-body font-medium mb-1">{numberLabel} *</span>
                 <input value={form.document_no}
                   onChange={(e) => setForm((f) => ({ ...f, document_no: e.target.value }))}
-                  className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg font-mono" />
-                <span className="block text-[10px] text-[#94A3B8] mt-1 leading-tight">
+                  className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg font-mono" />
+                <span className="block text-[10px] text-ps-hint mt-1 leading-tight">
                   The number the other system issued. It is not part of this
                   client&apos;s own series and no gap is reported against it.
                 </span>
@@ -357,26 +357,26 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-xs block">
-                  <span className="block text-[#334155] font-medium mb-1">Document date *</span>
+                  <span className="block text-ps-body font-medium mb-1">Document date *</span>
                   <input type="date" value={form.document_date}
                     onChange={(e) => setForm((f) => ({ ...f, document_date: e.target.value }))}
-                    className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                    className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
                 </label>
                 <label className="text-xs block">
-                  <span className="block text-[#334155] font-medium mb-1">Due date</span>
+                  <span className="block text-ps-body font-medium mb-1">Due date</span>
                   <input type="date" value={form.due_date}
                     onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
-                    className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                    className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
                 </label>
               </div>
 
               <label className="text-xs block">
-                <span className="block text-[#334155] font-medium mb-1">Still outstanding *</span>
+                <span className="block text-ps-body font-medium mb-1">Still outstanding *</span>
                 <input value={form.amount} inputMode="decimal"
                   onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
                   placeholder="0.00"
-                  className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg text-right tabular-nums" />
-                <span className="block text-[10px] text-[#94A3B8] mt-1 leading-tight">
+                  className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg text-right tabular-nums" />
+                <span className="block text-[10px] text-ps-hint mt-1 leading-tight">
                   What is still open at the opening date, not the document&apos;s
                   original value. A document already settled by then is not part
                   of the opening balance.
@@ -384,14 +384,14 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
               </label>
             </div>
 
-            <div className="px-5 py-3 border-t border-[#F1F5F9] flex items-center justify-between">
-              <p className="text-[10px] text-[#94A3B8] max-w-[14rem] leading-tight">
+            <div className="px-5 py-3 border-t border-ps-muted flex items-center justify-between">
+              <p className="text-[10px] text-ps-hint max-w-[14rem] leading-tight">
                 No journal is posted. The tax on this document was declared where
                 it was issued.
               </p>
               <div className="flex gap-2">
                 <button onClick={() => setShowForm(false)}
-                  className="px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">
+                  className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                   Cancel
                 </button>
                 <button onClick={handleSave} disabled={saving}

@@ -23,7 +23,7 @@ function KpiCard({ label, value, icon: Icon, tone }: {
         <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">{label}</p>
         <Icon size={15} className={tone ?? "text-gray-400"} />
       </div>
-      <p className="text-xl font-semibold text-[#182350] mt-2 tabular-nums">{value}</p>
+      <p className="text-xl font-semibold text-brand mt-2 tabular-nums">{value}</p>
     </div>
   );
 }
@@ -66,16 +66,16 @@ function PracticeOverview() {
   if (provisioned === false) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-12 text-center">
-        <div className="w-12 h-12 rounded-full bg-[#182350]/10 flex items-center justify-center mb-4">
-          <Building2 size={20} className="text-[#182350]" />
+        <div className="w-12 h-12 rounded-full bg-brand/10 flex items-center justify-center mb-4">
+          <Building2 size={20} className="text-brand" />
         </div>
-        <h2 className="text-base font-semibold text-[#182350]">Set up your Practice</h2>
+        <h2 className="text-base font-semibold text-brand">Set up your Practice</h2>
         <p className="text-sm text-gray-500 mt-1 max-w-sm">
           Provision the firm-as-internal-client to start Revenue Operations
           (billing, collections, AR) for your own firm.
         </p>
         <button onClick={provision} disabled={provisioning}
-          className="mt-4 px-4 py-2 rounded-lg bg-[#182350] text-white text-sm font-medium disabled:opacity-50">
+          className="mt-4 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
           {provisioning ? "Setting up…" : "Set up Practice"}
         </button>
       </div>
@@ -86,10 +86,10 @@ function PracticeOverview() {
     <div className="p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
-          <Building2 size={18} className="text-[#182350]" />
-          <h1 className="text-lg font-semibold text-[#182350]">Practice — Revenue Overview</h1>
+          <Building2 size={18} className="text-brand" />
+          <h1 className="text-lg font-semibold text-brand">Practice — Revenue Overview</h1>
         </div>
-        <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-[#182350]">
+        <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-brand">
           <RefreshCw size={13} /> Refresh
         </button>
       </div>

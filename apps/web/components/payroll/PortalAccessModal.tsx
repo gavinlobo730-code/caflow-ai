@@ -64,8 +64,8 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg p-5">
-        <h2 className="font-semibold text-[#0F172A]">Payslip portal — {employee.name}</h2>
-        <p className="text-sm text-[#64748B] mt-1 mb-4">
+        <h2 className="font-semibold text-ps-ink">Payslip portal — {employee.name}</h2>
+        <p className="text-sm text-ps-label mt-1 mb-4">
           Lets this employee sign in and see their own payslips and leave
           balance. They see nothing else.
         </p>
@@ -85,13 +85,13 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
           </div>
         ) : link ? (
           <div>
-            <p className="text-sm text-[#475569] mb-2">
+            <p className="text-sm text-ps-label mb-2">
               Invitation sent. If the email does not arrive, share this link —
               it works once and expires in 14 days.
             </p>
             <div className="flex gap-2 mb-4">
               <input readOnly value={link}
-                     className="flex-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs font-mono" />
+                     className="flex-1 border border-ps-border rounded-lg px-3 py-2 text-xs font-mono" />
               <Button variant="outline" onClick={() => {
                 navigator.clipboard?.writeText(link);
                 setCopied(true);
@@ -102,12 +102,12 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
           </div>
         ) : (
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">
+            <label className="block text-xs font-medium text-ps-label mb-1">
               Their email address *
             </label>
             <input value={email} onChange={(e) => setEmail(e.target.value)}
                    placeholder="name@example.com" type="email"
-                   className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm mb-1" />
+                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm mb-1" />
             {status?.invite_pending && (
               <p className="text-xs text-amber-700 mb-2">
                 An invitation is already pending. Sending again replaces it —

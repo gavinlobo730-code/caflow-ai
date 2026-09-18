@@ -88,19 +88,19 @@ export function RcmDocumentPanel({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
       <div className="w-full max-w-2xl h-full bg-white shadow-xl flex flex-col">
-        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-start justify-between">
+        <div className="px-5 py-4 border-b border-ps-muted flex items-start justify-between">
           <div>
-            <p className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
+            <p className="text-sm font-semibold text-ps-ink flex items-center gap-2">
               <FileText size={15} className="text-blue-600" />
               {kind === "self_invoice" ? "Self-invoice" : "Payment voucher"}
             </p>
             {/* The SECTION comes off the wire, so the screen never asserts
                 which provision it is issuing under. */}
-            <p className="text-[11px] text-[#94A3B8] mt-0.5">
+            <p className="text-[11px] text-ps-hint mt-0.5">
               {preview?.section} · {preview?.rule}
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]">
+          <button onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-ps-muted text-ps-label">
             <X size={16} />
           </button>
         </div>
@@ -113,7 +113,7 @@ export function RcmDocumentPanel({
             </div>
           )}
 
-          {busy && !preview && <p className="text-xs text-[#94A3B8]">Loading…</p>}
+          {busy && !preview && <p className="text-xs text-ps-hint">Loading…</p>}
 
           {issued && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-800 flex gap-2">
@@ -128,7 +128,7 @@ export function RcmDocumentPanel({
 
           {/* WHY NOT — the Act does not ask for it. A settled answer. */}
           {preview && !preview.due && preview.reasons.length > 0 && (
-            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#334155] space-y-1">
+            <div className="bg-ps-bg border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-body space-y-1">
               {preview.reasons.map((r, i) => <p key={i}>{r}</p>)}
             </div>
           )}
@@ -148,50 +148,50 @@ export function RcmDocumentPanel({
             <>
               <div className="grid grid-cols-2 gap-4">
                 <label className="text-xs">
-                  <span className="block text-[#94A3B8] mb-1">Document number</span>
+                  <span className="block text-ps-hint mb-1">Document number</span>
                   <input value={number} onChange={(e) => setNumber(e.target.value)}
                     disabled={!!issued}
-                    className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg font-mono text-xs disabled:bg-[#F8FAFC]" />
+                    className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg font-mono text-xs disabled:bg-ps-bg" />
                 </label>
                 <div className="text-xs">
-                  <span className="block text-[#94A3B8] mb-1">Date</span>
+                  <span className="block text-ps-hint mb-1">Date</span>
                   <p className="px-2.5 py-1.5">{p.document_date}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
-                  <p className="text-[#94A3B8] mb-1">Supplier</p>
-                  <p className="font-medium text-[#1E293B]">{p.supplier.name}</p>
-                  {p.supplier.address && <p className="text-[#64748B]">{p.supplier.address}</p>}
+                  <p className="text-ps-hint mb-1">Supplier</p>
+                  <p className="font-medium text-ps-ink">{p.supplier.name}</p>
+                  {p.supplier.address && <p className="text-ps-label">{p.supplier.address}</p>}
                   {/* Absent on a self-invoice BY CONSTRUCTION — the document
                       exists because the supplier is not registered. */}
                   {p.supplier.gstin
-                    ? <p className="font-mono text-[#64748B]">{p.supplier.gstin}</p>
-                    : <p className="text-[#94A3B8] italic">Not registered</p>}
+                    ? <p className="font-mono text-ps-label">{p.supplier.gstin}</p>
+                    : <p className="text-ps-hint italic">Not registered</p>}
                 </div>
                 <div>
-                  <p className="text-[#94A3B8] mb-1">Recipient (issuing)</p>
-                  <p className="font-medium text-[#1E293B]">{p.recipient.name}</p>
-                  {p.recipient.address && <p className="text-[#64748B]">{p.recipient.address}</p>}
-                  {p.recipient.gstin && <p className="font-mono text-[#64748B]">{p.recipient.gstin}</p>}
+                  <p className="text-ps-hint mb-1">Recipient (issuing)</p>
+                  <p className="font-medium text-ps-ink">{p.recipient.name}</p>
+                  {p.recipient.address && <p className="text-ps-label">{p.recipient.address}</p>}
+                  {p.recipient.gstin && <p className="font-mono text-ps-label">{p.recipient.gstin}</p>}
                 </div>
               </div>
 
               {p.lines.length > 0 && (
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                    <tr className="border-b border-ps-muted text-ps-hint">
                       <th className="py-1.5 text-left font-semibold">Description</th>
                       <th className="py-1.5 text-left font-semibold">HSN/SAC</th>
                       <th className="py-1.5 text-right font-semibold">Taxable</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#F8FAFC]">
+                  <tbody className="divide-y divide-ps-bg">
                     {p.lines.map((l, i) => (
                       <tr key={i}>
-                        <td className="py-1.5 text-[#1E293B]">{l.description}</td>
-                        <td className="py-1.5 font-mono text-[#64748B]">{l.hsn_sac ?? "—"}</td>
+                        <td className="py-1.5 text-ps-ink">{l.description}</td>
+                        <td className="py-1.5 font-mono text-ps-label">{l.hsn_sac ?? "—"}</td>
                         <td className="py-1.5 text-right tabular-nums">
                           {(l.taxable_paise / 100).toFixed(2)}
                         </td>
@@ -201,30 +201,30 @@ export function RcmDocumentPanel({
                 </table>
               )}
 
-              <div className="bg-[#F8FAFC] rounded-lg px-3 py-2 text-xs space-y-1">
+              <div className="bg-ps-bg rounded-lg px-3 py-2 text-xs space-y-1">
                 {p.amount_paid_paise > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-[#64748B]">Amount paid (Rule 52(f))</span>
+                    <span className="text-ps-label">Amount paid (Rule 52(f))</span>
                     <span className="tabular-nums">₹{(p.amount_paid_paise / 100).toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span className="text-[#64748B]">Taxable value</span>
+                  <span className="text-ps-label">Taxable value</span>
                   <span className="tabular-nums">₹{(p.taxable_paise / 100).toFixed(2)}</span>
                 </div>
                 {p.taxes.map((t) => (
                   <div key={t.head} className="flex justify-between">
-                    <span className="text-[#64748B]">{t.head}</span>
+                    <span className="text-ps-label">{t.head}</span>
                     <span className="tabular-nums">₹{(t.amount_paise / 100).toFixed(2)}</span>
                   </div>
                 ))}
-                <div className="flex justify-between font-semibold pt-1 border-t border-[#E2E8F0]">
+                <div className="flex justify-between font-semibold pt-1 border-t border-ps-border">
                   <span>Tax payable on reverse charge</span>
                   <span className="tabular-nums">₹{(p.total_tax_paise / 100).toFixed(2)}</span>
                 </div>
                 {p.place_of_supply[0] && (
                   <div className="flex justify-between">
-                    <span className="text-[#64748B]">Place of supply</span>
+                    <span className="text-ps-label">Place of supply</span>
                     <span className="font-mono">{p.place_of_supply[0]}</span>
                   </div>
                 )}
@@ -247,13 +247,13 @@ export function RcmDocumentPanel({
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-[#F1F5F9] flex items-center justify-between">
-          <p className="text-[10px] text-[#94A3B8] max-w-sm">
+        <div className="px-5 py-3 border-t border-ps-muted flex items-center justify-between">
+          <p className="text-[10px] text-ps-hint max-w-sm">
             Check the particulars before issuing. Nothing is sent to any portal.
           </p>
           <div className="flex gap-2">
             <button onClick={onClose}
-              className="px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">
+              className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
               Close
             </button>
             <button onClick={issue}

@@ -213,17 +213,17 @@ function amount(paise: number | null | undefined): string {
 function SectionTable({ section, showPrior }: { section: ScheduleSection; showPrior: boolean }) {
   return (
     <div className="mb-4">
-      <div className="bg-[#F8FAFC] px-4 py-2 border-b border-[#E2E8F0]">
-        <p className="text-xs font-semibold text-[#334155] uppercase tracking-wide">{section.heading}</p>
+      <div className="bg-ps-bg px-4 py-2 border-b border-ps-border">
+        <p className="text-xs font-semibold text-ps-body uppercase tracking-wide">{section.heading}</p>
       </div>
       {section.lines.map((line) => (
-        <div key={line.label} className="flex items-baseline px-4 py-2 border-b border-[#F1F5F9] last:border-b-0">
-          <span className={`text-sm text-[#334155] flex-1 ${line.indent ? "pl-4" : ""}`}>{line.label}</span>
-          <span className="text-sm tabular-nums text-[#0F172A] font-medium w-36 text-right">
+        <div key={line.label} className="flex items-baseline px-4 py-2 border-b border-ps-muted last:border-b-0">
+          <span className={`text-sm text-ps-body flex-1 ${line.indent ? "pl-4" : ""}`}>{line.label}</span>
+          <span className="text-sm tabular-nums text-ps-ink font-medium w-36 text-right">
             {amount(line.paise)}
           </span>
           {showPrior && (
-            <span className="text-sm tabular-nums text-[#64748B] w-36 text-right">
+            <span className="text-sm tabular-nums text-ps-label w-36 text-right">
               {amount(line.prior_paise)}
             </span>
           )}
@@ -247,11 +247,11 @@ function SectionTable({ section, showPrior }: { section: ScheduleSection; showPr
 /** The column heads. Without them the second column is an unlabelled number. */
 function ColumnHeads({ current, prior }: { current: string; prior: string | null }) {
   return (
-    <div className="flex items-baseline px-4 py-1.5 border-b border-[#E2E8F0] bg-white">
+    <div className="flex items-baseline px-4 py-1.5 border-b border-ps-border bg-white">
       <span className="flex-1" />
-      <span className="text-[10px] uppercase tracking-wide text-[#64748B] w-36 text-right">{current}</span>
+      <span className="text-[10px] uppercase tracking-wide text-ps-label w-36 text-right">{current}</span>
       {prior && (
-        <span className="text-[10px] uppercase tracking-wide text-[#94A3B8] w-36 text-right">{prior}</span>
+        <span className="text-[10px] uppercase tracking-wide text-ps-hint w-36 text-right">{prior}</span>
       )}
     </div>
   );
@@ -276,7 +276,7 @@ function LoadingSpinner() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
       <div className="h-6 bg-white/[0.08] rounded w-64 animate-pulse" />
-      <div className="h-10 bg-[#F1F5F9] rounded w-64 animate-pulse" />
+      <div className="h-10 bg-ps-muted rounded w-64 animate-pulse" />
       <div className="grid grid-cols-2 gap-6">
         <StatementSkeleton sections={2} rowsPerSection={3} />
         <StatementSkeleton sections={2} rowsPerSection={3} />
@@ -346,12 +346,12 @@ export default function ScheduleIIIPage() {
     <div className="p-6 max-w-5xl mx-auto space-y-6 print:p-2 print:space-y-4">
       {/* Header */}
       <div className="flex items-center gap-3 print:hidden">
-        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft size={18} />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Schedule III — Financial Statements</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">Schedule III — Financial Statements</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             As per Companies Act 2013, Schedule III — {fy.label}
           </p>
         </div>
@@ -360,17 +360,17 @@ export default function ScheduleIIIPage() {
       {/* Print heading */}
       <div className="hidden print:block text-center mb-4">
         <h1 className="text-2xl font-bold">Schedule III Financial Statements</h1>
-        <p className="text-sm text-[#475569] mt-1">As per Companies Act 2013, Schedule III | {fy.label}</p>
+        <p className="text-sm text-ps-label mt-1">As per Companies Act 2013, Schedule III | {fy.label}</p>
       </div>
 
       {/* Controls */}
       <div className="flex flex-wrap gap-4 items-end print:hidden">
         <div>
-          <label className="block text-xs text-[#64748B] mb-1">Financial Year</label>
+          <label className="block text-xs text-ps-label mb-1">Financial Year</label>
           <select
             value={fyIndex}
             onChange={(e) => setFyIndex(Number(e.target.value))}
-            className="px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {fyOptions().map((f, i) => (
               <option key={f.label} value={i}>{f.label}</option>
@@ -378,7 +378,7 @@ export default function ScheduleIIIPage() {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-[#64748B] mb-1">Client</label>
+          <label className="block text-xs text-ps-label mb-1">Client</label>
           <div className="min-w-[200px]">
             <ClientLookup
               clients={clients}
@@ -449,7 +449,7 @@ export default function ScheduleIIIPage() {
             XLSX.writeFile(wb, `schedule_iii_${fy.label}.xlsx`);
           }}
           disabled={!data}
-          className="flex items-center gap-2 px-4 py-1.5 text-sm border border-[#E2E8F0] text-[#334155] rounded-md hover:bg-[#F8FAFC] transition-colors disabled:opacity-40"
+          className="flex items-center gap-2 px-4 py-1.5 text-sm border border-ps-border text-ps-body rounded-md hover:bg-ps-bg transition-colors disabled:opacity-40"
         >
           <Download size={15} /> Export Excel
         </button>
@@ -469,14 +469,14 @@ export default function ScheduleIIIPage() {
               <CardTitle className="text-base">
                 Balance Sheet as at 31 March {Number(fy.start.split("-")[0]) + 1}
               </CardTitle>
-              <p className="text-xs text-[#64748B]">(Companies Act 2013, Schedule III, Part I)</p>
+              <p className="text-xs text-ps-label">(Companies Act 2013, Schedule III, Part I)</p>
             </CardHeader>
             <CardContent className="pb-4 p-0">
               <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-200">
                 {/* Equity & Liabilities */}
                 <div>
-                  <div className="px-4 py-3 border-b border-[#E2E8F0] bg-[#F1F5F9]">
-                    <p className="text-xs font-bold text-[#1E293B] uppercase tracking-wider">EQUITY AND LIABILITIES</p>
+                  <div className="px-4 py-3 border-b border-ps-border bg-ps-muted">
+                    <p className="text-xs font-bold text-ps-ink uppercase tracking-wider">EQUITY AND LIABILITIES</p>
                   </div>
                   <ColumnHeads current={`As at 31 Mar ${Number(fy.start.split("-")[0]) + 1}`}
                                prior={priorLabel} />
@@ -491,8 +491,8 @@ export default function ScheduleIIIPage() {
 
                 {/* Assets */}
                 <div>
-                  <div className="px-4 py-3 border-b border-[#E2E8F0] bg-[#F1F5F9]">
-                    <p className="text-xs font-bold text-[#1E293B] uppercase tracking-wider">ASSETS</p>
+                  <div className="px-4 py-3 border-b border-ps-border bg-ps-muted">
+                    <p className="text-xs font-bold text-ps-ink uppercase tracking-wider">ASSETS</p>
                   </div>
                   <ColumnHeads current={`As at 31 Mar ${Number(fy.start.split("-")[0]) + 1}`}
                                prior={priorLabel} />
@@ -509,10 +509,10 @@ export default function ScheduleIIIPage() {
               {/* Para 5's own exception, stated rather than left as an empty
                   column a reader would take for nil. */}
               {!showPrior && data?.comparatives?.reason && (
-                <div className="mx-4 mt-3 px-4 py-2.5 rounded-lg text-[11px] bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] flex items-start gap-2">
-                  <AlertTriangle size={13} className="text-[#94A3B8] flex-shrink-0 mt-0.5" />
+                <div className="mx-4 mt-3 px-4 py-2.5 rounded-lg text-[11px] bg-ps-bg border border-ps-border text-ps-label flex items-start gap-2">
+                  <AlertTriangle size={13} className="text-ps-hint flex-shrink-0 mt-0.5" />
                   <span>
-                    <span className="font-medium text-[#334155]">No comparative column.</span>{" "}
+                    <span className="font-medium text-ps-body">No comparative column.</span>{" "}
                     {data.comparatives.reason}
                   </span>
                 </div>
@@ -535,7 +535,7 @@ export default function ScheduleIIIPage() {
               <CardTitle className="text-base">
                 Statement of Profit & Loss for the year ended 31 March {Number(fy.start.split("-")[0]) + 1}
               </CardTitle>
-              <p className="text-xs text-[#64748B]">(Companies Act 2013, Schedule III, Part II)</p>
+              <p className="text-xs text-ps-label">(Companies Act 2013, Schedule III, Part II)</p>
             </CardHeader>
             <CardContent className="pb-4 p-0">
               <ColumnHeads
@@ -554,23 +554,23 @@ export default function ScheduleIIIPage() {
               ))}
 
               {/* Profit summary */}
-              <div className="mx-4 mb-4 mt-2 border border-[#E2E8F0] rounded-lg overflow-hidden">
-                <div className="flex items-baseline px-4 py-2.5 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-                  <span className="text-sm font-semibold text-[#1E293B] flex-1">Profit Before Tax (I - II)</span>
+              <div className="mx-4 mb-4 mt-2 border border-ps-border rounded-lg overflow-hidden">
+                <div className="flex items-baseline px-4 py-2.5 bg-ps-bg border-b border-ps-border">
+                  <span className="text-sm font-semibold text-ps-ink flex-1">Profit Before Tax (I - II)</span>
                   <span className={`text-sm tabular-nums font-bold w-36 text-right ${(pl?.profitBeforeTax ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
                     {amount(pl?.profitBeforeTax ?? 0)}
                   </span>
                   {showPrior && (
-                    <span className="text-sm tabular-nums text-[#64748B] w-36 text-right">
+                    <span className="text-sm tabular-nums text-ps-label w-36 text-right">
                       {amount(pl?.profitBeforeTaxPrior)}
                     </span>
                   )}
                 </div>
-                <div className="flex items-baseline px-4 py-2.5 border-b border-[#E2E8F0]">
-                  <span className="text-sm text-[#334155] pl-4 flex-1">Tax Expense (Current + Deferred)</span>
-                  <span className="text-sm tabular-nums text-[#0F172A] w-36 text-right">{amount(pl?.taxExpense ?? 0)}</span>
+                <div className="flex items-baseline px-4 py-2.5 border-b border-ps-border">
+                  <span className="text-sm text-ps-body pl-4 flex-1">Tax Expense (Current + Deferred)</span>
+                  <span className="text-sm tabular-nums text-ps-ink w-36 text-right">{amount(pl?.taxExpense ?? 0)}</span>
                   {showPrior && (
-                    <span className="text-sm tabular-nums text-[#64748B] w-36 text-right">
+                    <span className="text-sm tabular-nums text-ps-label w-36 text-right">
                       {amount(pl?.taxExpensePrior)}
                     </span>
                   )}
@@ -584,7 +584,7 @@ export default function ScheduleIIIPage() {
           </Card>
 
           {/* Statutory note */}
-          <p className="text-xs text-[#94A3B8] text-center print:mt-6">
+          <p className="text-xs text-ps-hint text-center print:mt-6">
             Prepared as per Schedule III to the Companies Act, 2013. All figures in Indian Rupees (INR).
             This statement is for internal review only — CA sign-off required before filing with MCA/ROC.
           </p>

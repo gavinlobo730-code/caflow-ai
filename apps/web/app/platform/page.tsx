@@ -67,12 +67,12 @@ export default function PlatformAdminPage() {
     {
       key: "name", header: "Firm", accessor: (f) => f.name,
       searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (f) => <span className="font-medium text-[#1E293B]">{f.name}</span>,
+      render: (f) => <span className="font-medium text-ps-ink">{f.name}</span>,
     },
     {
       key: "created_at", header: "Created", accessor: (f) => f.created_at,
       sortable: true,
-      render: (f) => <span className="text-[#64748B] whitespace-nowrap">{f.created_at ? formatDate(f.created_at) : "—"}</span>,
+      render: (f) => <span className="text-ps-label whitespace-nowrap">{f.created_at ? formatDate(f.created_at) : "—"}</span>,
     },
     {
       key: "users", header: "Users", accessor: (f) => f.users,
@@ -86,7 +86,7 @@ export default function PlatformAdminPage() {
       key: "status", header: "Status", accessor: (f) => f.status,
       sortable: true,
       render: (f) => (
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[f.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[f.status] ?? "bg-ps-muted text-ps-label"}`}>
           {f.status}
         </span>
       ),
@@ -255,15 +255,15 @@ export default function PlatformAdminPage() {
   if (gate !== "ok") {
     if (gate === "error") {
       return (
-        <div className="flex h-screen items-center justify-center bg-[#F8FAFC] p-6">
-          <div className="bg-white rounded-2xl border border-[#F1F5F9] shadow-sm max-w-md w-full p-6 text-center space-y-4">
+        <div className="flex h-screen items-center justify-center bg-ps-bg p-6">
+          <div className="bg-white rounded-2xl border border-ps-muted shadow-sm max-w-md w-full p-6 text-center space-y-4">
             <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center mx-auto"><AlertCircle size={18} className="text-amber-600" /></div>
             <div>
-              <h2 className="text-base font-semibold text-[#0F172A]">Couldn’t verify access</h2>
-              <p className="text-sm text-[#64748B] mt-1">We couldn’t reach the platform service to confirm your access. This is not a denial — it’s a connection problem.</p>
-              {gateErr && <p className="text-xs text-[#94A3B8] mt-2 break-words font-mono bg-[#F8FAFC] rounded-md px-2 py-1">{gateErr}</p>}
+              <h2 className="text-base font-semibold text-ps-ink">Couldn’t verify access</h2>
+              <p className="text-sm text-ps-label mt-1">We couldn’t reach the platform service to confirm your access. This is not a denial — it’s a connection problem.</p>
+              {gateErr && <p className="text-xs text-ps-hint mt-2 break-words font-mono bg-ps-bg rounded-md px-2 py-1">{gateErr}</p>}
             </div>
-            <button onClick={() => verify()} className="inline-flex items-center gap-2 rounded-lg bg-[#0F172A] text-white text-sm font-medium px-4 py-2 hover:bg-[#1E293B]">
+            <button onClick={() => verify()} className="inline-flex items-center gap-2 rounded-lg bg-brand-dark text-white text-sm font-medium px-4 py-2 hover:bg-brand-dark">
               <RefreshCw size={14} /> Retry
             </button>
           </div>
@@ -271,7 +271,7 @@ export default function PlatformAdminPage() {
       );
     }
     return (
-      <div className="flex h-screen items-center justify-center text-[#64748B]">
+      <div className="flex h-screen items-center justify-center text-ps-label">
         {gate === "checking" ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={16} /> Verifying access…</span> : "Redirecting…"}
       </div>
     );
@@ -286,12 +286,12 @@ export default function PlatformAdminPage() {
   ] : [];
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-ps-bg p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-[#0F172A] flex items-center justify-center"><ShieldCheck size={16} className="text-white" /></div>
+        <div className="w-8 h-8 rounded-lg bg-brand-dark flex items-center justify-center"><ShieldCheck size={16} className="text-white" /></div>
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Platform Admin</h1>
-          <p className="text-sm text-[#64748B]">Manage firms using PracticeSync</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Platform Admin</h1>
+          <p className="text-sm text-ps-label">Manage firms using PracticeSync</p>
         </div>
       </div>
 
@@ -304,17 +304,17 @@ export default function PlatformAdminPage() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {KPIS.map((k) => (
-          <div key={k.label} className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-            <div className="w-8 h-8 rounded-lg bg-[#F8FAFC] flex items-center justify-center mb-2"><k.icon size={15} className="text-[#475569]" /></div>
-            <p className="text-2xl font-bold text-[#0F172A]">{k.value}</p>
-            <p className="text-xs text-[#64748B] mt-0.5">{k.label}</p>
+          <div key={k.label} className="bg-white rounded-xl border border-ps-muted p-4">
+            <div className="w-8 h-8 rounded-lg bg-ps-bg flex items-center justify-center mb-2"><k.icon size={15} className="text-ps-label" /></div>
+            <p className="text-2xl font-bold text-ps-ink">{k.value}</p>
+            <p className="text-xs text-ps-label mt-0.5">{k.label}</p>
           </div>
         ))}
       </div>
 
       {/* Firms table — shared DataTable (search, sort, status filter, pagination, export, prefs) */}
       <div className="space-y-2">
-        <h2 className="text-sm font-semibold text-[#0F172A]">{firms.length} firms</h2>
+        <h2 className="text-sm font-semibold text-ps-ink">{firms.length} firms</h2>
         <DataTable
           data={firms}
           columns={columns}
@@ -344,27 +344,27 @@ export default function PlatformAdminPage() {
       {detail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setDetail(null)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#F1F5F9]">
-              <h2 className="text-base font-semibold text-[#0F172A]">{detail.firm.name}</h2>
-              <button onClick={() => setDetail(null)} className="text-[#94A3B8] hover:text-[#475569]"><X size={18} /></button>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ps-muted">
+              <h2 className="text-base font-semibold text-ps-ink">{detail.firm.name}</h2>
+              <button onClick={() => setDetail(null)} className="text-ps-hint hover:text-ps-label"><X size={18} /></button>
             </div>
             <div className="px-6 py-4 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><p className="text-xs text-[#94A3B8]">Created</p><p className="text-[#0F172A]">{detail.firm.created_at?.slice(0, 10)}</p></div>
-                <div><p className="text-xs text-[#94A3B8]">Status</p><p className="text-[#0F172A]">{detail.firm.status}</p></div>
-                <div><p className="text-xs text-[#94A3B8]">Users</p><p className="text-[#0F172A]">{detail.firm.users}</p></div>
-                <div><p className="text-xs text-[#94A3B8]">Clients</p><p className="text-[#0F172A]">{detail.firm.clients}</p></div>
+                <div><p className="text-xs text-ps-hint">Created</p><p className="text-ps-ink">{detail.firm.created_at?.slice(0, 10)}</p></div>
+                <div><p className="text-xs text-ps-hint">Status</p><p className="text-ps-ink">{detail.firm.status}</p></div>
+                <div><p className="text-xs text-ps-hint">Users</p><p className="text-ps-ink">{detail.firm.users}</p></div>
+                <div><p className="text-xs text-ps-hint">Clients</p><p className="text-ps-ink">{detail.firm.clients}</p></div>
               </div>
               <div>
-                <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide mb-2">Users (read-only)</p>
-                <div className="rounded-lg border border-[#F1F5F9] divide-y divide-[#F8FAFC]">
+                <p className="text-xs font-semibold text-ps-label uppercase tracking-wide mb-2">Users (read-only)</p>
+                <div className="rounded-lg border border-ps-muted divide-y divide-ps-bg">
                   {detail.users.map((u, i) => (
                     <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
-                      <div><p className="text-[#0F172A]">{u.name || u.email}</p><p className="text-xs text-[#94A3B8]">{u.email}</p></div>
-                      <span className="text-xs text-[#475569]">{u.role}</span>
+                      <div><p className="text-ps-ink">{u.name || u.email}</p><p className="text-xs text-ps-hint">{u.email}</p></div>
+                      <span className="text-xs text-ps-label">{u.role}</span>
                     </div>
                   ))}
-                  {detail.users.length === 0 && <div className="px-3 py-3 text-xs text-[#94A3B8]">No users</div>}
+                  {detail.users.length === 0 && <div className="px-3 py-3 text-xs text-ps-hint">No users</div>}
                 </div>
               </div>
             </div>
@@ -376,30 +376,30 @@ export default function PlatformAdminPage() {
       {purgeTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !purgeBusy && setPurgeTarget(null)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#F1F5F9]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ps-muted">
               <h2 className="text-base font-semibold text-red-700 flex items-center gap-2"><AlertTriangle size={16} /> Permanently delete firm</h2>
-              <button onClick={() => !purgeBusy && setPurgeTarget(null)} className="text-[#94A3B8] hover:text-[#475569]"><X size={18} /></button>
+              <button onClick={() => !purgeBusy && setPurgeTarget(null)} className="text-ps-hint hover:text-ps-label"><X size={18} /></button>
             </div>
             <div className="px-6 py-4 space-y-4">
-              <p className="text-sm text-[#475569]">
+              <p className="text-sm text-ps-label">
                 This <span className="font-semibold text-red-700">irreversibly</span> deletes <span className="font-semibold">{purgeTarget.name}</span> and all of its data — {purgeTarget.users} user(s), {purgeTarget.clients} client(s), and every related record. This cannot be undone.
               </p>
-              <p className="text-xs text-[#94A3B8]">Login accounts in authentication are not removed — only the firm and its data.</p>
+              <p className="text-xs text-ps-hint">Login accounts in authentication are not removed — only the firm and its data.</p>
               <div>
-                <label className="text-xs font-medium text-[#64748B]">Type the firm name to confirm</label>
+                <label className="text-xs font-medium text-ps-label">Type the firm name to confirm</label>
                 <input value={purgeName} onChange={(e) => setPurgeName(e.target.value)} placeholder={purgeTarget.name}
-                  className="mt-1 w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-200" />
+                  className="mt-1 w-full rounded-lg border border-ps-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-200" />
               </div>
               <div>
-                <label className="text-xs font-medium text-[#64748B] flex items-center gap-1"><KeyRound size={12} /> Authenticator code</label>
+                <label className="text-xs font-medium text-ps-label flex items-center gap-1"><KeyRound size={12} /> Authenticator code</label>
                 <input value={purgeCode} onChange={(e) => setPurgeCode(e.target.value)} inputMode="numeric" maxLength={6} placeholder="6-digit code"
-                  className="mt-1 w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-red-200" />
-                <p className="text-[11px] text-[#94A3B8] mt-1">From the authenticator app you enrolled for this account.</p>
+                  className="mt-1 w-full rounded-lg border border-ps-border px-3 py-2 text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-red-200" />
+                <p className="text-[11px] text-ps-hint mt-1">From the authenticator app you enrolled for this account.</p>
               </div>
               {purgeErr && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{purgeErr}</p>}
             </div>
-            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[#F1F5F9]">
-              <button onClick={() => setPurgeTarget(null)} disabled={purgeBusy} className="text-sm text-[#64748B] px-3 py-2 hover:underline disabled:opacity-50">Cancel</button>
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-ps-muted">
+              <button onClick={() => setPurgeTarget(null)} disabled={purgeBusy} className="text-sm text-ps-label px-3 py-2 hover:underline disabled:opacity-50">Cancel</button>
               <button onClick={confirmPurge}
                 disabled={actionInFlight || purgeName.trim() !== purgeTarget.name || purgeCode.replace(/\s/g, "").length !== 6}
                 className="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white text-sm font-medium px-4 py-2 hover:bg-red-700 disabled:opacity-50">

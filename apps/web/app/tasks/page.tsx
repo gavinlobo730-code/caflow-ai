@@ -23,11 +23,11 @@ const PRIORITY_BADGE: Record<TaskPriority, string> = {
   critical: "bg-red-100 text-red-700 border border-red-200",
   high:     "bg-orange-100 text-orange-700 border border-orange-200",
   medium:   "bg-amber-100 text-amber-700 border border-amber-200",
-  low:      "bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0]",
+  low:      "bg-ps-muted text-ps-label border border-ps-border",
 };
 
 const STATUS_BADGE: Record<TaskStatus, string> = {
-  todo:            "bg-[#F1F5F9] text-[#334155]",
+  todo:            "bg-ps-muted text-ps-body",
   in_progress:     "bg-blue-100 text-blue-700",
   waiting_client:  "bg-purple-100 text-purple-700",
   review_required: "bg-amber-100 text-amber-700",
@@ -138,23 +138,23 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
 
   return (
     <div className="space-y-2">
-      <h5 className="text-xs font-semibold text-[#475569] uppercase tracking-wide">Blocked By</h5>
+      <h5 className="text-xs font-semibold text-ps-label uppercase tracking-wide">Blocked By</h5>
       {error && <p className="text-xs text-red-600">{error}</p>}
       {loading ? (
-        <p className="text-xs text-[#94A3B8]">Loading dependencies…</p>
+        <p className="text-xs text-ps-hint">Loading dependencies…</p>
       ) : deps.length === 0 ? (
-        <p className="text-xs text-[#94A3B8]">No dependencies</p>
+        <p className="text-xs text-ps-hint">No dependencies</p>
       ) : (
         <div className="space-y-1.5">
           {deps.map(d => (
-            <div key={d.id} className="flex items-center justify-between gap-2 bg-[#F8FAFC] border border-[#F1F5F9] rounded-lg px-3 py-2">
-              <span className="text-xs text-[#334155] line-clamp-1">
+            <div key={d.id} className="flex items-center justify-between gap-2 bg-ps-bg border border-ps-muted rounded-lg px-3 py-2">
+              <span className="text-xs text-ps-body line-clamp-1">
                 {d.depends_on_title ?? titleMap.get(d.depends_on_task_id) ?? d.depends_on_task_id}
               </span>
               <button
                 onClick={() => handleRemove(d.id)}
                 disabled={busy}
-                className="p-0.5 rounded text-[#94A3B8] hover:text-red-500 shrink-0"
+                className="p-0.5 rounded text-ps-hint hover:text-red-500 shrink-0"
                 title="Remove dependency"
               >
                 <X size={12} />
@@ -167,7 +167,7 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
         <select
           value={addId}
           onChange={e => setAddId(e.target.value)}
-          className="flex-1 border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+          className="flex-1 border border-ps-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-500"
         >
           <option value="">Add a blocking task…</option>
           {candidates.map(t => (
@@ -235,10 +235,10 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
   return (
     <div className="fixed inset-0 z-40 flex justify-end pointer-events-none">
       <div className="absolute inset-0 pointer-events-auto" onClick={onClose} />
-      <div className="relative w-96 h-full bg-white border-l border-[#E2E8F0] shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
+      <div className="relative w-96 h-full bg-white border-l border-ps-border shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
         {/* Panel header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Task Detail</h3>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+          <h3 className="text-sm font-semibold text-ps-ink">Task Detail</h3>
           <div className="flex items-center gap-2">
             {!editing && (
               <button
@@ -248,7 +248,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 Edit
               </button>
             )}
-            <button onClick={onClose} className="p-1 rounded text-[#94A3B8] hover:text-[#475569]">
+            <button onClick={onClose} className="p-1 rounded text-ps-hint hover:text-ps-label">
               <X size={16} />
             </button>
           </div>
@@ -259,7 +259,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
             /* Edit mode */
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Title</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Title</label>
                 <input
                   value={form.title ?? ""}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
@@ -267,7 +267,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Client</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Client</label>
                 <select
                   value={form.client_id ?? ""}
                   onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
@@ -277,7 +277,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Assign To</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Assign To</label>
                 <select
                   value={form.assignee_id ?? ""}
                   onChange={e => setForm(f => ({ ...f, assignee_id: e.target.value }))}
@@ -289,7 +289,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-[#475569] mb-1">Priority</label>
+                  <label className="block text-xs font-medium text-ps-label mb-1">Priority</label>
                   <select
                     value={form.priority ?? "medium"}
                     onChange={e => setForm(f => ({ ...f, priority: e.target.value as TaskPriority }))}
@@ -301,7 +301,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#475569] mb-1">Status</label>
+                  <label className="block text-xs font-medium text-ps-label mb-1">Status</label>
                   <select
                     value={form.status ?? "todo"}
                     onChange={e => setForm(f => ({ ...f, status: e.target.value as TaskStatus }))}
@@ -314,7 +314,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Due Date</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
                 <input
                   type="date"
                   value={form.due_date ?? ""}
@@ -323,7 +323,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Description</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Description</label>
                 <textarea
                   rows={3}
                   value={form.description ?? ""}
@@ -334,7 +334,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => setEditing(false)}
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-[#334155] hover:bg-[#F8FAFC]"
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-ps-body hover:bg-ps-bg"
                 >
                   Cancel
                 </button>
@@ -351,9 +351,9 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
             /* View mode */
             <>
               <div>
-                <h4 className="text-base font-semibold text-[#0F172A] leading-tight">{task.title}</h4>
+                <h4 className="text-base font-semibold text-ps-ink leading-tight">{task.title}</h4>
                 {task.description && (
-                  <p className="text-sm text-[#64748B] mt-2 leading-relaxed">{task.description}</p>
+                  <p className="text-sm text-ps-label mt-2 leading-relaxed">{task.description}</p>
                 )}
               </div>
 
@@ -390,7 +390,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
 function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-4">
-      <span className="text-xs text-[#64748B] shrink-0 pt-0.5">{label}</span>
+      <span className="text-xs text-ps-label shrink-0 pt-0.5">{label}</span>
       <span className={`text-sm font-medium text-right ${highlight ? "text-red-600" : "text-gray-800"}`}>{value}</span>
     </div>
   );
@@ -512,9 +512,9 @@ export default function TasksPage() {
       searchable: true, sortable: true, sticky: true, hideable: false,
       render: (t) => (
         <div>
-          <span className="font-medium text-[#0F172A] line-clamp-1">{t.title}</span>
+          <span className="font-medium text-ps-ink line-clamp-1">{t.title}</span>
           {t.description && (
-            <span className="block text-xs text-[#94A3B8] mt-0.5 line-clamp-1">{t.description}</span>
+            <span className="block text-xs text-ps-hint mt-0.5 line-clamp-1">{t.description}</span>
           )}
         </div>
       ),
@@ -524,19 +524,19 @@ export default function TasksPage() {
     {
       key: "description", header: "Description", accessor: (t) => t.description ?? "",
       searchable: true, defaultHidden: true,
-      render: (t) => <span className="text-xs text-[#64748B]">{t.description || "—"}</span>,
+      render: (t) => <span className="text-xs text-ps-label">{t.description || "—"}</span>,
     },
     {
       key: "client_name", header: "Client", accessor: (t) => t.client_name ?? "",
       searchable: true, sortable: true,
-      render: (t) => <span className="whitespace-nowrap text-[#475569]">{t.client_name ?? "—"}</span>,
+      render: (t) => <span className="whitespace-nowrap text-ps-label">{t.client_name ?? "—"}</span>,
     },
     {
       key: "assignee", header: "Assignee", accessor: (t) => t.assignee_name ?? "",
       searchable: true, sortable: true,
       render: (t) => (
-        <span className="whitespace-nowrap text-[#475569]">
-          {t.assignee_name ?? <span className="text-[#CBD5E1]">Unassigned</span>}
+        <span className="whitespace-nowrap text-ps-label">
+          {t.assignee_name ?? <span className="text-ps-disabled">Unassigned</span>}
         </span>
       ),
     },
@@ -566,17 +566,17 @@ export default function TasksPage() {
       render: (t) => {
         const overdue = isOverdue(t.due_date, t.status);
         return t.due_date ? (
-          <span className={`flex items-center gap-1 whitespace-nowrap text-xs ${overdue ? "text-red-600 font-medium" : "text-[#64748B]"}`}>
+          <span className={`flex items-center gap-1 whitespace-nowrap text-xs ${overdue ? "text-red-600 font-medium" : "text-ps-label"}`}>
             {overdue ? <AlertTriangle size={11} /> : <Clock size={11} />}
             {fmt(t.due_date)}
           </span>
-        ) : <span className="text-[#CBD5E1]">—</span>;
+        ) : <span className="text-ps-disabled">—</span>;
       },
     },
     {
       key: "created_at", header: "Created", accessor: (t) => t.created_at, sortable: true, defaultHidden: true,
       exportValue: (t) => t.created_at,
-      render: (t) => <span className="whitespace-nowrap text-xs text-[#64748B]">{fmt(t.created_at)}</span>,
+      render: (t) => <span className="whitespace-nowrap text-xs text-ps-label">{fmt(t.created_at)}</span>,
     },
   ], []);
 
@@ -626,15 +626,15 @@ export default function TasksPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-[#0F172A]">Tasks</h1>
-          <p className="text-[#64748B] text-sm mt-0.5">
+          <h1 className="text-2xl font-bold text-ps-ink">Tasks</h1>
+          <p className="text-ps-label text-sm mt-0.5">
             {loading ? "Loading…" : `${tasks.length} task${tasks.length !== 1 ? "s" : ""}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={load}
-            className="p-2 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
+            className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label"
             title="Refresh"
           >
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
@@ -650,7 +650,7 @@ export default function TasksPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
-        <SummaryCard label="Total" value={stats.total} color="bg-[#F8FAFC] border-[#E2E8F0] text-[#334155]" />
+        <SummaryCard label="Total" value={stats.total} color="bg-ps-bg border-ps-border text-ps-body" />
         <SummaryCard label="Pending" value={stats.pending} color="bg-slate-50 border-slate-200 text-slate-700" />
         <SummaryCard label="In Progress" value={stats.in_progress} color="bg-blue-50 border-blue-200 text-blue-700" />
         <SummaryCard label="Completed" value={stats.completed} color="bg-green-50 border-green-200 text-green-700" />
@@ -690,14 +690,14 @@ export default function TasksPage() {
           <div className="flex items-center justify-end gap-1">
             <button
               onClick={() => setDetailTask(t)}
-              className="p-1 rounded text-[#94A3B8] hover:text-blue-500"
+              className="p-1 rounded text-ps-hint hover:text-blue-500"
               title="View details"
             >
               <ChevronRight size={14} />
             </button>
             <button
               onClick={() => handleDelete(t.id)}
-              className="p-1 rounded text-[#94A3B8] hover:text-red-500"
+              className="p-1 rounded text-ps-hint hover:text-red-500"
               title="Delete"
             >
               <Trash2 size={13} />
@@ -708,7 +708,7 @@ export default function TasksPage() {
 
       {/* Move quick-action row (for the currently-open task) */}
       {detailTask && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[#64748B]">
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ps-label">
           <span>Move {detailTask.title.slice(0, 30)}{detailTask.title.length > 30 ? "…" : ""}:</span>
           {(Object.keys(STATUS_LABEL) as TaskStatus[])
             .filter(s => s !== detailTask.status)
@@ -716,7 +716,7 @@ export default function TasksPage() {
               <button
                 key={s}
                 onClick={() => handleMove(detailTask.id, s)}
-                className="px-2 py-1 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569] hover:text-[#0F172A]"
+                className="px-2 py-1 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label hover:text-ps-ink"
               >
                 {STATUS_LABEL[s]}
               </button>

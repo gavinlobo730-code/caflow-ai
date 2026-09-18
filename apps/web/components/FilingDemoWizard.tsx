@@ -201,18 +201,18 @@ export default function FilingDemoWizard({
           {script && (
             <>
               <div className="flex items-baseline justify-between border-b pb-2">
-                <p className="text-sm font-semibold text-[#1E293B]">{script.title}</p>
-                <p className="text-xs font-mono text-[#64748B]">{script.subtitle}</p>
+                <p className="text-sm font-semibold text-ps-ink">{script.title}</p>
+                <p className="text-xs font-mono text-ps-label">{script.subtitle}</p>
               </div>
 
               {stage?.kind === "summary" && (
                 <>
-                  <p className="text-sm font-semibold text-[#334155]">{stage.title}</p>
-                  {stage.note && <p className="text-xs text-[#64748B]">{stage.note}</p>}
+                  <p className="text-sm font-semibold text-ps-body">{stage.title}</p>
+                  {stage.note && <p className="text-xs text-ps-label">{stage.note}</p>}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
                     {(stage.figures ?? []).map((f) => (
                       <div key={f.label}>
-                        <p className="text-xs text-[#64748B]">{f.label}</p>
+                        <p className="text-xs text-ps-label">{f.label}</p>
                         <p className="font-medium">
                           {f.paise !== undefined ? rupees(f.paise) : (f.text ?? "")}
                         </p>
@@ -228,11 +228,11 @@ export default function FilingDemoWizard({
 
               {stage?.kind === "table" && (
                 <>
-                  <p className="text-sm font-semibold text-[#334155]">{stage.title}</p>
-                  {stage.note && <p className="text-xs text-[#64748B]">{stage.note}</p>}
+                  <p className="text-sm font-semibold text-ps-body">{stage.title}</p>
+                  {stage.note && <p className="text-xs text-ps-label">{stage.note}</p>}
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
-                      <thead className="bg-[#F8FAFC] text-[#64748B]">
+                      <thead className="bg-ps-bg text-ps-label">
                         <tr>{(stage.columns ?? []).map((c, i) => (
                           <th key={c} className={`px-3 py-2 font-medium ${i === 0 ? "text-left" : "text-right"}`}>{c}</th>
                         ))}</tr>
@@ -247,7 +247,7 @@ export default function FilingDemoWizard({
                         ))}
                       </tbody>
                       {stage.footer && (
-                        <tfoot className="bg-[#F8FAFC] font-semibold">
+                        <tfoot className="bg-ps-bg font-semibold">
                           <tr className="border-t-2">
                             {stage.footer.map((c, ci) => (
                               <td key={ci} className={`px-3 py-2 ${ci === 0 ? "" : "text-right font-mono"}`}>{cell(c)}</td>
@@ -284,13 +284,13 @@ export default function FilingDemoWizard({
 
               {stage?.kind === "declaration" && (
                 <>
-                  <label className="flex gap-2 items-start text-xs text-[#334155]">
+                  <label className="flex gap-2 items-start text-xs text-ps-body">
                     <input type="checkbox" checked={declared} className="mt-0.5"
                       onChange={(e) => setDeclared(e.target.checked)} />
                     <span>{stage.text}</span>
                   </label>
                   <div>
-                    <label className="text-xs text-[#64748B] block mb-1">{stage.signatory_label}</label>
+                    <label className="text-xs text-ps-label block mb-1">{stage.signatory_label}</label>
                     <select value={signatory} onChange={(e) => setSignatory(e.target.value)}
                       className="w-full px-2 py-1.5 text-sm border rounded">
                       <option value="">Select…</option>
@@ -318,7 +318,7 @@ export default function FilingDemoWizard({
                     <button onClick={back} className="px-3 py-2 border rounded text-sm">Back</button>
                   </div>
                   {(!declared || !signatory) && (
-                    <p className="text-[11px] text-[#94A3B8]">
+                    <p className="text-[11px] text-ps-hint">
                       The portal keeps this disabled until the declaration is ticked and a
                       signatory chosen. So does the demo.
                     </p>
@@ -338,7 +338,7 @@ export default function FilingDemoWizard({
                     ))}
                     <button onClick={back} className="px-3 py-2 border rounded text-sm">Back</button>
                   </div>
-                  <ul className="text-[11px] text-[#64748B] space-y-0.5">
+                  <ul className="text-[11px] text-ps-label space-y-0.5">
                     {(stage.methods ?? []).map((m) => (
                       <li key={m.key}><strong>{m.label}:</strong> {m.note}</li>
                     ))}
@@ -348,21 +348,21 @@ export default function FilingDemoWizard({
 
               {stage?.kind === "otp" && (
                 <>
-                  <p className="text-sm text-[#334155]">{stage.prompt}</p>
+                  <p className="text-sm text-ps-body">{stage.prompt}</p>
                   {/* No input, and the empty boxes say why. The step is shown
                       because it is real; the field is refused because a box
                       in this app that takes a portal OTP is a credential
                       surface whatever it is labelled — and because the code
                       is typed on the portal, not here, so an input would put
                       the step in the wrong place. */}
-                  <div className="rounded border-2 border-dashed border-[#CBD5E1] bg-[#F8FAFC] p-3">
+                  <div className="rounded border-2 border-dashed border-ps-border-strong bg-ps-bg p-3">
                     <div className="flex gap-1.5" aria-hidden="true">
                       {[0, 1, 2, 3, 4, 5].map((i) => (
                         <span key={i}
-                          className="w-8 h-9 rounded border border-[#CBD5E1] bg-white" />
+                          className="w-8 h-9 rounded border border-ps-border-strong bg-white" />
                       ))}
                     </div>
-                    <p className="text-[11px] text-[#64748B] mt-2">
+                    <p className="text-[11px] text-ps-label mt-2">
                       This is the portal&apos;s screen, not one PracticeSync has.
                       Entered on the authority&apos;s own site.
                     </p>
@@ -383,10 +383,10 @@ export default function FilingDemoWizard({
                   <ul className="space-y-2">
                     {(stage.steps ?? []).map((st, i) => (
                       <li key={st.key} className="flex items-center gap-2 text-sm">
-                        <span className={`w-4 text-center ${i <= done ? "text-green-600" : "text-[#CBD5E1]"}`}>
+                        <span className={`w-4 text-center ${i <= done ? "text-green-600" : "text-ps-disabled"}`}>
                           {i <= done ? "✓" : "○"}
                         </span>
-                        <span className={i <= done ? "text-[#334155]" : "text-[#94A3B8]"}>{st.label}</span>
+                        <span className={i <= done ? "text-ps-body" : "text-ps-hint"}>{st.label}</span>
                       </li>
                     ))}
                   </ul>
@@ -436,10 +436,10 @@ export default function FilingDemoWizard({
                     <p className="text-xs font-mono text-amber-900 break-all">{script.acknowledgement}</p>
                     <p className="text-xs text-amber-900">{script.disclaimer}</p>
                   </div>
-                  <div className="rounded border border-[#E2E8F0] bg-[#F8FAFC] p-3">
-                    <p className="text-[11px] font-semibold text-[#334155]">How this is really filed today</p>
-                    <p className="text-[11px] text-[#64748B]">{script.real_channel.how}</p>
-                    <p className="text-[11px] text-[#64748B] mt-1">
+                  <div className="rounded border border-ps-border bg-ps-bg p-3">
+                    <p className="text-[11px] font-semibold text-ps-body">How this is really filed today</p>
+                    <p className="text-[11px] text-ps-label">{script.real_channel.how}</p>
+                    <p className="text-[11px] text-ps-label mt-1">
                       {script.real_channel.software_permitted
                         ? "Software IS permitted to transmit this filing in India — that is the API integration on the roadmap."
                         : "No public API lets software transmit this today; the roadmap integration depends on the authority."}
@@ -453,9 +453,9 @@ export default function FilingDemoWizard({
                       product is entitled to: which registration is missing,
                       who has to obtain it, and what they will do differently
                       the day it arrives. */}
-                  <div className="rounded border border-[#E2E8F0] bg-white p-3">
-                    <p className="text-[11px] font-semibold text-[#334155]">What changes when this is real</p>
-                    <p className="text-[11px] text-[#64748B]">{script.when_this_is_real}</p>
+                  <div className="rounded border border-ps-border bg-white p-3">
+                    <p className="text-[11px] font-semibold text-ps-body">What changes when this is real</p>
+                    <p className="text-[11px] text-ps-label">{script.when_this_is_real}</p>
                   </div>
                 </div>
               )}
@@ -464,11 +464,11 @@ export default function FilingDemoWizard({
         </div>
 
         <div className="px-5 py-3 border-t flex justify-between items-center">
-          <span className="text-[11px] text-[#94A3B8]">
+          <span className="text-[11px] text-ps-hint">
             {stage?.kind === "result" ? "Nothing was transmitted." : "Step through as the portal would."}
           </span>
           <button onClick={onClose}
-            className="px-3 py-1.5 text-sm border rounded hover:bg-[#F8FAFC]">Close</button>
+            className="px-3 py-1.5 text-sm border rounded hover:bg-ps-bg">Close</button>
         </div>
       </div>
     </div>

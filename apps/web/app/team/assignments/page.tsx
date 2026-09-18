@@ -82,8 +82,8 @@ export default function AssignmentsPage() {
   return (
     <div className="p-6 max-w-5xl">
       <div className="flex items-center gap-2 mb-1">
-        <Link2 size={18} className="text-[#182350]" />
-        <h1 className="text-lg font-semibold text-[#182350]">Client Assignments</h1>
+        <Link2 size={18} className="text-brand" />
+        <h1 className="text-lg font-semibold text-brand">Client Assignments</h1>
       </div>
       <p className="text-[12px] text-gray-500 mb-4">
         Assign clients to staff. A user can only see, search, and be notified about clients assigned to them
@@ -112,7 +112,7 @@ export default function AssignmentsPage() {
                 key={m.id}
                 onClick={() => loadAssignments(m.id)}
                 className={`w-full text-left px-3 py-2.5 border-b border-gray-50 transition-colors ${
-                  selectedUser === m.id ? "bg-[#182350] text-white" : "hover:bg-[#F8FAFC]"
+                  selectedUser === m.id ? "bg-brand text-white" : "hover:bg-ps-bg"
                 }`}
               >
                 <p className="text-[13px] font-medium">{m.full_name || m.email || "—"}</p>
@@ -145,14 +145,14 @@ export default function AssignmentsPage() {
                         key={c.id}
                         disabled={!canAssign || busy === c.id}
                         onClick={() => toggle(c.id)}
-                        className="w-full flex items-center justify-between px-4 py-2.5 border-b border-gray-50 hover:bg-[#F8FAFC] disabled:opacity-60"
+                        className="w-full flex items-center justify-between px-4 py-2.5 border-b border-gray-50 hover:bg-ps-bg disabled:opacity-60"
                       >
                         <div className="text-left">
-                          <p className="text-[13px] text-[#182350]">{c.client_name}</p>
+                          <p className="text-[13px] text-brand">{c.client_name}</p>
                           <p className="text-[11px] text-gray-400">{c.entity_type}{c.gstin ? ` · ${c.gstin}` : ""}</p>
                         </div>
                         <span className={`flex items-center justify-center w-5 h-5 rounded border ${
-                          on ? "bg-[#182350] border-[#182350] text-white" : "border-gray-300"
+                          on ? "bg-brand border-brand text-white" : "border-gray-300"
                         }`}>
                           {busy === c.id ? <Loader2 size={12} className="animate-spin" /> : on ? <Check size={12} /> : null}
                         </span>

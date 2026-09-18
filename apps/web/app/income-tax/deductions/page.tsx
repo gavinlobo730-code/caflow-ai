@@ -142,14 +142,14 @@ function PaiseInput({ label, valuePaise, onChange, note }: {
   // and the red field says which box disagrees with it.
   const [bad, setBad] = useState(false);
   return (
-    <div className="flex items-center justify-between gap-4 py-2 border-b border-[#F1F5F9] last:border-0">
+    <div className="flex items-center justify-between gap-4 py-2 border-b border-ps-muted last:border-0">
       <div>
-        <span className="text-sm text-[#334155]">{label}</span>
-        {note && <span className="block text-xs text-[#94A3B8]">{note}</span>}
+        <span className="text-sm text-ps-body">{label}</span>
+        {note && <span className="block text-xs text-ps-hint">{note}</span>}
         {bad && <span className="block text-xs text-red-600">Not an amount — enter rupees, like 150000 or 150000.50.</span>}
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        <span className="text-sm text-[#94A3B8]">₹</span>
+        <span className="text-sm text-ps-hint">₹</span>
         <input
           type="text" inputMode="decimal" value={raw}
           onChange={e => {
@@ -158,7 +158,7 @@ function PaiseInput({ label, valuePaise, onChange, note }: {
             setBad(p === null);
             if (p !== null) onChange(p);
           }}
-          className={`w-28 border rounded px-2 py-1 text-sm text-right outline-none ${bad ? "border-red-400 focus:border-red-500" : "border-[#E2E8F0] focus:border-blue-500"}`}
+          className={`w-28 border rounded px-2 py-1 text-sm text-right outline-none ${bad ? "border-red-400 focus:border-red-500" : "border-ps-border focus:border-blue-500"}`}
           placeholder="0"
         />
       </div>
@@ -172,21 +172,21 @@ function SectionCard({ title, children, eligible, limit, entered }: {
 }) {
   const [open, setOpen] = useState(true);
   return (
-    <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <button onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F8FAFC]">
-        <span className="font-medium text-[#0F172A] text-sm">{title}</span>
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-ps-bg">
+        <span className="font-medium text-ps-ink text-sm">{title}</span>
         <div className="flex items-center gap-3">
           {eligible !== undefined && (
             <span className="text-xs text-green-600 font-medium">Eligible: {fmtP(eligible)}</span>
           )}
-          {open ? <ChevronUp size={15} className="text-[#94A3B8]" /> : <ChevronDown size={15} className="text-[#94A3B8]" />}
+          {open ? <ChevronUp size={15} className="text-ps-hint" /> : <ChevronDown size={15} className="text-ps-hint" />}
         </div>
       </button>
       {open && (
         <div className="px-4 pb-4">
           {(limit !== undefined || entered !== undefined) && (
-            <div className="flex gap-4 text-xs text-[#64748B] mb-3">
+            <div className="flex gap-4 text-xs text-ps-label mb-3">
               {limit !== undefined && <span>Limit: {fmtP(limit)}</span>}
               {entered !== undefined && <span>Entered: {fmtP(entered)}</span>}
               {eligible !== undefined && limit !== undefined && (
@@ -427,8 +427,8 @@ export default function DeductionsPage() {
     <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg md:text-xl font-semibold text-[#0F172A]">Section 80 Deductions Planner</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">IT Act — Compute deductions and compare tax regimes</p>
+          <h1 className="text-lg md:text-xl font-semibold text-ps-ink">Section 80 Deductions Planner</h1>
+          <p className="text-sm text-ps-label mt-0.5">IT Act — Compute deductions and compare tax regimes</p>
         </div>
         <div className="flex items-center gap-2">
           <ClientLookup
@@ -462,12 +462,12 @@ export default function DeductionsPage() {
       )}
 
       {/* Gross Income */}
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+      <div className="bg-white rounded-xl border border-ps-border p-4">
         <PaiseInput label="Gross Total Income (₹)" valuePaise={state.grossIncomePaise}
           onChange={v => upd({ grossIncomePaise: v })}
           note="Before any deductions" />
         <div className="mt-3 flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-[#334155]">
+          <label className="flex items-center gap-2 text-sm text-ps-body">
             <input type="checkbox" checked={state.isSeniorCitizen}
               onChange={e => upd({ isSeniorCitizen: e.target.checked })} />
             Senior Citizen (60+)
@@ -511,11 +511,11 @@ export default function DeductionsPage() {
           onChange={v => upd({ employerNps80ccd2: v })}
           note={`Capped at ${state.isGovernmentEmployee ? LIMIT_80CCD2_GOVT_PCT : LIMIT_80CCD2_OTHER_PCT}% of salary`} />
         <div className="flex items-center justify-between py-2">
-          <span className="text-sm text-[#334155]">Government Employee</span>
+          <span className="text-sm text-ps-body">Government Employee</span>
           <input type="checkbox" checked={state.isGovernmentEmployee}
             onChange={e => upd({ isGovernmentEmployee: e.target.checked })} />
         </div>
-        <p className="text-xs text-[#94A3B8] mt-1">
+        <p className="text-xs text-ps-hint mt-1">
           Unlike every other deduction on this page, Section 80CCD(2) reduces tax under
           both the old and new regime.
         </p>
@@ -525,9 +525,9 @@ export default function DeductionsPage() {
       <SectionCard title="Section 80D — Health Insurance" eligible={elig80d}>
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-[#334155]">Self + Family Premium</span>
+            <span className="text-sm text-ps-body">Self + Family Premium</span>
             <div className="flex items-center gap-3">
-              <label className="flex items-center gap-1 text-xs text-[#64748B]">
+              <label className="flex items-center gap-1 text-xs text-ps-label">
                 <input type="checkbox" checked={state.s80d.selfFamilySenior}
                   onChange={e => upd({ s80d: { ...state.s80d, selfFamilySenior: e.target.checked } })} />
                 Senior (₹50k limit)
@@ -538,8 +538,8 @@ export default function DeductionsPage() {
             onChange={v => upd({ s80d: { ...state.s80d, selfFamilyPremium: v } })}
             note={`Limit: ${fmtP(selfLimit)}`} />
           <div className="flex items-center justify-between">
-            <span className="text-sm text-[#334155]">Parents Premium</span>
-            <label className="flex items-center gap-1 text-xs text-[#64748B]">
+            <span className="text-sm text-ps-body">Parents Premium</span>
+            <label className="flex items-center gap-1 text-xs text-ps-label">
               <input type="checkbox" checked={state.s80d.parentsSenior}
                 onChange={e => upd({ s80d: { ...state.s80d, parentsSenior: e.target.checked } })} />
               Senior parents (₹50k limit)
@@ -559,7 +559,7 @@ export default function DeductionsPage() {
               <input type="text" value={d.description}
                 onChange={e => { const ds = [...state.donations]; ds[i].description = e.target.value; upd({ donations: ds }); }}
                 placeholder="Fund/Trust name"
-                className="flex-1 border border-[#E2E8F0] rounded px-2 py-1 text-sm outline-none focus:border-blue-500" />
+                className="flex-1 border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-blue-500" />
               <input type="number" min="0" value={d.amountPaise / 100}
                 onChange={e => {
                   // A s.80G donation deducted at 100% or 50% of a mis-read
@@ -571,11 +571,11 @@ export default function DeductionsPage() {
                   const ds = [...state.donations]; ds[i].amountPaise = paise; upd({ donations: ds });
                 }}
                 placeholder="₹"
-                className="w-24 border border-[#E2E8F0] rounded px-2 py-1 text-sm outline-none focus:border-blue-500" />
+                className="w-24 border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-blue-500" />
               <select value={d.deductionPct}
                 onChange={e => { const ds = [...state.donations]; ds[i].deductionPct = parseInt(e.target.value) as 100 | 50; upd({ donations: ds }); }}
                 aria-label={`Donation ${i + 1} deduction percentage`}
-                className="border border-[#E2E8F0] rounded px-2 py-1 text-sm outline-none focus:border-blue-500">
+                className="border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-blue-500">
                 <option value={100}>100%</option>
                 <option value={50}>50%</option>
               </select>
@@ -589,7 +589,7 @@ export default function DeductionsPage() {
                 onChange={e => { const ds = [...state.donations]; ds[i].subjectToLimit = e.target.value === "limited"; upd({ donations: ds }); }}
                 aria-label={`Donation ${i + 1} qualifying limit`}
                 title="Section 80G(4) caps donations in the residual category at 10% of adjusted gross total income. Funds listed in Section 80G(1)(i) — the PM National Relief Fund and its neighbours — are not capped."
-                className="border border-[#E2E8F0] rounded px-2 py-1 text-sm outline-none focus:border-blue-500">
+                className="border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-blue-500">
                 <option value="limited">Subject to 10% limit</option>
                 <option value="unlimited">No qualifying limit — s.80G(1)(i)</option>
               </select>
@@ -607,7 +607,7 @@ export default function DeductionsPage() {
                 }}
                 aria-label={`Donation ${i + 1} mode of payment`}
                 title="Section 80G(5D) — no deduction for a donation over Rs 2,000 paid in cash. Leaving this unstated allows the deduction and returns a warning."
-                className="border border-[#E2E8F0] rounded px-2 py-1 text-sm outline-none focus:border-blue-500">
+                className="border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-blue-500">
                 <option value="unstated">Mode not stated</option>
                 <option value="not-cash">Not paid in cash</option>
                 <option value="cash">Paid in cash</option>
@@ -619,7 +619,7 @@ export default function DeductionsPage() {
           ))}
           <button onClick={() => upd({ donations: [...state.donations, { description: "", amountPaise: 0, deductionPct: 100, subjectToLimit: true, paidInCash: null }] })}
             className="text-xs text-blue-600 hover:underline">+ Add Donation</button>
-          <p className="text-[11px] text-[#64748B] pt-1">
+          <p className="text-[11px] text-ps-label pt-1">
             Section 80G(4) caps the total of the limited donations at 10% of adjusted gross
             total income. Section 80G(5D) disallows a cash donation over ₹2,000 outright.
             Both are applied server-side; the computed figure shows what was allowed.
@@ -648,12 +648,12 @@ export default function DeductionsPage() {
           <PaiseInput label="Actual Rent Paid" valuePaise={state.rentPaidPaise}
             onChange={v => upd({ rentPaidPaise: v })} />
           <div className="py-2 flex items-center gap-4">
-            <span className="text-sm text-[#334155]">City Type</span>
-            <label className="flex items-center gap-1 text-sm text-[#475569]">
+            <span className="text-sm text-ps-body">City Type</span>
+            <label className="flex items-center gap-1 text-sm text-ps-label">
               <input type="radio" name="city" value="metro" checked={state.cityType === "metro"}
                 onChange={() => upd({ cityType: "metro" })} /> Metro (50%)
             </label>
-            <label className="flex items-center gap-1 text-sm text-[#475569]">
+            <label className="flex items-center gap-1 text-sm text-ps-label">
               <input type="radio" name="city" value="non-metro" checked={state.cityType === "non-metro"}
                 onChange={() => upd({ cityType: "non-metro" })} /> Non-Metro (40%)
             </label>
@@ -668,27 +668,27 @@ export default function DeductionsPage() {
       </SectionCard>
 
       {/* Summary */}
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-3">
-        <h2 className="font-semibold text-[#0F172A] text-sm">Tax Summary</h2>
+      <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
+        <h2 className="font-semibold text-ps-ink text-sm">Tax Summary</h2>
         {computeError && <p className="text-xs text-red-600">{computeError}</p>}
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between"><span className="text-[#475569]">Gross Total Income</span><span className="font-mono">{fmtP(state.grossIncomePaise)}</span></div>
-          <div className="flex justify-between"><span className="text-[#475569]">Total Deductions (Old Regime)</span><span className="font-mono text-green-600">— {fmtP(totalDeductions)}</span></div>
+          <div className="flex justify-between"><span className="text-ps-label">Gross Total Income</span><span className="font-mono">{fmtP(state.grossIncomePaise)}</span></div>
+          <div className="flex justify-between"><span className="text-ps-label">Total Deductions (Old Regime)</span><span className="font-mono text-green-600">— {fmtP(totalDeductions)}</span></div>
           <div className="flex justify-between border-t pt-2"><span className="font-medium">Net Taxable Income (Old Regime)</span><span className="font-mono font-semibold">{fmtP(netTaxableOld)}</span></div>
           <div className="flex justify-between border-t pt-2"><span className="font-medium">Net Taxable Income (New Regime)</span><span className="font-mono font-semibold">{fmtP(netTaxableNew)}</span></div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 mt-3">
-          <div className={`rounded-lg p-3 border-2 ${recommended === "new" ? "border-green-500 bg-green-50" : "border-[#E2E8F0] bg-[#F8FAFC]"}`}>
-            <p className="text-xs font-medium text-[#475569] mb-1">New Regime Tax {recommended === "new" && "✓ Recommended"}</p>
-            <p className="text-xl font-bold font-mono text-[#0F172A]">{fmtP(newRegimeTax)}</p>
-            <p className="text-xs text-[#64748B] mt-1">Taxable: {fmtP(netTaxableNew)}</p>
+          <div className={`rounded-lg p-3 border-2 ${recommended === "new" ? "border-green-500 bg-green-50" : "border-ps-border bg-ps-bg"}`}>
+            <p className="text-xs font-medium text-ps-label mb-1">New Regime Tax {recommended === "new" && "✓ Recommended"}</p>
+            <p className="text-xl font-bold font-mono text-ps-ink">{fmtP(newRegimeTax)}</p>
+            <p className="text-xs text-ps-label mt-1">Taxable: {fmtP(netTaxableNew)}</p>
             {newResult && newRegimeTax === 0 && netTaxableNew > 0 && <p className="text-xs text-green-600 mt-1">Rebate u/s 87A — NIL tax</p>}
           </div>
-          <div className={`rounded-lg p-3 border-2 ${recommended === "old" ? "border-green-500 bg-green-50" : "border-[#E2E8F0] bg-[#F8FAFC]"}`}>
-            <p className="text-xs font-medium text-[#475569] mb-1">Old Regime Tax {recommended === "old" && "✓ Recommended"}</p>
-            <p className="text-xl font-bold font-mono text-[#0F172A]">{fmtP(oldRegimeTax)}</p>
-            <p className="text-xs text-[#64748B] mt-1">Taxable: {fmtP(netTaxableOld)}</p>
+          <div className={`rounded-lg p-3 border-2 ${recommended === "old" ? "border-green-500 bg-green-50" : "border-ps-border bg-ps-bg"}`}>
+            <p className="text-xs font-medium text-ps-label mb-1">Old Regime Tax {recommended === "old" && "✓ Recommended"}</p>
+            <p className="text-xl font-bold font-mono text-ps-ink">{fmtP(oldRegimeTax)}</p>
+            <p className="text-xs text-ps-label mt-1">Taxable: {fmtP(netTaxableOld)}</p>
           </div>
         </div>
 
@@ -699,9 +699,9 @@ export default function DeductionsPage() {
         </div>
 
         <div>
-          <label className="text-xs font-medium text-[#334155] block mb-1">Notes</label>
+          <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>
           <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
-            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
             placeholder="Planning notes…" />
         </div>
 

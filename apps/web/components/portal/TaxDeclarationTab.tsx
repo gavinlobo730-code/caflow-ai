@@ -267,14 +267,14 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-sm text-[#64748B] py-10 justify-center">
+      <div className="flex items-center gap-2 text-sm text-ps-label py-10 justify-center">
         <Loader2 className="w-4 h-4 animate-spin" /> Loading your declaration…
       </div>
     );
   }
   if (loadFailed || !decl) {
     return (
-      <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-8 text-center text-sm text-[#B91C1C]">
+      <div className="bg-white rounded-xl border border-ps-muted px-5 py-8 text-center text-sm text-state-problem">
         Could not load your declaration.
         <button onClick={() => void load()} className="underline ml-1">Try again</button>.
       </div>
@@ -285,12 +285,12 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-[#0F172A]">
+          <h2 className="text-sm font-semibold text-ps-ink">
             Tax declaration — {fy}
           </h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">
+          <p className="text-xs text-ps-hint mt-0.5">
             Form 12BB. What you tell your employer here decides how much tax is
             deducted from your salary each month.
           </p>
@@ -298,7 +298,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
 
         {locked && (
           <div className="mx-5 mt-4 flex gap-2.5 text-xs bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg p-3">
-            <Lock className="w-3.5 h-3.5 text-[#047857] shrink-0 mt-0.5" />
+            <Lock className="w-3.5 h-3.5 text-state-ready shrink-0 mt-0.5" />
             <p className="text-[#065F46]">
               Your proofs have been verified, so this is now read-only. Ask your
               payroll contact if something needs to change.
@@ -309,7 +309,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
         <div className="px-5 py-4 space-y-5">
           {/* Regime */}
           <fieldset disabled={locked}>
-            <legend className="text-xs font-medium text-[#334155] mb-2">
+            <legend className="text-xs font-medium text-ps-body mb-2">
               Which tax regime should your employer use?
             </legend>
             <div className="space-y-2">
@@ -321,19 +321,19 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
               ]).map((o) => (
                 <label key={o.v}
                   className={`flex gap-2.5 items-start border rounded-lg p-3 cursor-pointer ${
-                    decl.regime === o.v ? "border-[#2563EB] bg-[#EFF6FF]" : "border-[#E2E8F0]"}`}>
+                    decl.regime === o.v ? "border-[#2563EB] bg-[#EFF6FF]" : "border-ps-border"}`}>
                   <input type="radio" name="regime" className="mt-1"
                     checked={decl.regime === o.v}
                     onChange={() => set("regime", o.v)} />
                   <span>
-                    <span className="text-sm text-[#0F172A]">{o.t}</span>
-                    <span className="block text-xs text-[#64748B] mt-0.5">{o.d}</span>
+                    <span className="text-sm text-ps-ink">{o.t}</span>
+                    <span className="block text-xs text-ps-label mt-0.5">{o.d}</span>
                   </span>
                 </label>
               ))}
             </div>
             {decl.regime === "old" && (
-              <p className="text-xs text-[#78350F] bg-[#FFFBEB] border border-[#FDE68A] rounded-lg p-3 mt-2">
+              <p className="text-xs text-[#78350F] bg-state-attention-surface border border-state-attention-border rounded-lg p-3 mt-2">
                 Telling your employer you want the old regime changes how tax is
                 deducted from your salary. It is not the same as choosing the old
                 regime in your tax return — if you have business or professional
@@ -358,7 +358,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
               hint="Form 12BB requires this once the year's rent passes ₹1,00,000 (Rule 26C)."
               value={decl.landlord_pan}
               onChange={(v) => set("landlord_pan", v.toUpperCase())} />
-            <label className="flex items-center gap-2 text-sm text-[#334155]">
+            <label className="flex items-center gap-2 text-sm text-ps-body">
               <input type="checkbox" checked={decl.rent_is_metro} disabled={locked}
                 onChange={(e) => set("rent_is_metro", e.target.checked)} />
               I live in Delhi, Mumbai, Kolkata or Chennai
@@ -414,7 +414,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
           {!locked && (
             <div className="flex justify-end pt-1">
               <button onClick={() => void save()} disabled={saving}
-                className="inline-flex items-center gap-2 bg-[#0F172A] text-white text-sm px-4 py-2 rounded-lg disabled:opacity-60">
+                className="inline-flex items-center gap-2 bg-brand-dark text-white text-sm px-4 py-2 rounded-lg disabled:opacity-60">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Submit declaration
               </button>
@@ -432,10 +432,10 @@ function Section({ title, note, children }: {
   title: string; note?: string; children: React.ReactNode;
 }) {
   return (
-    <div className="border-t border-[#F1F5F9] pt-4 space-y-3">
+    <div className="border-t border-ps-muted pt-4 space-y-3">
       <div>
-        <h3 className="text-sm font-medium text-[#0F172A]">{title}</h3>
-        {note && <p className="text-xs text-[#94A3B8] mt-0.5">{note}</p>}
+        <h3 className="text-sm font-medium text-ps-ink">{title}</h3>
+        {note && <p className="text-xs text-ps-hint mt-0.5">{note}</p>}
       </div>
       {children}
     </div>
@@ -448,14 +448,14 @@ function Money({ label, hint, value, onChange, disabled }: {
 }) {
   return (
     <label className="block">
-      <span className="text-sm text-[#334155]">{label}</span>
-      {hint && <span className="block text-xs text-[#94A3B8]">{hint}</span>}
-      <div className="mt-1 flex items-center border border-[#E2E8F0] rounded-lg overflow-hidden
+      <span className="text-sm text-ps-body">{label}</span>
+      {hint && <span className="block text-xs text-ps-hint">{hint}</span>}
+      <div className="mt-1 flex items-center border border-ps-border rounded-lg overflow-hidden
                       focus-within:border-[#2563EB]">
-        <span className="px-2.5 text-sm text-[#94A3B8] bg-[#F8FAFC] py-2">₹</span>
+        <span className="px-2.5 text-sm text-ps-hint bg-ps-bg py-2">₹</span>
         <input inputMode="decimal" value={value} disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          className="flex-1 px-3 py-2 text-sm text-right tabular-nums outline-none disabled:bg-[#F8FAFC]" />
+          className="flex-1 px-3 py-2 text-sm text-right tabular-nums outline-none disabled:bg-ps-bg" />
       </div>
     </label>
   );
@@ -467,12 +467,12 @@ function Text({ label, hint, value, onChange, disabled }: {
 }) {
   return (
     <label className="block">
-      <span className="text-sm text-[#334155]">{label}</span>
-      {hint && <span className="block text-xs text-[#94A3B8]">{hint}</span>}
+      <span className="text-sm text-ps-body">{label}</span>
+      {hint && <span className="block text-xs text-ps-hint">{hint}</span>}
       <input value={value} disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm
-                   outline-none focus:border-[#2563EB] disabled:bg-[#F8FAFC]" />
+        className="mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm
+                   outline-none focus:border-[#2563EB] disabled:bg-ps-bg" />
     </label>
   );
 }

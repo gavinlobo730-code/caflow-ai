@@ -54,7 +54,7 @@ export function isValidTan(tan: string): boolean {
   return /^[A-Z]{4}[0-9]{5}[A-Z]{1}$/.test(tan);
 }
 
-const inputCls = "w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
+const inputCls = "w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
 
 export function CustomerFormModal({
   clientId, existing, seedName, onClose, onSaved, onError,
@@ -209,11 +209,11 @@ export function CustomerFormModal({
     <Modal title={existing ? "Edit Customer" : "Add Customer"} onClose={onClose} maxWidthClass="max-w-2xl">
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="col-span-2 lg:col-span-1">
-          <label className="block text-xs font-medium text-[#475569] mb-1">Name *</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="ABC Pvt Ltd" className={inputCls} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">GSTIN</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">GSTIN</label>
           <input
             value={gstin} onChange={(e) => handleGstinChange(e.target.value)}
             placeholder="27AABCU9603R1ZN" maxLength={15}
@@ -224,11 +224,11 @@ export function CustomerFormModal({
           )}
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">State Code</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">State Code</label>
           <StateLookup value={stateCode} onChange={setStateCode} placeholder="— Select —" ariaLabel="State code" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">PAN</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">PAN</label>
           <input
             value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())}
             placeholder="ABCDE1234F" maxLength={10}
@@ -240,8 +240,8 @@ export function CustomerFormModal({
             lets the 26AS reconciliation match on identity instead of on the
             company name — which it can only flag for a human to confirm. */}
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">
-            TAN <span className="text-[#94A3B8] font-normal">(if they deduct TDS)</span>
+          <label className="block text-xs font-medium text-ps-label mb-1">
+            TAN <span className="text-ps-hint font-normal">(if they deduct TDS)</span>
           </label>
           <input
             value={tan} onChange={(e) => setTan(e.target.value.toUpperCase())}
@@ -251,28 +251,28 @@ export function CustomerFormModal({
           {tan && !isValidTan(tan) && <p className="text-[10px] text-red-500 mt-0.5">Invalid TAN</p>}
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Email</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Email</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="billing@abc.com" className={inputCls} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Phone</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Phone</label>
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" className={inputCls} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">City</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">City</label>
           <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Mumbai" className={inputCls} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">State</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">State</label>
           <input value={state} onChange={(e) => setState(e.target.value)} placeholder="Maharashtra" className={inputCls} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Opening Balance (₹)</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Opening Balance (₹)</label>
           <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)}
             placeholder="0.00" className={`${inputCls} text-right font-mono`} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Payment Terms</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Payment Terms</label>
           <select value={termValue} onChange={(e) => onTermChange(e.target.value)} className={inputCls}>
             {PAYMENT_TERM_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label}</option>)}
             <option value={CUSTOM_TERM}>Custom</option>
@@ -281,13 +281,13 @@ export function CustomerFormModal({
             <input type="number" min="0" value={creditDays} onChange={(e) => setCreditDays(e.target.value)}
               placeholder="Credit days" aria-label="Custom credit days" className={`mt-1 ${inputCls}`} />
           )}
-          <p className="mt-1 text-[10px] text-[#94A3B8]">Default terms for this customer&apos;s new invoices.</p>
+          <p className="mt-1 text-[10px] text-ps-hint">Default terms for this customer&apos;s new invoices.</p>
         </div>
       </div>
 
       {localError && !onError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{localError}</p>}
       <div className="flex gap-3 justify-end">
-        <button onClick={onClose} disabled={saving} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
+        <button onClick={onClose} disabled={saving} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
         <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
           {saving && <Loader2 size={13} className="animate-spin" />} {saving ? "Saving…" : existing ? "Update Customer" : "Add Customer"}
         </button>

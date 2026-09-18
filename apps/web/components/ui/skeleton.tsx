@@ -20,7 +20,7 @@ export function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivEl
   return (
     <div
       aria-hidden="true"
-      className={cn("animate-pulse rounded bg-[#F1F5F9]", className)}
+      className={cn("animate-pulse rounded bg-ps-muted", className)}
       {...props}
     />
   );
@@ -51,7 +51,7 @@ export function PageLoader({ label = "Loading…", className }: { label?: string
     <div
       role="status"
       aria-live="polite"
-      className={cn("flex min-h-[40vh] w-full flex-col items-center justify-center gap-3 text-[#94A3B8]", className)}
+      className={cn("flex min-h-[40vh] w-full flex-col items-center justify-center gap-3 text-ps-hint", className)}
     >
       <LogoIcon size="lg" spin />
       <p className="text-sm font-medium">{label}</p>
@@ -76,14 +76,14 @@ export function TableSkeleton({
   className?: string;
 }) {
   const header = (
-    <div className="flex gap-4 border-b border-[#F1F5F9] bg-[#F8FAFC] px-4 py-3">
+    <div className="flex gap-4 border-b border-ps-muted bg-ps-bg px-4 py-3">
       {Array.from({ length: cols }).map((_, i) => (
         <Skeleton key={i} className="h-3 flex-1" />
       ))}
     </div>
   );
   const body = (
-    <div className="divide-y divide-[#F1F5F9]">
+    <div className="divide-y divide-ps-muted">
       {Array.from({ length: rows }).map((_, r) => (
         <div key={r} className="flex items-center gap-4 px-4 py-4">
           {Array.from({ length: cols }).map((_, c) => (
@@ -105,7 +105,7 @@ export function TableSkeleton({
     <div
       role="status"
       aria-label="Loading table"
-      className={cn("overflow-hidden rounded-xl border border-[#E2E8F0] bg-white", className)}
+      className={cn("overflow-hidden rounded-xl border border-ps-border bg-white", className)}
     >
       {header}
       {body}
@@ -116,7 +116,7 @@ export function TableSkeleton({
 /** A single metric/KPI card placeholder. */
 export function MetricCardSkeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("rounded-lg border border-[#E2E8F0] bg-white px-4 py-3", className)}>
+    <div className={cn("rounded-lg border border-ps-border bg-white px-4 py-3", className)}>
       <Skeleton className="h-2.5 w-24" />
       <Skeleton className="mt-2 h-6 w-16" />
     </div>
@@ -143,7 +143,7 @@ export function ListSkeleton({ rows = 6, className }: { rows?: number; className
   return (
     <div role="status" aria-label="Loading list" className={cn("space-y-3", className)}>
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex items-center gap-4 rounded-lg border border-[#E2E8F0] bg-white px-4 py-3">
+        <div key={i} className="flex items-center gap-4 rounded-lg border border-ps-border bg-white px-4 py-3">
           <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
           <div className="flex-1 space-y-2">
             <Skeleton className="h-3 w-48" />
@@ -164,7 +164,7 @@ export function CardGridSkeleton({ count = 6, className }: { count?: number; cla
       className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3", className)}
     >
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="space-y-3 rounded-xl border border-[#E2E8F0] bg-white p-4">
+        <div key={i} className="space-y-3 rounded-xl border border-ps-border bg-white p-4">
           <Skeleton className="h-4 w-2/3" />
           <Skeleton className="h-3 w-1/3" />
           <SkeletonText lines={2} />
@@ -191,7 +191,7 @@ export function FormSkeleton({ fields = 4, className }: { fields?: number; class
 /** Client-workspace header placeholder (avatar + name + meta chips). */
 export function ClientHeaderSkeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("flex items-center gap-4 border-b border-[#E2E8F0] bg-white px-6 py-4", className)}>
+    <div className={cn("flex items-center gap-4 border-b border-ps-border bg-white px-6 py-4", className)}>
       <Skeleton className="h-12 w-12 rounded-full" />
       <div className="flex-1 space-y-2">
         <Skeleton className="h-4 w-56" />
@@ -241,12 +241,12 @@ export function StatementSkeleton({
     <div
       role="status"
       aria-label="Loading statement"
-      className={cn("overflow-hidden rounded-xl border border-[#E2E8F0] bg-white", className)}
+      className={cn("overflow-hidden rounded-xl border border-ps-border bg-white", className)}
     >
-      <div className="border-b border-[#F1F5F9] bg-[#F8FAFC] px-5 py-4">
+      <div className="border-b border-ps-muted bg-ps-bg px-5 py-4">
         <Skeleton className="h-3 w-48" />
       </div>
-      <div className="divide-y divide-[#F1F5F9] px-5 py-4">
+      <div className="divide-y divide-ps-muted px-5 py-4">
         {Array.from({ length: sections }).map((_, s) => (
           <div key={s} className="space-y-2.5 py-3 first:pt-0 last:pb-0">
             <Skeleton className="h-2.5 w-32" />
@@ -277,7 +277,7 @@ export function TransactionListSkeleton({ rows = 4, className }: { rows?: number
     <div
       role="status"
       aria-label="Loading transactions"
-      className={cn("overflow-hidden rounded-xl border border-[#E2E8F0] bg-white divide-y divide-[#F1F5F9]", className)}
+      className={cn("overflow-hidden rounded-xl border border-ps-border bg-white divide-y divide-ps-muted", className)}
     >
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex items-start justify-between gap-4 px-4 py-3">
@@ -298,7 +298,7 @@ export function ChartSkeleton({ height = 240, className }: { height?: number; cl
     <div
       role="status"
       aria-label="Loading chart"
-      className={cn("rounded-xl border border-[#E2E8F0] bg-white p-4", className)}
+      className={cn("rounded-xl border border-ps-border bg-white p-4", className)}
     >
       <Skeleton className="mb-4 h-3 w-40" />
       <div className="flex items-end gap-2" style={{ height }}>

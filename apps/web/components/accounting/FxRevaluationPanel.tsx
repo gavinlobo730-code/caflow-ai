@@ -48,7 +48,7 @@ interface Plan {
 }
 
 function delta(paise: number | null) {
-  if (paise === null || paise === 0) return <span className="font-mono text-[#94A3B8]">—</span>;
+  if (paise === null || paise === 0) return <span className="font-mono text-ps-hint">—</span>;
   const cls = paise > 0 ? "text-green-700" : "text-red-700";
   return <span className={`font-mono ${cls}`}>{paise > 0 ? "+" : "−"}{formatPaise(Math.abs(paise))}</span>;
 }
@@ -92,18 +92,18 @@ export default function FxRevaluationPanel({
   useEffect(() => { setRates({}); setPosted(null); load({}); }, [load]);
 
   if (!plan) {
-    return loading ? <p className="text-xs text-[#94A3B8]">Checking foreign exposure…</p> : null;
+    return loading ? <p className="text-xs text-ps-hint">Checking foreign exposure…</p> : null;
   }
   if (!plan.active) {
     return (
-      <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#64748B]">
+      <div className="bg-ps-bg border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-label">
         {plan.refusal}
       </div>
     );
   }
   if (plan.rows.length === 0) {
     return (
-      <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#64748B]">
+      <div className="bg-ps-bg border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-label">
         No open foreign monetary items at {plan.period_end}, so AS 11 has nothing to
         retranslate.
       </div>
@@ -137,12 +137,12 @@ export default function FxRevaluationPanel({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] p-3 space-y-3">
+    <div className="bg-white rounded-xl border border-ps-muted p-3 space-y-3">
       <div>
-        <p className="text-xs font-semibold text-[#334155]">
+        <p className="text-xs font-semibold text-ps-body">
           Revalue open foreign items at {plan.period_end}
         </p>
-        <p className="text-[11px] text-[#94A3B8] mt-0.5">
+        <p className="text-[11px] text-ps-hint mt-0.5">
           AS 11 retranslates a monetary item at the closing rate on the balance sheet
           date and takes the difference to the profit and loss account. The entry is
           posted at {plan.period_end} and auto-reversed on {plan.reversal_date}, so the
@@ -156,10 +156,10 @@ export default function FxRevaluationPanel({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-[#F1F5F9]">
+      <div className="overflow-hidden rounded-lg border border-ps-muted">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+            <tr className="border-b border-ps-muted text-ps-hint">
               <th className="px-3 py-2 text-left font-semibold">Currency</th>
               <th className="px-3 py-2 text-left font-semibold">Item</th>
               <th className="px-3 py-2 text-right font-semibold">Foreign open</th>
@@ -169,18 +169,18 @@ export default function FxRevaluationPanel({
               <th className="px-3 py-2 text-right font-semibold">This run</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F8FAFC]">
+          <tbody className="divide-y divide-ps-bg">
             {plan.rows.map((r, i) => (
-              <tr key={`${r.currency}-${r.item_type}-${r.item_ref ?? ""}-${i}`} className="hover:bg-[#F8FAFC]">
-                <td className="px-3 py-2 font-mono text-[#334155]">{r.currency}</td>
-                <td className="px-3 py-2 text-[#475569] capitalize">{r.item_type}</td>
-                <td className="px-3 py-2 text-right font-mono text-[#334155]">{r.foreign_outstanding}</td>
-                <td className="px-3 py-2 text-right font-mono text-[#334155]">{formatPaise(r.carrying_base_paise)}</td>
+              <tr key={`${r.currency}-${r.item_type}-${r.item_ref ?? ""}-${i}`} className="hover:bg-ps-bg">
+                <td className="px-3 py-2 font-mono text-ps-body">{r.currency}</td>
+                <td className="px-3 py-2 text-ps-label capitalize">{r.item_type}</td>
+                <td className="px-3 py-2 text-right font-mono text-ps-body">{r.foreign_outstanding}</td>
+                <td className="px-3 py-2 text-right font-mono text-ps-body">{formatPaise(r.carrying_base_paise)}</td>
                 <td className="px-3 py-2 text-right">
                   <input
                     id={`fx-rate-${r.currency}`}
                     inputMode="decimal"
-                    className="w-24 border border-[#E2E8F0] rounded px-2 py-1 text-right font-mono"
+                    className="w-24 border border-ps-border rounded px-2 py-1 text-right font-mono"
                     placeholder="0.0000"
                     value={rates[r.currency] ?? ""}
                     onChange={(e) => {
@@ -190,7 +190,7 @@ export default function FxRevaluationPanel({
                     onBlur={() => load(rates)}
                   />
                 </td>
-                <td className="px-3 py-2 text-right font-mono text-[#64748B]">
+                <td className="px-3 py-2 text-right font-mono text-ps-label">
                   {r.prior_paise === null ? "—" : formatPaise(r.prior_paise)}
                 </td>
                 <td className="px-3 py-2 text-right">{delta(r.delta_paise)}</td>
@@ -218,7 +218,7 @@ export default function FxRevaluationPanel({
       )}
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] text-[#94A3B8]">
+        <p className="text-[11px] text-ps-hint">
           {/* Re-running is the CORRECTION path, not a duplicate: the engine posts
               only the delta needed to reach the new target. Saying so is what
               stops a CA from avoiding the button after a rate changes. */}
@@ -229,7 +229,7 @@ export default function FxRevaluationPanel({
           type="button"
           onClick={post}
           disabled={posting || missing || blocked || plan.would_post === 0}
-          className="px-3 py-1.5 rounded bg-[#1E293B] text-white text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 rounded bg-brand-dark text-white text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {posting ? "Posting…" : plan.would_post === 0 ? "Nothing to post" : `Post ${plan.would_post} entr${plan.would_post === 1 ? "y" : "ies"}`}
         </button>

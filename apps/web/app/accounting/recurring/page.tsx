@@ -324,12 +324,12 @@ export default function RecurringPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-5">
       <div className="flex flex-wrap items-center gap-3">
-        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1 min-w-[220px]">
-          <h1 className="text-xl font-semibold text-[#0F172A]">Recurring Journals</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">Recurring Journals</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             Templates saved for the firm. Each due occurrence becomes a DRAFT journal —
             nothing reaches the ledger until a CA posts it.
           </p>
@@ -337,7 +337,7 @@ export default function RecurringPage() {
         <button
           onClick={runAll}
           disabled={busyId !== null || dueNow.length === 0}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md hover:bg-[#F8FAFC] disabled:opacity-40"
+          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40"
         >
           <Play size={14} /> Generate {dueNow.length} due
         </button>
@@ -353,7 +353,7 @@ export default function RecurringPage() {
                 (t.lines.reduce((s, l) => s + l.debit_paise, 0) / 100).toFixed(2) },
           ]))}
           disabled={templates.length === 0}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md hover:bg-[#F8FAFC] disabled:opacity-40"
+          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40"
         >
           <Download size={14} /> Export
         </button>
@@ -386,8 +386,8 @@ export default function RecurringPage() {
         ].map(s => (
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">
-              <p className="text-lg font-bold tabular-nums text-[#0F172A]">{loading ? "—" : s.value}</p>
-              <p className="text-xs text-[#64748B] mt-0.5">{s.label}</p>
+              <p className="text-lg font-bold tabular-nums text-ps-ink">{loading ? "—" : s.value}</p>
+              <p className="text-xs text-ps-label mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -397,7 +397,7 @@ export default function RecurringPage() {
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm min-w-[860px]">
             <thead>
-              <tr className="text-xs text-[#94A3B8] border-b border-[#F1F5F9]">
+              <tr className="text-xs text-ps-hint border-b border-ps-muted">
                 <th className="px-5 py-2.5 text-left font-medium">Template</th>
                 <th className="px-3 py-2.5 text-left font-medium">Client</th>
                 <th className="px-3 py-2.5 text-left font-medium">Posting</th>
@@ -407,11 +407,11 @@ export default function RecurringPage() {
                 <th className="px-5 py-2.5 text-left font-medium">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {loading ? (
-                <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-[#94A3B8]">Loading…</td></tr>
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-ps-hint">Loading…</td></tr>
               ) : templates.length === 0 ? (
-                <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-[#94A3B8]">
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-ps-hint">
                   No recurring journals yet.
                 </td></tr>
               ) : templates.map(t => {
@@ -421,27 +421,27 @@ export default function RecurringPage() {
                 const busy = busyId === t.id;
                 const due = t.status === "active" && !!t.next_run_date && t.next_run_date <= today;
                 return (
-                  <tr key={t.id} className="hover:bg-[#F8FAFC]">
+                  <tr key={t.id} className="hover:bg-ps-bg">
                     <td className="px-5 py-2.5">
-                      <p className="font-medium text-[#0F172A]">{t.name}</p>
-                      {t.narration && <p className="text-[11px] text-[#94A3B8]">{t.narration}</p>}
+                      <p className="font-medium text-ps-ink">{t.name}</p>
+                      {t.narration && <p className="text-[11px] text-ps-hint">{t.narration}</p>}
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-[#475569]">
+                    <td className="px-3 py-2.5 text-xs text-ps-label">
                       {clients.find(c => c.id === t.client_id)?.client_name ?? "—"}
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-[#475569]">
+                    <td className="px-3 py-2.5 text-xs text-ps-label">
                       {t.lines.length > 2
                         ? `${t.lines.length} lines`
                         : <>Dr {accountName(dr?.account_id ?? "")} / Cr {accountName(cr?.account_id ?? "")}</>}
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-medium">{formatPaise(amount)}</td>
-                    <td className="px-3 py-2.5 text-xs text-[#475569]">{freqLabel(t.frequency)}</td>
+                    <td className="px-3 py-2.5 text-xs text-ps-label">{freqLabel(t.frequency)}</td>
                     <td className="px-3 py-2.5 text-xs">
-                      <span className={due ? "text-amber-700 font-medium" : "text-[#475569]"}>
+                      <span className={due ? "text-amber-700 font-medium" : "text-ps-label"}>
                         {t.next_run_date}
                       </span>
                       {t.status !== "active" && (
-                        <Badge className="ml-2 bg-[#F1F5F9] text-[#64748B]">{t.status}</Badge>
+                        <Badge className="ml-2 bg-ps-muted text-ps-label">{t.status}</Badge>
                       )}
                     </td>
                     <td className="px-5 py-2.5">
@@ -461,7 +461,7 @@ export default function RecurringPage() {
                         <button
                           onClick={() => toggleStatus(t)}
                           disabled={busy}
-                          className="text-xs text-[#94A3B8] hover:text-[#475569] flex items-center gap-1 disabled:opacity-40"
+                          className="text-xs text-ps-hint hover:text-ps-label flex items-center gap-1 disabled:opacity-40"
                         >
                           {t.status === "active" ? <Pause size={12} /> : <Play size={12} />}
                           {t.status === "active" ? "Pause" : "Resume"}
@@ -469,7 +469,7 @@ export default function RecurringPage() {
                         <button
                           onClick={() => openHistory(t)}
                           disabled={busy}
-                          className="text-xs text-[#94A3B8] hover:text-[#475569] flex items-center gap-1 disabled:opacity-40"
+                          className="text-xs text-ps-hint hover:text-ps-label flex items-center gap-1 disabled:opacity-40"
                         >
                           <History size={12} /> History
                         </button>
@@ -493,29 +493,29 @@ export default function RecurringPage() {
       {historyFor && (
         <Card>
           <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-[#0F172A]">
+            <h2 className="text-sm font-semibold text-ps-ink">
               History — {templates.find(t => t.id === historyFor)?.name}
             </h2>
-            <button onClick={() => setHistoryFor(null)} className="text-[#94A3B8] hover:text-[#475569]">
+            <button onClick={() => setHistoryFor(null)} className="text-ps-hint hover:text-ps-label">
               <X size={14} />
             </button>
           </div>
           <CardContent className="p-0">
             {runs.length === 0 ? (
-              <p className="px-5 py-6 text-sm text-[#94A3B8]">Nothing generated yet.</p>
+              <p className="px-5 py-6 text-sm text-ps-hint">Nothing generated yet.</p>
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-[#94A3B8] border-b border-[#F1F5F9]">
+                  <tr className="text-xs text-ps-hint border-b border-ps-muted">
                     <th className="px-5 py-2 text-left font-medium">Occurrence</th>
                     <th className="px-3 py-2 text-left font-medium">Result</th>
                     <th className="px-5 py-2 text-left font-medium">Journal</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
+                <tbody className="divide-y divide-ps-bg">
                   {runs.map(r => (
                     <tr key={r.id}>
-                      <td className="px-5 py-2 text-xs text-[#475569]">{r.occurrence_date}</td>
+                      <td className="px-5 py-2 text-xs text-ps-label">{r.occurrence_date}</td>
                       <td className="px-3 py-2 text-xs">
                         {r.status === "generated"
                           ? <span className="text-green-700">Draft created</span>
@@ -529,7 +529,7 @@ export default function RecurringPage() {
                           ? <Link href="/accounting/journal" className="text-blue-600 hover:underline inline-flex items-center gap-1">
                               Open <ExternalLink size={11} />
                             </Link>
-                          : <span className="text-[#CBD5E1]">—</span>}
+                          : <span className="text-ps-disabled">—</span>}
                       </td>
                     </tr>
                   ))}
@@ -541,19 +541,19 @@ export default function RecurringPage() {
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[#0F172A]">
+              <h3 className="text-sm font-semibold text-ps-ink">
                 {editing ? "Edit" : "New"} recurring journal
               </h3>
-              <button onClick={() => setModalOpen(false)} className="text-[#94A3B8] hover:text-[#475569]" aria-label="Close">
+              <button onClick={() => setModalOpen(false)} className="text-ps-hint hover:text-ps-label" aria-label="Close">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1">Client</label>
+              <label className="text-xs font-medium text-ps-body block mb-1">Client</label>
               <ClientLookup
                 clients={clients}
                 value={form.client_id}
@@ -564,7 +564,7 @@ export default function RecurringPage() {
                 disabled={!!editing}
               />
               {editing && (
-                <p className="text-[10px] text-[#94A3B8] mt-1">
+                <p className="text-[10px] text-ps-hint mt-1">
                   A template cannot move to another client — its generated journals
                   would still belong to this one.
                 </p>
@@ -572,11 +572,11 @@ export default function RecurringPage() {
             </div>
 
             <div>
-              <label htmlFor="rj-name" className="text-xs font-medium text-[#334155] block mb-1">Name</label>
+              <label htmlFor="rj-name" className="text-xs font-medium text-ps-body block mb-1">Name</label>
               <input
                 id="rj-name"
                 type="text"
-                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Monthly office rent"
                 value={form.name}
                 onChange={e => { setForm(f => ({ ...f, name: e.target.value })); setFormError(null); }}
@@ -585,10 +585,10 @@ export default function RecurringPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="rj-dr" className="text-xs font-medium text-[#334155] block mb-1">Debit account</label>
+                <label htmlFor="rj-dr" className="text-xs font-medium text-ps-body block mb-1">Debit account</label>
                 <select
                   id="rj-dr"
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={form.debit_account_id}
                   onChange={e => setForm(f => ({ ...f, debit_account_id: e.target.value }))}
                 >
@@ -597,10 +597,10 @@ export default function RecurringPage() {
                 </select>
               </div>
               <div>
-                <label htmlFor="rj-cr" className="text-xs font-medium text-[#334155] block mb-1">Credit account</label>
+                <label htmlFor="rj-cr" className="text-xs font-medium text-ps-body block mb-1">Credit account</label>
                 <select
                   id="rj-cr"
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={form.credit_account_id}
                   onChange={e => setForm(f => ({ ...f, credit_account_id: e.target.value }))}
                 >
@@ -612,22 +612,22 @@ export default function RecurringPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="rj-amount" className="text-xs font-medium text-[#334155] block mb-1">Amount (₹)</label>
+                <label htmlFor="rj-amount" className="text-xs font-medium text-ps-body block mb-1">Amount (₹)</label>
                 <input
                   id="rj-amount"
                   type="text"
                   inputMode="decimal"
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="125000"
                   value={form.amount_rupees}
                   onChange={e => { setForm(f => ({ ...f, amount_rupees: e.target.value })); setFormError(null); }}
                 />
               </div>
               <div>
-                <label htmlFor="rj-freq" className="text-xs font-medium text-[#334155] block mb-1">Frequency</label>
+                <label htmlFor="rj-freq" className="text-xs font-medium text-ps-body block mb-1">Frequency</label>
                 <select
                   id="rj-freq"
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={form.frequency}
                   onChange={e => setForm(f => ({ ...f, frequency: e.target.value }))}
                 >
@@ -638,10 +638,10 @@ export default function RecurringPage() {
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label htmlFor="rj-day" className="text-xs font-medium text-[#334155] block mb-1">Day of month</label>
+                <label htmlFor="rj-day" className="text-xs font-medium text-ps-body block mb-1">Day of month</label>
                 <select
                   id="rj-day"
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={form.day_of_month}
                   onChange={e => setForm(f => ({ ...f, day_of_month: parseInt(e.target.value, 10) }))}
                 >
@@ -655,21 +655,21 @@ export default function RecurringPage() {
                 </select>
               </div>
               <div>
-                <label htmlFor="rj-start" className="text-xs font-medium text-[#334155] block mb-1">Starts</label>
+                <label htmlFor="rj-start" className="text-xs font-medium text-ps-body block mb-1">Starts</label>
                 <input
                   id="rj-start"
                   type="date"
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={form.start_date}
                   onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
                 />
               </div>
               <div>
-                <label htmlFor="rj-end" className="text-xs font-medium text-[#334155] block mb-1">Ends (optional)</label>
+                <label htmlFor="rj-end" className="text-xs font-medium text-ps-body block mb-1">Ends (optional)</label>
                 <input
                   id="rj-end"
                   type="date"
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={form.end_date}
                   onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))}
                 />
@@ -677,11 +677,11 @@ export default function RecurringPage() {
             </div>
 
             <div>
-              <label htmlFor="rj-narr" className="text-xs font-medium text-[#334155] block mb-1">Narration</label>
+              <label htmlFor="rj-narr" className="text-xs font-medium text-ps-body block mb-1">Narration</label>
               <input
                 id="rj-narr"
                 type="text"
-                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Office rent for the month"
                 value={form.narration}
                 onChange={e => setForm(f => ({ ...f, narration: e.target.value }))}
@@ -691,7 +691,7 @@ export default function RecurringPage() {
             {formError && <p className="text-[11px] text-red-600">{formError}</p>}
 
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setModalOpen(false)} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]">
+              <button onClick={() => setModalOpen(false)} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
                 Cancel
               </button>
               <button

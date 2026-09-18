@@ -73,7 +73,7 @@ export function ConfirmDialogHost() {
   if (!state) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#0F172A]/60 p-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-brand-dark/60 p-4">
       <div
         role="alertdialog"
         aria-modal="true"
@@ -81,22 +81,22 @@ export function ConfirmDialogHost() {
         aria-describedby="confirm-dialog-message"
         className="bg-white rounded-2xl shadow-xl w-full max-w-md"
       >
-        <div className="px-6 py-5 border-b border-[#F1F5F9] flex items-center gap-2">
+        <div className="px-6 py-5 border-b border-ps-muted flex items-center gap-2">
           {state.danger && <AlertTriangle size={18} className="text-amber-500 shrink-0" />}
-          <h2 id="confirm-dialog-title" className="text-base font-semibold text-[#0F172A]">
+          <h2 id="confirm-dialog-title" className="text-base font-semibold text-ps-ink">
             {state.title ?? (state.danger ? "Are you sure?" : "Confirm")}
           </h2>
         </div>
         <div className="px-6 py-5">
-          <p id="confirm-dialog-message" className="text-sm text-[#475569] whitespace-pre-line">
+          <p id="confirm-dialog-message" className="text-sm text-ps-label whitespace-pre-line">
             {state.message}
           </p>
         </div>
-        <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+        <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
           <button
             onClick={() => settle(false)}
             autoFocus={!state.danger}
-            className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+            className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg"
           >
             {state.cancelLabel ?? "Cancel"}
           </button>

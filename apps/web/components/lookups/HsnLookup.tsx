@@ -246,7 +246,7 @@ export function HsnLookup(props: {
                 {badge}
               </span>
             )}
-            <span className="truncate font-mono text-[11px] text-[#334155]">{h.hsn_code}</span>
+            <span className="truncate font-mono text-[11px] text-ps-body">{h.hsn_code}</span>
             <span className="flex-shrink-0 text-[10px] font-medium text-blue-600">Change</span>
           </span>
         );
@@ -261,8 +261,8 @@ export function HsnLookup(props: {
               </span>
             )}
             <span className="min-w-0">
-              <span className="block truncate text-xs text-[#1E293B]">{h.hsn_code}</span>
-              <span className="block truncate text-[10px] text-[#94A3B8]">
+              <span className="block truncate text-xs text-ps-ink">{h.hsn_code}</span>
+              <span className="block truncate text-[10px] text-ps-hint">
                 {h.reason ? `${h.reason} · ` : ""}{hsnSecondaryLine(h)}
               </span>
             </span>

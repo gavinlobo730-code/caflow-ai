@@ -267,15 +267,15 @@ function BulkMarkFiledModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
-          <h3 className="text-base font-semibold text-[#0F172A]">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+          <h3 className="text-base font-semibold text-ps-ink">
             Mark {pending.length} ITR Filing{pending.length === 1 ? "" : "s"} as Filed
           </h3>
           <button
             onClick={onClose}
-            className="text-[#94A3B8] hover:text-[#475569] transition-colors"
+            className="text-ps-hint hover:text-ps-label transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -296,9 +296,9 @@ function BulkMarkFiledModal({
 
           {/* Shared Filed Date — applied to every row below on submit */}
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1.5">
+            <label className="block text-xs font-medium text-ps-body mb-1.5">
               Date of Filing <span className="text-red-500">*</span>
-              <span className="ml-1 text-[#94A3B8] font-normal">
+              <span className="ml-1 text-ps-hint font-normal">
                 (applied to all rows below)
               </span>
             </label>
@@ -306,30 +306,30 @@ function BulkMarkFiledModal({
               type="date"
               value={filedDate}
               onChange={(e) => setFiledDate(e.target.value)}
-              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           {/* Per-row Acknowledgement Number (ARN) entry */}
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1.5">
+            <label className="block text-xs font-medium text-ps-body mb-1.5">
               Acknowledgement Number (ARN) — one per filing{" "}
               <span className="text-red-500">*</span>
             </label>
-            <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-[#F1F5F9]">
+            <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-ps-muted">
               {pending.map((entry) => {
                 const isDone = succeededIds.has(entry.id);
                 const rowError = rowErrors[entry.id];
                 return (
                   <div
                     key={entry.id}
-                    className="flex items-center gap-3 px-4 py-3 border-b border-[#F1F5F9] last:border-0 bg-white"
+                    className="flex items-center gap-3 px-4 py-3 border-b border-ps-muted last:border-0 bg-white"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[#0F172A] truncate">
+                      <p className="text-sm font-medium text-ps-ink truncate">
                         {entry.clients?.client_name ?? "Client"}
                       </p>
-                      <p className="text-xs text-[#94A3B8] mt-0.5 font-mono">
+                      <p className="text-xs text-ps-hint mt-0.5 font-mono">
                         {entry.compliance_type} · FY {fyFromPeriodStart(entry.period_start)}
                       </p>
                     </div>
@@ -346,8 +346,8 @@ function BulkMarkFiledModal({
                           onChange={(e) =>
                             setArns((p) => ({ ...p, [entry.id]: e.target.value }))
                           }
-                          className={`w-full border rounded-lg px-2.5 py-1.5 text-xs font-mono text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                            rowError ? "border-red-400" : "border-[#E2E8F0]"
+                          className={`w-full border rounded-lg px-2.5 py-1.5 text-xs font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                            rowError ? "border-red-400" : "border-ps-border"
                           }`}
                         />
                         {rowError && (
@@ -368,10 +368,10 @@ function BulkMarkFiledModal({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
+        <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
           >
             Cancel
           </button>
@@ -698,13 +698,13 @@ export default function IncomeTaxPage() {
     {
       key: "client_name", header: "Client Name", sticky: true, hideable: false, sortable: true, searchable: true,
       accessor: (e) => e.clients?.client_name ?? "",
-      render: (e) => <span className="font-medium text-[#0F172A]">{e.clients?.client_name ?? "—"}</span>,
+      render: (e) => <span className="font-medium text-ps-ink">{e.clients?.client_name ?? "—"}</span>,
     },
     {
       key: "pan", header: "PAN", searchable: true, sortable: true,
       accessor: (e) => e.clients?.pan ?? "",
       render: (e) => (
-        <span className="font-mono text-xs text-[#475569] bg-[#F8FAFC] px-1.5 py-0.5 rounded">
+        <span className="font-mono text-xs text-ps-label bg-ps-bg px-1.5 py-0.5 rounded">
           {e.clients?.pan ?? "—"}
         </span>
       ),
@@ -713,7 +713,7 @@ export default function IncomeTaxPage() {
       key: "entity_type", header: "Entity", sortable: true,
       accessor: (e) => (e.clients?.entity_type ?? "").replace(/_/g, " "),
       render: (e) => (
-        <span className="text-[#475569] text-xs capitalize">
+        <span className="text-ps-label text-xs capitalize">
           {(e.clients?.entity_type ?? "—").replace(/_/g, " ")}
         </span>
       ),
@@ -730,12 +730,12 @@ export default function IncomeTaxPage() {
     {
       key: "fy", header: "FY", sortable: true,
       accessor: (e) => fyFromPeriodStart(e.period_start),
-      render: (e) => <span className="text-[#475569] text-xs">{fyFromPeriodStart(e.period_start)}</span>,
+      render: (e) => <span className="text-ps-label text-xs">{fyFromPeriodStart(e.period_start)}</span>,
     },
     {
       key: "due_date", header: "Due Date", sortable: true,
       accessor: (e) => e.due_date,
-      render: (e) => <span className="text-[#475569] text-xs">{formatDate(e.due_date)}</span>,
+      render: (e) => <span className="text-ps-label text-xs">{formatDate(e.due_date)}</span>,
     },
     {
       key: "status", header: "Status", sortable: true,
@@ -743,7 +743,7 @@ export default function IncomeTaxPage() {
       render: (e) => {
         const s = effectiveStatusOf(e);
         return (
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[s] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[s] ?? "bg-ps-muted text-ps-label"}`}>
             {STATUS_LABELS[s] ?? s}
           </span>
         );
@@ -753,8 +753,8 @@ export default function IncomeTaxPage() {
       key: "arn_number", header: "ARN / Ack No",
       accessor: (e) => e.arn_number ?? "",
       render: (e) => (
-        <span className="text-xs font-mono text-[#64748B]">
-          {e.arn_number ?? <span className="text-[#CBD5E1]">—</span>}
+        <span className="text-xs font-mono text-ps-label">
+          {e.arn_number ?? <span className="text-ps-disabled">—</span>}
         </span>
       ),
     },
@@ -818,8 +818,8 @@ export default function IncomeTaxPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Income Tax</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">Income Tax</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             ITR Tracking — IT Act Section 139
           </p>
           {/* Sub-navigation */}
@@ -827,22 +827,22 @@ export default function IncomeTaxPage() {
             <a href="/income-tax/capital-gains" className="text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-colors">
               Capital Gains Calculator
             </a>
-            <a href="/income-tax/advance-tax" className="text-xs font-medium text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-2.5 py-1 rounded-lg hover:bg-[#F8FAFC] transition-colors">
+            <a href="/income-tax/advance-tax" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
               Advance Tax
             </a>
-            <a href="/income-tax/notices" className="text-xs font-medium text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-2.5 py-1 rounded-lg hover:bg-[#F8FAFC] transition-colors">
+            <a href="/income-tax/notices" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
               Notices
             </a>
-            <a href="/income-tax/deductions" className="text-xs font-medium text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-2.5 py-1 rounded-lg hover:bg-[#F8FAFC] transition-colors">
+            <a href="/income-tax/deductions" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
               Deductions
             </a>
-            <a href="/income-tax/tax-audit" className="text-xs font-medium text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-2.5 py-1 rounded-lg hover:bg-[#F8FAFC] transition-colors">
+            <a href="/income-tax/tax-audit" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
               Tax Audit
             </a>
             {/* IT Act §32 — per BLOCK, which is a different system from the
                 Schedule II charge in the fixed-asset register, and usually the
                 largest single line in the book-to-tax bridge. */}
-            <a href="/income-tax/section-32" className="text-xs font-medium text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-2.5 py-1 rounded-lg hover:bg-[#F8FAFC] transition-colors">
+            <a href="/income-tax/section-32" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
               Depreciation §32
             </a>
             {/* …and the statement the two depreciation systems meet in. The
@@ -897,7 +897,7 @@ export default function IncomeTaxPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-[#F1F5F9]">
+      <div className="flex gap-1 border-b border-ps-muted">
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -905,7 +905,7 @@ export default function IncomeTaxPage() {
             className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab
                 ? "border-blue-600 text-blue-700"
-                : "border-transparent text-[#64748B] hover:text-[#334155]"
+                : "border-transparent text-ps-label hover:text-ps-body"
             }`}
           >
             {tab}
@@ -919,9 +919,9 @@ export default function IncomeTaxPage() {
       {activeTab === "ITR Status" && (
         <div className="space-y-4">
           {/* ITR Status Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-[#0F172A]">
+              <h2 className="text-sm font-semibold text-ps-ink">
                 ITR Status — FY {currentFY}
               </h2>
               {overdue > 0 && (
@@ -974,7 +974,7 @@ export default function IncomeTaxPage() {
                       Mark Filed
                     </button>
                   ) : (
-                    <span className="text-xs text-[#94A3B8]">
+                    <span className="text-xs text-ps-hint">
                       Filed {entry.filed_date ? formatDate(entry.filed_date) : ""}
                     </span>
                   )
@@ -984,19 +984,19 @@ export default function IncomeTaxPage() {
           </div>
 
           {/* ITR Form Guide — collapsible */}
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <button
               onClick={() => setShowGuide((v) => !v)}
-              className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-[#0F172A] hover:bg-[#F8FAFC]/50 transition-colors"
+              className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-ps-ink hover:bg-ps-bg/50 transition-colors"
             >
               <span className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-[#94A3B8]" />
+                <FileText className="w-4 h-4 text-ps-hint" />
                 ITR Form Guide
               </span>
               {showGuide ? (
-                <ChevronUp className="w-4 h-4 text-[#94A3B8]" />
+                <ChevronUp className="w-4 h-4 text-ps-hint" />
               ) : (
-                <ChevronDown className="w-4 h-4 text-[#94A3B8]" />
+                <ChevronDown className="w-4 h-4 text-ps-hint" />
               )}
             </button>
             {showGuide && (
@@ -1040,14 +1040,14 @@ export default function IncomeTaxPage() {
                 ].map(({ form, desc, tag }) => (
                   <div
                     key={form}
-                    className="flex items-start gap-3 p-3 bg-[#F8FAFC] rounded-lg"
+                    className="flex items-start gap-3 p-3 bg-ps-bg rounded-lg"
                   >
                     <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded shrink-0">
                       {form}
                     </span>
                     <div>
-                      <p className="text-xs font-medium text-[#334155]">{desc}</p>
-                      <p className="text-xs text-[#94A3B8] mt-0.5">{tag}</p>
+                      <p className="text-xs font-medium text-ps-body">{desc}</p>
+                      <p className="text-xs text-ps-hint mt-0.5">{tag}</p>
                     </div>
                   </div>
                 ))}
@@ -1062,18 +1062,18 @@ export default function IncomeTaxPage() {
       {/* ------------------------------------------------------------------ */}
       {activeTab === "Advance Tax" && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-[#0F172A]">
+              <h2 className="text-sm font-semibold text-ps-ink">
                 Advance Tax Installments{advanceTaxFy ? ` — FY ${advanceTaxFy}` : ""}
               </h2>
-              <p className="text-xs text-[#94A3B8] mt-0.5">
+              <p className="text-xs text-ps-hint mt-0.5">
                 IT Act Section 208 — applicable when tax liability ≥ ₹10,000
               </p>
             </div>
-            <div className="divide-y divide-[#F8FAFC]">
+            <div className="divide-y divide-ps-bg">
               {advanceTax.length === 0 ? (
-                <p className="px-5 py-6 text-sm text-[#94A3B8]">
+                <p className="px-5 py-6 text-sm text-ps-hint">
                   Instalment dates unavailable — the server could not be
                   reached. They are not shown from a stored list, because a
                   stored list is last year&apos;s.
@@ -1098,22 +1098,22 @@ export default function IncomeTaxPage() {
                         <IndianRupee className="w-5 h-5 text-blue-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-[#0F172A]">
+                        <p className="text-sm font-medium text-ps-ink">
                           {ORDINALS[i] ?? `${i + 1}th`} Installment
                         </p>
-                        <p className="text-xs text-[#94A3B8] mt-0.5">
+                        <p className="text-xs text-ps-hint mt-0.5">
                           Due: {formatDate(dueDate)} · Cumulative{" "}
                           {inst.cumulative_percentage}% of estimated tax
                         </p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold text-[#334155]">{step}%</p>
-                        <p className="text-xs text-[#94A3B8] mt-0.5">of estimated tax</p>
+                        <p className="text-sm font-semibold text-ps-body">{step}%</p>
+                        <p className="text-xs text-ps-hint mt-0.5">of estimated tax</p>
                       </div>
                       <span
                         className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${
                           isPast
-                            ? "bg-[#F1F5F9] text-[#64748B]"
+                            ? "bg-ps-muted text-ps-label"
                             : isUpcoming
                             ? "bg-amber-100 text-amber-700"
                             : "bg-blue-50 text-blue-600"
@@ -1191,15 +1191,15 @@ export default function IncomeTaxPage() {
       {/* MODAL: Add ITR Deadline                                             */}
       {/* ================================================================== */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
-              <h3 className="text-base font-semibold text-[#0F172A]">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+              <h3 className="text-base font-semibold text-ps-ink">
                 Add ITR Deadline
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-[#94A3B8] hover:text-[#475569] transition-colors"
+                className="text-ps-hint hover:text-ps-label transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1208,13 +1208,13 @@ export default function IncomeTaxPage() {
             <div className="px-6 py-5 space-y-4">
               {/* Client */}
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Client <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={addForm.client_id}
                   onChange={(e) => handleAddFormChange("client_id", e.target.value)}
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select client…</option>
                   {clients.map((c) => (
@@ -1227,7 +1227,7 @@ export default function IncomeTaxPage() {
 
               {/* ITR Form */}
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                <label className="block text-xs font-medium text-ps-body mb-1.5">
                   ITR Form
                 </label>
                 <select
@@ -1235,7 +1235,7 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     handleAddFormChange("itr_form", e.target.value)
                   }
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {ITR_FORMS.map((f) => (
                     <option key={f} value={f}>
@@ -1249,9 +1249,9 @@ export default function IncomeTaxPage() {
                   used to read "Assessment Year" while mapping to 1 Apr–31 Mar,
                   which is the FY; see FY_PERIOD. */}
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Financial Year
-                  <span className="ml-1 text-[#94A3B8] font-normal">
+                  <span className="ml-1 text-ps-hint font-normal">
                     (the year the return reports on)
                   </span>
                 </label>
@@ -1260,7 +1260,7 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     handleAddFormChange("financial_year", e.target.value)
                   }
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {FINANCIAL_YEARS.map((fy) => (
                     <option key={fy} value={fy}>
@@ -1272,9 +1272,9 @@ export default function IncomeTaxPage() {
 
               {/* Due Date — computed by apps/api, editable */}
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Due Date
-                  <span className="ml-1 text-[#94A3B8] font-normal">
+                  <span className="ml-1 text-ps-hint font-normal">
                     (IT Act §139(1), Explanation 2 — computed for this client)
                   </span>
                 </label>
@@ -1284,17 +1284,17 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     handleAddFormChange("due_date", e.target.value)
                   }
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
 
                 {dueDateLoading && (
-                  <p className="mt-1.5 text-xs text-[#94A3B8]">
+                  <p className="mt-1.5 text-xs text-ps-hint">
                     Computing the due date…
                   </p>
                 )}
 
                 {!dueDateLoading && !dueDate && !dueDateError && (
-                  <p className="mt-1.5 text-xs text-[#94A3B8]">
+                  <p className="mt-1.5 text-xs text-ps-hint">
                     Pick a client — the due date depends on the assessee, not on
                     the year alone.
                   </p>
@@ -1313,7 +1313,7 @@ export default function IncomeTaxPage() {
                     CA is chased early rather than told a date that has passed. */}
                 {dueDate && !dueDateLoading && (
                   dueDate.decided ? (
-                    <p className="mt-1.5 text-xs text-[#64748B]">
+                    <p className="mt-1.5 text-xs text-ps-label">
                       {dueDate.basis}
                     </p>
                   ) : (
@@ -1339,10 +1339,10 @@ export default function IncomeTaxPage() {
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
               <button
                 onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+                className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
               >
                 Cancel
               </button>
@@ -1366,15 +1366,15 @@ export default function IncomeTaxPage() {
       {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT                            */}
       {/* ================================================================== */}
       {filedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-[#F1F5F9]">
-              <h3 className="text-base font-semibold text-[#0F172A]">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+              <h3 className="text-base font-semibold text-ps-ink">
                 Mark ITR as Filed
               </h3>
               <button
                 onClick={() => setFiledModal(null)}
-                className="text-[#94A3B8] hover:text-[#475569] transition-colors"
+                className="text-ps-hint hover:text-ps-label transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1393,11 +1393,11 @@ export default function IncomeTaxPage() {
                 </p>
               </div>
 
-              <div className="text-sm text-[#334155] bg-[#F8FAFC] rounded-lg px-4 py-3">
+              <div className="text-sm text-ps-body bg-ps-bg rounded-lg px-4 py-3">
                 <p className="font-medium">
                   {filedModal.entry.clients?.client_name ?? "Client"}
                 </p>
-                <p className="text-xs text-[#94A3B8] mt-0.5 font-mono">
+                <p className="text-xs text-ps-hint mt-0.5 font-mono">
                   {filedModal.entry.clients?.pan ?? ""} ·{" "}
                   {filedModal.entry.compliance_type}
                 </p>
@@ -1405,7 +1405,7 @@ export default function IncomeTaxPage() {
 
               {/* Acknowledgement Number */}
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Acknowledgement Number (ARN){" "}
                   <span className="text-red-500">*</span>
                 </label>
@@ -1416,13 +1416,13 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     setFiledForm((p) => ({ ...p, arn: e.target.value }))
                   }
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* Filing Date */}
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
+                <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Date of Filing <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -1431,7 +1431,7 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     setFiledForm((p) => ({ ...p, filed_date: e.target.value }))
                   }
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -1442,10 +1442,10 @@ export default function IncomeTaxPage() {
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
               <button
                 onClick={() => setFiledModal(null)}
-                className="px-4 py-2 text-sm font-medium text-[#334155] bg-[#F1F5F9] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+                className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
               >
                 Cancel
               </button>

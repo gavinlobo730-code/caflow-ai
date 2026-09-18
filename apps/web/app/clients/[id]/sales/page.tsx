@@ -267,15 +267,15 @@ export default function SalesPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-tab bar */}
       <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0">
-        <div className="flex gap-0.5 bg-[#F8FAFC] rounded-lg p-1 w-fit">
+        <div className="flex gap-0.5 bg-ps-bg rounded-lg p-1 w-fit">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
                 tab === t.id
-                  ? "bg-white text-[#0F172A] shadow-sm"
-                  : "text-[#64748B] hover:text-[#334155]"
+                  ? "bg-white text-ps-ink shadow-sm"
+                  : "text-ps-label hover:text-ps-body"
               }`}
             >
               {t.label}
@@ -347,7 +347,7 @@ const FREQ_LABEL: Record<string, string> = {
   weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly", half_yearly: "Half-Yearly", yearly: "Yearly",
 };
 const REC_STATUS_BADGE: Record<string, string> = {
-  active: "bg-green-50 text-green-700", paused: "bg-amber-50 text-amber-700", archived: "bg-[#F1F5F9] text-[#64748B]",
+  active: "bg-green-50 text-green-700", paused: "bg-amber-50 text-amber-700", archived: "bg-ps-muted text-ps-label",
 };
 const recBase = (lines: RecurringLine[]) =>
   lines.reduce((s, l) => s + Math.round((l.rate_paise || 0) * (l.quantity || 0)), 0);
@@ -486,15 +486,15 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
 
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-semibold text-[#334155]">
+          <p className="text-xs font-semibold text-ps-body">
             {templates.length} template{templates.length !== 1 ? "s" : ""}
           </p>
-          <p className="text-[11px] text-[#94A3B8] mt-0.5">
+          <p className="text-[11px] text-ps-hint mt-0.5">
             Recurring templates generate <strong>draft</strong> invoices for CA review — never auto-issued or auto-emailed.
           </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
+          <button onClick={load} className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
           <button onClick={() => setEditor("new")}
@@ -507,10 +507,10 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
       {loading ? (
         <TableSkeleton cols={8} rows={3} />
       ) : templates.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16">
           <Clock size={32} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-[#64748B]">No recurring templates yet</p>
-          <p className="text-xs text-[#94A3B8] mt-1">Create one to auto-generate draft invoices on a schedule.</p>
+          <p className="text-sm text-ps-label">No recurring templates yet</p>
+          <p className="text-xs text-ps-hint mt-1">Create one to auto-generate draft invoices on a schedule.</p>
         </div>
       ) : (
         <>
@@ -536,11 +536,11 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
               </div>
             </div>
           )}
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                  <tr className="border-b border-ps-muted text-ps-hint">
                     <th className="px-4 py-3 text-left font-semibold w-8">
                       <input
                         type="checkbox"
@@ -548,7 +548,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
                         checked={templates.length > 0 && selected.size === templates.length}
                         ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < templates.length; }}
                         onChange={toggleSelectAll}
-                        className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
+                        className="h-3.5 w-3.5 rounded border-ps-border-strong"
                       />
                     </th>
                     <th className="px-3 py-3 text-left font-semibold">Template</th>
@@ -560,30 +560,30 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
                     <th className="px-4 py-3 text-right font-semibold">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
+                <tbody className="divide-y divide-ps-bg">
                   {templates.map((t) => (
-                    <tr key={t.id} className="hover:bg-[#F8FAFC]">
+                    <tr key={t.id} className="hover:bg-ps-bg">
                       <td className="px-4 py-2.5">
                         <input
                           type="checkbox"
                           aria-label={`Select ${t.title}`}
                           checked={selected.has(t.id)}
                           onChange={() => toggleRow(t.id)}
-                          className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
+                          className="h-3.5 w-3.5 rounded border-ps-border-strong"
                         />
                       </td>
                       <td className="px-3 py-2.5">
-                        <div className="font-medium text-[#1E293B]">{t.title}</div>
-                        {t.description && <div className="text-[10px] text-[#94A3B8]">{t.description}</div>}
+                        <div className="font-medium text-ps-ink">{t.title}</div>
+                        {t.description && <div className="text-[10px] text-ps-hint">{t.description}</div>}
                       </td>
-                      <td className="px-3 py-2.5 text-[#334155]">{custName(t.customer_id)}</td>
-                      <td className="px-3 py-2.5 text-[#64748B]">{FREQ_LABEL[t.frequency] ?? t.frequency}</td>
-                      <td className="px-3 py-2.5 text-[#64748B] whitespace-nowrap">
-                        {t.status === "active" ? (t.next_run_date ?? "—") : <span className="text-[#CBD5E1]">—</span>}
+                      <td className="px-3 py-2.5 text-ps-body">{custName(t.customer_id)}</td>
+                      <td className="px-3 py-2.5 text-ps-label">{FREQ_LABEL[t.frequency] ?? t.frequency}</td>
+                      <td className="px-3 py-2.5 text-ps-label whitespace-nowrap">
+                        {t.status === "active" ? (t.next_run_date ?? "—") : <span className="text-ps-disabled">—</span>}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(recBase(t.lines ?? []))}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-ps-body">{fmt(recBase(t.lines ?? []))}</td>
                       <td className="px-3 py-2.5">
-                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${REC_STATUS_BADGE[t.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${REC_STATUS_BADGE[t.status] ?? "bg-ps-muted text-ps-label"}`}>
                           {t.status}
                         </span>
                       </td>
@@ -592,11 +592,11 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
                           {t.status === "active" && (
                             <button onClick={() => runNow(t)} className="text-xs text-blue-600 hover:underline">Run now</button>
                           )}
-                          <button onClick={() => setHistoryFor(t)} className="text-[#94A3B8] hover:text-[#334155]" title="History & upcoming">
+                          <button onClick={() => setHistoryFor(t)} className="text-ps-hint hover:text-ps-body" title="History & upcoming">
                             <Clock size={13} />
                           </button>
                           {t.status !== "archived" && (
-                            <button onClick={() => setEditor(t)} className="text-[#94A3B8] hover:text-blue-600" title="Edit"><Pencil size={13} /></button>
+                            <button onClick={() => setEditor(t)} className="text-ps-hint hover:text-blue-600" title="Edit"><Pencil size={13} /></button>
                           )}
                           {t.status === "active" && (
                             <button onClick={() => changeStatus(t, "pause")} className="text-xs text-amber-600 hover:underline">Pause</button>
@@ -605,7 +605,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
                             <button onClick={() => changeStatus(t, "resume")} className="text-xs text-emerald-600 hover:underline">Resume</button>
                           )}
                           {t.status !== "archived" && (
-                            <button onClick={() => changeStatus(t, "archive")} className="text-[#CBD5E1] hover:text-red-600" title="Archive"><Trash2 size={13} /></button>
+                            <button onClick={() => changeStatus(t, "archive")} className="text-ps-disabled hover:text-red-600" title="Archive"><Trash2 size={13} /></button>
                           )}
                         </div>
                       </td>
@@ -734,15 +734,15 @@ function RecurringEditor({
 
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-[#0F172A]">{existing ? "Edit" : "New"} Recurring Template</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">{existing ? "Edit" : "New"} Recurring Template</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Customer</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Customer</label>
               <CustomerLookup
                 customers={customers}
                 value={customerId}
@@ -751,50 +751,50 @@ function RecurringEditor({
                 placeholder="Select customer…"
                 ariaLabel="Customer"
               />
-              {existing && <p className="text-[10px] text-[#94A3B8] mt-1">Customer can&apos;t be changed after creation.</p>}
+              {existing && <p className="text-[10px] text-ps-hint mt-1">Customer can&apos;t be changed after creation.</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Title</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Title</label>
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Monthly bookkeeping fee"
-                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Description (optional)</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Description (optional)</label>
             <input value={description} onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Frequency</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Frequency</label>
               <select value={frequency} onChange={(e) => setFrequency(e.target.value)}
-                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
                 {Object.entries(FREQ_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Start date</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Start date</label>
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">End date (optional)</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">End date (optional)</label>
               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
           </div>
 
           {/* Line items */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-medium text-[#475569]">Line items</label>
+              <label className="text-xs font-medium text-ps-label">Line items</label>
               <button type="button" onClick={addLine} className="text-[11px] text-blue-600 hover:underline flex items-center gap-1"><Plus size={11} /> Add line</button>
             </div>
             <div className="space-y-2">
               {lines.map((l, i) => (
-                <div key={i} className="border border-[#F1F5F9] rounded-lg p-2 space-y-1.5">
+                <div key={i} className="border border-ps-muted rounded-lg p-2 space-y-1.5">
                   <ServiceCataloguePicker
                     clientId={clientId}
                     value={l.product}
@@ -805,34 +805,34 @@ function RecurringEditor({
                   />
                   <div className="grid grid-cols-12 gap-2 items-center">
                     <input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="Description"
-                      className="col-span-4 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      className="col-span-4 px-2 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
                     <input value={l.hsn_sac} onChange={(e) => setLine(i, { hsn_sac: e.target.value })} placeholder="HSN/SAC"
-                      className="col-span-2 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      className="col-span-2 px-2 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
                     <input value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} placeholder="Qty" inputMode="decimal"
-                      className="col-span-1 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      className="col-span-1 px-2 py-1.5 border border-ps-border rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
                     <input value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} placeholder="Rate ₹" inputMode="decimal"
-                      className="col-span-2 px-2 py-1.5 border border-[#E2E8F0] rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      className="col-span-2 px-2 py-1.5 border border-ps-border rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
                     <select value={l.gst} onChange={(e) => setLine(i, { gst: parseFloat(e.target.value) })}
-                      className="col-span-2 px-1 py-1.5 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      className="col-span-2 px-1 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
                       {[0, 5, 12, 18, 28].map((g) => <option key={g} value={g}>{g}%</option>)}
                     </select>
-                    <button type="button" onClick={() => removeLine(i)} className="col-span-1 text-[#CBD5E1] hover:text-red-600 flex justify-center"><Trash2 size={13} /></button>
+                    <button type="button" onClick={() => removeLine(i)} className="col-span-1 text-ps-disabled hover:text-red-600 flex justify-center"><Trash2 size={13} /></button>
                   </div>
                 </div>
               ))}
             </div>
-            <p className="text-[11px] text-[#94A3B8] mt-2">
-              Base (excl. GST): <span className="font-mono text-[#334155]">{fmt(baseTotal)}</span>. GST is computed by the invoice engine at generation.
+            <p className="text-[11px] text-ps-hint mt-2">
+              Base (excl. GST): <span className="font-mono text-ps-body">{fmt(baseTotal)}</span>. GST is computed by the invoice engine at generation.
             </p>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Notes (optional)</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Notes (optional)</label>
             <input value={notes} onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
 
-          <label className="flex items-center gap-2 text-xs text-[#475569]">
+          <label className="flex items-center gap-2 text-xs text-ps-label">
             <input type="checkbox" checked={isInterState} onChange={(e) => setIsInterState(e.target.checked)} />
             Inter-state supply (IGST)
           </label>
@@ -843,23 +843,23 @@ function RecurringEditor({
               plain domestic taxable sale. */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Supply type</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Supply type</label>
               <select value={classification.supplyType}
                 onChange={(e) => setClassification((c) => ({ ...c, supplyType: e.target.value as ClassificationState["supplyType"] }))}
-                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
                 {SUPPLY_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Invoice type</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Invoice type</label>
               <select value={classification.invoiceType}
                 onChange={(e) => setClassification((c) => ({ ...c, invoiceType: e.target.value as ClassificationState["invoiceType"] }))}
-                className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
                 {INVOICE_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
           </div>
-          <label className="flex items-center gap-2 text-xs text-[#475569]">
+          <label className="flex items-center gap-2 text-xs text-ps-label">
             <input type="checkbox" checked={classification.isReverseCharge}
               onChange={(e) => setClassification((c) => ({ ...c, isReverseCharge: e.target.checked }))} />
             Reverse charge (CGST §9(3)/§9(4))
@@ -870,13 +870,13 @@ function RecurringEditor({
             </p>
           )}
 
-          <p className="text-[11px] text-[#94A3B8] bg-[#F8FAFC] rounded px-3 py-2">
+          <p className="text-[11px] text-ps-hint bg-ps-bg rounded px-3 py-2">
             Each run creates a <strong>draft</strong> invoice for CA review — it is never issued or emailed automatically.
           </p>
 
           {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
           <div className="flex gap-3 justify-end">
-            <button type="button" onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+            <button type="button" onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <button type="submit" disabled={saving}
               className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
               {saving ? "Saving…" : existing ? "Save changes" : "Create template"}
@@ -921,12 +921,12 @@ function RecurringHistoryDrawer({
 
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-lg shadow-xl max-h-[85vh] overflow-y-auto">
+      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-sm font-semibold text-[#0F172A]">{template.title}</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">{template.title}</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
-        <p className="text-[11px] text-[#94A3B8] mb-4">{customerName} · {FREQ_LABEL[template.frequency] ?? template.frequency}</p>
+        <p className="text-[11px] text-ps-hint mb-4">{customerName} · {FREQ_LABEL[template.frequency] ?? template.frequency}</p>
 
         {loading ? (
           <TransactionListSkeleton rows={3} />
@@ -934,33 +934,33 @@ function RecurringHistoryDrawer({
           <div className="space-y-5">
             {template.status === "active" && (
               <div>
-                <p className="text-[11px] font-semibold text-[#475569] mb-2 uppercase tracking-wide">Upcoming</p>
+                <p className="text-[11px] font-semibold text-ps-label mb-2 uppercase tracking-wide">Upcoming</p>
                 {upcoming.length === 0 ? (
-                  <p className="text-xs text-[#94A3B8]">No upcoming runs.</p>
+                  <p className="text-xs text-ps-hint">No upcoming runs.</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
-                    {upcoming.map((d) => <span key={d} className="px-2 py-0.5 rounded bg-[#F8FAFC] border border-[#F1F5F9] text-[11px] text-[#475569]">{d}</span>)}
+                    {upcoming.map((d) => <span key={d} className="px-2 py-0.5 rounded bg-ps-bg border border-ps-muted text-[11px] text-ps-label">{d}</span>)}
                   </div>
                 )}
               </div>
             )}
             <div>
-              <p className="text-[11px] font-semibold text-[#475569] mb-2 uppercase tracking-wide">History</p>
+              <p className="text-[11px] font-semibold text-ps-label mb-2 uppercase tracking-wide">History</p>
               {runs.length === 0 ? (
-                <p className="text-xs text-[#94A3B8]">No invoices generated yet.</p>
+                <p className="text-xs text-ps-hint">No invoices generated yet.</p>
               ) : (
                 <div className="space-y-2">
                   {runs.map((r) => (
-                    <div key={r.id} className="border border-[#F1F5F9] rounded-lg p-3 text-xs flex items-center justify-between">
+                    <div key={r.id} className="border border-ps-muted rounded-lg p-3 text-xs flex items-center justify-between">
                       <div>
-                        <div className="font-medium text-[#334155]">{r.occurrence_date}</div>
-                        <div className="text-[10px] text-[#94A3B8]">
+                        <div className="font-medium text-ps-body">{r.occurrence_date}</div>
+                        <div className="text-[10px] text-ps-hint">
                           {r.invoice?.invoice_no ? `${r.invoice.invoice_no} · ${r.invoice.status ?? "draft"}` : "—"}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {r.invoice?.total_paise != null && <span className="font-mono text-[#334155]">{fmt(r.invoice.total_paise)}</span>}
-                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${r.status === "generated" ? "bg-green-50 text-green-700" : r.status === "failed" ? "bg-red-50 text-red-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+                        {r.invoice?.total_paise != null && <span className="font-mono text-ps-body">{fmt(r.invoice.total_paise)}</span>}
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${r.status === "generated" ? "bg-green-50 text-green-700" : r.status === "failed" ? "bg-red-50 text-red-700" : "bg-ps-muted text-ps-label"}`}>
                           {r.status}
                         </span>
                       </div>
@@ -971,8 +971,8 @@ function RecurringHistoryDrawer({
             </div>
           </div>
         )}
-        <div className="flex justify-end mt-5 pt-4 border-t border-[#F1F5F9]">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Close</button>
+        <div className="flex justify-end mt-5 pt-4 border-t border-ps-muted">
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Close</button>
         </div>
       </div>
     </div>
@@ -1142,10 +1142,10 @@ function Statements({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4 max-w-screen-2xl mx-auto">
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-3">
+      <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-[#475569] mb-1">Customer</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Customer</label>
             <CustomerLookup
               customers={customers}
               value={customerId}
@@ -1155,14 +1155,14 @@ function Statements({ clientId }: { clientId: string }) {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">From</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">From</label>
             <input type="date" value={start} onChange={(e) => setStart(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">To</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">To</label>
             <input type="date" value={end} onChange={(e) => setEnd(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1172,8 +1172,8 @@ function Statements({ clientId }: { clientId: string }) {
           </button>
           {stmt && (
             <>
-              <button disabled={actionInFlight} onClick={downloadPdf} className="text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><Download size={13} /> Download PDF</button>
-              <button onClick={openEmail} className="text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><Send size={13} /> Email</button>
+              <button disabled={actionInFlight} onClick={downloadPdf} className="text-xs px-3 py-2 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label flex items-center gap-1.5"><Download size={13} /> Download PDF</button>
+              <button onClick={openEmail} className="text-xs px-3 py-2 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label flex items-center gap-1.5"><Send size={13} /> Email</button>
             </>
           )}
         </div>
@@ -1181,15 +1181,15 @@ function Statements({ clientId }: { clientId: string }) {
       </div>
 
       {stmt && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-[#0F172A]">{stmt.customer.name}</p>
-              <p className="text-[10px] text-[#94A3B8]">{stmt.period.start_date} → {stmt.period.end_date}{stmt.customer.gstin ? ` · GSTIN ${stmt.customer.gstin}` : ""}</p>
+              <p className="text-sm font-semibold text-ps-ink">{stmt.customer.name}</p>
+              <p className="text-[10px] text-ps-hint">{stmt.period.start_date} → {stmt.period.end_date}{stmt.customer.gstin ? ` · GSTIN ${stmt.customer.gstin}` : ""}</p>
             </div>
             <div className="text-right space-y-1">
               <div>
-                <p className="text-[10px] text-[#94A3B8]">Closing Outstanding</p>
+                <p className="text-[10px] text-ps-hint">Closing Outstanding</p>
                 <p className={`text-sm font-mono font-semibold ${stmt.closing_balance_paise >= 0 ? "text-blue-700" : "text-orange-700"}`}>{stmtBal(stmt.closing_balance_paise)}</p>
               </div>
               {!!credit && credit.balance_paise > 0 && (
@@ -1203,7 +1203,7 @@ function Statements({ clientId }: { clientId: string }) {
             </div>
           </div>
           <table className="w-full text-xs">
-            <thead className="bg-[#F8FAFC] text-[#64748B]"><tr>
+            <thead className="bg-ps-bg text-ps-label"><tr>
               <th className="px-3 py-2 text-left font-medium">Date</th>
               <th className="px-3 py-2 text-left font-medium">Particulars</th>
               <th className="px-3 py-2 text-left font-medium">Ref</th>
@@ -1211,23 +1211,23 @@ function Statements({ clientId }: { clientId: string }) {
               <th className="px-3 py-2 text-right font-medium">Credit</th>
               <th className="px-3 py-2 text-right font-medium">Balance</th>
             </tr></thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
-              <tr className="bg-[#F8FAFC] font-medium text-[#475569]">
+            <tbody className="divide-y divide-ps-bg">
+              <tr className="bg-ps-bg font-medium text-ps-label">
                 <td className="px-3 py-2" colSpan={3}>Opening Balance</td>
                 <td className="px-3 py-2 text-right">—</td><td className="px-3 py-2 text-right">—</td>
                 <td className="px-3 py-2 text-right font-mono">{stmtBal(stmt.opening_balance_paise)}</td>
               </tr>
               {stmt.transactions.map((t, i) => (
-                <tr key={i} className="hover:bg-[#F8FAFC]">
-                  <td className="px-3 py-2 whitespace-nowrap text-[#64748B]">{t.date}</td>
-                  <td className="px-3 py-2 text-[#334155]">{t.particulars}</td>
-                  <td className="px-3 py-2 font-mono text-[#94A3B8]">{t.reference ?? "—"}</td>
-                  <td className="px-3 py-2 text-right font-mono text-[#334155]">{stmtAmt(t.debit_paise)}</td>
-                  <td className="px-3 py-2 text-right font-mono text-[#334155]">{stmtAmt(t.credit_paise)}</td>
+                <tr key={i} className="hover:bg-ps-bg">
+                  <td className="px-3 py-2 whitespace-nowrap text-ps-label">{t.date}</td>
+                  <td className="px-3 py-2 text-ps-body">{t.particulars}</td>
+                  <td className="px-3 py-2 font-mono text-ps-hint">{t.reference ?? "—"}</td>
+                  <td className="px-3 py-2 text-right font-mono text-ps-body">{stmtAmt(t.debit_paise)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-ps-body">{stmtAmt(t.credit_paise)}</td>
                   <td className="px-3 py-2 text-right font-mono">{stmtBal(t.running_balance_paise)}</td>
                 </tr>
               ))}
-              <tr className="bg-[#F8FAFC] font-semibold text-[#0F172A] border-t border-[#E2E8F0]">
+              <tr className="bg-ps-bg font-semibold text-ps-ink border-t border-ps-border">
                 <td className="px-3 py-2" colSpan={3}>Closing Outstanding</td>
                 <td className="px-3 py-2 text-right">—</td><td className="px-3 py-2 text-right">—</td>
                 <td className="px-3 py-2 text-right font-mono">{stmtBal(stmt.closing_balance_paise)}</td>
@@ -1235,7 +1235,7 @@ function Statements({ clientId }: { clientId: string }) {
             </tbody>
           </table>
           {stmt.transactions.length === 0 && (
-            <p className="px-4 py-4 text-center text-xs text-[#94A3B8]">No transactions in this period.</p>
+            <p className="px-4 py-4 text-center text-xs text-ps-hint">No transactions in this period.</p>
           )}
         </div>
       )}
@@ -1243,15 +1243,15 @@ function Statements({ clientId }: { clientId: string }) {
       {emailModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setEmailModal(false)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-[#0F172A]">Email statement to customer</h3>
+            <h3 className="text-sm font-semibold text-ps-ink">Email statement to customer</h3>
             <label className="block">
-              <span className="text-xs font-medium text-[#475569]">Recipient email</span>
+              <span className="text-xs font-medium text-ps-label">Recipient email</span>
               <input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="customer@example.com"
-                className="mt-1 w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="mt-1 w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </label>
             {emailMsg && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2.5">{emailMsg}</p>}
             <div className="flex justify-end gap-2">
-              <button onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
+              <button onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <button onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{emailing ? "Sending…" : "Send"}</button>
             </div>
           </div>
@@ -1261,14 +1261,14 @@ function Statements({ clientId }: { clientId: string }) {
       {applyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setApplyModal(false)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-[#0F172A]">Apply credit to an invoice</h3>
-            <p className="text-xs text-[#64748B]">
+            <h3 className="text-sm font-semibold text-ps-ink">Apply credit to an invoice</h3>
+            <p className="text-xs text-ps-label">
               Available credit: <span className="font-mono font-medium">₹{stmtRupees(credit?.balance_paise ?? 0)}</span>
             </p>
             <label className="block">
-              <span className="text-xs font-medium text-[#475569]">Invoice</span>
+              <span className="text-xs font-medium text-ps-label">Invoice</span>
               <select value={applyInvoiceId} onChange={(e) => setApplyInvoiceId(e.target.value)}
-                className="mt-1 w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                className="mt-1 w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">Select an outstanding invoice…</option>
                 {applyInvoices.map((i) => (
                   <option key={i.id} value={i.id}>
@@ -1276,16 +1276,16 @@ function Statements({ clientId }: { clientId: string }) {
                   </option>
                 ))}
               </select>
-              {applyInvoices.length === 0 && <p className="mt-1 text-[10px] text-[#94A3B8]">No outstanding invoices for this customer.</p>}
+              {applyInvoices.length === 0 && <p className="mt-1 text-[10px] text-ps-hint">No outstanding invoices for this customer.</p>}
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-[#475569]">Amount to apply (₹)</span>
+              <span className="text-xs font-medium text-ps-label">Amount to apply (₹)</span>
               <input type="number" min="0" step="0.01" value={applyAmount} onChange={(e) => setApplyAmount(e.target.value)}
-                className="mt-1 w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="mt-1 w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </label>
             {applyError && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2.5">{applyError}</p>}
             <div className="flex justify-end gap-2">
-              <button onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
+              <button onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <button onClick={applyCredit} disabled={actionInFlight || !applyInvoiceId || !applyAmount}
                 className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 {applying ? "Applying…" : "Apply"}
@@ -1861,17 +1861,17 @@ function SalesInvoices({
   // ── DataTable columns / filters (client-side over the loaded FY window) ────
   const columns: Column<SalesInvoice>[] = useMemo(() => [
     { key: "invoice_no", header: "Invoice No", accessor: (i) => i.invoice_no, searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (i) => <span className="font-mono font-medium text-[#1E293B]">{i.invoice_no}</span> },
+      render: (i) => <span className="font-mono font-medium text-ps-ink">{i.invoice_no}</span> },
     { key: "invoice_date", header: "Date", accessor: (i) => i.invoice_date, sortable: true,
-      render: (i) => <span className="text-[#64748B] whitespace-nowrap">{i.invoice_date}</span> },
+      render: (i) => <span className="text-ps-label whitespace-nowrap">{i.invoice_date}</span> },
     { key: "customer_name", header: "Customer", accessor: (i) => i.customer_name ?? "", searchable: true,
-      render: (i) => <span className="text-[#334155]">{i.customer_name}</span> },
+      render: (i) => <span className="text-ps-body">{i.customer_name}</span> },
     { key: "taxable_paise", header: "Taxable", accessor: (i) => i.taxable_paise, align: "right", exportValue: (i) => formatPaise(i.taxable_paise),
-      render: (i) => <span className="font-mono text-[#334155]">{fmt(i.taxable_paise)}</span> },
+      render: (i) => <span className="font-mono text-ps-body">{fmt(i.taxable_paise)}</span> },
     { key: "gst_paise", header: "GST", accessor: (i) => i.gst_paise, align: "right", exportValue: (i) => formatPaise(i.gst_paise),
-      render: (i) => <span className="font-mono text-[#334155]">{fmt(i.gst_paise)}</span> },
+      render: (i) => <span className="font-mono text-ps-body">{fmt(i.gst_paise)}</span> },
     { key: "total_paise", header: "Total", accessor: (i) => i.total_paise, sortable: true, align: "right", exportValue: (i) => formatPaise(i.total_paise),
-      render: (i) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(i.total_paise)}</span> },
+      render: (i) => <span className="font-mono font-semibold text-ps-ink">{fmt(i.total_paise)}</span> },
     // WHAT THE INVOICE STILL OWES (SALES-26). The list showed Total and
     // nothing else, so the one question a CA asks of a sales register — "who
     // owes me what" — could not be answered from it: a ₹5,00,000 invoice with
@@ -1885,22 +1885,22 @@ function SalesInvoices({
         const bal = i.outstanding_paise ?? 0;
         return (
           <span className={`font-mono ${bal > 0
-            ? (isOverdueForUi(i) ? "text-red-600 font-semibold" : "text-[#0F172A]")
-            : "text-[#94A3B8]"}`}>
+            ? (isOverdueForUi(i) ? "text-red-600 font-semibold" : "text-ps-ink")
+            : "text-ps-hint"}`}>
             {bal > 0 ? fmt(bal) : "—"}
           </span>
         );
       } },
     { key: "due_date", header: "Due", accessor: (i) => i.due_date ?? "", sortable: true,
       render: (i) => (
-        <span className={`whitespace-nowrap ${isOverdueForUi(i) ? "text-red-600 font-medium" : "text-[#64748B]"}`}>
+        <span className={`whitespace-nowrap ${isOverdueForUi(i) ? "text-red-600 font-medium" : "text-ps-label"}`}>
           {i.due_date ?? "—"}
           {isOverdueForUi(i) && i.days_overdue ? <span className="ml-1 text-[10px]">({i.days_overdue}d)</span> : null}
         </span>
       ) },
     { key: "status", header: "Status", accessor: (i) => i.status, sortable: true,
       render: (i) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[i.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[i.status] ?? "bg-ps-muted text-ps-label"}`}>
           {i.status.replace("_", " ")}
         </span>
       ) },
@@ -1994,13 +1994,13 @@ function SalesInvoices({
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">
+        <p className="text-xs font-semibold text-ps-body">
           {invoices.length} invoice{invoices.length !== 1 ? "s" : ""} in this period
         </p>
         <div className="flex gap-2">
           <button
             onClick={() => setShowImport(true)}
-            className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+            className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
           >
             <Upload size={12} /> Import
           </button>
@@ -2034,20 +2034,20 @@ function SalesInvoices({
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
-              className="fixed z-50 w-48 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              className="fixed z-50 w-48 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
               style={{ top: menu.top, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(inv.id); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <Eye size={13} /> View details
               </button>
               {inv.status === "draft" && (
                 <>
                   <button onClick={() => { setMenu(null); openEdit(inv); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                     <Pencil size={13} /> Edit draft
                   </button>
-                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); setDeleteTarget(inv); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
                     <Trash2 size={13} /> Delete draft
@@ -2062,11 +2062,11 @@ function SalesInvoices({
                       (reference, notes, terms, due date, line units) except via
                       the drawer's own "Edit Details" button. */}
                   <button onClick={() => { setMenu(null); openEdit(inv); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                     <Pencil size={13} /> Edit Details
                   </button>
                   <button onClick={() => { setMenu(null); openSend(inv); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                     <Send size={13} /> Send
                   </button>
                   {isOverdueForUi(inv) && (
@@ -2075,18 +2075,18 @@ function SalesInvoices({
                       title={inv.last_reminded_at
                         ? `Last reminded ${fmtDateTime(inv.last_reminded_at)} · ${inv.reminder_count ?? 0} sent`
                         : "Send an overdue-payment reminder"}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-amber-700"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-amber-700"
                     >
                       <AlertTriangle size={13} /> Remind{inv.reminder_count ? ` (${inv.reminder_count})` : ""}
                     </button>
                   )}
                   <button onClick={() => { setMenu(null); loadAndShowDeliveries(inv); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                     <Clock size={13} /> Delivery history
                   </button>
                   {(inv.status === "issued" || inv.status === "partially_paid") && (
                     <button onClick={() => { setMenu(null); setPaymentModal(inv); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                       <CreditCard size={13} /> Pay link
                     </button>
                   )}
@@ -2191,7 +2191,7 @@ function SalesInvoices({
             <button
               onClick={(e) => openMenuFor(e, inv)}
               aria-label={`Actions for invoice ${inv.invoice_no}`}
-              className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+              className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
               <MoreHorizontal size={16} />
             </button>
@@ -2213,10 +2213,10 @@ interface CustomerPaymentRow { id: string; amount_paise: number; status: string;
 interface PaymentHistory { outstanding_paise: number; links: PaymentLinkRow[]; payments: CustomerPaymentRow[] }
 
 const PAY_STATUS_BADGE: Record<string, string> = {
-  created: "bg-[#F1F5F9] text-[#64748B]", active: "bg-blue-100 text-blue-700",
+  created: "bg-ps-muted text-ps-label", active: "bg-blue-100 text-blue-700",
   paid: "bg-green-100 text-green-700", captured: "bg-green-100 text-green-700",
   authorized: "bg-amber-100 text-amber-700", failed: "bg-red-100 text-red-600",
-  refunded: "bg-purple-100 text-purple-700", expired: "bg-[#F1F5F9] text-[#94A3B8]",
+  refunded: "bg-purple-100 text-purple-700", expired: "bg-ps-muted text-ps-hint",
   cancelled: "bg-red-50 text-red-500",
 };
 
@@ -2269,12 +2269,12 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
 
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-lg shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Online Payment · {invoice.invoice_no}</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">Online Payment · {invoice.invoice_no}</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
-        <p className="text-[11px] text-[#94A3B8] mb-4">
+        <p className="text-[11px] text-ps-hint mb-4">
           A verified payment posts a receipt automatically through the standard receipt workflow — no manual entry.
         </p>
 
@@ -2284,10 +2284,10 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
           </div>
         )}
 
-        <div className="flex items-center justify-between rounded-lg bg-[#F8FAFC] border border-[#F1F5F9] px-3 py-2.5 mb-4">
+        <div className="flex items-center justify-between rounded-lg bg-ps-bg border border-ps-muted px-3 py-2.5 mb-4">
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-[#94A3B8]">Outstanding</p>
-            <p className="text-base font-semibold text-[#0F172A] font-mono">{hist ? fmt(hist.outstanding_paise) : "…"}</p>
+            <p className="text-[10px] uppercase tracking-wide text-ps-hint">Outstanding</p>
+            <p className="text-base font-semibold text-ps-ink font-mono">{hist ? fmt(hist.outstanding_paise) : "…"}</p>
           </div>
           <button onClick={generate} disabled={busy || !hist || hist.outstanding_paise <= 0}
             className="flex items-center gap-1.5 text-xs bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
@@ -2296,23 +2296,23 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         </div>
 
         {/* Links */}
-        <p className="text-[11px] font-semibold text-[#475569] uppercase tracking-wide mb-2">Payment Links</p>
+        <p className="text-[11px] font-semibold text-ps-label uppercase tracking-wide mb-2">Payment Links</p>
         {!hist ? (
           <TransactionListSkeleton rows={2} />
         ) : hist.links.length === 0 ? (
-          <p className="text-xs text-[#94A3B8] mb-4">No payment links yet. Generate one above.</p>
+          <p className="text-xs text-ps-hint mb-4">No payment links yet. Generate one above.</p>
         ) : (
           <div className="space-y-2 mb-4">
             {hist.links.map((l) => (
-              <div key={l.id} className="border border-[#F1F5F9] rounded-lg p-2.5 text-xs">
+              <div key={l.id} className="border border-ps-muted rounded-lg p-2.5 text-xs">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-[#334155] truncate">{l.short_url ?? "—"}</span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${PAY_STATUS_BADGE[l.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>{l.status}</span>
+                  <span className="font-mono text-ps-body truncate">{l.short_url ?? "—"}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${PAY_STATUS_BADGE[l.status] ?? "bg-ps-muted text-ps-label"}`}>{l.status}</span>
                 </div>
                 <div className="flex items-center justify-between mt-1.5">
-                  <span className="font-mono text-[#64748B]">{fmt(l.amount_paise)}</span>
+                  <span className="font-mono text-ps-label">{fmt(l.amount_paise)}</span>
                   <div className="flex items-center gap-3">
-                    <button onClick={() => copy(l.short_url)} className="text-[#64748B] hover:text-indigo-600 flex items-center gap-1"><Copy size={11} /> Copy</button>
+                    <button onClick={() => copy(l.short_url)} className="text-ps-label hover:text-indigo-600 flex items-center gap-1"><Copy size={11} /> Copy</button>
                     <button onClick={() => send(l.id)} disabled={busy} className="text-emerald-600 hover:underline flex items-center gap-1 disabled:opacity-50"><Send size={11} /> Email</button>
                   </div>
                 </div>
@@ -2322,25 +2322,25 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         )}
 
         {/* Payment history / timeline */}
-        <p className="text-[11px] font-semibold text-[#475569] uppercase tracking-wide mb-2">Payment History</p>
+        <p className="text-[11px] font-semibold text-ps-label uppercase tracking-wide mb-2">Payment History</p>
         {!hist || hist.payments.length === 0 ? (
-          <p className="text-xs text-[#94A3B8]">No payments recorded yet.</p>
+          <p className="text-xs text-ps-hint">No payments recorded yet.</p>
         ) : (
           <div className="space-y-2">
             {hist.payments.map((p) => (
-              <div key={p.id} className="flex items-center justify-between border border-[#F1F5F9] rounded-lg p-2.5 text-xs">
+              <div key={p.id} className="flex items-center justify-between border border-ps-muted rounded-lg p-2.5 text-xs">
                 <div>
-                  <div className="font-mono text-[#334155]">{fmt(p.amount_paise)}</div>
-                  <div className="text-[10px] text-[#94A3B8]">{p.provider}{p.receipt_id ? " · receipt posted" : ""}{p.created_at ? ` · ${fmtDateTime(p.created_at)}` : ""}</div>
+                  <div className="font-mono text-ps-body">{fmt(p.amount_paise)}</div>
+                  <div className="text-[10px] text-ps-hint">{p.provider}{p.receipt_id ? " · receipt posted" : ""}{p.created_at ? ` · ${fmtDateTime(p.created_at)}` : ""}</div>
                 </div>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${PAY_STATUS_BADGE[p.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>{p.status}</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${PAY_STATUS_BADGE[p.status] ?? "bg-ps-muted text-ps-label"}`}>{p.status}</span>
               </div>
             ))}
           </div>
         )}
 
-        <div className="flex justify-end mt-5 pt-4 border-t border-[#F1F5F9]">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Close</button>
+        <div className="flex justify-end mt-5 pt-4 border-t border-ps-muted">
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Close</button>
         </div>
       </div>
     </div>
@@ -2384,20 +2384,20 @@ function SendInvoiceModal({
 
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-md shadow-xl">
+      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Send Invoice {invoice.invoice_no}</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">Send Invoice {invoice.invoice_no}</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Recipient Email</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Recipient Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="customer@example.com"
-              className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
               autoFocus
             />
             {!defaultEmail && (
@@ -2406,7 +2406,7 @@ function SendInvoiceModal({
               </p>
             )}
           </div>
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-ps-label">
             A PDF of this invoice will be attached and sent by email.
           </p>
           {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
@@ -2414,7 +2414,7 @@ function SendInvoiceModal({
             <button
               type="button"
               onClick={onClose}
-              className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+              className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
             >
               Cancel
             </button>
@@ -2463,43 +2463,43 @@ function RemindInvoiceModal({
 
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-md shadow-xl">
+      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Send Payment Reminder</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">Send Payment Reminder</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
         <div className="space-y-3 text-xs">
-          <div className="rounded-lg bg-[#F8FAFC] border border-[#F1F5F9] p-3 space-y-1">
+          <div className="rounded-lg bg-ps-bg border border-ps-muted p-3 space-y-1">
             <div className="flex justify-between">
-              <span className="text-[#64748B]">Invoice</span>
-              <span className="font-mono font-medium text-[#1E293B]">{invoice.invoice_no}</span>
+              <span className="text-ps-label">Invoice</span>
+              <span className="font-mono font-medium text-ps-ink">{invoice.invoice_no}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-[#64748B]">Outstanding</span>
-              <span className="font-mono font-semibold text-[#0F172A]">{fmt(outstanding)}</span>
+              <span className="text-ps-label">Outstanding</span>
+              <span className="font-mono font-semibold text-ps-ink">{fmt(outstanding)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-[#64748B]">Due date</span>
+              <span className="text-ps-label">Due date</span>
               <span className="text-red-600 font-medium">
                 {invoice.due_date ?? "—"}{invoice.days_overdue ? ` (${invoice.days_overdue}d overdue)` : ""}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-[#64748B]">Reminders sent</span>
-              <span className="text-[#334155]">{invoice.reminder_count ?? 0}</span>
+              <span className="text-ps-label">Reminders sent</span>
+              <span className="text-ps-body">{invoice.reminder_count ?? 0}</span>
             </div>
           </div>
           {customerEmail ? (
-            <p className="text-[#64748B]">
+            <p className="text-ps-label">
               A reminder email — with the original invoice PDF attached — will be sent to{" "}
-              <span className="font-medium text-[#334155]">{customerEmail}</span>.
+              <span className="font-medium text-ps-body">{customerEmail}</span>.
             </p>
           ) : (
             <p className="text-amber-600">
               No email on the customer record. Add one to the customer before sending a reminder.
             </p>
           )}
-          <p className="text-[10px] text-[#94A3B8]">
+          <p className="text-[10px] text-ps-hint">
             Reminders are a collections communication only — they do not change any accounting entry.
           </p>
           {error && <p className="text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
@@ -2508,7 +2508,7 @@ function RemindInvoiceModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+            className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
           >
             Cancel
           </button>
@@ -2529,7 +2529,7 @@ function RemindInvoiceModal({
 // ── Delivery History Modal ─────────────────────────────────────────────────
 
 const DELIVERY_STATUS_COLOR: Record<string, string> = {
-  queued:  "bg-[#F1F5F9] text-[#64748B]",
+  queued:  "bg-ps-muted text-ps-label",
   sending: "bg-blue-50 text-blue-600",
   sent:    "bg-green-50 text-green-700",
   failed:  "bg-red-50 text-red-700",
@@ -2551,21 +2551,21 @@ function DeliveryHistoryModal({
 
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-lg shadow-xl">
+      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-[#0F172A]">
+          <h3 className="text-sm font-semibold text-ps-ink">
             Delivery History — {invoice.invoice_no}
           </h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]"><X size={14} /></button>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
         {deliveries.length === 0 ? (
-          <p className="text-xs text-[#94A3B8] text-center py-8">No delivery attempts yet.</p>
+          <p className="text-xs text-ps-hint text-center py-8">No delivery attempts yet.</p>
         ) : (
           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
             {deliveries.map((d) => (
-              <div key={d.id} className="border border-[#F1F5F9] rounded-lg p-3 text-xs">
+              <div key={d.id} className="border border-ps-muted rounded-lg p-3 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-[#334155] font-medium flex items-center gap-1.5">
+                  <span className="text-ps-body font-medium flex items-center gap-1.5">
                     {d.sent_to}
                     {d.kind === "reminder" && (
                       <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700">
@@ -2575,13 +2575,13 @@ function DeliveryHistoryModal({
                   </span>
                   <span
                     className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                      DELIVERY_STATUS_COLOR[d.status] ?? "bg-[#F1F5F9] text-[#64748B]"
+                      DELIVERY_STATUS_COLOR[d.status] ?? "bg-ps-muted text-ps-label"
                     }`}
                   >
                     {DELIVERY_STATUS_LABEL[d.status] ?? d.status}
                   </span>
                 </div>
-                <div className="flex items-center justify-between mt-1 text-[#94A3B8]">
+                <div className="flex items-center justify-between mt-1 text-ps-hint">
                   <span>{fmtDateTime(d.sent_at ?? d.created_at)}</span>
                   {d.sent_by_email && <span>by {d.sent_by_email}</span>}
                 </div>
@@ -2592,7 +2592,7 @@ function DeliveryHistoryModal({
             ))}
           </div>
         )}
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-[#F1F5F9]">
+        <div className="flex items-center justify-between mt-4 pt-4 border-t border-ps-muted">
           <button
             onClick={() => onResend(lastEmail)}
             className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
@@ -2601,7 +2601,7 @@ function DeliveryHistoryModal({
           </button>
           <button
             onClick={onClose}
-            className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+            className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
           >
             Close
           </button>
@@ -2645,12 +2645,12 @@ function DeleteInvoiceModal({
 
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-md shadow-xl">
+      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
         <div className="flex items-start gap-3 mb-4">
           <div className="p-2 rounded-full bg-red-50 text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
           <div>
-            <h3 className="text-sm font-semibold text-[#0F172A]">Delete draft invoice?</h3>
-            <p className="text-xs text-[#64748B] mt-1">
+            <h3 className="text-sm font-semibold text-ps-ink">Delete draft invoice?</h3>
+            <p className="text-xs text-ps-label mt-1">
               <span className="font-mono">{invoice.invoice_no}</span> will be removed from your invoice
               list. Only drafts can be deleted — issued, partially-paid, paid and cancelled invoices are
               permanent records and are protected.
@@ -2659,7 +2659,7 @@ function DeleteInvoiceModal({
         </div>
         {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mb-3">{error}</p>}
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <button
             onClick={handle}
             disabled={deleting}
@@ -2957,27 +2957,27 @@ function Customers({
     { key: "name", header: "Name", accessor: (c) => c.name, searchable: true, sortable: true, sticky: true, hideable: false,
       render: (c) => (
         <div>
-          <span className="font-medium text-[#1E293B]">{c.name}</span>
-          {c.email && <div className="text-[10px] text-[#94A3B8]">{c.email}</div>}
+          <span className="font-medium text-ps-ink">{c.name}</span>
+          {c.email && <div className="text-[10px] text-ps-hint">{c.email}</div>}
         </div>
       ) },
     { key: "gstin", header: "GSTIN", accessor: (c) => c.gstin ?? "", searchable: true,
-      render: (c) => <span className="font-mono text-[#64748B]">{c.gstin ?? "—"}</span> },
+      render: (c) => <span className="font-mono text-ps-label">{c.gstin ?? "—"}</span> },
     // Not shown as a column, but included so search covers phone/email as required.
     { key: "phone", header: "Phone", accessor: (c) => c.phone ?? "", searchable: true, defaultHidden: true,
-      render: (c) => <span className="text-[#64748B]">{c.phone ?? "—"}</span> },
+      render: (c) => <span className="text-ps-label">{c.phone ?? "—"}</span> },
     { key: "state", header: "State", accessor: (c) => c.state ?? c.state_code ?? "",
-      render: (c) => <span className="text-[#64748B]">{c.state ?? c.state_code ?? "—"}</span> },
+      render: (c) => <span className="text-ps-label">{c.state ?? c.state_code ?? "—"}</span> },
     { key: "credit_days", header: "Credit Days", accessor: (c) => c.credit_days ?? 0, align: "right",
-      render: (c) => <span className="text-[#334155]">{c.credit_days ?? 0}</span> },
+      render: (c) => <span className="text-ps-body">{c.credit_days ?? 0}</span> },
     { key: "opening_balance_paise", header: "Opening Balance", accessor: (c) => c.opening_balance_paise ?? 0, align: "right",
       exportValue: (c) => formatPaise(c.opening_balance_paise ?? 0),
-      render: (c) => <span className="font-mono text-[#334155]">{fmt(c.opening_balance_paise ?? 0)}</span> },
+      render: (c) => <span className="font-mono text-ps-body">{fmt(c.opening_balance_paise ?? 0)}</span> },
     { key: "is_active", header: "Status", accessor: (c) => (c.is_active ? "active" : "inactive"),
       render: (c) => c.is_active ? (
         <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Active</span>
       ) : (
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Inactive</span>
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">Inactive</span>
       ) },
   ], []);
 
@@ -2993,13 +2993,13 @@ function Customers({
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-xs font-semibold text-[#334155]">
+        <p className="text-xs font-semibold text-ps-body">
           {customers.length} customer{customers.length !== 1 ? "s" : ""}
         </p>
         <div className="flex gap-2">
           <button
             onClick={() => setShowImport(true)}
-            className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+            className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
           >
             <Upload size={12} /> Import
           </button>
@@ -3037,26 +3037,26 @@ function Customers({
       )}
 
       {deactivateTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="px-6 py-5 border-b border-[#F1F5F9]">
-              <h2 className="text-base font-semibold text-[#0F172A]">Deactivate Customer?</h2>
+            <div className="px-6 py-5 border-b border-ps-muted">
+              <h2 className="text-base font-semibold text-ps-ink">Deactivate Customer?</h2>
             </div>
             <div className="px-6 py-5 space-y-2">
-              <p className="text-sm text-[#475569]">
-                <span className="font-medium text-[#1E293B]">{deactivateTarget.name}</span> will no
+              <p className="text-sm text-ps-label">
+                <span className="font-medium text-ps-ink">{deactivateTarget.name}</span> will no
                 longer be available for new invoices.
               </p>
-              <p className="text-sm text-[#475569]">
+              <p className="text-sm text-ps-label">
                 Existing invoices and accounting records will remain unchanged. You can reactivate
                 this customer later.
               </p>
             </div>
-            <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
               <button
                 onClick={() => setDeactivateTarget(null)}
                 disabled={deactivating}
-                className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] disabled:opacity-50"
+                className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -3074,31 +3074,31 @@ function Customers({
 
       {/* Permanent-delete flow: checking → blocked (has records) → confirm (clean) */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             {deleteDeps === null ? (
-              <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-[#475569]">
+              <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-ps-label">
                 <Loader2 size={16} className="animate-spin" /> Checking for linked records…
               </div>
             ) : deleteDeps.can_delete ? (
               <>
-                <div className="px-6 py-5 border-b border-[#F1F5F9]">
-                  <h2 className="text-base font-semibold text-[#0F172A]">Delete Customer?</h2>
+                <div className="px-6 py-5 border-b border-ps-muted">
+                  <h2 className="text-base font-semibold text-ps-ink">Delete Customer?</h2>
                 </div>
                 <div className="px-6 py-5 space-y-2">
-                  <p className="text-sm text-[#475569]">
-                    <span className="font-medium text-[#1E293B]">{deleteTarget.name}</span> has no
+                  <p className="text-sm text-ps-label">
+                    <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has no
                     linked invoices, receipts, credit notes or opening balance.
                   </p>
-                  <p className="text-sm text-[#475569]">
+                  <p className="text-sm text-ps-label">
                     This permanently removes the customer and cannot be undone.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+                <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     disabled={deleteBusy}
-                    className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] disabled:opacity-50"
+                    className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -3113,16 +3113,16 @@ function Customers({
               </>
             ) : (
               <>
-                <div className="px-6 py-5 border-b border-[#F1F5F9] flex items-center gap-2">
+                <div className="px-6 py-5 border-b border-ps-muted flex items-center gap-2">
                   <AlertTriangle size={18} className="text-amber-500" />
-                  <h2 className="text-base font-semibold text-[#0F172A]">Can&apos;t delete this customer</h2>
+                  <h2 className="text-base font-semibold text-ps-ink">Can&apos;t delete this customer</h2>
                 </div>
                 <div className="px-6 py-5 space-y-3">
-                  <p className="text-sm text-[#475569]">
-                    <span className="font-medium text-[#1E293B]">{deleteTarget.name}</span> has linked
+                  <p className="text-sm text-ps-label">
+                    <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has linked
                     accounting records, so it can&apos;t be permanently deleted:
                   </p>
-                  <ul className="text-sm text-[#475569] space-y-1">
+                  <ul className="text-sm text-ps-label space-y-1">
                     {([
                       ["invoices", "Invoices"],
                       ["receipts", "Receipts"],
@@ -3140,15 +3140,15 @@ function Customers({
                         </li>
                       ))}
                   </ul>
-                  <p className="text-sm text-[#475569]">
+                  <p className="text-sm text-ps-label">
                     Deactivate the customer instead — this keeps all history and removes it from new
                     invoices.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+                <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
-                    className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                    className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg"
                   >
                     Close
                   </button>
@@ -3175,30 +3175,30 @@ function Customers({
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
               style={{ top: menu.top, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setEditCustomer(c); setShowForm(true); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <Pencil size={13} /> Edit
               </button>
               <button onClick={() => { setMenu(null); onNavigate("invoices", c.id); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <FileText size={13} /> View Invoices
               </button>
               <button onClick={() => { setMenu(null); onNavigate("statements", c.id); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <BookOpen size={13} /> View Ledger
               </button>
-              <div className="my-1 border-t border-[#F1F5F9]" />
+              <div className="my-1 border-t border-ps-muted" />
               {c.is_active ? (
                 <button onClick={() => { setMenu(null); setDeactivateTarget(c); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                   <Ban size={13} /> Deactivate
                 </button>
               ) : (
                 <button onClick={() => { setMenu(null); reactivateCustomer(c); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-green-700">
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-green-700">
                   <RotateCcw size={13} /> Reactivate
                 </button>
               )}
@@ -3248,7 +3248,7 @@ function Customers({
           <button
             onClick={(e) => openMenuFor(e, c)}
             aria-label={`Actions for ${c.name}`}
-            className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+            className="p-1 rounded hover:bg-ps-muted text-ps-label"
           >
             <MoreHorizontal size={16} />
           </button>
@@ -3388,16 +3388,16 @@ function Receipts({
   // ── DataTable columns / filters ───────────────────────────────────────────
   const columns: Column<Receipt>[] = useMemo(() => [
     { key: "receipt_no", header: "Receipt No", accessor: (r) => r.receipt_no, searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (r) => <span className="font-mono font-medium text-[#1E293B]">{r.receipt_no}</span> },
+      render: (r) => <span className="font-mono font-medium text-ps-ink">{r.receipt_no}</span> },
     { key: "receipt_date", header: "Date", accessor: (r) => r.receipt_date, sortable: true,
-      render: (r) => <span className="text-[#64748B] whitespace-nowrap">{r.receipt_date}</span> },
+      render: (r) => <span className="text-ps-label whitespace-nowrap">{r.receipt_date}</span> },
     { key: "customer_name", header: "Customer", accessor: (r) => r.customer_name ?? "", searchable: true,
-      render: (r) => <span className="text-[#334155]">{r.customer_name}</span> },
+      render: (r) => <span className="text-ps-body">{r.customer_name}</span> },
     { key: "amount_paise", header: "Amount", accessor: (r) => r.amount_paise, sortable: true, align: "right", exportValue: (r) => formatPaise(r.amount_paise),
-      render: (r) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(r.amount_paise)}</span> },
+      render: (r) => <span className="font-mono font-semibold text-ps-ink">{fmt(r.amount_paise)}</span> },
     { key: "payment_mode", header: "Mode", accessor: (r) => r.payment_mode, searchable: true,
       render: (r) => (
-        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#475569] uppercase">
+        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label uppercase">
           {r.payment_mode}
         </span>
       ) },
@@ -3422,13 +3422,13 @@ function Receipts({
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">
+        <p className="text-xs font-semibold text-ps-body">
           {receipts.length} receipt{receipts.length !== 1 ? "s" : ""} in FY {financialYear}
         </p>
         <div className="flex gap-2">
           <button
             onClick={() => setShowImport(true)}
-            className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+            className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
           >
             <Upload size={12} /> Import
           </button>
@@ -3779,15 +3779,15 @@ function ReceiptForm({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#0F172A]">Record Receipt</h3>
-        <button onClick={onCancel} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
+        <h3 className="text-sm font-semibold text-ps-ink">Record Receipt</h3>
+        <button onClick={onCancel} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="col-span-2 lg:col-span-1">
-          <label className="block text-xs font-medium text-[#475569] mb-1">Customer *</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
           <CustomerLookup
             customers={customers}
             value={customerId}
@@ -3796,16 +3796,16 @@ function ReceiptForm({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Receipt Date *</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Receipt Date *</label>
           <input
             type="date"
             value={receiptDate}
             onChange={(e) => setReceiptDate(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Amount ({isForeign ? currency : "₹"}) *</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Amount ({isForeign ? currency : "₹"}) *</label>
           <input
             type="number"
             min="0"
@@ -3813,7 +3813,7 @@ function ReceiptForm({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
           />
         </div>
         {/* TDS THE CUSTOMER WITHHELD. Hidden on a foreign receipt because the
@@ -3825,7 +3825,7 @@ function ReceiptForm({
             whole ₹1,00,000 invoice. */}
         {!isForeign && (
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">TDS withheld (₹)</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">TDS withheld (₹)</label>
             <input
               type="number"
               min="0"
@@ -3833,9 +3833,9 @@ function ReceiptForm({
               value={tds}
               onChange={(e) => { setTds(e.target.value); setError(null); }}
               placeholder="0.00"
-              className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
             />
-            <p className="mt-1 text-[10px] text-[#94A3B8]">
+            <p className="mt-1 text-[10px] text-ps-hint">
               {tdsPaise !== null && tdsPaise > 0 && amountPaise !== null
                 ? `Settles ${fmtAmt(amountPaise + tdsPaise)} of invoices — the cash plus the tax deducted (IT Act §199).`
                 : "What the customer deducted at source and paid to the government, if any."}
@@ -3843,11 +3843,11 @@ function ReceiptForm({
           </div>
         )}
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Payment Mode</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Payment Mode</label>
           <select
             value={paymentMode}
             onChange={(e) => setPaymentMode(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {PAYMENT_MODES.map((m) => (
               <option key={m} value={m}>{m.toUpperCase()}</option>
@@ -3869,12 +3869,12 @@ function ReceiptForm({
           accounts={bankAccounts}
         />
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Reference No.</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Reference No.</label>
           <input
             value={referenceNo}
             onChange={(e) => setReferenceNo(e.target.value)}
             placeholder="UTR / cheque no."
-            className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       </div>
@@ -3889,7 +3889,7 @@ function ReceiptForm({
           independent fact, and a third box a CA can contradict is a third box
           that gets it wrong. */}
       {advanceTaxApplicable && (
-        <div className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5">
+        <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2.5">
           <p className="text-[11px] font-medium text-[#92400E] mb-2">
             Advance — GSTR-1 Table 11A
             <span className="ml-1 font-normal">
@@ -3901,18 +3901,18 @@ function ReceiptForm({
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">GST rate on the advance</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">GST rate on the advance</label>
               <input
                 value={advanceRate}
                 onChange={(e) => setAdvanceRate(e.target.value)}
                 inputMode="decimal"
                 placeholder="18"
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="mt-1 text-[10px] text-[#94A3B8]">Per cent, e.g. 18.</p>
+              <p className="mt-1 text-[10px] text-ps-hint">Per cent, e.g. 18.</p>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Place of supply</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Place of supply</label>
               <StateLookup
                 value={advancePos}
                 onChange={setAdvancePos}
@@ -3923,7 +3923,7 @@ function ReceiptForm({
                   answer — that is derived in domain/gst/place_of_supply.py from
                   the client's own GSTIN. Shown so a CA is not surprised, and
                   honest about the one case where nobody can decide. */}
-              <p className={`mt-1 text-[10px] ${advancePos && !clientStateCode ? "text-amber-700" : "text-[#94A3B8]"}`}>
+              <p className={`mt-1 text-[10px] ${advancePos && !clientStateCode ? "text-amber-700" : "text-ps-hint"}`}>
                 {!advancePos
                   ? "Decides CGST+SGST against IGST."
                   : clientStateCode
@@ -3947,11 +3947,11 @@ function ReceiptForm({
       {mcActive && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Currency</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
             <select
               value={currency}
               onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); setAllocations({}); }}
-              className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">INR (default)</option>
               {currencies.filter((c) => c.code !== "INR").map((c) => (
@@ -3963,7 +3963,7 @@ function ReceiptForm({
           </div>
           {isForeign && (
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Cash Exchange Rate *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Cash Exchange Rate *</label>
               <input
                 type="number"
                 min="0"
@@ -3971,9 +3971,9 @@ function ReceiptForm({
                 value={exchangeRate}
                 onChange={(e) => setExchangeRate(e.target.value)}
                 placeholder={`1 ${currency} = ? INR`}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
               />
-              <p className="mt-1 text-[10px] text-[#94A3B8]">
+              <p className="mt-1 text-[10px] text-ps-hint">
                 Rate on the day cash was received — may differ from an invoice&apos;s booking rate; the
                 difference posts as Realized FX Gain/Loss.
               </p>
@@ -3985,14 +3985,14 @@ function ReceiptForm({
       {/* Allocate against open invoices */}
       {visibleInvoices.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-[#475569]">Allocate against open invoices (optional)</p>
+          <p className="text-xs font-medium text-ps-label">Allocate against open invoices (optional)</p>
           <div className="space-y-1.5">
             {visibleInvoices.map((inv) => (
               <div key={inv.id} className="flex items-center gap-3">
-                <span className="text-xs text-[#475569] flex-1">
+                <span className="text-xs text-ps-label flex-1">
                   {inv.invoice_no} — {inv.invoice_date} — {fmtAmt(invoiceOutstanding(inv))} due
                   {isForeign && inv.exchange_rate && (
-                    <span className="ml-1 text-[10px] text-[#94A3B8]">(booked @ {inv.exchange_rate})</span>
+                    <span className="ml-1 text-[10px] text-ps-hint">(booked @ {inv.exchange_rate})</span>
                   )}
                   <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[inv.status]}`}>
                     {inv.status}
@@ -4005,13 +4005,13 @@ function ReceiptForm({
                   value={allocations[inv.id] ?? ""}
                   onChange={(e) => setAllocations((prev) => ({ ...prev, [inv.id]: e.target.value }))}
                   placeholder={isForeign ? `${currency} 0.00` : "₹ 0.00"}
-                  className="w-28 px-2 py-1 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right font-mono"
+                  className="w-28 px-2 py-1 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right font-mono"
                 />
               </div>
             ))}
           </div>
           {totalAllocated > 0 && (
-            <p className="text-xs text-[#64748B]">
+            <p className="text-xs text-ps-label">
               Allocated: {fmtAmt(totalAllocated)}
               {/* Against the SETTLEMENT, not the cash. The server's own
                   over-allocation refusal is `amount + tds`, so measuring the
@@ -4030,7 +4030,7 @@ function ReceiptForm({
 
       {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
       <div className="flex gap-3 justify-end">
-        <button onClick={onCancel} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+        <button onClick={onCancel} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
         <button
           onClick={handleSave}
           disabled={saving}
@@ -4305,20 +4305,20 @@ function CreditNotes({
   // ── DataTable columns / filters ───────────────────────────────────────────
   const columns: Column<CreditNote>[] = useMemo(() => [
     { key: "credit_note_no", header: "CN No", accessor: (cn) => cn.credit_note_no, searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (cn) => <span className="font-mono font-medium text-[#1E293B]">{cn.credit_note_no}</span> },
+      render: (cn) => <span className="font-mono font-medium text-ps-ink">{cn.credit_note_no}</span> },
     { key: "credit_note_date", header: "Date", accessor: (cn) => cn.credit_note_date, sortable: true,
-      render: (cn) => <span className="text-[#64748B] whitespace-nowrap">{cn.credit_note_date}</span> },
+      render: (cn) => <span className="text-ps-label whitespace-nowrap">{cn.credit_note_date}</span> },
     { key: "customer_name", header: "Customer", accessor: (cn) => cn.customer_name ?? "", searchable: true,
-      render: (cn) => <span className="text-[#334155]">{cn.customer_name}</span> },
+      render: (cn) => <span className="text-ps-body">{cn.customer_name}</span> },
     { key: "original_invoice_no", header: "Orig. Invoice", accessor: (cn) => cn.original_invoice_no ?? "",
-      render: (cn) => <span className="font-mono text-[#64748B]">{cn.original_invoice_no ?? "—"}</span> },
+      render: (cn) => <span className="font-mono text-ps-label">{cn.original_invoice_no ?? "—"}</span> },
     { key: "reason", header: "Reason", accessor: (cn) => cn.reason, searchable: true,
-      render: (cn) => <span className="block max-w-[120px] truncate text-[#475569]">{cn.reason}</span> },
+      render: (cn) => <span className="block max-w-[120px] truncate text-ps-label">{cn.reason}</span> },
     { key: "total_paise", header: "Total", accessor: (cn) => cn.total_paise, sortable: true, align: "right", exportValue: (cn) => formatPaise(cn.total_paise),
-      render: (cn) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(cn.total_paise)}</span> },
+      render: (cn) => <span className="font-mono font-semibold text-ps-ink">{fmt(cn.total_paise)}</span> },
     { key: "status", header: "Status", accessor: (cn) => cn.status, sortable: true,
       render: (cn) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[cn.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[cn.status] ?? "bg-ps-muted text-ps-label"}`}>
           {cn.status}
         </span>
       ) },
@@ -4337,7 +4337,7 @@ function CreditNotes({
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">
+        <p className="text-xs font-semibold text-ps-body">
           {creditNotes.length} credit note{creditNotes.length !== 1 ? "s" : ""} in FY {financialYear}
         </p>
       </div>
@@ -4354,20 +4354,20 @@ function CreditNotes({
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
               style={{ top: menu.top, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(c.id); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
               </button>
               <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/sales/credit-notes/${c.id}/edit`); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 {c.status === "draft" ? "Edit draft" : "Edit"}
               </button>
               {c.status === "draft" && (
                 <>
-                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deleteCreditNote(c); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
                     Delete draft
@@ -4428,7 +4428,7 @@ function CreditNotes({
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
             <button
               onClick={() => setShowImport(true)}
-              className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+              className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
             >
               <Upload size={12} /> Import
             </button>
@@ -4472,7 +4472,7 @@ function CreditNotes({
             <button
               onClick={(e) => openMenuFor(e, cn)}
               aria-label={`Actions for credit note ${cn.credit_note_no || cn.id}`}
-              className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+              className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
               <MoreHorizontal size={16} />
             </button>
@@ -4736,20 +4736,20 @@ function SalesDebitNotes({
   // ── DataTable columns / filters ───────────────────────────────────────────
   const columns: Column<SalesDebitNote>[] = useMemo(() => [
     { key: "debit_note_no", header: "DN No", accessor: (dn) => dn.debit_note_no, searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (dn) => <span className="font-mono font-medium text-[#1E293B]">{dn.debit_note_no}</span> },
+      render: (dn) => <span className="font-mono font-medium text-ps-ink">{dn.debit_note_no}</span> },
     { key: "debit_note_date", header: "Date", accessor: (dn) => dn.debit_note_date, sortable: true,
-      render: (dn) => <span className="text-[#64748B] whitespace-nowrap">{dn.debit_note_date}</span> },
+      render: (dn) => <span className="text-ps-label whitespace-nowrap">{dn.debit_note_date}</span> },
     { key: "customer_name", header: "Customer", accessor: (dn) => dn.customer_name ?? "", searchable: true,
-      render: (dn) => <span className="text-[#334155]">{dn.customer_name}</span> },
+      render: (dn) => <span className="text-ps-body">{dn.customer_name}</span> },
     { key: "original_invoice_no", header: "Orig. Invoice", accessor: (dn) => dn.original_invoice_no ?? "",
-      render: (dn) => <span className="font-mono text-[#64748B]">{dn.original_invoice_no ?? "—"}</span> },
+      render: (dn) => <span className="font-mono text-ps-label">{dn.original_invoice_no ?? "—"}</span> },
     { key: "reason", header: "Reason", accessor: (dn) => dn.reason, searchable: true,
-      render: (dn) => <span className="block max-w-[120px] truncate text-[#475569]">{dn.reason}</span> },
+      render: (dn) => <span className="block max-w-[120px] truncate text-ps-label">{dn.reason}</span> },
     { key: "total_paise", header: "Total", accessor: (dn) => dn.total_paise, sortable: true, align: "right", exportValue: (dn) => formatPaise(dn.total_paise),
-      render: (dn) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(dn.total_paise)}</span> },
+      render: (dn) => <span className="font-mono font-semibold text-ps-ink">{fmt(dn.total_paise)}</span> },
     { key: "status", header: "Status", accessor: (dn) => dn.status, sortable: true,
       render: (dn) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[dn.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[dn.status] ?? "bg-ps-muted text-ps-label"}`}>
           {dn.status}
         </span>
       ) },
@@ -4767,7 +4767,7 @@ function SalesDebitNotes({
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">
+        <p className="text-xs font-semibold text-ps-body">
           {debitNotes.length} debit note{debitNotes.length !== 1 ? "s" : ""} in FY {financialYear}
         </p>
       </div>
@@ -4784,20 +4784,20 @@ function SalesDebitNotes({
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
               style={{ top: menu.top, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
               </button>
               <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/sales/debit-notes/${d.id}/edit`); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 {d.status === "draft" ? "Edit draft" : "Edit"}
               </button>
               {d.status === "draft" && (
                 <>
-                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deleteSalesDebitNote(d); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
                     Delete draft
@@ -4858,7 +4858,7 @@ function SalesDebitNotes({
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
             <button
               onClick={() => setShowImport(true)}
-              className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+              className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
             >
               <Upload size={12} /> Import
             </button>
@@ -4902,7 +4902,7 @@ function SalesDebitNotes({
             <button
               onClick={(e) => openMenuFor(e, dn)}
               aria-label={`Actions for debit note ${dn.debit_note_no || dn.id}`}
-              className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+              className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
               <MoreHorizontal size={16} />
             </button>
@@ -4929,18 +4929,18 @@ function SummaryCard({
     blue: "bg-blue-50 border-blue-100",
     green: "bg-green-50 border-green-100",
     red: "bg-red-50 border-red-100",
-    gray: "bg-white border-[#F1F5F9]",
+    gray: "bg-white border-ps-muted",
   };
   const text = {
     amber: "text-amber-800",
     blue: "text-blue-800",
     green: "text-green-800",
     red: "text-red-800",
-    gray: "text-[#1E293B]",
+    gray: "text-ps-ink",
   };
   return (
     <div className={`rounded-xl border p-4 ${colors[color]}`}>
-      <p className="text-[10px] font-medium text-[#64748B] mb-1">{label}</p>
+      <p className="text-[10px] font-medium text-ps-label mb-1">{label}</p>
       <p className={`text-lg font-bold tabular-nums ${text[color]}`}>{value}</p>
     </div>
   );

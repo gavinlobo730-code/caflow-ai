@@ -111,21 +111,21 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-[#F8FAFC]/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-ps-bg/60" onClick={onClose} />
 
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#F1F5F9]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-ps-muted">
           <div>
-            <h2 className="text-base font-semibold text-[#0F172A]">
+            <h2 className="text-base font-semibold text-ps-ink">
               {editClient ? "Edit Client" : "Add New Client"}
             </h2>
-            <p className="text-xs text-[#64748B] mt-0.5">
+            <p className="text-xs text-ps-label mt-0.5">
               {editClient ? "Update client details" : "Register a new client with your firm"}
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[#F1F5F9] text-[#94A3B8]">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-ps-muted text-ps-hint">
             <X size={16} />
           </button>
         </div>
@@ -134,7 +134,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
           {/* Row 1 */}
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-[#334155] mb-1">Client / Business Name *</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Client / Business Name *</label>
               <input
                 required value={form.client_name}
                 onChange={e => set("client_name", e.target.value)}
@@ -143,7 +143,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">Entity Type *</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Entity Type *</label>
               <select
                 required value={form.entity_type}
                 onChange={e => set("entity_type", e.target.value)}
@@ -153,7 +153,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">GST Filing Frequency</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">GST Filing Frequency</label>
               <select
                 value={form.gst_filing_frequency}
                 onChange={e => set("gst_filing_frequency", e.target.value)}
@@ -174,7 +174,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               has read it since; nothing ever wrote it, so Table 11 was empty
               for every client on the platform and no screen said whether that
               meant "no advances" or "not switched on". */}
-          <label className="flex items-start gap-2 text-sm text-[#334155] cursor-pointer">
+          <label className="flex items-start gap-2 text-sm text-ps-body cursor-pointer">
             <input
               type="checkbox"
               checked={Boolean(form.gst_advance_tax_applicable)}
@@ -183,7 +183,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             />
             <span>
               Advances received bear GST
-              <span className="block text-xs text-[#64748B]">
+              <span className="block text-xs text-ps-label">
                 CGST s.13(2) — tax on an advance is due when it is received for a
                 SUPPLY OF SERVICES. Notification 66/2017-Central Tax removed the
                 charge for goods, where the liability arises at the invoice. Turn
@@ -196,7 +196,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
           {/* Tax IDs */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">PAN *</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">PAN *</label>
               <input
                 required value={form.pan}
                 onChange={e => set("pan", e.target.value.toUpperCase())}
@@ -206,7 +206,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">GSTIN</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">GSTIN</label>
               <input
                 value={form.gstin}
                 onChange={e => set("gstin", e.target.value.toUpperCase())}
@@ -220,7 +220,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
           {/* Contact */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">Mobile</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Mobile</label>
               <input
                 value={form.mobile}
                 onChange={e => set("mobile", e.target.value)}
@@ -229,7 +229,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">Email</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Email</label>
               <input
                 type="email" value={form.email}
                 onChange={e => set("email", e.target.value)}
@@ -241,7 +241,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
 
           {/* Address */}
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Address</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Address</label>
             <input
               value={form.address_line1}
               onChange={e => set("address_line1", e.target.value)}
@@ -251,7 +251,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">City</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">City</label>
               <input
                 value={form.city}
                 onChange={e => set("city", e.target.value)}
@@ -260,7 +260,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">State</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">State</label>
               <select
                 value={form.state}
                 onChange={e => handleStateChange(e.target.value)}
@@ -270,7 +270,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">Pincode</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Pincode</label>
               <input
                 value={form.pincode}
                 onChange={e => set("pincode", e.target.value)}
@@ -283,7 +283,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Notes</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Notes</label>
             <textarea
               value={form.notes}
               onChange={e => set("notes", e.target.value)}
@@ -303,7 +303,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
           <div className="flex gap-3 pt-2">
             <button
               type="button" onClick={onClose}
-              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-[#334155] hover:bg-[#F8FAFC]"
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-ps-body hover:bg-ps-bg"
             >
               Cancel
             </button>

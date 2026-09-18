@@ -21,7 +21,7 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const FY_OPTIONS = financialYearChoicesAround(null);
 
 const STATUS_BADGE: Record<string, string> = {
-  draft:     "bg-[#F1F5F9] text-[#475569]",
+  draft:     "bg-ps-muted text-ps-label",
   in_review: "bg-amber-100 text-amber-700",
   approved:  "bg-blue-100 text-blue-700",
   locked:    "bg-green-100 text-green-700",
@@ -123,14 +123,14 @@ export default function YearEndPage() {
     <div className="p-6 max-w-3xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-[#1E293B]">Year-End Engagements</h2>
+          <h2 className="text-sm font-semibold text-ps-ink">Year-End Engagements</h2>
           {/* Year End is for every client — a proprietorship or a firm still
               closes its books and still needs a balance sheet and a P&L, for
               the ITR and for a §44AB tax audit. What is NOT universal is the
               FORM: Schedule III (Companies Act 2013 §129) prescribes it for
               companies only, so the label is claimed only where it binds.
               lib/entityObligations.ts carries the rule. */}
-          <p className="text-xs text-[#94A3B8] mt-0.5">
+          <p className="text-xs text-ps-hint mt-0.5">
             {usesScheduleIII(entity.entityType) ? "Schedule III financial statements" : "Financial statements"}, notes, and audit pack
           </p>
         </div>
@@ -141,7 +141,7 @@ export default function YearEndPage() {
           {offerXbrl && (
             <Link
               href={`/clients/${clientId}/year-end/xbrl`}
-              className="flex items-center gap-1.5 text-xs bg-white border border-[#E2E8F0] text-[#334155] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+              className="flex items-center gap-1.5 text-xs bg-white border border-ps-border text-ps-body px-3 py-1.5 rounded-lg hover:bg-ps-bg"
             >
               <FileCode size={12} /> XBRL Filing
             </Link>
@@ -156,14 +156,14 @@ export default function YearEndPage() {
       </div>
 
       {showCreate && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3">
-          <p className="text-xs font-semibold text-[#334155]">New Year-End Engagement</p>
+        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
+          <p className="text-xs font-semibold text-ps-body">New Year-End Engagement</p>
           <div>
-            <label className="text-xs text-[#64748B] mb-1 block">Financial Year</label>
+            <label className="text-xs text-ps-label mb-1 block">Financial Year</label>
             <select
               value={selectedFY}
               onChange={(e) => setSelectedFY(e.target.value)}
-              className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {FY_OPTIONS.map((fy) => (
                 <option key={fy} value={fy}>{fy}</option>
@@ -172,7 +172,7 @@ export default function YearEndPage() {
           </div>
           {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC]">
+            <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded hover:bg-ps-bg">
               Cancel
             </button>
             <button
@@ -194,10 +194,10 @@ export default function YearEndPage() {
           {error} <button onClick={load} className="ml-2 underline text-xs">Retry</button>
         </div>
       ) : engagements.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-2">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-2">
           <Calendar size={28} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-[#64748B]">No year-end engagements yet</p>
-          <p className="text-xs text-[#94A3B8]">Click &quot;New Engagement&quot; to start the year-end close process.</p>
+          <p className="text-sm text-ps-label">No year-end engagements yet</p>
+          <p className="text-xs text-ps-hint">Click &quot;New Engagement&quot; to start the year-end close process.</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -205,21 +205,21 @@ export default function YearEndPage() {
             <button
               key={eng.id}
               onClick={() => router.push(`/clients/${clientId}/year-end/${eng.id}`)}
-              className="w-full bg-white rounded-xl border border-[#F1F5F9] px-4 py-3 flex items-center gap-3 hover:bg-[#F8FAFC] text-left"
+              className="w-full bg-white rounded-xl border border-ps-muted px-4 py-3 flex items-center gap-3 hover:bg-ps-bg text-left"
             >
               <Calendar size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-[#1E293B]">
+                <p className="text-xs font-semibold text-ps-ink">
                   {eng.engagement_name ?? `FY ${eng.financial_year}`}
                 </p>
-                <p className="text-[10px] text-[#94A3B8]">
+                <p className="text-[10px] text-ps-hint">
                   Created {new Date(eng.created_at).toLocaleDateString("en-IN")}
                 </p>
               </div>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full capitalize ${STATUS_BADGE[eng.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full capitalize ${STATUS_BADGE[eng.status] ?? "bg-ps-muted text-ps-label"}`}>
                 {eng.status.replace("_", " ")}
               </span>
-              <ChevronRight size={14} className="text-[#CBD5E1] flex-shrink-0" />
+              <ChevronRight size={14} className="text-ps-disabled flex-shrink-0" />
             </button>
           ))}
         </div>

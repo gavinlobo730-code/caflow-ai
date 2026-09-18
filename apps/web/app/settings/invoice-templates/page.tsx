@@ -89,35 +89,35 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#F1F5F9]">
-          <h3 className="text-sm font-semibold text-[#0F172A]">New Invoice Template</h3>
+        <div className="px-6 py-4 border-b border-ps-muted">
+          <h3 className="text-sm font-semibold text-ps-ink">New Invoice Template</h3>
         </div>
         <div className="px-6 py-4 space-y-4">
           {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
           <div>
-            <label className="text-xs font-medium text-[#64748B] block mb-1">Template Name <span className="text-red-500">*</span></label>
+            <label className="text-xs font-medium text-ps-label block mb-1">Template Name <span className="text-red-500">*</span></label>
             <input
               autoFocus
               type="text"
               value={name}
               onChange={(e) => { setName(e.target.value); setError(""); }}
               placeholder="e.g. Standard Client Invoice"
-              className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+              className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#64748B] block mb-2">Layout Style</label>
+            <label className="text-xs font-medium text-ps-label block mb-2">Layout Style</label>
             <div className="grid grid-cols-1 gap-2">
               {(Object.entries(TEMPLATE_DESCRIPTIONS) as [InvoiceTemplate["template_type"], (typeof TEMPLATE_DESCRIPTIONS)[keyof typeof TEMPLATE_DESCRIPTIONS]][]).map(([key, info]) => (
                 <button
                   key={key}
                   onClick={() => setType(key)}
                   className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-colors ${
-                    type === key ? "border-blue-500 bg-blue-50" : "border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                    type === key ? "border-blue-500 bg-blue-50" : "border-ps-border hover:bg-ps-bg"
                   }`}
                 >
                   <div className={`mt-0.5 px-2 py-0.5 rounded text-xs font-medium ${info.accent}`}>{info.label}</div>
-                  <p className="text-xs text-[#64748B] mt-0.5">{info.desc}</p>
+                  <p className="text-xs text-ps-label mt-0.5">{info.desc}</p>
                   {type === key && <Check size={14} className="ml-auto shrink-0 text-blue-600 mt-0.5" />}
                 </button>
               ))}
@@ -125,25 +125,25 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-[#64748B] block mb-1">Logo Position</label>
-              <select value={logoPos} onChange={(e) => setLogoPos(e.target.value as typeof logoPos)} className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 bg-[#F8FAFC]">
+              <label className="text-xs font-medium text-ps-label block mb-1">Logo Position</label>
+              <select value={logoPos} onChange={(e) => setLogoPos(e.target.value as typeof logoPos)} className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 bg-ps-bg">
                 {LOGO_POSITIONS.map((p) => <option key={p} value={p} className="capitalize">{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-[#64748B] block mb-1">Signature</label>
-              <select value={sigPlacement} onChange={(e) => setSigPlacement(e.target.value as typeof sigPlacement)} className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 bg-[#F8FAFC]">
+              <label className="text-xs font-medium text-ps-label block mb-1">Signature</label>
+              <select value={sigPlacement} onChange={(e) => setSigPlacement(e.target.value as typeof sigPlacement)} className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 bg-ps-bg">
                 {SIG_PLACEMENTS.map((p) => <option key={p} value={p} className="capitalize">{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
               </select>
             </div>
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} className="w-4 h-4 text-blue-600 rounded" />
-            <span className="text-sm text-[#334155]">Set as default template</span>
+            <span className="text-sm text-ps-body">Set as default template</span>
           </label>
         </div>
-        <div className="px-6 py-4 border-t border-[#F1F5F9] flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-1.5 border border-[#E2E8F0] text-[#475569] text-sm rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+        <div className="px-6 py-4 border-t border-ps-muted flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-1.5 border border-ps-border text-ps-label text-sm rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={handleCreate} disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Creating…" : "Create Template"}
           </button>
@@ -165,13 +165,13 @@ function TemplateCard({
 }) {
   const info = TEMPLATE_DESCRIPTIONS[template.template_type];
   return (
-    <div className={`bg-white rounded-xl border overflow-hidden ${template.is_default ? "border-blue-300 ring-2 ring-blue-100" : "border-[#F1F5F9]"}`}>
+    <div className={`bg-white rounded-xl border overflow-hidden ${template.is_default ? "border-blue-300 ring-2 ring-blue-100" : "border-ps-muted"}`}>
       <div className="px-5 py-4 flex items-start justify-between">
         <div className="flex items-start gap-3">
           <div className={`mt-0.5 px-2 py-0.5 rounded text-xs font-medium ${info.accent}`}>{info.label}</div>
           <div>
-            <p className="text-sm font-semibold text-[#0F172A]">{template.name}</p>
-            <p className="text-xs text-[#94A3B8] mt-0.5">{info.desc}</p>
+            <p className="text-sm font-semibold text-ps-ink">{template.name}</p>
+            <p className="text-xs text-ps-hint mt-0.5">{info.desc}</p>
           </div>
         </div>
         {template.is_default && (
@@ -181,11 +181,11 @@ function TemplateCard({
         )}
       </div>
 
-      <div className="px-5 pb-3 flex flex-wrap gap-2 text-xs text-[#64748B]">
-        <span className="px-2 py-0.5 bg-[#F8FAFC] rounded border border-[#E2E8F0]">Logo: {template.logo_position}</span>
-        <span className="px-2 py-0.5 bg-[#F8FAFC] rounded border border-[#E2E8F0]">Header: {template.header_style}</span>
-        <span className="px-2 py-0.5 bg-[#F8FAFC] rounded border border-[#E2E8F0]">Footer: {template.footer_style}</span>
-        <span className="px-2 py-0.5 bg-[#F8FAFC] rounded border border-[#E2E8F0]">Signature: {template.signature_placement}</span>
+      <div className="px-5 pb-3 flex flex-wrap gap-2 text-xs text-ps-label">
+        <span className="px-2 py-0.5 bg-ps-bg rounded border border-ps-border">Logo: {template.logo_position}</span>
+        <span className="px-2 py-0.5 bg-ps-bg rounded border border-ps-border">Header: {template.header_style}</span>
+        <span className="px-2 py-0.5 bg-ps-bg rounded border border-ps-border">Footer: {template.footer_style}</span>
+        <span className="px-2 py-0.5 bg-ps-bg rounded border border-ps-border">Signature: {template.signature_placement}</span>
       </div>
 
       {/* THE FIRST NOTE IS THE WARNING AND THE LAST IS THE REASSURANCE, and
@@ -207,7 +207,7 @@ function TemplateCard({
         </div>
       )}
 
-      <div className="px-5 py-3 border-t border-[#F8FAFC] flex items-center gap-2">
+      <div className="px-5 py-3 border-t border-ps-bg flex items-center gap-2">
         {!template.is_default && (
           <button onClick={onSetDefault} className="flex items-center gap-1.5 px-3 py-1 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
             <Star size={11} /> Set as Default
@@ -280,13 +280,13 @@ export default function InvoiceTemplatesPage() {
         {showCreate && <CreateModal onClose={() => setShowCreate(false)} onCreated={load} />}
 
         <div>
-          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] transition-colors mb-1">
+          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1">
             <ChevronLeft size={13} /> Settings
           </Link>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-semibold text-[#0F172A]">Invoice Templates</h1>
-              <p className="text-sm text-[#64748B] mt-0.5">Choose a layout style for your invoices and engagement documents.</p>
+              <h1 className="text-xl font-semibold text-ps-ink">Invoice Templates</h1>
+              <p className="text-sm text-ps-label mt-0.5">Choose a layout style for your invoices and engagement documents.</p>
             </div>
             <button
               onClick={() => setShowCreate(true)}
@@ -298,20 +298,20 @@ export default function InvoiceTemplatesPage() {
         </div>
 
         {loading ? (
-          <div className="py-12 text-center text-sm text-[#94A3B8]">Loading templates…</div>
+          <div className="py-12 text-center text-sm text-ps-hint">Loading templates…</div>
         ) : loadError ? (
           <div className="py-12 text-center space-y-3">
             <p className="text-sm text-red-600 font-medium">{loadError}</p>
             <button
               onClick={() => load()}
-              className="inline-flex items-center gap-1.5 px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-sm text-[#334155]"
+              className="inline-flex items-center gap-1.5 px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg text-sm text-ps-body"
             >
               Retry
             </button>
           </div>
         ) : templates.length === 0 ? (
           <div className="py-12 text-center space-y-3">
-            <p className="text-sm text-[#64748B]">No invoice templates yet.</p>
+            <p className="text-sm text-ps-label">No invoice templates yet.</p>
             <button
               onClick={() => setShowCreate(true)}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"

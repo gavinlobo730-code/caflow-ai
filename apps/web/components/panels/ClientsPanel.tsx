@@ -32,7 +32,7 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200 shrink-0">
-        <p className="text-[13px] font-semibold text-[#182350]">Clients</p>
+        <p className="text-[13px] font-semibold text-brand">Clients</p>
         <p className="text-[11px] text-gray-500 mt-0.5">Client management</p>
       </div>
 
@@ -40,11 +40,11 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
       <div className="px-2 py-2 border-b border-gray-200 shrink-0">
         <button
           onClick={onOpenSearch}
-          className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[7px] bg-[#F8FAFC] border border-gray-200 text-[12px] text-gray-500 hover:text-[#182350] hover:bg-gray-100 transition-all duration-75"
+          className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[7px] bg-ps-bg border border-gray-200 text-[12px] text-gray-500 hover:text-brand hover:bg-gray-100 transition-all duration-75"
         >
           <Search size={12} className="shrink-0" />
           <span className="flex-1 text-left">Search clients...</span>
-          <kbd className="text-[10px] text-[#CBD5E1] font-mono">⌘K</kbd>
+          <kbd className="text-[10px] text-ps-disabled font-mono">⌘K</kbd>
         </button>
       </div>
 
@@ -66,8 +66,8 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
                 className={cn(
                   "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
                   active
-                    ? "bg-[#182350] text-white"
-                    : "text-gray-600 hover:bg-[#F8FAFC] hover:text-[#182350]"
+                    ? "bg-brand text-white"
+                    : "text-gray-600 hover:bg-ps-bg hover:text-brand"
                 )}
               >
                 <Icon
@@ -83,7 +83,7 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
           })}
         </div>
 
-        <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-[#F8FAFC] border border-gray-200">
+        <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-ps-bg border border-gray-200">
           <p className="text-[11px] text-gray-500 leading-relaxed">
             Select a client from{" "}
             <Link href="/clients" className="text-blue-600 hover:underline">

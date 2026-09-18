@@ -100,7 +100,7 @@ export default function ReviewPage() {
     return (
       <div className="p-6 space-y-5 max-w-2xl mx-auto">
         {/* Three-step timeline placeholder */}
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-5">
+        <div className="bg-white rounded-xl border border-ps-muted p-5">
           <Skeleton className="h-3 w-32 mb-4" />
           <div className="flex items-start gap-4">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -112,9 +112,9 @@ export default function ReviewPage() {
           </div>
         </div>
         {/* Action panel placeholder */}
-        <FormSkeleton fields={1} className="bg-white rounded-xl border border-[#F1F5F9] p-5" />
+        <FormSkeleton fields={1} className="bg-white rounded-xl border border-ps-muted p-5" />
         {/* Review history placeholder */}
-        <TimelineSkeleton rows={3} className="bg-white rounded-xl border border-[#F1F5F9] p-5" />
+        <TimelineSkeleton rows={3} className="bg-white rounded-xl border border-ps-muted p-5" />
       </div>
     );
   }
@@ -142,8 +142,8 @@ export default function ReviewPage() {
     <div className="p-6 space-y-5 max-w-2xl mx-auto">
 
       {/* Three-step timeline */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-5">
-        <p className="text-xs font-semibold text-[#334155] mb-4">Review Timeline</p>
+      <div className="bg-white rounded-xl border border-ps-muted p-5">
+        <p className="text-xs font-semibold text-ps-body mb-4">Review Timeline</p>
         <div className="flex items-start gap-0 relative">
           {(["prepared", "reviewed", "approved"] as const).map((stepKey, idx) => {
             const step = steps.find((s) => s.step === stepKey);
@@ -152,38 +152,38 @@ export default function ReviewPage() {
               <div key={stepKey} className="flex-1 flex flex-col items-center relative">
                 {/* Connector line */}
                 {idx < 2 && (
-                  <div className={`absolute top-4 left-1/2 w-full h-0.5 ${done ? "bg-green-400" : "bg-[#E2E8F0]"}`} />
+                  <div className={`absolute top-4 left-1/2 w-full h-0.5 ${done ? "bg-green-400" : "bg-ps-border"}`} />
                 )}
                 {/* Icon */}
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 border-2 ${
                   done
                     ? "bg-green-100 border-green-400"
-                    : "bg-white border-[#E2E8F0]"
+                    : "bg-white border-ps-border"
                 }`}>
                   {done ? (
                     <CheckCircle2 size={14} className="text-green-600" />
                   ) : (
-                    <Circle size={14} className="text-[#CBD5E1]" />
+                    <Circle size={14} className="text-ps-disabled" />
                   )}
                 </div>
                 {/* Label */}
                 <div className="mt-2 text-center px-1">
-                  <p className="text-[10px] font-semibold text-[#334155]">{STEP_LABELS[stepKey]}</p>
+                  <p className="text-[10px] font-semibold text-ps-body">{STEP_LABELS[stepKey]}</p>
                   {done && step ? (
                     <>
-                      <p className="text-[10px] text-[#475569] mt-0.5">{step.user_name ?? "—"}</p>
-                      {step.user_role && <p className="text-[10px] text-[#94A3B8]">{step.user_role}</p>}
+                      <p className="text-[10px] text-ps-label mt-0.5">{step.user_name ?? "—"}</p>
+                      {step.user_role && <p className="text-[10px] text-ps-hint">{step.user_role}</p>}
                       {step.completed_at && (
-                        <p className="text-[10px] text-[#94A3B8]">{timeAgo(step.completed_at)}</p>
+                        <p className="text-[10px] text-ps-hint">{timeAgo(step.completed_at)}</p>
                       )}
                       {step.comment && (
-                        <p className="text-[10px] text-[#64748B] mt-1 italic max-w-[100px] mx-auto truncate" title={step.comment}>
+                        <p className="text-[10px] text-ps-label mt-1 italic max-w-[100px] mx-auto truncate" title={step.comment}>
                           &quot;{step.comment}&quot;
                         </p>
                       )}
                     </>
                   ) : (
-                    <p className="text-[10px] text-[#CBD5E1] mt-0.5">Pending</p>
+                    <p className="text-[10px] text-ps-disabled mt-0.5">Pending</p>
                   )}
                 </div>
               </div>
@@ -193,17 +193,17 @@ export default function ReviewPage() {
       </div>
 
       {/* Action panel */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-3">
-        <p className="text-xs font-semibold text-[#334155]">Your Action</p>
+      <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-3">
+        <p className="text-xs font-semibold text-ps-body">Your Action</p>
 
         <div>
-          <label className="block text-xs font-medium text-[#475569] mb-1">Comment (optional)</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Comment (optional)</label>
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             rows={3}
             placeholder="Add a comment for the reviewer…"
-            className="w-full text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           />
         </div>
 
@@ -259,7 +259,7 @@ export default function ReviewPage() {
               ITR. Partner-only, and the backend refuses without a reason. */}
           {currentStatus === "locked" && (
             <>
-              <p className="text-xs text-[#64748B] py-2">
+              <p className="text-xs text-ps-label py-2">
                 This engagement is locked and the client&apos;s financial year is closed
                 for posting. A Partner can reopen it — give the reason above; it goes
                 on the audit trail.
@@ -277,29 +277,29 @@ export default function ReviewPage() {
 
       {/* Review history */}
       {history.length > 0 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#F8FAFC]">
-            <p className="text-xs font-semibold text-[#334155]">Review History</p>
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div className="px-4 py-3 border-b border-ps-bg">
+            <p className="text-xs font-semibold text-ps-body">Review History</p>
           </div>
-          <div className="divide-y divide-[#F8FAFC]">
+          <div className="divide-y divide-ps-bg">
             {history.map((h) => (
               <div key={h.id} className="px-4 py-3 flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-[#F1F5F9] flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <User size={10} className="text-[#64748B]" />
+                <div className="w-6 h-6 rounded-full bg-ps-muted flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <User size={10} className="text-ps-label" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-xs font-medium text-[#334155]">{h.performed_by}</p>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${ACTION_BADGE[h.action] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+                    <p className="text-xs font-medium text-ps-body">{h.performed_by}</p>
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${ACTION_BADGE[h.action] ?? "bg-ps-muted text-ps-label"}`}>
                       {h.action.replace(/_/g, " ")}
                     </span>
-                    <span className="text-[10px] text-[#94A3B8]">{timeAgo(h.performed_at)}</span>
+                    <span className="text-[10px] text-ps-hint">{timeAgo(h.performed_at)}</span>
                   </div>
                   {h.comment && (
-                    <p className="text-[10px] text-[#64748B] mt-0.5 italic">&quot;{h.comment}&quot;</p>
+                    <p className="text-[10px] text-ps-label mt-0.5 italic">&quot;{h.comment}&quot;</p>
                   )}
                   {h.from_status && (
-                    <p className="text-[10px] text-[#CBD5E1] mt-0.5">
+                    <p className="text-[10px] text-ps-disabled mt-0.5">
                       {h.from_status} → {h.to_status}
                     </p>
                   )}

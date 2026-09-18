@@ -112,11 +112,11 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
         <div>
           <div className="flex items-center gap-2">
             <Scale size={14} className="text-blue-600" />
-            <h2 className="text-[13px] font-semibold text-[#0F172A]">
+            <h2 className="text-[13px] font-semibold text-ps-ink">
               Statutory bonus
             </h2>
           </div>
-          <p className="text-[11px] text-[#64748B] mt-0.5">
+          <p className="text-[11px] text-ps-label mt-0.5">
             Payment of Bonus Act 1965 · the minimum is payable whether or not
             there is an allocable surplus
           </p>
@@ -124,16 +124,16 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
         <div className="flex items-end gap-2">
           <div>
             <label htmlFor="bonus-year"
-                   className="block text-[10px] font-medium text-[#94A3B8] mb-1">
+                   className="block text-[10px] font-medium text-ps-hint mb-1">
               Accounting year
             </label>
             <select id="bonus-year" value={year} onChange={(e) => setYear(e.target.value)}
-                    className="px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
               {years.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
           <button onClick={load}
-                  className="p-1.5 mb-0.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
+                  className="p-1.5 mb-0.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
@@ -146,7 +146,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
       )}
 
       {loading && !data && (
-        <div className="flex items-center gap-2 text-xs text-[#94A3B8]">
+        <div className="flex items-center gap-2 text-xs text-ps-hint">
           <Loader2 size={12} className="animate-spin" /> Loading…
         </div>
       )}
@@ -154,10 +154,10 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
       {data && (
         <>
           {/* The employer's own determination. */}
-          <div className="border border-[#E2E8F0] rounded-lg bg-white">
+          <div className="border border-ps-border rounded-lg bg-white">
             <div className="px-4 py-3 flex items-start justify-between gap-4">
               <div className="min-w-0 space-y-1">
-                <p className="text-xs font-semibold text-[#0F172A]">
+                <p className="text-xs font-semibold text-ps-ink">
                   Rate {(data.rate_bps / 100).toFixed(2)}%
                   {data.rate_is_the_statutory_minimum && (
                     <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 border border-slate-200">
@@ -165,7 +165,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
                     </span>
                   )}
                 </p>
-                <p className="text-[11px] text-[#475569]">
+                <p className="text-[11px] text-ps-label">
                   Due {data.due_date}
                   {data.minimum_wage_monthly_paise != null && (
                     <> · §12 minimum wage {rupees(data.minimum_wage_monthly_paise)} a month
@@ -174,44 +174,44 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
                 </p>
               </div>
               <button onClick={() => setEditing((v) => !v)}
-                      className="flex-shrink-0 px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+                      className="flex-shrink-0 px-2.5 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
                 {editing ? "Cancel" : "Record"}
               </button>
             </div>
 
             {editing && (
-              <div className="border-t border-[#E2E8F0] px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="border-t border-ps-border px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="bonus-rate" className="block text-[10px] font-medium text-[#94A3B8] mb-1">
+                  <label htmlFor="bonus-rate" className="block text-[10px] font-medium text-ps-hint mb-1">
                     Rate % (§10 minimum 8.33, §11 maximum 20)
                   </label>
                   <input id="bonus-rate" value={rate} onChange={(e) => setRate(e.target.value)}
-                         className="w-full px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                         className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label htmlFor="bonus-surplus" className="block text-[10px] font-medium text-[#94A3B8] mb-1">
+                  <label htmlFor="bonus-surplus" className="block text-[10px] font-medium text-ps-hint mb-1">
                     Allocable surplus ₹ (§§4-7, optional)
                   </label>
                   <input id="bonus-surplus" value={surplus} onChange={(e) => setSurplus(e.target.value)}
-                         className="w-full px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                         className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label htmlFor="bonus-minwage" className="block text-[10px] font-medium text-[#94A3B8] mb-1">
+                  <label htmlFor="bonus-minwage" className="block text-[10px] font-medium text-ps-hint mb-1">
                     §12 minimum wage, ₹ a month
                   </label>
                   <input id="bonus-minwage" value={minWage} onChange={(e) => setMinWage(e.target.value)}
-                         className="w-full px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                         className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label htmlFor="bonus-employment" className="block text-[10px] font-medium text-[#94A3B8] mb-1">
+                  <label htmlFor="bonus-employment" className="block text-[10px] font-medium text-ps-hint mb-1">
                     Scheduled employment
                   </label>
                   <input id="bonus-employment" value={employment} onChange={(e) => setEmployment(e.target.value)}
-                         className="w-full px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                         className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div className="sm:col-span-2 flex justify-end">
                   <button onClick={saveDeclaration} disabled={saving}
-                          className="px-2.5 py-1.5 text-xs bg-[#0F172A] text-white rounded-lg hover:bg-[#1E293B] disabled:opacity-50">
+                          className="px-2.5 py-1.5 text-xs bg-brand-dark text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                     {saving ? "Saving…" : "Record"}
                   </button>
                 </div>
@@ -227,9 +227,9 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
               ["§11 maximum", rupees(data.total_maximum_paise)],
               ["Employees", `${data.eligible_count} in · ${data.excluded_count} out`],
             ].map(([label, value]) => (
-              <div key={label} className="border border-[#E2E8F0] rounded-lg bg-white px-3 py-2">
-                <p className="text-[10px] text-[#94A3B8]">{label}</p>
-                <p className="text-[13px] font-semibold text-[#0F172A] tabular-nums">{value}</p>
+              <div key={label} className="border border-ps-border rounded-lg bg-white px-3 py-2">
+                <p className="text-[10px] text-ps-hint">{label}</p>
+                <p className="text-[13px] font-semibold text-ps-ink tabular-nums">{value}</p>
               </div>
             ))}
           </div>
@@ -245,9 +245,9 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
             </div>
           )}
 
-          <div className="border border-[#E2E8F0] rounded-lg bg-white overflow-x-auto">
+          <div className="border border-ps-border rounded-lg bg-white overflow-x-auto">
             <table className="w-full text-[11px]">
-              <thead className="bg-[#F8FAFC] text-[#64748B]">
+              <thead className="bg-ps-bg text-ps-label">
                 <tr>
                   <th className="text-left px-3 py-2 font-medium">Employee</th>
                   <th className="text-right px-3 py-2 font-medium">Basic + DA</th>
@@ -259,11 +259,11 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
               </thead>
               <tbody>
                 {data.employees.map((e) => (
-                  <tr key={e.employee_id} className="border-t border-[#F1F5F9] align-top">
+                  <tr key={e.employee_id} className="border-t border-ps-muted align-top">
                     <td className="px-3 py-2">
-                      <p className="text-[#0F172A]">{e.employee_name}</p>
+                      <p className="text-ps-ink">{e.employee_name}</p>
                       {[...e.reasons, ...e.gaps].map((r, i) => (
-                        <p key={i} className="text-[10px] text-[#94A3B8] mt-0.5 leading-relaxed">{r}</p>
+                        <p key={i} className="text-[10px] text-ps-hint mt-0.5 leading-relaxed">{r}</p>
                       ))}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{rupees(e.monthly_salary_paise)}</td>
@@ -280,7 +280,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
                   </tr>
                 ))}
                 {data.employees.length === 0 && (
-                  <tr><td colSpan={6} className="px-3 py-6 text-center text-[#94A3B8]">
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-ps-hint">
                     No employees on this client&apos;s payroll master.
                   </td></tr>
                 )}
@@ -290,7 +290,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
 
           <div className="space-y-1">
             {data.notes.map((n, i) => (
-              <p key={i} className="text-[11px] text-[#64748B] leading-relaxed">{n}</p>
+              <p key={i} className="text-[11px] text-ps-label leading-relaxed">{n}</p>
             ))}
           </div>
         </>

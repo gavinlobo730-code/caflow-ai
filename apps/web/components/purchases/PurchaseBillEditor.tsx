@@ -718,7 +718,7 @@ export function PurchaseBillEditor({
 
   const toolbar = (
     <>
-      <button onClick={handleCancel} disabled={busy} className="mr-auto text-xs px-3 py-1.5 text-[#64748B] hover:text-[#334155] disabled:opacity-50">
+      <button onClick={handleCancel} disabled={busy} className="mr-auto text-xs px-3 py-1.5 text-ps-label hover:text-ps-body disabled:opacity-50">
         Cancel
       </button>
       <button onClick={save} disabled={busy} className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
@@ -728,8 +728,8 @@ export function PurchaseBillEditor({
   );
 
   const summary = (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-2 text-xs">
-      <p className="font-semibold text-[#334155]">Summary{isForeign ? ` (${currency})` : ""}</p>
+    <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-2 text-xs">
+      <p className="font-semibold text-ps-body">Summary{isForeign ? ` (${currency})` : ""}</p>
       <Row label="Taxable value" value={fmtAmt(totals.taxable_paise)} />
       {isInterstate ? (
         <Row label="IGST" value={fmtAmt(totals.igst_paise)} />
@@ -746,7 +746,7 @@ export function PurchaseBillEditor({
       {totals.cess_paise > 0 && (
         <Row label="Compensation cess" value={fmtAmt(totals.cess_paise)} />
       )}
-      <p className="text-[10px] text-[#94A3B8]">
+      <p className="text-[10px] text-ps-hint">
         {gstAuto ? `${isInterstate ? "Interstate" : "Intra-state"} — ${isInterstate ? "IGST" : "CGST + SGST"} (CGST Act §8)` : "Pick a vendor to preview CGST/SGST vs IGST."}
       </p>
       {isReverseCharge && (
@@ -760,21 +760,21 @@ export function PurchaseBillEditor({
           reversal "absolute in nature and not reclaimable" (Notification
           14/2022 with Circular 170/02/2022-GST). It is NOT in 4(D). */}
       {blockedGstPaise > 0 && (
-        <div className="border-t border-[#F1F5F9] pt-2 mt-1">
+        <div className="border-t border-ps-muted pt-2 mt-1">
           <Row label="ITC blocked (§17(5))" value={fmtAmt(blockedGstPaise)} />
-          <p className="text-[10px] text-[#94A3B8]">
+          <p className="text-[10px] text-ps-hint">
             Claimed in GSTR-3B Table 4(A) and reversed in 4(B)(1). It does not
             change what you pay the vendor.
           </p>
         </div>
       )}
-      <div className="flex justify-between font-semibold text-[#0F172A] border-t border-[#E2E8F0] pt-1.5 mt-1">
+      <div className="flex justify-between font-semibold text-ps-ink border-t border-ps-border pt-1.5 mt-1">
         <span>{isReverseCharge ? "Payable to Vendor" : "Grand Total"}{isForeign ? ` (${currency})` : ""}</span>
         <span className="font-mono">{fmtAmt(vendorTotalPaise)}</span>
       </div>
       {isForeign && rateNum > 0 && <Row label="≈ INR total" value={fmt(estBaseTotal)} muted />}
       {selectedVendor?.tds_applicable && (
-        <div className="border-t border-[#F1F5F9] pt-2 mt-1 space-y-1.5">
+        <div className="border-t border-ps-muted pt-2 mt-1 space-y-1.5">
           {/* The SECTION and the RATE come back with the figure. Neither is the
               vendor's stored tds_rate_bps: the rate actually applied depends on
               the payee's PAN (s.206AA), on residency (s.195 carries surcharge
@@ -797,7 +797,7 @@ export function PurchaseBillEditor({
                   cannot check, and this one moves with the year's running
                   total. */}
               {tds.data.tds_basis && (
-                <p className="text-[10px] text-[#94A3B8]">{tds.data.tds_basis}</p>
+                <p className="text-[10px] text-ps-hint">{tds.data.tds_basis}</p>
               )}
               {/* s.201(1A) runs at 1% a month on an under-deduction. The
                   shortfall is not lost — the next bill to the same payee
@@ -810,12 +810,12 @@ export function PurchaseBillEditor({
                   runs at 1% a month until it is deducted.
                 </p>
               )}
-              {isForeign && <p className="text-[10px] text-[#94A3B8]">TDS is always deducted in ₹ per IT Act §194.</p>}
+              {isForeign && <p className="text-[10px] text-ps-hint">TDS is always deducted in ₹ per IT Act §194.</p>}
             </>
           )}
         </div>
       )}
-      <p className="text-[10px] text-[#94A3B8] pt-1">
+      <p className="text-[10px] text-ps-hint pt-1">
         GST above is a preview and is confirmed by the server on save. The TDS figure
         is computed by the server now, by the same code that will withhold it.
       </p>
@@ -836,7 +836,7 @@ export function PurchaseBillEditor({
         { label: isEdit ? `Edit ${billNo || "Purchase Bill"}` : "New Purchase Bill" },
       ]}
       title={isEdit ? `Edit ${billNo || "Purchase Bill"}` : "New Purchase Bill"}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">{isEdit ? (existing?.status ?? "draft").replace("_", " ") : "Draft"}</span>}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">{isEdit ? (existing?.status ?? "draft").replace("_", " ") : "Draft"}</span>}
       dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Unsaved changes</span> : undefined}
       toolbar={toolbar}
       summary={summary}
@@ -856,7 +856,7 @@ export function PurchaseBillEditor({
           <section className="bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-2">
             <p className="text-xs font-medium text-amber-800 flex items-center gap-1.5"><Upload size={12} /> Upload Invoice (AI Extract)</p>
             <div className="flex items-center gap-2">
-              <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-[#475569]" />
+              <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
               <button onClick={handleExtract} disabled={!uploadFile || extracting} className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
                 {extracting ? "Extracting…" : "Extract"}
               </button>
@@ -876,8 +876,8 @@ export function PurchaseBillEditor({
                 save over that would stop a CA saving a correct bill. */}
             {aiExtracted && (
               <div className="mt-1 rounded border border-amber-200 bg-white px-2 py-1.5 space-y-1">
-                <p className="text-[10px] font-medium text-[#475569]">Read from the document</p>
-                <div className="grid grid-cols-5 gap-1 text-[10px] text-[#64748B]">
+                <p className="text-[10px] font-medium text-ps-label">Read from the document</p>
+                <div className="grid grid-cols-5 gap-1 text-[10px] text-ps-label">
                   {([
                     ["Taxable", "taxable_amount_paise"],
                     ["CGST", "cgst_paise"],
@@ -886,8 +886,8 @@ export function PurchaseBillEditor({
                     ["Total", "total_paise"],
                   ] as const).map(([label, key]) => (
                     <div key={key}>
-                      <span className="block text-[9px] uppercase tracking-wide text-[#94A3B8]">{label}</span>
-                      <span className="font-mono text-[#334155]">
+                      <span className="block text-[9px] uppercase tracking-wide text-ps-hint">{label}</span>
+                      <span className="font-mono text-ps-body">
                         {fmt(Number(aiExtracted[key] ?? 0))}
                       </span>
                     </div>
@@ -903,7 +903,7 @@ export function PurchaseBillEditor({
                   </p>
                 )}
                 {aiTotals && !aiTotals.checked && (
-                  <p className="text-[10px] text-[#94A3B8]">{aiTotals.note}</p>
+                  <p className="text-[10px] text-ps-hint">{aiTotals.note}</p>
                 )}
                 {/* And against the lines actually going to be saved, once they
                     compute anything: previewBillTotals skips a line with no
@@ -934,59 +934,59 @@ export function PurchaseBillEditor({
         )}
 
         {/* Party + metadata */}
-        <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <section className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
               <VendorLookup vendors={vendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
-              {isEdit && <p className="mt-1 text-[10px] text-[#94A3B8]">Vendor can&apos;t be changed once a bill exists — it&apos;s locked to the TDS section resolved at creation.</p>}
+              {isEdit && <p className="mt-1 text-[10px] text-ps-hint">Vendor can&apos;t be changed once a bill exists — it&apos;s locked to the TDS section resolved at creation.</p>}
               {fieldErr(validation.errors.vendor)}
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Vendor Invoice No.</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Vendor Invoice No.</label>
               <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001" disabled={isLocked}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
-              {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once received.</p>}
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
+              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Frozen once received.</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Our Reference</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Our Reference</label>
               <input value={ourReference} onChange={(e) => setOurReference(e.target.value)} placeholder="Internal tracking no."
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Bill Date *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Bill Date *</label>
               <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} disabled={isLocked}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
               {fieldErr(validation.errors.billDate)}
-              {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once received — issue a Debit Note to correct (CGST Act §34).</p>}
+              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Frozen once received — issue a Debit Note to correct (CGST Act §34).</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Due Date</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
               <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="flex flex-col justify-end pb-1.5">
-              <label className={`flex items-center gap-2 text-xs text-[#475569] ${isEdit ? "opacity-50" : "cursor-pointer"}`}>
+              <label className={`flex items-center gap-2 text-xs text-ps-label ${isEdit ? "opacity-50" : "cursor-pointer"}`}>
                 <input type="checkbox" checked={isReverseCharge} disabled={isEdit} onChange={(e) => setIsReverseCharge(e.target.checked)} className="rounded" />
                 Reverse Charge (RCM)
               </label>
-              <p className="mt-1 text-[10px] text-[#94A3B8]">
+              <p className="mt-1 text-[10px] text-ps-hint">
                 {isEdit ? "Locked once a bill exists." : "CGST Act §9(3)/(4) — GTA, import of services, notified supplies, or purchases from an unregistered person in a specified category."}
               </p>
             </div>
             <div className="col-span-2 lg:col-span-4">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Notes</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes — not shown to the vendor" rows={2}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
           {mcActive && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-[#F1F5F9]">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-ps-muted">
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Currency</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
                 <select value={currency} onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
-                  className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">INR (default)</option>
                   {currencies.filter((c) => c.code !== "INR").map((c) => (
                     <option key={c.code} value={c.code}>{c.code}{c.display_name ? ` — ${c.display_name}` : ""}</option>
@@ -995,10 +995,10 @@ export function PurchaseBillEditor({
               </div>
               {isForeign && (
                 <div>
-                  <label className="block text-xs font-medium text-[#475569] mb-1">Exchange Rate *</label>
+                  <label className="block text-xs font-medium text-ps-label mb-1">Exchange Rate *</label>
                   <input type="number" min="0" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
                     placeholder={`1 ${currency} = ? INR`}
-                    className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono" />
+                    className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono" />
                   {fieldErr(validation.errors.exchangeRate)}
                 </div>
               )}
@@ -1023,11 +1023,11 @@ export function PurchaseBillEditor({
             incometax.gov.in under the remitter's own login; this is where the
             acknowledgement goes afterwards. CLAUDE.md: never auto-submit. */}
         {tds.data?.tds_section === "195" && (
-          <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-            <h2 className="text-xs font-semibold text-[#334155]">
+          <section className="bg-white rounded-xl border border-ps-muted p-4">
+            <h2 className="text-xs font-semibold text-ps-body">
               Foreign remittance — Form 15CA / 15CB (IT Act §195(6), Rule 37BB)
             </h2>
-            <p className="mt-1 text-[10px] text-[#94A3B8]">
+            <p className="mt-1 text-[10px] text-ps-hint">
               File on incometax.gov.in under the remitter&apos;s login, then record
               the acknowledgement here. Nothing on this page is submitted to any
               portal. These three can still be edited after the bill is received,
@@ -1035,29 +1035,29 @@ export function PurchaseBillEditor({
             </p>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">
+                <label className="block text-xs font-medium text-ps-label mb-1">
                   Form 15CA acknowledgement no.
                 </label>
                 <input value={form15caAckNo} onChange={(e) => setForm15caAckNo(e.target.value)}
                   placeholder="As shown on the filed 15CA"
-                  className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">
+                <label className="block text-xs font-medium text-ps-label mb-1">
                   Form 15CA filed on
                 </label>
                 <input type="date" value={form15caFiledOn}
                   onChange={(e) => setForm15caFiledOn(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">
+                <label className="block text-xs font-medium text-ps-label mb-1">
                   Form 15CB UDIN
                 </label>
                 <input value={form15cbUdin} onChange={(e) => setForm15cbUdin(e.target.value)}
                   placeholder="UDIN of the certifying member"
-                  className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <p className="mt-1 text-[10px] text-[#94A3B8]">
+                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <p className="mt-1 text-[10px] text-ps-hint">
                   What makes the certificate traceable to the member who signed it.
                 </p>
               </div>
@@ -1101,23 +1101,23 @@ export function PurchaseBillEditor({
         )}
 
         {/* Line items */}
-        <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <section className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <h2 className="text-xs font-semibold text-[#334155]">Line items</h2>
+            <h2 className="text-xs font-semibold text-ps-body">Line items</h2>
             {!isLocked && (
               <label className="flex items-center gap-1.5 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={showCess}
                   onChange={(e) => setShowCess(e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-[#CBD5E1] accent-[#0F172A]"
+                  className="h-3.5 w-3.5 rounded border-ps-border-strong accent-brand-dark"
                 />
-                <span className="text-[11px] text-[#475569]">Compensation cess</span>
+                <span className="text-[11px] text-ps-label">Compensation cess</span>
               </label>
             )}
           </div>
           {isLocked && (
-            <p className="mb-2 text-[10px] text-[#94A3B8]">
+            <p className="mb-2 text-[10px] text-ps-hint">
               Frozen once received — issue a Debit Note to correct a quantity, rate, or item (CGST Act §34).
             </p>
           )}
@@ -1129,7 +1129,7 @@ export function PurchaseBillEditor({
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[860px]">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-ps-hint">
                   <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
                   <th className="pb-2 text-left font-semibold">Description</th>
                   <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
@@ -1152,7 +1152,7 @@ export function PurchaseBillEditor({
                   <th className="pb-2 w-6" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {lines.map((line, idx) => {
                   const g = previewBillTotals([line], isInterstate);
                   const invalid = attempted && !isValidBillLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
@@ -1165,7 +1165,7 @@ export function PurchaseBillEditor({
                             blank line has hsnMatches === undefined and shows nothing. */}
                         {line.hsnMatches && line.hsnMatches.length > 1 && !line.service_catalogue_id && (
                           <div className="mt-1 flex flex-wrap gap-1 items-center">
-                            <span className="text-[9px] text-[#94A3B8]">HSN {line.hsn_sac} matches:</span>
+                            <span className="text-[9px] text-ps-hint">HSN {line.hsn_sac} matches:</span>
                             {line.hsnMatches.map((m) => (
                               <button key={m.id} type="button" onClick={() => onPickProduct(idx, m)}
                                 className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
@@ -1175,7 +1175,7 @@ export function PurchaseBillEditor({
                           </div>
                         )}
                         {line.hsnMatches && line.hsnMatches.length === 0 && line.hsn_sac.trim() && !line.service_catalogue_id && (
-                          <p className="mt-1 text-[9px] text-[#CBD5E1]">No catalogue match for HSN {line.hsn_sac}</p>
+                          <p className="mt-1 text-[9px] text-ps-disabled">No catalogue match for HSN {line.hsn_sac}</p>
                         )}
                         {line.hsnMatches?.length === 1 && line.service_catalogue_id === line.hsnMatches[0].id && (
                           <p className="mt-1 text-[9px] text-emerald-600">✓ Auto-linked from catalogue</p>
@@ -1183,13 +1183,13 @@ export function PurchaseBillEditor({
                       </td>
                       <td className="py-1.5 pr-2">
                         <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
                         {/* CGST ACT §17(5), UNDER THE DESCRIPTION AND NOT IN A
                             COLUMN OF ITS OWN. Eligible is the ordinary case, so
                             it is one checkbox; the fifteen-clause select appears
                             only once a line is marked, where a column would have
                             crowded out the figures on every row of every bill. */}
-                        <label className="mt-1 flex items-center gap-1.5 text-[10px] text-[#64748B]">
+                        <label className="mt-1 flex items-center gap-1.5 text-[10px] text-ps-label">
                           <input type="checkbox" checked={!lineIsItcEligible(line)}
                             aria-label={`Line ${idx + 1} ITC blocked under section 17(5)`}
                             onChange={(e) => setLine(idx, e.target.checked
@@ -1207,14 +1207,14 @@ export function PurchaseBillEditor({
                               onChange={(e) => setLine(idx, { blocked_credit_reason: e.target.value })}
                               className={`mt-1 w-full px-1 py-1 border rounded focus:outline-none text-[10px] ${
                                 (line.blocked_credit_reason ?? "").trim() === ""
-                                  ? "border-red-300" : "border-[#E2E8F0]"}`}>
+                                  ? "border-red-300" : "border-ps-border"}`}>
                               <option value="">— which clause? —</option>
                               {BLOCKED_CREDIT_REASONS.map((r) => (
                                 <option key={r.code} value={r.code}>{r.clause} · {r.label}</option>
                               ))}
                             </select>
                             {BLOCKED_CREDIT_REASONS.find((r) => r.code === line.blocked_credit_reason)?.note && (
-                              <p className="mt-0.5 text-[9px] text-[#94A3B8]">
+                              <p className="mt-0.5 text-[9px] text-ps-hint">
                                 {BLOCKED_CREDIT_REASONS.find((r) => r.code === line.blocked_credit_reason)!.note}
                               </p>
                             )}
@@ -1231,21 +1231,21 @@ export function PurchaseBillEditor({
                       </td>
                       <td className="py-1.5 px-1">
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label={`Line ${idx + 1} quantity`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
                       </td>
                       <td className="py-1.5 px-1">
                         <select value={line.unit || "NOS"} onChange={(e) => setLine(idx, { unit: e.target.value })} aria-label={`Line ${idx + 1} unit`}
-                          className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
+                          className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none text-xs">
                           {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
                         </select>
                       </td>
                       <td className="py-1.5 px-1">
                         <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
-                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
                       </td>
                       <td className="py-1.5 px-1">
                         <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseFloat(e.target.value) })} aria-label={`Line ${idx + 1} GST rate`}
-                          className="w-full px-1 py-1 border border-[#E2E8F0] rounded focus:outline-none text-xs">
+                          className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none text-xs">
                           {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
@@ -1256,21 +1256,21 @@ export function PurchaseBillEditor({
                               value={line.cessPercent ?? ""}
                               onChange={(e) => setLine(idx, { cessPercent: e.target.value })}
                               placeholder="0" aria-label={`Line ${idx + 1} compensation cess percent`}
-                              className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
                           </td>
                           <td className="py-1.5 px-1">
                             <input type="number" min="0" step="0.01"
                               value={line.cessPerUnit ?? ""}
                               onChange={(e) => setLine(idx, { cessPerUnit: e.target.value })}
                               placeholder="0.00" aria-label={`Line ${idx + 1} compensation cess per unit`}
-                              className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
                           </td>
                         </>
                       )}
-                      <td className="py-1.5 px-2 text-right font-mono text-[#334155]">{g.grand_total_paise > 0 ? fmtAmt(g.grand_total_paise) : "—"}</td>
+                      <td className="py-1.5 px-2 text-right font-mono text-ps-body">{g.grand_total_paise > 0 ? fmtAmt(g.grand_total_paise) : "—"}</td>
                       <td className="py-1.5">
                         {lines.length > 1 && (
-                          <button onClick={() => removeLine(idx)} className="text-[#CBD5E1] hover:text-red-600" aria-label="Remove line">
+                          <button onClick={() => removeLine(idx)} className="text-ps-disabled hover:text-red-600" aria-label="Remove line">
                             <Trash2 size={13} />
                           </button>
                         )}
@@ -1348,7 +1348,7 @@ export function PurchaseBillEditor({
 
 function Row({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
-    <div className={`flex justify-between ${muted ? "text-[#94A3B8]" : "text-[#475569]"}`}>
+    <div className={`flex justify-between ${muted ? "text-ps-hint" : "text-ps-label"}`}>
       <span>{label}</span>
       <span className="font-mono">{value}</span>
     </div>

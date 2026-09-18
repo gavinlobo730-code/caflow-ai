@@ -207,7 +207,7 @@ export default function StatutoryValuesPage() {
   return (
     <RoleGuard allowed={["Partner", "Manager"]}>
       <div className="p-6 max-w-5xl mx-auto">
-        <Link href="/settings" className="inline-flex items-center gap-1 text-sm text-[#64748B] hover:text-[#0F172A] mb-4">
+        <Link href="/settings" className="inline-flex items-center gap-1 text-sm text-ps-label hover:text-ps-ink mb-4">
           <ChevronLeft size={15} />Settings
         </Link>
 
@@ -215,8 +215,8 @@ export default function StatutoryValuesPage() {
           <div className="flex items-start gap-3">
             <Scale size={18} className="text-indigo-500 mt-0.5" />
             <div>
-              <h1 className="text-lg font-semibold text-[#0F172A]">Statutory values</h1>
-              <p className="text-sm text-[#64748B] mt-0.5 max-w-2xl">
+              <h1 className="text-lg font-semibold text-ps-ink">Statutory values</h1>
+              <p className="text-sm text-ps-label mt-0.5 max-w-2xl">
                 Your firm&apos;s reading of the state professional-tax notifications, recorded
                 once and used for every client with staff in that state. Twenty-two states levy
                 it; {modelled.length} are built in and verified against the state Act, and the
@@ -258,8 +258,8 @@ export default function StatutoryValuesPage() {
         {loading ? <TableSkeleton rows={4} /> : (
           <>
             {versions.size === 0 ? (
-              <div className="bg-white border border-[#E2E8F0] rounded-xl p-8 text-center">
-                <p className="text-sm text-[#64748B]">
+              <div className="bg-white border border-ps-border rounded-xl p-8 text-center">
+                <p className="text-sm text-ps-label">
                   Nothing recorded yet. This ships empty and is never seeded — each state
                   sets its own slabs by its own notification, and a figure written from
                   memory is a wrong deduction in somebody&apos;s pay.
@@ -270,10 +270,10 @@ export default function StatutoryValuesPage() {
                 {Array.from(versions.entries()).sort().map(([key, bandRows]) => {
                   const first = bandRows[0];
                   return (
-                    <div key={key} className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-                      <div className="px-4 py-3 flex items-start justify-between border-b border-[#F1F5F9]">
+                    <div key={key} className="bg-white border border-ps-border rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 flex items-start justify-between border-b border-ps-muted">
                         <div>
-                          <p className="text-sm font-semibold text-[#0F172A]">
+                          <p className="text-sm font-semibold text-ps-ink">
                             {first.state} — effective {first.effective_from}
                             {first.basis === "half_yearly" && (
                               <span className="ml-2 text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
@@ -283,22 +283,22 @@ export default function StatutoryValuesPage() {
                           </p>
                           {/* The authority, printed beside the figures. It is the
                               reason these numbers may drive a deduction at all. */}
-                          <p className="text-xs text-[#64748B] mt-0.5">
+                          <p className="text-xs text-ps-label mt-0.5">
                             {first.notification_reference} · notified {first.notification_date}
                             {first.months && first.months.length > 0 &&
                               ` · deducted in ${first.months.map((m: number) => MONTHS[m - 1]).join(", ")}`}
                           </p>
-                          {first.note && <p className="text-xs text-[#94A3B8] mt-0.5">{first.note}</p>}
+                          {first.note && <p className="text-xs text-ps-hint mt-0.5">{first.note}</p>}
                         </div>
                         <button disabled={actionInFlight} onClick={() => remove(first)}
-                          className="text-[#94A3B8] hover:text-red-600 shrink-0"
+                          className="text-ps-hint hover:text-red-600 shrink-0"
                           aria-label="Remove this version">
                           <Trash2 size={15} />
                         </button>
                       </div>
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="text-[10px] uppercase tracking-wide text-[#94A3B8]">
+                          <tr className="text-[10px] uppercase tracking-wide text-ps-hint">
                             <th className="text-left px-4 py-2">From</th>
                             <th className="text-left px-4 py-2">To</th>
                             <th className="text-right px-4 py-2">Tax</th>
@@ -306,14 +306,14 @@ export default function StatutoryValuesPage() {
                         </thead>
                         <tbody>
                           {[...bandRows].sort((a, b) => a.from_paise - b.from_paise).map(b => (
-                            <tr key={b.id} className="border-t border-[#F8FAFC]">
-                              <td className="px-4 py-2 text-[#334155]">{rupees(b.from_paise)}</td>
-                              <td className="px-4 py-2 text-[#334155]">
+                            <tr key={b.id} className="border-t border-ps-bg">
+                              <td className="px-4 py-2 text-ps-body">{rupees(b.from_paise)}</td>
+                              <td className="px-4 py-2 text-ps-body">
                                 {b.to_paise === null
-                                  ? <span className="text-[#94A3B8]">and above</span>
+                                  ? <span className="text-ps-hint">and above</span>
                                   : rupees(b.to_paise)}
                               </td>
-                              <td className="px-4 py-2 text-right font-medium text-[#0F172A]">
+                              <td className="px-4 py-2 text-right font-medium text-ps-ink">
                                 {rupees(b.amount_paise)}
                               </td>
                             </tr>
@@ -329,18 +329,18 @@ export default function StatutoryValuesPage() {
             {/* Which states still deduct nothing. Named rather than counted, so
                 a CA can see whether any of them is one of their clients'. */}
             {stillMissing.length > 0 && (
-              <div className="mt-5 bg-white border border-[#E2E8F0] rounded-xl p-4">
-                <p className="text-sm font-medium text-[#0F172A]">
+              <div className="mt-5 bg-white border border-ps-border rounded-xl p-4">
+                <p className="text-sm font-medium text-ps-ink">
                   {stillMissing.length} state{stillMissing.length === 1 ? "" : "s"} still
                   deduct nothing
                 </p>
-                <p className="text-xs text-[#64748B] mt-0.5">
+                <p className="text-xs text-ps-label mt-0.5">
                   An employee in one of these is reported as a gap on the run and has no
                   professional tax withheld. Article 276 makes the employer liable either way.
                 </p>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {stillMissing.map(code => (
-                    <span key={code} className="text-[11px] px-2 py-0.5 rounded bg-[#F1F5F9] text-[#475569]">
+                    <span key={code} className="text-[11px] px-2 py-0.5 rounded bg-ps-muted text-ps-label">
                       {levying[code]} ({code})
                     </span>
                   ))}
@@ -353,9 +353,9 @@ export default function StatutoryValuesPage() {
         {showForm && (
           <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-6 overflow-y-auto z-50">
             <div className="bg-white rounded-xl w-full max-w-2xl my-8">
-              <div className="px-5 py-4 flex items-center justify-between border-b border-[#F1F5F9]">
-                <h2 className="text-sm font-semibold text-[#0F172A]">Record a notification</h2>
-                <button onClick={() => setShowForm(false)} className="text-[#94A3B8] hover:text-[#0F172A]">
+              <div className="px-5 py-4 flex items-center justify-between border-b border-ps-muted">
+                <h2 className="text-sm font-semibold text-ps-ink">Record a notification</h2>
+                <button onClick={() => setShowForm(false)} className="text-ps-hint hover:text-ps-ink">
                   <X size={16} />
                 </button>
               </div>
@@ -369,16 +369,16 @@ export default function StatutoryValuesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-[#64748B] mb-1">Read against</label>
+                  <label className="block text-[11px] text-ps-label mb-1">Read against</label>
                   <select value={basis} onChange={e => setBasis(e.target.value)}
-                    className="w-full border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400">
+                    className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400">
                     <option value="monthly">The month&apos;s gross</option>
                     <option value="half_yearly">Six months&apos; gross (half-yearly levy)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-[#64748B] mb-1">
+                  <label className="block text-[11px] text-ps-label mb-1">
                     Deducted in — leave all unticked for every month
                   </label>
                   <div className="flex flex-wrap gap-1">
@@ -389,7 +389,7 @@ export default function StatutoryValuesPage() {
                         className={`text-[11px] px-2 py-1 rounded border ${
                           months.includes(i + 1)
                             ? "bg-indigo-600 text-white border-indigo-600"
-                            : "border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC]"}`}>
+                            : "border-ps-border text-ps-label hover:bg-ps-bg"}`}>
                         {m}
                       </button>
                     ))}
@@ -398,7 +398,7 @@ export default function StatutoryValuesPage() {
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] text-[#64748B]">
+                    <label className="text-[11px] text-ps-label">
                       Bands — must start at ₹0, meet end to start, and leave the last &quot;To&quot; blank
                     </label>
                     <button type="button" onClick={() => setBands(b => [...b, { ...EMPTY_BAND }])}
@@ -409,16 +409,16 @@ export default function StatutoryValuesPage() {
                       <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-1.5 items-center">
                         <input value={band.from} placeholder="From ₹"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, from: e.target.value } : x))}
-                          className="border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400" />
+                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400" />
                         <input value={band.to} placeholder="To ₹ (blank = and above)"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, to: e.target.value } : x))}
-                          className="border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400" />
+                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400" />
                         <input value={band.amount} placeholder="Tax ₹"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
-                          className="border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400" />
+                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400" />
                         <button type="button" disabled={bands.length === 1}
                           onClick={() => setBands(b => b.filter((_, j) => j !== i))}
-                          className="text-[#94A3B8] hover:text-red-600 disabled:opacity-30">
+                          className="text-ps-hint hover:text-red-600 disabled:opacity-30">
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -429,9 +429,9 @@ export default function StatutoryValuesPage() {
                 <Field label="Note (optional)" value={note} onChange={setNote} placeholder="Anything the next reviewer should know" />
               </div>
 
-              <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-[#F1F5F9]">
+              <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-ps-muted">
                 <button onClick={() => setShowForm(false)}
-                  className="px-4 py-1.5 text-sm text-[#475569] hover:bg-[#F8FAFC] rounded-lg">Cancel</button>
+                  className="px-4 py-1.5 text-sm text-ps-label hover:bg-ps-bg rounded-lg">Cancel</button>
                 <button onClick={save} disabled={actionInFlight}
                   className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
                   {saving ? "Saving…" : "Record"}
@@ -451,10 +451,10 @@ function Field({ label, value, onChange, placeholder, type = "text" }: {
 }) {
   return (
     <div>
-      <label className="block text-[11px] text-[#64748B] mb-1">{label}</label>
+      <label className="block text-[11px] text-ps-label mb-1">{label}</label>
       <input type={type} value={value} placeholder={placeholder}
         onChange={e => onChange(e.target.value)}
-        className="w-full border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[12px] text-[#1E293B] outline-none focus:border-indigo-400" />
+        className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-indigo-400" />
     </div>
   );
 }

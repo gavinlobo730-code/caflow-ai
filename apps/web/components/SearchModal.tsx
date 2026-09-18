@@ -153,20 +153,20 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-[#F8FAFC]/75 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-ps-bg/75 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.03)] border border-[#E2E8F0] w-full max-w-2xl mx-4 overflow-hidden"
+        className="bg-white rounded-2xl shadow-[0_24px_60px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.03)] border border-ps-border w-full max-w-2xl mx-4 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-[#E2E8F0]">
-          <Search size={18} className="text-[#94A3B8] shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-ps-border">
+          <Search size={18} className="text-ps-hint shrink-0" />
           <input
             ref={inputRef}
             type="text"
-            className="flex-1 text-base outline-none text-[#1E293B] placeholder:text-[#94A3B8] bg-transparent"
+            className="flex-1 text-base outline-none text-ps-ink placeholder:text-ps-hint bg-transparent"
             placeholder="Search clients, tasks, filings, journals..."
             value={query}
             onChange={e => setQuery(e.target.value)}
@@ -174,9 +174,9 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
           />
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-[#F1F5F9] transition-colors"
+            className="p-1 rounded hover:bg-ps-muted transition-colors"
           >
-            <X size={15} className="text-[#94A3B8]" />
+            <X size={15} className="text-ps-hint" />
           </button>
         </div>
 
@@ -198,7 +198,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
               <p className="text-sm text-red-600 font-medium">{searchError}</p>
               <button
                 onClick={() => search(query)}
-                className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]"
+                className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body"
               >
                 Retry
               </button>
@@ -206,13 +206,13 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
           )}
 
           {!loading && query && !searchError && allResults.length === 0 && (
-            <div className="py-12 text-center text-[#94A3B8]">
+            <div className="py-12 text-center text-ps-hint">
               <p className="text-sm">No results for &quot;{query}&quot;</p>
             </div>
           )}
 
           {!loading && !query && (
-            <div className="py-12 text-center text-[#94A3B8]">
+            <div className="py-12 text-center text-ps-hint">
               <p className="text-sm">Search clients, tasks, filings, journals...</p>
             </div>
           )}
@@ -224,7 +224,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
                 return (
                   <div key={cat}>
                     <div className="px-4 py-1.5">
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] flex items-center gap-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-widest text-ps-hint flex items-center gap-1">
                         <Icon size={10} />
                         {CATEGORY_LABELS[cat as keyof typeof CATEGORY_LABELS]}
                       </span>
@@ -241,8 +241,8 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
                           }`}
                           onClick={() => { router.push(item.href); onClose(); }}
                         >
-                          <p className="text-sm font-medium text-[#1E293B]">{item.title}</p>
-                          <p className="text-xs text-[#94A3B8]">{item.subtitle}</p>
+                          <p className="text-sm font-medium text-ps-ink">{item.title}</p>
+                          <p className="text-xs text-ps-hint">{item.subtitle}</p>
                         </button>
                       );
                     })}
@@ -254,7 +254,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
         </div>
 
         {/* Footer */}
-        <div className="border-t border-[#E2E8F0] px-4 py-2 flex items-center gap-4 text-xs text-[#94A3B8]">
+        <div className="border-t border-ps-border px-4 py-2 flex items-center gap-4 text-xs text-ps-hint">
           <span><kbd className="font-mono">↑↓</kbd> navigate</span>
           <span><kbd className="font-mono">Enter</kbd> select</span>
           <span><kbd className="font-mono">Esc</kbd> close</span>

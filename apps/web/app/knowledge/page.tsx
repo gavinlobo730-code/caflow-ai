@@ -87,13 +87,13 @@ function KnowledgeInner() {
     <div className="p-6 max-w-4xl">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Library size={18} className="text-[#182350]" />
-          <h1 className="text-lg font-semibold text-[#182350]">Knowledge Base{scope ? ` — ${scope}` : ""}</h1>
+          <Library size={18} className="text-brand" />
+          <h1 className="text-lg font-semibold text-brand">Knowledge Base{scope ? ` — ${scope}` : ""}</h1>
           {!loading && !error && <span className="text-[12px] text-gray-400">{articles.length} article{articles.length === 1 ? "" : "s"}</span>}
         </div>
         <div className="flex items-center gap-3">
-          {canAuthor && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-[#182350] text-white"><Plus size={13} /> New article</button>}
-          <button onClick={load} className="text-gray-400 hover:text-[#182350]"><RefreshCw size={14} /></button>
+          {canAuthor && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-brand text-white"><Plus size={13} /> New article</button>}
+          <button onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
         </div>
       </div>
 
@@ -118,7 +118,7 @@ function KnowledgeInner() {
           <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
           <textarea placeholder="Content…" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" rows={4} />
           <input placeholder="Tags (comma-separated)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
-          <button type="submit" className="px-3 py-1.5 rounded-lg bg-[#182350] text-white text-[12px]">Create</button>
+          <button type="submit" className="px-3 py-1.5 rounded-lg bg-brand text-white text-[12px]">Create</button>
         </form>
       )}
 
@@ -129,7 +129,7 @@ function KnowledgeInner() {
             <div key={a.id} className="bg-white border border-gray-200 rounded-xl">
               <button disabled={rowBusy} onClick={() => open(a.id)} className="w-full flex items-center justify-between px-4 py-3 text-left">
                 <div>
-                  <p className="text-[13px] font-medium text-[#182350]">{a.title}</p>
+                  <p className="text-[13px] font-medium text-brand">{a.title}</p>
                   <p className="text-[11px] text-gray-400 mt-0.5">
                     {a.scope}{a.department ? ` · ${a.department}` : ""} · v{a.current_version}
                     {a.tags && a.tags.length > 0 ? ` · ${a.tags.join(", ")}` : ""}

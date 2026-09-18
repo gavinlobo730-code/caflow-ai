@@ -151,12 +151,12 @@ export default function AllocateReceiptModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4" onClick={onClose}>
       <div className="w-full max-w-[720px] max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-xl"
         onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-[#E2E8F0] px-5 py-3 flex items-start justify-between gap-3">
+        <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
           <div>
-            <p className="text-[14px] font-semibold text-[#1E293B]">
+            <p className="text-[14px] font-semibold text-ps-ink">
               Apply {receipt.receipt_no}
             </p>
-            <p className="text-[11px] text-[#94A3B8]">
+            <p className="text-[11px] text-ps-hint">
               {receipt.customer_name ?? "Customer"} · {fmt(settlement)} to settle
               {Number(receipt.tds_paise ?? 0) > 0
                 ? ` (${fmt(receipt.amount_paise)} received + ${fmt(Number(receipt.tds_paise))} TDS)`
@@ -164,32 +164,32 @@ export default function AllocateReceiptModal({
             </p>
           </div>
           <button onClick={onClose}
-            className="text-[12px] text-[#64748B] border border-[#E2E8F0] rounded-lg px-2.5 py-1 hover:bg-[#F8FAFC] shrink-0">
+            className="text-[12px] text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
             Close
           </button>
         </div>
 
         <div className="p-5 space-y-3">
-          {loading ? <p className="text-[12px] text-[#94A3B8]">Loading open invoices…</p>
+          {loading ? <p className="text-[12px] text-ps-hint">Loading open invoices…</p>
             : loadFailed ? (
               <div className="flex items-center gap-3">
                 <p className="text-[12px] text-red-600">
                   Couldn&apos;t load this customer&apos;s invoices — the request failed.
                 </p>
                 <button onClick={load}
-                  className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded-lg text-[#334155] hover:bg-[#F8FAFC]">
+                  className="text-[11px] px-2 py-1 border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
                   Retry
                 </button>
               </div>
             ) : invoices.length === 0 ? (
-              <p className="text-[12px] text-[#94A3B8] py-6 text-center">
+              <p className="text-[12px] text-ps-hint py-6 text-center">
                 This customer has no open invoices. The receipt stays unallocated —
                 an advance against an invoice not yet raised.
               </p>
             ) : (
               <table className="w-full text-[11px]">
                 <thead>
-                  <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+                  <tr className="text-left text-ps-label border-b border-ps-border">
                     <th className="py-1.5 pr-2">Invoice</th>
                     <th className="py-1.5 pr-2">Date</th>
                     <th className="py-1.5 pr-2 text-right">Total</th>
@@ -201,9 +201,9 @@ export default function AllocateReceiptModal({
                   {invoices.map((inv) => {
                     const problem = messageFor(inv.id);
                     return (
-                      <tr key={inv.id} className="border-b border-[#F1F5F9]">
-                        <td className="py-1.5 pr-2 font-mono text-[#1E293B]">{inv.invoice_no}</td>
-                        <td className="py-1.5 pr-2 text-[#64748B]">{inv.invoice_date}</td>
+                      <tr key={inv.id} className="border-b border-ps-muted">
+                        <td className="py-1.5 pr-2 font-mono text-ps-ink">{inv.invoice_no}</td>
+                        <td className="py-1.5 pr-2 text-ps-label">{inv.invoice_date}</td>
                         <td className="py-1.5 pr-2 text-right font-mono">{fmt(inv.total_paise)}</td>
                         <td className="py-1.5 pr-2 text-right font-mono text-amber-700">
                           {fmt(ceilingFor(inv))}
@@ -214,11 +214,11 @@ export default function AllocateReceiptModal({
                               aria-label={`Amount to apply to ${inv.invoice_no}`}
                               onChange={(ev) => setAmounts((a) => ({ ...a, [inv.id]: ev.target.value }))}
                               className={`w-28 px-2 py-1 border rounded text-right text-[11px] outline-none focus:border-blue-400 ${
-                                problem ? "border-red-300" : "border-[#E2E8F0]"}`} />
+                                problem ? "border-red-300" : "border-ps-border"}`} />
                             <button type="button"
                               onClick={() => setAmounts((a) => ({
                                 ...a, [inv.id]: String(ceilingFor(inv) / 100) }))}
-                              className="text-[10px] px-1.5 py-1 border border-[#E2E8F0] rounded text-[#475569] hover:bg-[#F8FAFC]">
+                              className="text-[10px] px-1.5 py-1 border border-ps-border rounded text-ps-label hover:bg-ps-bg">
                               All
                             </button>
                           </div>
@@ -233,9 +233,9 @@ export default function AllocateReceiptModal({
               </table>
             )}
 
-          <div className="flex items-center justify-between border-t border-[#E2E8F0] pt-3 text-[12px]">
-            <span className="text-[#64748B]">
-              Applying <span className="font-mono text-[#1E293B]">{fmt(total)}</span> of{" "}
+          <div className="flex items-center justify-between border-t border-ps-border pt-3 text-[12px]">
+            <span className="text-ps-label">
+              Applying <span className="font-mono text-ps-ink">{fmt(total)}</span> of{" "}
               <span className="font-mono">{fmt(settlement)}</span>
               {total < settlement && (
                 <> · <span className="text-amber-700">{fmt(settlement - total)} left as an advance</span></>
@@ -243,11 +243,11 @@ export default function AllocateReceiptModal({
             </span>
             <div className="flex gap-2">
               <button onClick={onClose}
-                className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg text-[#334155] hover:bg-[#F8FAFC]">
+                className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
                 Cancel
               </button>
               <button onClick={save} disabled={saving || !problems.ok || loading}
-                className="px-3 py-1.5 text-[12px] rounded-lg bg-[#1E293B] text-white disabled:opacity-40">
+                className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
                 {saving ? "Applying…" : "Apply"}
               </button>
             </div>
@@ -264,7 +264,7 @@ export default function AllocateReceiptModal({
           {/* Leaving an advance unallocated is a legitimate outcome, not a
               failure — a customer may genuinely have paid ahead of an invoice.
               Saying so stops the CA hunting for an invoice to force it onto. */}
-          <p className="text-[10px] text-[#94A3B8]">
+          <p className="text-[10px] text-ps-hint">
             An amount left over stays on the receipt as unallocated and can be
             applied to a later invoice from here.
           </p>

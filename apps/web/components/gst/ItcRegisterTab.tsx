@@ -43,7 +43,7 @@ function money(paise?: number | null) {
 }
 
 const FIELD =
-  "border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-[13px] outline-none focus:border-blue-400";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-[13px] outline-none focus:border-blue-400";
 
 /** The reclaimable reasons, and ONLY those. Kept in step with
  *  services/itc_register_service.RECLAIMABLE_REASONS — a reason this list
@@ -71,7 +71,7 @@ const HEADS: { key: keyof ITCHeads; label: string }[] = [
 
 function HeadTotals({ totals }: { totals?: Partial<ITCHeads> }) {
   return (
-    <span className="font-mono text-[11px] text-[#475569]">
+    <span className="font-mono text-[11px] text-ps-label">
       {HEADS.map((h) => `${h.label} ${money(totals?.[h.key])}`).join(" · ")}
     </span>
   );
@@ -81,17 +81,17 @@ function RegisterTable({ rows, title, table, empty }: {
   rows: ITCRegisterRow[]; title: string; table: string; empty: string;
 }) {
   return (
-    <div className="rounded-xl border border-[#E2E8F0] p-3">
-      <p className="text-[12px] font-semibold text-[#1E293B]">
-        {title} <span className="text-[#94A3B8] font-normal">· Table {table}</span>
+    <div className="rounded-xl border border-ps-border p-3">
+      <p className="text-[12px] font-semibold text-ps-ink">
+        {title} <span className="text-ps-hint font-normal">· Table {table}</span>
       </p>
       {rows.length === 0 ? (
-        <p className="text-[11px] text-[#94A3B8] mt-2">{empty}</p>
+        <p className="text-[11px] text-ps-hint mt-2">{empty}</p>
       ) : (
         <div className="overflow-x-auto mt-2">
           <table className="w-full text-[11px]">
             <thead>
-              <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+              <tr className="text-left text-ps-label border-b border-ps-border">
                 <th className="py-1.5 pr-2">Reason</th>
                 <th className="py-1.5 pr-2">Journal</th>
                 {HEADS.map((h) => (
@@ -102,12 +102,12 @@ function RegisterTable({ rows, title, table, empty }: {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b border-[#F1F5F9]">
-                  <td className="py-1.5 pr-2 text-[#1E293B]">
+                <tr key={r.id} className="border-b border-ps-muted">
+                  <td className="py-1.5 pr-2 text-ps-ink">
                     {REASONS.find((x) => x.code === r.reason_code)?.label
                       ?? r.reason_code ?? "—"}
                   </td>
-                  <td className="py-1.5 pr-2 font-mono text-[10px] text-[#94A3B8]">
+                  <td className="py-1.5 pr-2 font-mono text-[10px] text-ps-hint">
                     {r.journal_entry_id?.slice(0, 8) ?? "—"}
                   </td>
                   {HEADS.map((h) => (
@@ -115,7 +115,7 @@ function RegisterTable({ rows, title, table, empty }: {
                       {money(r[h.key])}
                     </td>
                   ))}
-                  <td className="py-1.5 text-[#64748B]">{r.notes ?? "—"}</td>
+                  <td className="py-1.5 text-ps-label">{r.notes ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -205,12 +205,12 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
-        <p className="text-[12px] text-[#334155]">
+      <div className="rounded-xl border border-ps-border bg-ps-bg p-3">
+        <p className="text-[12px] text-ps-body">
           Reclaimable ITC reversals (Table <b>4(B)(2)</b>) and the reclaims that
           bring them back (Table <b>4(D)(1)</b>).
         </p>
-        <p className="text-[10px] text-[#94A3B8] mt-1 max-w-[90ch]">
+        <p className="text-[10px] text-ps-hint mt-1 max-w-[90ch]">
           Nothing here posts to the ledger. The CA raises the journal like any other
           entry; this says what it <i>was</i>, so the return can declare it — and a row
           claiming more than its journal actually moved is refused. Rules 38, 42, 43 and
@@ -220,7 +220,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
       </div>
 
       <div className="flex items-end gap-2 flex-wrap">
-        <label className="text-[11px] text-[#64748B]">
+        <label className="text-[11px] text-ps-label">
           Period
           <input value={period} placeholder="062026"
             onChange={(e) => setPeriod(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
@@ -228,11 +228,11 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
         </label>
         <button onClick={() => load(period)}
           disabled={busy !== null || !isGstPeriod(period)}
-          className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+          className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
           {busy === "load" ? "Loading…" : "Load the register"}
         </button>
         {isGstPeriod(period) && (
-          <span className="text-[11px] text-[#94A3B8] pb-1.5">{gstPeriodLabel(period)}</span>
+          <span className="text-[11px] text-ps-hint pb-1.5">{gstPeriodLabel(period)}</span>
         )}
       </div>
 
@@ -242,12 +242,12 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
       {register && (
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-[#E2E8F0] p-2.5">
-              <p className="text-[10px] text-[#94A3B8]">Reversed · Table 4(B)(2)</p>
+            <div className="rounded-lg border border-ps-border p-2.5">
+              <p className="text-[10px] text-ps-hint">Reversed · Table 4(B)(2)</p>
               <HeadTotals totals={register.reversal_totals} />
             </div>
-            <div className="rounded-lg border border-[#E2E8F0] p-2.5">
-              <p className="text-[10px] text-[#94A3B8]">Reclaimed · Table 4(D)(1)</p>
+            <div className="rounded-lg border border-ps-border p-2.5">
+              <p className="text-[10px] text-ps-hint">Reclaimed · Table 4(D)(1)</p>
               <HeadTotals totals={register.reclaim_totals} />
             </div>
           </div>
@@ -261,26 +261,26 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
 
       {/* ── Recording one ────────────────────────────────────────────────── */}
       {isGstPeriod(period) && (
-        <div className="rounded-xl border border-[#E2E8F0] p-3 space-y-3">
+        <div className="rounded-xl border border-ps-border p-3 space-y-3">
           <div className="flex items-center gap-2">
             {(["reversal", "reclaim"] as const).map((k) => (
               <button key={k} onClick={() => { setKind(k); setErr(null); setOk(null); }}
                 className={`px-2.5 py-1 text-[12px] rounded-lg border ${
-                  kind === k ? "bg-[#1E293B] text-white border-[#1E293B]"
-                             : "border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC]"}`}>
+                  kind === k ? "bg-brand-dark text-white border-brand-dark"
+                             : "border-ps-border text-ps-label hover:bg-ps-bg"}`}>
                 {k === "reversal" ? "Record a reversal" : "Record a reclaim"}
               </button>
             ))}
           </div>
 
-          <p className="text-[10px] text-[#94A3B8] max-w-[90ch]">
+          <p className="text-[10px] text-ps-hint max-w-[90ch]">
             {kind === "reversal"
               ? "Point at a journal already posted for this reversal and say which rule it was under. The server checks it against the GST Input movement on that journal and refuses a row the ledger cannot support."
               : "Point at a journal already posted for the reclaim and name the reversal it brings back. Refused if it would reclaim more than that reversal still has outstanding — credit can only come back once."}
           </p>
 
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-[11px] text-[#64748B]">
+            <label className="text-[11px] text-ps-label">
               Journal entry id
               <input value={journalId} onChange={(e) => setJournalId(e.target.value)}
                 placeholder="the posted journal this classifies"
@@ -288,7 +288,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
             </label>
 
             {kind === "reversal" ? (
-              <label className="text-[11px] text-[#64748B]">
+              <label className="text-[11px] text-ps-label">
                 Reason
                 <select value={reason} onChange={(e) => setReason(e.target.value)}
                   className={`${FIELD} w-full mt-1`}>
@@ -296,12 +296,12 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
                     <option key={r.code} value={r.code}>{r.label}</option>
                   ))}
                 </select>
-                <span className="block text-[10px] text-[#94A3B8] mt-0.5">
+                <span className="block text-[10px] text-ps-hint mt-0.5">
                   {REASONS.find((r) => r.code === reason)?.note}
                 </span>
               </label>
             ) : (
-              <label className="text-[11px] text-[#64748B]">
+              <label className="text-[11px] text-ps-label">
                 Reverses which register row?
                 <select value={reverses} onChange={(e) => setReverses(e.target.value)}
                   className={`${FIELD} w-full mt-1`}>
@@ -323,14 +323,14 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
             )}
 
             {kind === "reversal" && (
-              <label className="text-[11px] text-[#64748B]">
+              <label className="text-[11px] text-ps-label">
                 Purchase bill (optional)
                 <input value={purchaseBillId} onChange={(e) => setPurchaseBillId(e.target.value)}
                   className={`${FIELD} w-full mt-1`} />
               </label>
             )}
 
-            <label className="text-[11px] text-[#64748B]">
+            <label className="text-[11px] text-ps-label">
               Note
               <input value={notes} onChange={(e) => setNotes(e.target.value)}
                 className={`${FIELD} w-full mt-1`} />
@@ -342,7 +342,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
               const bad = (amounts[h.key] ?? "").trim() !== ""
                 && paiseFromRupeeInput(amounts[h.key] ?? "") === null;
               return (
-                <label key={h.key} className="text-[11px] text-[#64748B]">
+                <label key={h.key} className="text-[11px] text-ps-label">
                   {h.label}
                   <input value={amounts[h.key] ?? ""} type="text" inputMode="decimal"
                     onChange={(e) => setAmounts((a) => ({ ...a, [h.key]: e.target.value }))}
@@ -354,14 +354,14 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
           </div>
 
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-[#64748B]">
-              Total <span className="font-mono text-[#1E293B]">{money(total)}</span>
+            <span className="text-[11px] text-ps-label">
+              Total <span className="font-mono text-ps-ink">{money(total)}</span>
               {total === 0 && !anyBad && (
-                <span className="text-[#94A3B8]"> · a nil row declares nothing</span>
+                <span className="text-ps-hint"> · a nil row declares nothing</span>
               )}
             </span>
             <button onClick={record} disabled={busy !== null || !canRecord}
-              className="px-3 py-1.5 text-[12px] rounded-lg bg-[#1E293B] text-white disabled:opacity-40">
+              className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
               {busy === "record" ? "Recording…" : "Record"}
             </button>
           </div>
@@ -370,10 +370,10 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
 
       {/* ── Table 11 advances ────────────────────────────────────────────── */}
       {advances && (
-        <div className="rounded-xl border border-[#E2E8F0] p-3 space-y-2 border-t">
-          <p className="text-[12px] font-semibold text-[#1E293B]">
+        <div className="rounded-xl border border-ps-border p-3 space-y-2 border-t">
+          <p className="text-[12px] font-semibold text-ps-ink">
             Advances against no invoice — GSTR-1 Table 11
-            <span className="text-[#94A3B8] font-normal"> · {advances.count}</span>
+            <span className="text-ps-hint font-normal"> · {advances.count}</span>
           </p>
 
           {/* WHICH KIND OF EMPTY THIS IS, AND THE SERVER SAYS SO IN THE
@@ -383,34 +383,34 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
               banner used to be unconditional and told every CA the platform
               does not compute Table 11 while their filed GSTR-1 carried it. */}
           <div className={advances.table_11_computed
-            ? "rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-2.5"
+            ? "rounded-lg border border-ps-border bg-ps-bg p-2.5"
             : "rounded-lg border border-amber-200 bg-amber-50 p-2.5"}>
             <p className={`text-[11px] font-semibold ${
-              advances.table_11_computed ? "text-[#334155]" : "text-amber-800"}`}>
+              advances.table_11_computed ? "text-ps-body" : "text-amber-800"}`}>
               {advances.table_11_computed
                 ? "Table 11 is computed for this client"
                 : "Table 11 is not computed for this client"}
             </p>
             <p className={`text-[11px] mt-0.5 max-w-[90ch] ${
-              advances.table_11_computed ? "text-[#475569]" : "text-amber-800"}`}>
+              advances.table_11_computed ? "text-ps-label" : "text-amber-800"}`}>
               {advances.why}
             </p>
             {advances.rule && (
               <p className={`text-[10px] mt-1 ${
-                advances.table_11_computed ? "text-[#64748B]" : "text-amber-700"}`}>
+                advances.table_11_computed ? "text-ps-label" : "text-amber-700"}`}>
                 {advances.rule}
               </p>
             )}
           </div>
 
           {advances.unadjusted_advances.length === 0 ? (
-            <p className="text-[11px] text-[#94A3B8]">
+            <p className="text-[11px] text-ps-hint">
               No unadjusted advances in {gstPeriodLabel(advances.period)}.
             </p>
           ) : (
             <table className="w-full text-[11px]">
               <thead>
-                <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+                <tr className="text-left text-ps-label border-b border-ps-border">
                   <th className="py-1.5 pr-2">Receipt</th>
                   <th className="py-1.5 pr-2">Date</th>
                   <th className="py-1.5 pr-2">Customer</th>
@@ -420,13 +420,13 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
               </thead>
               <tbody>
                 {advances.unadjusted_advances.map((a) => (
-                  <tr key={a.receipt_id} className="border-b border-[#F1F5F9]">
-                    <td className="py-1.5 pr-2 font-mono text-[#1E293B]">{a.receipt_no ?? "—"}</td>
-                    <td className="py-1.5 pr-2 text-[#64748B]">{a.receipt_date ?? "—"}</td>
-                    <td className="py-1.5 pr-2 text-[#475569]">
+                  <tr key={a.receipt_id} className="border-b border-ps-muted">
+                    <td className="py-1.5 pr-2 font-mono text-ps-ink">{a.receipt_no ?? "—"}</td>
+                    <td className="py-1.5 pr-2 text-ps-label">{a.receipt_date ?? "—"}</td>
+                    <td className="py-1.5 pr-2 text-ps-label">
                       {a.customer_name ?? "—"}
                       {a.customer_gstin && (
-                        <span className="block text-[10px] text-[#94A3B8] font-mono">
+                        <span className="block text-[10px] text-ps-hint font-mono">
                           {a.customer_gstin}
                         </span>
                       )}
@@ -437,7 +437,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
                     </td>
                   </tr>
                 ))}
-                <tr className="font-semibold text-[#1E293B]">
+                <tr className="font-semibold text-ps-ink">
                   <td className="py-1.5 pr-2" colSpan={4}>Total unadjusted</td>
                   <td className="py-1.5 text-right font-mono">
                     {money(advances.total_unadjusted_paise)}

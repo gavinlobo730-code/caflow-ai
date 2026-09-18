@@ -285,7 +285,7 @@ export default function ClientHealthPage() {
             <button
               onClick={handleRecalculate}
               disabled={actionInFlight}
-              className="inline-flex items-center gap-2 text-sm bg-[#182350] text-white px-4 py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
+              className="inline-flex items-center gap-2 text-sm bg-brand text-white px-4 py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
             >
               <RefreshCw size={14} className={recalculating ? "animate-spin" : ""} />
               {recalculating ? "Calculating…" : "Calculate Now"}
@@ -299,7 +299,7 @@ export default function ClientHealthPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-base font-semibold text-[#182350]">Client Health</h1>
+        <h1 className="text-base font-semibold text-brand">Client Health</h1>
         <button
           onClick={handleRecalculate}
           disabled={actionInFlight}
@@ -339,7 +339,7 @@ export default function ClientHealthPage() {
 
       {/* Dimensions */}
       <div>
-        <h2 className="text-sm font-semibold text-[#182350] mb-3">Dimension Scores</h2>
+        <h2 className="text-sm font-semibold text-brand mb-3">Dimension Scores</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {DIMENSION_KEYS.map((key) => {
             const val = (score as unknown as Record<string, number>)[key] ?? 0;
@@ -363,7 +363,7 @@ export default function ClientHealthPage() {
       {/* Active alerts */}
       {alerts.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-[#182350] mb-3">Active Alerts ({alerts.length})</h2>
+          <h2 className="text-sm font-semibold text-brand mb-3">Active Alerts ({alerts.length})</h2>
           <div className="space-y-2">
             {alerts.map((a) => (
               <Card key={a.id} className="bg-white border border-gray-200">
@@ -386,7 +386,7 @@ export default function ClientHealthPage() {
       {/* Score history */}
       {history.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-[#182350] mb-3">Score History</h2>
+          <h2 className="text-sm font-semibold text-brand mb-3">Score History</h2>
           <Card className="bg-white border border-gray-200">
             <CardContent className="p-0">
               <table className="w-full text-sm">
@@ -420,10 +420,10 @@ export default function ClientHealthPage() {
       {/* Overrides */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-[#182350]">Active Overrides ({overrides.length})</h2>
+          <h2 className="text-sm font-semibold text-brand">Active Overrides ({overrides.length})</h2>
           <button
             onClick={() => { setOverrideForm(EMPTY_OVERRIDE); setOverrideModal(true); }}
-            className="flex items-center gap-1 text-xs text-[#182350] border border-[#182350] px-2.5 py-1 rounded hover:bg-[#AFD2FA]/20"
+            className="flex items-center gap-1 text-xs text-brand border border-brand px-2.5 py-1 rounded hover:bg-brand-light/20"
           >
             <Plus size={12} /> Add Override
           </button>
@@ -469,7 +469,7 @@ export default function ClientHealthPage() {
         <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
           <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-[#182350]">Add Override</h2>
+              <h2 className="text-sm font-semibold text-brand">Add Override</h2>
               <button onClick={() => setOverrideModal(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
             </div>
             <div className="space-y-3">
@@ -478,7 +478,7 @@ export default function ClientHealthPage() {
                 <select
                   value={overrideForm.dimension}
                   onChange={(e) => setOverrideForm({ ...overrideForm, dimension: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   {DIMENSION_KEYS.map((k) => <option key={k} value={k}>{DIMENSION_LABELS[k]}</option>)}
                 </select>
@@ -489,7 +489,7 @@ export default function ClientHealthPage() {
                   type="number" min="0" max="100"
                   value={overrideForm.override_score}
                   onChange={(e) => setOverrideForm({ ...overrideForm, override_score: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                   placeholder="0–100"
                 />
               </div>
@@ -499,7 +499,7 @@ export default function ClientHealthPage() {
                   rows={3}
                   value={overrideForm.reason}
                   onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-brand"
                   placeholder="Explain why…"
                 />
               </div>
@@ -509,7 +509,7 @@ export default function ClientHealthPage() {
                   type="date"
                   value={overrideForm.expires_at}
                   onChange={(e) => setOverrideForm({ ...overrideForm, expires_at: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
             </div>
@@ -518,7 +518,7 @@ export default function ClientHealthPage() {
               <button
                 onClick={handleAddOverride}
                 disabled={actionInFlight || !overrideForm.reason.trim() || !overrideForm.override_score}
-                className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
+                className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
                 {savingOverride ? "Saving…" : "Add Override"}
               </button>

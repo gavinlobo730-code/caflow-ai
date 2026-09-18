@@ -194,7 +194,7 @@ function VariableForm({
     <div className="space-y-3">
       {variables.map((v) => (
         <div key={v}>
-          <label className="block text-xs font-medium text-[#334155] mb-1">
+          <label className="block text-xs font-medium text-ps-body mb-1">
             {LABELS[v] ?? v.replaceAll("_", " ")}
           </label>
           {v === "document_list" ? (
@@ -203,14 +203,14 @@ function VariableForm({
               onChange={(e) => onChange(v, e.target.value)}
               rows={3}
               placeholder="e.g. • Bank statements\n• Purchase bills\n• Salary slips"
-              className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
             />
           ) : (
             <input
               value={values[v] ?? ""}
               onChange={(e) => onChange(v, e.target.value)}
               placeholder={`Enter ${LABELS[v] ?? v}`}
-              className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           )}
         </div>
@@ -235,26 +235,26 @@ function BulkMessageCard({
   onRemove: () => void;
 }) {
   return (
-    <div className="bg-white rounded-lg border border-[#E2E8F0] p-4 space-y-3">
+    <div className="bg-white rounded-lg border border-ps-border p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-[#0F172A]">
+          <p className="text-sm font-semibold text-ps-ink">
             {item.client.client_name}
           </p>
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-ps-label">
             {item.client.mobile ?? "No phone"} · {item.client.entity_type}
           </p>
         </div>
         <button
           onClick={onRemove}
-          className="text-[#CBD5E1] hover:text-red-500 transition-colors"
+          className="text-ps-disabled hover:text-red-500 transition-colors"
           aria-label="Remove"
         >
           <X size={14} />
         </button>
       </div>
 
-      <pre className="text-xs text-[#334155] bg-[#F8FAFC] rounded-lg p-3 whitespace-pre-wrap font-sans leading-relaxed">
+      <pre className="text-xs text-ps-body bg-ps-bg rounded-lg p-3 whitespace-pre-wrap font-sans leading-relaxed">
         {item.message}
       </pre>
 
@@ -264,7 +264,7 @@ function BulkMessageCard({
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             item.copied
               ? "bg-green-50 text-green-700 border border-green-200"
-              : "bg-[#F8FAFC] text-[#475569] border border-[#E2E8F0] hover:bg-[#F1F5F9]"
+              : "bg-ps-bg text-ps-label border border-ps-border hover:bg-ps-muted"
           }`}
         >
           {item.copied ? (
@@ -473,17 +473,17 @@ export default function WhatsAppPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-[#94A3B8] mb-1">
-            <Link href="/notifications" className="hover:text-[#475569]">
+          <div className="flex items-center gap-2 text-xs text-ps-hint mb-1">
+            <Link href="/notifications" className="hover:text-ps-label">
               Notifications
             </Link>
             <ChevronRight size={12} />
             <span>WhatsApp Quick-Compose</span>
           </div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">
+          <h1 className="text-xl font-semibold text-ps-ink">
             WhatsApp Quick-Compose
           </h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <p className="text-sm text-ps-label mt-0.5">
             Opens WhatsApp Web with a pre-filled message. Requires the recipient to have WhatsApp.
           </p>
         </div>
@@ -499,7 +499,7 @@ export default function WhatsAppPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-[#F1F5F9]">
+      <div className="flex gap-1 border-b border-ps-muted">
         {(["compose", "bulk", "history"] as Tab[]).map((tab) => (
           <button
             key={tab}
@@ -507,7 +507,7 @@ export default function WhatsAppPage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors capitalize flex items-center gap-1.5 ${
               activeTab === tab
                 ? "border-blue-600 text-blue-700"
-                : "border-transparent text-[#64748B] hover:text-[#334155]"
+                : "border-transparent text-ps-label hover:text-ps-body"
             }`}
           >
             {tab === "compose" && <Send size={13} />}
@@ -515,7 +515,7 @@ export default function WhatsAppPage() {
             {tab === "history" && <History size={13} />}
             {tab === "compose" ? "Compose" : tab === "bulk" ? "Bulk Send" : "History"}
             {tab === "history" && history.length > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] font-medium">
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-label font-medium">
                 {history.length}
               </span>
             )}
@@ -532,7 +532,7 @@ export default function WhatsAppPage() {
           <div className="space-y-4">
             {/* Template selector */}
             <div>
-              <label className="block text-xs font-semibold text-[#334155] mb-2">
+              <label className="block text-xs font-semibold text-ps-body mb-2">
                 Select Template
               </label>
               <div className="space-y-2">
@@ -543,19 +543,19 @@ export default function WhatsAppPage() {
                     className={`w-full text-left rounded-lg border px-4 py-3 transition-colors ${
                       selectedTemplate.id === t.id
                         ? "border-blue-500 bg-blue-50"
-                        : "border-[#E2E8F0] bg-white hover:bg-[#F8FAFC]"
+                        : "border-ps-border bg-white hover:bg-ps-bg"
                     }`}
                   >
                     <p
                       className={`text-sm font-medium ${
                         selectedTemplate.id === t.id
                           ? "text-blue-800"
-                          : "text-[#1E293B]"
+                          : "text-ps-ink"
                       }`}
                     >
                       {t.label}
                     </p>
-                    <p className="text-xs text-[#64748B] mt-0.5">
+                    <p className="text-xs text-ps-label mt-0.5">
                       {t.description}
                     </p>
                   </button>
@@ -565,11 +565,11 @@ export default function WhatsAppPage() {
 
             {/* Client selector */}
             <div>
-              <label className="block text-xs font-semibold text-[#334155] mb-1">
+              <label className="block text-xs font-semibold text-ps-body mb-1">
                 Select Client
               </label>
               {loadingClients ? (
-                <div className="text-xs text-[#94A3B8] py-2">Loading clients…</div>
+                <div className="text-xs text-ps-hint py-2">Loading clients…</div>
               ) : clientsError ? (
                 <div className="text-xs text-red-600 py-2">
                   {clientsError}{" "}
@@ -590,7 +590,7 @@ export default function WhatsAppPage() {
 
             {/* Variables */}
             <div>
-              <label className="block text-xs font-semibold text-[#334155] mb-2">
+              <label className="block text-xs font-semibold text-ps-body mb-2">
                 Fill Variables
               </label>
               <VariableForm
@@ -604,11 +604,11 @@ export default function WhatsAppPage() {
           {/* Right: preview + send */}
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-[#334155] mb-2">
+              <label className="block text-xs font-semibold text-ps-body mb-2">
                 Message Preview
               </label>
               <div className="bg-[#e8f8e8] rounded-xl p-4 min-h-[200px] border border-green-200">
-                <pre className="text-sm text-[#1E293B] whitespace-pre-wrap font-sans leading-relaxed">
+                <pre className="text-sm text-ps-ink whitespace-pre-wrap font-sans leading-relaxed">
                   {composedMessage}
                 </pre>
               </div>
@@ -616,14 +616,14 @@ export default function WhatsAppPage() {
 
             {/* Edit message directly */}
             <div>
-              <label className="block text-xs font-semibold text-[#334155] mb-1">
+              <label className="block text-xs font-semibold text-ps-body mb-1">
                 Edit Message (optional)
               </label>
               <textarea
                 value={composedMessage}
                 onChange={(e) => setComposedMessage(e.target.value)}
                 rows={8}
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none font-mono"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none font-mono"
               />
             </div>
 
@@ -634,7 +634,7 @@ export default function WhatsAppPage() {
                 className={`flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
                   copied
                     ? "bg-green-50 text-green-700 border border-green-200"
-                    : "bg-[#F1F5F9] text-[#334155] hover:bg-white/[0.08] border border-[#E2E8F0]"
+                    : "bg-ps-muted text-ps-body hover:bg-white/[0.08] border border-ps-border"
                 }`}
               >
                 {copied ? <Check size={15} /> : <Copy size={15} />}
@@ -657,7 +657,7 @@ export default function WhatsAppPage() {
                   Open in WhatsApp
                 </button>
               ) : (
-                <div className="text-xs text-[#94A3B8] text-center py-1">
+                <div className="text-xs text-ps-hint text-center py-1">
                   {selectedClientId
                     ? "Selected client has no phone number"
                     : "Select a client to enable WhatsApp send"}
@@ -677,7 +677,7 @@ export default function WhatsAppPage() {
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-[#334155] mb-2">
+                <label className="block text-xs font-semibold text-ps-body mb-2">
                   Template
                 </label>
                 <div className="space-y-2">
@@ -692,14 +692,14 @@ export default function WhatsAppPage() {
                       className={`w-full text-left rounded-lg border px-4 py-3 transition-colors ${
                         bulkTemplate.id === t.id
                           ? "border-blue-500 bg-blue-50"
-                          : "border-[#E2E8F0] bg-white hover:bg-[#F8FAFC]"
+                          : "border-ps-border bg-white hover:bg-ps-bg"
                       }`}
                     >
                       <p
                         className={`text-sm font-medium ${
                           bulkTemplate.id === t.id
                             ? "text-blue-800"
-                            : "text-[#1E293B]"
+                            : "text-ps-ink"
                         }`}
                       >
                         {t.label}
@@ -711,10 +711,10 @@ export default function WhatsAppPage() {
 
               {/* Shared variables (exclude client_name — auto-filled per client) */}
               <div>
-                <label className="block text-xs font-semibold text-[#334155] mb-2">
+                <label className="block text-xs font-semibold text-ps-body mb-2">
                   Shared Variables
                 </label>
-                <p className="text-xs text-[#94A3B8] mb-2">
+                <p className="text-xs text-ps-hint mb-2">
                   Client name is auto-filled for each client
                 </p>
                 <VariableForm
@@ -732,7 +732,7 @@ export default function WhatsAppPage() {
             {/* Client multi-select */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-[#334155]">
+                <label className="text-xs font-semibold text-ps-body">
                   Select Clients ({selectedClientIds.size} selected)
                 </label>
                 <div className="flex gap-2">
@@ -744,7 +744,7 @@ export default function WhatsAppPage() {
                   </button>
                   <button
                     onClick={clearAllClients}
-                    className="text-xs text-[#94A3B8] hover:underline"
+                    className="text-xs text-ps-hint hover:underline"
                   >
                     Clear
                   </button>
@@ -752,21 +752,21 @@ export default function WhatsAppPage() {
               </div>
 
               {loadingClients ? (
-                <div className="text-xs text-[#94A3B8]">Loading clients…</div>
+                <div className="text-xs text-ps-hint">Loading clients…</div>
               ) : clientsError ? (
                 <div className="text-xs text-red-600">
                   {clientsError}{" "}
                   <button onClick={loadClients} className="underline hover:no-underline">Retry</button>
                 </div>
               ) : clients.length === 0 ? (
-                <div className="text-xs text-[#94A3B8]">No clients found</div>
+                <div className="text-xs text-ps-hint">No clients found</div>
               ) : (
-                <div className="border border-[#E2E8F0] rounded-lg overflow-hidden max-h-80 overflow-y-auto">
+                <div className="border border-ps-border rounded-lg overflow-hidden max-h-80 overflow-y-auto">
                   {clients.map((client, idx) => (
                     <label
                       key={client.id}
-                      className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#F8FAFC] transition-colors ${
-                        idx > 0 ? "border-t border-[#F1F5F9]" : ""
+                      className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-ps-bg transition-colors ${
+                        idx > 0 ? "border-t border-ps-muted" : ""
                       }`}
                     >
                       <input
@@ -776,10 +776,10 @@ export default function WhatsAppPage() {
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[#0F172A]">
+                        <p className="text-sm font-medium text-ps-ink">
                           {client.client_name}
                         </p>
-                        <p className="text-xs text-[#64748B]">
+                        <p className="text-xs text-ps-label">
                           {client.mobile ?? "No phone"} · {client.entity_type}
                         </p>
                       </div>
@@ -808,7 +808,7 @@ export default function WhatsAppPage() {
           {bulkGenerated && bulkMessages.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-[#334155]">
+                <p className="text-sm font-semibold text-ps-body">
                   Generated Messages ({bulkMessages.length})
                 </p>
               </div>
@@ -827,7 +827,7 @@ export default function WhatsAppPage() {
           )}
 
           {bulkGenerated && bulkMessages.length === 0 && (
-            <div className="text-center py-10 text-sm text-[#94A3B8]">
+            <div className="text-center py-10 text-sm text-ps-hint">
               All messages removed
             </div>
           )}
@@ -840,7 +840,7 @@ export default function WhatsAppPage() {
       {activeTab === "history" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-[#64748B]">
+            <p className="text-sm text-ps-label">
               Last {Math.min(history.length, MAX_HISTORY)} messages sent
             </p>
             {history.length > 0 && (
@@ -855,29 +855,29 @@ export default function WhatsAppPage() {
           </div>
 
           {history.length === 0 ? (
-            <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-16 text-center space-y-3">
+            <div className="bg-white rounded-xl border border-ps-muted px-5 py-16 text-center space-y-3">
               <History className="w-10 h-10 text-gray-200 mx-auto" />
-              <p className="text-sm font-medium text-[#475569]">
+              <p className="text-sm font-medium text-ps-label">
                 No messages sent yet
               </p>
-              <p className="text-xs text-[#94A3B8]">
+              <p className="text-xs text-ps-hint">
                 Messages you send via WhatsApp Web will appear here
               </p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden divide-y divide-[#F8FAFC]">
+            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden divide-y divide-ps-bg">
               {history.map((entry) => (
                 <div key={entry.id} className="px-5 py-4 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-sm font-semibold text-[#0F172A]">
+                      <p className="text-sm font-semibold text-ps-ink">
                         {entry.clientName}
                       </p>
-                      <p className="text-xs text-[#64748B]">
+                      <p className="text-xs text-ps-label">
                         {entry.clientPhone} · {entry.templateLabel}
                       </p>
                     </div>
-                    <p className="text-xs text-[#94A3B8] shrink-0">
+                    <p className="text-xs text-ps-hint shrink-0">
                       {new Date(entry.sentAt).toLocaleDateString("en-IN", {
                         day: "2-digit",
                         month: "short",
@@ -887,7 +887,7 @@ export default function WhatsAppPage() {
                       })}
                     </p>
                   </div>
-                  <pre className="text-xs text-[#475569] bg-[#F8FAFC] rounded-lg p-3 whitespace-pre-wrap font-sans leading-relaxed">
+                  <pre className="text-xs text-ps-label bg-ps-bg rounded-lg p-3 whitespace-pre-wrap font-sans leading-relaxed">
                     {entry.message}
                   </pre>
                   {entry.clientPhone && (

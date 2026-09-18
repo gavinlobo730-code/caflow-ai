@@ -80,7 +80,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex">
 
       {/* Left dark navy brand panel */}
-      <div className="hidden lg:flex flex-col justify-between w-[420px] shrink-0 relative overflow-hidden bg-[#0F172A]">
+      <div className="hidden lg:flex flex-col justify-between w-[420px] shrink-0 relative overflow-hidden bg-brand-dark">
         {/* Subtle grid pattern */}
         <div className="absolute inset-0 opacity-[0.04]"
           style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "28px 28px" }} />
@@ -122,19 +122,19 @@ export default function LoginPage() {
       </div>
 
       {/* Right form panel */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-[#F8FAFC]">
+      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-ps-bg">
         <div className="w-full max-w-[380px]">
 
           <div className="lg:hidden flex items-center gap-2.5 justify-center mb-8">
             <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-[13px] font-bold text-white">P</div>
-            <span className="text-[16px] font-bold text-[#0F172A]">PracticeSync AI</span>
+            <span className="text-[16px] font-bold text-ps-ink">PracticeSync AI</span>
           </div>
 
           <div className="mb-8">
-            <h2 className="text-[26px] font-bold text-[#0F172A] tracking-tight">
+            <h2 className="text-[26px] font-bold text-ps-ink tracking-tight">
               {mfaStep ? "Two-factor authentication" : "Sign in"}
             </h2>
-            <p className="text-[14px] text-[#64748B] mt-1">
+            <p className="text-[14px] text-ps-label mt-1">
               {mfaStep ? "Enter the 6-digit code from your authenticator app" : "Enter your credentials to continue"}
             </p>
           </div>
@@ -142,12 +142,12 @@ export default function LoginPage() {
           {mfaStep ? (
             <form onSubmit={handleMfaSubmit} className="space-y-5">
               <div className="space-y-1.5">
-                <label className="block text-[13px] font-semibold text-[#0F172A]">Authentication code</label>
+                <label className="block text-[13px] font-semibold text-ps-ink">Authentication code</label>
                 <input
                   autoFocus inputMode="numeric" value={mfaCode} maxLength={6}
                   onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   placeholder="123456"
-                  className="w-full bg-white border border-[#E2E8F0] rounded-lg px-4 py-3 text-[18px] tracking-[0.3em] text-center font-mono text-[#0F172A] placeholder:text-[#CBD5E1] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-[18px] tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
                 />
               </div>
               {error && (
@@ -172,16 +172,16 @@ export default function LoginPage() {
           ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="block text-[13px] font-semibold text-[#0F172A]">Email address</label>
+              <label className="block text-[13px] font-semibold text-ps-ink">Email address</label>
               <input
                 type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                 placeholder="ca@yourfirm.com"
-                className="w-full bg-white border border-[#E2E8F0] rounded-lg px-4 py-3 text-[14px] text-[#0F172A] placeholder:text-[#CBD5E1] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-[14px] text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
               />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="block text-[13px] font-semibold text-[#0F172A]">Password</label>
+                <label className="block text-[13px] font-semibold text-ps-ink">Password</label>
                 <Link href="/login/forgot-password" className="text-[12px] text-blue-600 hover:text-blue-700 font-medium transition-colors">
                   Forgot password?
                 </Link>
@@ -189,7 +189,7 @@ export default function LoginPage() {
               <input
                 type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-white border border-[#E2E8F0] rounded-lg px-4 py-3 text-[14px] text-[#0F172A] placeholder:text-[#CBD5E1] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-[14px] text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
               />
             </div>
 
@@ -215,7 +215,7 @@ export default function LoginPage() {
           </form>
           )}
 
-          <p className="text-center text-[13px] text-[#94A3B8] mt-6">
+          <p className="text-center text-[13px] text-ps-hint mt-6">
             New to PracticeSync?{" "}
             <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
               Create your account →

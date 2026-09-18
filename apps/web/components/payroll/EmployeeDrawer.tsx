@@ -68,8 +68,8 @@ function fmt(paise?: number | null) {
 }
 
 const FIELD =
-  "border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400 w-full";
-const LABEL = "text-[11px] text-[#64748B] block";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400 w-full";
+const LABEL = "text-[11px] text-ps-label block";
 
 /** A typed rupee amount, through the one parser. Returns null for anything that
  *  is not an amount — see lib/money/rupeeInput. Never parseFloat. */
@@ -84,7 +84,7 @@ function Money({ label, value, onChange, hint }: {
         type="text" inputMode="decimal" placeholder="0"
         className={`${FIELD} mt-1 ${bad ? "border-red-300" : ""}`} />
       {bad && <span className="text-[10px] text-red-600">Not an amount.</span>}
-      {hint && !bad && <span className="text-[10px] text-[#94A3B8]">{hint}</span>}
+      {hint && !bad && <span className="text-[10px] text-ps-hint">{hint}</span>}
     </label>
   );
 }
@@ -133,33 +133,33 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
     <div className="fixed inset-0 z-50 flex justify-end bg-black/20" onClick={onClose}>
       <div className="w-full max-w-[720px] h-full bg-white shadow-xl overflow-y-auto"
         onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-[#E2E8F0] px-5 py-3 flex items-start justify-between gap-3">
+        <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[14px] font-semibold text-[#1E293B] truncate">{employee.name}</p>
-            <p className="text-[11px] text-[#94A3B8]">
+            <p className="text-[14px] font-semibold text-ps-ink truncate">{employee.name}</p>
+            <p className="text-[11px] text-ps-hint">
               {[employee.designation, employee.department].filter(Boolean).join(" · ") || "—"}
               {employee.status && employee.status !== "active" ? ` · ${employee.status}` : ""}
             </p>
           </div>
           <button onClick={onClose}
-            className="text-[12px] text-[#64748B] border border-[#E2E8F0] rounded-lg px-2.5 py-1 hover:bg-[#F8FAFC] shrink-0">
+            className="text-[12px] text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
             Close
           </button>
         </div>
 
-        <div className="px-5 pt-3 flex gap-1.5 flex-wrap border-b border-[#F1F5F9] pb-3">
+        <div className="px-5 pt-3 flex gap-1.5 flex-wrap border-b border-ps-muted pb-3">
           {SECTIONS.map((s) => (
             <button key={s.key} onClick={() => setSection(s.key)}
               className={`px-2.5 py-1 text-[12px] rounded-lg border ${
                 section === s.key
-                  ? "bg-[#1E293B] text-white border-[#1E293B]"
-                  : "border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC]"}`}>
+                  ? "bg-brand-dark text-white border-brand-dark"
+                  : "border-ps-border text-ps-label hover:bg-ps-bg"}`}>
               {s.label}
             </button>
           ))}
         </div>
 
-        <p className="px-5 pt-3 text-[11px] text-[#94A3B8]">
+        <p className="px-5 pt-3 text-[11px] text-ps-hint">
           {SECTIONS.find((s) => s.key === section)?.hint}
         </p>
 
@@ -272,7 +272,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
         <label className={LABEL}>Last working day
           <input type="date" value={leavingDate} onChange={(e) => setLeavingDate(e.target.value)}
             className={`${FIELD} mt-1`} />
-          <span className="text-[10px] text-[#94A3B8]">
+          <span className="text-[10px] text-ps-hint">
             Joined {employee.joining_date || "— not recorded, so gratuity cannot be computed"}.
           </span>
         </label>
@@ -284,7 +284,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
             <option value="terminated">Terminated</option>
             <option value="deceased">Deceased</option>
           </select>
-          <span className="text-[10px] text-[#94A3B8]">
+          <span className="text-[10px] text-ps-hint">
             §9 of the Bonus Act turns on dismissal, so this is not cosmetic.
           </span>
         </label>
@@ -295,17 +295,17 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
           is fully taxable. It is a checkbox because it is a fact, not a
           preference. */}
       <div className="flex flex-wrap gap-4">
-        <label className="text-[11px] text-[#475569] flex items-center gap-1.5">
+        <label className="text-[11px] text-ps-label flex items-center gap-1.5">
           <input type="checkbox" checked={onRetirement}
             onChange={(e) => setOnRetirement(e.target.checked)} />
           On retirement (decides §10(10AA))
         </label>
-        <label className="text-[11px] text-[#475569] flex items-center gap-1.5">
+        <label className="text-[11px] text-ps-label flex items-center gap-1.5">
           <input type="checkbox" checked={onDeath}
             onChange={(e) => setOnDeath(e.target.checked)} />
           On death or disablement
         </label>
-        <label className="text-[11px] text-[#475569] flex items-center gap-1.5">
+        <label className="text-[11px] text-ps-label flex items-center gap-1.5">
           <input type="checkbox" checked={isGovernment}
             onChange={(e) => setIsGovernment(e.target.checked)} />
           Government employee
@@ -334,10 +334,10 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
 
       <div className="flex items-center gap-2">
         <button onClick={preview} disabled={!canPreview || busy !== null}
-          className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+          className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
           {busy === "preview" ? "Computing…" : "Compute"}
         </button>
-        {!canPreview && <span className="text-[11px] text-[#94A3B8]">A last working day first.</span>}
+        {!canPreview && <span className="text-[11px] text-ps-hint">A last working day first.</span>}
       </div>
 
       {err && <p className="text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
@@ -347,7 +347,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
         <div className="space-y-3">
           <table className="w-full text-[11px]">
             <thead>
-              <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+              <tr className="text-left text-ps-label border-b border-ps-border">
                 <th className="py-1.5 pr-2">Component</th>
                 <th className="py-1.5 pr-2">Statute</th>
                 <th className="py-1.5 pr-2 text-right">Gross</th>
@@ -357,9 +357,9 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
             </thead>
             <tbody>
               {result.components.map((c, i) => (
-                <tr key={i} className="border-b border-[#F1F5F9]">
-                  <td className="py-1.5 pr-2 text-[#1E293B]">{c.label}</td>
-                  <td className="py-1.5 pr-2 text-[#94A3B8]">
+                <tr key={i} className="border-b border-ps-muted">
+                  <td className="py-1.5 pr-2 text-ps-ink">{c.label}</td>
+                  <td className="py-1.5 pr-2 text-ps-hint">
                     {c.statute}{c.exempt_section ? ` / ${c.exempt_section}` : ""}
                   </td>
                   <td className="py-1.5 pr-2 text-right">{fmt(c.gross_paise)}</td>
@@ -368,9 +368,9 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
                 </tr>
               ))}
               {result.deductions.map((d, i) => (
-                <tr key={`d${i}`} className="border-b border-[#F1F5F9] text-[#B45309]">
+                <tr key={`d${i}`} className="border-b border-ps-muted text-state-attention">
                   <td className="py-1.5 pr-2">{d.label}</td>
-                  <td className="py-1.5 pr-2 text-[#94A3B8]">{d.statute}</td>
+                  <td className="py-1.5 pr-2 text-ps-hint">{d.statute}</td>
                   <td className="py-1.5 pr-2 text-right">− {fmt(d.gross_paise)}</td>
                   <td className="py-1.5 pr-2 text-right">—</td>
                   <td className="py-1.5 text-right">—</td>
@@ -383,14 +383,14 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
             {[["Gross", result.totals.gross_paise],
               ["Taxable under §17(1)", result.totals.taxable_paise],
               ["Net payable", result.totals.net_payable_paise]].map(([label, value]) => (
-              <div key={String(label)} className="rounded-lg border border-[#E2E8F0] p-2.5">
-                <p className="text-[10px] text-[#94A3B8]">{label}</p>
-                <p className="text-[13px] font-semibold text-[#1E293B]">{fmt(Number(value ?? 0))}</p>
+              <div key={String(label)} className="rounded-lg border border-ps-border p-2.5">
+                <p className="text-[10px] text-ps-hint">{label}</p>
+                <p className="text-[13px] font-semibold text-ps-ink">{fmt(Number(value ?? 0))}</p>
               </div>
             ))}
           </div>
           {/* The one thing about a settlement that is easy to get backwards. */}
-          <p className="text-[10px] text-[#94A3B8]">
+          <p className="text-[10px] text-ps-hint">
             A recovery reduces what the employer pays and never reduces §17(1) —
             taking notice pay back does not un-earn the salary, so the two figures
             above legitimately differ.
@@ -399,9 +399,9 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
           <Notes gaps={result.gaps} problems={result.problems} />
 
           {canFinalize && !done && (
-            <div className="rounded-xl border border-[#E2E8F0] p-3">
-              <p className="text-[11px] font-semibold text-[#1E293B]">Record this settlement</p>
-              <p className="text-[10px] text-[#94A3B8] mt-1">
+            <div className="rounded-xl border border-ps-border p-3">
+              <p className="text-[11px] font-semibold text-ps-ink">Record this settlement</p>
+              <p className="text-[10px] text-ps-hint mt-1">
                 This ends the employment, withholds under §192 against the year, posts
                 an immutable journal and closes the employee. It cannot be undone by
                 editing — a correction is a reversal.
@@ -414,17 +414,17 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
                 {confirming ? (
                   <>
                     <button onClick={record} disabled={busy !== null}
-                      className="px-3 py-1.5 text-[12px] rounded-lg bg-[#B91C1C] text-white disabled:opacity-40">
+                      className="px-3 py-1.5 text-[12px] rounded-lg bg-state-problem text-white disabled:opacity-40">
                       {busy === "record" ? "Recording…" : "Yes, record it"}
                     </button>
                     <button onClick={() => setConfirming(false)}
-                      className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg text-[#334155]">
+                      className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg text-ps-body">
                       Cancel
                     </button>
                   </>
                 ) : (
                   <button onClick={() => setConfirming(true)} disabled={busy !== null}
-                    className="px-3 py-1.5 text-[12px] rounded-lg bg-[#1E293B] text-white disabled:opacity-40">
+                    className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
                     Record settlement
                   </button>
                 )}
@@ -432,7 +432,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
             </div>
           )}
           {!canFinalize && (
-            <p className="text-[11px] text-[#94A3B8]">
+            <p className="text-[11px] text-ps-hint">
               Recording a settlement needs payroll finalise rights. This is the
               computation only.
             </p>
@@ -502,9 +502,9 @@ function RevisionsSection({ employee, clientId, onSaved }: {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-[#E2E8F0] p-3">
-        <p className="text-[11px] font-semibold text-[#1E293B]">New revision</p>
-        <p className="text-[10px] text-[#94A3B8] mt-1">
+      <div className="rounded-xl border border-ps-border p-3">
+        <p className="text-[11px] font-semibold text-ps-ink">New revision</p>
+        <p className="text-[10px] text-ps-hint mt-1">
           The WHOLE component set as at the date, not a change to it. Months already
           finalised keep the figures they were paid on; a backdated revision creates a
           difference, and settling it is a separate decision — see §89 relief.
@@ -536,19 +536,19 @@ function RevisionsSection({ employee, clientId, onSaved }: {
         {err && <p className="mt-2 text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
         <div className="mt-3 flex justify-end">
           <button onClick={save} disabled={busy || !effectiveFrom}
-            className="px-3 py-1.5 text-[12px] rounded-lg bg-[#1E293B] text-white disabled:opacity-40">
+            className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
             {busy ? "Saving…" : "Record revision"}
           </button>
         </div>
       </div>
 
-      {loading ? <p className="text-[12px] text-[#94A3B8]">Loading…</p>
+      {loading ? <p className="text-[12px] text-ps-hint">Loading…</p>
         : rows.length === 0
-          ? <p className="text-[12px] text-[#94A3B8]">No revisions recorded. The employee master&apos;s own figures apply.</p>
+          ? <p className="text-[12px] text-ps-hint">No revisions recorded. The employee master&apos;s own figures apply.</p>
           : (
             <table className="w-full text-[11px]">
               <thead>
-                <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+                <tr className="text-left text-ps-label border-b border-ps-border">
                   <th className="py-1.5 pr-2">Effective from</th>
                   <th className="py-1.5 pr-2 text-right">Basic</th>
                   <th className="py-1.5 pr-2 text-right">HRA %</th>
@@ -558,12 +558,12 @@ function RevisionsSection({ employee, clientId, onSaved }: {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-[#F1F5F9]">
-                    <td className="py-1.5 pr-2 text-[#1E293B]">{r.effective_from}</td>
+                  <tr key={r.id} className="border-b border-ps-muted">
+                    <td className="py-1.5 pr-2 text-ps-ink">{r.effective_from}</td>
                     <td className="py-1.5 pr-2 text-right">{fmt(r.basic_paise)}</td>
                     <td className="py-1.5 pr-2 text-right">{r.hra_percent ?? 0}</td>
                     <td className="py-1.5 pr-2 text-right">{r.da_percent ?? 0}</td>
-                    <td className="py-1.5 text-[#64748B]">{r.reason || "—"}</td>
+                    <td className="py-1.5 text-ps-label">{r.reason || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -619,9 +619,9 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-[#E2E8F0] p-3">
-        <p className="text-[11px] font-semibold text-[#1E293B]">New loan or advance</p>
-        <p className="text-[10px] text-[#94A3B8] mt-1">
+      <div className="rounded-xl border border-ps-border p-3">
+        <p className="text-[11px] font-semibold text-ps-ink">New loan or advance</p>
+        <p className="text-[10px] text-ps-hint mt-1">
           Recovered through the payslip AFTER the statutory deductions and only out of
           what is left — PF, ESI, professional tax and TDS are owed to somebody else.
         </p>
@@ -631,7 +631,7 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
           <label className={LABEL}>Interest rate %
             <input value={ratePercent} onChange={(e) => setRatePercent(e.target.value)}
               type="text" inputMode="decimal" className={`${FIELD} mt-1`} />
-            <span className="text-[10px] text-[#94A3B8]">
+            <span className="text-[10px] text-ps-hint">
               Zero is interest-free — and Rule 3(7)(i) makes the shortfall against the
               SBI rate a perquisite. Recording the recovery does not value it.
             </span>
@@ -653,19 +653,19 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
         )}
         <div className="mt-3 flex justify-end">
           <button onClick={save} disabled={busy || !principal.trim()}
-            className="px-3 py-1.5 text-[12px] rounded-lg bg-[#1E293B] text-white disabled:opacity-40">
+            className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
             {busy ? "Saving…" : "Record loan"}
           </button>
         </div>
       </div>
 
-      {loading ? <p className="text-[12px] text-[#94A3B8]">Loading…</p>
+      {loading ? <p className="text-[12px] text-ps-hint">Loading…</p>
         : rows.length === 0
-          ? <p className="text-[12px] text-[#94A3B8]">No loans or advances recorded.</p>
+          ? <p className="text-[12px] text-ps-hint">No loans or advances recorded.</p>
           : (
             <table className="w-full text-[11px]">
               <thead>
-                <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+                <tr className="text-left text-ps-label border-b border-ps-border">
                   <th className="py-1.5 pr-2">Purpose</th>
                   <th className="py-1.5 pr-2 text-right">Principal</th>
                   <th className="py-1.5 pr-2 text-right">Instalment</th>
@@ -675,12 +675,12 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-[#F1F5F9]">
-                    <td className="py-1.5 pr-2 text-[#1E293B]">{r.purpose || "—"}</td>
+                  <tr key={r.id} className="border-b border-ps-muted">
+                    <td className="py-1.5 pr-2 text-ps-ink">{r.purpose || "—"}</td>
                     <td className="py-1.5 pr-2 text-right">{fmt(r.principal_paise)}</td>
                     <td className="py-1.5 pr-2 text-right">{fmt(r.monthly_instalment_paise)}</td>
                     <td className="py-1.5 pr-2 text-right">{fmt(r.outstanding_paise)}</td>
-                    <td className="py-1.5 text-[#64748B]">{r.status || "—"}</td>
+                    <td className="py-1.5 text-ps-label">{r.status || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -785,11 +785,11 @@ function PerquisitesSection({ employee, clientId }: {
         <Money label="Salary for Rule 3" value={salaryForRule3} onChange={setSalaryForRule3} />
       </div>
 
-      <details className="rounded-xl border border-[#E2E8F0] p-3">
-        <summary className="text-[11px] font-semibold text-[#1E293B] cursor-pointer">
+      <details className="rounded-xl border border-ps-border p-3">
+        <summary className="text-[11px] font-semibold text-ps-ink cursor-pointer">
           Rule 3(1) — accommodation
         </summary>
-        <label className="text-[11px] text-[#475569] flex items-center gap-1.5 mt-2">
+        <label className="text-[11px] text-ps-label flex items-center gap-1.5 mt-2">
           <input type="checkbox" checked={accommodation}
             onChange={(e) => setAccommodation(e.target.checked)} />
           Accommodation provided
@@ -800,7 +800,7 @@ function PerquisitesSection({ employee, clientId }: {
               <input value={populationLakh} onChange={(e) => setPopulationLakh(e.target.value.replace(/[^0-9]/g, ""))}
                 inputMode="numeric" className={`${FIELD} mt-1`} />
             </label>
-            <label className="text-[11px] text-[#475569] flex items-center gap-1.5 mt-5">
+            <label className="text-[11px] text-ps-label flex items-center gap-1.5 mt-5">
               <input type="checkbox" checked={employerOwns}
                 onChange={(e) => setEmployerOwns(e.target.checked)} />
               Employer-owned (otherwise leased)
@@ -811,11 +811,11 @@ function PerquisitesSection({ employee, clientId }: {
         )}
       </details>
 
-      <details className="rounded-xl border border-[#E2E8F0] p-3">
-        <summary className="text-[11px] font-semibold text-[#1E293B] cursor-pointer">
+      <details className="rounded-xl border border-ps-border p-3">
+        <summary className="text-[11px] font-semibold text-ps-ink cursor-pointer">
           Rule 3(2) — motor car
         </summary>
-        <label className="text-[11px] text-[#475569] flex items-center gap-1.5 mt-2">
+        <label className="text-[11px] text-ps-label flex items-center gap-1.5 mt-2">
           <input type="checkbox" checked={motorCar} onChange={(e) => setMotorCar(e.target.checked)} />
           Car provided
         </label>
@@ -826,12 +826,12 @@ function PerquisitesSection({ employee, clientId }: {
                 type="text" inputMode="decimal" className={`${FIELD} mt-1`} />
             </label>
             <div className="flex flex-col gap-1.5 mt-5">
-              <label className="text-[11px] text-[#475569] flex items-center gap-1.5">
+              <label className="text-[11px] text-ps-label flex items-center gap-1.5">
                 <input type="checkbox" checked={employerBearsRunning}
                   onChange={(e) => setEmployerBearsRunning(e.target.checked)} />
                 Employer bears running costs
               </label>
-              <label className="text-[11px] text-[#475569] flex items-center gap-1.5">
+              <label className="text-[11px] text-ps-label flex items-center gap-1.5">
                 <input type="checkbox" checked={withDriver}
                   onChange={(e) => setWithDriver(e.target.checked)} />
                 With driver
@@ -841,11 +841,11 @@ function PerquisitesSection({ employee, clientId }: {
         )}
       </details>
 
-      <details className="rounded-xl border border-[#E2E8F0] p-3">
-        <summary className="text-[11px] font-semibold text-[#1E293B] cursor-pointer">
+      <details className="rounded-xl border border-ps-border p-3">
+        <summary className="text-[11px] font-semibold text-ps-ink cursor-pointer">
           Rule 3(7)(i) — concessional loan
         </summary>
-        <label className="text-[11px] text-[#475569] flex items-center gap-1.5 mt-2">
+        <label className="text-[11px] text-ps-label flex items-center gap-1.5 mt-2">
           <input type="checkbox" checked={loan} onChange={(e) => setLoan(e.target.checked)} />
           Loan provided
         </label>
@@ -856,7 +856,7 @@ function PerquisitesSection({ employee, clientId }: {
               <input value={sbiRatePercent} onChange={(e) => setSbiRatePercent(e.target.value)}
                 type="text" inputMode="decimal" placeholder="leave blank if not known"
                 className={`${FIELD} mt-1`} />
-              <span className="text-[10px] text-[#94A3B8]">
+              <span className="text-[10px] text-ps-hint">
                 Published by SBI on the first day of the previous year. Left blank, the
                 loan is refused rather than valued at a guess.
               </span>
@@ -870,7 +870,7 @@ function PerquisitesSection({ employee, clientId }: {
 
       <div className="flex items-center gap-2">
         <button onClick={value} disabled={busy !== null}
-          className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+          className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
           {busy === "value" ? "Valuing…" : "Value under Rule 3"}
         </button>
       </div>
@@ -883,7 +883,7 @@ function PerquisitesSection({ employee, clientId }: {
           {result.items?.length ? (
             <table className="w-full text-[11px]">
               <thead>
-                <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+                <tr className="text-left text-ps-label border-b border-ps-border">
                   <th className="py-1.5 pr-2">Perquisite</th>
                   <th className="py-1.5 pr-2">Rule</th>
                   <th className="py-1.5 text-right">Value</th>
@@ -891,36 +891,36 @@ function PerquisitesSection({ employee, clientId }: {
               </thead>
               <tbody>
                 {result.items.map((i, n) => (
-                  <tr key={n} className="border-b border-[#F1F5F9]">
-                    <td className="py-1.5 pr-2 text-[#1E293B]">{i.label}
-                      {i.note && <span className="block text-[10px] text-[#94A3B8]">{i.note}</span>}</td>
-                    <td className="py-1.5 pr-2 text-[#94A3B8]">{i.rule}</td>
+                  <tr key={n} className="border-b border-ps-muted">
+                    <td className="py-1.5 pr-2 text-ps-ink">{i.label}
+                      {i.note && <span className="block text-[10px] text-ps-hint">{i.note}</span>}</td>
+                    <td className="py-1.5 pr-2 text-ps-hint">{i.rule}</td>
                     <td className="py-1.5 text-right">{fmt(i.value_paise)}</td>
                   </tr>
                 ))}
-                <tr className="font-semibold text-[#1E293B]">
+                <tr className="font-semibold text-ps-ink">
                   <td className="py-1.5 pr-2" colSpan={2}>Total §17(2)</td>
                   <td className="py-1.5 text-right">{fmt(result.total_paise)}</td>
                 </tr>
               </tbody>
             </table>
           ) : (
-            <p className="text-[12px] text-[#94A3B8]">Nothing valued — no benefit was described.</p>
+            <p className="text-[12px] text-ps-hint">Nothing valued — no benefit was described.</p>
           )}
 
           <Notes gaps={result.gaps} />
 
           {!!result.items?.length && (
-            <div className="rounded-xl border border-[#E2E8F0] p-3">
-              <p className="text-[11px] font-semibold text-[#1E293B]">Record for {fy}</p>
-              <p className="text-[10px] text-[#94A3B8] mt-1">
+            <div className="rounded-xl border border-ps-border p-3">
+              <p className="text-[11px] font-semibold text-ps-ink">Record for {fy}</p>
+              <p className="text-[10px] text-ps-hint mt-1">
                 Replaces the year&apos;s whole set rather than adding to it — a car
                 returned in June must not stay valued for the full year. These reach the
                 employee&apos;s Form 16 through 24Q Annexure II.
               </p>
               <div className="mt-2 flex justify-end">
                 <button onClick={record} disabled={busy !== null}
-                  className="px-3 py-1.5 text-[12px] rounded-lg bg-[#1E293B] text-white disabled:opacity-40">
+                  className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
                   {busy === "record" ? "Recording…" : "Record for the year"}
                 </button>
               </div>
@@ -975,7 +975,7 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
 
   return (
     <div className="space-y-4">
-      <p className="text-[10px] text-[#94A3B8]">
+      <p className="text-[10px] text-ps-hint">
         Salary is taxed in the year of RECEIPT (§15), so a revision backdated three
         years lands three years&apos; arrears in one year and pushes the employee
         through slabs they would never have reached. §89 compares the tax with what
@@ -994,23 +994,23 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
           <input value={form10e} onChange={(e) => setForm10e(e.target.value)}
             placeholder="filed on the e-filing portal"
             className={`${FIELD} mt-1`} />
-          <span className="text-[10px] text-[#94A3B8]">
+          <span className="text-[10px] text-ps-hint">
             The proviso to §89 with Rule 21AA: no Form 10E, no relief. Nothing here
             files it.
           </span>
         </label>
-        <label className="text-[11px] text-[#475569] flex items-center gap-1.5 mt-5">
+        <label className="text-[11px] text-ps-label flex items-center gap-1.5 mt-5">
           <input type="checkbox" checked={useNewRegime}
             onChange={(e) => setUseNewRegime(e.target.checked)} />
           New regime (§115BAC)
         </label>
       </div>
 
-      <div className="rounded-xl border border-[#E2E8F0] p-3">
-        <p className="text-[11px] font-semibold text-[#1E293B]">
+      <div className="rounded-xl border border-ps-border p-3">
+        <p className="text-[11px] font-semibold text-ps-ink">
           Which year each slice of the arrears belongs to
         </p>
-        <p className="text-[10px] text-[#94A3B8] mt-1">
+        <p className="text-[10px] text-ps-hint mt-1">
           The total income for an earlier year comes off the employee&apos;s own
           return — the employer never held it, so it is asked for rather than assumed.
         </p>
@@ -1029,12 +1029,12 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
         ))}
         <div className="mt-2 flex gap-2">
           <button onClick={() => setSlices((v) => [...v, { fy: "", amount: "", income: "" }])}
-            className="px-2.5 py-1 text-[11px] border border-[#E2E8F0] rounded-lg text-[#334155] hover:bg-[#F8FAFC]">
+            className="px-2.5 py-1 text-[11px] border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
             Add a year
           </button>
           {slices.length > 1 && (
             <button onClick={() => setSlices((v) => v.slice(0, -1))}
-              className="px-2.5 py-1 text-[11px] border border-[#E2E8F0] rounded-lg text-[#334155] hover:bg-[#F8FAFC]">
+              className="px-2.5 py-1 text-[11px] border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
               Remove the last
             </button>
           )}
@@ -1042,7 +1042,7 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
       </div>
 
       <button onClick={compute} disabled={busy}
-        className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+        className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
         {busy ? "Computing…" : "Compute §89 relief"}
       </button>
 
@@ -1066,9 +1066,9 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
               {[["Tax with the arrears", result.tax_with_arrears_paise],
                 ["Tax spread over the years", result.tax_without_arrears_paise],
                 ["§89 relief", result.relief_paise]].map(([label, v]) => (
-                <div key={String(label)} className="rounded-lg border border-[#E2E8F0] p-2.5">
-                  <p className="text-[10px] text-[#94A3B8]">{label}</p>
-                  <p className="text-[13px] font-semibold text-[#1E293B]">{fmt(Number(v ?? 0))}</p>
+                <div key={String(label)} className="rounded-lg border border-ps-border p-2.5">
+                  <p className="text-[10px] text-ps-hint">{label}</p>
+                  <p className="text-[13px] font-semibold text-ps-ink">{fmt(Number(v ?? 0))}</p>
                 </div>
               ))}
             </div>

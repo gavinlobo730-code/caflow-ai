@@ -57,10 +57,10 @@ function Collections() {
     <div className="p-6 max-w-3xl">
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
-          <Wallet size={18} className="text-[#182350]" />
-          <h1 className="text-lg font-semibold text-[#182350]">Collections</h1>
+          <Wallet size={18} className="text-brand" />
+          <h1 className="text-lg font-semibold text-brand">Collections</h1>
         </div>
-        <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-[#182350]">
+        <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-brand">
           <RefreshCw size={13} /> Refresh
         </button>
       </div>
@@ -75,7 +75,7 @@ function Collections() {
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-[11px] text-gray-500 uppercase">Total receivable</p>
-          <p className="text-lg font-semibold text-[#182350] tabular-nums mt-1">{formatPaise(dash?.total_receivable_paise ?? 0)}</p>
+          <p className="text-lg font-semibold text-brand tabular-nums mt-1">{formatPaise(dash?.total_receivable_paise ?? 0)}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-[11px] text-gray-500 uppercase">Collected (cash)</p>
@@ -85,12 +85,12 @@ function Collections() {
 
       <div className="flex gap-3">
         <button onClick={() => run("sweep")} disabled={busy}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm text-[#182350] hover:bg-[#F8FAFC] disabled:opacity-50">
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm text-brand hover:bg-ps-bg disabled:opacity-50">
           <Activity size={14} /> Run overdue sweep
         </button>
         <button onClick={() => run("followups")} disabled={busy}
           title="Writes a Timeline note against each overdue fee invoice. No email is sent."
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#182350] text-white text-sm disabled:opacity-50">
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
           <Bell size={14} /> Flag for follow-up
         </button>
       </div>

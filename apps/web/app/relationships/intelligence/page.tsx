@@ -193,11 +193,11 @@ export default function RelationshipIntelligencePage() {
   ];
 
   return (
-    <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
+    <div className="p-6 space-y-5 bg-ps-bg min-h-full">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#182350] flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-brand flex items-center gap-2">
             <FileText size={20} />
             Relationship Intelligence
           </h1>
@@ -215,7 +215,7 @@ export default function RelationshipIntelligencePage() {
             onClick={() => setActiveTab(tab.key)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.key
-                ? "border-[#182350] text-[#182350]"
+                ? "border-brand text-brand"
                 : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
@@ -232,7 +232,7 @@ export default function RelationshipIntelligencePage() {
 
       {loading && (
         <div className="flex items-center justify-center py-16">
-          <div className="w-5 h-5 border-2 border-[#182350] border-t-transparent rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
         </div>
       )}
 

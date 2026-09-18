@@ -260,13 +260,13 @@ export default function PurchasesPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0">
-        <div className="flex gap-0.5 bg-[#F8FAFC] rounded-lg p-1 w-fit">
+        <div className="flex gap-0.5 bg-ps-bg rounded-lg p-1 w-fit">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
-                tab === t.id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"
+                tab === t.id ? "bg-white text-ps-ink shadow-sm" : "text-ps-label hover:text-ps-body"
               }`}
             >
               {t.label}
@@ -292,7 +292,7 @@ export default function PurchasesPage() {
 // ── Status badge ───────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-[#F1F5F9] text-[#475569]",
+  draft: "bg-ps-muted text-ps-label",
   received: "bg-blue-100 text-blue-700",
   partially_paid: "bg-amber-100 text-amber-700",
   paid: "bg-green-100 text-green-700",
@@ -824,10 +824,10 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   // ── DataTable columns (money columns return integer paise, right-aligned) ────
   const billColumns: Column<PurchaseBillRow>[] = useMemo(() => [
     { key: "our_reference", header: "Our Ref", accessor: (b) => b.our_reference ?? "", searchable: true,
-      render: (b) => <span className="font-mono text-[10px] text-[#475569]">{b.our_reference ?? "—"}</span> },
+      render: (b) => <span className="font-mono text-[10px] text-ps-label">{b.our_reference ?? "—"}</span> },
     { key: "bill_no", header: "Vendor Invoice", accessor: (b) => b.bill_no ?? "", searchable: true,
       render: (b) => (
-        <span className="text-[#475569] inline-flex items-center gap-1">
+        <span className="text-ps-label inline-flex items-center gap-1">
           {b.bill_no ?? "—"}
           {b.is_ai_extracted && <span className="text-[9px] bg-amber-100 text-amber-600 px-1 rounded">AI</span>}
           {b.document_url && (
@@ -835,7 +835,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
               onClick={(e) => { e.stopPropagation(); viewAttachment(b.id); }}
               title="View attached invoice"
               aria-label="View attached invoice"
-              className="text-[#94A3B8] hover:text-blue-600"
+              className="text-ps-hint hover:text-blue-600"
             >
               <Paperclip size={11} />
             </button>
@@ -843,20 +843,20 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
         </span>
       ) },
     { key: "vendor", header: "Vendor", accessor: (b) => b.vendors?.name ?? "", searchable: true, sticky: true, hideable: false,
-      render: (b) => <span className="font-medium text-[#1E293B]">{b.vendors?.name ?? "—"}</span> },
+      render: (b) => <span className="font-medium text-ps-ink">{b.vendors?.name ?? "—"}</span> },
     { key: "bill_date", header: "Date", accessor: (b) => b.bill_date, sortable: true,
-      render: (b) => <span className="text-[#64748B]">{b.bill_date}</span> },
+      render: (b) => <span className="text-ps-label">{b.bill_date}</span> },
     { key: "taxable", header: "Taxable", accessor: (b) => b.taxable_amount_paise, align: "right",
-      render: (b) => <span className="font-mono text-[#334155]">{fmt(b.taxable_amount_paise)}</span> },
+      render: (b) => <span className="font-mono text-ps-body">{fmt(b.taxable_amount_paise)}</span> },
     { key: "gst", header: "GST", accessor: (b) => b.total_gst_paise, align: "right",
-      render: (b) => <span className="font-mono text-[#64748B]">{fmt(b.total_gst_paise)}</span> },
+      render: (b) => <span className="font-mono text-ps-label">{fmt(b.total_gst_paise)}</span> },
     { key: "tds", header: "TDS", accessor: (b) => b.tds_paise, align: "right",
       render: (b) => <span className="font-mono text-blue-600">{b.tds_paise > 0 ? fmt(b.tds_paise) : "—"}</span> },
     { key: "net_payable", header: "Net Payable", accessor: (b) => b.net_payable_paise, sortable: true, align: "right",
-      render: (b) => <span className="font-mono font-semibold text-[#1E293B]">{fmt(b.net_payable_paise)}</span> },
+      render: (b) => <span className="font-mono font-semibold text-ps-ink">{fmt(b.net_payable_paise)}</span> },
     { key: "status", header: "Status", accessor: (b) => b.status, sortable: true,
       render: (b) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[b.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>{b.status}</span>
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[b.status] ?? "bg-ps-muted text-ps-label"}`}>{b.status}</span>
       ) },
     // PUR-11. §16(2)(aa): the credit on this bill is available only where the
     // supplier has furnished the invoice and it has been communicated through
@@ -873,7 +873,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
         if (!r) {
           return reconciledPeriods.has(periodOf(b.bill_date))
             ? <span className="text-[10px] text-red-700" title="This period's GSTR-2B was reconciled and this bill is not in it — §16(2)(aa) holds the credit back until the supplier files.">supplier has not filed</span>
-            : <span className="text-[10px] text-[#94A3B8]" title="No GSTR-2B has been reconciled for this bill's period. Upload it on the GST tab.">not reconciled</span>;
+            : <span className="text-[10px] text-ps-hint" title="No GSTR-2B has been reconciled for this bill's period. Upload it on the GST tab.">not reconciled</span>;
         }
         if (r.itc_available === "N") {
           return <span className="text-[10px] text-amber-700" title={r.itc_unavailable_reason}>2B: ITC not available</span>;
@@ -884,7 +884,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
         if (r.match_status === "amount_mismatch") {
           return <span className="text-[10px] text-amber-700" title={`Books claim ${fmt(Math.abs(r.match_difference_paise))} ${r.match_difference_paise > 0 ? "more" : "less"} tax than 2B carries`}>amount mismatch</span>;
         }
-        return <span className="text-[10px] text-[#64748B]">{r.match_status}</span>;
+        return <span className="text-[10px] text-ps-label">{r.match_status}</span>;
       } },
     // `reconciledPeriods` is read at two accessors above and loads ASYNC — it
     // starts as an empty Set. Omitting it here built the columns once against
@@ -1020,22 +1020,22 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
 
       {/* Summary strip */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <p className="text-[10px] text-[#64748B] mb-1">Outstanding Payable</p>
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
+          <p className="text-[10px] text-ps-label mb-1">Outstanding Payable</p>
           <p className="text-lg font-bold text-orange-700 tabular-nums">{loadFailed ? "—" : fmt(totalPayable)}</p>
         </div>
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <p className="text-[10px] text-[#64748B] mb-1">Total Bills (Selected Period)</p>
-          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{loadFailed ? "—" : fmt(totalThisFy)}</p>
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
+          <p className="text-[10px] text-ps-label mb-1">Total Bills (Selected Period)</p>
+          <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : fmt(totalThisFy)}</p>
         </div>
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <p className="text-[10px] text-[#64748B] mb-1">Bills in Selected Period</p>
-          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{loadFailed ? "—" : bills.length}</p>
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
+          <p className="text-[10px] text-ps-label mb-1">Bills in Selected Period</p>
+          <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : bills.length}</p>
         </div>
       </div>
 
       <div className="flex justify-between items-center">
-        <p className="text-xs font-semibold text-[#334155]">Purchase Bills — {periodOptionLabel(periodMode, financialYear)}</p>
+        <p className="text-xs font-semibold text-ps-body">Purchase Bills — {periodOptionLabel(periodMode, financialYear)}</p>
       </div>
 
       {showImport && (
@@ -1081,7 +1081,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
             />
             <button
               onClick={() => setShowImport(true)}
-              className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+              className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
             >
               <Upload size={12} /> Import
             </button>
@@ -1105,7 +1105,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
             <button
               onClick={(e) => openMenuFor(e, b)}
               aria-label={`Actions for bill ${b.bill_no || b.id}`}
-              className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+              className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
               <MoreHorizontal size={16} />
             </button>
@@ -1124,11 +1124,11 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
               style={{ top: menu.top, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(b.id); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
               </button>
               {/* CGST Act s.31(3)(f). Offered on EVERY bill and never gated
@@ -1137,7 +1137,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                   the browser must not decide. A bill it does not reach opens
                   the panel and is told why, which is the answer the CA needs. */}
               <button onClick={() => { setMenu(null); setRcmDoc({ kind: "self_invoice", billId: b.id }); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 Self-invoice (s.31(3)(f))
               </button>
               {/* AS-2 par. 6. Freight inward, insurance in transit and
@@ -1145,18 +1145,18 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                   the split has to be seen BEFORE the receipt, because the
                   journal it posts cannot be rewritten (migration 251). */}
               <button onClick={() => { setMenu(null); setLandedCostBillId(b.id); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 Landed costs
               </button>
               {b.status !== "cancelled" && (
                 <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/purchases/bills/${b.id}/edit`); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                   {b.status === "draft" ? "Edit draft" : "Edit"}
                 </button>
               )}
               {b.status === "draft" && (
                 <>
-                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); setDeleteTarget(b); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
                     Delete draft
@@ -1165,7 +1165,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
               )}
               {b.status === "received" && (
                 <>
-                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); cancelBill(b); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
                     Cancel bill
@@ -1256,12 +1256,12 @@ function DeleteBillModal({
 
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 w-full max-w-md shadow-xl">
+      <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
         <div className="flex items-start gap-3 mb-4">
           <div className="p-2 rounded-full bg-red-50 text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
           <div>
-            <h3 className="text-sm font-semibold text-[#0F172A]">Delete draft purchase bill?</h3>
-            <p className="text-xs text-[#64748B] mt-1">
+            <h3 className="text-sm font-semibold text-ps-ink">Delete draft purchase bill?</h3>
+            <p className="text-xs text-ps-label mt-1">
               <span className="font-mono">{bill.bill_no || "This bill"}</span> will be removed from your purchase
               bill list. Only drafts can be deleted — received, partially-paid, paid and cancelled bills are
               permanent records and are protected.
@@ -1270,7 +1270,7 @@ function DeleteBillModal({
         </div>
         {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mb-3">{error}</p>}
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <button
             onClick={handle}
             disabled={deleting}
@@ -1678,13 +1678,13 @@ function Vendors({ clientId }: { clientId: string }) {
   // ── DataTable columns (opening balance returns integer paise, right-aligned) ─
   const vendorColumns: Column<VendorRow>[] = useMemo(() => [
     { key: "name", header: "Name", accessor: (v) => v.name, searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (v) => <span className="font-medium text-[#1E293B]">{v.name}</span> },
+      render: (v) => <span className="font-medium text-ps-ink">{v.name}</span> },
     { key: "gstin", header: "GSTIN", accessor: (v) => v.gstin ?? "", searchable: true,
-      render: (v) => <span className="font-mono text-[10px] text-[#64748B]">{v.gstin ?? "—"}</span> },
+      render: (v) => <span className="font-mono text-[10px] text-ps-label">{v.gstin ?? "—"}</span> },
     { key: "tds_applicable", header: "TDS", accessor: (v) => v.tds_applicable, align: "center",
-      render: (v) => v.tds_applicable ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">Yes</span> : <span className="text-[#94A3B8]">—</span> },
+      render: (v) => v.tds_applicable ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">Yes</span> : <span className="text-ps-hint">—</span> },
     { key: "tds_section", header: "Section", accessor: (v) => v.tds_section ?? "",
-      render: (v) => <span className="text-[#64748B]">{v.tds_section ?? "—"}</span> },
+      render: (v) => <span className="text-ps-label">{v.tds_section ?? "—"}</span> },
     // Shown because an unclassified vendor is filed on an ASSUMPTION — 26Q,
     // because that is right for a domestic vendor — and a CA should be able to
     // see which ones those are without opening each record.
@@ -1695,20 +1695,20 @@ function Vendors({ clientId }: { clientId: string }) {
               Non-resident{v.country_of_residence ? ` · ${v.country_of_residence}` : ""}
             </span>
           : v.residential_status === "resident"
-            ? <span className="text-[#64748B]">Resident</span>
-            : <span className="text-[#94A3B8]" title="Not established — deductions are reported on 26Q as assumed resident">Not set</span> },
+            ? <span className="text-ps-label">Resident</span>
+            : <span className="text-ps-hint" title="Not established — deductions are reported on 26Q as assumed resident">Not set</span> },
 
     { key: "opening_balance", header: "Opening Bal", accessor: (v) => v.opening_balance_paise, sortable: true, align: "right",
-      render: (v) => <span className="font-mono text-[#334155]">{v.opening_balance_paise > 0 ? fmt(v.opening_balance_paise) : "—"}</span> },
+      render: (v) => <span className="font-mono text-ps-body">{v.opening_balance_paise > 0 ? fmt(v.opening_balance_paise) : "—"}</span> },
     { key: "email", header: "Email", accessor: (v) => v.email ?? "", searchable: true, defaultHidden: true,
-      render: (v) => <span className="text-[#64748B]">{v.email ?? "—"}</span> },
+      render: (v) => <span className="text-ps-label">{v.email ?? "—"}</span> },
     { key: "phone", header: "Phone", accessor: (v) => v.phone ?? "", searchable: true, defaultHidden: true,
-      render: (v) => <span className="text-[#64748B]">{v.phone ?? "—"}</span> },
+      render: (v) => <span className="text-ps-label">{v.phone ?? "—"}</span> },
     { key: "is_active", header: "Status", accessor: (v) => (v.is_active ? "active" : "inactive"),
       render: (v) => v.is_active ? (
         <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Active</span>
       ) : (
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#F1F5F9] text-[#64748B]">Inactive</span>
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">Inactive</span>
       ) },
   ], []);
 
@@ -1760,26 +1760,26 @@ function Vendors({ clientId }: { clientId: string }) {
         onDismiss={() => setResemblances([])} />
 
       {deactivateTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="px-6 py-5 border-b border-[#F1F5F9]">
-              <h2 className="text-base font-semibold text-[#0F172A]">Deactivate Vendor?</h2>
+            <div className="px-6 py-5 border-b border-ps-muted">
+              <h2 className="text-base font-semibold text-ps-ink">Deactivate Vendor?</h2>
             </div>
             <div className="px-6 py-5 space-y-2">
-              <p className="text-sm text-[#475569]">
-                <span className="font-medium text-[#1E293B]">{deactivateTarget.name}</span> will no
+              <p className="text-sm text-ps-label">
+                <span className="font-medium text-ps-ink">{deactivateTarget.name}</span> will no
                 longer be available for new bills.
               </p>
-              <p className="text-sm text-[#475569]">
+              <p className="text-sm text-ps-label">
                 Existing bills and accounting records will remain unchanged. You can reactivate
                 this vendor later.
               </p>
             </div>
-            <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
               <button
                 onClick={() => setDeactivateTarget(null)}
                 disabled={deactivating}
-                className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] disabled:opacity-50"
+                className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -1797,31 +1797,31 @@ function Vendors({ clientId }: { clientId: string }) {
 
       {/* Permanent-delete flow: checking → blocked (has records) → confirm (clean) */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             {deleteDeps === null ? (
-              <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-[#475569]">
+              <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-ps-label">
                 <Loader2 size={16} className="animate-spin" /> Checking for linked records…
               </div>
             ) : deleteDeps.can_delete ? (
               <>
-                <div className="px-6 py-5 border-b border-[#F1F5F9]">
-                  <h2 className="text-base font-semibold text-[#0F172A]">Delete Vendor?</h2>
+                <div className="px-6 py-5 border-b border-ps-muted">
+                  <h2 className="text-base font-semibold text-ps-ink">Delete Vendor?</h2>
                 </div>
                 <div className="px-6 py-5 space-y-2">
-                  <p className="text-sm text-[#475569]">
-                    <span className="font-medium text-[#1E293B]">{deleteTarget.name}</span> has no
+                  <p className="text-sm text-ps-label">
+                    <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has no
                     linked bills, payments, debit notes, credit notes or opening balance.
                   </p>
-                  <p className="text-sm text-[#475569]">
+                  <p className="text-sm text-ps-label">
                     This permanently removes the vendor and cannot be undone.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+                <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     disabled={deleteBusy}
-                    className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] disabled:opacity-50"
+                    className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -1836,16 +1836,16 @@ function Vendors({ clientId }: { clientId: string }) {
               </>
             ) : (
               <>
-                <div className="px-6 py-5 border-b border-[#F1F5F9] flex items-center gap-2">
+                <div className="px-6 py-5 border-b border-ps-muted flex items-center gap-2">
                   <AlertTriangle size={18} className="text-amber-500" />
-                  <h2 className="text-base font-semibold text-[#0F172A]">Can&apos;t delete this vendor</h2>
+                  <h2 className="text-base font-semibold text-ps-ink">Can&apos;t delete this vendor</h2>
                 </div>
                 <div className="px-6 py-5 space-y-3">
-                  <p className="text-sm text-[#475569]">
-                    <span className="font-medium text-[#1E293B]">{deleteTarget.name}</span> has linked
+                  <p className="text-sm text-ps-label">
+                    <span className="font-medium text-ps-ink">{deleteTarget.name}</span> has linked
                     accounting records, so it can&apos;t be permanently deleted:
                   </p>
-                  <ul className="text-sm text-[#475569] space-y-1">
+                  <ul className="text-sm text-ps-label space-y-1">
                     {([
                       ["bills", "Bills"],
                       ["payments", "Payments"],
@@ -1863,15 +1863,15 @@ function Vendors({ clientId }: { clientId: string }) {
                         </li>
                       ))}
                   </ul>
-                  <p className="text-sm text-[#475569]">
+                  <p className="text-sm text-ps-label">
                     Deactivate the vendor instead — this keeps all history and removes it from new
                     bills.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-end gap-2">
+                <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
-                    className="px-4 py-2 text-sm text-[#475569] rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                    className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg"
                   >
                     Close
                   </button>
@@ -1898,17 +1898,17 @@ function Vendors({ clientId }: { clientId: string }) {
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
               style={{ top: menu.top, left: menu.left }}
             >
               {v.is_active ? (
                 <button onClick={() => { setMenu(null); setDeactivateTarget(v); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                   <Ban size={13} /> Deactivate
                 </button>
               ) : (
                 <button onClick={() => { setMenu(null); reactivateVendor(v); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-green-700">
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-green-700">
                   <RotateCcw size={13} /> Reactivate
                 </button>
               )}
@@ -1922,7 +1922,7 @@ function Vendors({ clientId }: { clientId: string }) {
       })()}
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">{vendors.length} vendor{vendors.length !== 1 ? "s" : ""}</p>
+        <p className="text-xs font-semibold text-ps-body">{vendors.length} vendor{vendors.length !== 1 ? "s" : ""}</p>
       </div>
 
       {showImport && (
@@ -1936,35 +1936,35 @@ function Vendors({ clientId }: { clientId: string }) {
       )}
 
       {showForm && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
+        <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-[#0F172A]">New Vendor</h3>
-            <button onClick={() => setShowForm(false)}><X size={16} className="text-[#94A3B8]" /></button>
+            <h3 className="text-sm font-semibold text-ps-ink">New Vendor</h3>
+            <button onClick={() => setShowForm(false)}><X size={16} className="text-ps-hint" /></button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Name *</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Vendor legal name" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Vendor legal name" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">GSTIN</label>
-              <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="27AABCS1429B1Z5" maxLength={15} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+              <label className="block text-xs font-medium text-ps-label mb-1">GSTIN</label>
+              <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="27AABCS1429B1Z5" maxLength={15} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">PAN</label>
-              <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+              <label className="block text-xs font-medium text-ps-label mb-1">PAN</label>
+              <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-ps-label mb-1">Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Phone</label>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-ps-label mb-1">Phone</label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Opening Balance (₹ payable)</label>
-              <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-ps-label mb-1">Opening Balance (₹ payable)</label>
+              <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
@@ -1975,15 +1975,15 @@ function Vendors({ clientId }: { clientId: string }) {
               26Q. The backend refuses to compute s.195, so setting this to
               non-resident with TDS on will be rejected with an explanation —
               that refusal is the point, not a gap in this form. */}
-          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-3 space-y-2">
+          <div className="bg-ps-bg border border-ps-border rounded-lg p-3 space-y-2">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="residential-status" className="block text-xs font-medium text-[#475569] mb-1">Residential status (IT Act)</label>
+                <label htmlFor="residential-status" className="block text-xs font-medium text-ps-label mb-1">Residential status (IT Act)</label>
                 <select
                   id="residential-status"
                   value={residentialStatus}
                   onChange={(e) => setResidentialStatus(e.target.value as "" | "resident" | "non_resident")}
-                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Not established</option>
                   <option value="resident">Resident</option>
@@ -1991,12 +1991,12 @@ function Vendors({ clientId }: { clientId: string }) {
                 </select>
               </div>
               <div>
-                <label htmlFor="gst-registration-status" className="block text-xs font-medium text-[#475569] mb-1">GST registration (CGST Act s.31(3)(f))</label>
+                <label htmlFor="gst-registration-status" className="block text-xs font-medium text-ps-label mb-1">GST registration (CGST Act s.31(3)(f))</label>
                 <select
                   id="gst-registration-status"
                   value={gstRegistrationStatus}
                   onChange={(e) => setGstRegistrationStatus(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {/* The EMPTY option is the third state and says so: a blank
                       here is "nobody has recorded it", which is why a
@@ -2006,27 +2006,27 @@ function Vendors({ clientId }: { clientId: string }) {
                     <option key={o} value={o}>{o === "registered" ? "Registered" : "Unregistered"}</option>
                   ))}
                 </select>
-                <p className="text-[10px] text-[#94A3B8] mt-1">
+                <p className="text-[10px] text-ps-hint mt-1">
                   Only needed where there is no GSTIN above — a GSTIN is the registration.
                 </p>
               </div>
               {residentialStatus === "non_resident" && (
                 <div>
-                  <label htmlFor="country-of-residence" className="block text-xs font-medium text-[#475569] mb-1">Country (ISO code)</label>
+                  <label htmlFor="country-of-residence" className="block text-xs font-medium text-ps-label mb-1">Country (ISO code)</label>
                   <input
                     id="country-of-residence"
                     value={countryOfResidence}
                     onChange={(e) => setCountryOfResidence(e.target.value.toUpperCase())}
                     maxLength={2}
                     placeholder="AE"
-                    className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               )}
             </div>
             {residentialStatus === "non_resident" && (
               <div>
-                <label htmlFor="foreign-tin" className="block text-xs font-medium text-[#475569] mb-1">
+                <label htmlFor="foreign-tin" className="block text-xs font-medium text-ps-label mb-1">
                   Tax identification number {pan.trim() ? "(optional — PAN is on file)" : "(required on 27Q without a PAN)"}
                 </label>
                 <input
@@ -2034,29 +2034,29 @@ function Vendors({ clientId }: { clientId: string }) {
                   value={taxIdentificationNumber}
                   onChange={(e) => setTaxIdentificationNumber(e.target.value)}
                   placeholder="TIN in the country of residence"
-                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             )}
             {residentialStatus === "" && (
-              <p className="text-xs text-[#64748B]">
+              <p className="text-xs text-ps-label">
                 Leave this unset if nobody has established it. Deductions are then reported on
                 26Q and flagged as assumed resident, rather than silently filed as certain.
               </p>
             )}
             {residentialStatus === "non_resident" && (
-              <div className="space-y-2 pt-1 border-t border-[#E2E8F0]">
-                <p className="text-xs font-medium text-[#475569]">
+              <div className="space-y-2 pt-1 border-t border-ps-border">
+                <p className="text-xs font-medium text-ps-label">
                   §195 withholding — the rate in force keys on the nature of the income
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label htmlFor="nature-of-income" className="block text-xs font-medium text-[#475569] mb-1">Nature of income</label>
+                    <label htmlFor="nature-of-income" className="block text-xs font-medium text-ps-label mb-1">Nature of income</label>
                     <select
                       id="nature-of-income"
                       value={natureOfIncome}
                       onChange={(e) => setNatureOfIncome(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Not established</option>
                       <option value="business_profits_no_pe">Business profits — no permanent establishment (nil)</option>
@@ -2080,12 +2080,12 @@ function Vendors({ clientId }: { clientId: string }) {
                         one over-deducts and the other under-deducts, and an
                         under-deduction disallows the whole expense under
                         §40(a)(i). */}
-                    <label htmlFor="payee-class" className="block text-xs font-medium text-[#475569] mb-1">Payee class — decides the §195 surcharge</label>
+                    <label htmlFor="payee-class" className="block text-xs font-medium text-ps-label mb-1">Payee class — decides the §195 surcharge</label>
                     <select
                       id="payee-class"
                       value={payeeClass}
                       onChange={(e) => setPayeeClass(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Not established</option>
                       <option value="foreign_company">Foreign company</option>
@@ -2094,34 +2094,34 @@ function Vendors({ clientId }: { clientId: string }) {
                       <option value="firm_llp">Firm or LLP</option>
                       <option value="co_operative">Co-operative society</option>
                     </select>
-                    <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                    <p className="text-[10px] text-ps-hint mt-0.5">
                       Firm/LLP and co-operative are recordable but not yet rateable — this
                       software does not hold Part II&apos;s ladder for them, and will say so
                       rather than guess.
                     </p>
                   </div>
                   <div>
-                    <label htmlFor="treaty-rate" className="block text-xs font-medium text-[#475569] mb-1">DTAA rate (%) — from the treaty</label>
+                    <label htmlFor="treaty-rate" className="block text-xs font-medium text-ps-label mb-1">DTAA rate (%) — from the treaty</label>
                     <input
                       id="treaty-rate"
                       value={treatyRate}
                       onChange={(e) => setTreatyRate(e.target.value)}
                       placeholder="e.g. 10"
                       disabled={!trcOnFile}
-                      className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]"
+                      className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint"
                     />
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  <label className="flex items-center gap-1.5 text-xs text-[#475569]">
+                  <label className="flex items-center gap-1.5 text-xs text-ps-label">
                     <input type="checkbox" checked={trcOnFile} onChange={(e) => setTrcOnFile(e.target.checked)} className="rounded" />
                     Tax Residency Certificate on file (§90(4))
                   </label>
-                  <label className="flex items-center gap-1.5 text-xs text-[#475569]">
+                  <label className="flex items-center gap-1.5 text-xs text-ps-label">
                     <input type="checkbox" checked={form10fOnFile} onChange={(e) => setForm10fOnFile(e.target.checked)} className="rounded" />
                     Form 10F on file (Rule 21AB)
                   </label>
-                  <label className="flex items-center gap-1.5 text-xs text-[#475569]">
+                  <label className="flex items-center gap-1.5 text-xs text-ps-label">
                     <input type="checkbox" checked={noPeDeclaration} onChange={(e) => setNoPeDeclaration(e.target.checked)} className="rounded" />
                     No-PE declaration on file
                   </label>
@@ -2129,29 +2129,29 @@ function Vendors({ clientId }: { clientId: string }) {
                 {noPeDeclaration && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label htmlFor="no-pe-on" className="block text-xs font-medium text-[#475569] mb-1">Declaration dated</label>
+                      <label htmlFor="no-pe-on" className="block text-xs font-medium text-ps-label mb-1">Declaration dated</label>
                       <input
                         id="no-pe-on"
                         type="date"
                         value={noPeDeclarationOn}
                         onChange={(e) => setNoPeDeclarationOn(e.target.value)}
-                        className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                     <div>
-                      <label htmlFor="no-pe-ref" className="block text-xs font-medium text-[#475569] mb-1">Where it is filed</label>
+                      <label htmlFor="no-pe-ref" className="block text-xs font-medium text-ps-label mb-1">Where it is filed</label>
                       <input
                         id="no-pe-ref"
                         value={noPeDeclarationRef}
                         onChange={(e) => setNoPeDeclarationRef(e.target.value)}
                         placeholder="Letter no. / document reference"
-                        className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                   </div>
                 )}
                 {natureOfIncome === "business_profits_no_pe" && (
-                  <p className="text-xs text-[#64748B]">
+                  <p className="text-xs text-ps-label">
                     Nothing is withheld: §195 reaches only a sum chargeable under the Act, and
                     business profits of a payee with no permanent establishment in India are not
                     (GE India Technology Centre v. CIT). The no-PE declaration is the evidence.
@@ -2188,7 +2188,7 @@ function Vendors({ clientId }: { clientId: string }) {
             {tdsApplicable && (
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="block text-xs font-medium text-[#475569] mb-1">TDS Section</label>
+                  <label className="block text-xs font-medium text-ps-label mb-1">TDS Section</label>
                   <Combobox
                     options={TDS_SECTIONS}
                     value={TDS_SECTIONS.find((s) => s.value === tdsSection) ?? null}
@@ -2226,7 +2226,7 @@ function Vendors({ clientId }: { clientId: string }) {
           </div>
 
           <div className="flex gap-3 justify-end">
-            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <button onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : "Add Vendor"}</button>
           </div>
         </div>
@@ -2253,14 +2253,14 @@ function Vendors({ clientId }: { clientId: string }) {
           <button
             onClick={(e) => openMenuFor(e, v)}
             aria-label={`Actions for ${v.name}`}
-            className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+            className="p-1 rounded hover:bg-ps-muted text-ps-label"
           >
             <MoreHorizontal size={14} />
           </button>
         )}
         toolbarExtra={
           <>
-            <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"><Upload size={12} /> Import</button>
+            <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"><Upload size={12} /> Import</button>
             <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Add Vendor</button>
           </>
         }
@@ -2600,26 +2600,26 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
   // ── DataTable columns (amount returns integer paise, right-aligned) ──────────
   const paymentColumns: Column<PaymentRow>[] = useMemo(() => [
     { key: "payment_no", header: "Payment No", accessor: (p) => p.payment_no, searchable: true, sticky: true, hideable: false,
-      render: (p) => <span className="font-mono text-[10px] text-[#475569]">{p.payment_no}</span> },
+      render: (p) => <span className="font-mono text-[10px] text-ps-label">{p.payment_no}</span> },
     { key: "payment_date", header: "Date", accessor: (p) => p.payment_date, sortable: true,
-      render: (p) => <span className="text-[#64748B]">{p.payment_date}</span> },
+      render: (p) => <span className="text-ps-label">{p.payment_date}</span> },
     { key: "vendor", header: "Vendor", accessor: (p) => p.vendors?.name ?? "", searchable: true,
-      render: (p) => <span className="font-medium text-[#1E293B]">{p.vendors?.name ?? "—"}</span> },
+      render: (p) => <span className="font-medium text-ps-ink">{p.vendors?.name ?? "—"}</span> },
     { key: "amount", header: "Amount", accessor: (p) => p.amount_paise, sortable: true, align: "right",
-      render: (p) => <span className="font-mono font-semibold text-[#1E293B]">{fmt(p.amount_paise)}</span> },
+      render: (p) => <span className="font-mono font-semibold text-ps-ink">{fmt(p.amount_paise)}</span> },
     // The amount column is the sum CREDITED to the vendor; this is what was
     // held back out of it, and the two differ exactly on an advance. Shown
     // beside it rather than folded into it, because 26Q reports both.
     { key: "tds", header: "TDS Withheld", accessor: (p) => Number(p.tds_paise ?? 0), sortable: true, align: "right",
       render: (p) => Number(p.tds_paise ?? 0) > 0 ? (
-        <span className="font-mono text-[#B45309]" title={`Section ${p.tds_section ?? ""} — deducted on the advance, IT Act §194/§195 (credit or payment, whichever is earlier)`}>
+        <span className="font-mono text-state-attention" title={`Section ${p.tds_section ?? ""} — deducted on the advance, IT Act §194/§195 (credit or payment, whichever is earlier)`}>
           {fmt(Number(p.tds_paise))}
         </span>
-      ) : <span className="text-[#CBD5E1]">—</span> },
+      ) : <span className="text-ps-disabled">—</span> },
     { key: "payment_mode", header: "Mode", accessor: (p) => p.payment_mode, searchable: true,
-      render: (p) => <span className="text-[#64748B] capitalize">{p.payment_mode}</span> },
+      render: (p) => <span className="text-ps-label capitalize">{p.payment_mode}</span> },
     { key: "reference_no", header: "Reference", accessor: (p) => p.reference_no ?? "", searchable: true,
-      render: (p) => <span className="text-[10px] text-[#94A3B8]">{p.reference_no ?? "—"}</span> },
+      render: (p) => <span className="text-[10px] text-ps-hint">{p.reference_no ?? "—"}</span> },
     { key: "is_reversed", header: "Status", accessor: (p) => (p.is_reversed ? "Reversed" : "Active"),
       render: (p) => p.is_reversed ? (
         <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">Reversed</span>
@@ -2644,29 +2644,29 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <p className="text-[10px] text-[#64748B] mb-1">Total Paid (FY)</p>
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
+          <p className="text-[10px] text-ps-label mb-1">Total Paid (FY)</p>
           <p className="text-lg font-bold text-green-700 tabular-nums">{loadFailed ? "—" : fmt(totalPaid)}</p>
         </div>
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <p className="text-[10px] text-[#64748B] mb-1">Transactions</p>
-          <p className="text-lg font-bold text-[#1E293B] tabular-nums">{loadFailed ? "—" : payments.length}</p>
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
+          <p className="text-[10px] text-ps-label mb-1">Transactions</p>
+          <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : payments.length}</p>
         </div>
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">Payments — FY {financialYear}</p>
+        <p className="text-xs font-semibold text-ps-body">Payments — FY {financialYear}</p>
       </div>
 
       {showForm && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
+        <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-[#0F172A]">Record Payment</h3>
-            <button onClick={() => setShowForm(false)}><X size={16} className="text-[#94A3B8]" /></button>
+            <h3 className="text-sm font-semibold text-ps-ink">Record Payment</h3>
+            <button onClick={() => setShowForm(false)}><X size={16} className="text-ps-hint" /></button>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="col-span-2 lg:col-span-1">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
               <VendorLookup
                 vendors={vendors}
                 value={vendorId}
@@ -2676,11 +2676,11 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
             </div>
             {mcActive && (
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Currency</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
                 <select
                   value={currency}
                   onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); setBillId(""); }}
-                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">INR (default)</option>
                   {currencies.filter((c) => c.code !== "INR").map((c) => (
@@ -2693,7 +2693,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
             )}
             {isForeign && (
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Cash Exchange Rate *</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Cash Exchange Rate *</label>
                 <input
                   type="number"
                   min="0"
@@ -2701,13 +2701,13 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                   value={exchangeRate}
                   onChange={(e) => setExchangeRate(e.target.value)}
                   placeholder={`1 ${currency} = ? INR`}
-                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
                 />
               </div>
             )}
             {isForeign && (
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">
+                <label className="block text-xs font-medium text-ps-label mb-1">
                   Against Bill *
                 </label>
                 <EntityLookup
@@ -2722,26 +2722,26 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                   placeholder="— Select the bill this settles —"
                   ariaLabel="Against bill"
                 />
-                <p className="mt-1 text-[10px] text-[#94A3B8]">A foreign payment must be linked to the bill it settles — no unlinked foreign advance, and one bill per payment.</p>
+                <p className="mt-1 text-[10px] text-ps-hint">A foreign payment must be linked to the bill it settles — no unlinked foreign advance, and one bill per payment.</p>
               </div>
             )}
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Date *</label>
-              <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-ps-label mb-1">Date *</label>
+              <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Amount ({isForeign ? currency : "₹"}) *</label>
-              <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-ps-label mb-1">Amount ({isForeign ? currency : "₹"}) *</label>
+              <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Mode</label>
-              <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <label className="block text-xs font-medium text-ps-label mb-1">Mode</label>
+              <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {PAYMENT_MODES.map((m) => <option key={m}>{m}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Reference No.</label>
-              <input value={refNo} onChange={(e) => setRefNo(e.target.value)} placeholder="UTR / cheque no." className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-ps-label mb-1">Reference No.</label>
+              <input value={refNo} onChange={(e) => setRefNo(e.target.value)} placeholder="UTR / cheque no." className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <PaymentAccountPicker
               clientId={clientId}
@@ -2759,9 +2759,9 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
               at credit or payment whichever is earlier, so the server
               withholds on the remainder — which is why it is shown. */}
           {!isForeign && vendorId && (
-            <div className="border border-[#F1F5F9] rounded-lg">
-              <div className="flex items-center justify-between px-3 py-2 border-b border-[#F1F5F9] bg-[#F8FAFC] rounded-t-lg">
-                <p className="text-xs font-semibold text-[#334155]">
+            <div className="border border-ps-muted rounded-lg">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-ps-muted bg-ps-bg rounded-t-lg">
+                <p className="text-xs font-semibold text-ps-body">
                   Settle bills{allocatableBills.length ? ` (${allocatableBills.length} open)` : ""}
                 </p>
                 <div className="flex items-center gap-2">
@@ -2769,7 +2769,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                     type="button"
                     onClick={applyOldestFirst}
                     disabled={!allocatableBills.length || !((amountPaiseTyped ?? 0) > 0)}
-                    className="text-[11px] px-2.5 py-1 border border-[#E2E8F0] bg-white rounded-md hover:bg-[#F1F5F9] disabled:opacity-40"
+                    className="text-[11px] px-2.5 py-1 border border-ps-border bg-white rounded-md hover:bg-ps-muted disabled:opacity-40"
                   >
                     Apply oldest first
                   </button>
@@ -2777,20 +2777,20 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                     type="button"
                     onClick={() => setAlloc({})}
                     disabled={!Object.keys(alloc).length}
-                    className="text-[11px] px-2.5 py-1 border border-[#E2E8F0] bg-white rounded-md hover:bg-[#F1F5F9] disabled:opacity-40"
+                    className="text-[11px] px-2.5 py-1 border border-ps-border bg-white rounded-md hover:bg-ps-muted disabled:opacity-40"
                   >
                     Clear
                   </button>
                 </div>
               </div>
               {allocatableBills.length === 0 ? (
-                <p className="px-3 py-3 text-[11px] text-[#94A3B8]">
+                <p className="px-3 py-3 text-[11px] text-ps-hint">
                   This vendor has no open bills. The whole payment is recorded as an advance.
                 </p>
               ) : (
                 <div className="max-h-56 overflow-y-auto">
                   <table className="w-full text-xs">
-                    <thead className="text-[10px] uppercase tracking-wide text-[#94A3B8]">
+                    <thead className="text-[10px] uppercase tracking-wide text-ps-hint">
                       <tr>
                         <th className="text-left font-medium px-3 py-1.5">Bill</th>
                         <th className="text-left font-medium px-3 py-1.5">Date</th>
@@ -2804,10 +2804,10 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                         const typed = alloc[b.id] ?? "";
                         const bad = typed.trim() !== "" && paiseFromRupeeInput(typed) === null;
                         return (
-                          <tr key={b.id} className="border-t border-[#F8FAFC]">
-                            <td className="px-3 py-1.5 text-[#1E293B]">{b.our_reference ?? b.bill_no ?? "—"}</td>
-                            <td className="px-3 py-1.5 text-[#64748B]">{b.bill_date ?? "—"}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-[#475569]">{fmt(open)}</td>
+                          <tr key={b.id} className="border-t border-ps-bg">
+                            <td className="px-3 py-1.5 text-ps-ink">{b.our_reference ?? b.bill_no ?? "—"}</td>
+                            <td className="px-3 py-1.5 text-ps-label">{b.bill_date ?? "—"}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-ps-label">{fmt(open)}</td>
                             <td className="px-3 py-1.5 text-right">
                               <input
                                 type="text"
@@ -2817,7 +2817,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                                 placeholder="0.00"
                                 aria-label={`Allocate to ${b.our_reference ?? b.bill_no ?? "bill"}`}
                                 aria-invalid={bad || undefined}
-                                className={`w-32 px-2 py-1 text-xs border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${bad ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"}`}
+                                className={`w-32 px-2 py-1 text-xs border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${bad ? "border-red-400 bg-red-50" : "border-ps-border"}`}
                               />
                             </td>
                           </tr>
@@ -2827,15 +2827,15 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                   </table>
                 </div>
               )}
-              <div className="flex items-center justify-between px-3 py-2 border-t border-[#F1F5F9] text-xs">
-                <span className="text-[#64748B]">Allocated</span>
-                <span className="tabular-nums font-semibold text-[#1E293B]">{fmt(allocTotal)}</span>
+              <div className="flex items-center justify-between px-3 py-2 border-t border-ps-muted text-xs">
+                <span className="text-ps-label">Allocated</span>
+                <span className="tabular-nums font-semibold text-ps-ink">{fmt(allocTotal)}</span>
               </div>
-              <div className="flex items-center justify-between px-3 py-2 border-t border-[#F1F5F9] text-xs rounded-b-lg">
-                <span className="text-[#64748B]">
+              <div className="flex items-center justify-between px-3 py-2 border-t border-ps-muted text-xs rounded-b-lg">
+                <span className="text-ps-label">
                   Unallocated {unallocatedPaise > 0 ? "(recorded as an advance)" : ""}
                 </span>
-                <span className={`tabular-nums font-semibold ${unallocatedPaise < 0 ? "text-red-600" : "text-[#1E293B]"}`}>
+                <span className={`tabular-nums font-semibold ${unallocatedPaise < 0 ? "text-red-600" : "text-ps-ink"}`}>
                   {fmt(unallocatedPaise)}
                 </span>
               </div>
@@ -2848,7 +2848,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
           )}
 
           <div className="flex gap-3 justify-end">
-            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : "Record Payment"}</button>
           </div>
         </div>
@@ -3163,24 +3163,24 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
 
   const columns: Column<DebitNoteRow>[] = useMemo(() => [
     { key: "debit_note_no", header: "DN No", accessor: (d) => d.debit_note_no ?? "", searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (d) => <span className="font-mono font-medium text-[#1E293B]">{d.debit_note_no ?? "—"}</span> },
+      render: (d) => <span className="font-mono font-medium text-ps-ink">{d.debit_note_no ?? "—"}</span> },
     { key: "debit_note_date", header: "Date", accessor: (d) => d.debit_note_date, sortable: true,
-      render: (d) => <span className="text-[#64748B] whitespace-nowrap">{d.debit_note_date}</span> },
+      render: (d) => <span className="text-ps-label whitespace-nowrap">{d.debit_note_date}</span> },
     { key: "vendor_name", header: "Vendor", accessor: (d) => d.vendor_name ?? "", searchable: true,
-      render: (d) => <span className="font-medium text-[#1E293B]">{d.vendor_name ?? "—"}</span> },
+      render: (d) => <span className="font-medium text-ps-ink">{d.vendor_name ?? "—"}</span> },
     { key: "linked_bill", header: "Linked Bill", accessor: (d) => d.purchase_bills?.our_reference ?? d.purchase_bills?.bill_no ?? "",
-      render: (d) => <span className="font-mono text-[#64748B]">{d.purchase_bills?.our_reference ?? d.purchase_bills?.bill_no ?? "—"}</span> },
+      render: (d) => <span className="font-mono text-ps-label">{d.purchase_bills?.our_reference ?? d.purchase_bills?.bill_no ?? "—"}</span> },
     { key: "reason", header: "Reason", accessor: (d) => d.reason ?? "", searchable: true,
-      render: (d) => <span className="block max-w-[120px] truncate text-[#475569]">{d.reason ?? "—"}</span> },
+      render: (d) => <span className="block max-w-[120px] truncate text-ps-label">{d.reason ?? "—"}</span> },
     { key: "taxable", header: "Taxable", accessor: (d) => d.taxable_amount_paise, align: "right",
-      render: (d) => <span className="font-mono text-[#334155]">{fmt(d.taxable_amount_paise)}</span> },
+      render: (d) => <span className="font-mono text-ps-body">{fmt(d.taxable_amount_paise)}</span> },
     { key: "gst", header: "GST", accessor: (d) => d.total_gst_paise, align: "right",
-      render: (d) => <span className="font-mono text-[#64748B]">{fmt(d.total_gst_paise)}</span> },
+      render: (d) => <span className="font-mono text-ps-label">{fmt(d.total_gst_paise)}</span> },
     { key: "total_paise", header: "Total", accessor: (d) => d.total_paise, sortable: true, align: "right",
-      render: (d) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(d.total_paise)}</span> },
+      render: (d) => <span className="font-mono font-semibold text-ps-ink">{fmt(d.total_paise)}</span> },
     { key: "status", header: "Status", accessor: (d) => d.status, sortable: true,
       render: (d) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[d.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[d.status] ?? "bg-ps-muted text-ps-label"}`}>
           {d.status}
         </span>
       ) },
@@ -3255,7 +3255,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">
+        <p className="text-xs font-semibold text-ps-body">
           {debitNotes.length} debit note{debitNotes.length !== 1 ? "s" : ""} in FY {financialYear}
         </p>
       </div>
@@ -3272,20 +3272,20 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
               style={{ top: menu.top, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
               </button>
               <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/purchases/debit-notes/${d.id}/edit`); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 {d.status === "draft" ? "Edit draft" : "Edit"}
               </button>
               {d.status === "draft" && (
                 <>
-                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deleteDebitNote(d); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
                     Delete draft
@@ -3346,7 +3346,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
             <button
               onClick={() => setShowImport(true)}
-              className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+              className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
             >
               <Upload size={12} /> Import
             </button>
@@ -3373,7 +3373,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
             <button
               onClick={(e) => openMenuFor(e, d)}
               aria-label={`Actions for debit note ${d.debit_note_no || d.id}`}
-              className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+              className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
               <MoreHorizontal size={16} />
             </button>
@@ -3630,24 +3630,24 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
 
   const columns: Column<PurchaseCreditNoteRow>[] = useMemo(() => [
     { key: "credit_note_no", header: "CN No", accessor: (d) => d.credit_note_no ?? "", searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (d) => <span className="font-mono font-medium text-[#1E293B]">{d.credit_note_no ?? "—"}</span> },
+      render: (d) => <span className="font-mono font-medium text-ps-ink">{d.credit_note_no ?? "—"}</span> },
     { key: "credit_note_date", header: "Date", accessor: (d) => d.credit_note_date, sortable: true,
-      render: (d) => <span className="text-[#64748B] whitespace-nowrap">{d.credit_note_date}</span> },
+      render: (d) => <span className="text-ps-label whitespace-nowrap">{d.credit_note_date}</span> },
     { key: "vendor_name", header: "Vendor", accessor: (d) => d.vendor_name ?? "", searchable: true,
-      render: (d) => <span className="font-medium text-[#1E293B]">{d.vendor_name ?? "—"}</span> },
+      render: (d) => <span className="font-medium text-ps-ink">{d.vendor_name ?? "—"}</span> },
     { key: "linked_bill", header: "Linked Bill", accessor: (d) => d.purchase_bills?.our_reference ?? d.purchase_bills?.bill_no ?? "",
-      render: (d) => <span className="font-mono text-[#64748B]">{d.purchase_bills?.our_reference ?? d.purchase_bills?.bill_no ?? "—"}</span> },
+      render: (d) => <span className="font-mono text-ps-label">{d.purchase_bills?.our_reference ?? d.purchase_bills?.bill_no ?? "—"}</span> },
     { key: "reason", header: "Reason", accessor: (d) => d.reason ?? "", searchable: true,
-      render: (d) => <span className="block max-w-[120px] truncate text-[#475569]">{d.reason ?? "—"}</span> },
+      render: (d) => <span className="block max-w-[120px] truncate text-ps-label">{d.reason ?? "—"}</span> },
     { key: "taxable", header: "Taxable", accessor: (d) => d.taxable_amount_paise, align: "right",
-      render: (d) => <span className="font-mono text-[#334155]">{fmt(d.taxable_amount_paise)}</span> },
+      render: (d) => <span className="font-mono text-ps-body">{fmt(d.taxable_amount_paise)}</span> },
     { key: "gst", header: "GST", accessor: (d) => d.total_gst_paise, align: "right",
-      render: (d) => <span className="font-mono text-[#64748B]">{fmt(d.total_gst_paise)}</span> },
+      render: (d) => <span className="font-mono text-ps-label">{fmt(d.total_gst_paise)}</span> },
     { key: "total_paise", header: "Total", accessor: (d) => d.total_paise, sortable: true, align: "right",
-      render: (d) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(d.total_paise)}</span> },
+      render: (d) => <span className="font-mono font-semibold text-ps-ink">{fmt(d.total_paise)}</span> },
     { key: "status", header: "Status", accessor: (d) => d.status, sortable: true,
       render: (d) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[d.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[d.status] ?? "bg-ps-muted text-ps-label"}`}>
           {d.status}
         </span>
       ) },
@@ -3720,7 +3720,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">
+        <p className="text-xs font-semibold text-ps-body">
           {creditNotes.length} credit note{creditNotes.length !== 1 ? "s" : ""} in FY {financialYear}
         </p>
       </div>
@@ -3737,20 +3737,20 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
-              className="fixed z-50 w-44 bg-white rounded-lg border border-[#E2E8F0] shadow-lg py-1 text-xs"
+              className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
               style={{ top: menu.top, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 View details
               </button>
               <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/purchases/credit-notes/${d.id}/edit`); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 {d.status === "draft" ? "Edit draft" : "Edit"}
               </button>
               {d.status === "draft" && (
                 <>
-                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deletePcn(d); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
                     Delete draft
@@ -3811,7 +3811,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
             <button
               onClick={() => setShowImport(true)}
-              className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+              className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
             >
               <Upload size={12} /> Import
             </button>
@@ -3838,7 +3838,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
             <button
               onClick={(e) => openMenuFor(e, d)}
               aria-label={`Actions for credit note ${d.credit_note_no || d.id}`}
-              className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+              className="p-1 rounded hover:bg-ps-muted text-ps-label"
             >
               <MoreHorizontal size={16} />
             </button>

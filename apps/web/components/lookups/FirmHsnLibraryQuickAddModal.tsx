@@ -35,7 +35,7 @@ export interface FirmHsnLibraryRow {
 }
 
 const inputCls =
-  "w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
+  "w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
 
 export function FirmHsnLibraryQuickAddModal({
   seedCode,
@@ -98,7 +98,7 @@ export function FirmHsnLibraryQuickAddModal({
     >
       <div className="space-y-3">
         <label className="block space-y-1">
-          <span className="block text-xs font-medium text-[#475569]">HSN/SAC code</span>
+          <span className="block text-xs font-medium text-ps-label">HSN/SAC code</span>
           <input
             autoFocus
             value={hsnCode}
@@ -113,7 +113,7 @@ export function FirmHsnLibraryQuickAddModal({
         </label>
 
         <label className="block space-y-1">
-          <span className="block text-xs font-medium text-[#475569]">Description</span>
+          <span className="block text-xs font-medium text-ps-label">Description</span>
           <input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -124,14 +124,14 @@ export function FirmHsnLibraryQuickAddModal({
 
         <div className="grid grid-cols-2 gap-3">
           <label className="block space-y-1">
-            <span className="block text-xs font-medium text-[#475569]">Type</span>
+            <span className="block text-xs font-medium text-ps-label">Type</span>
             <select value={hsnType} onChange={(e) => setHsnType(e.target.value as "goods" | "services")} className={inputCls}>
               <option value="services">Services (SAC)</option>
               <option value="goods">Goods (HSN)</option>
             </select>
           </label>
           <label className="block space-y-1">
-            <span className="block text-xs font-medium text-[#475569]">GST rate (optional)</span>
+            <span className="block text-xs font-medium text-ps-label">GST rate (optional)</span>
             <select
               value={gstRate}
               onChange={(e) => setGstRate(e.target.value === "" ? "" : parseFloat(e.target.value))}
@@ -144,14 +144,14 @@ export function FirmHsnLibraryQuickAddModal({
         </div>
 
         <label className="block space-y-1">
-          <span className="block text-xs font-medium text-[#475569]">Unit (optional)</span>
+          <span className="block text-xs font-medium text-ps-label">Unit (optional)</span>
           <input value={uqc} onChange={(e) => setUqc(e.target.value)} placeholder="e.g. NOS, OTH" className={inputCls} />
         </label>
 
         {error && <p className="text-[11px] text-red-600">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">
+          <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">
             Cancel
           </button>
           <button

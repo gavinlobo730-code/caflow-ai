@@ -354,7 +354,7 @@ export default function FinancialStatementsPage() {
       <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={load}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]"
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label"
         >
           <RefreshCw size={12} /> Refresh from Ledger
         </button>
@@ -372,7 +372,7 @@ export default function FinancialStatementsPage() {
           <select
             value={selectedVersionId}
             onChange={(e) => setSelectedVersionId(e.target.value)}
-            className="text-xs border border-[#E2E8F0] rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="text-xs border border-ps-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="live">Live (Current)</option>
             {versions.map((v) => (
@@ -389,7 +389,7 @@ export default function FinancialStatementsPage() {
         </span>
 
         {loadingVersion && (
-          <span className="flex items-center gap-1.5 text-xs text-[#94A3B8]">
+          <span className="flex items-center gap-1.5 text-xs text-ps-hint">
             <RefreshCw size={11} className="animate-spin" /> Loading version…
           </span>
         )}
@@ -402,13 +402,13 @@ export default function FinancialStatementsPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-0.5 bg-[#F8FAFC] rounded-lg p-1 w-fit">
+      <div className="flex gap-0.5 bg-ps-bg rounded-lg p-1 w-fit">
         {(["balance_sheet", "profit_loss"] as FinTab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-              tab === t ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"
+              tab === t ? "bg-white text-ps-ink shadow-sm" : "text-ps-label hover:text-ps-body"
             }`}
           >
             {t === "balance_sheet" ? "Balance Sheet" : "Profit & Loss"}
@@ -465,7 +465,7 @@ export default function FinancialStatementsPage() {
         </>
       )}
 
-      <p className="text-[10px] text-[#94A3B8]">
+      <p className="text-[10px] text-ps-hint">
         {/* Printed against the actual numbers, so the claim has to be true of
             THIS client: Schedule III reaches financial statements through
             Companies Act 2013 §129(1), which speaks of "a company". Asserting
@@ -512,8 +512,8 @@ function BalanceSheetView({
   const hasPrevious = previousTotalEL !== undefined;
   if (!equityLiabilities.length && !assets.length) {
     return (
-      <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-12">
-        <p className="text-sm text-[#64748B]">No data available. Refresh from ledger.</p>
+      <div className="bg-white rounded-xl border border-ps-muted text-center py-12">
+        <p className="text-sm text-ps-label">No data available. Refresh from ledger.</p>
       </div>
     );
   }
@@ -552,13 +552,13 @@ function StatementCard({
   previousHeader: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-      <div className="px-4 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9]">
-        <p className="text-[10px] font-bold text-[#475569] uppercase tracking-wide">{title}</p>
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="px-4 py-3 bg-ps-bg border-b border-ps-muted">
+        <p className="text-[10px] font-bold text-ps-label uppercase tracking-wide">{title}</p>
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
+          <tr className="border-b border-ps-muted text-ps-hint text-[10px]">
             <th className="px-4 py-2 text-left font-semibold">Particulars</th>
             <th className="px-4 py-2 text-right font-semibold">{amountHeader}</th>
             {hasPrevious && (
@@ -570,11 +570,11 @@ function StatementCard({
           {groups.map((group, gi) => (
             <GroupRows key={gi} group={group} hasPrevious={hasPrevious} money={money} />
           ))}
-          <tr className="border-t-2 border-[#E2E8F0] font-bold bg-[#F8FAFC]">
-            <td className="px-4 py-2.5 text-[#0F172A] text-sm">Total</td>
-            <td className="px-4 py-2.5 text-right font-mono text-[#0F172A] text-sm">{money(grandTotal)}</td>
+          <tr className="border-t-2 border-ps-border font-bold bg-ps-bg">
+            <td className="px-4 py-2.5 text-ps-ink text-sm">Total</td>
+            <td className="px-4 py-2.5 text-right font-mono text-ps-ink text-sm">{money(grandTotal)}</td>
             {hasPrevious && (
-              <td className="px-4 py-2.5 text-right font-mono text-[#64748B] text-sm">
+              <td className="px-4 py-2.5 text-right font-mono text-ps-label text-sm">
                 {money(previousGrandTotal ?? 0)}
               </td>
             )}
@@ -591,24 +591,24 @@ function GroupRows({ group, hasPrevious, money }:
   return (
     <>
       <tr
-        className="cursor-pointer hover:bg-[#F8FAFC] border-t border-[#F8FAFC]"
+        className="cursor-pointer hover:bg-ps-bg border-t border-ps-bg"
         onClick={() => setOpen((o) => !o)}
       >
-        <td className="px-4 py-2 font-semibold text-[#334155] flex items-center gap-1">
+        <td className="px-4 py-2 font-semibold text-ps-body flex items-center gap-1">
           {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
           {group.label}
         </td>
-        <td className="px-4 py-2 text-right font-mono font-semibold text-[#334155]">
+        <td className="px-4 py-2 text-right font-mono font-semibold text-ps-body">
           {money(group.total_paise)}
         </td>
         {hasPrevious && (
-          <td className="px-4 py-2 text-right font-mono font-semibold text-[#64748B]">
+          <td className="px-4 py-2 text-right font-mono font-semibold text-ps-label">
             {money(group.previous_total_paise ?? 0)}
           </td>
         )}
       </tr>
       {open && group.items.map((item, i) => (
-        <tr key={i} className="text-[#94A3B8]">
+        <tr key={i} className="text-ps-hint">
           <td className="px-4 py-1.5 pl-8">{item.name}</td>
           <td className="px-4 py-1.5 text-right font-mono">{money(item.amount_paise)}</td>
           {hasPrevious && (
@@ -630,22 +630,22 @@ function ProfitLossView({ lines, money, amountHeader, previousHeader }:
   const hasPrevious = lines.some((l) => l.previous_paise !== undefined);
   if (!lines.length) {
     return (
-      <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-12">
-        <p className="text-sm text-[#64748B]">No data available. Refresh from ledger.</p>
+      <div className="bg-white rounded-xl border border-ps-muted text-center py-12">
+        <p className="text-sm text-ps-label">No data available. Refresh from ledger.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-      <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9]">
-        <p className="text-[10px] font-bold text-[#475569] uppercase tracking-wide">
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="px-5 py-3 bg-ps-bg border-b border-ps-muted">
+        <p className="text-[10px] font-bold text-ps-label uppercase tracking-wide">
           Statement of Profit &amp; Loss
         </p>
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-[10px]">
+          <tr className="border-b border-ps-muted text-ps-hint text-[10px]">
             <th className="px-5 py-2 text-left font-semibold">Particulars</th>
             <th className="px-4 py-2 text-right font-semibold">{amountHeader}</th>
             {hasPrevious && (
@@ -657,13 +657,13 @@ function ProfitLossView({ lines, money, amountHeader, previousHeader }:
           {lines.map((line, i) => {
             if (line.is_total) {
               return (
-                <tr key={i} className={`border-t-2 border-[#E2E8F0] font-bold ${(line.amount_paise ?? 0) >= 0 ? "bg-green-50" : "bg-red-50"}`}>
-                  <td className="px-5 py-2.5 text-[#0F172A] text-sm">{line.label}</td>
+                <tr key={i} className={`border-t-2 border-ps-border font-bold ${(line.amount_paise ?? 0) >= 0 ? "bg-green-50" : "bg-red-50"}`}>
+                  <td className="px-5 py-2.5 text-ps-ink text-sm">{line.label}</td>
                   <td className={`px-4 py-2.5 text-right font-mono text-sm ${(line.amount_paise ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
                     {money(line.amount_paise ?? 0)}
                   </td>
                   {hasPrevious && (
-                    <td className="px-4 py-2.5 text-right font-mono text-sm text-[#64748B]">
+                    <td className="px-4 py-2.5 text-right font-mono text-sm text-ps-label">
                       {money(line.previous_paise ?? 0)}
                     </td>
                   )}
@@ -672,11 +672,11 @@ function ProfitLossView({ lines, money, amountHeader, previousHeader }:
             }
             if (line.is_subtotal) {
               return (
-                <tr key={i} className="border-t border-[#E2E8F0] font-semibold">
-                  <td className="px-5 py-2 text-[#1E293B]">{line.label}</td>
-                  <td className="px-4 py-2 text-right font-mono text-[#0F172A]">{money(line.amount_paise ?? 0)}</td>
+                <tr key={i} className="border-t border-ps-border font-semibold">
+                  <td className="px-5 py-2 text-ps-ink">{line.label}</td>
+                  <td className="px-4 py-2 text-right font-mono text-ps-ink">{money(line.amount_paise ?? 0)}</td>
                   {hasPrevious && (
-                    <td className="px-4 py-2 text-right font-mono text-[#64748B]">
+                    <td className="px-4 py-2 text-right font-mono text-ps-label">
                       {money(line.previous_paise ?? 0)}
                     </td>
                   )}
@@ -686,17 +686,17 @@ function ProfitLossView({ lines, money, amountHeader, previousHeader }:
             if (line.is_header) {
               // Section header
               return (
-                <tr key={i} className="bg-[#F8FAFC]">
-                  <td colSpan={hasPrevious ? 3 : 2} className="px-5 py-2 text-[10px] font-semibold uppercase tracking-wide text-[#334155]">
+                <tr key={i} className="bg-ps-bg">
+                  <td colSpan={hasPrevious ? 3 : 2} className="px-5 py-2 text-[10px] font-semibold uppercase tracking-wide text-ps-body">
                     {line.label}
                   </td>
                 </tr>
               );
             }
             return (
-              <tr key={i} className="hover:bg-[#F8FAFC]">
-                <td className="px-5 py-2 text-[#475569] pl-8">{line.label}</td>
-                <td className="px-4 py-2 text-right font-mono text-[#334155]">{money(line.amount_paise ?? 0)}</td>
+              <tr key={i} className="hover:bg-ps-bg">
+                <td className="px-5 py-2 text-ps-label pl-8">{line.label}</td>
+                <td className="px-4 py-2 text-right font-mono text-ps-body">{money(line.amount_paise ?? 0)}</td>
               </tr>
             );
           })}

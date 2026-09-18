@@ -319,11 +319,11 @@ export default function HealthPage() {
   ], []);
 
   return (
-    <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
+    <div className="p-6 space-y-5 bg-ps-bg min-h-full">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#182350]">Client Health Monitor</h1>
+          <h1 className="text-2xl font-bold text-brand">Client Health Monitor</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {clients.length} clients tracked
           </p>
@@ -413,7 +413,7 @@ export default function HealthPage() {
             onClick={() => setFilterTab(tab)}
             className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
               filterTab === tab
-                ? "border-[#182350] text-[#182350]"
+                ? "border-brand text-brand"
                 : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
@@ -454,7 +454,7 @@ export default function HealthPage() {
           <a
             href={`/health/${c.client_id}`}
             onClick={(e) => e.stopPropagation()}
-            className="text-xs text-[#182350] hover:text-[#182350]/70"
+            className="text-xs text-brand hover:text-brand/70"
           >
             View →
           </a>

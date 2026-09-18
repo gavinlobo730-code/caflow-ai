@@ -50,7 +50,7 @@ const TREND_ARROW = {
 
 const TREND_COLOR = {
   improving: "text-emerald-600",
-  stable:    "text-[#94A3B8]",
+  stable:    "text-ps-hint",
   declining: "text-red-600",
 };
 

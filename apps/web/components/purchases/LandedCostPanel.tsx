@@ -174,18 +174,18 @@ export function LandedCostPanel({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
       <div className="w-full max-w-2xl h-full bg-white shadow-xl flex flex-col">
-        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-start justify-between">
+        <div className="px-5 py-4 border-b border-ps-muted flex items-start justify-between">
           <div>
-            <p className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
+            <p className="text-sm font-semibold text-ps-ink flex items-center gap-2">
               <Truck size={15} className="text-blue-600" />
               Landed costs
             </p>
-            <p className="text-[11px] text-[#94A3B8] mt-0.5">
+            <p className="text-[11px] text-ps-hint mt-0.5">
               AS-2 par. 6 · {data?.bill_no ? `Bill ${data.bill_no}` : "This bill"}
             </p>
           </div>
           <button onClick={onClose} aria-label="Close"
-            className="p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]">
+            className="p-1 rounded hover:bg-ps-muted text-ps-label">
             <X size={16} />
           </button>
         </div>
@@ -198,24 +198,24 @@ export function LandedCostPanel({
             </div>
           )}
 
-          {busy && !data && <p className="text-xs text-[#94A3B8]">Loading…</p>}
+          {busy && !data && <p className="text-xs text-ps-hint">Loading…</p>}
 
           {data && (
             <>
               {/* THE BASIS. Two rows, because they are two different
                   statements: the client's accounting policy, applied
                   consistently, and an override for this one consignment. */}
-              <div className="border border-[#E2E8F0] rounded-lg p-3 space-y-3">
-                <p className="text-xs font-semibold text-[#334155]">
+              <div className="border border-ps-border rounded-lg p-3 space-y-3">
+                <p className="text-xs font-semibold text-ps-body">
                   How the charges are split — {data.basis_label}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="text-xs">
-                    <span className="block text-[#94A3B8] mb-1">This client&apos;s policy</span>
+                    <span className="block text-ps-hint mb-1">This client&apos;s policy</span>
                     <select value={data.client_basis ?? ""}
                       onChange={(e) => setBasis(e.target.value, "client")}
                       disabled={saving}
-                      className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg text-xs bg-white">
+                      className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg text-xs bg-white">
                       <option value="">Not recorded</option>
                       {data.bases.map((b) => (
                         <option key={b.value} value={b.value}>{b.label}</option>
@@ -223,11 +223,11 @@ export function LandedCostPanel({
                     </select>
                   </label>
                   <label className="text-xs">
-                    <span className="block text-[#94A3B8] mb-1">This bill only</span>
+                    <span className="block text-ps-hint mb-1">This bill only</span>
                     <select value={data.bill_basis ?? ""}
                       onChange={(e) => setBasis(e.target.value, "bill")}
                       disabled={saving}
-                      className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg text-xs bg-white">
+                      className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg text-xs bg-white">
                       <option value="">Follow the client&apos;s policy</option>
                       {data.bases.map((b) => (
                         <option key={b.value} value={b.value}>{b.label}</option>
@@ -235,7 +235,7 @@ export function LandedCostPanel({
                     </select>
                   </label>
                 </div>
-                <p className="text-[11px] text-[#94A3B8]">{data.weight_and_volume_refused}</p>
+                <p className="text-[11px] text-ps-hint">{data.weight_and_volume_refused}</p>
               </div>
 
               {/* WHAT COULD NOT BE DECIDED — actionable, so it is separated
@@ -252,27 +252,27 @@ export function LandedCostPanel({
 
               {/* The charges. */}
               <div>
-                <p className="text-xs font-semibold text-[#334155] mb-2">Charges on this consignment</p>
+                <p className="text-xs font-semibold text-ps-body mb-2">Charges on this consignment</p>
                 {data.charges.length === 0 ? (
-                  <p className="text-xs text-[#94A3B8]">
+                  <p className="text-xs text-ps-hint">
                     Nothing recorded. {data.freight_outward_is_not_cost}
                   </p>
                 ) : (
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                      <tr className="border-b border-ps-muted text-ps-hint">
                         <th className="py-1.5 text-left font-semibold">Charge</th>
                         <th className="py-1.5 text-right font-semibold">Amount</th>
                         <th className="py-1.5 text-right font-semibold w-16"></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#F8FAFC]">
+                    <tbody className="divide-y divide-ps-bg">
                       {data.charges.map((c) => (
                         <tr key={c.id}>
-                          <td className="py-1.5 text-[#1E293B]">
+                          <td className="py-1.5 text-ps-ink">
                             {c.description}
                             {c.source === "bill_of_entry" && (
-                              <span className="ml-1.5 text-[10px] text-[#64748B]">
+                              <span className="ml-1.5 text-[10px] text-ps-label">
                                 from the bill of entry
                               </span>
                             )}
@@ -284,7 +284,7 @@ export function LandedCostPanel({
                           <td className="py-1.5 text-right">
                             {c.is_applied ? (
                               <span title="Already in the cost of the stock"
-                                className="inline-flex text-[#94A3B8]"><Lock size={12} /></span>
+                                className="inline-flex text-ps-hint"><Lock size={12} /></span>
                             ) : (
                               <button onClick={() => remove(c)} disabled={saving}
                                 aria-label={`Remove ${c.description}`}
@@ -302,20 +302,20 @@ export function LandedCostPanel({
 
               {/* Recording one is allowed AFTER the receipt too — the charge is
                   a fact, and the row's own sentence says it is not in the cost. */}
-              <div className="border border-[#E2E8F0] rounded-lg p-3 space-y-2">
-                <p className="text-xs font-semibold text-[#334155]">Add a charge</p>
+              <div className="border border-ps-border rounded-lg p-3 space-y-2">
+                <p className="text-xs font-semibold text-ps-body">Add a charge</p>
                 <div className="grid grid-cols-[1fr_140px_auto] gap-2 items-end">
                   <label className="text-xs">
-                    <span className="block text-[#94A3B8] mb-1">What it is</span>
+                    <span className="block text-ps-hint mb-1">What it is</span>
                     <input value={description} onChange={(e) => setDescription(e.target.value)}
                       placeholder="Freight inward"
-                      className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg text-xs" />
+                      className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg text-xs" />
                   </label>
                   <label className="text-xs">
-                    <span className="block text-[#94A3B8] mb-1">Amount (₹)</span>
+                    <span className="block text-ps-hint mb-1">Amount (₹)</span>
                     <input value={amount} onChange={(e) => setAmount(e.target.value)}
                       inputMode="decimal"
-                      className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg text-xs text-right tabular-nums" />
+                      className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg text-xs text-right tabular-nums" />
                   </label>
                   <button onClick={add} disabled={saving}
                     className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs disabled:opacity-40">
@@ -323,7 +323,7 @@ export function LandedCostPanel({
                   </button>
                 </div>
                 {received && (
-                  <p className="text-[11px] text-[#94A3B8]">
+                  <p className="text-[11px] text-ps-hint">
                     This bill is already received. A charge added now is recorded but
                     does not enter the cost of the stock — the receipt journal is posted.
                   </p>
@@ -333,12 +333,12 @@ export function LandedCostPanel({
               {/* THE PREVIEW — what each line will carry. */}
               {data.lines.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-[#334155] mb-2">
+                  <p className="text-xs font-semibold text-ps-body mb-2">
                     {received ? "What each line carries" : "What each line will carry"}
                   </p>
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                      <tr className="border-b border-ps-muted text-ps-hint">
                         <th className="py-1.5 text-left font-semibold">Item</th>
                         <th className="py-1.5 text-right font-semibold">Qty</th>
                         <th className="py-1.5 text-right font-semibold">Own cost</th>
@@ -346,11 +346,11 @@ export function LandedCostPanel({
                         <th className="py-1.5 text-right font-semibold">Cost of stock</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#F8FAFC]">
+                    <tbody className="divide-y divide-ps-bg">
                       {data.lines.map((l) => (
                         <tr key={l.line_id}>
-                          <td className="py-1.5 text-[#1E293B]">{l.item_name || "—"}</td>
-                          <td className="py-1.5 text-right tabular-nums text-[#64748B]">{l.quantity}</td>
+                          <td className="py-1.5 text-ps-ink">{l.item_name || "—"}</td>
+                          <td className="py-1.5 text-right tabular-nums text-ps-label">{l.quantity}</td>
                           <td className="py-1.5 text-right tabular-nums">{fmt(l.own_cost_paise)}</td>
                           <td className="py-1.5 text-right tabular-nums text-blue-700">
                             {fmt(l.landed_cost_paise)}
@@ -372,7 +372,7 @@ export function LandedCostPanel({
 
               {/* SETTLED NOTES — why the answer is what it is. */}
               {data.notes.length > 0 && (
-                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#334155] space-y-1">
+                <div className="bg-ps-bg border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-body space-y-1">
                   {data.notes.map((n, i) => <p key={i}>{n}</p>)}
                 </div>
               )}
@@ -380,9 +380,9 @@ export function LandedCostPanel({
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-[#F1F5F9] flex justify-end">
+        <div className="px-5 py-3 border-t border-ps-muted flex justify-end">
           <button onClick={onClose}
-            className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] text-xs text-[#475569] hover:bg-[#F8FAFC]">
+            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">
             Close
           </button>
         </div>

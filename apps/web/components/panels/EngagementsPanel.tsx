@@ -29,7 +29,7 @@ function EngagementsPanelInner() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200 shrink-0">
-        <p className="text-[13px] font-semibold text-[#182350]">Engagements</p>
+        <p className="text-[13px] font-semibold text-brand">Engagements</p>
         <p className="text-[11px] text-gray-500 mt-0.5">
           Engagement Letters & Agreements
         </p>
@@ -53,8 +53,8 @@ function EngagementsPanelInner() {
                 className={cn(
                   "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
                   active
-                    ? "bg-[#182350] text-white"
-                    : "text-gray-600 hover:bg-[#F8FAFC] hover:text-[#182350]"
+                    ? "bg-brand text-white"
+                    : "text-gray-600 hover:bg-ps-bg hover:text-brand"
                 )}
               >
                 <Icon
@@ -70,7 +70,7 @@ function EngagementsPanelInner() {
           })}
         </div>
 
-        <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-[#F8FAFC] border border-gray-200">
+        <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-ps-bg border border-gray-200">
           <p className="text-[11px] text-gray-500 leading-relaxed">
             Create and manage{" "}
             <Link href="/engagements" className="text-blue-600 hover:underline">

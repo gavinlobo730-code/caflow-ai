@@ -196,7 +196,7 @@ function Field<T extends Record<string, string>>({
 }) {
   return (
     <div>
-      <label className="text-xs font-medium text-[#64748B] block mb-1">
+      <label className="text-xs font-medium text-ps-label block mb-1">
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
@@ -206,11 +206,11 @@ function Field<T extends Record<string, string>>({
         onChange={(e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))}
         placeholder={placeholder}
         maxLength={maxLength}
-        className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${
-          errors[field] ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"
+        className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${
+          errors[field] ? "border-red-400 bg-red-50" : "border-ps-border"
         }`}
       />
-      {hint && !errors[field] && <p className="text-xs text-[#94A3B8] mt-1">{hint}</p>}
+      {hint && !errors[field] && <p className="text-xs text-ps-hint mt-1">{hint}</p>}
       {errors[field] && <p className="text-xs text-red-500 mt-1">{errors[field] as string}</p>}
     </div>
   );
@@ -234,14 +234,14 @@ function ProgressBar({ step }: { step: number }) {
                       ? "bg-blue-600 text-white"
                       : active
                       ? "bg-blue-600 text-white ring-4 ring-blue-100"
-                      : "bg-[#F1F5F9] text-[#94A3B8]"
+                      : "bg-ps-muted text-ps-hint"
                   }`}
                 >
                   {done ? <CheckCircle size={16} /> : n}
                 </div>
                 <span
                   className={`text-sm font-medium hidden sm:block ${
-                    active ? "text-blue-700" : done ? "text-[#334155]" : "text-[#94A3B8]"
+                    active ? "text-blue-700" : done ? "text-ps-body" : "text-ps-hint"
                   }`}
                 >
                   {s.label}
@@ -258,7 +258,7 @@ function ProgressBar({ step }: { step: number }) {
           );
         })}
       </div>
-      <p className="text-xs text-[#94A3B8] text-right">Step {step} of {STEPS.length}</p>
+      <p className="text-xs text-ps-hint text-right">Step {step} of {STEPS.length}</p>
     </div>
   );
 }
@@ -594,16 +594,16 @@ export default function OnboardingPage() {
 
   // ─── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-[#F1F5F9] p-8">
+    <div className="min-h-screen bg-ps-bg flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-ps-muted p-8">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
             <LogoIcon size="sm" />
-            <span className="text-sm font-semibold text-[#334155]">PracticeSync AI</span>
+            <span className="text-sm font-semibold text-ps-body">PracticeSync AI</span>
           </div>
-          <h1 className="text-2xl font-bold text-[#0F172A] mt-4">Welcome! Let&apos;s set up your firm</h1>
-          <p className="text-sm text-[#64748B] mt-1">This takes about 2 minutes. You can always update these later in Settings.</p>
+          <h1 className="text-2xl font-bold text-ps-ink mt-4">Welcome! Let&apos;s set up your firm</h1>
+          <p className="text-sm text-ps-label mt-1">This takes about 2 minutes. You can always update these later in Settings.</p>
         </div>
 
         <ProgressBar step={step} />
@@ -625,26 +625,26 @@ export default function OnboardingPage() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <KeyRound size={18} className="text-blue-600" />
-              <h2 className="text-base font-semibold text-[#0F172A]">Create your password</h2>
+              <h2 className="text-base font-semibold text-ps-ink">Create your password</h2>
             </div>
-            <p className="text-sm text-[#64748B] mb-5">
-              Your email is verified. Set a password so you can sign in any time — you signed up with <span className="font-medium text-[#334155]">{user?.email}</span>.
+            <p className="text-sm text-ps-label mb-5">
+              Your email is verified. Set a password so you can sign in any time — you signed up with <span className="font-medium text-ps-body">{user?.email}</span>.
             </p>
 
             <div className="space-y-4 max-w-md">
               <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">Full Name<span className="text-red-500 ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Full Name<span className="text-red-500 ml-0.5">*</span></label>
                 <input
                   type="text"
                   value={ownerName}
                   onChange={(e) => setOwnerName(e.target.value)}
                   placeholder="e.g. CA Gavin Lobo"
                   autoComplete="name"
-                  className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">Password<span className="text-red-500 ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Password<span className="text-red-500 ml-0.5">*</span></label>
                 <div className="relative">
                   <input
                     type={showPw ? "text" : "password"}
@@ -652,22 +652,22 @@ export default function OnboardingPage() {
                     onChange={(e) => setPw(e.target.value)}
                     placeholder="At least 10 characters"
                     autoComplete="new-password"
-                    className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${pwError ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"}`}
+                    className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${pwError ? "border-red-400 bg-red-50" : "border-ps-border"}`}
                   />
-                  <button type="button" onClick={() => setShowPw((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569]">
+                  <button type="button" onClick={() => setShowPw((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
                     {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">Confirm password<span className="text-red-500 ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Confirm password<span className="text-red-500 ml-0.5">*</span></label>
                 <input
                   type={showPw ? "text" : "password"}
                   value={pw2}
                   onChange={(e) => setPw2(e.target.value)}
                   placeholder="Re-enter your password"
                   autoComplete="new-password"
-                  className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${pwError ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"}`}
+                  className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${pwError ? "border-red-400 bg-red-50" : "border-ps-border"}`}
                 />
               </div>
               {pwError && <p className="text-xs text-red-500">{pwError}</p>}
@@ -732,7 +732,7 @@ export default function OnboardingPage() {
           <div>
             <div className="flex items-center gap-2 mb-5">
               <Building2 size={18} className="text-blue-600" />
-              <h2 className="text-base font-semibold text-[#0F172A]">Firm Profile</h2>
+              <h2 className="text-base font-semibold text-ps-ink">Firm Profile</h2>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -795,11 +795,11 @@ export default function OnboardingPage() {
                 placeholder="e.g. Mumbai"
               />
               <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">State</label>
+                <label className="text-xs font-medium text-ps-label block mb-1">State</label>
                 <select
                   value={firmForm.state}
                   onChange={(e) => setFirmForm((p) => ({ ...p, state: e.target.value }))}
-                  className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                 >
                   <option value="">Select state…</option>
                   {INDIAN_STATES.map((s) => (
@@ -821,7 +821,7 @@ export default function OnboardingPage() {
             <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-50">
               <button
                 onClick={goBack}
-                className="flex items-center gap-1 text-sm text-[#64748B] hover:text-[#334155] transition-colors"
+                className="flex items-center gap-1 text-sm text-ps-label hover:text-ps-body transition-colors"
               >
                 <ChevronLeft size={16} /> Back
               </button>
@@ -842,9 +842,9 @@ export default function OnboardingPage() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Hash size={18} className="text-violet-600" />
-              <h2 className="text-base font-semibold text-[#0F172A]">Import your HSN/SAC library</h2>
+              <h2 className="text-base font-semibold text-ps-ink">Import your HSN/SAC library</h2>
             </div>
-            <p className="text-sm text-[#64748B] mb-5">
+            <p className="text-sm text-ps-label mb-5">
               Caflow does not ship or suggest HSN/SAC classifications — you own and curate the codes your
               firm bills against. Add a few now, import a list, or skip and add codes as you invoice.
             </p>
@@ -859,23 +859,23 @@ export default function OnboardingPage() {
               <button
                 type="button"
                 onClick={() => setHsnQuickAddOpen(true)}
-                className="flex items-start gap-3 rounded-xl border border-[#E2E8F0] p-4 text-left hover:border-violet-300 hover:bg-violet-50/30 transition-colors"
+                className="flex items-start gap-3 rounded-xl border border-ps-border p-4 text-left hover:border-violet-300 hover:bg-violet-50/30 transition-colors"
               >
                 <Plus size={18} className="text-violet-600 shrink-0 mt-0.5" />
                 <span>
-                  <span className="block text-sm font-medium text-[#0F172A]">Add codes one at a time</span>
-                  <span className="block text-xs text-[#94A3B8] mt-0.5">Quick for a handful of codes you already know.</span>
+                  <span className="block text-sm font-medium text-ps-ink">Add codes one at a time</span>
+                  <span className="block text-xs text-ps-hint mt-0.5">Quick for a handful of codes you already know.</span>
                 </span>
               </button>
               <button
                 type="button"
                 onClick={() => setHsnImportOpen(true)}
-                className="flex items-start gap-3 rounded-xl border border-[#E2E8F0] p-4 text-left hover:border-violet-300 hover:bg-violet-50/30 transition-colors"
+                className="flex items-start gap-3 rounded-xl border border-ps-border p-4 text-left hover:border-violet-300 hover:bg-violet-50/30 transition-colors"
               >
                 <Upload size={18} className="text-violet-600 shrink-0 mt-0.5" />
                 <span>
-                  <span className="block text-sm font-medium text-[#0F172A]">Import a list</span>
-                  <span className="block text-xs text-[#94A3B8] mt-0.5">Download a blank template, fill it from your own records, upload it back.</span>
+                  <span className="block text-sm font-medium text-ps-ink">Import a list</span>
+                  <span className="block text-xs text-ps-hint mt-0.5">Download a blank template, fill it from your own records, upload it back.</span>
                 </span>
               </button>
             </div>
@@ -884,7 +884,7 @@ export default function OnboardingPage() {
               href={GST_PORTAL_HSN_SEARCH_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-3 inline-flex items-center gap-1.5 text-xs text-[#64748B] hover:text-violet-700 transition-colors"
+              className="mt-3 inline-flex items-center gap-1.5 text-xs text-ps-label hover:text-violet-700 transition-colors"
             >
               <ExternalLink size={12} /> Get the official HSN/SAC list from the GST portal
             </a>
@@ -892,14 +892,14 @@ export default function OnboardingPage() {
             <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-50">
               <button
                 onClick={() => setStep(2)}
-                className="flex items-center gap-1 text-sm text-[#64748B] hover:text-[#334155] transition-colors"
+                className="flex items-center gap-1 text-sm text-ps-label hover:text-ps-body transition-colors"
               >
                 <ChevronLeft size={16} /> Back
               </button>
               <div className="flex items-center gap-3">
                 <button
                   onClick={finish}
-                  className="text-sm text-[#64748B] hover:text-[#334155] transition-colors"
+                  className="text-sm text-ps-label hover:text-ps-body transition-colors"
                 >
                   Skip for now
                 </button>

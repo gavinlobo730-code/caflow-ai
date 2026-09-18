@@ -87,21 +87,21 @@ export default function CoaExportPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft size={18} />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Export Chart of Accounts</h1>
-          <p className="text-xs text-[#64748B] mt-0.5">Download your firm&apos;s master COA as CSV</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Export Chart of Accounts</h1>
+          <p className="text-xs text-ps-label mt-0.5">Download your firm&apos;s master COA as CSV</p>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-6 space-y-5">
-        <div className="flex items-center gap-3 p-4 bg-[#F8FAFC] rounded-lg">
+      <div className="bg-white rounded-xl border border-ps-muted p-6 space-y-5">
+        <div className="flex items-center gap-3 p-4 bg-ps-bg rounded-lg">
           <FileText size={20} className="text-blue-600" />
           <div>
-            <p className="text-sm font-medium text-[#334155]">chart-of-accounts.csv</p>
-            <p className="text-xs text-[#64748B] mt-0.5">
+            <p className="text-sm font-medium text-ps-body">chart-of-accounts.csv</p>
+            <p className="text-xs text-ps-label mt-0.5">
               Includes: Code, Name, Type, Sub-type, Parent Group, Sub Group, Tax Category, Schedule III Mapping, Status
             </p>
           </div>
@@ -112,9 +112,9 @@ export default function CoaExportPage() {
             type="checkbox"
             checked={includeArchived}
             onChange={e => setIncludeArchived(e.target.checked)}
-            className="rounded border-[#CBD5E1]"
+            className="rounded border-ps-border-strong"
           />
-          <span className="text-sm text-[#475569]">Include archived accounts</span>
+          <span className="text-sm text-ps-label">Include archived accounts</span>
         </label>
 
         {error && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-md">{error}</p>}
@@ -135,7 +135,7 @@ export default function CoaExportPage() {
         </button>
       </div>
 
-      <p className="text-xs text-[#94A3B8]">
+      <p className="text-xs text-ps-hint">
         The exported file is compatible with the Import COA tool — useful for backup or migrating to another firm.
       </p>
     </div>

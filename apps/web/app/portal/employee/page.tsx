@@ -88,7 +88,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   return (
     <div className="fixed bottom-4 right-4 z-50 bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-3">
       <span>{message}</span>
-      <button onClick={onClose} className="text-[#94A3B8] hover:text-white">×</button>
+      <button onClick={onClose} className="text-ps-hint hover:text-white">×</button>
     </div>
   );
 }
@@ -250,8 +250,8 @@ export default function EmployeePortalPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
-        <div className="flex items-center gap-3 text-[#64748B]">
+      <div className="min-h-screen bg-ps-bg flex items-center justify-center">
+        <div className="flex items-center gap-3 text-ps-label">
           <Loader2 className="w-5 h-5 animate-spin" />
           <span className="text-sm">Loading your portal…</span>
         </div>
@@ -261,13 +261,13 @@ export default function EmployeePortalPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 max-w-md text-center space-y-3">
+      <div className="min-h-screen bg-ps-bg flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-8 max-w-md text-center space-y-3">
           <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto">
             <User className="w-6 h-6 text-red-600" />
           </div>
-          <p className="text-sm font-semibold text-[#0F172A]">Access Unavailable</p>
-          <p className="text-xs text-[#64748B]">{error}</p>
+          <p className="text-sm font-semibold text-ps-ink">Access Unavailable</p>
+          <p className="text-xs text-ps-label">{error}</p>
         </div>
       </div>
     );
@@ -284,21 +284,21 @@ export default function EmployeePortalPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
+    <div className="min-h-screen bg-ps-bg">
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
       {/* Header */}
-      <header className="bg-white border-b border-[#F1F5F9] px-6 py-4">
+      <header className="bg-white border-b border-ps-muted px-6 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <span className="text-xs font-bold text-blue-600 tracking-wide uppercase">PracticeSync</span>
-              <span className="text-xs text-[#CBD5E1]">|</span>
-              <span className="text-xs text-[#94A3B8]">Employee Portal</span>
+              <span className="text-xs text-ps-disabled">|</span>
+              <span className="text-xs text-ps-hint">Employee Portal</span>
             </div>
-            <h1 className="text-base font-semibold text-[#0F172A]">Hello, {employee.name}</h1>
+            <h1 className="text-base font-semibold text-ps-ink">Hello, {employee.name}</h1>
             {employee.designation && (
-              <p className="text-xs text-[#94A3B8] mt-0.5">{employee.designation}{employee.department ? ` · ${employee.department}` : ""}</p>
+              <p className="text-xs text-ps-hint mt-0.5">{employee.designation}{employee.department ? ` · ${employee.department}` : ""}</p>
             )}
           </div>
         </div>
@@ -306,7 +306,7 @@ export default function EmployeePortalPage() {
 
       {/* Tabs */}
       <div className="max-w-3xl mx-auto px-4 pt-6">
-        <div className="flex gap-1 bg-white rounded-xl border border-[#F1F5F9] p-1 mb-6">
+        <div className="flex gap-1 bg-white rounded-xl border border-ps-muted p-1 mb-6">
           {TABS.map(tab => (
             <button
               key={tab.id}
@@ -314,7 +314,7 @@ export default function EmployeePortalPage() {
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${
                 activeTab === tab.id
                   ? "bg-blue-500 text-white shadow-sm"
-                  : "text-[#64748B] hover:text-[#334155] hover:bg-[#F8FAFC]"
+                  : "text-ps-label hover:text-ps-body hover:bg-ps-bg"
               }`}
             >
               {tab.icon}
@@ -327,42 +327,42 @@ export default function EmployeePortalPage() {
         {activeTab === "payslips" && (
           <div className="space-y-3">
             {payslipsLoading ? (
-              <div className="text-center py-10 text-sm text-[#94A3B8] flex items-center justify-center gap-2">
+              <div className="text-center py-10 text-sm text-ps-hint flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" /> Loading payslips…
               </div>
             ) : payslipsError ? (
-              <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-12 text-center space-y-3">
+              <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center space-y-3">
                 <p className="text-sm text-red-600 font-medium">Couldn&apos;t load your payslips — the request failed or timed out.</p>
                 <button
                   onClick={() => loadPayslips()}
-                  className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]"
+                  className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body"
                 >
                   Retry
                 </button>
               </div>
             ) : payslips.length === 0 ? (
-              <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-12 text-center">
+              <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center">
                 <FileText className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-[#94A3B8]">No payslips found</p>
+                <p className="text-sm text-ps-hint">No payslips found</p>
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+              <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
+                    <tr className="border-b border-ps-muted text-xs text-ps-hint">
                       <th className="px-5 py-3 text-left font-semibold">Period</th>
                       <th className="px-4 py-3 text-right font-semibold">Gross</th>
                       <th className="px-4 py-3 text-right font-semibold">Net Pay</th>
                       <th className="px-5 py-3 text-left font-semibold">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#F8FAFC]">
+                  <tbody className="divide-y divide-ps-bg">
                     {payslips.map(slip => (
-                      <tr key={slip.id} className="hover:bg-[#F8FAFC]">
-                        <td className="px-5 py-3 font-medium text-[#0F172A]">
+                      <tr key={slip.id} className="hover:bg-ps-bg">
+                        <td className="px-5 py-3 font-medium text-ps-ink">
                           {MONTH_NAMES[(slip.month ?? 1) - 1]} {slip.year}
                         </td>
-                        <td className="px-4 py-3 text-right text-[#475569] font-mono text-xs">
+                        <td className="px-4 py-3 text-right text-ps-label font-mono text-xs">
                           {formatPaise(slip.gross_salary_paise)}
                         </td>
                         <td className="px-4 py-3 text-right text-green-700 font-semibold font-mono text-xs">
@@ -394,34 +394,34 @@ export default function EmployeePortalPage() {
         {activeTab === "leave" && (
           <div className="space-y-3">
             {leaveLoading ? (
-              <div className="text-center py-10 text-sm text-[#94A3B8] flex items-center justify-center gap-2">
+              <div className="text-center py-10 text-sm text-ps-hint flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" /> Loading leave balances…
               </div>
             ) : leaveError ? (
-              <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-12 text-center space-y-3">
+              <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center space-y-3">
                 <p className="text-sm text-red-600 font-medium">Couldn&apos;t load your leave balances — the request failed or timed out.</p>
                 <button
                   onClick={() => loadLeaveBalances()}
-                  className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]"
+                  className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body"
                 >
                   Retry
                 </button>
               </div>
             ) : leaveBalances.length === 0 ? (
-              <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-12 text-center">
+              <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center">
                 <Calendar className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-[#94A3B8]">No leave records found for current year</p>
+                <p className="text-sm text-ps-hint">No leave records found for current year</p>
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+              <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
+                    <tr className="border-b border-ps-muted text-xs text-ps-hint">
                       <th className="px-5 py-3 text-left font-semibold">Leave Type</th>
                       <th className="px-4 py-3 text-right font-semibold">Days Remaining</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#F8FAFC]">
+                  <tbody className="divide-y divide-ps-bg">
                     {/* One row per leave type, unpacked from the single
                         leave_balances row for the year. Days taken are not
                         recorded anywhere, so there is no Used column to fill. */}
@@ -429,8 +429,8 @@ export default function EmployeePortalPage() {
                       LEAVE_TYPES.map(({ label, key }) => {
                         const days = Number(lb[key] ?? 0);
                         return (
-                          <tr key={`${lb.id}-${key}`} className="hover:bg-[#F8FAFC]">
-                            <td className="px-5 py-3 font-medium text-[#0F172A]">{label}</td>
+                          <tr key={`${lb.id}-${key}`} className="hover:bg-ps-bg">
+                            <td className="px-5 py-3 font-medium text-ps-ink">{label}</td>
                             <td className={`px-4 py-3 text-right font-semibold ${days > 0 ? "text-green-700" : "text-red-600"}`}>
                               {days}
                             </td>
@@ -457,10 +457,10 @@ export default function EmployeePortalPage() {
 
         {/* Profile Tab */}
         {activeTab === "profile" && (
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-[#0F172A]">Employee Profile</h2>
-              <p className="text-xs text-[#94A3B8] mt-0.5">Read-only — contact HR to update your details</p>
+              <h2 className="text-sm font-semibold text-ps-ink">Employee Profile</h2>
+              <p className="text-xs text-ps-hint mt-0.5">Read-only — contact HR to update your details</p>
             </div>
             <div className="px-5 py-4 space-y-4">
               {[
@@ -476,8 +476,8 @@ export default function EmployeePortalPage() {
                 { label: "IFSC Code", value: employee.bank_ifsc ?? "—" },
               ].map(field => (
                 <div key={field.label} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
-                  <span className="text-xs text-[#64748B]">{field.label}</span>
-                  <span className="text-sm font-medium text-[#0F172A]">{field.value}</span>
+                  <span className="text-xs text-ps-label">{field.label}</span>
+                  <span className="text-sm font-medium text-ps-ink">{field.value}</span>
                 </div>
               ))}
             </div>

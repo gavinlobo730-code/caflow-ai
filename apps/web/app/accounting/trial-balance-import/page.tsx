@@ -134,28 +134,28 @@ export default function TrialBalanceImportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-8">
+    <div className="min-h-screen bg-ps-bg p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-[#0F172A] mb-2">Trial Balance Import</h1>
-        <p className="text-sm text-[#64748B] mb-6">Universal importer — Tally, Busy, QuickBooks, Zoho, Excel (export as CSV)</p>
+        <h1 className="text-2xl font-bold text-ps-ink mb-2">Trial Balance Import</h1>
+        <p className="text-sm text-ps-label mb-6">Universal importer — Tally, Busy, QuickBooks, Zoho, Excel (export as CSV)</p>
 
         {/* A trial balance is one client's opening position and posts to that
             client's ledger, so the client is chosen before anything else. */}
         <Card className="mb-6">
           <CardContent className="pt-5 pb-5 flex flex-wrap items-end gap-4">
             <div className="flex-1 min-w-[220px]">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Client *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Client *</label>
               <ClientLookup clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
             </div>
             <div className="min-w-[180px]">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Opening date</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Opening date</label>
               <input
                 type="date"
                 value={openingDate}
                 onChange={e => setOpeningDate(e.target.value)}
-                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
               />
-              <p className="text-[11px] text-[#94A3B8] mt-1">
+              <p className="text-[11px] text-ps-hint mt-1">
                 Defaults to the client&apos;s financial-year start (1 April).
               </p>
             </div>
@@ -168,11 +168,11 @@ export default function TrialBalanceImportPage() {
         <div className="flex items-center gap-2 mb-8 text-sm">
           {["Upload", "Map Columns", "Review", "Import"].map((s, i) => (
             <div key={s} className="flex items-center gap-2">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${step > i + 1 ? "bg-green-500 text-white" : step === i + 1 ? "bg-blue-500 text-white" : "bg-white/[0.08] text-[#64748B]"}`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${step > i + 1 ? "bg-green-500 text-white" : step === i + 1 ? "bg-blue-500 text-white" : "bg-white/[0.08] text-ps-label"}`}>
                 {step > i + 1 ? <CheckCircle size={14} /> : i + 1}
               </div>
-              <span className={step === i + 1 ? "font-semibold text-[#0F172A]" : "text-[#94A3B8]"}>{s}</span>
-              {i < 3 && <ChevronRight size={14} className="text-[#CBD5E1]" />}
+              <span className={step === i + 1 ? "font-semibold text-ps-ink" : "text-ps-hint"}>{s}</span>
+              {i < 3 && <ChevronRight size={14} className="text-ps-disabled" />}
             </div>
           ))}
         </div>
@@ -192,7 +192,7 @@ export default function TrialBalanceImportPage() {
             <Card>
               <CardContent className="pt-6">
                 <div
-                  className="border-2 border-dashed border-[#E2E8F0] rounded-xl p-12 text-center cursor-pointer hover:border-blue-500/20 hover:bg-blue-500/[0.08] transition-colors"
+                  className="border-2 border-dashed border-ps-border rounded-xl p-12 text-center cursor-pointer hover:border-blue-500/20 hover:bg-blue-500/[0.08] transition-colors"
                   onClick={() => fileRef.current?.click()}
                   onDragOver={e => { e.preventDefault(); }}
                   onDrop={e => {
@@ -204,10 +204,10 @@ export default function TrialBalanceImportPage() {
                     }
                   }}
                 >
-                  <Upload size={32} className="mx-auto mb-3 text-[#94A3B8]" />
-                  <p className="font-medium text-[#334155] mb-1">Drop your CSV here or click to browse</p>
-                  <p className="text-sm text-[#94A3B8]">Supports: Tally CSV, Busy CSV, QuickBooks CSV, Zoho CSV</p>
-                  <p className="text-xs text-[#94A3B8] mt-1">Excel: File &rarr; Save As &rarr; CSV</p>
+                  <Upload size={32} className="mx-auto mb-3 text-ps-hint" />
+                  <p className="font-medium text-ps-body mb-1">Drop your CSV here or click to browse</p>
+                  <p className="text-sm text-ps-hint">Supports: Tally CSV, Busy CSV, QuickBooks CSV, Zoho CSV</p>
+                  <p className="text-xs text-ps-hint mt-1">Excel: File &rarr; Save As &rarr; CSV</p>
                 </div>
                 <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFile} />
               </CardContent>
@@ -237,7 +237,7 @@ export default function TrialBalanceImportPage() {
                     { label: "Account Type (optional)", key: "typeCol" },
                   ] as { label: string; key: keyof ColumnMap }[]).map(({ label, key }) => (
                     <div key={key}>
-                      <label className="block text-xs font-medium text-[#334155] mb-1">{label}</label>
+                      <label className="block text-xs font-medium text-ps-body mb-1">{label}</label>
                       <select
                         className="w-full border rounded-lg px-3 py-2 text-sm"
                         value={colMap[key]}
@@ -251,11 +251,11 @@ export default function TrialBalanceImportPage() {
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-medium text-[#334155] mb-2">Preview (first 5 rows)</h3>
+                  <h3 className="text-sm font-medium text-ps-body mb-2">Preview (first 5 rows)</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs border-collapse">
                       <thead>
-                        <tr className="bg-[#F1F5F9]">
+                        <tr className="bg-ps-muted">
                           {headers.map((h, i) => <th key={i} className="border px-2 py-1 text-left">{h || `Col ${i + 1}`}</th>)}
                         </tr>
                       </thead>
@@ -285,19 +285,19 @@ export default function TrialBalanceImportPage() {
             <div className="grid grid-cols-3 gap-4">
               <Card>
                 <CardContent className="pt-4">
-                  <p className="text-xs text-[#64748B] mb-1">Total Debit</p>
-                  <p className="text-lg font-bold text-[#0F172A]">Rs {(totalDr / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
+                  <p className="text-xs text-ps-label mb-1">Total Debit</p>
+                  <p className="text-lg font-bold text-ps-ink">Rs {(totalDr / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4">
-                  <p className="text-xs text-[#64748B] mb-1">Total Credit</p>
-                  <p className="text-lg font-bold text-[#0F172A]">Rs {(totalCr / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
+                  <p className="text-xs text-ps-label mb-1">Total Credit</p>
+                  <p className="text-lg font-bold text-ps-ink">Rs {(totalCr / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4">
-                  <p className="text-xs text-[#64748B] mb-1">Difference</p>
+                  <p className="text-xs text-ps-label mb-1">Difference</p>
                   <p className={`text-lg font-bold ${Math.abs(diff) < 1 ? "text-green-700" : "text-red-600"}`}>
                     Rs {(diff / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                     {Math.abs(diff) < 1 && " ✓"}
@@ -328,7 +328,7 @@ export default function TrialBalanceImportPage() {
                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-white">
-                      <tr className="border-b text-xs font-medium text-[#64748B] uppercase">
+                      <tr className="border-b text-xs font-medium text-ps-label uppercase">
                         <th className="text-left py-2 px-4">Account Name</th>
                         <th className="text-left py-2 px-4">Code</th>
                         <th className="py-2 px-4">Type</th>
@@ -338,7 +338,7 @@ export default function TrialBalanceImportPage() {
                     </thead>
                     <tbody>
                       {accounts.map((acc, i) => (
-                        <tr key={i} className="border-b hover:bg-[#F8FAFC]">
+                        <tr key={i} className="border-b hover:bg-ps-bg">
                           <td className="py-2 px-4 font-medium">{acc.account_name}</td>
                           <td className="py-2 px-4 font-mono text-xs">{acc.account_code || "—"}</td>
                           <td className="py-2 px-4">
@@ -383,24 +383,24 @@ export default function TrialBalanceImportPage() {
             <Card>
               <CardContent className="pt-8 pb-8 text-center">
                 <CheckCircle size={48} className="mx-auto mb-4 text-green-500" />
-                <h2 className="text-xl font-bold text-[#0F172A] mb-2">
+                <h2 className="text-xl font-bold text-ps-ink mb-2">
                   {importResult.posted ? "Posted to the ledger" : "Already up to date"}
                 </h2>
                 {importResult.posted ? (
                   <>
-                    <p className="text-[#475569] mb-1">
+                    <p className="text-ps-label mb-1">
                       {importResult.accounts} accounts, posted as one balanced opening
                       journal of {importResult.adjustment_lines} line
                       {importResult.adjustment_lines === 1 ? "" : "s"}
                       {importResult.opening_date ? ` dated ${importResult.opening_date}` : ""}.
                     </p>
-                    <p className="text-xs text-[#94A3B8]">
+                    <p className="text-xs text-ps-hint">
                       These balances are now in the General Ledger, so the trial
                       balance and balance sheet reflect them.
                     </p>
                   </>
                 ) : (
-                  <p className="text-[#475569] mb-1">
+                  <p className="text-ps-label mb-1">
                     {importResult.reason ?? "Nothing to post."} Re-importing the same
                     trial balance does not duplicate it.
                   </p>

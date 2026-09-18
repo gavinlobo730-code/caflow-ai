@@ -25,7 +25,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  uploaded: "bg-[#F1F5F9] text-[#64748B]",
+  uploaded: "bg-ps-muted text-ps-label",
   parsing: "bg-amber-100 text-amber-700",
   parsed: "bg-blue-100 text-blue-700",
   validating: "bg-amber-100 text-amber-700",
@@ -180,8 +180,8 @@ export default function MigrationPage() {
     <div className="p-6 max-w-4xl space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-[#1E293B]">Migration Center</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">Import data from Tally — Masters, Ledgers, Journals, Balances</p>
+          <h2 className="text-sm font-semibold text-ps-ink">Migration Center</h2>
+          <p className="text-xs text-ps-hint mt-0.5">Import data from Tally — Masters, Ledgers, Journals, Balances</p>
         </div>
         {canStartImport && (
           <button onClick={() => { setShowCreate(true); setStep("create"); setJobId(null); setParseResult(null); setImportResult(null); }}
@@ -200,16 +200,16 @@ export default function MigrationPage() {
 
       {/* Wizard */}
       {showCreate && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-4">
+        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-4">
           {/* Progress */}
           <div className="flex gap-2">
             {["create", "parse", "preview", "import"].map((s, i) => (
               <div key={s} className="flex items-center gap-1 flex-1">
-                <div className={`h-1.5 flex-1 rounded-full ${["create","parse","preview","import"].indexOf(step) >= i ? "bg-blue-500" : "bg-[#E2E8F0]"}`} />
+                <div className={`h-1.5 flex-1 rounded-full ${["create","parse","preview","import"].indexOf(step) >= i ? "bg-blue-500" : "bg-ps-border"}`} />
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-[9px] text-[#94A3B8]">
+          <div className="flex justify-between text-[9px] text-ps-hint">
             {["Create Job", "Parse XML", "Preview", "Import"].map(l => <span key={l}>{l}</span>)}
           </div>
 
@@ -217,29 +217,29 @@ export default function MigrationPage() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-[#64748B] mb-1 block">Job Name</label>
+                  <label className="text-[10px] text-ps-label mb-1 block">Job Name</label>
                   <input value={name} onChange={e => setName(e.target.value)}
-                    className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" placeholder="e.g. Tally FY2025 Import" />
+                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" placeholder="e.g. Tally FY2025 Import" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-[#64748B] mb-1 block">Source File Name</label>
+                  <label className="text-[10px] text-ps-label mb-1 block">Source File Name</label>
                   <input value={fileName} onChange={e => setFileName(e.target.value)}
-                    className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" placeholder="export.xml" />
+                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" placeholder="export.xml" />
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-[#64748B] mb-1 block">Financial Year</label>
+                <label className="text-[10px] text-ps-label mb-1 block">Financial Year</label>
                 <select value={fy} onChange={e => setFy(e.target.value)}
-                  className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
+                  className="text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                   {FY_OPTIONS.map(f => <option key={f}>{f}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-[10px] text-[#64748B] mb-2 block">Import Types</label>
+                <label className="text-[10px] text-ps-label mb-2 block">Import Types</label>
                 <div className="flex flex-wrap gap-2">
                   {IMPORT_TYPES.map(t => (
                     <button key={t} onClick={() => toggleType(t)}
-                      className={`text-[10px] px-2 py-1 rounded-full border ${selectedTypes.includes(t) ? "bg-blue-600 text-white border-blue-600" : "border-[#E2E8F0] text-[#64748B]"}`}>
+                      className={`text-[10px] px-2 py-1 rounded-full border ${selectedTypes.includes(t) ? "bg-blue-600 text-white border-blue-600" : "border-ps-border text-ps-label"}`}>
                       {t}
                     </button>
                   ))}
@@ -254,12 +254,12 @@ export default function MigrationPage() {
 
           {step === "parse" && (
             <div className="space-y-3">
-              <p className="text-xs font-medium text-[#334155]">Paste Tally XML Export</p>
-              <p className="text-[11px] text-[#64748B]">
+              <p className="text-xs font-medium text-ps-body">Paste Tally XML Export</p>
+              <p className="text-[11px] text-ps-label">
                 In Tally: Gateway of Tally → Export → XML. Paste the exported XML content below.
               </p>
               <textarea value={xmlContent} onChange={e => setXmlContent(e.target.value)} rows={12}
-                className="w-full text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder='<?xml version="1.0"?><ENVELOPE>...</ENVELOPE>' />
               <button onClick={handleParse} disabled={working || !xmlContent.trim()}
                 className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
@@ -270,13 +270,13 @@ export default function MigrationPage() {
 
           {step === "preview" && preview && (
             <div className="space-y-3">
-              <p className="text-xs font-medium text-[#334155]">Import Preview</p>
+              <p className="text-xs font-medium text-ps-body">Import Preview</p>
               {parseResult && (
                 <div className="grid grid-cols-3 gap-3">
                   {Object.entries(parseResult.parsed_counts ?? {}).map(([k, v]) => (
-                    <div key={k} className="bg-[#F8FAFC] rounded-lg p-3 text-center">
-                      <p className="text-sm font-bold text-[#1E293B]">{v as number}</p>
-                      <p className="text-[10px] text-[#64748B] capitalize">{k}</p>
+                    <div key={k} className="bg-ps-bg rounded-lg p-3 text-center">
+                      <p className="text-sm font-bold text-ps-ink">{v as number}</p>
+                      <p className="text-[10px] text-ps-label capitalize">{k}</p>
                     </div>
                   ))}
                 </div>
@@ -288,7 +288,7 @@ export default function MigrationPage() {
                 </div>
               )}
               <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 text-xs text-[#334155]">
+                <label className="flex items-center gap-2 text-xs text-ps-body">
                   <input type="checkbox" checked={isDryRun} onChange={e => setIsDryRun(e.target.checked)} />
                   Dry Run (validate without importing)
                 </label>
@@ -303,7 +303,7 @@ export default function MigrationPage() {
                   step of a wizard the user has already filled in, so silence
                   here reads as a broken screen. */}
               <Can resource="accounting" action="approve" fallback={
-                <p className="text-xs text-[#64748B] border border-[#E2E8F0] rounded-lg px-3 py-2">
+                <p className="text-xs text-ps-label border border-ps-border rounded-lg px-3 py-2">
                   Running an import — including a dry run — requires Partner approval rights.
                   The job is saved; ask a Partner to run it from this screen.
                 </p>
@@ -339,7 +339,7 @@ export default function MigrationPage() {
                 </Can>
               )}
               <button onClick={() => { setShowCreate(false); load(); }}
-                className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg">Done</button>
+                className="text-xs px-4 py-2 border border-ps-border rounded-lg">Done</button>
             </div>
           )}
         </div>
@@ -351,23 +351,23 @@ export default function MigrationPage() {
       ) : loadFailed ? (
         <div className="bg-white rounded-xl border border-red-100 text-center py-16 space-y-2">
           <Database size={28} className="text-red-200 mx-auto" />
-          <p className="text-sm text-[#64748B]">Couldn&apos;t load your migration jobs.</p>
+          <p className="text-sm text-ps-label">Couldn&apos;t load your migration jobs.</p>
           <button onClick={load} className="text-xs text-blue-600 hover:underline">Try again</button>
         </div>
       ) : jobs.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-2">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-2">
           <Database size={28} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-[#64748B]">No migration jobs yet</p>
-          <p className="text-xs text-[#94A3B8]">Click &quot;New Import&quot; to migrate data from Tally.</p>
+          <p className="text-sm text-ps-label">No migration jobs yet</p>
+          <p className="text-xs text-ps-hint">Click &quot;New Import&quot; to migrate data from Tally.</p>
         </div>
       ) : (
         <div className="space-y-2">
           {jobs.map(j => (
-            <div key={j.id} className="bg-white border border-[#F1F5F9] rounded-xl px-4 py-3 flex items-center gap-3">
+            <div key={j.id} className="bg-white border border-ps-muted rounded-xl px-4 py-3 flex items-center gap-3">
               <Database size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-[#1E293B]">{j.name}</p>
-                <p className="text-[10px] text-[#94A3B8]">
+                <p className="text-xs font-semibold text-ps-ink">{j.name}</p>
+                <p className="text-[10px] text-ps-hint">
                   FY {j.target_financial_year} · {j.source_file_name} · {j.total_items} items
                   {j.imported_items > 0 && ` · ${j.imported_items} imported`}
                   {j.is_dry_run && " · Dry Run"}

@@ -160,40 +160,40 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
   return (
     <div className="report-content space-y-6">
       <div className="border-b pb-4">
-        <h2 className="text-lg font-semibold text-[#0F172A]">GST Summary Report</h2>
-        <p className="text-sm text-[#64748B]">
+        <h2 className="text-lg font-semibold text-ps-ink">GST Summary Report</h2>
+        <p className="text-sm text-ps-label">
           {data.client.client_name} — {data.month}
         </p>
       </div>
 
       {/* GSTR-1 Outward Supplies */}
       <section>
-        <h3 className="text-sm font-semibold text-[#334155] mb-3 uppercase tracking-wide">
+        <h3 className="text-sm font-semibold text-ps-body mb-3 uppercase tracking-wide">
           GSTR-1 — Outward Supplies
         </h3>
-        <table className="w-full text-sm border border-[#E2E8F0] rounded-lg overflow-hidden">
-          <tbody className="divide-y divide-[#F1F5F9]">
-            <tr className="bg-[#F8FAFC]">
-              <td className="px-4 py-2.5 text-[#475569]">Taxable Value</td>
-              <td className="px-4 py-2.5 text-right font-medium text-[#0F172A]">
+        <table className="w-full text-sm border border-ps-border rounded-lg overflow-hidden">
+          <tbody className="divide-y divide-ps-muted">
+            <tr className="bg-ps-bg">
+              <td className="px-4 py-2.5 text-ps-label">Taxable Value</td>
+              <td className="px-4 py-2.5 text-right font-medium text-ps-ink">
                 {formatPaise(data.gstr1.taxable)}
               </td>
             </tr>
             <tr>
-              <td className="px-4 py-2.5 text-[#475569]">CGST</td>
-              <td className="px-4 py-2.5 text-right font-medium text-[#0F172A]">
+              <td className="px-4 py-2.5 text-ps-label">CGST</td>
+              <td className="px-4 py-2.5 text-right font-medium text-ps-ink">
                 {formatPaise(data.gstr1.cgst)}
               </td>
             </tr>
-            <tr className="bg-[#F8FAFC]">
-              <td className="px-4 py-2.5 text-[#475569]">SGST</td>
-              <td className="px-4 py-2.5 text-right font-medium text-[#0F172A]">
+            <tr className="bg-ps-bg">
+              <td className="px-4 py-2.5 text-ps-label">SGST</td>
+              <td className="px-4 py-2.5 text-right font-medium text-ps-ink">
                 {formatPaise(data.gstr1.sgst)}
               </td>
             </tr>
             <tr>
-              <td className="px-4 py-2.5 text-[#475569]">IGST</td>
-              <td className="px-4 py-2.5 text-right font-medium text-[#0F172A]">
+              <td className="px-4 py-2.5 text-ps-label">IGST</td>
+              <td className="px-4 py-2.5 text-right font-medium text-ps-ink">
                 {formatPaise(data.gstr1.igst)}
               </td>
             </tr>
@@ -209,11 +209,11 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
 
       {/* GSTR-3B Net Liability */}
       <section>
-        <h3 className="text-sm font-semibold text-[#334155] mb-3 uppercase tracking-wide">
+        <h3 className="text-sm font-semibold text-ps-body mb-3 uppercase tracking-wide">
           GSTR-3B — Net Tax Liability
         </h3>
-        <table className="w-full text-sm border border-[#E2E8F0] rounded-lg overflow-hidden">
-          <thead className="bg-[#F8FAFC] text-xs text-[#64748B] uppercase">
+        <table className="w-full text-sm border border-ps-border rounded-lg overflow-hidden">
+          <thead className="bg-ps-bg text-xs text-ps-label uppercase">
             <tr>
               <th className="px-4 py-2 text-left">Tax Head</th>
               <th className="px-4 py-2 text-right">Output</th>
@@ -221,17 +221,17 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
               <th className="px-4 py-2 text-right">Net Payable</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F1F5F9]">
+          <tbody className="divide-y divide-ps-muted">
             <tr>
-              <td className="px-4 py-2.5 text-[#475569]">CGST</td>
+              <td className="px-4 py-2.5 text-ps-label">CGST</td>
               <td className="px-4 py-2.5 text-right">{formatPaise(data.gstr3b.output_cgst)}</td>
               <td className="px-4 py-2.5 text-right text-green-700">{formatPaise(data.gstr3b.itc_cgst)}</td>
               <td className="px-4 py-2.5 text-right font-medium">
                 {formatPaise(Math.max(0, data.gstr3b.net_cgst))}
               </td>
             </tr>
-            <tr className="bg-[#F8FAFC]">
-              <td className="px-4 py-2.5 text-[#475569]">SGST</td>
+            <tr className="bg-ps-bg">
+              <td className="px-4 py-2.5 text-ps-label">SGST</td>
               <td className="px-4 py-2.5 text-right">{formatPaise(data.gstr3b.output_sgst)}</td>
               <td className="px-4 py-2.5 text-right text-green-700">{formatPaise(data.gstr3b.itc_sgst)}</td>
               <td className="px-4 py-2.5 text-right font-medium">
@@ -239,7 +239,7 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
               </td>
             </tr>
             <tr>
-              <td className="px-4 py-2.5 text-[#475569]">IGST</td>
+              <td className="px-4 py-2.5 text-ps-label">IGST</td>
               <td className="px-4 py-2.5 text-right">{formatPaise(data.gstr3b.output_igst)}</td>
               <td className="px-4 py-2.5 text-right text-green-700">{formatPaise(data.gstr3b.itc_igst)}</td>
               <td className="px-4 py-2.5 text-right font-medium">
@@ -262,7 +262,7 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
                 there IS one understates the challan. */}
             {rcmCash > 0 && (
               <>
-                <tr className="text-[#475569]">
+                <tr className="text-ps-label">
                   <td className="px-4 py-2.5" colSpan={3}>
                     Reverse charge, payable in cash (Table 3.1(d) — the credit ledger cannot pay this)
                   </td>
@@ -283,10 +283,10 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
       {/* TDS */}
       {data.tds_deducted > 0 && (
         <section>
-          <h3 className="text-sm font-semibold text-[#334155] mb-2 uppercase tracking-wide">TDS</h3>
-          <div className="flex justify-between px-4 py-3 bg-[#F8FAFC] rounded-lg text-sm">
-            <span className="text-[#475569]">TDS Deducted (Purchase Invoices)</span>
-            <span className="font-medium text-[#0F172A]">{formatPaise(data.tds_deducted)}</span>
+          <h3 className="text-sm font-semibold text-ps-body mb-2 uppercase tracking-wide">TDS</h3>
+          <div className="flex justify-between px-4 py-3 bg-ps-bg rounded-lg text-sm">
+            <span className="text-ps-label">TDS Deducted (Purchase Invoices)</span>
+            <span className="font-medium text-ps-ink">{formatPaise(data.tds_deducted)}</span>
           </div>
         </section>
       )}
@@ -300,34 +300,34 @@ function PLStatementReport({ data }: { data: PLData }) {
   return (
     <div className="report-content space-y-6">
       <div className="border-b pb-4">
-        <h2 className="text-lg font-semibold text-[#0F172A]">P&L Statement</h2>
-        <p className="text-sm text-[#64748B]">
+        <h2 className="text-lg font-semibold text-ps-ink">P&L Statement</h2>
+        <p className="text-sm text-ps-label">
           {data.clientName} — {formatDate(data.fromDate)} to {formatDate(data.toDate)}
         </p>
       </div>
 
       {/* Revenue */}
       <section>
-        <h3 className="text-sm font-semibold text-[#334155] mb-3 uppercase tracking-wide">Revenue</h3>
-        <table className="w-full text-sm border border-[#E2E8F0] rounded-lg overflow-hidden">
-          <thead className="bg-[#F8FAFC] text-xs text-[#64748B] uppercase">
+        <h3 className="text-sm font-semibold text-ps-body mb-3 uppercase tracking-wide">Revenue</h3>
+        <table className="w-full text-sm border border-ps-border rounded-lg overflow-hidden">
+          <thead className="bg-ps-bg text-xs text-ps-label uppercase">
             <tr>
               <th className="px-4 py-2 text-left">Account / Party</th>
               <th className="px-4 py-2 text-right">Amount</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F1F5F9]">
+          <tbody className="divide-y divide-ps-muted">
             {data.revenue.length === 0 ? (
               <tr>
-                <td colSpan={2} className="px-4 py-4 text-center text-[#94A3B8] text-xs">
+                <td colSpan={2} className="px-4 py-4 text-center text-ps-hint text-xs">
                   No revenue transactions in this period
                 </td>
               </tr>
             ) : (
               data.revenue.map((r, i) => (
                 <tr key={i}>
-                  <td className="px-4 py-2.5 text-[#475569]">{r.account}</td>
-                  <td className="px-4 py-2.5 text-right text-[#0F172A]">{formatPaise(r.total)}</td>
+                  <td className="px-4 py-2.5 text-ps-label">{r.account}</td>
+                  <td className="px-4 py-2.5 text-right text-ps-ink">{formatPaise(r.total)}</td>
                 </tr>
               ))
             )}
@@ -343,26 +343,26 @@ function PLStatementReport({ data }: { data: PLData }) {
 
       {/* Expenses */}
       <section>
-        <h3 className="text-sm font-semibold text-[#334155] mb-3 uppercase tracking-wide">Expenses</h3>
-        <table className="w-full text-sm border border-[#E2E8F0] rounded-lg overflow-hidden">
-          <thead className="bg-[#F8FAFC] text-xs text-[#64748B] uppercase">
+        <h3 className="text-sm font-semibold text-ps-body mb-3 uppercase tracking-wide">Expenses</h3>
+        <table className="w-full text-sm border border-ps-border rounded-lg overflow-hidden">
+          <thead className="bg-ps-bg text-xs text-ps-label uppercase">
             <tr>
               <th className="px-4 py-2 text-left">Account / Party</th>
               <th className="px-4 py-2 text-right">Amount</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F1F5F9]">
+          <tbody className="divide-y divide-ps-muted">
             {data.expenses.length === 0 ? (
               <tr>
-                <td colSpan={2} className="px-4 py-4 text-center text-[#94A3B8] text-xs">
+                <td colSpan={2} className="px-4 py-4 text-center text-ps-hint text-xs">
                   No expense transactions in this period
                 </td>
               </tr>
             ) : (
               data.expenses.map((r, i) => (
                 <tr key={i}>
-                  <td className="px-4 py-2.5 text-[#475569]">{r.account}</td>
-                  <td className="px-4 py-2.5 text-right text-[#0F172A]">{formatPaise(r.total)}</td>
+                  <td className="px-4 py-2.5 text-ps-label">{r.account}</td>
+                  <td className="px-4 py-2.5 text-right text-ps-ink">{formatPaise(r.total)}</td>
                 </tr>
               ))
             )}
@@ -406,12 +406,12 @@ function ComplianceStatusReport({ data }: { data: ComplianceRow[] }) {
   return (
     <div className="report-content space-y-4">
       <div className="border-b pb-4">
-        <h2 className="text-lg font-semibold text-[#0F172A]">Compliance Status Report</h2>
-        <p className="text-sm text-[#64748B]">Current Financial Year — all clients</p>
+        <h2 className="text-lg font-semibold text-ps-ink">Compliance Status Report</h2>
+        <p className="text-sm text-ps-label">Current Financial Year — all clients</p>
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-[#64748B]">
+      <div className="flex items-center gap-4 text-xs text-ps-label">
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-green-400 inline-block" /> All filed
         </span>
@@ -424,8 +424,8 @@ function ComplianceStatusReport({ data }: { data: ComplianceRow[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border border-[#E2E8F0] rounded-lg overflow-hidden">
-          <thead className="bg-[#F8FAFC] text-xs text-[#64748B] uppercase">
+        <table className="w-full text-sm border border-ps-border rounded-lg overflow-hidden">
+          <thead className="bg-ps-bg text-xs text-ps-label uppercase">
             <tr>
               <th className="px-4 py-2 text-left">Client</th>
               <th className="px-4 py-2 text-center">GSTR-1</th>
@@ -433,17 +433,17 @@ function ComplianceStatusReport({ data }: { data: ComplianceRow[] }) {
               <th className="px-4 py-2 text-center">GSTR-9</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F1F5F9]">
+          <tbody className="divide-y divide-ps-muted">
             {data.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-[#94A3B8] text-xs">
+                <td colSpan={4} className="px-4 py-6 text-center text-ps-hint text-xs">
                   No compliance data found
                 </td>
               </tr>
             ) : (
               data.map((row) => (
                 <tr key={row.clientId}>
-                  <td className="px-4 py-3 font-medium text-[#0F172A]">{row.clientName}</td>
+                  <td className="px-4 py-3 font-medium text-ps-ink">{row.clientName}</td>
                   <td className="px-4 py-3 text-center">
                     <span
                       className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${trafficLight(
@@ -493,13 +493,13 @@ function OutstandingInvoicesReport({ data }: { data: OutstandingRow[] }) {
   return (
     <div className="report-content space-y-4">
       <div className="border-b pb-4">
-        <h2 className="text-lg font-semibold text-[#0F172A]">Outstanding Invoices Report</h2>
-        <p className="text-sm text-[#64748B]">All draft/unpaid invoices — all clients</p>
+        <h2 className="text-lg font-semibold text-ps-ink">Outstanding Invoices Report</h2>
+        <p className="text-sm text-ps-label">All draft/unpaid invoices — all clients</p>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border border-[#E2E8F0] rounded-lg overflow-hidden">
-          <thead className="bg-[#F8FAFC] text-xs text-[#64748B] uppercase">
+        <table className="w-full text-sm border border-ps-border rounded-lg overflow-hidden">
+          <thead className="bg-ps-bg text-xs text-ps-label uppercase">
             <tr>
               <th className="px-4 py-2 text-left">Client</th>
               <th className="px-4 py-2 text-left">Invoice Date</th>
@@ -508,20 +508,20 @@ function OutstandingInvoicesReport({ data }: { data: OutstandingRow[] }) {
               <th className="px-4 py-2 text-right">Days O/S</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F1F5F9]">
+          <tbody className="divide-y divide-ps-muted">
             {data.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-[#94A3B8] text-xs">
+                <td colSpan={5} className="px-4 py-6 text-center text-ps-hint text-xs">
                   No outstanding invoices
                 </td>
               </tr>
             ) : (
               data.map((row) => (
                 <tr key={row.id}>
-                  <td className="px-4 py-2.5 text-[#475569]">{row.clientName ?? row.clientId}</td>
-                  <td className="px-4 py-2.5 text-[#475569]">{formatDate(row.transactionDate)}</td>
-                  <td className="px-4 py-2.5 font-medium text-[#0F172A]">{row.partyName}</td>
-                  <td className="px-4 py-2.5 text-right text-[#0F172A]">{formatPaise(row.totalPaise)}</td>
+                  <td className="px-4 py-2.5 text-ps-label">{row.clientName ?? row.clientId}</td>
+                  <td className="px-4 py-2.5 text-ps-label">{formatDate(row.transactionDate)}</td>
+                  <td className="px-4 py-2.5 font-medium text-ps-ink">{row.partyName}</td>
+                  <td className="px-4 py-2.5 text-right text-ps-ink">{formatPaise(row.totalPaise)}</td>
                   <td className="px-4 py-2.5 text-right">
                     <span
                       className={`font-medium ${
@@ -529,7 +529,7 @@ function OutstandingInvoicesReport({ data }: { data: OutstandingRow[] }) {
                           ? "text-red-600"
                           : row.daysOutstanding > 15
                           ? "text-amber-600"
-                          : "text-[#475569]"
+                          : "text-ps-label"
                       }`}
                     >
                       {row.daysOutstanding}d
@@ -541,7 +541,7 @@ function OutstandingInvoicesReport({ data }: { data: OutstandingRow[] }) {
           </tbody>
           {data.length > 0 && (
             <tfoot>
-              <tr className="bg-[#F8FAFC] font-semibold text-[#0F172A]">
+              <tr className="bg-ps-bg font-semibold text-ps-ink">
                 <td colSpan={3} className="px-4 py-2.5">
                   Total Outstanding ({data.length} invoices)
                 </td>
@@ -734,17 +734,17 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
   const Icon = reportDef.icon;
 
   return (
-    <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-[#F1F5F9] bg-[#F8FAFC] print:hidden">
-        <Icon size={16} className="text-[#64748B] shrink-0" />
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-ps-muted bg-ps-bg print:hidden">
+        <Icon size={16} className="text-ps-label shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-[#0F172A]">{reportDef.name}</p>
-          <p className="text-xs text-[#94A3B8]">{reportDef.description}</p>
+          <p className="text-sm font-semibold text-ps-ink">{reportDef.name}</p>
+          <p className="text-xs text-ps-hint">{reportDef.description}</p>
         </div>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-lg text-[#94A3B8] hover:text-[#475569] hover:bg-[#F1F5F9] transition-colors"
+          className="p-1.5 rounded-lg text-ps-hint hover:text-ps-label hover:bg-ps-muted transition-colors"
           aria-label="Close"
         >
           <X size={14} />
@@ -752,12 +752,12 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
       </div>
 
       {/* Controls */}
-      <div className="px-5 py-4 border-b border-[#F1F5F9] print:hidden">
+      <div className="px-5 py-4 border-b border-ps-muted print:hidden">
         <div className="flex flex-wrap gap-3 items-end">
           {/* Client selector */}
           {(reportId === "gst_summary" || reportId === "pl_statement") && (
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#64748B] font-medium">Client</label>
+              <label className="text-xs text-ps-label font-medium">Client</label>
               <div className="min-w-[180px]">
                 <ClientLookup
                   clients={clients}
@@ -780,12 +780,12 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
           {/* Month selector */}
           {reportId === "gst_summary" && (
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#64748B] font-medium">Month</label>
+              <label className="text-xs text-ps-label font-medium">Month</label>
               <input
                 type="month"
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="text-sm border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="text-sm border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               />
             </div>
           )}
@@ -794,21 +794,21 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
           {reportId === "pl_statement" && (
             <>
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-[#64748B] font-medium">From</label>
+                <label className="text-xs text-ps-label font-medium">From</label>
                 <input
                   type="date"
                   value={fromDate}
                   onChange={(e) => setFromDate(e.target.value)}
-                  className="text-sm border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="text-sm border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-[#64748B] font-medium">To</label>
+                <label className="text-xs text-ps-label font-medium">To</label>
                 <input
                   type="date"
                   value={toDate}
                   onChange={(e) => setToDate(e.target.value)}
-                  className="text-sm border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="text-sm border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 />
               </div>
             </>
@@ -826,7 +826,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
           {data && (
             <button
               onClick={() => window.print()}
-              className="flex items-center gap-2 px-4 py-2 border border-[#E2E8F0] text-[#475569] text-sm font-medium rounded-lg hover:bg-[#F8FAFC] transition-colors"
+              className="flex items-center gap-2 px-4 py-2 border border-ps-border text-ps-label text-sm font-medium rounded-lg hover:bg-ps-bg transition-colors"
             >
               <Printer size={14} />
               Print / Export
@@ -845,13 +845,13 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
         )}
 
         {!data && !loading && !error && (
-          <p className="text-sm text-[#94A3B8] text-center py-8">
+          <p className="text-sm text-ps-hint text-center py-8">
             Configure the options above and click &quot;Generate Report&quot; to view results.
           </p>
         )}
 
         {loading && (
-          <div className="flex items-center justify-center py-12 gap-3 text-[#94A3B8]">
+          <div className="flex items-center justify-center py-12 gap-3 text-ps-hint">
             <Loader2 size={20} className="animate-spin" />
             <span className="text-sm">Loading report data…</span>
           </div>
@@ -895,8 +895,8 @@ export default function ReportsPage() {
 
       <div className="p-6 max-w-5xl mx-auto space-y-6 report-print-root">
         <div className="print:hidden">
-          <h1 className="text-xl font-semibold text-[#0F172A]">Reports</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Generate and export practice reports</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Reports</h1>
+          <p className="text-sm text-ps-label mt-0.5">Generate and export practice reports</p>
         </div>
 
         {/* Cash Flow Forecast link card */}
@@ -904,22 +904,22 @@ export default function ReportsPage() {
           <div className="print:hidden">
             <Link
               href="/reports/cash-flow"
-              className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-[#F1F5F9] hover:border-blue-200 hover:shadow-sm transition-all text-left w-full"
+              className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-ps-muted hover:border-blue-200 hover:shadow-sm transition-all text-left w-full"
             >
-              <div className="p-2.5 bg-[#F8FAFC] rounded-lg group-hover:bg-blue-50 transition-colors shrink-0">
-                <TrendingUp size={18} className="text-[#64748B] group-hover:text-blue-600 transition-colors" />
+              <div className="p-2.5 bg-ps-bg rounded-lg group-hover:bg-blue-50 transition-colors shrink-0">
+                <TrendingUp size={18} className="text-ps-label group-hover:text-blue-600 transition-colors" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-[#0F172A] group-hover:text-blue-700 transition-colors">
+                <p className="text-sm font-semibold text-ps-ink group-hover:text-blue-700 transition-colors">
                   Cash Flow Forecast
                 </p>
-                <p className="text-xs text-[#94A3B8] mt-0.5 leading-relaxed">
+                <p className="text-xs text-ps-hint mt-0.5 leading-relaxed">
                   6-month projection based on unpaid invoices, loan EMIs, and GST dues
                 </p>
               </div>
               <ChevronDown
                 size={14}
-                className="text-[#CBD5E1] group-hover:text-blue-600 transition-colors mt-1 shrink-0 -rotate-90"
+                className="text-ps-disabled group-hover:text-blue-600 transition-colors mt-1 shrink-0 -rotate-90"
               />
             </Link>
           </div>
@@ -934,22 +934,22 @@ export default function ReportsPage() {
                 <button
                   key={report.id}
                   onClick={() => setActiveReport(report.id)}
-                  className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-[#F1F5F9] hover:border-blue-200 hover:shadow-sm transition-all text-left"
+                  className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-ps-muted hover:border-blue-200 hover:shadow-sm transition-all text-left"
                 >
-                  <div className="p-2.5 bg-[#F8FAFC] rounded-lg group-hover:bg-blue-50 transition-colors shrink-0">
-                    <Icon size={18} className="text-[#64748B] group-hover:text-blue-600 transition-colors" />
+                  <div className="p-2.5 bg-ps-bg rounded-lg group-hover:bg-blue-50 transition-colors shrink-0">
+                    <Icon size={18} className="text-ps-label group-hover:text-blue-600 transition-colors" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#0F172A] group-hover:text-blue-700 transition-colors">
+                    <p className="text-sm font-semibold text-ps-ink group-hover:text-blue-700 transition-colors">
                       {report.name}
                     </p>
-                    <p className="text-xs text-[#94A3B8] mt-0.5 leading-relaxed">
+                    <p className="text-xs text-ps-hint mt-0.5 leading-relaxed">
                       {report.description}
                     </p>
                   </div>
                   <ChevronDown
                     size={14}
-                    className="text-[#CBD5E1] group-hover:text-blue-600 transition-colors mt-1 shrink-0"
+                    className="text-ps-disabled group-hover:text-blue-600 transition-colors mt-1 shrink-0"
                   />
                 </button>
               );
@@ -961,7 +961,7 @@ export default function ReportsPage() {
         {activeReport && (
           <button
             onClick={() => setActiveReport(null)}
-            className="flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#0F172A] transition-colors print:hidden"
+            className="flex items-center gap-1.5 text-sm text-ps-label hover:text-ps-ink transition-colors print:hidden"
           >
             <ChevronUp size={14} />
             All Reports
