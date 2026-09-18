@@ -47,8 +47,8 @@ function previousMonth(): { from: string; to: string } {
 }
 
 const SEVERITY_STYLE: Record<string, string> = {
-  high: "bg-ps-state-problem-surface border-ps-state-problem-border text-ps-state-problem",
-  medium: "bg-ps-state-attention-surface border-ps-state-attention-border text-ps-state-attention",
+  high: "bg-state-problem-surface border-state-problem-border text-state-problem",
+  medium: "bg-state-attention-surface border-state-attention-border text-state-attention",
   low: "bg-ps-bg border-ps-border text-ps-label",
 };
 
@@ -105,7 +105,7 @@ export function WorthALookTab({ clientId }: { clientId: string }) {
       {loading && <TableSkeleton rows={4} />}
 
       {!loading && failed && (
-        <div className="rounded-lg border border-ps-state-problem-border bg-ps-state-problem-surface p-3 text-xs text-ps-state-problem">
+        <div className="rounded-lg border border-state-problem-border bg-state-problem-surface p-3 text-xs text-state-problem">
           The review list could not be built, so this is not &ldquo;nothing to look
           at&rdquo;. Try again, or narrow the period.
         </div>
@@ -118,7 +118,7 @@ export function WorthALookTab({ clientId }: { clientId: string }) {
               needs to know which rules were behind it. */}
           {data.gaps.map((g) => (
             <div key={g.code}
-              className="rounded-lg border border-ps-state-attention-border bg-ps-state-attention-surface p-3 text-xs text-ps-body">
+              className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3 text-xs text-ps-body">
               {g.message}
             </div>
           ))}
@@ -169,7 +169,7 @@ function Row({ row }: { row: WorthALookRow }) {
         </div>
         {/* Money direction, which is NOT state — the ps.money scale exists so a
             withdrawal is not rendered in the colour that means "a problem". */}
-        <span className={`text-xs font-mono ${out ? "text-ps-money-out" : "text-ps-money-in"}`}>
+        <span className={`text-xs font-mono ${out ? "text-money-out" : "text-money-in"}`}>
           {out ? "−" : "+"}{fmt(amount)}
         </span>
       </div>

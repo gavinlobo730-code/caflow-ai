@@ -20,7 +20,8 @@ const item = (over: Partial<ServiceCatalogueItem> = {}): ServiceCatalogueItem =>
 const form = (over: Partial<ServiceFormInput> = {}): ServiceFormInput => ({
   name: "Statutory Audit", description: "", kind: "service", hsn_sac: "998221",
   gstRate: 18, rate: "50000", purchasePrice: "", category: "", notes: "",
-  unit: "", openingQty: "", openingCost: "", openingBalanceDate: "", ...over,
+  unit: "", openingQty: "", openingCost: "", openingBalanceDate: "",
+  alternateUnit: "", unitsPerAlternate: "", reorderLevel: "", ...over,
 });
 
 test("serviceToLine drops a fully pre-priced line (description never falls back to name)", () => {
@@ -151,4 +152,71 @@ test("serviceToForm shows opening_balance_date only before stock has started mov
   assert.equal(started.openingBalanceDate, "");
 
   assert.equal(serviceToForm(item({ kind: "good", stock_qty_units: null, opening_balance_date: null })).openingBalanceDate, "");
+});
+
+// ── The second unit and the reorder level (INV-03 / INV-09, migration 409) ───
+// KEYSTROKE FEEDBACK ONLY. The authority is
+// domain/inventory/units.problem_with_pair, which the create door asks outright
+// and the PATCH door asks against the MERGED row — a browser cannot settle the
+// pair on a partial edit, because `unit` may be absent for being unchanged.
+
+test("an alternate unit and its factor are sent together or not at all", () => {
+  const both = serviceFormToPayload(
+    form({ kind: "good", unit: "PCS", alternateUnit: "BOX", unitsPerAlternate: "12" }), CLIENT_ID);
+  assert.equal(both.alternate_unit, "BOX");
+  assert.equal(both.units_per_alternate, 12);
+
+  // A unit with no factor cannot be converted, and a factor with no unit
+  // converts to nothing. Either alone reads as a whole fact on a screen, so
+  // neither is sent — and the database CHECKs the pair besides.
+  const unitOnly = serviceFormToPayload(
+    form({ kind: "good", unit: "PCS", alternateUnit: "BOX" }), CLIENT_ID);
+  assert.equal(unitOnly.alternate_unit, undefined);
+  assert.equal(unitOnly.units_per_alternate, undefined);
+
+  const factorOnly = serviceFormToPayload(
+    form({ kind: "good", unit: "PCS", unitsPerAlternate: "12" }), CLIENT_ID);
+  assert.equal(factorOnly.alternate_unit, undefined);
+  assert.equal(factorOnly.units_per_alternate, undefined);
+});
+
+test("a service never carries a second unit or a reorder level", () => {
+  const p = serviceFormToPayload(
+    form({ kind: "service", unit: "PCS", alternateUnit: "BOX",
+           unitsPerAlternate: "12", reorderLevel: "50" }), CLIENT_ID);
+  assert.equal(p.alternate_unit, undefined);
+  assert.equal(p.units_per_alternate, undefined);
+  assert.equal(p.reorder_level_units, undefined);
+});
+
+test("a reorder level of ZERO is sent, because it is a real answer", () => {
+  // "Tell me when it runs out". A `> 0` test would discard it silently and the
+  // item would sit in the comfortable bucket for ever.
+  assert.equal(
+    serviceFormToPayload(form({ kind: "good", reorderLevel: "0" }), CLIENT_ID).reorder_level_units,
+    0);
+  assert.equal(
+    serviceFormToPayload(form({ kind: "good", reorderLevel: "" }), CLIENT_ID).reorder_level_units,
+    undefined);
+});
+
+test("the pair is flagged while it is being typed", () => {
+  assert.equal(validateServiceForm(
+    form({ kind: "good", unit: "PCS", alternateUnit: "BOX" })).errors.unitsPerAlternate !== undefined, true);
+  assert.equal(validateServiceForm(
+    form({ kind: "good", unit: "PCS", unitsPerAlternate: "12" })).errors.unitsPerAlternate !== undefined, true);
+  assert.equal(validateServiceForm(
+    form({ kind: "good", unit: "PCS", alternateUnit: "PCS", unitsPerAlternate: "12" })).errors.unitsPerAlternate !== undefined, true);
+  assert.equal(validateServiceForm(
+    form({ kind: "good", reorderLevel: "-1" })).errors.reorderLevel !== undefined, true);
+  assert.equal(validateServiceForm(
+    form({ kind: "good", unit: "PCS", alternateUnit: "BOX", unitsPerAlternate: "12", reorderLevel: "0" })).ok,
+    true);
+});
+
+test("a recorded reorder level of zero survives a round trip through the form", () => {
+  // `== null` and not a falsy test: reopening the modal must not silently
+  // clear a decision the CA made.
+  assert.equal(serviceToForm(item({ kind: "good", reorder_level_units: 0 })).reorderLevel, "0");
+  assert.equal(serviceToForm(item({ kind: "good" })).reorderLevel, "");
 });

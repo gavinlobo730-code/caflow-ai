@@ -249,6 +249,75 @@ def stock_ageing(
         return api_response(False, None, "Unable to load the stock ageing. Please try again.")
 
 
+@router.get("/reorder")
+def reorder_report(
+    client_id: str = Query(..., description="CA client ID — stock is client-owned"),
+    as_of: Optional[str] = Query(None, description="YYYY-MM-DD; defaults to today in IST"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """What is at or below its reorder level, grouped by item group (INV-03).
+
+    `service_catalogue.category` has been a free-text grouping since migration
+    180 and nothing has ever grouped by it, and there was no reorder level at
+    all — so the one question a stock master answers between counts, what do I
+    need to buy, was read item by item off the register.
+
+    AN ABSENT LEVEL IS NOT ZERO and is reported as its own state: zero is a
+    real answer meaning "tell me when it runs out", so reading NULL as zero
+    would record a decision nobody made and park every item in the "above"
+    bucket for ever. An unrecorded item GROUP is likewise its own row rather
+    than folded into another.
+
+    The on-hand figure is the LEDGER's (`stock_position_as_at`), never
+    `service_catalogue.stock_qty_units`, which migration 188 documents as a
+    cache: a purchasing prompt off a drifted cache says there is stock there is
+    not. Nothing statutory turns on any of it — this computes a prompt, posts
+    nothing and moves no stock.
+    """
+    assert_client_access(current_user, client_id)
+    try:
+        from services import reorder_service
+        if _USE_MOCK:
+            return api_response(True, reorder_service.assess(
+                None, current_user.get("firm_id"), client_id, as_of))
+
+        from core.supabase_client import get_supabase
+        return api_response(True, reorder_service.assess(
+            get_supabase(), current_user.get("firm_id"), client_id, as_of))
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("reorder_report: %s", e)
+        return api_response(False, None, "Unable to load the reorder report. Please try again.")
+
+
+@router.get("/item-groups")
+def item_groups(
+    client_id: str = Query(..., description="CA client ID — stock is client-owned"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The item groups this client already uses, most-used first.
+
+    Served so the picker offers what EXISTS rather than an empty text box: two
+    spellings of one group are two groups in every report. A suggestion and
+    never a constraint — typing a new one is how the first group is created.
+    """
+    assert_client_access(current_user, client_id)
+    try:
+        from services import reorder_service
+        if _USE_MOCK:
+            return api_response(True, {"groups": []})
+
+        from core.supabase_client import get_supabase
+        return api_response(True, {"groups": reorder_service.item_groups(
+            get_supabase(), current_user.get("firm_id"), client_id)})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("item_groups: %s", e)
+        return api_response(False, None, "Unable to load the item groups. Please try again.")
+
+
 @router.get("/items/{service_catalogue_id}/ledger")
 def get_item_stock_ledger(
     service_catalogue_id: str,

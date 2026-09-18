@@ -2133,6 +2133,30 @@ change. The code is the authority; keep this file in step with it.
   FORM 12BB statement is the evidence, and prescribes exactly four claims —
   §10(13A), §10(5), §24(b) and Chapter VI-A. `domain/payroll/declarations.py`
   keeps them apart; nothing sets one from another.
+- **A DECLARED DEDUCTION HAS A DOCUMENT BEHIND IT, NOT A SENTENCE ABOUT ONE**
+  (PAY-26, migration 410). `payroll_it_declaration_items.proof_reference` has
+  been a bare TEXT column since migration 296 — somebody types "LIC receipt
+  12345" and nothing holds the receipt — so the verifier set
+  `amount_verified_paise` against a memory of a document, on the very decision
+  §192(1) makes the EMPLOYER answerable for. Rule 26C's Form 12BB is a statement
+  of particulars *with* evidence; the evidence half did not exist.
+  **ONE ATTACHMENT RULE AND IT IS NOT NEW**: `domain/attachments`, the same
+  authority manual journals (138) and bank transactions (259) use, with the same
+  CHECK. Its two decisions carry over and both matter more here — the scheme
+  vocabulary is CLOSED to http/https because an employee's own portal upload is
+  precisely an untrusted uploader and a stored `javascript:` or `data:` URL is
+  script execution in the app's origin the moment the CA clicks the "receipt";
+  and an UPLOADED document stores the document id with NO url, because the
+  firm's store hands back a signed url that expires in an hour and would be a
+  dead link by the time an assessing officer asked.
+  **`None` MEANS UNCHANGED AND `[]` REMOVES**, so the field defaults to `None` on
+  a model that is the CREATE door and the VERIFY door both, and the verify path
+  omits the column entirely when the request did not send it — an `or []` there
+  wipes an employee's uploads every time a CA saves a verified amount.
+  **`proof_reference` IS KEPT AND IS NOT REPLACED**: it is the employee's own
+  words about a proof that may only exist on paper, and making it a caption for
+  the attachment would make a row with paper evidence look empty.
+
 - **A §192 PROJECTION IS THE RUN'S OWN FIGURE.**
   `GET /api/payroll/tds-projection` answers off `_compute_slip` — the same
   function the payroll run pays from — so what the screen projects for November
@@ -3207,6 +3231,73 @@ worth what it was worth before it was carried across the yard, and the two rows
 carry equal and opposite value. **The value moved is the SOURCE godown's own**,
 not the item's blended average, or the per-godown position drifts from the total
 it must sum to.
+
+**AN ITEM IS STOCKED IN ONE UNIT, TRANSACTED IN ANOTHER, AND REORDERED AT A
+LEVEL SOMEBODY CHOSE** (INV-03's other two conveniences and INV-09 part 3 — each
+finding deferred the alternate unit to the other, so neither built it; migration
+409). A wholesaler buys cement in tonnes and sells it in bags; a stationer buys
+pens in boxes of twelve and sells them singly. One `unit` meant the CA re-typed
+a converted quantity onto every line or kept two catalogue rows for one physical
+item, at which point the on-hand figure is split across two rows and ties to
+nothing. `domain/inventory/units.py` is the rule and `domain/inventory/reorder.py`
+the report.
+**THE LEDGER NEVER LEARNS A SECOND UNIT EXISTS.** `inventory_stock_ledger` holds
+`quantity_delta` and `stock_position_as_at` sums the deltas, so a movement
+recorded in either unit would add boxes to pieces. The conversion happens at the
+DOOR and nothing stores a quantity in the alternate unit — a test asserts
+`record_stock_out`, the position reader and the costing module never mention it,
+the same discipline migration 398 took about a batch, because a column that
+COULD change what is stored is the one that eventually does. `to_alternate`
+exists for DISPLAY and is recomputed on every read (migration 278's reasoning
+applied to a quantity).
+**THE CONVERSION REFUSES WHERE THREE DECIMALS CANNOT HOLD IT.** Every quantity
+column is `NUMERIC(10,3)`, so truncating understates what moved and leaves stock
+on the books that has gone, while rounding up writes off stock that is there —
+`quantity_violation`'s own argument, and neither direction is safe.
+**`units_per_alternate` IS NAMED FOR ITS DIRECTION**: `conversion_factor` does
+not say which way it points, and a factor applied upside down is a 144× error on
+a box of twelve that still looks like a plausible quantity. Both or neither,
+CHECKed; the alternate must be a real UQC and must differ from the primary —
+REFUSED where `unit` only normalises, because that carve-out exists for rows
+predating the dropdown and a column added by 409 has none.
+**AN ABSENT REORDER LEVEL IS ITS OWN STATE AND IS NEVER ZERO.** Zero is a real
+answer — "tell me when it runs out" — so reading NULL as zero records a decision
+nobody made and parks every item in the "above" bucket for ever. At the level
+counts as needing a reorder (a strict `<` holds the order until the item is
+already short), and the on-hand figure is the LEDGER's, never the cached
+`stock_qty_units` migration 188 documents as a cache: a purchasing prompt off a
+drifted one says there is stock there is not.
+**THE ITEM GROUP NEEDED NO COLUMN.** `service_catalogue.category` has been free
+text since migration 180 and NOTHING ever grouped by it — the `capital_wip`
+shape a third time. Two spellings fold to one group, the first spelling is the
+label, and an unrecorded group is its own row rather than dropped. Nothing
+statutory turns on any of it.
+
+**A LIVE E-WAY BILL SAYS WHEN IT LAPSES, AND THAT IS NOT A COMPLIANCE ROW**
+(SALES-28's other half). `eway_validity` has computed Rule 138(10)'s answer
+since SALES-28's first half and `/records/{id}/validity` served it — to somebody
+who had already opened that one record. A bill that lapses while the lorry is
+moving exposes the consignment to detention and seizure under CGST §129, and the
+extension path (the proviso to Rule 138(10)) existed the whole time with nothing
+to prompt it. `domain/gst/eway_expiry.py` is the rule and
+`GET /api/eway-bill/expiring` serves it FIRM-WIDE through `effective_client_ids`
+— None means firm-wide and an EMPTY set means nothing, never "no filter".
+**NOTHING IS FILED FOR AN E-WAY BILL**, so it is its own panel above the
+deadlines table rather than a `ComplianceEntry` in it: that shape carries a
+`filing_status` and a Mark Filed action, and folding this in would mean
+inventing a `compliance_type` and offering a button that means nothing. The same
+reasoning that keeps the filing demo off the deadline list.
+**THE RECORDED DATE WINS AND THE ANSWER SAYS WHICH IT USED** — NIC may know what
+this cannot, a leg by ship or an extension already granted — and a computed date
+is used only where the record carries none.
+**MIDNIGHT, NOT A ROLLING DAY**: the Explanation to Rule 138(10) expires a day at
+midnight, so a bill valid upto the 20th is good all of the 20th and
+`expires_today` is its OWN bucket — the one a naive `<` reads as fine, and the
+last chance to extend. A bill whose expiry cannot be told at all is LISTED as
+undeterminable rather than dropped, the `table_4a_gaps` discipline. **The IRP and
+EWB JSON payloads stay REFUSED with GST-32**, for the same document: a wrong
+field NAME fails visibly at the portal, a misremembered field MEANING generates a
+real document with wrong figures.
 
 **A PHYSICAL STOCK COUNT IS ONE SESSION, AND THE VARIANCE IS A FACT ABOUT THE
 COUNT DATE** (INV-08, migration 387). Adjustment was one item per API call and

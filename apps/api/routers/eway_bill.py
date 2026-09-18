@@ -17,7 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
 from domain.gst import eway_validity
-from core.authz import assert_client_access, can_access_client
+from core.authz import assert_client_access, can_access_client, effective_client_ids
+from core.ist_clock import ist_today
 from models.common import api_response
 from services.timeline_service import timeline_service
 
@@ -171,6 +172,53 @@ def eway_validity_for_record(
         "transport_mode": rec.get("transport_mode"),
         **_computed_validity(rec, ewb_date),
     })
+
+
+@router.get("/expiring")
+def expiring_eway_bills(
+    within_days: int = 2,
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """Live e-way bills at or past their Rule 138(10) validity (SALES-28).
+
+    `eway_validity` has computed the expiry since SALES-28's first half and
+    `/records/{id}/validity` served it — but only to somebody who opened that
+    one record. A bill that lapses while the lorry is still moving exposes the
+    consignment to detention and seizure under CGST §129, and the extension
+    path (the proviso to Rule 138(10)) has existed the whole time with nothing
+    to prompt it.
+
+    AN EXPIRY IS NOT A COMPLIANCE OBLIGATION, so this is its own answer rather
+    than a `ComplianceEntry`: nothing is filed, the action is to EXTEND on the
+    portal, and forcing it into that shape would mean inventing a
+    `compliance_type` and offering a Mark Filed button that means nothing.
+
+    THE RECORDED DATE WINS. The portal is authoritative and may know what this
+    cannot — a leg by ship, an extension already granted — so a computed date
+    is used only where the record carries none, and every row says which it
+    used. A bill whose expiry cannot be told at all is LISTED as undeterminable
+    rather than dropped: a silent omission reads as a clean answer.
+    """
+    firm_id = current_user["firm_id"]
+    scope = effective_client_ids(current_user)
+    horizon = max(0, min(int(within_days or 0), 30))
+    try:
+        from domain.gst import eway_expiry
+        from domain.income_tax.eway_service import live_eway_bills
+        rows = live_eway_bills(firm_id, scope)
+        answer = eway_expiry.assess(
+            rows, ist_today(), horizon,
+            computed_expiry=lambda r: _computed_validity(r, r.get("ewb_date")))
+        return api_response(True, {
+            **{k: v for k, v in answer.items() if k != "bills"},
+            "bills": [vars(b) for b in answer["bills"]],
+        })
+    except HTTPException:
+        raise
+    except Exception as e:                                   # noqa: BLE001
+        _logger.error("expiring_eway_bills: %s", e)
+        return api_response(False, None,
+                            "Unable to load expiring e-way bills. Please try again.")
 
 
 @router.post("/records/{record_id}/generated")

@@ -227,6 +227,44 @@ def list_eway_bills(
     return res.data or []
 
 
+def live_eway_bills(firm_id: str, client_ids=None) -> list[dict]:
+    """Every GENERATED, uncancelled record across the firm, or a set of clients.
+
+    The expiring-bills panel is firm-wide (the deadlines screen is), so unlike
+    `list_eway_bills` this takes no single client — `client_ids` is the
+    caller's own assignment scope from `core.authz.effective_client_ids`, where
+    None means firm-wide and an EMPTY SET means nothing rather than "no
+    filter". Getting that backwards is a cross-client read, which is why the
+    empty case is written out rather than left to a falsy test.
+
+    Bounded by construction: a live e-way bill covers a consignment in transit,
+    so the population is what is on the road, not the history. Cancelled and
+    never-generated rows are dropped here rather than in the domain rule so the
+    read itself stays small.
+    """
+    if client_ids is not None and len(client_ids) == 0:
+        return []
+
+    if _USE_MOCK:
+        rows = [r for r in _MOCK_RECORDS.values() if r["firm_id"] == firm_id]
+        if client_ids is not None:
+            rows = [r for r in rows if r.get("client_id") in client_ids]
+        return [r for r in rows
+                if (r.get("ewb_number") or "").strip()
+                and (r.get("status") or "").lower() != "cancelled"]
+
+    sb = _supabase()
+    q = (sb.table("eway_bill_records")
+         .select("id, client_id, invoice_number, ewb_number, ewb_date, "
+                 "ewb_valid_upto, status, distance_km, vehicle_type, transport_mode")
+         .eq("firm_id", firm_id)
+         .neq("status", "cancelled")
+         .not_.is_("ewb_number", "null"))
+    if client_ids is not None:
+        q = q.in_("client_id", list(client_ids))
+    return q.order("ewb_valid_upto", desc=False).execute().data or []
+
+
 def get_eway_bill(firm_id: str, record_id: str) -> dict | None:
     """Firm-scoped lookup by id — the resolve half of a resolve-then-assert
     guard. record_ewb_generated/extend/cancel are all row-addressed by

@@ -134,6 +134,11 @@ class DeclarationItem:
     amount_verified_paise: int = 0
     status: str = ITEM_DECLARED
     proof_reference: str = ""
+    # The DOCUMENTS behind the claim (PAY-26, migration 410). `proof_reference`
+    # is what the employee SAID; this is what they produced. Parsed and
+    # normalised at the API door by `domain/attachments` — carried here as
+    # plain dicts because this module is the §192 rule and not a URL validator.
+    proof_attachments: list = field(default_factory=list)
 
     def effective_paise(self, *, verified_only: bool) -> int:
         """The figure payroll is entitled to withhold against.

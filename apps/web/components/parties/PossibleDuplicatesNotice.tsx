@@ -51,10 +51,10 @@ export function PossibleDuplicatesNotice({
   return (
     <div
       role="status"
-      className="rounded-lg border border-ps-state-attention-border bg-ps-state-attention-surface p-3 text-xs"
+      className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3 text-xs"
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="font-semibold text-ps-state-attention">
+        <p className="font-semibold text-state-attention">
           This {noun} was saved. You may already have it.
         </p>
         {onDismiss && (

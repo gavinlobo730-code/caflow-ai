@@ -15,7 +15,7 @@
  * inline caller (the invoice) can auto-select it and fill the line; the
  * management page derives its own toast text from the returned item.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { api, type ApiResp } from "@/lib/api/index";
@@ -31,6 +31,7 @@ const EMPTY_FORM: ServiceFormInput = {
   name: "", description: "", kind: "service", hsn_sac: "", gstRate: 18,
   rate: "", purchasePrice: "", category: "", notes: "",
   unit: "", openingQty: "", openingCost: "", openingBalanceDate: "",
+  alternateUnit: "", unitsPerAlternate: "", reorderLevel: "",
 };
 
 const inputCls = "w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500";
@@ -57,6 +58,16 @@ export function ProductServiceFormModal({
   // Sales Invoice's inline "+ Create Product/Service" flow). onError still
   // fires too, for callers that also want a toast or similar.
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Suggestions only; a failure here leaves the box a plain text input, which
+  // is exactly what it was before. Never blocks the form.
+  const [itemGroups, setItemGroups] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    api.inventory.itemGroups({ client_id: clientId })
+      .then((r) => { if (live && r.success) setItemGroups(r.data.groups.map((g) => g.group)); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [clientId]);
   const v = validateServiceForm(form);
   // Opening balance is a one-time seed (idempotent server-side, but re-
   // showing the original opening fields once real stock movements exist
@@ -109,8 +120,18 @@ export function ProductServiceFormModal({
               <option value="good">Product</option>
             </select>
           </Field>
-          <Field label="Category (optional)">
-            <input value={form.category} onChange={(e) => set("category", e.target.value)} placeholder="e.g. Compliance" className={inputCls} />
+          <Field label="Item group (optional)">
+            {/* A DATALIST, not a select: the groups this client already uses
+                are OFFERED so two spellings of one group stop becoming two
+                groups in every report, and typing a new one is still how the
+                first group is created. The list is the server's — `category`
+                has been free text since migration 180 and nothing ever
+                collected the distinct values. */}
+            <input value={form.category} onChange={(e) => set("category", e.target.value)}
+              list="ps-item-groups" placeholder="e.g. Raw Material" className={inputCls} />
+            <datalist id="ps-item-groups">
+              {itemGroups.map((g) => <option key={g} value={g} />)}
+            </datalist>
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -156,6 +177,44 @@ export function ProductServiceFormModal({
                 <input type="number" min="0" step="0.001" value={form.openingQty} onChange={(e) => set("openingQty", e.target.value)} placeholder="0" className={inputCls} />
               </Field>
             )}
+          </div>
+        )}
+        {/* A SECOND unit, and the level to reorder at (INV-03 / INV-09,
+            migration 409). The stock ledger is always kept in the item's own
+            unit — a quantity typed in the alternate one is converted at the
+            API door and nothing stores a quantity in it — so this pair changes
+            what a CA may TYPE and never what the register holds. Goods only,
+            for the same reason the unit itself is. */}
+        {form.kind === "good" && (
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Alternate unit (optional)">
+              <select value={form.alternateUnit} onChange={(e) => set("alternateUnit", e.target.value)} className={inputCls}>
+                <option value="">— None —</option>
+                {UQC_CODES.filter((u) => u.code !== form.unit)
+                  .map((u) => <option key={u.code} value={u.code}>{u.code} — {u.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Units per alternate" error={attempted ? v.errors.unitsPerAlternate : undefined}>
+              <input type="number" min="0" step="0.001" value={form.unitsPerAlternate}
+                onChange={(e) => set("unitsPerAlternate", e.target.value)}
+                disabled={!form.alternateUnit}
+                placeholder={form.alternateUnit ? "12" : "—"} className={inputCls} />
+              {/* The sentence, not the number, is what stops the factor going
+                  in upside down. */}
+              {form.alternateUnit && form.unitsPerAlternate && (
+                <span className="block text-[11px] text-ps-hint mt-1">
+                  1 {form.alternateUnit} = {form.unitsPerAlternate} {form.unit || "units"}
+                </span>
+              )}
+            </Field>
+            <Field label="Reorder level (optional)" error={attempted ? v.errors.reorderLevel : undefined}>
+              <input type="number" min="0" step="0.001" value={form.reorderLevel}
+                onChange={(e) => set("reorderLevel", e.target.value)}
+                placeholder="—" className={inputCls} />
+              <span className="block text-[11px] text-ps-hint mt-1">
+                Left blank, nothing is assumed — a level of 0 means &ldquo;tell me when it runs out&rdquo;.
+              </span>
+            </Field>
           </div>
         )}
         {form.kind === "good" && !stockAlreadyStarted && (

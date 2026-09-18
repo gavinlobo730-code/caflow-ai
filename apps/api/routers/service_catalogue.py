@@ -654,6 +654,40 @@ def bulk_create_services(
         return api_response(False, None, "Unable to complete product/service import. Please try again.")
 
 
+def _alternate_unit_problem(data, existing: dict) -> "tuple[dict, str | None]":
+    """Settle the alternate-unit pair on the PARTIAL door, against the MERGED row.
+
+    The create door can ask `domain/inventory/units.problem_with_pair` straight
+    off the request because it carries every field. A PATCH cannot: `unit` may
+    be absent because it is UNCHANGED, and `patch` drops every None, so a
+    request that sets only the factor would be checked against nothing and land
+    on the database CHECK as a 500. So the merge happens here and the same
+    authority answers.
+
+    An `alternate_unit` that was SENT and normalises to empty is an explicit
+    CLEAR of both columns — `model_fields_set` is what tells that apart from
+    "unchanged", which None alone cannot.
+    """
+    from domain.inventory.units import problem_with_pair
+    sent = data.model_fields_set
+    extra: dict = {}
+
+    if "alternate_unit" in sent and not (data.alternate_unit or "").strip():
+        # Clearing. Both columns go together — the CHECK pairs them — and there
+        # is nothing left to validate.
+        return {"alternate_unit": None, "units_per_alternate": None}, None
+
+    alternate = (data.alternate_unit if "alternate_unit" in sent
+                 else existing.get("alternate_unit"))
+    factor = (data.units_per_alternate if "units_per_alternate" in sent
+              else existing.get("units_per_alternate"))
+    unit = data.unit if "unit" in sent and data.unit else existing.get("unit")
+    if "alternate_unit" not in sent and "units_per_alternate" not in sent and "unit" not in sent:
+        return extra, None
+    return extra, problem_with_pair(unit, alternate, factor)
+
+
+
 @router.patch("/{service_id}")
 def update_service(
     service_id: str,
@@ -691,6 +725,10 @@ def update_service(
                 )
                 if clash:
                     return api_response(False, None, "Another active service already uses that name.")
+            extra, problem = _alternate_unit_problem(data, row)
+            if problem:
+                return api_response(False, None, problem)
+            patch.update(extra)
             row.update(patch)
             return api_response(True, row)
 
@@ -709,6 +747,10 @@ def update_service(
                 return api_response(False, None, "Another active service already uses that name.")
 
         owned_row = owned[0]
+        extra, problem = _alternate_unit_problem(data, owned_row)
+        if problem:
+            return api_response(False, None, problem)
+        patch.update(extra)
         # Effective (patch-or-existing) values — a PATCH that only sends ONE
         # of opening_qty_units/opening_cost_paise (the other already set from
         # an earlier save) must still resolve+seed against the true combined

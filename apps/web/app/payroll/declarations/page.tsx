@@ -347,6 +347,9 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
     for (const i of row.items) seed[i.section] = String(i.amount_verified_paise / 100);
     return seed;
   });
+  // `undefined` for a section means the CA has not touched its documents, which
+  // is a DIFFERENT thing from having cleared them — see the save() comment.
+  const [docs, setDocs] = useState<Record<string, { name: string; url?: string; document_id?: string }[]>>({});
   const [markVerified, setMarkVerified] = useState(row.proofs_verified);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -380,6 +383,12 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
           section: i.section,
           amount_verified_paise: itemPaise[i.section] as number,
           status: (itemPaise[i.section] as number) > 0 ? "verified" : "rejected",
+          // OMITTED where the CA did not touch the documents. The server reads
+          // absent as UNCHANGED and an empty array as REMOVE, so sending `[]`
+          // here would wipe an employee's uploads every time a verified amount
+          // was saved without re-attaching them.
+          ...(docs[i.section] === undefined
+            ? {} : { proof_attachments: docs[i.section] }),
         })),
         proofs_verified: markVerified,
       });
@@ -414,14 +423,25 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
                   declared={row.home_loan_interest_declared_paise}
                   value={interest} onChange={setInterest} />
 
+        {/* CHAPTER VI-A ONLY. The four Rule 26C header claims above — rent,
+            leave travel, home loan interest — live on the DECLARATION row and
+            have no attachment column, so offering a document box there would
+            invite a CA to type into something that goes nowhere. */}
         {row.items.map((i: DeclarationItemRow) => (
-          <ProofRow
-            key={i.id}
-            label={SECTION_LABELS[i.section] ?? i.section}
-            declared={i.amount_declared_paise}
-            value={items[i.section] ?? "0"}
-            onChange={(v) => setItems((prev) => ({ ...prev, [i.section]: v }))}
-          />
+          <div key={i.id} className="space-y-1.5">
+            <ProofRow
+              label={SECTION_LABELS[i.section] ?? i.section}
+              declared={i.amount_declared_paise}
+              value={items[i.section] ?? "0"}
+              onChange={(v) => setItems((prev) => ({ ...prev, [i.section]: v }))}
+            />
+            <ProofDocuments
+              existing={i.proof_attachments ?? []}
+              reference={i.proof_reference}
+              pending={docs[i.section]}
+              onChange={(next) => setDocs((prev) => ({ ...prev, [i.section]: next }))}
+            />
+          </div>
         ))}
 
         <label className="flex items-start gap-2.5 text-sm border-t border-[#F1F5F9] pt-4">
@@ -453,6 +473,78 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** The DOCUMENTS behind one Chapter VI-A claim (PAY-26, migration 410).
+ *
+ *  `proof_reference` was the employee's own words about a proof — a policy
+ *  number, a receipt number — and nothing held the receipt, so the verifier
+ *  set an amount against a memory of a document. Both are kept: a claim
+ *  evidenced on paper has a reference and no link, and showing an empty
+ *  document list for it must not read as "nothing was produced".
+ *
+ *  THE URL IS NOT VALIDATED HERE AND MUST NOT BE. `domain/attachments` is the
+ *  authority and refuses at the API door — the scheme vocabulary is closed to
+ *  http/https because a stored `javascript:` or `data:` link is script
+ *  execution in this app's own origin the moment somebody clicks the
+ *  "receipt". A second, laxer rule in the browser is how that hole reopens.
+ *
+ *  `pending === undefined` means the CA has not touched this section's
+ *  documents at all, which the save path sends as ABSENT — the server reads
+ *  absent as unchanged and `[]` as remove. */
+function ProofDocuments({ existing, reference, pending, onChange }: {
+  existing: { name: string; url?: string; document_id?: string }[];
+  reference: string;
+  pending?: { name: string; url?: string; document_id?: string }[];
+  onChange: (next: { name: string; url?: string; document_id?: string }[]) => void;
+}) {
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const current = pending ?? existing;
+
+  const add = () => {
+    if (!name.trim() || !url.trim()) return;
+    onChange([...current, { name: name.trim(), url: url.trim() }]);
+    setName("");
+    setUrl("");
+  };
+
+  return (
+    <div className="pl-1 border-l-2 border-ps-muted ml-1 space-y-1">
+      {reference && (
+        <p className="text-[11px] text-ps-hint">
+          Employee&apos;s reference: {reference}
+        </p>
+      )}
+      {current.map((a, idx) => (
+        <div key={`${a.name}-${idx}`} className="flex items-center gap-2 text-xs">
+          {a.url
+            ? <a href={a.url} target="_blank" rel="noopener noreferrer"
+                 className="text-brand hover:underline">{a.name}</a>
+            /* An uploaded document carries an id and NO url — the signed link
+               is minted late, so there is nothing to render as a link here. */
+            : <span className="text-ps-body">{a.name}</span>}
+          <button type="button"
+                  onClick={() => onChange(current.filter((_, i) => i !== idx))}
+                  className="text-[11px] text-ps-hint hover:text-state-problem">remove</button>
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <input value={name} onChange={(e) => setName(e.target.value)}
+               placeholder="Document name"
+               aria-label="Proof document name"
+               className="flex-1 border border-ps-border rounded-md px-2 py-1 text-xs" />
+        <input value={url} onChange={(e) => setUrl(e.target.value)}
+               placeholder="https://…"
+               aria-label="Proof document link"
+               className="flex-[2] border border-ps-border rounded-md px-2 py-1 text-xs" />
+        <button type="button" onClick={add} disabled={!name.trim() || !url.trim()}
+                className="text-xs px-2 py-1 border border-ps-border rounded-md disabled:opacity-40">
+          Add
+        </button>
+      </div>
+    </div>
   );
 }
 

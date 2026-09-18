@@ -477,6 +477,41 @@ class DeclarationItemIn(BaseModel):
     amount_verified_paise: Optional[int] = None
     status: Optional[str] = None
     proof_reference: Optional[str] = ""
+    # THE DOCUMENT BEHIND THE CLAIM (PAY-26, migration 410). `proof_reference`
+    # is the employee's own words about a proof — often all there is for one
+    # handed over on paper — and it is kept. This is the evidence half of Rule
+    # 26C's Form 12BB, which had nowhere to live, so a verifier set
+    # `amount_verified_paise` against a memory of a document.
+    #
+    # `domain/attachments` is the authority and is asked rather than restated:
+    # its scheme vocabulary is CLOSED to http/https because an employee's own
+    # portal upload is untrusted input and a stored `javascript:` or `data:`
+    # URL is script execution in the app's origin the moment the CA clicks the
+    # "receipt"; and an uploaded document stores its id with NO url, because
+    # the firm's store hands back a signed url that expires in an hour.
+    #
+    # DEFAULTS TO None, NOT []. This model is the CREATE door and the VERIFY
+    # door both, and on the second an empty list would wipe the proofs an
+    # employee uploaded every time a CA saved a verified amount without
+    # re-sending them. None is unchanged, [] removes — `journal_entries`'
+    # attachments take exactly this shape for exactly this reason.
+    proof_attachments: Optional[list[dict]] = None
+
+    @field_validator("proof_attachments")
+    @classmethod
+    def proof_attachments_are_safe(cls, v):
+        if v is None:
+            return None
+        from domain.attachments import AttachmentError, parse_attachments
+        try:
+            # Normalised on the way through, so what is stored is the parsed
+            # shape rather than whatever was sent. A document-backed attachment
+            # carrying a url is REFUSED rather than having the url dropped: the
+            # two mean different things and silently keeping an expiring one is
+            # the failure the rule exists to prevent.
+            return [a.to_dict() for a in parse_attachments(v)]
+        except AttachmentError as e:
+            raise ValueError(str(e)) from e
 
 
 class DeclarationIn(BaseModel):

@@ -740,7 +740,16 @@ export type DeclarationItemRow = {
   amount_declared_paise: number;
   amount_verified_paise: number;
   status: "declared" | "verified" | "rejected";
+  /** What the employee SAID they are producing — a policy number, a receipt
+   *  number, often all there is for a proof handed over on paper. */
   proof_reference: string;
+  /** What they actually PRODUCED (PAY-26, migration 410). Rule 26C's evidence
+   *  half, which had nowhere to live, so a verifier set an amount against a
+   *  memory of a document. The server parses and normalises every entry
+   *  through `domain/attachments`: http/https only, because an employee's own
+   *  upload is untrusted input; an uploaded document carries `document_id`
+   *  and NO url, so a signed link cannot rot into a dead one. */
+  proof_attachments: { name: string; url?: string; document_id?: string }[];
 };
 
 export type DeclarationRow = {
@@ -916,6 +925,67 @@ export type PayrollBankAdvice = {
    *  unreleased run — that a draft has paid nobody. Rendered, never
    *  re-worded here. */
   notes: string[];
+};
+
+export type ReorderLine = {
+  service_catalogue_id: string;
+  name: string;
+  unit: string | null;
+  group: string;
+  /** NUMERIC(10,3) crosses the wire as a STRING and stays one. */
+  on_hand_units: string;
+  /** null is NOT zero — nobody has recorded a level. The server says so in
+   *  `note`; do not render an absence as a number. */
+  reorder_level_units: string | null;
+  state: "below" | "at" | "above" | "not_set" | "unknown";
+  shortfall_units: string;
+  note: string | null;
+};
+
+export type ReorderGroup = {
+  group: string;
+  below_count: number;
+  not_set_count: number;
+  lines: ReorderLine[];
+};
+
+export type ReorderReport = {
+  /** Worst first inside each group; the unrecorded group sorts last. */
+  groups: ReorderGroup[];
+  to_reorder: number;
+  no_level_recorded: number;
+  items_considered: number;
+  note_when_no_level: string;
+};
+
+export type ExpiringEwayBill = {
+  record_id: string;
+  client_id: string;
+  invoice_number: string;
+  ewb_number: string | null;
+  valid_upto: string | null;
+  /** "recorded" (off the portal, authoritative) or "computed" (Rule 138(10)
+   *  arithmetic on the distance). Shown, because the two are not the same
+   *  claim. */
+  source: "recorded" | "computed" | null;
+  days_left: number | null;
+  state: "expired" | "expires_today" | "expiring" | "unknown";
+  /** Why the expiry could not be worked out at all. Such a bill is LISTED,
+   *  never dropped — a silent omission reads as a clean answer. */
+  gap: string | null;
+};
+
+export type ExpiringEwayBills = {
+  as_of: string;
+  horizon_days: number;
+  bills: ExpiringEwayBill[];
+  expired: number;
+  expires_today: number;
+  expiring: number;
+  undeterminable: number;
+  /** That the portal remains authoritative, and that the action is to EXTEND
+   *  rather than to file. Rendered, never re-worded here. */
+  caveats: string[];
 };
 
 export type StockAgeingItem = {
@@ -2748,6 +2818,22 @@ export const api = {
   },
   // Stock register + per-item ledger (migration 188). Read-only — all
   // movements are written as a side effect of issuing/receiving documents.
+  ewayBill: {
+    /** SALES-28 — live bills at or past their Rule 138(10) validity, across
+     *  the caller's own clients. Firm-wide by nature: the deadlines screen
+     *  shows every client at once, so there is no client_id and the caller's
+     *  assigned book is the scope.
+     *
+     *  NOT a compliance obligation and deliberately not rendered as one —
+     *  nothing is FILED for an e-way bill, the action is to extend it on the
+     *  NIC portal under the proviso to Rule 138(10). Which bills appear, which
+     *  bucket each is in, whether the date was recorded off the portal or
+     *  computed from the distance, and both caveats are all the server's. */
+    expiring: (withinDays = 2) =>
+      request<ApiResp<ExpiringEwayBills>>(
+        `/api/eway-bill/expiring?within_days=${withinDays}`),
+  },
+
   inventory: {
     items: (params: Record<string, string>) => request(`/api/inventory/items?${new URLSearchParams(params)}`),
     /** Closing stock AS AT a date — the statement that ties to the Inventories
@@ -2767,6 +2853,19 @@ export const api = {
     stockAgeing: (params: Record<string, string>) =>
       request<ApiResp<StockAgeing>>(
         `/api/inventory/stock-ageing?${new URLSearchParams(params)}`),
+    /** INV-03 — what is at or below its reorder level, grouped by item group.
+     *  An ABSENT level is its own state and is never rendered as zero: zero is
+     *  a real answer meaning "tell me when it runs out". The on-hand figure is
+     *  the ledger's, not the cached `stock_qty_units`. Migration 409. */
+    reorder: (params: Record<string, string>) =>
+      request<ApiResp<ReorderReport>>(
+        `/api/inventory/reorder?${new URLSearchParams(params)}`),
+    /** The item groups this client already uses, most-used first — so the
+     *  picker offers what exists rather than an empty box. A suggestion and
+     *  never a constraint. */
+    itemGroups: (params: Record<string, string>) =>
+      request<ApiResp<{ groups: { group: string; items: number }[] }>>(
+        `/api/inventory/item-groups?${new URLSearchParams(params)}`),
     ledger: (serviceCatalogueId: string, params: Record<string, string>) =>
       request(`/api/inventory/items/${serviceCatalogueId}/ledger?${new URLSearchParams(params)}`),
     adjust: (serviceCatalogueId: string, body: unknown) =>

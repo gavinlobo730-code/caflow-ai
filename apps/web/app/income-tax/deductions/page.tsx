@@ -456,7 +456,7 @@ export default function DeductionsPage() {
       {serverWarnings.length > 0 && (
         <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 space-y-1.5">
           {serverWarnings.map((w, i) => (
-            <p key={i} className="text-xs text-state-attention-ink">⚠ {w}</p>
+            <p key={i} className="text-xs text-state-attention">⚠ {w}</p>
           ))}
         </div>
       )}
