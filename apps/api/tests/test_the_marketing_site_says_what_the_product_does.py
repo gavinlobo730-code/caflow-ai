@@ -931,6 +931,76 @@ def test_a_tailwind_opacity_modifier_is_one_tailwind_generates():
     )
 
 
+def test_the_heros_vertical_rhythm_is_measured_against_the_window():
+    """A HERO THAT ASKS FOR A FIXED HEIGHT DOES NOT FIT MOST LAPTOPS.
+
+    The section is `min-h-screen`, so it is never SHORTER than the window — but
+    its copy was a fixed 677px whatever the window did, and with 88px of padding
+    above and 56px below it always needed 821px. Measured before the fix:
+
+        page area 955px (1080p, no bookmarks bar)    821 — fits
+        page area 880px (1080p, bookmarks + taskbar) 821 — fits
+        page area 780px (13-inch MacBook Air)        833 — over by 53
+        page area 760px (the owner's own window)     821 — over by 61
+        page area 730px (1536x864 at 125% scaling)   821 — over by 91
+
+    The owner reported it twice, the second time asking the right question:
+    *"does it differ really to laptop to laptop or its a website thing?"* It is
+    one thing from two sides — the page asked for a fixed height and a laptop
+    supplies a variable one, moved as much by display scaling, browser zoom and
+    a bookmarks bar as by the screen itself.
+
+    So every vertical gap in the copy column is `clamp(min, Nvh, previous
+    value)`: unchanged where there is room, compressed where there is not. This
+    guard holds the PROPERTY — that those gaps are measured against the window —
+    because the failure mode is somebody tidying `mt-[clamp(12px,2.4vh,28px)]`
+    back to `mt-7`, which looks like a simplification, restores the fixed
+    height, and cannot be seen without a browser. This suite has none, so what
+    is checked is the expression rather than the outcome."""
+    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+    live = [line for _no, line in _live_lines(hero)]
+
+    # The grid container carries the section's own top and bottom padding.
+    container = [l for l in live if "lg:grid-cols-[" in l and "className=" in l]
+    assert len(container) == 1, f"expected one hero grid container, found {len(container)}"
+    # Matched with a regex rather than by splitting on whitespace: the first
+    # utility in a className is glued to `className="`, so a token test misses
+    # it — which is how this guard failed on correct code the first time it ran.
+    def utilities(line: str, prefix: str) -> list[str]:
+        return re.findall(rf"(?<![\w-]){prefix}-(?:\[[^\]]*\]|[\w.]+)", line)
+
+    for prop, label in (("pt", "top padding"), ("pb", "bottom padding")):
+        seg = utilities(container[0], prop)
+        assert seg and "vh" in seg[0], (
+            f"the hero's {label} is {seg or 'a fixed step'}, which does not "
+            f"respond to the window's height. At a 760px page area — an "
+            f"ordinary laptop — a fixed 88px/56px pair is what pushed the "
+            f"figures below the fold."
+        )
+
+    # And each gap between the copy's own blocks.
+    expected = {
+        "<h1 ": "the headline",
+        "max-w-[48ch]": "the supporting paragraph",
+        "flex flex-wrap items-center gap-6": "the calls to action",
+        "flex flex-wrap gap-x-7": "the trust chips",
+        "grid max-w-[32rem]": "the four figures",
+    }
+    found = 0
+    for needle, label in expected.items():
+        lines = [l for l in live if needle in l and "mt-" in l]
+        assert lines, f"could not find {label} in the hero to check its top margin"
+        for l in lines:
+            mt = utilities(l, "mt")
+            assert mt and "vh" in mt[0], (
+                f"{label} has a fixed top margin ({mt}). Every vertical gap in "
+                f"the hero has to be window-aware or the section goes back to "
+                f"needing 821px on a screen that may only have 730."
+            )
+            found += 1
+    assert found >= 5, f"only checked {found} gaps; the copy column has more than that"
+
+
 def test_the_hero_copy_does_not_drift_away_from_an_edge_bleeding_artwork():
     """THE HERO IS THE ONE SECTION THAT MAY NOT CENTRE ITS CONTENT COLUMN.
 

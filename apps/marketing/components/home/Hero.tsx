@@ -212,7 +212,39 @@ export function Hero() {
       />
 
       {/*
-        ── The copy, ANCHORED LEFT RATHER THAN CENTRED ────────────────────────
+        ── The copy, ANCHORED LEFT AND SIZED TO THE WINDOW'S HEIGHT ───────────
+
+        ⚠️ EVERY VERTICAL GAP IN HERE IS `clamp(min, Nvh, today's value)`, AND
+        THAT IS WHAT MAKES THE HERO FIT ON A SHORT LAPTOP. The section is
+        `min-h-screen`, so it is at least the height of the window — but the
+        copy inside it was a FIXED 677px whatever the window did, and with
+        88px of padding above and 56px below that made a hero that always
+        needed 821px. Whether it fitted was therefore a fact about the
+        reader's browser rather than about the page.
+
+        Measured, before this change:
+
+            page area 955px (1080p, no bookmarks bar)   821 — fits
+            page area 880px (1080p, bookmarks + taskbar) 821 — fits
+            page area 780px (13-inch MacBook Air)        833 — over by 53
+            page area 760px (the owner's own window)     821 — over by 61
+            page area 730px (1536x864 at 125% scaling)   821 — over by 91
+
+        which is the answer to "does it differ really to laptop to laptop or
+        its a website thing?" — it is one thing seen from two sides. The page
+        asked for a fixed height and the laptop supplies a variable one, and
+        display scaling, browser zoom and a bookmarks bar move it as much as
+        the screen does.
+
+        Each maximum below is the value the gap had before, so a window with
+        room is unchanged; the `vh` term only bites when there is not enough.
+        That buys about 100px, which covers every case in the table. It does
+        NOT cover a 600px page area — a 1280x800 screen at 150% scaling — where
+        the copy alone is taller than the window; fixing that needs the display
+        type to shrink too, which changes the hero's look rather than its
+        spacing and is an owner decision.
+
+        ── AND ANCHORED LEFT RATHER THAN CENTRED ──────────────────────────────
 
         THE HERO IS THE ONE SECTION THAT MUST NOT USE A CENTRED CONTAINER, and
         the reason survives the change of artwork. Every other section sits in a
@@ -242,7 +274,7 @@ export function Hero() {
         defect, or moving the header's own container, which is shared by every
         page and would then sit 164px left of all of their content.
       */}
-      <div className="relative z-[3] mx-auto grid w-full max-w-[1320px] items-center gap-12 px-[clamp(20px,6vw,72px)] pb-14 pt-[clamp(88px,11vh,132px)] lg:mx-0 lg:max-w-none lg:grid-cols-[minmax(0,clamp(330px,34vw,540px))_minmax(0,1fr)] lg:gap-10">
+      <div className="relative z-[3] mx-auto grid w-full max-w-[1320px] items-center gap-12 px-[clamp(20px,6vw,72px)] pb-[clamp(20px,4vh,56px)] pt-[clamp(64px,9vh,132px)] lg:mx-0 lg:max-w-none lg:grid-cols-[minmax(0,clamp(330px,34vw,540px))_minmax(0,1fr)] lg:gap-10">
         {/* ── Copy ──────────────────────────────────────────────────────── */}
         <div>
           <Parallax speed={0.05}>
@@ -251,7 +283,7 @@ export function Hero() {
             </p>
           </Parallax>
 
-          <h1 className="mt-7">
+          <h1 className="mt-[clamp(12px,2.4vh,28px)]">
             <span className="sr-only">
               {HERO_WORDS.join(" ")} Run your entire practice on one intelligent platform.
             </span>
@@ -269,12 +301,12 @@ export function Hero() {
             </span>
           </h1>
 
-          <p className="mt-6 max-w-[48ch] text-[16.5px] leading-[1.65] text-slate-300">
+          <p className="mt-[clamp(12px,2.2vh,24px)] max-w-[48ch] text-[16.5px] leading-[1.65] text-slate-300">
             From clients and compliance to accounts and advisory — PracticeSync brings
             everything together, so you can focus on what truly matters.
           </p>
 
-          <div className="mt-8 flex flex-wrap items-center gap-6">
+          <div className="mt-[clamp(16px,3vh,32px)] flex flex-wrap items-center gap-6">
             <Magnetic max={10}>
               <a
                 href="/demo"
@@ -293,7 +325,7 @@ export function Hero() {
             </a>
           </div>
 
-          <ul className="mt-8 flex flex-wrap gap-x-7 gap-y-3 text-[12.5px] font-medium leading-none text-white/45">
+          <ul className="mt-[clamp(14px,2.6vh,32px)] flex flex-wrap gap-x-7 gap-y-3 text-[12.5px] font-medium leading-none text-white/45">
             <li>No credit card needed</li>
             <li>Data hosted in India</li>
             <li>Nothing filed without your click</li>
@@ -316,7 +348,7 @@ export function Hero() {
               four the page already states further down, which is deliberate: a
               number that appears twice on one page had better agree with
               itself. */}
-          <dl className="mt-7 grid max-w-[32rem] grid-cols-2 gap-x-8 gap-y-5 border-t border-white/10 pt-6 sm:grid-cols-4 sm:gap-x-5">
+          <dl className="mt-[clamp(14px,2.6vh,28px)] grid max-w-[32rem] grid-cols-2 gap-x-8 gap-y-5 border-t border-white/10 pt-[clamp(12px,2vh,24px)] sm:grid-cols-4 sm:gap-x-5">
             {HERO_FACTS.map((f) => (
               <div key={f.label}>
                 <dt className="sr-only">{f.label}</dt>
