@@ -28,15 +28,22 @@ function Collections() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  async function run(action: "sweep" | "reminders") {
+  // "Flag for follow-up" is NOT a send, and the wording is the fix. The button
+  // read "Send reminders" and the toast read "N reminder(s) sent" over an
+  // endpoint that emails nobody — it writes a Timeline note and a counter. A CA
+  // could press it, read that, and believe their clients had been chased.
+  // The customer-facing reminder lives on the client's own Sales tab.
+  async function run(action: "sweep" | "followups") {
     setBusy(true); setMsg(null);
     try {
       if (action === "sweep") {
         const r = await api.billing.sweep() as ApiResp<{ swept: number }>;
         setMsg(`Overdue sweep complete (${r.data?.swept ?? 0} invoices assessed).`);
       } else {
-        const r = await api.billing.sendReminders() as ApiResp<{ reminders_sent: number }>;
-        setMsg(`${r.data?.reminders_sent ?? 0} reminder(s) sent.`);
+        const r = await api.billing.flagOverdueForFollowup() as
+          ApiResp<{ invoices_flagged_for_followup: number }>;
+        const n = r.data?.invoices_flagged_for_followup ?? 0;
+        setMsg(`${n} invoice${n === 1 ? "" : "s"} flagged for follow-up. Nothing was sent.`);
       }
       await load();
     } catch (e) { setMsg(e instanceof Error ? e.message : "Action failed"); }
@@ -81,13 +88,17 @@ function Collections() {
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm text-[#182350] hover:bg-[#F8FAFC] disabled:opacity-50">
           <Activity size={14} /> Run overdue sweep
         </button>
-        <button onClick={() => run("reminders")} disabled={busy}
+        <button onClick={() => run("followups")} disabled={busy}
+          title="Writes a Timeline note against each overdue fee invoice. No email is sent."
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#182350] text-white text-sm disabled:opacity-50">
-          <Bell size={14} /> Send reminders
+          <Bell size={14} /> Flag for follow-up
         </button>
       </div>
       <p className="text-[11px] text-gray-400 mt-4">
-        Reminders are cadence-gated and recorded to the internal client&apos;s Timeline. Overdue is derived server-side.
+        Both actions are on the practice&apos;s own fee invoices only. Flagging is cadence-gated
+        and recorded to the internal client&apos;s Timeline &mdash; <strong>nothing is emailed</strong>.
+        To email a customer, open that client&apos;s Sales tab and use Remind. Overdue is derived
+        server-side.
       </p>
     </div>
   );

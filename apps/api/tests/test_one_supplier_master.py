@@ -33,6 +33,7 @@ import re
 from pathlib import Path
 
 import pytest
+from tests._python_source import blank_python_docstrings
 
 TABLE = "suppliers"
 
@@ -105,48 +106,6 @@ def _sql_string_after(sql: str, start: int) -> str:
     return "".join(out)
 
 
-def _blank_python_docstrings(body: str) -> str:
-    """A DOCSTRING IS PROSE, AND PROSE IS NOT A QUERY.
-
-    `#` comments were blanked from the first run of this module and docstrings
-    were not, which is the same rule half-applied — so the ban could be
-    DESCRIBED in a comment and not in a docstring, and on 17-09-2026 it cost a
-    module its plain explanation: `domain/notification_fixtures.py` records
-    that its hazard is this table's shape, and the entry it replaced had
-    written that obliquely on purpose, saying so.
-
-    Blanked through the AST, one node at a time, and NOT by blanking every
-    triple-quoted string: a module-level SQL constant is triple-quoted too and
-    is a real read of the table. A file that does not parse keeps its whole
-    body, because the scan must never go quiet on a file it could not read.
-    """
-    try:
-        tree = ast.parse(body)
-    except SyntaxError:                                      # pragma: no cover
-        return body
-    lines = body.splitlines(keepends=True)
-    starts = [0]
-    for ln in lines:
-        starts.append(starts[-1] + len(ln))
-    spans = []
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.Module, ast.ClassDef,
-                                 ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        doc = node.body[0] if node.body else None
-        if (isinstance(doc, ast.Expr) and isinstance(doc.value, ast.Constant)
-                and isinstance(doc.value.value, str)
-                and doc.end_lineno is not None):
-            spans.append((starts[doc.lineno - 1] + doc.col_offset,
-                          starts[doc.end_lineno - 1] + doc.end_col_offset))
-    out = list(body)
-    for lo, hi in spans:
-        for i in range(lo, min(hi, len(out))):
-            if out[i] != "\n":
-                out[i] = " "
-    return "".join(out)
-
-
 def _strip_comments(body: str, suffix: str) -> str:
     """Comments blanked, so a scan does not report the documentation of its own
     fix. Every hit on the first run of this module was one of its own comments
@@ -158,7 +117,7 @@ def _strip_comments(body: str, suffix: str) -> str:
         # inside a string survives.
         return re.sub(r'(^|[^:])//[^\n]*', r"\1", body)
     if suffix == ".py":
-        return _blank_python_docstrings(re.sub(r"(?m)#[^\n]*", "", body))
+        return blank_python_docstrings(re.sub(r"(?m)#[^\n]*", "", body))
     if suffix == ".sql":
         return re.sub(r"(?m)--[^\n]*", "", body)
     return body

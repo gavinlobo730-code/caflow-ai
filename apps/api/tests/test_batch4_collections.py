@@ -81,14 +81,19 @@ def test_dashboard_kpis_include_tds_and_cash():
     assert dash["collected_cash_paise"] == 90000
 
 
-def test_reminders_idempotent_cadence():
-    first = coll.send_overdue_reminders(FIRM, today=TODAY)
-    assert first["reminders_sent"] == 3              # A, B, D
+def test_internal_followup_flags_are_idempotent_within_the_cadence():
+    first = coll.flag_overdue_for_internal_followup(FIRM, today=TODAY)
+    assert first["invoices_flagged_for_followup"] == 3    # A, B, D
     # immediate re-run within cadence window -> none
-    second = coll.send_overdue_reminders(FIRM, today=TODAY)
-    assert second["reminders_sent"] == 0
+    second = coll.flag_overdue_for_internal_followup(FIRM, today=TODAY)
+    assert second["invoices_flagged_for_followup"] == 0
     by_id = {i["id"]: i for i in MOCK_SALES_INVOICES}
-    assert by_id["A"]["reminder_count"] == 1
+    assert by_id["A"]["internal_followup_count"] == 1
+    # And it did NOT touch the emailed pair. Migration 405: this sweep sends
+    # nothing, while reminder_count is what decides whether a real reminder
+    # reads as friendly, second or FINAL.
+    assert by_id["A"].get("reminder_count", 0) == 0
+    assert by_id["A"].get("last_reminded_at") is None
 
 
 def test_receipt_tds_settlement_validation():

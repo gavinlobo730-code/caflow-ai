@@ -77,6 +77,15 @@ HELPERS = {
     # instead, so the next extraction cannot silently empty them.
     "payroll_create_path.py",
     "production_types.py",
+    # A GUARD THAT READS PROSE FORBIDS EXPLAINING THE FIX. Every source-scanning
+    # test here has hit it: the scan trips on the comment or docstring
+    # describing the very thing it bans, so either the ban loses its
+    # explanation or the guard gets quietly narrowed. This blanks docstrings
+    # through the AST -- never by blanking every triple-quoted string, because a
+    # module-level SQL constant is triple-quoted too and IS a real read.
+    # Extracted from test_one_supplier_master.py rather than copied into the
+    # second module that needed it.
+    "_python_source.py",
     "uat_fixtures.py",
 }
 

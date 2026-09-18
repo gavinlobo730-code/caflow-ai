@@ -367,10 +367,10 @@
     },
     "SALES-23": {
       "status": "open",
-      "verified_on": "2026-09-17",
-      "why": "NOTHING IN THE CODE CHANGED \u2014 the `why` of 13-09 mistook the practice's own fee sweep for a customer reminder. collections_service.send_overdue_reminders is scoped to get_internal_client_id(firm_id) and writes only a timeline entry, which the scheduler's own header calls 'internal reminder logging (no email)'; the file's comment says so too",
-      "reread_on": "2026-09-17",
-      "what_is_left": "an automated customer-facing reminder cadence and a bulk Remind. The sole customer-facing sender has one non-test caller, the manual single-invoice path, and the sales screen's bulkActions offers Issue, Delete/Void and Send but no Remind"
+      "verified_on": "2026-09-18",
+      "why": "THE BULK HALF IS BUILT (18-09-2026). The client Sales tab's bulkActions carried Issue, Delete/Void and Send and no Remind, so chasing a month of overdue invoices meant opening the row menu once per invoice; `bulkRemindInvoices` now runs the SAME customer-facing sender the single path uses, capped at 8 in flight. It filters on `isOverdueForUi`, the very predicate the row menu uses to decide whether to OFFER Remind, so what is offered in bulk and what is offered per row cannot disagree, and POST /remind re-validates server-side either way. AND THE 13-09 `why` WAS RIGHT ABOUT THE OTHER HALF: `collections_service`'s nightly sweep is the practice's own fee ledger and emails nobody \u2014 but it was WORSE than 'timeline-only'. It advanced `reminder_count`, the column `email_service.send_payment_reminder_to_customer` escalates its tone on, so three sweep nights turned a customer's FIRST email into a final demand. Migration 405 gives the sweep its own counter and repairs the two production rows that had reached reminder_count = 5 against zero reminder deliveries.",
+      "reread_on": "2026-09-18",
+      "what_is_left": "The automated customer-facing CADENCE, and it is a RECORDED OWNER REFUSAL rather than unscheduled work: asked directly, the owner answered that email is a feature but \"not auto email ... there is a send button ... they are able to send it\". So a reminder goes out because a CA pressed something, never because a clock fired. `apps/web/scripts/a-bulk-email-is-bounded-and-nothing-schedules-it.test.ts` asserts no timer wraps the reminder endpoint and `tests/test_a_reminder_the_customer_got_is_counted_separately.py` asserts the nightly job reaches no sender at all, so a cadence cannot arrive without the decision that authorises one. Reopen only on an owner decision reversing that."
     },
     "ACC-01": {
       "status": "closed",
