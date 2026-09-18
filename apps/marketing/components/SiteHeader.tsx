@@ -44,6 +44,19 @@ import { NAV } from "@/lib/site";
  *
  * The threshold is deliberately small (24px): it has to fire before the reader
  * has scrolled far enough for anything to look unanchored.
+ *
+ * THE BAR IS FLUSH-LEFT ON THE HERO'S OWN GUTTER, not a centred column, and
+ * that is an owner decision of 18-09-2026 reversing a trade the Hero's comment
+ * used to record. `container-ps` was `max-width:1200px` with `margin:auto`, so
+ * the logo's distance from the window edge GREW with the window — 57px at
+ * 1280, 137 at 1440, 217 at 1600, 377 at 1920 — while the hero copy is pinned
+ * flat at 72px. The two therefore matched at 1280 and diverged everywhere
+ * above it, and on a 1600px window the logo sat 145px right of the headline it
+ * reads as one lockup with. It now carries the hero's clamp verbatim.
+ *
+ * Both uses below take the class — the bar AND the mobile panel. Inlining the
+ * gutter on one of them is how the sheet comes to start at a different edge
+ * from the logo that opened it.
  */
 
 const SOLID_AFTER_PX = 24;
@@ -84,14 +97,36 @@ export function SiteHeader() {
     // changes height by a pixel as you start scrolling is precisely the drift
     // this redesign was meant to end. An inset shadow draws the same line and
     // costs no layout.
+    // THE UNSCROLLED STATE CARRIES A SCRIM, and it is not cosmetic: without one
+    // the nav is white text laid directly on the hero artwork. The hero's own
+    // desktop scrim fades out at 58% of the viewport, so every link right of
+    // that sits on raw picture — and the picture's top-right is the sunrise
+    // glare and the planet rim, the brightest thing in the frame. Measured with
+    // the header's own ink hidden, white-on-backdrop was 2.92:1 at 1600, 1.04:1
+    // at 1920 and 1.84:1 at 2560 BEFORE the gutter moved; "Support" and
+    // "Resources" were already unreadable at 1920 on the live site. Flushing the
+    // bar left pushed the nav a further 145px into it, so this ships with it.
+    //
+    // A GRADIENT TALLER THAN THE BAR, not a background on it: a 68px block of
+    // colour is the "bulky header" §3 rules out and would draw a hard edge
+    // across the artwork. This fades to nothing 132px down, which reads as part
+    // of the sky. It is drawn on a pseudo-element so the bar keeps its own
+    // `bg-transparent` and the scrolled state is unchanged.
+    //
+    // Off whenever `filled` — the navy bar and the mobile sheet are opaque, so a
+    // scrim under them is invisible at best and a seam over the open panel at
+    // worst.
     <header
-      className={`fixed inset-x-0 top-0 z-50 transition-[background-color,box-shadow,backdrop-filter] duration-300 ${
+      className={`fixed inset-x-0 top-0 z-50 transition-[background-color,box-shadow,backdrop-filter] duration-300 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[132px] before:bg-[linear-gradient(to_bottom,rgba(2,8,22,0.80),rgba(2,8,22,0.46)_46%,rgba(2,8,22,0))] before:transition-opacity before:duration-300 ${
         filled
-          ? "bg-brand-dark/85 shadow-[inset_0_-1px_0_rgba(175,210,250,0.14)] backdrop-blur-[14px]"
-          : "bg-transparent"
+          ? "bg-brand-dark/85 shadow-[inset_0_-1px_0_rgba(175,210,250,0.14)] backdrop-blur-[14px] before:opacity-0"
+          : "bg-transparent before:opacity-100"
       }`}
     >
-      <div className="container-ps flex h-[68px] items-center justify-between gap-4">
+      {/* `relative` so the bar's own contents paint ABOVE the scrim: the
+          pseudo-element is positioned and would otherwise cover this static
+          row, greying the logo and every link by 80%. */}
+      <div className="container-ps relative flex h-[68px] items-center justify-between gap-4">
         {/* One mark, one colour, in both states — see the header note. */}
         <Logo theme="dark" />
 

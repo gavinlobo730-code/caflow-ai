@@ -348,14 +348,27 @@ export function Hero() {
         container hands a `1fr` column the whole viewport and runs the headline
         back under the planet — the same defect reached from the other side.
 
-        ⚠️ THE HEADLINE DOES NOT LINE UP WITH THE NAV LOGO, and that is a trade
-        rather than an oversight. `container-ps` caps the header at 1200px and
-        centres it, so the logo drifts too — 137px at 1440, 377 at 1920 — and by
-        coincidence of those two numbers it used to track the hero copy within
-        12px. It cannot track the copy and stop drifting at the same time.
-        Aligning them would mean either re-centring the hero, which is the
-        defect, or moving the header's own container, which is shared by every
-        page and would then sit 164px left of all of their content.
+        THE HEADLINE LINES UP WITH THE NAV LOGO, and getting there reversed a
+        trade recorded right here. This comment used to say the mismatch was
+        deliberate, because `container-ps` capped the header at 1200px and
+        centred it — so the logo drifted with the window while this copy stayed
+        at 72px, and the two could not both be satisfied. What that argument
+        missed is that the drift was not alignment with anything either: the
+        logo ran 57px at 1280, 137 at 1440, 217 at 1600 and 377 at 1920,
+        agreeing with the hero at 1280 and with nothing at all above it. The
+        owner saw it at 1600 — "the logo on the hero section doesnt it look
+        disaligned? shouldnt it go to the left?" — and it was 145px out.
+        `container-ps` now carries this very clamp, so the logo is at 72px at
+        every width and the lockup holds.
+
+        ⚠️ THE COST IS ON THE OTHER SIX PAGES and was measured before the
+        change. Their panels are centred at `max-w-content`, so the header used
+        to sit a constant 98px left of their content and now sits 83px at 1280
+        rising to 403 at 1920. That is a full-bleed header over a centred
+        column — an ordinary, deliberate-looking arrangement — where a logo
+        that wanders 320px across the window is not; and 98px was a consistent
+        NON-alignment rather than alignment. The homepage is where the lockup
+        is actually read.
       */}
       <div className="relative z-[3] mx-auto grid w-full max-w-[1320px] items-center gap-12 px-[clamp(20px,6vw,72px)] pb-[clamp(20px,4vh,56px)] pt-[clamp(64px,9vh,132px)] lg:mx-0 lg:max-w-none lg:grid-cols-[minmax(0,clamp(330px,34vw,540px))_minmax(0,1fr)] lg:gap-10">
         {/* ── Copy ──────────────────────────────────────────────────────── */}

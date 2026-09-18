@@ -1188,3 +1188,152 @@ def test_the_hero_copy_does_not_drift_away_from_an_edge_bleeding_artwork():
         "plain `1fr` copy column takes the full viewport width and the "
         "headline runs out under the artwork. Cap the first track."
     )
+
+
+def _container_ps_block() -> str:
+    """The body of `.container-ps`, with its comments blanked.
+
+    Read off the raw file rather than through `_live_lines`, which is written
+    for JSX and would have to be trusted with a stylesheet's own comment
+    syntax for no gain — there is exactly one rule to find here.
+    """
+    css = GLOBALS_CSS.read_text(encoding="utf-8")
+    css = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
+    match = re.search(r"\.container-ps\s*\{(.*?)\}", css, flags=re.S)
+    assert match, (
+        "`.container-ps` is not in app/globals.css. It is the header's gutter "
+        "and the rule below is about what it must equal — if it has been "
+        "renamed or inlined, move this guard with it rather than deleting it."
+    )
+    return match.group(1)
+
+
+def test_the_header_shares_the_heros_gutter():
+    """THE LOGO AND THE HEADLINE ARE READ AS ONE LOCKUP, SO THEY TAKE ONE GUTTER.
+
+    `.container-ps` was `max-width:1200px` with `margin:auto`, so the header
+    logo's distance from the window edge GREW with the window — measured 57px
+    at 1280, 137 at 1440, 217 at 1600 and 377 at 1920 — while the hero copy is
+    pinned flat at 72px from `lg` up (the guard above is why). The two agreed
+    at 1280 and at no width above it, and the owner saw it on a 1600px window:
+    the logo sat 145px right of the headline directly beneath it.
+
+    The easy misreading of that is that the header was aligned to something
+    and the hero broke it. It was not. A centred 1200px cap tracked the other
+    six pages' content at a constant 98px offset — a consistent NON-alignment,
+    not an alignment — and tracked the homepage at nothing. Giving the header
+    the hero's own clamp puts the logo at 72px at every width.
+
+    ⚠️ The cost is stated rather than hidden: the header is now flush-left
+    over the inner pages' centred `max-w-content` columns, 83px clear at 1280
+    rising to 403 at 1920. That is an ordinary full-bleed header; it was
+    measured before the change and accepted (owner decision, 18-09-2026).
+
+    THE RULE HELD HERE IS THE EQUALITY, not either value, so re-tuning the
+    gutter moves both or fails. A browser is what proves the alignment and
+    this suite has none."""
+    body = _container_ps_block()
+
+    # 1. The header may not re-introduce the centring that caused this.
+    assert "max-width" not in body, (
+        "`.container-ps` caps itself again. A cap plus `margin:auto` is "
+        "exactly what made the header logo drift away from the hero headline "
+        "as the window widened — 57px at 1280 to 377px at 1920. The header's "
+        "gutter must be a flat distance from the window edge."
+    )
+    assert not re.search(r"margin(-left|-right)?\s*:\s*auto", body), (
+        "`.container-ps` centres itself again. With no cap this is inert, and "
+        "it is the half of the old rule that makes a cap drift — leaving it "
+        "in place invites the cap back."
+    )
+
+    # 2. Its gutter is the hero's gutter, character for character.
+    padding = re.search(r"padding-left\s*:\s*([^;]+);", body)
+    assert padding, (
+        "`.container-ps` sets no `padding-left`. The header would then start "
+        "hard against the window edge on every page."
+    )
+    header_gutter = re.sub(r"\s+", "", padding.group(1))
+
+    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+    containers = [
+        line
+        for _no, line in _live_lines(hero)
+        if "className=" in line and "grid" in line and "lg:grid-cols-[" in line
+    ]
+    assert len(containers) == 1, (
+        f"expected exactly one hero grid container to read the gutter off, "
+        f"found {len(containers)}. If the hero's layout moved, move this "
+        f"guard with it — do not delete it."
+    )
+    hero_px = re.search(r"\bpx-\[([^\]]+)\]", containers[0])
+    assert hero_px, (
+        "the hero's content container sets no `px-[...]`. Its gutter is what "
+        "the header's is required to equal, so there is nothing to compare."
+    )
+    hero_gutter = re.sub(r"\s+", "", hero_px.group(1))
+
+    assert header_gutter == hero_gutter, (
+        f"the header's gutter and the hero's have come apart:\n"
+        f"  app/globals.css  .container-ps padding-left: {header_gutter}\n"
+        f"  components/home/Hero.tsx       px-[{hero_gutter}]\n"
+        f"The nav logo sits directly above the hero headline and is read as "
+        f"one lockup with it, so the two must be the same expression. Change "
+        f"both or neither."
+    )
+
+    # 3. And both of the header's own containers take the class, or the mobile
+    #    sheet starts at a different edge from the logo that opened it.
+    header = (MARKETING / "components" / "SiteHeader.tsx").read_text(encoding="utf-8")
+    uses = sum(1 for _no, line in _live_lines(header) if "container-ps" in line)
+    assert uses >= 2, (
+        f"SiteHeader.tsx uses `container-ps` {uses} time(s); the bar and the "
+        f"mobile panel both need it. A gutter inlined on one of them is how "
+        f"the open menu comes to sit at a different edge from the logo."
+    )
+
+
+def test_the_transparent_header_is_not_bare_over_the_hero_artwork():
+    """WHITE NAV LINKS ON A PHOTOGRAPH NEED A BACKDROP, AND THIS ONE HAD NONE.
+
+    The unscrolled header is `bg-transparent` by design — the brief asks for a
+    page that "feels like one continuous premium experience" — but the hero's
+    own scrim is a 100deg gradient that has faded to nothing by 58% of the
+    viewport, so every link right of that sat on raw artwork, and the artwork's
+    top-right is the sunrise glare and the planet rim.
+
+    Measured with the bar's own ink hidden and the scrim left in frame, white
+    on what is behind it ran 10.31:1 at 1280, 10.23 at 1440, 2.92 at 1600,
+    1.04 at 1920 and 1.84 at 2560 — three of five below the 4.5:1 AA floor,
+    with "Support" and "Resources" plainly unreadable at 1920 on the live
+    site. The same measurement with the scrim is 16.23 / 17.17 / 6.98 / 5.58 /
+    4.98. It is a legibility fix, not a decoration, which is why it is pinned:
+    it looks like something to delete when tidying a transparent header.
+
+    (Flushing the bar to the hero's gutter moved the nav a further 145px into
+    the glare, which is what made this urgent rather than what caused it.)"""
+    header = (MARKETING / "components" / "SiteHeader.tsx").read_text(encoding="utf-8")
+    live = "\n".join(line for _no, line in _live_lines(header))
+
+    assert re.search(r"before:bg-\[linear-gradient\(", live), (
+        "the unscrolled header carries no scrim. Its links are white text on "
+        "the hero photograph from 58% of the viewport rightwards, where the "
+        "artwork is at its brightest — measured 1.04:1 at 1920, against a "
+        "4.5:1 floor. If the backdrop has been re-done another way, move this "
+        "guard to the new one rather than deleting it."
+    )
+
+    # And it must be OFF once the bar is opaque: a scrim under the navy bar is
+    # invisible at best, and a seam across the open mobile sheet at worst.
+    assert "before:opacity-0" in live and "before:opacity-100" in live, (
+        "the header's scrim is not toggled between its two states. It belongs "
+        "to the transparent state only — `before:opacity-100` there and "
+        "`before:opacity-0` once `filled` (scrolled, or the mobile menu open)."
+    )
+
+    # The bar's contents must out-paint it, or the scrim greys the whole row.
+    assert re.search(r'className="container-ps relative\b', live), (
+        "the header's content row is not `relative`. The scrim is an "
+        "absolutely positioned pseudo-element, so without a positioned row it "
+        "paints OVER the logo and every link and dims them by 80%."
+    )
