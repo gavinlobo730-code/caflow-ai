@@ -27,37 +27,52 @@ from domain.gst.late_filing import (
 
 # ── the rates ────────────────────────────────────────────────────────────────
 
-def test_both_rates_are_18_percent_and_the_ceiling_is_not_the_rate():
+def test_section_50_1_is_18_and_section_50_3_is_24_at_its_own_ceiling():
     """§50(1) is 18%, notified by 13/2017-CT and unmoved since.
 
-    §50(3) HAS BEEN CORRECTED TWICE. This module first stated 24% — what
-    13/2017-CT notified against the ORIGINAL sub-section — then refused to
-    state anything, because the Finance Act 2022 substituted §50(3)
-    retrospectively from 01-07-2017 and the substituted text was believed to
-    carry 18%. A third of the charge separates them and the error direction is
-    NOT benign: this is a sum a CA pays over on a client's behalf, so
-    over-stating takes money from somebody who does not owe it.
+    §50(3) HAS BEEN CORRECTED THREE TIMES and the third correction is the only
+    one made against the documents rather than about them. The module stated
+    24%, then refused, then stated 18% on several secondary sources that agreed
+    with one another. All three primary documents were then read:
 
-    It is now 18%, on s.111 (the substitution), s.116 with the Sixth Schedule
-    (the rate, amended from 24% to 18%) and Notification 9/2022-CT (bringing
-    them into force). `[S]`: corroborated across independent secondary sources,
-    not read off the notification, which is why VERIFIED stays False and this
-    test pins the figure exactly.
+      * Finance Act 2022 **s.111** substitutes §50(3) from 01-07-2017 and
+        DELEGATES the rate — "at such rate not exceeding twenty-four per cent.
+        as may be notified". No 18% appears in the Act.
+      * **Notification 9/2022-CT** commences "clause (c) of section 110 and
+        section 111" and nothing else. It does not reach s.116, carries no
+        Schedule and states no percentage.
+      * **Notification 13/2017-CT**, made under sub-sections (1) AND (3) of
+        section 50, fixes §50(3) at 24%, and CBIC's amendment history for it
+        records four amendments — all 2020/2021 COVID concessions — and none
+        after July 2022.
 
-    THE CEILING IS NOT THE RATE and the two must stay different numbers — 24%
-    is what the sub-section permits ("not exceeding twenty-four per cent") and
-    18% is what is notified. Collapsing them is how the module got it wrong the
-    first time."""
+    THE CEILING AND THE RATE ARE NOW THE SAME NUMBER, and this test asserts
+    that deliberately where it used to assert the opposite. The earlier version
+    said "collapsing them is how the module got it wrong the first time", which
+    reasoned from the shape of the mistake rather than from the sub-section:
+    a delegation that has never been exercised again leaves the notified rate
+    sitting AT the ceiling, and there is nothing incoherent about that. An
+    invariant inferred from a bug is not an invariant.
+
+    VERIFIED is True, and that is a claim about PROVENANCE — a primary document
+    was read — not about confidence."""
     assert SECTION_50_1_RATE_BPS == 1800
     assert SECTION_50_3_CEILING_BPS == 2400          # "not exceeding 24%"
-    assert SECTION_50_3_NOTIFIED_RATE_BPS == 1800    # notified, [S]-graded
-    assert SECTION_50_3_NOTIFIED_RATE_BPS != SECTION_50_3_CEILING_BPS
-    assert lf.SECTION_50_3_RATE_VERIFIED is False, (
-        "the figure is corroborated, not read off the notification — a True "
-        "here would claim a primary source nobody has"
+    assert SECTION_50_3_NOTIFIED_RATE_BPS == 2400    # 13/2017-CT, never amended
+    assert SECTION_50_3_NOTIFIED_RATE_BPS == SECTION_50_3_CEILING_BPS, (
+        "the delegation has not been exercised since the substitution, so the "
+        "notified rate sits at the Act's own ceiling"
     )
-    for cite in ("s.111", "s.116", "Sixth Schedule", "9/2022"):
+    assert lf.SECTION_50_3_RATE_VERIFIED is True, (
+        "the Gazette text of s.111 and both notifications were read; False "
+        "here would understate what is actually held"
+    )
+    for cite in ("s.111", "9/2022", "13/2017", "not exceeding twenty-four"):
         assert cite in lf.SECTION_50_3_RATE_SOURCE
+    assert "Sixth Schedule" not in lf.SECTION_50_3_RATE_SOURCE, (
+        "s.116 and the Sixth Schedule were the false link in the old chain — "
+        "9/2022-CT commences s.110(c) and s.111 only"
+    )
     assert DAYS_IN_YEAR == 365
 
 
@@ -164,20 +179,26 @@ def test_credit_availed_but_never_utilised_is_refused_not_charged(monkeypatch):
 
 def test_a_recorded_utilisation_is_now_CHARGED_and_carries_its_source():
     """Every fact §50(3) needs is stated, so it computes — and the answer says
-    where 18% came from.
+    which notification produced the figure.
 
-    The caveat travels ON the charge rather than living in a comment, because a
-    CA is about to pay this over and a bare "18%" reads as a figure somebody
-    read off a notification. Nobody here did."""
+    The caveat travels ON the charge rather than living in a comment. That
+    matters MORE now that the rate and the Act's ceiling are the same number:
+    a bare "24%" cannot be told from somebody having quoted the ceiling by
+    mistake, so the charge names 13/2017-CT and says the delegation has not
+    been exercised since."""
     c = interest_on_wrongly_availed_credit(
         utilised_on=date(2025, 5, 10), reversed_on=date(2025, 8, 10),
         utilised_paise=1_00_000_00)
     assert not isinstance(c, dict), "with the rate held this is a charge, not a refusal"
-    assert c.rate_bps == 1800
-    assert c.caveats, "an [S]-graded rate must not be presented bare"
+    assert c.rate_bps == 2400
+    assert c.caveats, "the source must not be dropped"
     caveat = " ".join(c.caveats)
-    assert "9/2022" in caveat and "secondary sources" in caveat
-    assert "24%" in caveat, "the ceiling is named so the reader can sanity-check the rate"
+    assert "13/2017" in caveat, "the notification that fixes the rate is named"
+    assert "ceiling" in caveat, "the reader is told the rate sits at the ceiling"
+    assert "concessional" in caveat, (
+        "the 2020/2021 amendments to 13/2017 are not held, and a period they "
+        "covered may be charged less — an over-statement the answer must own"
+    )
 
 
 def test_the_rate_can_be_withdrawn_again_and_the_refusal_still_works():

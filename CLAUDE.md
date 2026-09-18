@@ -1777,21 +1777,41 @@ change. The code is the authority; keep this file in step with it.
   availed **AND UTILISED** (Rule 88B(3)), never the availed figure — credit
   availed and never utilised bears nothing, so the substitution would charge a
   taxpayer who owes nothing. That refusal STANDS and is not about a rate.
-  **ITS RATE IS 18%, `[S]`-GRADED, AND WAS REFUSED TWICE BEFORE THAT.** The
-  module first stated 24% (what 13/2017-CT notified against the ORIGINAL
-  sub-section), then refused entirely, because the Finance Act 2022 substituted
-  §50(3) retrospectively from 01-07-2017 — a THIRD of the charge apart on money
-  a CA pays over, where over-stating takes it from somebody who does not owe
-  it. The mechanism is **s.111** (the substitution), **s.116 with the Sixth
-  Schedule** (the rate, 24% → 18%) and **Notification 9/2022-CT, 05-07-2022**
-  (commencement) — which corrects an earlier note here that had 9/2022 itself
-  notifying the figure. The refusal is lifted because the DIRECTION of the
-  doubt is what justified it and nothing now argues for 24%; a refusal is not
-  free either, since a CA who gets no figure computes one by hand.
-  `SECTION_50_3_RATE_VERIFIED` stays False, the source travels on every charge
-  as a caveat, the Act's 24% CEILING stays recorded as the ceiling it is, and
-  the constant stays `Optional` so a later reader can withdraw it back to a
-  refusal — which a test exercises, so the branch cannot rot.
+  **ITS RATE IS 24%, READ OFF THE PRIMARY DOCUMENTS, AND WAS WRONG HERE THREE
+  TIMES BEFORE THAT.** The module stated 24% (13/2017-CT against the ORIGINAL
+  sub-section), then refused entirely because the Finance Act 2022 substituted
+  §50(3) retrospectively from 01-07-2017, then stated **18%** on several
+  independent secondary sources that agreed with each other and with a chain
+  reading s.111 → s.116 with the Sixth Schedule → Notification 9/2022-CT.
+  **THE SECOND AND THIRD LINKS OF THAT CHAIN ARE FALSE**, and all three
+  documents were read on 18-09-2026: FA 2022 **s.111** (Gazette p.65)
+  substitutes §50(3) and **DELEGATES** the rate — "at such rate **not
+  exceeding twenty-four per cent. as may be notified**" — fixing no figure, so
+  there is no 18% in the Act at all; **Notification 9/2022-CT** appoints
+  05-07-2022 for "clause (c) of section 110 and **section 111**" alone, never
+  reaching s.116, carrying no Schedule and stating no percentage; and
+  **Notification 13/2017-CT**, made under sub-sections (1) **and (3)** of
+  section 50, fixes §50(1) at 18% and **§50(3) at 24%**, with CBIC's own
+  amendment history recording four amendments (31/2020, 51/2020, 08/2021,
+  18/2021 — all COVID-period concessions) and **nothing after July 2022**. So
+  the delegation was never exercised again; the substitution takes effect from
+  the very date 13/2017 came into force, so no window exists in which the
+  notification lacked a parent provision, and General Clauses Act s.24 carries
+  it forward. **THE CEILING AND THE RATE ARE THEREFORE THE SAME NUMBER**, and
+  the test asserting they must DIFFER — "collapsing them is how the module got
+  it wrong the first time" — was an invariant inferred from a bug rather than
+  from the sub-section; it now asserts the equality and says why. **THE ERROR
+  RAN THE UNSAFE WAY**: 18% UNDER-states the charge by a quarter, so the engine
+  was telling a CA their client owed less than they do on credit wrongly
+  availed and utilised, leaving a residual demand with the clock still running
+  — the original refusal reasoned about the right risk and misjudged which
+  direction it lay in. `SECTION_50_3_RATE_VERIFIED` is now **True**, which is a
+  claim about **PROVENANCE** (a primary document was read) and not about
+  confidence — the first constant in the module for which that holds. The
+  constant stays `Optional` so a later notification can move it or a later
+  reader withdraw it to a refusal, and a test exercises that branch. ⚠️ The
+  2020/2021 concessional notifications are still **not held**, so a tax period
+  they covered is charged at 24% and the caveat on every charge says so.
   **THE §47 LATE FEE IS COMPUTED FROM FY 2021-22 AND REFUSED BEFORE IT.**
   Notifications **19/2021-CT** (GSTR-3B) and **20/2021-CT** (GSTR-1), 43rd
   Council: **₹50 a day** (₹25 + ₹25), **₹20** for a nil return capped at

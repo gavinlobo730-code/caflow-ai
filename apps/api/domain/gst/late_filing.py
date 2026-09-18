@@ -81,54 +81,76 @@ SECTION_50_1_RATE_BPS = 1800
 # per cent as may be notified". The CEILING is in the Act and is held here.
 SECTION_50_3_CEILING_BPS = 2400
 #
-# ⚠️ THE NOTIFIED RATE IS 18%, `[S]`-GRADED, AND THIS IS THE SECOND CORRECTION.
+# ⚠️ THE NOTIFIED RATE IS 24%, AND THIS IS THE THIRD AND LAST CORRECTION —
+# THE FIRST ONE MADE AGAINST THE PRIMARY DOCUMENTS THEMSELVES.
 #
-# This module first stated 24%, on the strength of Notification 13/2017-Central
-# Tax, which notified 24% against the ORIGINAL §50(3). It then refused to state
-# any rate at all, because the Finance Act 2022 SUBSTITUTED §50(3) with
-# retrospective effect from 01-07-2017 and the rate for the substituted
-# sub-section was believed to be 18% — a THIRD of the charge apart, on a sum a
-# CA pays over on a client's behalf, where over-stating takes money from
-# somebody who does not owe it. A figure that might be a third too high is
-# worse than a refusal naming the notifications to read, so it refused.
+# The history matters because the wrong answer survived two deliberate reviews.
+# This module first stated 24% on Notification 13/2017-Central Tax. It then
+# REFUSED to state any rate, because the Finance Act 2022 substituted §50(3)
+# retrospectively and the rate for the substituted sub-section was believed to
+# have become 18% — a quarter of the charge apart on a sum a CA pays over on a
+# client's behalf. It then stated 18%, on several independent secondary sources
+# that agreed with each other and with a chain that read: s.111 substituted the
+# sub-section, s.116 with the Sixth Schedule cut the rate to 18%, and
+# Notification 9/2022-CT commenced both.
 #
-# The refusal is now lifted. The mechanism is:
-#     * Finance Act 2022 **s.111** substituted §50(3) retrospectively from
-#       01-07-2017;
-#     * Finance Act 2022 **s.116 with the Sixth Schedule** retrospectively
-#       amended the 28-06-2017 rate notifications from 24% to 18%;
-#     * **Notification 9/2022-Central Tax, 05-07-2022** brought those
-#       provisions into force.
+# THAT CHAIN IS FALSE IN ITS SECOND AND THIRD LINKS, and all three documents
+# were read on 18-09-2026:
 #
-# That corrects an earlier note in this repository which had 9/2022 itself
-# notifying the rate. 9/2022 commenced the provisions; s.116 and the Sixth
-# Schedule changed the figure.
+#   * **Finance Act 2022 s.111** (Gazette, p.65) substitutes §50(3) and is
+#     deemed substituted from 01-07-2017. Its operative words are "at such rate
+#     **not exceeding twenty-four per cent. as may be notified** by the
+#     Government, on the recommendations of the Council". It DELEGATES the rate
+#     and fixes no figure. There is no 18% in the Act.
+#   * **Notification 9/2022-Central Tax (05-07-2022)** appoints 05-07-2022 as
+#     the date on which "clause (c) of section 110 and section 111" come into
+#     force. It does NOT commence s.116, it carries no Schedule and it states
+#     no percentage. The earlier note here had it commencing the rate change;
+#     it commences the substitution alone.
+#   * **Notification 13/2017-Central Tax (28-06-2017)**, made under "sub-
+#     sections (1) and (3) of section 50", fixes **§50(1) at 18% and §50(3) at
+#     24%**. CBIC's own amendment history for it lists exactly four amendments
+#     — 31/2020, 51/2020, 08/2021 and 18/2021, all COVID-period concessions —
+#     and **nothing after July 2022**.
 #
-# GRADE `[S]`, NOT `[P]`. Every `.gov.in` is refused at this environment's
-# proxy, so this rests on several independent secondary sources that agree, and
-# none of them argues for 24% after 2022. `VERIFIED` stays False and the figure
-# is pinned exactly by a test, the discipline every other unfetchable statutory
-# constant in this codebase follows.
+# So the delegation was never exercised again. The retrospective substitution
+# takes effect from the very date 13/2017 came into force, so there is no
+# window in which the notification lacked a parent provision, and s.24 of the
+# General Clauses Act carries it forward under the re-enacted sub-section. The
+# notified rate is 24%, which sits exactly AT the Act's ceiling rather than
+# below it — internally consistent, and the reason the ceiling and the rate are
+# now the same number.
 #
-# WHY IT IS NOW SAFE TO STATE WHERE IT WAS NOT BEFORE. The refusal existed
-# because the DIRECTION of the doubt was unsafe. The evidence no longer
-# supports the higher reading, so holding out keeps a working engine switched
-# off over a doubt nothing argues for — and a refusal is not free either: a CA
-# who gets no figure computes one by hand, and that is the outcome this module
-# exists to replace. The Act's own 24% CEILING stays recorded above as the
-# ceiling it is, so a later notification moving the rate has somewhere to land.
-SECTION_50_3_NOTIFIED_RATE_BPS: Optional[int] = 1800
-#: Where the 18% comes from, carried on every answer that uses it.
+# THE ERROR RAN THE UNSAFE WAY, WHICH IS WHY IT IS WORTH THIS MANY WORDS. 18%
+# UNDER-states the charge by a quarter, so for as long as it stood this engine
+# would have told a CA their client owed less than they do on credit wrongly
+# availed and utilised, leaving a residual demand to surface later with the
+# §50(1) clock still running on it. The original refusal was reasoning about
+# the right risk and reached the wrong conclusion about which direction it lay
+# in; the documents settle it.
+#
+# `VERIFIED` IS NOW TRUE, AND THAT IS A CLAIM ABOUT PROVENANCE, NOT CONFIDENCE.
+# It means these figures were read off the Gazette text and the notifications
+# rather than recalled or corroborated — the first constant in this module for
+# which that is so. The constant stays `Optional` so a later notification can
+# move it or a later reader can withdraw it to a refusal, and a test exercises
+# the refusal branch so it cannot rot.
+SECTION_50_3_NOTIFIED_RATE_BPS: Optional[int] = 2400
+#: Where the 24% comes from, carried on every answer that uses it.
 SECTION_50_3_RATE_SOURCE = (
-    "Finance Act 2022 s.111 substituted s.50(3) retrospectively from "
-    "01-07-2017; s.116 with the Sixth Schedule amended the 28-06-2017 rate "
-    "notifications from 24% to 18%; Notification 9/2022-Central Tax "
-    "(05-07-2022) brought them into force."
+    "Finance Act 2022 s.111 substituted s.50(3) from 01-07-2017 and delegates "
+    "the rate — 'at such rate not exceeding twenty-four per cent. as may be "
+    "notified'. Notification 9/2022-Central Tax (05-07-2022) commenced s.110(c) "
+    "and s.111 only and notified no rate. Notification 13/2017-Central Tax "
+    "(28-06-2017), made under sub-sections (1) and (3) of section 50, fixes "
+    "s.50(3) at 24%, and CBIC's amendment history for it records no amendment "
+    "after July 2022."
 )
-#: Corroborated across independent secondary sources, NOT read off the
-#: notification — this environment's proxy refuses every .gov.in. Kept False so
-#: the caveat travels with the figure rather than being remembered.
-SECTION_50_3_RATE_VERIFIED = False
+#: Read off the Gazette text of Finance Act 2022 s.111 and off Notifications
+#: 13/2017-CT and 9/2022-CT, with CBIC's own amendment history for 13/2017 —
+#: not recalled and not corroborated from secondary sources. True means
+#: PROVENANCE: a primary document was read.
+SECTION_50_3_RATE_VERIFIED = True
 GAP_SECTION_50_3_RATE_NOT_HELD = "gst_section_50_3_rate_not_held"
 # The portal's own divisor. See the leap-year caveat in the module docstring.
 DAYS_IN_YEAR = 365
@@ -321,10 +343,11 @@ def interest_on_wrongly_availed_credit(
 ) -> InterestCharge | dict:
     """§50(3) with Rule 88B(3) — on the credit UTILISED, never the availed.
 
-    THE RATE IS NOW HELD at 18%, `[S]`-graded — see
-    SECTION_50_3_NOTIFIED_RATE_BPS above for the mechanism and why the earlier
-    refusal was lifted. Every charge carries the source as a caveat rather than
-    presenting the figure as read off the notification, because it was not.
+    THE RATE IS 24%, READ OFF THE PRIMARY DOCUMENTS — see
+    SECTION_50_3_NOTIFIED_RATE_BPS above for the three of them and for why this
+    module said 18% for a while. Every charge still carries the source as a
+    caveat, because the reader needs to know WHICH notification produced the
+    figure when the Act's own ceiling is the same number.
 
     ONE REFUSAL REMAINS, and it is about the FACTS rather than the rate. Credit
     wrongly availed and NEVER UTILISED bears no interest at all — Rule
@@ -335,25 +358,24 @@ def interest_on_wrongly_availed_credit(
     """
     if SECTION_50_3_NOTIFIED_RATE_BPS is None:
         # Unreachable today and deliberately kept: the constant is typed
-        # Optional so a later reader who finds the 18% wrong can set it back to
-        # None and get a refusal rather than a wrong figure, which is the
-        # behaviour this module had for good reason.
+        # Optional so a later reader who finds this rate superseded can set it
+        # back to None and get a refusal rather than a wrong figure, which is
+        # the behaviour this module had for good reason. A test exercises this
+        # branch so it cannot rot.
         return {
             "refused": True,
             "section": "50(3)",
             "gap": GAP_SECTION_50_3_RATE_NOT_HELD,
             "ceiling_bps": SECTION_50_3_CEILING_BPS,
             "reason": (
-                "The rate notified for §50(3) is not held in this product. The "
-                "sub-section's own ceiling is 24% (\"not exceeding twenty-four "
-                "per cent\"), Notification 13/2017-Central Tax notified 24% "
-                "against the ORIGINAL §50(3), and the Finance Act 2022 "
-                "substituted the sub-section retrospectively from 01-07-2017 — "
-                "for which Notification 09/2022-Central Tax appears to notify "
-                "18%. A third of the charge separates the two readings, and "
-                "this is a sum paid over on the client's behalf, so no figure "
-                "is guessed. Read the notification in force for the period and "
-                "record it in SECTION_50_3_NOTIFIED_RATE_BPS."
+                "The rate notified for §50(3) is not held in this product. "
+                "The sub-section as substituted by the Finance Act 2022 s.111 "
+                "delegates it — \"at such rate not exceeding twenty-four per "
+                "cent. as may be notified\" — so the Act fixes a ceiling of "
+                "24% and no rate. This is a sum paid over on the client's "
+                "behalf, so no figure is guessed. Read the notification in "
+                "force for the period and record it in "
+                "SECTION_50_3_NOTIFIED_RATE_BPS."
             ),
         }
     missing = []
@@ -380,16 +402,18 @@ def interest_on_wrongly_availed_credit(
         rate_bps=SECTION_50_3_NOTIFIED_RATE_BPS,
         days=days_late(utilised_on, reversed_on),
         # The caveat travels ON the charge rather than living in a comment: a
-        # CA is about to pay this over, and "18%" presented bare reads as a
-        # figure somebody read off a notification. Nobody here did.
+        # CA is about to pay this over, and a bare percentage says nothing
+        # about which of the two figures in play produced it.
         caveats=[
             f"The §50(3) rate of "
-            f"{SECTION_50_3_NOTIFIED_RATE_BPS / 100:g}% is corroborated across "
-            f"independent secondary sources, not read off the notification "
-            f"(egress to .gov.in is refused in this environment). "
-            f"{SECTION_50_3_RATE_SOURCE} The sub-section's own ceiling is "
-            f"{SECTION_50_3_CEILING_BPS / 100:g}%; confirm against the "
-            f"notification in force for the period before paying."
+            f"{SECTION_50_3_NOTIFIED_RATE_BPS / 100:g}% is read off the "
+            f"notification and the Gazette text of the Act. "
+            f"{SECTION_50_3_RATE_SOURCE} It sits AT the sub-section's own "
+            f"ceiling of {SECTION_50_3_CEILING_BPS / 100:g}% rather than below "
+            f"it, because the delegation has not been exercised since. The "
+            f"2020 and 2021 concessional-rate notifications amending 13/2017 "
+            f"are not held, so a tax period they covered may be charged less "
+            f"than this."
         ],
         basis=(
             f"Section 50(3) with Rule 88B(3): "
