@@ -14,7 +14,7 @@ Service is client-owned, but the HSN/SAC it references still comes from the
 one library shared across the firm's clients) — checked by the router (not
 here), since that check needs a DB read.
 """
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from domain.gst import uqc as _uqc
 from typing import Optional
@@ -30,6 +30,16 @@ class ServiceCatalogueIn(BaseModel):
     default_rate_paise: int = 0                 # integer paise (money rule); 0 = no default price
     purchase_price_paise: Optional[int] = None   # optional; integer paise
     unit: Optional[str] = None                   # official CBIC UQC code — goods only
+    # A SECOND unit the item may be bought or sold in (migration 409). The
+    # stock ledger is always kept in `unit`; a quantity typed in this one is
+    # converted at the door by domain/inventory/units.to_primary and nothing
+    # ever stores a quantity in it. Both or neither — see the pair validator.
+    alternate_unit: Optional[str] = None
+    units_per_alternate: Optional[float] = None
+    # The on-hand quantity at or below which to reorder. NULL is NOT zero:
+    # zero is a real answer meaning "tell me when it runs out", so an absent
+    # level is reported by domain/inventory/reorder as its own state.
+    reorder_level_units: Optional[float] = None
     category: Optional[str] = None
     notes: Optional[str] = None
     # Opening stock balance — goods only, meaningless for services. Seeds the
@@ -126,6 +136,67 @@ class ServiceCatalogueIn(BaseModel):
         return v
 
 
+    @field_validator("alternate_unit")
+    @classmethod
+    def normalize_alternate_unit(cls, v: Optional[str]) -> Optional[str]:
+        """Same normalisation as `unit`, and for the same reason — one spelling.
+
+        Runs BEFORE the pair validator (Pydantic orders field validators ahead
+        of model ones), so the pair check and the stored value see the same
+        string. An empty string reads as absent, which on the PATCH door is
+        how a CA CLEARS the pair; `update_service` tells that apart from
+        "unchanged" by asking `model_fields_set`.
+        """
+        return _uqc.normalise(v)
+    @field_validator("units_per_alternate", "reorder_level_units")
+    @classmethod
+    def a_stored_quantity_keeps_three_decimals(cls, v):
+        """INV-09's rule on the two new NUMERIC(10,3) columns (migration 409).
+
+        Asked on BOTH doors, because a validator on one is one PATCH from
+        being none — which is exactly how `opening_qty_units` came to be
+        guarded on create and not on edit.
+        """
+        from domain.quantity import quantity_violation
+        problem = quantity_violation(v)
+        if problem:
+            raise ValueError(problem)
+        return v
+
+    @field_validator("reorder_level_units")
+    @classmethod
+    def reorder_level_not_negative(cls, v):
+        # Zero is allowed and is a real answer — "tell me when it runs out".
+        # Negative is not a level.
+        if v is not None and v < 0:
+            raise ValueError("A reorder level cannot be negative.")
+        return v
+
+    @model_validator(mode="after")
+    def alternate_unit_and_its_factor_agree(self):
+        """Both or neither, a real UQC, and not the primary unit itself.
+
+        `domain/inventory/units.problem_with_pair` is the authority and is
+        asked here rather than restated: the factor's DIRECTION is the thing
+        that is easy to get wrong (a box of twelve applied upside down is a
+        144x error that still looks like a plausible quantity), and one place
+        that knows it beats a door that re-derives it.
+
+        Note this REFUSES an alternate unit outside the UQC list where `unit`
+        only normalises it. That is not an inconsistency: `unit` carries a
+        carve-out for rows that predate the dropdown, and a column added by
+        migration 409 has no such rows — so GST-29's argument applies with
+        nothing on the other side of it.
+        """
+        from domain.inventory.units import problem_with_pair
+        problem = problem_with_pair(self.unit, self.alternate_unit,
+                                    self.units_per_alternate)
+        if problem:
+            raise ValueError(problem)
+        return self
+
+
+
 class ServiceCatalogueUpdateIn(BaseModel):
     """Partial edit. Any field left None is untouched; `is_active` toggles
     archive (false) / restore (true). `kind` is immutable after creation —
@@ -137,6 +208,14 @@ class ServiceCatalogueUpdateIn(BaseModel):
     default_rate_paise: Optional[int] = None
     purchase_price_paise: Optional[int] = None
     unit: Optional[str] = None
+    # See ServiceCatalogueIn. On this PARTIAL door the pair cannot be settled
+    # from the request alone — `unit` may be absent because it is unchanged —
+    # so routers/service_catalogue.update_service asks
+    # domain/inventory/units.problem_with_pair against the MERGED row. An
+    # empty-string alternate_unit is an explicit CLEAR of both columns.
+    alternate_unit: Optional[str] = None
+    units_per_alternate: Optional[float] = None
+    reorder_level_units: Optional[float] = None
     category: Optional[str] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
@@ -220,3 +299,41 @@ class ServiceCatalogueUpdateIn(BaseModel):
         if v is not None and v < 0:
             raise ValueError("Opening cost cannot be negative.")
         return v
+
+
+    @field_validator("alternate_unit")
+    @classmethod
+    def normalize_alternate_unit(cls, v: Optional[str]) -> Optional[str]:
+        """Same normalisation as `unit`, and for the same reason — one spelling.
+
+        Runs BEFORE the pair validator (Pydantic orders field validators ahead
+        of model ones), so the pair check and the stored value see the same
+        string. An empty string reads as absent, which on the PATCH door is
+        how a CA CLEARS the pair; `update_service` tells that apart from
+        "unchanged" by asking `model_fields_set`.
+        """
+        return _uqc.normalise(v)
+    @field_validator("units_per_alternate", "reorder_level_units")
+    @classmethod
+    def a_stored_quantity_keeps_three_decimals(cls, v):
+        """INV-09's rule on the two new NUMERIC(10,3) columns (migration 409).
+
+        Asked on BOTH doors, because a validator on one is one PATCH from
+        being none — which is exactly how `opening_qty_units` came to be
+        guarded on create and not on edit.
+        """
+        from domain.quantity import quantity_violation
+        problem = quantity_violation(v)
+        if problem:
+            raise ValueError(problem)
+        return v
+
+    @field_validator("reorder_level_units")
+    @classmethod
+    def reorder_level_not_negative(cls, v):
+        # Zero is allowed and is a real answer — "tell me when it runs out".
+        # Negative is not a level.
+        if v is not None and v < 0:
+            raise ValueError("A reorder level cannot be negative.")
+        return v
+

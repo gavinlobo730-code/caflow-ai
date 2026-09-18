@@ -375,12 +375,24 @@ export interface GSTR1BuildResult {
   ca_review_required: true;
 }
 
-/** One document the GSTR-1 payload leaves out. `kind` is the category it was
- *  classified as (SEZ_WOP, DEEMED_EXPORT, CDNUR). */
+/** One thing wrong with a computed GSTR-1. `kind` is the category (SEZ_WOP,
+ *  DEEMED_EXPORT, CDNUR, hsn_is_not_a_code, ...).
+ *
+ *  `withheld` says WHICH OF TWO KINDS OF GAP this is, and the server decides
+ *  it: true means the document is held OUT of the payload, false means the row
+ *  IS filed and something about it is being reported (the HSN digits, the unit
+ *  quantity code, a caveat about the return itself). The panel headed the
+ *  whole list "Not declared in this return", which is false of the second kind
+ *  — and their own reasons say so, "Table 12 files the code exactly as
+ *  recorded". ABSENT reads as `true`, which is exactly the old rendering, so a
+ *  frontend deployed ahead of the backend is unchanged rather than wrong.
+ *  `domain/gst/gstr1_builder.REPORTED_NOT_WITHHELD` is the one vocabulary and
+ *  is deliberately NOT mirrored here. */
 export interface PayloadGap {
   kind: string;
   reference_no: string;
   reason: string;
+  withheld?: boolean;
 }
 
 /** Raw shape of POST /api/gst/gstr1/from-books. */

@@ -34,6 +34,7 @@ export const UQC_CODES: UqcCode[] = [
   { code: "KGS", label: "KILOGRAMS" },
   { code: "KLR", label: "KILOLITRE" },
   { code: "KME", label: "KILOMETRE" },
+  { code: "LTR", label: "LITRES" },
   { code: "MLT", label: "MILILITRE" },
   { code: "MTR", label: "METERS" },
   { code: "MTS", label: "METRIC TON" },

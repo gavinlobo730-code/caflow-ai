@@ -74,6 +74,18 @@ class PurchaseOrderLineIn(BaseModel):
     unit: Optional[str] = None
     rate_paise: int = 0
     gst_rate_percent: float = 18.0
+
+    @field_validator("gst_rate_percent")
+    @classmethod
+    def _gst_rate_is_a_rate(cls, v: float) -> float:
+        """Delegates to `domain/gst/rate_bounds` — one level of indirection, the
+        shape `models/invoices._validate_quantity` already uses, so the rule
+        lives once and a reader here is pointed at it."""
+        from domain.gst.rate_bounds import rate_percent_violation
+        problem = rate_percent_violation(v)
+        if problem:
+            raise ValueError(problem)
+        return v
     is_service: bool = False
     service_catalogue_id: Optional[str] = None
     expense_account_id: Optional[str] = None

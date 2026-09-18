@@ -150,6 +150,9 @@ def _compute_line_gst(
     return cgst, sgst, 0
 
 
+from domain.gst import place_of_supply as _pos  # noqa: E402
+
+
 def _get_state_code_from_gstin(gstin: Optional[str]) -> Optional[str]:
     if gstin and len(gstin) >= 2:
         return gstin[:2]
@@ -769,13 +772,26 @@ def _resolve_vendor_and_interstate(
 
         # Determine is_interstate
         vendor_state = vendor.get("state_code") or _get_state_code_from_gstin(vendor.get("gstin")) or ""
+        # THE CLIENT'S OWN STATE HAS TWO SOURCES AND THIS READ ONLY ONE, while
+        # the VENDOR line above reads both — so the two sides of one comparison
+        # were resolved by different rules. For an UNREGISTERED client the
+        # GSTIN-only read answers "", and `vendor_state and client_state`
+        # short-circuits to False, so every bill booked central and State tax
+        # however far away the vendor was. The browser's own preview
+        # (`lib/purchases/editorContext.ts`) reads both columns, so the CA was
+        # shown IGST and the bill saved CGST + SGST.
+        # `place_of_supply.supplier_state_code` is the authority for this and
+        # takes the GSTIN FIRST — CGST §25 makes its first two characters the
+        # registration's state — then the recorded column.
         if bulk_cache is not None:
-            client_state = _get_state_code_from_gstin(bulk_cache.get("client_gstin")) or ""
+            client_state = _pos.supplier_state_code(
+                {"gstin": bulk_cache.get("client_gstin"),
+                 "state_code": bulk_cache.get("client_state_code")}) or ""
         else:
-            client_resp  = db.table("clients").select("gstin").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute()
+            client_resp  = db.table("clients").select("gstin, state_code").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute()
             client_state = ""
             if client_resp.data:
-                client_state = _get_state_code_from_gstin(client_resp.data[0].get("gstin")) or ""
+                client_state = _pos.supplier_state_code(client_resp.data[0]) or ""
         is_interstate = bool(vendor_state and client_state and vendor_state != client_state)
     return vendor, is_interstate, db
 
@@ -792,6 +808,9 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
     pre-fetches it once per request instead of once per bill):
       "vendor": this bill's vendor row (already resolved by the caller)
       "client_gstin": the buying client's GSTIN (for the interstate check)
+      "client_state_code": the buying client's recorded state, the second link
+          of `supplier_state_code`'s chain — an unregistered client has no
+          GSTIN and this is the only thing that can place them
         — shared across the whole batch per client_id.
     Skips the per-bill audit/timeline writes in bulk mode — both are
     documented non-fatal, best-effort UX/audit metadata (never read by
@@ -1184,9 +1203,14 @@ def bulk_create_purchase_bills(
                 vendors_by_id[(r["client_id"], r["id"])] = r
         for i in range(0, len(client_ids), CHUNK):
             chunk = client_ids[i:i + CHUNK]
-            resp = db.table("clients").select("id, gstin").eq("firm_id", firm_id).in_("id", chunk).execute()
+            # BOTH columns — the bulk path resolves the client's state through
+            # the same `supplier_state_code` chain the single path does, and a
+            # narrow projection here would make its second link a silent no-op
+            # for imported bills only.
+            resp = db.table("clients").select("id, gstin, state_code").eq("firm_id", firm_id).in_("id", chunk).execute()
             for r in (resp.data or []):
-                client_gstin_by_id[r["id"]] = r.get("gstin")
+                client_gstin_by_id[r["id"]] = {"gstin": r.get("gstin"),
+                                               "state_code": r.get("state_code")}
 
     # Locked-FY status is firm-wide and cannot change mid-request — shared and
     # mutated across the whole loop (see validate_posting_date_cached) so a
@@ -1202,7 +1226,8 @@ def bulk_create_purchase_bills(
             if not _USE_MOCK:
                 bulk_cache = {
                     "vendor": vendors_by_id.get((data.client_id, data.vendor_id)),
-                    "client_gstin": client_gstin_by_id.get(data.client_id),
+                    "client_gstin": (client_gstin_by_id.get(data.client_id) or {}).get("gstin"),
+                    "client_state_code": (client_gstin_by_id.get(data.client_id) or {}).get("state_code"),
                     "locked_fy_cache": locked_fy_cache,
                     "period_lock_cache": period_lock_cache,
                 }

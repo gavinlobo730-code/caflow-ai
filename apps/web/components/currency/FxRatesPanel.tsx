@@ -135,7 +135,7 @@ export function FxRatesPanel() {
             className="w-32 text-xs px-2 py-1.5 border border-ps-border rounded-lg font-mono text-right" />
         </div>
         <button onClick={save} disabled={saving}
-          className="text-xs px-4 py-2 bg-ps-accent text-white rounded-lg disabled:opacity-50">
+          className="text-xs px-4 py-2 bg-brand text-white rounded-lg disabled:opacity-50">
           {saving ? "Saving…" : "Record rate"}
         </button>
       </div>
@@ -146,14 +146,14 @@ export function FxRatesPanel() {
       {meaning && <p className="mt-2 text-[11px] text-ps-hint max-w-2xl">{meaning}</p>}
 
       {msg && (
-        <p className={`mt-2 text-xs ${msg.ok ? "text-ps-state-ready" : "text-ps-state-problem"}`}>
+        <p className={`mt-2 text-xs ${msg.ok ? "text-state-ready" : "text-state-problem"}`}>
           {msg.text}
         </p>
       )}
 
       <div className="mt-4">
         {loading ? <TableSkeleton rows={3} /> : failed ? (
-          <p className="text-xs text-ps-state-problem">
+          <p className="text-xs text-state-problem">
             The recorded rates could not be loaded, so this is not &ldquo;none
             recorded&rdquo;.
           </p>

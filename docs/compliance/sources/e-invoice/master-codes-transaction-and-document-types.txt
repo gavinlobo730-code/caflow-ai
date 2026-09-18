@@ -1,0 +1,40 @@
+Master codes List
+Site is designed and hosted by : National Informatics Centre (https://www.nic.in/)
+Contents on this website is published and managed by: e-Invoice Team, National Informatics Centre,
+Govt. of India.
+© 2020 e-Invoice Team, National Informatics Centre, Govt. of India. All rights reserved.
+Skip to Main Content|
+Skip to Navigation|
+Text Size    A- A A+
+A
+A
+GOODS AND SERVICES TAX
+e - Invoice System
+e - Invoice APIDeveloper's Portal
+ 
+
+
+Master Name Code Description
+Type of Transaction
+B2B Business to Business
+SEZWP SEZ with payment
+SEZWOP SEZ without payment
+EXPWP Export with Payment
+EXPWOP Export without Payment
+DEXP Deemed Export
+Document Type
+INV Invoice
+CRN Credit Note
+DBN Debit Note
+Home (index.html)
+Contact Us (contact-us.html)
+Sitemap (sitemap.html)
+Terms & Conditions (terms-and-conditions.html)
+Privacy Policy (privacy-policy.html)
+Copyright Policy (copyright-policy.html)
+Hyperlink Policy (hyperlinking-policy.html)
+E-Waybill
+ API 
+Dev. Portal
+(https://docs.ewaybillgst.gov.in/apidocs/)
+

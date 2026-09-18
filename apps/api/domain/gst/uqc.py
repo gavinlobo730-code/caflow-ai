@@ -82,6 +82,16 @@ UQC_CODES: list[tuple[str, str]] = [
     ("KGS", "KILOGRAMS"),
     ("KLR", "KILOLITRE"),
     ("KME", "KILOMETRE"),
+    # LTR was MISSING until 18-09-2026 and it is the commonest liquid
+    # unit in India — every dairy, paint, chemical, oil and beverage
+    # client. The omission was a transcription slip between KME and
+    # MLT, and it cost a FALSE gap on a valid code rather than a wrong
+    # figure: Table 12 reported "LTR is not a UQC" on every such line
+    # and `closest_code` offered MLT, which is a THOUSAND times
+    # smaller. A CA who took the suggestion would have declared a
+    # quantity three orders of magnitude out. Read off NIC's own
+    # Master Codes list on the e-invoice portal.
+    ("LTR", "LITRES"),
     ("MLT", "MILILITRE"),
     ("MTR", "METERS"),
     ("MTS", "METRIC TON"),

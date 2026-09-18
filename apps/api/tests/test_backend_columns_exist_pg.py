@@ -351,7 +351,14 @@ UNFIXED: dict[str, str] = {}
 # guard, `test_a_narrow_projection_names_both_columns`, matches a LITERAL
 # `.select("…gstin…")`, so behind the join it had never fired on the two reads it
 # was written for. It now does, and carries a floor saying how many it must see.
-MAX_UNREADABLE = 458
+# 458 -> 459. PAY-26's declaration VERIFY path in `routers/payroll.py` builds its
+# `.update(...)` payload conditionally: `proof_attachments` is omitted from the
+# dict ENTIRELY when the request did not send it, because `None` means unchanged
+# and `[]` removes — an `or []` there wipes an employee's uploaded proofs every
+# time a CA saves a verified amount. So the payload is genuinely dynamic and no
+# literal exists to read. That is the whole of the increase; the four columns
+# migrations 409 and 410 added are named literally everywhere else they appear.
+MAX_UNREADABLE = 459
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

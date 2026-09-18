@@ -1,0 +1,1241 @@
+Vital Errors
+Error
+Code Error Messege Reason for Error Resolution
+_3109 You have exceeded the
+limit for this operation
+1004 Header GSTIN is
+required
+1005 Invalid Token 1. Token has expired 2.
+While calling other APIs,
+wrong GSTIN / User Id/
+Token passed in the
+request header
+1. Token is valid for 6 hours , if it has
+expired, call the Auth. API again and get
+new token 2. Pass correct values for
+GSTIN, User Id and Auth Token in the
+request headers while calling APIs other
+than Auth API
+1006 User Name is required
+1007 Authentication failed.
+Pls. inform the helpdesk
+Wrong formation of
+request payload
+Prepare the request payload as per the
+API documentation
+1008 Invalid login credentials Either UserId or
+Password are wrong
+Pass the correct UserId and Password
+1010 Invalid Client-ID/Client-
+Secret
+Either the ClientId or the
+ClientSecret passed in
+the request header is
+wrong
+Pass the correct ClientId and the
+ClientSecret
+1011 Client Id is required
+1012 Client Secret is required
+1013 Decryption of password
+failed
+Auth.API is not able to
+decrypt the password
+Use the correct public key for encrypting
+the password while calling the Auth API.
+The public key is sent by mail while
+providing the access to Production
+environment as well as available for
+download from the portal under API user
+management. This public key is different
+on Sandbox and Production and it is
+different from the one used for
+verification of the signed content.Refer
+to the developer portal for encryption
+method used and sample code.
+1014 Inactive User Status of the GSTIN is
+inactive or not enabled
+for E Invoice
+Please verify whether the GSTIN is active
+and enabled for E Invoice from the E
+Invoice portal
+Search
+Error
+Code Error Messege Reason for Error Resolution
+1015 Invalid GSTIN for this
+user
+The GSTIN of the user
+who has generated the
+auth token is different
+from the GSTIN being
+passed in the request
+header
+Send the correct GSTIN in the header
+for APIs other than Auth API
+1016 Decryption of App Key
+failed
+Auth.API is not able to
+decrypt the password
+Use the correct public key for encrypting
+the appkey while calling the Auth API.
+The public key is sent by mail while
+providing the access to Production
+environment as well as available for
+download from the portal under API user
+management. This public key is different
+on Sandbox and Production and it is
+different from the one used for
+verification of the signed content.Refer
+to the developer portal for encryption
+method used and sample code.
+1017 Incorrect user id/User
+does not exists
+User id passed in
+request payload is
+incorrect
+Pass the correct user id. If not available,
+please log in to the portal using the main
+user id (the one without hash character
+in between) and check the API user id
+1018 Client Id is not mapped
+to this user
+The UserId is not
+mapped to the ClientId
+that is being sent as
+request header
+Please send the correct userId for the
+respective clientId. If using direct
+integration as well as through GSP or
+through multiple GSPs, please pass the
+correct set of ClientId
+1019 Incorrect Password Password is wrong Use the correct password, if forgotten,
+may use forgot password option in the
+portal
+3000 Invalid login credentials
+3001 Requested data is not
+available
+3029 GSTIN is inactive or
+cancelled
+GSTIN is inactive or
+cancelled by department
+or tax payer .
+Check the correctness of the GSTIN and
+its status. If you are sure that it is
+active, Pl use the 'Sync GSTIN from GST
+CP' API to get it verified from the GST
+Portal. If it is active at GST portal, it will
+return you with the new status. If you
+get the status as 'Active', then you can
+re-fire your request to generate the IRN.
+If you are not able to verify through API,
+you can go to einvocie1.gst.gov.in portal
+and use the 'Tax Payer / GSTIN' option
+Error
+Code Error Messege Reason for Error Resolution
+in search menu to check the status
+manually from GST Portal and use
+'Update' button to get it updated from
+GST Common Portal, if required. If you
+are satisfied with result, you can re-fire
+the request.
+3074 GSTIN - {0} is cancelled
+and document date -
+{1} is later than de-
+registration date
+3075 GSTIN- {0} is cancelled
+and de-registration date
+is not available
+3076 GSTIN - {0} is inactive
+3077 GSTIN - {0} is cancelled
+and document date -
+{1} is earlier than
+registration date
+3078 GSTIN- {0} is cancelled
+and registration date is
+not available
+3079 For active GSTINs the
+document date should
+not be earlier than
+registration date
+3092 Your PAN has Enabled
+with 5 Cr. Please enter
+turn over below 10 Cr
+3093 Please enter turn over
+between 0.5Cr and 1Cr
+3095 e-Invoice operations are
+temporarily disabled for
+the CLIENT - {0} as
+large number of
+erroneous requests
+have been received from
+the client for quite
+sometimes.
+3096 e-Invoice operations are
+temporarily disabled for
+this USERNAME/GSTIN -
+{0} as large number of
+Error
+Code Error Messege Reason for Error Resolution
+erroneous requests
+have been received from
+the USERNAME/GSTIN
+for quite sometimes.
+3097 Password cannot be
+same as any of the last
+5 passwords for this
+user account
+3098 Invalid IRP code
+3099 Password must not be
+too common
+3100 Old Password is
+incorrect
+3101 You are not authorized
+to change password of
+this user account as the
+gstin does not match
+3102 This mobile number is
+already in use
+3103 Password cannot be
+reset as this GSTIN is
+cancelled
+3104 Some error occured
+while logging Client
+change status
+3105 Error while updating the
+change/(s)
+3106 No changes made as the
+requested status is the
+same as the current
+status.
+3107 Some error occured
+while logging User
+change status
+3108 You have exceeded the
+limit for this operation
+5001 Application error, issue
+with application while
+processing the request.
+Please try again. If error
+Error
+Code Error Messege Reason for Error Resolution
+persists kindly raise the
+ticket along with request
+JSON, error details and
+timestamp of the error
+occurrence.Irn Errors
+Error
+Code Error Messege Reason for Error Resolution
+2143 Invoice does not
+belongs to the user
+GSTIN
+User is attempting to
+perform some
+operations on IRN which
+does not belong to the
+currently logged in user
+Certain operations can not be carried
+out on other’s IRNs such as cancel etc
+2146 Unable to create IRN,
+Pls. try after some time
+Due to some
+unexpected scenario,
+IRN could not be
+generated at the
+moment
+Please try after some time. If issue
+persists, contact helpdesk with complete
+details of the issue
+2147 Unable to sign invoice, Pl
+try after some time
+Some unexpected error
+has occurred while
+signing the Invoice
+Please try after some time. If issue
+persists, contact helpdesk with complete
+details of the issue
+2148 Requested IRN data is
+not available
+User is trying to do
+some operation on an
+IRN which is not
+available in the eInvoice
+system
+Please check whether IRN is correct or
+the operation is being carried out within
+permitted time duration.
+2150 Duplicate IRN Attempting to register a
+document again which is
+already registered and
+IRN is generated
+Don't fire the same request
+siimultaneously. This results in one
+request giving the error as 'Duplicate
+IRN request'. Best way to avoid firing of
+IRN request repeatedly for the same
+request, is update in your system with
+IRN number when the response comes
+back. Next time check the IRN, if it is not
+there, then fire for IRN.
+2154 IRN details are not
+found
+Attempting to register a
+document again which is
+already registered and
+IRN is generated.
+Don't fire the same request
+simultaneously. This results in one
+request giving the error as 'Duplicate
+IRN request'. Best way to avoid firing of
+IRN request repeatedly for the same
+request, is update in your system with
+IRN number when the response comes
+back. Next time check the IRN, if it is not
+there, then fire for IRN.
+2159 Invalid value for reverse
+charge applicable field
+Invalid value has been
+sent for the attribute to
+pass whether reverse
+charge applicable
+Please refer to the request JSON schema
+Search
+Error
+Code Error Messege Reason for Error Resolution
+2162 Reverse Charge is not
+applicable for this
+transaction
+Trying to set ‘Reverse
+Charges applicable’ for
+transactions other than
+B2B transaction
+Check the ‘Reverse Charges Applicable’
+parameter as per the current type of
+transaction
+2163 The document date
+should not be future
+date .
+Attempting to set future
+date for the document
+date
+Check the document date being passed
+2169 Request for IRN is
+neither from supplier
+GSTIN or e-Commerce
+GSTIN
+Logged in user GSTIN
+does not match with
+either the supplier
+GSTIN or eCommerce
+GSTIN
+If a supplier is registering the Invoice,
+GSTIN passed in the request header
+should match with the supplier GSTIN. If
+an eCommerce operator is registering
+the Invoice, GSTIN in header should
+match with the eCommerce operator’s
+GSTIN in the request payload
+2172 For Intra-state
+transaction, IGST
+amount is not
+applicable; only CGST
+and SGST amounts are
+applicable
+IGST amount is being
+passed for Intra State
+transaction where as
+CGST and SGST are
+applicable.
+Please check the applicable taxes for
+current transaction. If the State code of
+Point of Supply (POS) of recipient is
+same is state code of Supplier, then
+CSGT and SGST applies. However, under
+exception circumstances as per rule if
+IGST is applicable for intrastate
+transaction, then pass the
+‘IGST_on_IntraState_Supply’ flag as ‘Y’
+with IGST value so that system can
+process your request.
+2173 You have exceeded the
+limit of number of items
+User has passed the
+requests payload with
+more number of li
+Please check the number of line items
+being passed. Please refer to the specific
+API for large number of items. If limit for
+that API is also exceeded, contact
+helpdesk with invoice details
+2174 For inter-state
+transaction, CGST and
+SGST amounts are not
+applicable; only IGST
+amount is applicable
+CGST and SGST taxes
+are being passed for
+inter state transactions
+Please check the applicable taxes for
+current transaction. If the State code of
+Point of Supply (POS) of recipient is
+different than the state code of Supplier,
+then IGST applies. Pl check the details.
+2176 HSN code(s)-{0} is
+invalid
+Wrong HSN code is
+being passed
+Pl check the HSN code being passed and
+Cross-check the correctness of HSN
+code on e-invoice portal. Still, if you feel
+it is correct, then please send the details
+to the helpdesk for verification at e-
+invoice system side.
+2177 Unit Quantity Code(s)-
+{0} is/are not as per
+master
+Invalid unit code has
+been passed
+Please pass the correct unit code as per
+the master provided for e-invoice. Check
+the correct unit code in the portal under
+Error
+Code Error Messege Reason for Error Resolution
+Search -> Master codes. If the unit code
+is not matching with your required unit,
+you may have to convert unit to one
+existing in the master list of unit code.
+2182 Taxable value of all items
+is not equal to total
+taxable value
+Sum of taxable amounts
+of all items should be
+equal to invoice level
+taxable amount.
+Please check the request payload for the
+taxable value validation. Total Taxable
+Value = Taxable value of all line items
+2183 SGST value of all items
+is not equal to total
+SGST Value
+Sum of SGST amounts
+of all items should be
+equal to invoice level
+SGST amount
+Please check the request payload for the
+SGST value validation.
+2184 CGST value of all items
+must be equal to total
+CGST value
+Sum of CGST amounts
+of all items should be
+equal to invoice level
+CGST amount
+Please check the request payload for the
+CGST value validation.
+2185 IGST value of all items
+must be equal to total
+IGST Value
+Sum of IGST amounts
+of all items should be
+equal to invoice level
+IGST amount
+Please check the request payload for the
+IGST value validation.
+2186 Cess value of all items
+must be equal to total
+Cess Value
+Sum of Cess amounts
+of all items should be
+equal to invoice level
+Cess amount
+Please check the request payload for the
+Cess value validation.
+2187 State Cess Value of all
+items must be equal to
+total State CessValue
+Sum of State Cess
+amounts of all items
+should be equal to
+invoice level State Cess
+amount
+Please check the request payload for the
+State Cess value validation.
+2189 Total Invoice Value is not
+matching with calculated
+value
+Invoice level total value
+has not been calculated
+as per the passed
+values.
+Invoice level total value is equal to totals
+of all the total item value plus other
+charges minus discount with tolerance
+limit of +/- One. Pl refer to the
+validations in sandbox portal.
+2192 TotAmt value should be
+equal to (Qty *
+UnitPrice) for HSN {0}
+Total amount for the
+specified item is
+incorrect
+Item level total amount should be the
+product of quantity and unit price
+2193 For Sl. No. {0}, Taxable
+Value (AssAmt) value is
+not equal to (TotAmt -
+Discount)
+Incorrect assessable
+amount is passed for
+the specified item.
+For the specific item, assessable amount
+should be arrived at by deducting
+discount from total amount
+Error
+Code Error Messege Reason for Error Resolution
+2194 For Sl. No {0}, Total
+item value does not
+match with taxable and
+tax values of that item
+Total item value passed
+is incorrect.
+Total item value should be sum of
+assessable value, all tax and cess values,
+other charges with tolerance limit of +/-
+One. Please refer to the validations in
+the portal.
+2195 e-Commerce GSTIN is
+not registered as TCS-
+GSTIN
+The eCommerce GSTIN
+passed does not belong
+to the type Tax Collector
+Please check the GSTIN type at the
+common portal. If it is TCS in common
+portal still it is showing the error, contact
+the helpdesk with GSTIN details
+2200 State code {0} is invalid
+for dispatch details or
+ship details
+Wrong state code is
+passed in dispatch or
+ship details
+Please refer to the state codes in the
+portal at Search -> Master Codes
+2201 Invalid Port Code Wrong port code is
+passed in dispatch or
+ship details
+Please refer to the port codes in the
+portal at Search -> Master Codes
+2202 Invalid Country Code Wrong country code is
+passed in dispatch or
+ship details
+Please refer to the country codes in the
+portal at Search -> Master Codes
+2203 Invalid Foreign Currency Wrong foreign currency
+code is passed in
+dispatch or ship details
+Please refer to the foreign currency
+codes in the portal at Search -> Master
+Codes
+2211 Supplier and recipient
+GSTIN should not be
+the same.
+Same GSTIN has been
+passed for Supplier and
+Buyer GSTIN.
+Self generated Invoice are not allowed
+for e-invoice generation.
+2212 The recipient GSTIN
+cannot be URP for
+supply type {0}
+Un Registered Person
+(URP) is passed wrongly
+for B2B type of
+transaction.
+For this type of transaction, actual
+GSTIN needs to be passed.
+2213 The supplier GSTIN
+cannot be URP
+URP has been set as the
+Supplier GSTIN
+Supplier GSTIN can not be URP
+2226 You are not authorised
+to get IRN data
+User is trying to get IRN
+details which he is not
+supposed to
+2227 For Sl. No {0}, SGST
+and CGST amounts are
+not equal
+For the specified item,
+CGST and SGST
+amounts are not equal
+CGST and SGST amounts should be
+same for the specified item.
+2228 Item list cannot be
+empty
+There are no items in
+the item list
+There should be at least one item in the
+item list
+2230 This IRN cannot be
+cancelled because e-way
+User has tempted to
+cancel an IRN which has
+IRN can not be cancelled unless the
+associated E Way Bill is cancelled. Cancel
+Error
+Code Error Messege Reason for Error Resolution
+bill has been generated ,
+you can cancel e-way bill
+and then try cancelling
+IRN
+an active E Way Bill the E Way Bill first and then cancel the
+IRN
+2231 Cannot generate e-
+Invoice as the supplier
+GSTIN - {0} is SEZ
+SEZ GSTIN user is
+trying to generate the
+eInvoice
+eInvoice is not applicable for SEZ
+supplier
+2232 POS is incorrect for {0}
+transaction
+POS is sent other than
+96 for the specified type
+of transaction
+Send Other Country code (96) for POS
+state code for the specified transaction
+type
+2233 Duplicate SI numbers
+are not allowed in line
+items
+Duplicate serial number
+for the items has been
+sent in the item list.
+The serial number of the items in the
+item list should be unique in an invoice.
+2234 For Sl. No {0}, SGST
+and CGST amount
+passed does not match
+with taxable value and
+tax rate
+Wrong SGST and CGST
+amounts are passed for
+the specified item in the
+item list.
+Correct values for the SGST and CGST
+amounts have to be passed. SGST and
+CGST values should be equal to [taxable
+value X tax rate / 2] for that line item
+with tolerance limit of +/- One.
+2235 For Sl. No {0}, IGST
+amount passed is not
+matching with taxable
+value and tax rate
+Wrong IGST amount is
+passed for the specified
+item in the item list.
+Correct value for the IGST amount has
+to be passed. IGST value should be
+equal to [taxable value X tax rate] for
+that line item with tolerance limit of +/-
+One.
+2238 For Sl. No {0}, Quantity
+is not passed
+Value for quantity is
+missing for the specified
+item in the item list
+Send the quantity for the specified item
+2239 For Sl. No {0}, Unit
+Quantity Code (UQC) is
+not passed
+Value for unit is missing
+for the specified item in
+the item list
+Send the value for unit for the specified
+item
+2240 For Sl. No {0}, GST rate
+of tax is incorrect or not
+as notified
+Wrong GST rate is
+passed for the specified
+item in the item list.
+Correct value for the GST rate has to be
+passed. Standard tax Rates are 0, 0.5,
+1, 2, 3, 5, 12, 18, 28
+2242 Recipient POS is
+incorrect for transaction
+type {0}
+For the specified type of
+transaction, POS passed
+is 96 – Other Country
+For the specified transaction type, POS
+can not be 96, pass a valid state code.
+Please refer to the State Codes in the
+portal under Search -> Master Codes
+2243 POS code is invalid Invalid State code has
+been passed for the
+POS
+Pass correct State code for POS. Please
+refer to the State Codes in the portal
+under Search -> Master Codes
+2244 Recipient pincode is not
+provided for the
+Recipient PIN code is
+missing for the specified
+For the specified type of transaction, PIN
+code is mandatory under Recipient
+Error
+Code Error Messege Reason for Error Resolution
+transaction - {0} transaction type. details.
+2246 Recepient cannot be
+SEZ for - {0}
+transaction
+SEZ GSTIN has been
+passed as GSTIN in
+Recipient details for the
+specified type of
+transaction
+For the specified type of transaction,
+GSTIN of SEZ can not be passed as
+GSTIN in Recipient details
+2247 Recepient should be
+SEZ for transaction {0}
+Non SEZ GSTIN has
+been passed as the
+GSTIN in Recipient
+details for the given
+type of transaction.
+For the given type of transaction GSTIN
+in Recipient details should be of SEZ
+2248 Recepient has to be URP
+in case of Export
+transactions
+In case of export,
+Recipient GSTIN has not
+been set to ‘URP’
+In case of export , GSTIN in Recipient
+details should be ‘URP’
+2255 Requested Payload is
+empty
+Empty payload is
+received
+Pass proper payload in the request
+2258 Supplier GSTIN state
+codedoes not match
+with the state code
+passed in supplier
+details
+The state code passed
+and first two digits of
+the GSTIN passed in the
+Supplier details do not
+match
+In the Supplier details, first two digits of
+the GSTIN should match the state code
+passed
+2259 Invalid supplier state
+code
+State code passed in
+the Supplier Details is
+incorrect
+Pass the correct State code in the
+Supplier Details. For State code master,
+visit the portal under Search -> Master
+Codes
+2260 The recipient state code
+is invalid
+State code passed in
+the Recipient Details is
+incorrect
+Pass the correct State code in the
+Recipient Details. For State code master,
+visit the portal under Search -> Master
+Codes
+2261 The recipient state code
+is incorrect for {0}
+transaction
+State code under
+Recipient Details is sent
+other than 96, for the
+specified type of
+transaction
+Send Other Country code (96) for State
+code under Recipient Details, for the
+specified transaction type
+2262 For Intra-state supply,
+IGST cannot be charged
+IGSTonIntra value is set
+as ‘Y’ but different state
+codes are mentioned
+under Supplier Details
+and POS
+When IGSTonIntra value is set as ‘Y’, it
+should be an intra state transaction and
+hence State code under Supplier Details
+should be same as POS under Recipient
+Details
+2265 Recipient GSTIN state
+code does not match
+with the state code
+The state code passed
+and first two digits of
+the GSTIN passed in the
+In the Recipient details, first two digits
+of the GSTIN should match the state
+code passed.
+Error
+Code Error Messege Reason for Error Resolution
+passed in recipient
+details
+Recipient details do not
+match.
+2266 For Sl. No {0}, Cess
+amount passed does
+not match with the
+calculated value
+Incorrect Cess amount
+is passed for the
+specified line item
+Correct Cess amount may be passed for
+the specified line item
+2267 For Sl. No {0}, State
+Cess amount passed is
+not as per calculated
+value
+Incorrect State Cess
+amount is passed for
+the specified line item
+Correct State Cess amount may be
+passed for the specified line item
+2268 IGST on instra state
+supply is not applicable
+to export/SEZ
+transactions
+IGSTonIntra has been
+set for export and SEZ
+transactions
+IGSTonIntra value can not be ‘Y’ for
+export and SEZ transactions
+2269 Recipient state code is
+incorrect for transaction
+type {0}
+For the specified type of
+transaction, State code
+in Recipient Details
+passed is 96 – Other
+Country
+For the specified transaction type, State
+code passed in Recipient details can not
+be 96, pass a valid state code. Please
+refer to the State Codes in the portal
+under Search -> Master Codes
+2270 The allowed cancellation
+time limit is crossed, you
+cannot cancel the IRN
+Attempted to cancel the
+IRN after the time limit
+IRN can be cancelled only within the time
+limit
+2271 SHIP TO - state code is
+not valid statecode for
+B2B, SEZ and Deemed
+Export transactions
+Invalid State code is
+passed under Ship To
+details for B2B, SEZ and
+Deemed export
+transaction
+Correct state code should be passed
+under Ship To Details for B2B, SEZ and
+Deemed export transactions. For valid
+State codes, may visit the portal under
+Search -> Master Codes
+2272 SHIP TO - PIN code
+cannot be 999999 for
+B2B, SEZ and Deemed
+Export transactions
+PIN code under ShipTo
+Details has been passed
+as 999999 for B2B, SEZ
+and Deemed Export
+transactions
+Correct PIN code should be passed
+under Ship To Details for B2B, SEZ and
+Deemed export transactions. For valid
+PIN codes, may visit the portal under
+Search -> Master Codes
+2273 Dispatch from PIN code
+cannot be 999999
+PIN code under Dispatch
+From Details has been
+passed as 999999 for
+B2B, SEZ and Deemed
+Export transactions
+Correct PIN code should be passed
+under Dispatch From Details for B2B,
+SEZ and Deemed export transactions.
+For valid PIN codes, may visit the portal
+under Search -> Master Codes
+2274 Recipient PIN code
+cannot be 999999 for
+{0} transaction.
+PIN code under Recipient
+Details has been passed
+as 999999 for specified
+type of transactions
+Correct PIN code should be passed
+under Recipient Details for specified type
+of transactions. For valid PIN codes, may
+visit the portal under Search -> Master
+Codes
+Error
+Code Error Messege Reason for Error Resolution
+2275 Recipient PIN code
+should be 999999 for
+Direct Export
+PIN code under Recipient
+Details has been passed
+as other than 999999
+for specified type of
+transactions
+999999 as PIN code should be passed
+under Recipient Details for specified type
+of transactions.
+2276 Supplier PIN code
+cannot be 999999
+PIN code under Supplier
+Details has been passed
+as 999999
+Correct PIN code should be passed
+under Supplier Details. For valid PIN
+codes, may visit the portal under Search
+-> Master Codes
+2278 IRN is already generated
+and is cancelled for this
+Document number. The
+duplicate IRN cannot be
+generated for the same
+number.
+An IRN for the given
+document was
+generated, subsequently
+cancelled. A request is
+received now to
+generate IRN for the
+same document.
+IRN for the same document can not be
+re-generated even of the earlier IRN is
+cancelled. Document with new document
+number has to be generated and then
+registered
+2279 Invalid schema version
+2280 Invalid document type
+2281 Inavalid document
+number
+2282 Invalid document date
+format
+2283 IRN details cannot be
+provided as it is
+generated more than
+{0} days prior
+2284 IRN cannot be
+generated for the
+document date which is
+prior to {0}
+2285 Invalid value for IGST on
+intra field
+2286 Cannot generate the
+ewaybill for cancelled IRN
+2287 Ewaybill already exists
+for the given IRN
+2288 Invalid Recipient GSTIN
+2290 Invalid Total Invoice
+Value
+Error
+Code Error Messege Reason for Error Resolution
+2292 Invalid document date
+2293 Invalid date format -
+(The correct format is
+dd/MM/yyyy)
+2294 Reverse charge is
+mandatory if IGST on
+intra is applicable
+2295 IRN is already generated
+and registered with
+GSTN Lookup Portal by
+other IRP
+A duplicate request for
+generation of IRN is
+received but there is an
+IRN already generated
+for the same document
+through other IRP
+There is already an IRN generated for
+this document using other IRP. Hence,
+pPlease check the document number,
+type and date of the request. There can
+not be multiple IRNs generated for same
+document even by using different IRPs
+2296 Data not Found
+2297 Reverse charge supply is
+not allowed for ISD
+recipients
+2298 Recipient cannot be
+composition/UIN
+taxpayer for Deemed
+Exports
+2299 E-Commerce Operator
+GSTIN field should be
+empty when Tax Payer
+generates e-Invoice
+2300 Supplier GSTIN should
+be of type Regular or
+SED or Casual Taxable
+Person
+2301 E-Commerce Operator
+GSTIN field should not
+be empty when e-
+Commerce operator
+generates e-Invoice
+2302 Status of the IRN is not
+active
+2303 For B2B transactions,
+buyer POS can be
+foreign country(96) only
+for Goods Transport
+Services (services by
+Place of Supply (PoS)
+can be 96 - Other
+Country for B2B
+transactions only if the
+items n the itemlist
+PoS can be 96 for B2B transactions only
+if all the items in the item list have the
+HSNs belonging to 9965 and 9968 which
+are for 'services by way of
+Error
+Code Error Messege Reason for Error Resolution
+way of transportation of
+goods)
+contain the HSNs
+belonging to 9965 and
+9968
+transportation of goods'. Please check
+the PoS and HSNs of all the items
+2304 You are not authorised
+to perform this
+operation
+2305 IRN cannot be
+generated with
+document date prior to
+{0} days from today for
+suppliers with turnover
+above {1}
+2306 Supplier has not given
+the consent to
+download the IRN by
+recepient.
+2307 Future date cannot be
+accepted
+3026 E-Invoice Options are
+not enabled for this
+GSTIN -{0}
+3028 GSTIN -{0} is invalid. Recipient GSTIN is
+invalid or does not exist
+in e-invoice system
+Check the correctness of the GSTIN. If
+you are sure that it is valid, Pl use the
+'Sync GSTIN from GST CP' API to get it
+pulled from the GST Portal. If it is
+available in GST portal, it will return you
+with the details. If you get the details,
+then you can re-fire your request to
+generate the IRN. If you are not able to
+verify through API, you can go to
+einvocie1.gst.gov.in portal and use the
+'Tax Payer / GSTIN' option in search
+menu to check the status manually from
+GST Portal and use 'Update' button to
+get it updated from GST Common
+Portal. If you are satisfied with result,
+you can re-fire the request.
+3029 GSTIN -{0} is inactive
+or cancelled
+3038 {0} details
+Details:Pincode-{1}
+does not exists
+Error
+Code Error Messege Reason for Error Resolution
+3039 Pincode -{1} of {0}
+does not belong to
+his/her State - {2}
+3040 Buyer or Ship
+Details:Pincode - {0}
+does not exists
+3041 Buyer or Ship
+Details:Pincode -{0}
+does not belong to the
+state-{1}
+3047 The HSN - {0} does not
+belong to Goods
+3048 The HSN - {0} does not
+belong to Service
+3074 GSTIN - {0} is cancelled
+and document date -
+{1} is later than
+DRegistration Date
+3075 GSTIN- {0} is cancelled
+and DRegistration Date
+is not available
+3076 GSTIN - {0} is inactive
+3077 GSTIN - {0} is cancelled
+and document date -
+{1} is earlier than
+registration date
+3078 GSTIN- {0} is cancelled
+and registration date is
+not available
+3079 For active GSTINs the
+document date should
+not be earlier than
+registration date
+4001 Error ocurred while
+creating Eway Bill
+5001 Application error, issue
+with application while
+processing the request.
+Please try again. If error
+persists kindly raise a
+The submitted data is
+not as per the published
+schema of some error
+has occured which is not
+specified in the error list
+Please check the data against the
+published schema such as allowed
+values, minimum & maximum length,
+data type, required / optional etc.
+Error
+Code Error Messege Reason for Error Resolution
+ticket along with request
+JSON, error details and
+timestamp of the error
+occurrence.
+while processing the
+data. For schema related
+errors, the description
+will provide the details of
+the failed validation
+5002 Application error, issue
+with application while
+processing the request.
+Please try again. If error
+persists kindly raise a
+ticket along with request
+JSON, error details and
+timestamp of the error
+occurrence.
+9999 Invoice is not activeEwaybill Errors
+Error Code Error Messege
+4000 Status of the IRN is not active
+4001 Error ocurred while creating Eway Bill
+4002 EwayBill is already generated for this IRN
+4003 Requested IRN data is not available
+4004 Error while retrieving IRN details
+4005 Eway Bill details are not found
+4006 Requesting parameter cannot be empty
+4007 Requested e-Way Bill is not available
+4008 Please enter valid e-waybill number
+4009 E Way Bill can be generated provided at least HSN of one item
+belongs to goods.
+4010 E-way Bill cannot generated for Debit Note, Credit Note and Services.
+4011 Vehicle number should be passed in case of transportation mode is
+Road.
+4012 The transport document number should be passed for
+transportation modes air and rail
+4013 The distance between the pincodes given is too high or low.
+4014 Invalid Vehicle Number
+4015 EWayBill will not be generated for blocked User -{0}
+4016 Transport document date cannot be a future date
+4017 Incorrect date format
+4018 Invalid Transporter ID
+4019 Provide Transporter ID in order to generate Part A of e-Way Bill
+4020 Invalid vehicle type .
+4021 Transporter document date cannot be earlier than the invoice date.
+4022 vehicle type should be passed in case of transportation mode is
+Road.
+Search
+Error Code Error Messege
+4023 The transport document date should be passed for of transportation
+modes air and rail.
+4024 Vehicle type should not be ODC when transmode is other than road
+and ship
+4025 Invalid User-Id
+4026 Duplicate EwayBill for the given document numer, EwbNo - ({0})
+4027 Transporter Id is mandatory for generation of Part A slip
+4028 Transport mode is mandatory as Vehicle Number/Transport
+Document Number is given
+4029 Valid distance to be sent in case of same pin codes, you cannot send
+0 as distance in this case.
+4030 The distance between the pincodes {0} and {1} is not available in
+the system, you need to pass the actual distance.
+4031 Ship to details are mandatory for export transactions to generate e-
+Way Bill.
+4032 Ship to state code cannot be other country code(96) for e-Way Bill
+generation
+4033 Ship to PIN code cannot be 999999 for e-Way Bill generation
+4034 Since the you passed Supplier/Recepient/Dispatch from/Ship to
+Pincode as 999999, distance cannot be 0
+4035 Dispatch state code cannot be other country code(96) for e-Way Bill
+generation
+4036 Dispatch PIN code cannot be 999999 for e-Way Bill generation
+4037 You are not authorised to get data
+4038 The distance between the pincodes given is too high
+4039 Vehicle type can not be regular when transport mode is ship
+4040 For Ship Transport, either vehicle number or transport document
+number is required
+4041 You don't have permission to get EWB details generated by main
+user.
+4042 Invalid RR number
+4043 You cannot generate e-waybill with document date earlier than {0}
+days
+Error Code Error Messege
+4044 Transportation mode should be road for Gold EwayBill
+4045 Transporter name should not be given for Gold e-Waybill
+4046 Transport document number should not be given for Gold e-Waybill
+4047 Transport document date should not be given for Gold e-Waybill
+4048 Vehicle number should not be given for Gold e-Waybill
+4049 Vehicle Type should not be given for Gold e-Waybill
+4050 Transportation mode is mandatory for Gold e-Waybill
+4051 Inter-State ewaybill is not allowed for gold
+4052 Transporter id should not be given for Gold e-Waybill
+4053 Could not cancel eway bill, please contact helpdesk.
+4054 Gen mode should be irp in order to cancel ewaybill.
+4055 You can cancel the ewaybill within 24 hours from Part B entry.
+4056 Eway bill is already verified, you cannot cancel it.
+4057 This eway bill is either not generated by you or cancelled.
+4058 Check
+4059 Invalid reason.
+4060 Remarks is mandatory.
+4061 This ewb is not generated through this IRP
+4062 You have exceeded the limit for this operation
+4063 e-Waybill cannot be created with combination of sin items with other
+items
+4064 Seller Address is required for sin item
+4065 Buyer Address is required for sin item
+4066 Seller Location is required for sin item
+4067 Buyer Location is required for sin item
+4068 Quantity unit code is mandatory for sin item
+4069 Invalid unit code for sin item
+4070 Quantity is mandatory for sin item
+Error Code Error Messege
+4071 SGST and CGST rates are mandatory for each sin item incase of intra
+state e-Waybill
+4072 IGST rates are mandatory for each sin item incase of inter state e-
+Waybill
+4073 Ship-to GSTIN is not required as the transaction type is {0}
+4074 Ship-to GSTIN is mandatory for the transaction type {0)
+4075 Invalid ship-to GSTIN
+4076 Bill-to and ship-to GSTIN should not be same for this transaction
+type

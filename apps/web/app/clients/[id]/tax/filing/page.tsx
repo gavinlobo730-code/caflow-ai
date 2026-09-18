@@ -638,7 +638,7 @@ export default function ITRFilingPage() {
           </div>
 
           {sheetError && (
-            <p className="text-xs text-state-attention-ink bg-state-attention-surface border border-state-attention-border rounded-lg p-3">
+            <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg p-3">
               {sheetError}
             </p>
           )}
@@ -734,7 +734,7 @@ function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filin
       {/* THE PRODUCT DOES NOT FILE. Said on the sheet itself rather than only
           on the screen around it, because the sheet is what gets printed and
           carried to the desk where the utility is open. */}
-      <p className="px-4 py-2 text-[10px] text-state-attention-ink bg-state-attention-surface border-b border-state-attention-border">
+      <p className="px-4 py-2 text-[10px] text-state-attention bg-state-attention-surface border-b border-state-attention-border">
         Key these into the Income Tax Department&apos;s own offline utility. This
         software prepares; it does not file, and nothing here has been submitted.
         {!sheet.schema_is_verified
@@ -780,7 +780,7 @@ function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filin
                       ) : p.not_on_this_form ? (
                         <p className="text-[10px] text-ps-hint">{p.absence_reason}</p>
                       ) : p.not_mapped ? (
-                        <p className="text-[10px] text-state-attention-ink">
+                        <p className="text-[10px] text-state-attention">
                           No field is mapped for this figure yet — find it in the
                           utility and key it by hand.
                         </p>
@@ -800,7 +800,7 @@ function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filin
       {(sheet.gaps.length > 0 || sheet.notes.length > 0) && (
         <div className="px-4 py-3 border-t border-ps-border space-y-1.5">
           {sheet.gaps.map((g, i) => (
-            <p key={`g${i}`} className="text-[10px] text-state-attention-ink">⚠ {g}</p>
+            <p key={`g${i}`} className="text-[10px] text-state-attention">⚠ {g}</p>
           ))}
           {sheet.notes.map((n, i) => (
             <p key={`n${i}`} className="text-[10px] text-ps-hint">{n}</p>

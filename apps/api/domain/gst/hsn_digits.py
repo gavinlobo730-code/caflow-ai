@@ -21,6 +21,14 @@ WHAT WAS WRONG (GST-17)
     length — so it can never shorten anything. A 2-digit HSN at ₹10 crore of
     turnover came back as '99', was filed as '99', and appeared in no gap list.
 
+AND THE COUNT WAS A CHARACTER COUNT
+
+    The requirement was then reported against `len(code)` with no numeric test
+    anywhere in the module, so 'SAC998' satisfied a six-digit requirement and
+    'ABCD' a four-digit one — a gap list that was silent about exactly the
+    codes the portal refuses. `is_a_code` is the rule and `problem_with` asks
+    it first; see the comment above `_DIGITS_ONLY` for the two primary sources.
+
 THE TWO TABLES, AND WHY BOTH ARE KEPT
 
     Notification 78/2020-Central Tax (15-10-2020), in force from 01-04-2021,
@@ -68,6 +76,7 @@ AGGREGATE TURNOVER IS THE PRECEDING YEAR'S, AND NOBODY HERE HOLDS IT
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -148,6 +157,43 @@ def required_digits(aato_paise: Optional[int], *, is_b2b: bool,
     )
 
 
+#: AN HSN CODE IS A NUMBER, AND THE DIGIT COUNT IS NOT THE CHARACTER COUNT.
+#:
+#: `problem_with` used to answer `len(clean)` to a question about DIGITS, and
+#: there was no numeric test anywhere in the module — so 'SAC998', '99-313'
+#: and 'abcdef' all satisfied a six-digit requirement and 'ABCD' a four-digit
+#: one, silently, on the one figure this module exists to report.
+#:
+#: The rule is the field's own, from two primary sources committed under
+#: `docs/compliance/sources/e-invoice/`: the IRP states it as
+#: `HSN_Code  ^[0-9]*$` (field regular expressions, A.1.2.2) and refuses a code
+#: that fails it as error **2176** "HSN code(s)-{0} is invalid / Wrong HSN code
+#: is being passed". The Act is behind that: CGST Rule 46(g) requires the "HSN
+#: code" of the goods or services, and the headings it reads on are the Customs
+#: Tariff's, which are numeric.
+#:
+#: ASCII, deliberately — Python would call '2' (superscript two) and the
+#: fullwidth digits digits, neither of which is what `^[0-9]*$` admits, so a
+#: `str.isdigit` test would accept a code the portal rejects.
+_DIGITS_ONLY = re.compile(r"^[0-9]+$")
+
+
+def is_a_code(code: Optional[str]) -> bool:
+    """True where this is a well-formed HSN or SAC code: digits, at least one.
+
+    Says nothing about whether it is LONG enough — that is the notification's
+    question and `problem_with` answers it — and nothing about whether the code
+    exists in the GST master, which this product does not hold (the IRP checks
+    it and returns 2176).
+
+    Exported because the gap KIND and the gap SENTENCE are two different
+    answers and the builder needs both. Same shape as `uqc.normalise(u) is
+    None`, which `gstr1_builder` already re-asks to tell an unrecorded unit
+    from a wrong one.
+    """
+    return bool(_DIGITS_ONLY.match((code or "").strip()))
+
+
 def problem_with(code: Optional[str], requirement: DigitRequirement) -> Optional[str]:
     """What is wrong with this HSN code, or None.
 
@@ -159,14 +205,36 @@ def problem_with(code: Optional[str], requirement: DigitRequirement) -> Optional
     is correct (the notification sets a floor, and an 8-digit code is a valid
     6-digit one), and a code shorter than it is the CA's to fix on the document
     — refusing the build would refuse the whole return for one line, which is
-    how a CA learns to skip the validator.
+    how a CA learns to skip the validator. Nothing refuses at the API DOOR
+    either, for the reason `uqc` records: a line or a product may carry a code
+    somebody typed before there was anything to check it, and a 422 there makes
+    that row un-editable for any unrelated change. GST-29's split is the same
+    one — the client's OWN GSTIN is a hard refusal because the return is filed
+    under it, while a fact ON A LINE is reported beside the return.
+
+    THE NUMERIC TEST IS ASKED FIRST AND IS ASKED WHATEVER THE REQUIREMENT IS.
+    First, because a code that is not a number cannot be counted, and reporting
+    'SAC-9983' as "has 8 digits, 6 are required" would be a sentence that is
+    both false and satisfied. Whatever the requirement, because a nil
+    requirement makes the code OPTIONAL and does not make a wrong one
+    acceptable: Table 12 files what is recorded, so a junk code on a B2C line
+    below Rs 5 crore still goes to the portal and still comes back as 2176. An
+    ABSENT code under a nil requirement is exactly what the notification
+    permits and is the one thing that stays silent.
     """
     clean = (code or "").strip()
+    if clean and not is_a_code(clean):
+        return (f"HSN '{clean}' is not a code — an HSN or SAC is digits only "
+                f"(the e-invoice field rule is ^[0-9]*$, and the portal refuses "
+                f"anything else as error 2176)")
     if requirement.digits == 0:
         return None
     if not clean:
         return ("no HSN or SAC code — "
                 f"{requirement.digits} digits are required ({requirement.citation})")
+    # `clean` is all digits by the branch above, so its LENGTH is its digit
+    # count. That equivalence is what the numeric test buys, and it is why
+    # nothing here counts digits a second way.
     if len(clean) < requirement.digits:
         return (f"HSN '{clean}' has {len(clean)} digits; "
                 f"{requirement.digits} are required ({requirement.citation})")

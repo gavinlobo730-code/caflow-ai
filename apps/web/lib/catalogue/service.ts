@@ -43,6 +43,17 @@ export interface ServiceCatalogueItem {
    * domain/inventory_service.py. Read-only here; never set by this form. */
   stock_qty_units?: number | null;
   avg_cost_paise?: number | null;
+  /** A SECOND unit the item may be bought or sold in (migration 409). The
+   *  stock ledger is always kept in `unit`; nothing stores a quantity in this
+   *  one. Both or neither — the database CHECKs the pair. */
+  alternate_unit?: string | null;
+  /** How many `unit` make ONE `alternate_unit`. Named for the direction: a
+   *  factor applied upside down is a 144x error on a box of twelve that still
+   *  looks like a plausible quantity. */
+  units_per_alternate?: number | null;
+  /** The on-hand quantity at or below which to reorder. null is NOT zero —
+   *  zero is a real answer meaning "tell me when it runs out". */
+  reorder_level_units?: number | null;
   /** Set by the API when a create collided with an existing active name. */
   duplicate?: boolean;
 }
@@ -116,10 +127,15 @@ export interface ServiceFormInput {
   /** The "as of" date the opening balance is struck at — "" lets the
    * backend default to the client's financial-year start. */
   openingBalanceDate: string;
+  /** Goods only. "" = no alternate unit, which is the state of every item
+   *  before migration 409 and the right answer for most items for ever. */
+  alternateUnit: string;
+  unitsPerAlternate: string;
+  reorderLevel: string;
 }
 
 export interface ServiceFormValidation {
-  errors: { name?: string; rate?: string; gstRate?: string; purchasePrice?: string; openingQty?: string; openingCost?: string };
+  errors: { name?: string; rate?: string; gstRate?: string; purchasePrice?: string; openingQty?: string; openingCost?: string; unitsPerAlternate?: string; reorderLevel?: string };
   ok: boolean;
 }
 
@@ -160,6 +176,26 @@ export function validateServiceForm(input: ServiceFormInput): ServiceFormValidat
     if (input.openingCost.trim() !== "" && (openingCost === null || openingCost < 0)) {
       errors.openingCost = "Enter a valid non-negative cost.";
     }
+    // Keystroke feedback only. The AUTHORITY is
+    // domain/inventory/units.problem_with_pair, which the create door asks
+    // outright and the PATCH door asks against the merged row — a browser
+    // cannot settle the pair on a partial edit, because `unit` may be absent
+    // for being unchanged.
+    const factor = fieldQty(input.unitsPerAlternate);
+    if (input.alternateUnit.trim() && (factor === null || factor <= 0)) {
+      errors.unitsPerAlternate = "How many of the item's own unit make one of these?";
+    }
+    if (!input.alternateUnit.trim() && input.unitsPerAlternate.trim() !== "") {
+      errors.unitsPerAlternate = "Pick the alternate unit this converts to, or clear the factor.";
+    }
+    if (input.alternateUnit.trim() && input.unit.trim()
+        && input.alternateUnit.trim().toUpperCase() === input.unit.trim().toUpperCase()) {
+      errors.unitsPerAlternate = "The alternate unit is the item's own unit. An item with one unit needs no factor.";
+    }
+    const reorder = fieldQty(input.reorderLevel);
+    if (input.reorderLevel.trim() !== "" && (reorder === null || reorder < 0)) {
+      errors.reorderLevel = "Enter a valid non-negative quantity.";
+    }
   }
   return { errors, ok: Object.keys(errors).length === 0 };
 }
@@ -179,6 +215,9 @@ export interface ServicePayload {
   opening_qty_units?: number;
   opening_cost_paise?: number;
   opening_balance_date?: string;
+  alternate_unit?: string;
+  units_per_alternate?: number;
+  reorder_level_units?: number;
 }
 
 /** Map a validated form to the API create/update body (rupees → integer paise).
@@ -190,6 +229,8 @@ export function serviceFormToPayload(input: ServiceFormInput, clientId: string):
   const isGood = input.kind === "good";
   const openingQty = isGood ? fieldQty(input.openingQty) : null;
   const openingCostPaise = isGood ? fieldPaise(input.openingCost) : null;
+  const alternateFactor = isGood ? fieldQty(input.unitsPerAlternate) : null;
+  const reorderLevel = isGood ? fieldQty(input.reorderLevel) : null;
   // The rate comes off a fixed slab list rather than a text box, so it is a
   // number already — but it goes through the exact converter anyway, because
   // `Math.round(0.1 * 100)` and `bpsFromPercentInput("0.1")` disagreeing is
@@ -210,6 +251,17 @@ export function serviceFormToPayload(input: ServiceFormInput, clientId: string):
     opening_qty_units: openingQty !== null && openingQty > 0 ? openingQty : undefined,
     opening_cost_paise: openingCostPaise !== null && openingCostPaise >= 0 ? openingCostPaise : undefined,
     opening_balance_date: isGood && input.openingBalanceDate.trim() ? input.openingBalanceDate.trim() : undefined,
+    // BOTH OR NEITHER, which the database CHECKs and the create door refuses:
+    // a unit with no factor cannot be converted and a factor with no unit
+    // converts to nothing, and either alone reads as a whole fact on a screen.
+    alternate_unit: isGood && input.alternateUnit.trim() && alternateFactor !== null
+      ? input.alternateUnit.trim() : undefined,
+    units_per_alternate: isGood && input.alternateUnit.trim() && alternateFactor !== null
+      ? alternateFactor : undefined,
+    // Sent when it is a number at all, INCLUDING zero — "tell me when it runs
+    // out" is a real answer and `> 0` would silently discard it.
+    reorder_level_units: isGood && reorderLevel !== null && reorderLevel >= 0
+      ? reorderLevel : undefined,
   };
 }
 
@@ -233,5 +285,11 @@ export function serviceToForm(item: ServiceCatalogueItem): ServiceFormInput {
     openingQty: item.stock_qty_units == null && item.opening_qty_units != null ? String(item.opening_qty_units) : "",
     openingCost: item.stock_qty_units == null && item.opening_cost_paise != null ? String(item.opening_cost_paise / 100) : "",
     openingBalanceDate: item.stock_qty_units == null && item.opening_balance_date ? item.opening_balance_date.slice(0, 10) : "",
+    alternateUnit: item.alternate_unit ?? "",
+    unitsPerAlternate: item.units_per_alternate == null ? "" : String(item.units_per_alternate),
+    // `== null` and not a falsy test: a recorded level of ZERO must come back
+    // as "0" and not as an empty box, or reopening the form would silently
+    // clear a decision the CA made.
+    reorderLevel: item.reorder_level_units == null ? "" : String(item.reorder_level_units),
   };
 }

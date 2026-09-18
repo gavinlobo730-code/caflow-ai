@@ -1,0 +1,83 @@
+{
+  "AckNo": 112010000011474,
+  "AckDt": "2020-08-05 22:55:00",
+  "Irn": "afdcc32a0eaa3a054cffcd251884d3e3f4f726b75c8943e7d35fbabc82f05d8a",
+  "Version": "1.01",
+  "TranDtls": {
+    "TaxSch": "GST",
+    "SupTyp": "B2B",
+    "RegRev": "N",
+    "IgstOnIntra": "N"
+  },
+  "DocDtls": {
+    "Typ": "INV",
+    "No": "CTDN23456",
+    "Dt": "05/08/2020"
+  },
+  "SellerDtls": {
+    "Gstin": "37BZNPM9430M1KL",
+    "LglNm": "SRI LAKSHMI INDUSTRIAL PVT LTD",
+    "TrdNm": "SRI LAKSHMI INDUSTRIAL PVT LTD",
+    "Addr1": "#123 . NETHAJI STREET",
+    "Addr2": "GANDHI NAGAR",
+    "Loc": "KURNOOL",
+    "Pin": 518001,
+    "Stcd": "37",
+    "Ph": "9030457736",
+    "Em": "lakshmi123@gmail.com"
+  },
+  "BuyerDtls": {
+    "Gstin": "03BZNPM9430M1KL",
+    "LglNm": "VARSHA",
+    "TrdNm": "VARSHA",
+    "Pos": "03",
+    "Addr1": "NO 123",
+    "Addr2": "AMEERPET",
+    "Loc": "PUNJAB",
+    "Pin": 140118,
+    "Ph": "9066517875",
+    "Em": "varsha123@gmail.com",
+    "Stcd": "03"
+  },
+  "ItemList": [
+    {
+      "ItemNo": 1,
+      "SlNo": "1",
+      "IsServc": "N",
+      "PrdDesc": "ARTICLES FOR THE CONVEYANCE OR PACKING OF GOODS",
+      "HsnCd": "39231010",
+      "Qty": 150,
+      "FreeQty": 0,
+      "Unit": "BAG",
+      "UnitPrice": 100,
+      "TotAmt": 15000,
+      "Discount": 50,
+      "PreTaxVal": 0,
+      "AssAmt": 14950,
+      "GstRt": 5,
+      "IgstAmt": 747.5,
+      "CgstAmt": 0,
+      "SgstAmt": 0,
+      "CesRt": 5,
+      "CesAmt": 747.5,
+      "CesNonAdvlAmt": 0,
+      "StateCesRt": 0,
+      "StateCesAmt": 0,
+      "StateCesNonAdvlAmt": 0,
+      "OthChrg": 100,
+      "TotItemVal": 16545
+    }
+  ],
+  "ValDtls": {
+    "AssVal": 14950,
+    "CgstVal": 0,
+    "SgstVal": 0,
+    "IgstVal": 747.5,
+    "CesVal": 747.5,
+    "StCesVal": 0,
+    "Discount": 100,
+    "OthChrg": 200,
+    "RndOffAmt": 5,
+    "TotInvVal": 16650
+  }
+}

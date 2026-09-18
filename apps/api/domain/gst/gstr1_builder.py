@@ -33,7 +33,14 @@ class InvoiceLine:
     hsn_sac_code: str
     description: str
     quantity: float
-    unit: str
+    #: Optional deliberately. Two feeders used to substitute a unit for an
+    #: unrecorded one — `gst_return_service` "OTH" and `routers/gst` "NOS" —
+    #: which made `uqc.GAP_UQC_NOT_RECORDED` unreachable from either and, in
+    #: the second, asserted the goods were counted in NUMBERS. Table 12 still
+    #: files a code (see `_hsn_summary_and_gaps`); the substitution happens
+    #: where the row is built, once, beside the gap that says nobody recorded
+    #: one.
+    unit: Optional[str]
     rate_paise: int
     taxable_paise: int
     gst_rate: float    # e.g. 18.0
@@ -794,9 +801,23 @@ def _build_exp(invoices: list[InvoiceForGSTR1]) -> list[dict]:
 
 #: Table 13's cancelled count was not read — see `build_gstr1`.
 GAP_CANCELLED_NOT_READ = "cancelled_documents_not_read"
+#: A sentence about the RETURN rather than about any document — what a
+#: quarterly filer's payload cannot say about itself, say. `gst_return_service`
+#: used to emit these under the literal kind "REPORTED_NOT_WITHHELD", which is
+#: the name of the SET below and is not IN it, so `withheld_gaps` classified
+#: them as documents held out of the payload — the opposite of what the name
+#: they borrowed was reaching for.
+GAP_RETURN_CAVEAT = "return_caveat"
 
 #: A line whose HSN is shorter than the notification requires, or absent.
 GAP_HSN_DIGITS = "hsn_digits_below_requirement"
+#: A line whose HSN is not a code at all — it carries something other than
+#: digits. ITS OWN KIND, not a long `GAP_HSN_DIGITS`, because the two are
+#: different facts and a screen filtering on the kind would title this one
+#: "below requirement" when the code may be eight characters long and still
+#: refused. `uqc` makes the same split between an unrecorded unit and a wrong
+#: one, for the same reason.
+GAP_HSN_NOT_A_CODE = "hsn_is_not_a_code"
 #: The requirement rests on an aggregate turnover nobody has recorded.
 GAP_HSN_TURNOVER_NOT_RECORDED = "hsn_aggregate_turnover_not_recorded"
 
@@ -817,6 +838,8 @@ GAP_HSN_TURNOVER_NOT_RECORDED = "hsn_aggregate_turnover_not_recorded"
 #: added, silently, by passing.
 REPORTED_NOT_WITHHELD = frozenset({
     GAP_HSN_DIGITS,
+    GAP_HSN_NOT_A_CODE,
+    GAP_RETURN_CAVEAT,
     GAP_HSN_TURNOVER_NOT_RECORDED,
     GAP_CANCELLED_NOT_READ,
     uqc.GAP_UQC_NOT_RECORDED,
@@ -832,6 +855,27 @@ def withheld_gaps(gaps: Sequence[dict]) -> list[dict]:
     this answer correct with nothing to update.
     """
     return [g for g in gaps if g.get("kind") not in REPORTED_NOT_WITHHELD]
+
+
+def stamp_withheld(gaps: Sequence[dict]) -> list[dict]:
+    """Every gap, each saying which of the two kinds of gap it is.
+
+    THE DISTINCTION HAS TO CROSS THE WIRE OR THE SCREEN CANNOT MAKE IT.
+    `Gstr1Findings` heads the whole list "Not declared in this return", which
+    is true of a document held out and false of every member of
+    `REPORTED_NOT_WITHHELD` — whose own reasons say the opposite ("Table 12
+    files the code exactly as recorded"). A CA reading the heading believed a
+    line was missing from a return that carries it.
+
+    The alternative — shipping the SET to the browser and filtering there —
+    is a second copy of the vocabulary, which is the Schedule III caption
+    mistake. The server answers per gap and the screen renders what it is
+    told; an ABSENT key reads as withheld in the browser, which is exactly
+    today's rendering, so a frontend deployed ahead of a backend is unchanged
+    rather than wrong.
+    """
+    return [{**g, "withheld": g.get("kind") not in REPORTED_NOT_WITHHELD}
+            for g in gaps]
 
 
 #: Which categories count as B2B for the digit requirement. Derived from the
@@ -919,8 +963,14 @@ def _hsn_summary_and_gaps(invoices: Sequence[InvoiceForGSTR1],
                 # every shortfall except the complete absence.
                 problem = hsn_digits.problem_with(line.hsn_sac_code, requirement)
                 if problem is not None:
+                    raw_hsn = (line.hsn_sac_code or "").strip()
                     digit_gaps.append({
-                        "kind": GAP_HSN_DIGITS,
+                        # An ABSENT code is the notification's question and
+                        # takes the digits kind; a code that is PRESENT and is
+                        # not digits is the field's own rule and takes its own.
+                        "kind": (GAP_HSN_NOT_A_CODE
+                                 if raw_hsn and not hsn_digits.is_a_code(raw_hsn)
+                                 else GAP_HSN_DIGITS),
                         "reference_no": inv.reference_no,
                         "hsn_sc": (line.hsn_sac_code or "").strip(),
                         "reason": (
@@ -939,7 +989,17 @@ def _hsn_summary_and_gaps(invoices: Sequence[InvoiceForGSTR1],
                 if code not in by_hsn:
                     by_hsn[code] = {
                         "desc": line.description[:30],
-                        "uqc": line.unit,
+                        # THE SUBSTITUTION LIVES HERE, ONCE. Table 12's `uqc`
+                        # is a string in the schema, so an unrecorded unit has
+                        # to become something — and "OTH" (OTHERS) is CBIC's
+                        # own code for exactly that, which is what both feeders
+                        # were already filing. What moved is WHERE: doing it at
+                        # the feeder destroyed the fact that nobody recorded
+                        # one, so `uqc.GAP_UQC_NOT_RECORDED` could not be
+                        # reached from production at all and the CA was never
+                        # told. The raw unit travels on `units_seen` below, so
+                        # the gap walk still sees the absence.
+                        "uqc": uqc.normalise(line.unit) or "OTH",
                         "qty": 0.0,
                         "txval": 0,
                         "iamt": 0,
@@ -1016,6 +1076,19 @@ def _hsn_summary_and_gaps(invoices: Sequence[InvoiceForGSTR1],
         mixed = uqc.one_unit_for(u for _, u in seen)
         if mixed:
             refs = sorted({r for r, u in seen if uqc.normalise(u) in mixed})
+            # THE SENTENCE NAMES THE UNIT THE ROW ACTUALLY CARRIES, read off
+            # the row. It used to say "{mixed[0]} is reported because it was
+            # seen first", and `one_unit_for` returns them SORTED — so it named
+            # the alphabetically first unit while the row files the first one
+            # SEEN, and the two coincide only by luck. A sentence telling a CA
+            # which unit was filed has to be right about that, or they convert
+            # the quantities the wrong way.
+            filed = by_hsn[code]["uqc"]
+            filed_says = (
+                f"{filed} is reported, the unit on the first line seen for this "
+                f"HSN" if uqc.normalise(filed) in mixed else
+                f"and the first line seen for this HSN records no unit of its "
+                f"own, so {filed} is reported")
             uqc_gaps.append({
                 "kind": uqc.GAP_UQC_MIXED_FOR_ONE_HSN,
                 "reference_no": ", ".join(refs),
@@ -1025,7 +1098,7 @@ def _hsn_summary_and_gaps(invoices: Sequence[InvoiceForGSTR1],
                     f"period ({', '.join(mixed)}), and Table 12 carries ONE "
                     f"unit per HSN. The quantity below is their arithmetic "
                     f"sum, which is not a quantity of either — "
-                    f"{mixed[0]} is reported because it was seen first. "
+                    f"{filed_says}. "
                     f"Record one unit for this HSN, or convert the quantities "
                     f"to a common one, before filing."),
             })

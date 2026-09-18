@@ -21,12 +21,20 @@
  *      all — filing short is found out from the recipient, or from the annual
  *      return, months later. It is the only one of the three a CA cannot see
  *      any other way.
- *   2. ERRORS next, and separately from warnings. These are what the portal
+ *   2. FILED AS RECORDED next. The other kind of gap: the row IS in the
+ *      payload and something about it is being reported — the HSN digits, the
+ *      unit quantity code, a caveat about the return itself. These used to be
+ *      rendered under heading 1, which says the opposite of what their own
+ *      reasons say ("Table 12 files the code exactly as recorded"), so a CA
+ *      read them as documents missing from a return that carries them. The
+ *      server decides which group a gap is in (`PayloadGap.withheld`); this
+ *      component holds no list of kinds.
+ *   3. ERRORS next, and separately from warnings. These are what the portal
  *      REJECTS: folding them in with the warnings would make a rejection look
  *      like a judgement call.
- *   3. WARNINGS last.
+ *   4. WARNINGS last.
  *
- * It renders NOTHING when all three are empty. A "no problems found" banner
+ * It renders NOTHING when all of them are empty. A "no problems found" banner
  * would be a claim about checks this component does not run — the reconciliation
  * banner beside it is the one that speaks to whether the build agrees with the
  * ledger.
@@ -47,18 +55,45 @@ export interface Gstr1FindingsProps {
 export function Gstr1Findings({ errors, warnings, gaps, compact = false }: Gstr1FindingsProps) {
   if (!errors.length && !warnings.length && !gaps.length) return null;
   const block = compact ? "mt-3" : "mt-4";
+  // TWO KINDS OF GAP, AND THE SERVER SAYS WHICH. A gap is either a document
+  // the payload does not carry or a report about a row it does — the second
+  // kind's own reasons say "Table 12 files the code exactly as recorded",
+  // which the heading "Not declared in this return" contradicted. An absent
+  // `withheld` reads as withheld, so a backend that has not redeployed yet
+  // renders exactly as before.
+  const withheld = gaps.filter((g) => g.withheld !== false);
+  const reported = gaps.filter((g) => g.withheld === false);
   return (
     <>
-      {gaps.length > 0 && (
+      {withheld.length > 0 && (
         <div className={block}>
           <h4 className="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1">
             <AlertTriangle className="w-3.5 h-3.5" />
             Not declared in this return
           </h4>
           <ul className="space-y-1.5">
-            {gaps.map((g, i) => (
+            {withheld.map((g, i) => (
               <li key={i} className="text-xs text-red-700">
                 <span className="font-mono mr-1">[{g.reference_no}]</span>
+                <span className="font-medium mr-1">{g.kind}</span>
+                {g.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {reported.length > 0 && (
+        <div className={block}>
+          <h4 className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Filed as recorded — check before submitting
+          </h4>
+          <ul className="space-y-1.5">
+            {reported.map((g, i) => (
+              <li key={i} className="text-xs text-amber-700">
+                {g.reference_no && (
+                  <span className="font-mono mr-1">[{g.reference_no}]</span>
+                )}
                 <span className="font-medium mr-1">{g.kind}</span>
                 {g.reason}
               </li>

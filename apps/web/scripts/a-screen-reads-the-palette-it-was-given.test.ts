@@ -55,7 +55,7 @@ const TOKENISED = [
  *  Team screens converting took it to 10,152, and this is that figure. A budget
  *  set to a round number above the real one is a budget with slack in it, which
  *  is a ratchet that does not ratchet. */
-const ARBITRARY_COLOUR_BUDGET = 10152;
+const ARBITRARY_COLOUR_BUDGET = 10151;
 
 /** `text-[#0F172A]`, `hover:bg-[#F1F5F9]/50` — a colour inside a Tailwind class. */
 const ARBITRARY_COLOUR = /[a-z-]+-\[#[0-9A-Fa-f]{3,8}\]/g;
@@ -103,6 +103,73 @@ test("the rest of the app only ever holds fewer", () => {
     `${total} arbitrary colours, budget ${ARBITRARY_COLOUR_BUDGET}. Worst: ` +
     `${JSON.stringify(worst.slice(0, 5))}. Lower the budget when you convert a ` +
     `directory; raising it needs a reason.`);
+});
+
+test("a token a screen names actually exists", () => {
+  // FOUND WHILE CONVERTING A NEW PANEL, and it is the OTHER half of this
+  // guard's own rule. Reading the palette is only worth anything if the name
+  // read is a name the palette holds: Tailwind emits NOTHING for a class it
+  // does not know, silently, so `text-ps-state-problem` renders an error
+  // message in whatever colour it inherits and `bg-ps-accent text-white` is a
+  // white Save button on no background at all. Both were live.
+  //
+  // The mistake is one letter of structure: `state` and `money` are their own
+  // groups in tailwind.config.ts, NOT children of `ps`, so the right classes
+  // are `text-state-problem` and `text-money-in` — and there is no `ps-accent`
+  // at all, the brand primary being `brand`. Five files had it, including this
+  // very commit's own new panel, which is why the guard is the fix rather than
+  // the five edits.
+  //
+  // THE TOKEN LIST IS READ OFF THE CONFIG rather than restated here. A second
+  // copy of the vocabulary is the exact failure the whole file is about.
+  const config = fs.readFileSync(path.join(ROOT, "tailwind.config.ts"), "utf8");
+  const groups = ["ps", "state", "money", "brand", "gold"];
+  const known = new Set<string>();
+  for (const group of groups) {
+    // The group's object literal: `ps: { ... }` up to the closing brace at the
+    // same indent. Comments inside are ignored by the key pattern below.
+    const open = config.indexOf(`\n        ${group}: {`);
+    if (open === -1) { known.add(group); continue; }
+    const close = config.indexOf("\n        },", open);
+    const body = config.slice(open, close === -1 ? undefined : close);
+    known.add(group);                                    // `bg-brand`, bare
+    for (const m of body.matchAll(/^\s*"?([a-z][a-z0-9-]*)"?:\s*"/gm)) {
+      known.add(m[1] === "DEFAULT" ? group : `${group}-${m[1]}`);
+    }
+  }
+  // A vacuity floor: if the config parse silently found nothing, the scan
+  // below would pass on every file.
+  assert.ok(known.size >= 25, `only ${known.size} tokens parsed from the config`);
+
+  const USED = new RegExp(
+    `\\b(?:hover:|focus:|active:|group-hover:|disabled:|dark:)*` +
+    `(?:text|bg|border|ring|fill|stroke|from|via|to|decoration|outline|divide|placeholder|accent|caret|shadow)-` +
+    `(${groups.join("|")})-([a-z0-9-]+)`, "g");
+
+  const offenders: string[] = [];
+  for (const file of walk(path.join(ROOT, "app")).concat(walk(path.join(ROOT, "components")))) {
+    const src = fs.readFileSync(file, "utf8");
+    for (const m of src.matchAll(USED)) {
+      const token = `${m[1]}-${m[2]}`;
+      // Tailwind opacity (`text-ps-ink/70`) and the arbitrary-value form are
+      // handled by the character class, which stops at `/` and `[`.
+      if (!known.has(token)) offenders.push(`${path.relative(ROOT, file)}: ${token}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    "These classes name a colour token that tailwind.config.ts does not define, " +
+    "so Tailwind emits nothing and the element renders in whatever it inherits. " +
+    "`state` and `money` are top-level groups, not children of `ps`; the brand " +
+    "primary is `brand`.");
+});
+
+test("the token-exists guard is not vacuous", () => {
+  // The negative control, inline: a class the config certainly does not hold
+  // must be caught by the same parse the test above uses.
+  const config = fs.readFileSync(path.join(ROOT, "tailwind.config.ts"), "utf8");
+  assert.ok(!/\n\s+"?accent"?:\s*"/.test(
+    config.slice(config.indexOf("\n        ps: {"), config.indexOf("\n        },", config.indexOf("\n        ps: {")))),
+    "`ps.accent` now exists — the guard above needs revisiting, not this one deleting.");
 });
 
 test("the token set can express what a screen needs", () => {

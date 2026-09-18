@@ -20,6 +20,7 @@ import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { useToast } from "@/components/ui/use-toast";
 import { Skeleton, DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { ExpiringEwayBills } from "@/components/gst/ExpiringEwayBills";
 
 // ─── Type filter mapping ───────────────────────────────────────────────────
 // URL param → compliance_type predicate. TDS and MCA use prefix matching because
@@ -427,6 +428,15 @@ function DeadlinesContent() {
           </CardContent>
         </Card>
       )}
+
+      {/* E-WAY BILLS EXPIRING (SALES-28) — deliberately ABOVE the table and
+          deliberately NOT a row in it. The table holds ComplianceEntry rows,
+          each with a filing status and a Mark Filed action; nothing is FILED
+          for an e-way bill, and the action is to extend it on the NIC portal
+          under the proviso to Rule 138(10). Folding it in would mean inventing
+          a compliance_type and offering a button that means nothing. It
+          renders nothing at all when no bill is near its expiry. */}
+      <ExpiringEwayBills />
 
       {/* Registry table — shared DataTable (search, sort, filters, pagination, export, prefs).
           `key` includes urlType so switching type views resets the ephemeral table state. */}

@@ -241,7 +241,7 @@ export default function Section32Page() {
               </div>
             </div>
             {answer.additional_depreciation.gaps.map((g, i) => (
-              <p key={`g${i}`} className="text-xs text-state-attention-ink">⚠ {g}</p>
+              <p key={`g${i}`} className="text-xs text-state-attention">⚠ {g}</p>
             ))}
             {answer.additional_depreciation.caveats.map((c, i) => (
               <p key={`c${i}`} className="text-[11px] text-ps-hint">{c}</p>

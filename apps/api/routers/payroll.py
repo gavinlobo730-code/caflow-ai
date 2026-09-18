@@ -1064,6 +1064,7 @@ def _declaration_from_rows(head: dict, item_rows: list) -> "decl_domain.Declarat
             amount_verified_paise=int(r.get("amount_verified_paise") or 0),
             status=r.get("status") or decl_domain.ITEM_DECLARED,
             proof_reference=r.get("proof_reference") or "",
+            proof_attachments=r.get("proof_attachments") or [],
         ))
     return d
 
@@ -6149,6 +6150,7 @@ def upsert_declaration(
             label=it.label or "",
             amount_declared_paise=max(0, it.amount_declared_paise),
             proof_reference=it.proof_reference or "",
+            proof_attachments=it.proof_attachments or [],
         ))
 
     problems = decl_domain.validate(candidate)
@@ -6225,6 +6227,10 @@ def upsert_declaration(
             "amount_verified_paise": 0,
             "status": decl_domain.ITEM_DECLARED,
             "proof_reference": i.proof_reference,
+            # Already parsed and normalised by DeclarationItemIn — what is
+            # stored is the shape `domain/attachments` produced, never what
+            # the caller sent.
+            "proof_attachments": i.proof_attachments or [],
         }).execute()
 
     timeline_service.log(
@@ -6360,11 +6366,20 @@ def verify_declaration(
                 detail=f"{it.section}: ₹{verified / 100:,.2f} verified against "
                        f"₹{declared / 100:,.2f} declared. A proof can support less "
                        f"than was claimed, never more — raise the declaration first.")
-        db.table("payroll_it_declaration_items").update({
+        # Spelled out rather than assembled so the column check can read it.
+        # `proof_attachments` is omitted entirely when the request did not send
+        # it: None means UNCHANGED and an empty list REMOVES, so writing
+        # `or []` here would wipe an employee's uploads every time a CA saved
+        # a verified amount without re-sending them.
+        patch = {
             "amount_verified_paise": max(0, verified),
             "status": it.status or decl_domain.ITEM_VERIFIED,
             "proof_reference": it.proof_reference or row.get("proof_reference") or "",
-        }).eq("id", row["id"]).execute()
+        }
+        if it.proof_attachments is not None:
+            patch["proof_attachments"] = it.proof_attachments
+        db.table("payroll_it_declaration_items").update(
+            patch).eq("id", row["id"]).execute()
 
     # Spelled out rather than assembled, so the column check can read it.
     db.table("payroll_it_declarations").update({

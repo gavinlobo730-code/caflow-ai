@@ -26,6 +26,7 @@ import { StockCountSheetPanel } from "@/components/inventory/StockCountSheet";
 import { CostFormulaPanel } from "@/components/inventory/CostFormulaPanel";
 import { LocationsAndBatches } from "@/components/inventory/LocationsAndBatches";
 import { StockAgeingPanel } from "@/components/inventory/StockAgeing";
+import { ReorderPanel } from "@/components/inventory/ReorderPanel";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 interface StockItem {
@@ -432,6 +433,15 @@ export default function InventoryPage() {
             the register's own, so the three agree. */}
         <div className="mb-4">
           <StockAgeingPanel clientId={clientId} asOf={asAt || todayLocalISO()} />
+        </div>
+
+        {/* INV-03 — what to buy. Beneath the ageing because the order of the
+            three questions is "what do I hold", "how old is it", "what is
+            short": the first two describe the register and this one is the
+            only one that asks for an action. Renders nothing when the client
+            keeps no goods. */}
+        <div className="mb-4">
+          <ReorderPanel clientId={clientId} asOf={asAt || todayLocalISO()} />
         </div>
         <DataTable
           data={items}

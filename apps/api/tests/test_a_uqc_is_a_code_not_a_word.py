@@ -39,9 +39,24 @@ WEB = REPO / "apps" / "web"
 
 # ── the authority ────────────────────────────────────────────────────────────
 
-def test_the_list_is_the_forty_four_codes_and_the_set_matches_it():
-    assert len(uqc.UQC_CODES) == 44
-    assert len(uqc.VALID_UQC_CODES) == 44, "a duplicated code would shrink the set"
+def test_the_list_is_the_forty_five_codes_and_the_set_matches_it():
+    """44 -> 45 on 18-09-2026: LTR (LITRES) was missing.
+
+    The list here was transcribed from CBIC's published set and dropped one
+    code between KME and MLT. It was found by diffing against NIC's own Master
+    Codes on the e-invoice portal, which is the first time this list has been
+    compared with a primary source rather than reviewed for plausibility — and
+    45 codes all of which look right is exactly what an omission looks like.
+
+    It cost a FALSE gap rather than a wrong figure, which is why nothing caught
+    it: Table 12 reported "LTR is not a UQC" on every line of every dairy,
+    paint, chemical, oil and beverage client. The dangerous part is the
+    SUGGESTION — `closest_code` offered MLT, a thousand times smaller — so a CA
+    who took the advice would have declared a quantity three orders of
+    magnitude out on a return."""
+    assert len(uqc.UQC_CODES) == 45
+    assert ("LTR", "LITRES") in uqc.UQC_CODES
+    assert len(uqc.VALID_UQC_CODES) == 45, "a duplicated code would shrink the set"
     assert all(c == c.strip().upper() for c, _ in uqc.UQC_CODES)
 
 
@@ -83,7 +98,7 @@ def test_a_unit_with_no_plausible_code_is_refused_WITHOUT_a_guess():
 
 
 def test_an_EXACT_label_beats_a_prefix_match(monkeypatch):
-    """The two loops in `closest_code` do not disagree on TODAY's 44 codes —
+    """The two loops in `closest_code` do not disagree on TODAY's 45 codes —
     every exact label is also caught by the prefix pass — so deleting the
     exact one passes every other test here. It is kept because it is the loop
     that stays right when the list changes, and this pins that property
@@ -313,8 +328,8 @@ def test_the_browser_list_is_the_SAME_list_in_the_same_order():
     """
     ts = (WEB / "lib" / "constants" / "uqc.ts").read_text()
     pairs = re.findall(r'\{\s*code:\s*"([A-Z]+)"\s*,\s*label:\s*"([^"]+)"\s*\}', ts)
-    assert len(pairs) == 44, (
-        f"parsed {len(pairs)} codes out of the browser list, expected 44 — "
+    assert len(pairs) == 45, (
+        f"parsed {len(pairs)} codes out of the browser list, expected 45 — "
         f"a parse that silently finds none would make this test vacuous")
     assert [tuple(p) for p in pairs] == uqc.UQC_CODES, (
         "apps/web/lib/constants/uqc.ts has drifted from domain/gst/uqc.py. "

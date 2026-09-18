@@ -1777,39 +1777,87 @@ change. The code is the authority; keep this file in step with it.
   availed **AND UTILISED** (Rule 88B(3)), never the availed figure — credit
   availed and never utilised bears nothing, so the substitution would charge a
   taxpayer who owes nothing. That refusal STANDS and is not about a rate.
-  **ITS RATE IS 18%, `[S]`-GRADED, AND WAS REFUSED TWICE BEFORE THAT.** The
-  module first stated 24% (what 13/2017-CT notified against the ORIGINAL
-  sub-section), then refused entirely, because the Finance Act 2022 substituted
-  §50(3) retrospectively from 01-07-2017 — a THIRD of the charge apart on money
-  a CA pays over, where over-stating takes it from somebody who does not owe
-  it. The mechanism is **s.111** (the substitution), **s.116 with the Sixth
-  Schedule** (the rate, 24% → 18%) and **Notification 9/2022-CT, 05-07-2022**
-  (commencement) — which corrects an earlier note here that had 9/2022 itself
-  notifying the figure. The refusal is lifted because the DIRECTION of the
-  doubt is what justified it and nothing now argues for 24%; a refusal is not
-  free either, since a CA who gets no figure computes one by hand.
-  `SECTION_50_3_RATE_VERIFIED` stays False, the source travels on every charge
-  as a caveat, the Act's 24% CEILING stays recorded as the ceiling it is, and
-  the constant stays `Optional` so a later reader can withdraw it back to a
-  refusal — which a test exercises, so the branch cannot rot.
-  **THE §47 LATE FEE IS COMPUTED FROM FY 2021-22 AND REFUSED BEFORE IT.**
-  Notifications **19/2021-CT** (GSTR-3B) and **20/2021-CT** (GSTR-1), 43rd
-  Council: **₹50 a day** (₹25 + ₹25), **₹20** for a nil return capped at
-  **₹500**, and the cap banded by aggregate turnover — **₹2,000** to ₹1.5
-  crore, **₹5,000** to ₹5 crore, **₹10,000** above. `[S]` throughout,
-  `verified=False`, each figure pinned exactly. **THE CAP IS BANDED AND THE
-  PER-DAY RATE IS NOT**, which is why this is not one number; an unrecorded
-  turnover takes the LOWEST cap and the answer SAYS it assumed, because the
-  PORTAL computes the fee at filing so an understatement is corrected there
-  while an overstatement tells a CA to budget for money nobody owes.
-  `_late_fee_turnover` resolves it through the same
-  `client_gst_turnover_service.turnover_governing_period` hop the HSN digits
-  use — NOT `highest_turnover_within_rule_48_4`, which is a ratchet because
-  Rule 48(4) reads "any preceding financial year" while 19/2021 reads on the
-  preceding year alone. **An earlier year and GSTR-9 still REFUSE**: 4/2018 and
-  76/2018 carry different caps and no bands, and §47(2)'s annual fee is a
-  different figure. The statutory ₹200 a day stays recorded and is still
-  deliberately NOT a fallback. Two conventions
+  **ITS RATE IS 24%, READ OFF THE PRIMARY DOCUMENTS, AND WAS WRONG HERE THREE
+  TIMES BEFORE THAT.** The module stated 24% (13/2017-CT against the ORIGINAL
+  sub-section), then refused entirely because the Finance Act 2022 substituted
+  §50(3) retrospectively from 01-07-2017, then stated **18%** on several
+  independent secondary sources that agreed with each other and with a chain
+  reading s.111 → s.116 with the Sixth Schedule → Notification 9/2022-CT.
+  **THE SECOND AND THIRD LINKS OF THAT CHAIN ARE FALSE**, and all three
+  documents were read on 18-09-2026: FA 2022 **s.111** (Gazette p.65)
+  substitutes §50(3) and **DELEGATES** the rate — "at such rate **not
+  exceeding twenty-four per cent. as may be notified**" — fixing no figure, so
+  there is no 18% in the Act at all; **Notification 9/2022-CT** appoints
+  05-07-2022 for "clause (c) of section 110 and **section 111**" alone, never
+  reaching s.116, carrying no Schedule and stating no percentage; and
+  **Notification 13/2017-CT**, made under sub-sections (1) **and (3)** of
+  section 50, fixes §50(1) at 18% and **§50(3) at 24%**, with CBIC's own
+  amendment history recording four amendments (31/2020, 51/2020, 08/2021,
+  18/2021 — all COVID-period concessions) and **nothing after July 2022**. So
+  the delegation was never exercised again; the substitution takes effect from
+  the very date 13/2017 came into force, so no window exists in which the
+  notification lacked a parent provision, and General Clauses Act s.24 carries
+  it forward. **THE CEILING AND THE RATE ARE THEREFORE THE SAME NUMBER**, and
+  the test asserting they must DIFFER — "collapsing them is how the module got
+  it wrong the first time" — was an invariant inferred from a bug rather than
+  from the sub-section; it now asserts the equality and says why. **THE ERROR
+  RAN THE UNSAFE WAY**: 18% UNDER-states the charge by a quarter, so the engine
+  was telling a CA their client owed less than they do on credit wrongly
+  availed and utilised, leaving a residual demand with the clock still running
+  — the original refusal reasoned about the right risk and misjudged which
+  direction it lay in. `SECTION_50_3_RATE_VERIFIED` is now **True**, which is a
+  claim about **PROVENANCE** (a primary document was read) and not about
+  confidence — the first constant in the module for which that holds. The
+  constant stays `Optional` so a later notification can move it or a later
+  reader withdraw it to a refusal, and a test exercises that branch. ⚠️ The
+  2020/2021 concessional notifications are still **not held**, so a tax period
+  they covered is charged at 24% and the caveat on every charge says so.
+  **THE §47 LATE FEE IS NOW COMPUTED FOR EVERY PERIOD THE CHARGE HAS EXISTED,
+  AND §47(2) IS A DIFFERENT SUB-SECTION WITH A DIFFERENT SHAPE.** Four
+  notifications were read on 18-09-2026 and are committed under
+  `docs/compliance/sources/gst-notifications/`. **THE PER-DAY RATE HAS NEVER
+  MOVED** — 4/2018 (GSTR-1) and 76/2018 (GSTR-3B) both waive above ₹25 a day
+  central tax and ₹10 for a nil return, exactly what 19/2021 and 20/2021 kept;
+  what 2021 ADDED was the turnover-banded ceiling (**₹2,000** to ₹1.5 crore,
+  **₹5,000** to ₹5 crore, **₹10,000** above) and the **₹500** nil cap. So the
+  fork is entirely in the CAP, and FY 2017-18 to 2020-21 take §47(1)'s own
+  ₹5,000 under each Act because neither 2018 notification sets one.
+  **A LADDER WITH ONE BAND ASSUMES NOTHING**: `turnover_band_assumed` is gated
+  on `len(turnover_caps) > 1`, because flagging it on a 2019 answer would
+  attach a caveat naming ₹1.5 crore and ₹5 crore thresholds that did not exist
+  that year — a sentence about the wrong notification on a figure that is
+  exactly right.
+  ⚠️ **APRIL AND MAY 2021 ARE INSIDE FY 2021-22 AND OUTSIDE 19/2021 AND
+  20/2021**, which run from the tax period JUNE 2021. The table is keyed on a
+  financial year, so those two months are the one place the key is coarser than
+  the notification. `late_fee` takes an optional `tax_period_start` and resolves
+  them exactly; a caller who omits it gets the banded cap and a caveat NAMING
+  the two months. The direction is deliberate — the banded cap is the SMALLER
+  for every taxpayer below ₹5 crore, so the assumption understates.
+  **§47(2)'s ANNUAL fee is `_annual_late_fee` and could not have been a fourth
+  row of that table**, because its ceiling is a **PERCENTAGE** and not a figure.
+  Notification 7/2023-CT, FY 2022-23 onwards: **₹50 a day** to ₹5 crore of
+  aggregate turnover and **₹100 a day** to ₹20 crore, each capped at **0.04%**
+  of turnover in the State; above ₹20 crore the notification gives no reduction
+  and §47(2)'s own ₹200 a day capped at 0.5% applies — written as the ladder's
+  third BAND rather than as a fallback, so a rate resolved by walking a table
+  cannot silently find nothing. **THE CAP NEEDS A DIFFERENT TURNOVER FROM THE
+  BAND**: the band is CGST §2(6) aggregate turnover, PAN-level and all-India,
+  which `client_gst_turnover` (migration 401) holds; the cap is "turnover in the
+  STATE or Union territory", which nothing here holds and which differs per
+  registration. So `cap_gap` names it and the answer is the **UNCAPPED**
+  accrual — the one figure in this module that errs HIGH, and it says so,
+  because the alternative is no figure at all and a CA told what is missing
+  knows both their maximum and what to record. The **amnesty proviso** (FY
+  2017-18 to 2021-22 furnished 1 Apr – 30 Jun 2023, capped ₹20,000) is asked
+  FIRST because it REPLACES the bands and needs no turnover at all; that window
+  has closed, so the branch can only describe a return already on the record.
+  **GSTR-9 Table 19 stays unbuilt** and its sentence now names the half that
+  cannot be answered: what is PAYABLE is computed, what is PAID is a fact about
+  a challan this product does not record, and a return declaring the fee paid
+  when it has not been is a false declaration rather than a rounding. An unknown
+  return type — GSTR-4, GSTR-7, GSTR-8, CMP-08 — is still REFUSED.
+  Two conventions
   are stated rather than assumed: **DAYS, not months** (due 20 July, paid 21
   July is one day — NOT the §201(1A) "month or part of a month" arithmetic,
   which would be thirty times wrong here), and **rounded UP**, because interest
@@ -1928,6 +1976,27 @@ change. The code is the authority; keep this file in step with it.
   with no HSN is exactly what the requirement is about and is the line Table 12
   drops, so checking after the skip would report every shortfall except the
   complete absence.
+  **AND THE COUNT WAS A CHARACTER COUNT.** `problem_with` answered `len(clean)`
+  to a question about DIGITS with no numeric test anywhere in the module, so
+  `'SAC998'` satisfied a six-digit requirement and `'ABCD'` a four-digit one —
+  the gap list was silent about exactly the codes the portal refuses.
+  `hsn_digits.is_a_code` is the rule, from two primary sources now committed
+  under `docs/compliance/sources/e-invoice/`: the IRP states the field's own
+  expression as `HSN_Code ^[0-9]*$` and refuses anything else as error
+  **2176**. **The regex, never `str.isdigit`** — Python calls `'²'` and the
+  fullwidth digits digits and `^[0-9]*$` does not. **ASKED FIRST AND ASKED
+  WHATEVER THE REQUIREMENT IS**: first because a code that is not a number
+  cannot be counted (and once past it, `len` IS the digit count, which is why
+  nothing counts them a second way), and unconditionally because a nil
+  requirement makes the code OPTIONAL and does not make a wrong one
+  acceptable — Table 12 files what is recorded, so a junk code on a B2C line
+  still comes back as 2176. An ABSENT code under a nil requirement is what the
+  notification permits and is the one thing that stays silent.
+  **`GAP_HSN_NOT_A_CODE` is its own kind**, not a long `GAP_HSN_DIGITS`,
+  because a screen filtering on the kind would title an eight-character
+  non-code "below requirement". Nothing refuses at the API DOOR, the `uqc`
+  carve-out: a line may carry a code typed before there was anything to check
+  it, and a 422 there makes the row un-editable for any unrelated change.
   **THE SPLIT IS PER SUPPLY, NOT PER RETURN** — resolved inside the loop from
   the invoice's own category against `classifier.B2B_SECTION_CATEGORIES`
   (derived, not listed, because B2C is the side where the requirement falls
@@ -2030,6 +2099,30 @@ change. The code is the authority; keep this file in step with it.
   aggregation left alone, the `interest_on_rule_37_reversal` discipline: state
   the open question rather than answer it from memory. The real fix is the
   CA's anyway, since one HSN should have one unit.
+  **AND NO FEEDER MAY INVENT A UNIT.** `GAP_UQC_NOT_RECORDED` was written,
+  tested and UNREACHABLE from production: `gst_return_service` passed
+  `r.get("unit") or "OTH"` and `routers/gst` `or "NOS"`, both valid codes, so
+  an unrecorded unit arrived at the builder indistinguishable from a recorded
+  one — and "NOS" is the worse invention, asserting the goods were counted in
+  NUMBERS. Table 12's `uqc` is a string in the schema so something must be
+  filed, and `OTH` (OTHERS) still is; what MOVED is where, to the one place
+  the row is built, beside the gap naming the absence. The FILED value is
+  unchanged. **And the mixed-unit sentence named the wrong unit**:
+  `one_unit_for` returns them SORTED and the sentence interpolated `mixed[0]`
+  while the row files the first unit SEEN, so it told the CA which unit was
+  filed and was right only by coincidence — the fixture that pinned it built
+  the two units in alphabetical order.
+  **A GAP HAS TWO KINDS AND THE SERVER SAYS WHICH.** `REPORTED_NOT_WITHHELD`
+  has been the builder's vocabulary since GST-18 and nothing carried it across
+  the wire, so `Gstr1Findings` headed the whole list "Not declared in this
+  return" — which the reported kinds' own reasons contradict ("Table 12 files
+  the code exactly as recorded"). `stamp_withheld` answers per gap and the
+  panel renders two groups; the browser keeps NO list of kinds, the Schedule
+  III caption lesson, and an ABSENT `withheld` reads as withheld so a frontend
+  ahead of its backend renders exactly as before. `gst_return_service`'s two
+  quarterly caveats used to carry the literal kind `"REPORTED_NOT_WITHHELD"` —
+  the NAME of the set, which is not a member of it, so `withheld_gaps`
+  classified them as documents held out; they carry `GAP_RETURN_CAVEAT` now.
   **ALL SIX DOORS ASK THE AUTHORITY** — `ServiceCatalogueIn`/`UpdateIn`,
   `InvoiceLineIn`, `PurchaseBillLineIn`, `FirmHsnLibraryIn`/`UpdateIn` — and
   the last pair had **no validator at all**, which mattered most because
@@ -2133,6 +2226,30 @@ change. The code is the authority; keep this file in step with it.
   FORM 12BB statement is the evidence, and prescribes exactly four claims —
   §10(13A), §10(5), §24(b) and Chapter VI-A. `domain/payroll/declarations.py`
   keeps them apart; nothing sets one from another.
+- **A DECLARED DEDUCTION HAS A DOCUMENT BEHIND IT, NOT A SENTENCE ABOUT ONE**
+  (PAY-26, migration 410). `payroll_it_declaration_items.proof_reference` has
+  been a bare TEXT column since migration 296 — somebody types "LIC receipt
+  12345" and nothing holds the receipt — so the verifier set
+  `amount_verified_paise` against a memory of a document, on the very decision
+  §192(1) makes the EMPLOYER answerable for. Rule 26C's Form 12BB is a statement
+  of particulars *with* evidence; the evidence half did not exist.
+  **ONE ATTACHMENT RULE AND IT IS NOT NEW**: `domain/attachments`, the same
+  authority manual journals (138) and bank transactions (259) use, with the same
+  CHECK. Its two decisions carry over and both matter more here — the scheme
+  vocabulary is CLOSED to http/https because an employee's own portal upload is
+  precisely an untrusted uploader and a stored `javascript:` or `data:` URL is
+  script execution in the app's origin the moment the CA clicks the "receipt";
+  and an UPLOADED document stores the document id with NO url, because the
+  firm's store hands back a signed url that expires in an hour and would be a
+  dead link by the time an assessing officer asked.
+  **`None` MEANS UNCHANGED AND `[]` REMOVES**, so the field defaults to `None` on
+  a model that is the CREATE door and the VERIFY door both, and the verify path
+  omits the column entirely when the request did not send it — an `or []` there
+  wipes an employee's uploads every time a CA saves a verified amount.
+  **`proof_reference` IS KEPT AND IS NOT REPLACED**: it is the employee's own
+  words about a proof that may only exist on paper, and making it a caption for
+  the attachment would make a row with paper evidence look empty.
+
 - **A §192 PROJECTION IS THE RUN'S OWN FIGURE.**
   `GET /api/payroll/tds-projection` answers off `_compute_slip` — the same
   function the payroll run pays from — so what the screen projects for November
@@ -3207,6 +3324,73 @@ worth what it was worth before it was carried across the yard, and the two rows
 carry equal and opposite value. **The value moved is the SOURCE godown's own**,
 not the item's blended average, or the per-godown position drifts from the total
 it must sum to.
+
+**AN ITEM IS STOCKED IN ONE UNIT, TRANSACTED IN ANOTHER, AND REORDERED AT A
+LEVEL SOMEBODY CHOSE** (INV-03's other two conveniences and INV-09 part 3 — each
+finding deferred the alternate unit to the other, so neither built it; migration
+409). A wholesaler buys cement in tonnes and sells it in bags; a stationer buys
+pens in boxes of twelve and sells them singly. One `unit` meant the CA re-typed
+a converted quantity onto every line or kept two catalogue rows for one physical
+item, at which point the on-hand figure is split across two rows and ties to
+nothing. `domain/inventory/units.py` is the rule and `domain/inventory/reorder.py`
+the report.
+**THE LEDGER NEVER LEARNS A SECOND UNIT EXISTS.** `inventory_stock_ledger` holds
+`quantity_delta` and `stock_position_as_at` sums the deltas, so a movement
+recorded in either unit would add boxes to pieces. The conversion happens at the
+DOOR and nothing stores a quantity in the alternate unit — a test asserts
+`record_stock_out`, the position reader and the costing module never mention it,
+the same discipline migration 398 took about a batch, because a column that
+COULD change what is stored is the one that eventually does. `to_alternate`
+exists for DISPLAY and is recomputed on every read (migration 278's reasoning
+applied to a quantity).
+**THE CONVERSION REFUSES WHERE THREE DECIMALS CANNOT HOLD IT.** Every quantity
+column is `NUMERIC(10,3)`, so truncating understates what moved and leaves stock
+on the books that has gone, while rounding up writes off stock that is there —
+`quantity_violation`'s own argument, and neither direction is safe.
+**`units_per_alternate` IS NAMED FOR ITS DIRECTION**: `conversion_factor` does
+not say which way it points, and a factor applied upside down is a 144× error on
+a box of twelve that still looks like a plausible quantity. Both or neither,
+CHECKed; the alternate must be a real UQC and must differ from the primary —
+REFUSED where `unit` only normalises, because that carve-out exists for rows
+predating the dropdown and a column added by 409 has none.
+**AN ABSENT REORDER LEVEL IS ITS OWN STATE AND IS NEVER ZERO.** Zero is a real
+answer — "tell me when it runs out" — so reading NULL as zero records a decision
+nobody made and parks every item in the "above" bucket for ever. At the level
+counts as needing a reorder (a strict `<` holds the order until the item is
+already short), and the on-hand figure is the LEDGER's, never the cached
+`stock_qty_units` migration 188 documents as a cache: a purchasing prompt off a
+drifted one says there is stock there is not.
+**THE ITEM GROUP NEEDED NO COLUMN.** `service_catalogue.category` has been free
+text since migration 180 and NOTHING ever grouped by it — the `capital_wip`
+shape a third time. Two spellings fold to one group, the first spelling is the
+label, and an unrecorded group is its own row rather than dropped. Nothing
+statutory turns on any of it.
+
+**A LIVE E-WAY BILL SAYS WHEN IT LAPSES, AND THAT IS NOT A COMPLIANCE ROW**
+(SALES-28's other half). `eway_validity` has computed Rule 138(10)'s answer
+since SALES-28's first half and `/records/{id}/validity` served it — to somebody
+who had already opened that one record. A bill that lapses while the lorry is
+moving exposes the consignment to detention and seizure under CGST §129, and the
+extension path (the proviso to Rule 138(10)) existed the whole time with nothing
+to prompt it. `domain/gst/eway_expiry.py` is the rule and
+`GET /api/eway-bill/expiring` serves it FIRM-WIDE through `effective_client_ids`
+— None means firm-wide and an EMPTY set means nothing, never "no filter".
+**NOTHING IS FILED FOR AN E-WAY BILL**, so it is its own panel above the
+deadlines table rather than a `ComplianceEntry` in it: that shape carries a
+`filing_status` and a Mark Filed action, and folding this in would mean
+inventing a `compliance_type` and offering a button that means nothing. The same
+reasoning that keeps the filing demo off the deadline list.
+**THE RECORDED DATE WINS AND THE ANSWER SAYS WHICH IT USED** — NIC may know what
+this cannot, a leg by ship or an extension already granted — and a computed date
+is used only where the record carries none.
+**MIDNIGHT, NOT A ROLLING DAY**: the Explanation to Rule 138(10) expires a day at
+midnight, so a bill valid upto the 20th is good all of the 20th and
+`expires_today` is its OWN bucket — the one a naive `<` reads as fine, and the
+last chance to extend. A bill whose expiry cannot be told at all is LISTED as
+undeterminable rather than dropped, the `table_4a_gaps` discipline. **The IRP and
+EWB JSON payloads stay REFUSED with GST-32**, for the same document: a wrong
+field NAME fails visibly at the portal, a misremembered field MEANING generates a
+real document with wrong figures.
 
 **A PHYSICAL STOCK COUNT IS ONE SESSION, AND THE VARIANCE IS A FACT ABOUT THE
 COUNT DATE** (INV-08, migration 387). Adjustment was one item per API call and

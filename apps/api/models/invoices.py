@@ -76,6 +76,19 @@ def _validate_quantity(v: float) -> float:
     return v
 
 
+def _validate_gst_rate_percent(v: float) -> float:
+    """Bounded, not enumerated — `domain/gst/rate_bounds` carries the reasoning
+    and the wording, and every line model delegates to it rather than each
+    keeping a rule (SALES-35). A list of allowed slabs here would be the
+    central rate table CLAUDE.md says not to build, and would refuse a rate a
+    Council notification adds."""
+    from domain.gst.rate_bounds import rate_percent_violation
+    problem = rate_percent_violation(v)
+    if problem:
+        raise ValueError(problem)
+    return v
+
+
 class InvoiceLineIn(BaseModel):
     """Single line on a sales invoice or purchase bill."""
     description: str
@@ -89,6 +102,11 @@ class InvoiceLineIn(BaseModel):
     unit: Optional[str] = None
     rate_paise: int
     gst_rate_percent: float = 18.0
+
+    @field_validator("gst_rate_percent")
+    @classmethod
+    def _gst_rate_is_a_rate(cls, v: float) -> float:
+        return _validate_gst_rate_percent(v)
     is_service: bool = False
     # Which service_catalogue preset (if any) this line was picked from —
     # pure traceability for the Products & Services delete-guard (real
@@ -453,6 +471,11 @@ class PurchaseBillLineIn(BaseModel):
     unit: Optional[str] = None
     rate_paise: int
     gst_rate_percent: float = 18.0
+
+    @field_validator("gst_rate_percent")
+    @classmethod
+    def _gst_rate_is_a_rate(cls, v: float) -> float:
+        return _validate_gst_rate_percent(v)
     is_service: bool = False
     tds_applicable: bool = False
     expense_account_id: Optional[str] = None   # per-line expense classification (H10)

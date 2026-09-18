@@ -1,0 +1,11 @@
+{
+  "SellerGstin": "37BZNPM9430M1KL",
+  "BuyerGstin": "03BZNPM9430M1KL",
+  "DocNo": "CTDN23456",
+  "DocTyp": "INV",
+  "DocDt": "05/08/2020",
+  "TotInvVal": 16650,
+  "ItemCnt": 1,
+  "MainHsnCode": "39231010",
+  "Irn": "afdcc32a0eaa3a054cffcd251884d3e3f4f726b75c8943e7d35fbabc82f05d8a"
+}

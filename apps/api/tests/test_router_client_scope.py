@@ -638,7 +638,14 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # get_eway_bill lookup (domain/income_tax/eway_service.py) + router-level
     # _assert_ewb_scope resolver (can_access_client, one fixed "E-Way Bill
     # record not found" message) closes the row-addressed gap.
-    "/api/eway-bill": ("assert_client_access", "_assert_ewb_scope"),
+    # `effective_client_ids` joins the two row-addressed guards for
+    # GET /expiring (SALES-28), which is FIRM-WIDE by nature — the deadlines
+    # screen shows every client's expiring e-way bills at once, so there is no
+    # client_id to assert and the caller's assigned book is the scope. Exactly
+    # the ACC-17 convention the reporting endpoints use: None means firm-wide
+    # and an EMPTY set means nothing, never "no filter".
+    "/api/eway-bill": ("assert_client_access", "_assert_ewb_scope",
+                       "effective_client_ids"),
     # inventory.py — stock register, per-item ledger, manual adjustment and
     # NRV write-down for kind='good' catalogue items (migration 188).
     # service_catalogue.client_id is NOT NULL (migration 182, service_
@@ -1769,7 +1776,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/identity": 13, "/api/tally-migration": 7, "/api/reports": 2,
               "/api/accounting": 21, "/api/approvals": 7, "/api/xbrl": 7,
               "/api/income-tax": 11, "/api/compliance": 12,
-              "/api/ai-insights": 6, "/api/eway-bill": 5, "/api/inventory": 4,
+              "/api/ai-insights": 6, "/api/eway-bill": 6, "/api/inventory": 6,
               "/api/public/engagement-letters": 3,
               "/api/receipts": 5, "/api/purchase-payments": 5,
               "/api/document-intelligence-v2": 5, "/api/payments": 6,
