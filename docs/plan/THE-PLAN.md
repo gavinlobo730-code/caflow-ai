@@ -47,8 +47,8 @@ _Last updated: 2026-09-16_
 |---|---|---|---|---|
 | **T1** | Repair the safety net | 🔧 C | 4–6d | `DONE` — 7 of 7 |
 | **T2** | A demo firm that exists | 🔧 C | 2–3d | `DOING` — T2-0 done |
-| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `TODO` — unblocked 16 Sep |
-| **T4** | Token adoption | 🔧 C | 5–8d | `BLOCKED` on T3 |
+| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `DOING` — T3-a and T3-f done 18 Sep |
+| **T4** | Token adoption | 🔧 C | 5–8d | `DOING` — colour done (10,146 → 116); type is next |
 | **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `TODO` — unblocked 16 Sep |
 | **T6** | Navigation + the hub | 🔧 C | 11–17d | `BLOCKED` on T4 |
 | **T7** | Analytics & AI | 🔧 C | 3 layers | `BLOCKED` on T3 |
@@ -233,12 +233,12 @@ So T3 is replace-and-migrate, not define.
 
 | ID | item | size | DONE WHEN |
 |---|---|---|---|
-| T3-a | Rewrite the token file: colour, a type scale that goes **down to 10px** (the product lives there 1,761 times), spacing, radius, elevation, density. Delete the 15 dead tokens and 10 dead classes. Delete `darkMode: ["class"]`. Keep `brand.dark` — it is a navy shade, not a theme. | 2.5d | Token file is the only source of colour; dead tokens gone |
+| T3-a | ✅ **18 Sep.** Type scale reaches 10px (`text-3xs`) and 11px (`text-2xs`), bare. `darkMode` deleted. Dead gone: 2 colour tokens, 3 box shadows, **17 `:root` variables**, 9 CSS classes. **10,146 → 116 raw hex classes.** Spacing/radius/elevation deliberately NOT invented — see below. | 2.5d | ✅ done |
 | T3-b | The 8 missing base primitives — Input, Select, Textarea, Label, Table shell, Alert, Tooltip, Pagination. There are 856 raw `<input>`, 300 raw `<select>`, 230 raw `<table>` with nothing to converge on. | 3d | Each exists, is documented, and the reference screens use them |
 | T3-c | The 6 product-specific components | 3.5d | below |
 | T3-d | Reference screen 1 — **periodic Trial Balance** | 1.5d | Renders full-width; 9 Dr/Cr columns; owner approves |
 | T3-e | Reference screen 2 — **Banking Entries** | 1.5d | Density proven; its guard rewritten to name components, not class strings |
-| T3-f | Fix contrast during the token pass | in T3-a | No text colour below 4.5:1 on white |
+| T3-f | ✅ **18 Sep.** `ps.hint` was **2.56:1** — the most-used colour in the product. `label` #64748B→#475569, `hint` #94A3B8→#64748B. Guarded, reading the config. | in T3-a | ✅ every ink token ≥ 4.5:1 on white and on `ps.bg` |
 
 **T3-c, the six components:**
 
@@ -255,6 +255,32 @@ So T3 is replace-and-migrate, not define.
 it is already full-bleed (`px-6`, no max-width) and has 6 columns against 12 on
 the invoice editor. The Trial Balance is 9 Dr/Cr columns inside `max-w-4xl`
 (896px), which is exactly where the rule bites.
+
+**What T3-a actually found, and what it deliberately did NOT do.** The plan
+budgeted "rewrite the token file" and the file turned out to hold most of the
+right answer already; what it lacked was reach and two correct values.
+
+- **Seven greys for four roles.** `ink` is written `#0F172A` (801) and
+  `#1E293B` (333) as well as the token's own `#0D1635` (13); `label` is written
+  `#64748B` (1,388) *and* `#475569` (894) — and the token held the LIGHTER of
+  each pair. `ps.hint` at `#94A3B8` is the single most-used colour in the
+  product, 1,567 sites, most of them at 10px or 11px, rendering at **2.56:1**.
+- **The dominant hover pair was not the one the file described.** Its comment
+  said "104 sites darkening hint→label"; the measured pair is
+  `#94A3B8 → #475569` (95 sites), which was hint → *two steps down*. After the
+  fix it is hint → label with the target unchanged.
+- **Spacing, radius and elevation are NOT in this commit.** `shadow-card`,
+  `shadow-card-hover` and `shadow-modal` were declared and used zero times —
+  declaring a replacement scale before the reference screens exist just
+  re-creates what was deleted. They come with T3-d/T3-e, against a real card.
+- **The line-height on the two new type steps is deliberately absent.** Pinning
+  one changes the rendering of any of the 1,860 sites nested inside a
+  `text-sm`, so the T4 rename would not be a rename. It is a real question and
+  it belongs where it can be looked at.
+- **Still open, and visible:** ~40 sites on the rival indigo primary
+  (`#4338CA`, `#6366F1`, `#3730A3`) that the token file's own comment already
+  names. Folding them into `brand` changes what the banking screens look like,
+  so it goes with the reference screens.
 
 **⚠️ T3-c's money cell changes visible figures on ~6 screens** (four currently
 show whole rupees, two silently drop paise). D5 settles the policy; the change
@@ -570,7 +596,7 @@ find apps/web/app -name error.tsx | wc -l
 # T6-a      Cloudflare redirect rules             now 98      target <=90  (cap 100)
 grep -v '^#' apps/web/public/_redirects | grep -c '200$'
 
-# T3-a/T4-a hardcoded hex colours                 now 10,850  target 0
+# T3-a/T4-a hardcoded hex colours                 now    116  target 0  (was 10,146)
 grep -rEoh '#[0-9a-fA-F]{6}' apps/web/app apps/web/components | wc -l
 
 # T5b       browser-side Excel writers            now 7       target 0
@@ -590,7 +616,7 @@ c=collections.Counter(v['status'] for v in d['findings'].values()); print(c['ope
 | endpoints reached by an uncalled api-client method | ~~110~~ **0** of 797 | 0 | ✅ T1-b |
 | screens deletable in silence | ~~133~~ **77** of 159 | see note | T1-b done, rest → T1-e |
 | redirect rules used | **98** of 100 | ≤ 90 | T6-a |
-| hardcoded hex colours | **10,850** | 0 | T4-a |
+| hardcoded hex colours | ~~10,850~~ **116** | 0 | ✅ T3-a / T4-a |
 | money formatters | **53** | 1 | T3-c |
 | browser Excel writers | **7** | 0 | T5b |
 | analytical endpoints with no screen | **~40** | 0 | T7-L1 |
