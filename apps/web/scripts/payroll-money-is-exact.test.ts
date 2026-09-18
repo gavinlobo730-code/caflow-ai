@@ -64,26 +64,77 @@ test("the float-multiplying helper is gone with its last caller", () => {
   }
 });
 
-test("amounts and rates both come from lib/money/rupeeInput", () => {
-  const a = src(FORM);
-  assert.match(a, /import \{ paiseFromRupeeInput, bpsFromPercentInput \} from "@\/lib\/money\/rupeeInput"/);
-  const b = src("app/clients/[id]/payroll/page.tsx");
-  assert.match(b, /import \{ paiseFromRupeeInput, bpsFromPercentInput \} from "@\/lib\/money\/rupeeInput"/);
+test("every payroll screen takes its numbers from lib/money/rupeeInput", () => {
+  // THE RULE, NOT A FILE'S IMPORT LINE. This used to require BOTH parsers in
+  // BOTH files. The per-client payroll page stopped importing
+  // paiseFromRupeeInput on 18-09-2026 -- not because it started coercing, but
+  // because its employee form was DELETED (PAY-13: there were two employee
+  // forms and they disagreed about what an employee is). A guard that names a
+  // file's imports breaks on a move that does not break its rule, which is the
+  // shape this repository keeps having to restate.
+  //
+  // What matters is that a screen parsing a typed number reaches for these and
+  // nothing else. So: whatever each file parses, it parses exactly.
+  for (const f of [FORM, "app/clients/[id]/payroll/page.tsx"]) {
+    const body = src(f);
+    const parsesRupees = /paiseFromRupeeInput\(/.test(body);
+    const parsesPercent = /bpsFromPercentInput\(/.test(body);
+    assert.ok(parsesRupees || parsesPercent,
+      `${f} parses no typed number at all -- if that is right, take it off this list`);
+    if (parsesRupees) {
+      assert.match(body, /import \{[^}]*paiseFromRupeeInput[^}]*\} from "@\/lib\/money\/rupeeInput"/,
+        `${f} must take paiseFromRupeeInput from the one module`);
+    }
+    if (parsesPercent) {
+      assert.match(body, /import \{[^}]*bpsFromPercentInput[^}]*\} from "@\/lib\/money\/rupeeInput"/,
+        `${f} must take bpsFromPercentInput from the one module`);
+    }
+  }
 });
 
 test("a field the parser refuses stops the save instead of becoming a number", () => {
+  // THE EMPLOYEE FORM, wherever it lives. There is exactly one now, and these
+  // assertions follow it rather than naming the screen it used to sit on.
   const a = src(FORM);
-  // The employee form: all four fields checked, and the save returns.
   assert.match(a, /if \(basicPaise === null \|\| otherPaise === null \|\| hraBps === null \|\| daBps === null\)/,
     "every parsed field must be checked before the payload is built");
   assert.match(a, /is not a number|are not numbers/,
     "and the CA must be told which field");
+  // Aadhaar came across with the merge and is a refusal too: the backend only
+  // ever sees four digits and cannot tell a truncated eleven from a right one.
+  assert.match(a, /aadhaarDigits\.length !== 12/,
+    "twelve digits or nothing, checked before the request");
 
+  // THE SALARY STRUCTURE is a different form on a different screen, and it is
+  // applied to a WHOLE ROSTER -- a bad percentage there is wrong every month.
   const b = src("app/clients/[id]/payroll/page.tsx");
-  assert.match(b, /const hraBps = bpsFromPercentInput\(form\.hra_percent\);\s*\n\s*if \(hraBps === null\)/,
-    "the per-client employee form must refuse a bad HRA percentage");
   assert.match(b, /if \(basicBps === null \|\| hraBps === null\)/,
-    "a salary STRUCTURE is applied to a whole roster; a bad percentage there is wrong every month");
+    "a salary structure must refuse a percentage the parser rejected");
+});
+
+test("there is exactly one employee form", () => {
+  // PAY-13's own rule. Two forms meant which screen a CA happened to use
+  // decided whether the employee had a UAN (domain/payroll/ecr.py REFUSES a
+  // member without one), a PAN (s.206AA's 20% floor without it) or a joining
+  // date (the s.192 projection annualises a mid-year joiner as a full year --
+  // measured at Rs 1,46,250 on one employee).
+  const page = src("app/clients/[id]/payroll/page.tsx");
+  assert.match(page, /AddEmployeeModal/,
+    "the client workspace must open the shared form");
+  assert.doesNotMatch(page, /\/api\/payroll\/employees"/,
+    "a second create path here is the defect coming back");
+  // And the shared form carries what the deleted one held, or the merge lost
+  // it. ASSERTED ON THE PAYLOAD, not on the file. The first version matched
+  // each field name anywhere in the source and PASSED its own negative control
+  // — deleting `employee_code` from the payload leaves the name in the form
+  // state and on the input, so a field can be collected from the CA and then
+  // silently dropped on the way to the server, which is the worst of both.
+  const payload = src(FORM).match(/const payload = \{[\s\S]*?\n      \};/);
+  assert.ok(payload, "the employee form must build one payload object");
+  for (const field of ["employee_code", "date_of_birth", "aadhaar_last4"]) {
+    assert.match(payload[0], new RegExp(`\\b${field}:`),
+      `${field} was on the deleted form and must reach the SERVER, not just the form`);
+  }
 });
 
 test("no payroll screen keeps a second CSV importer", () => {

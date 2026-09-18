@@ -481,11 +481,11 @@
       "reread_on": "2026-09-17"
     },
     "PAY-13": {
-      "status": "partial",
-      "verified_on": "2026-09-17",
-      "why": "the ALLOWANCE limb is closed \u2014 EmployeeDrawer's revision panel posts da_percent/lta_paise/medical_paise/special_allowance_paise and routers/payroll._pay_in_force merges _REVISABLE_COMPONENTS into the run \u2014 and PAY-05 added the pt_state field",
-      "reread_on": "2026-09-17",
-      "what_is_left": "the IDENTITY limb. The client payroll form's state has no PAN, joining date, UAN, ESIC number or bank details, EmployeeDrawer's SECTIONS offer no identity editor, and api.payroll.updateEmployee is called only from AddEmployeeModal and /payroll/people \u2014 never from the client workspace. The finding's actual fix, ONE employee form used by both surfaces, is not done, and the two remain disjoint"
+      "status": "closed",
+      "verified_on": "2026-09-18",
+      "why": "CLOSED 18-09-2026, and the finding's ACTUAL FIX \u2014 one employee form used by both surfaces \u2014 is what was done. The allowance limb closed earlier (EmployeeDrawer's revision panel posts da_percent/lta/medical/special and `_pay_in_force` merges them into the run; PAY-05 added pt_state). THE IDENTITY LIMB WAS A SECOND FORM, not a missing field. `components/payroll/AddEmployeeModal` held pan, uan, esi_number, joining_date, gender, da_percent, bank details, eps_eligible and gratuity_act_covered; the client workspace's own inline form held employee_code, date_of_birth and aadhaar and NONE of the first list. So which screen a CA happened to add an employee from decided whether `domain/payroll/ecr.py` would accept them at all (it REFUSES a member whose UAN is absent or not twelve digits, so one employee stopped a whole EPFO filing), whether \u00a7192 withheld at the ordinary rate or \u00a7206AA's 20% floor, whether the \u00a7192 projection annualised a mid-year joiner correctly (the 2026-09-01 audit measured \u20b91,46,250 of over-deduction on one employee), and whether there was a bank account to pay them into. AddEmployeeModal now carries the UNION \u2014 including the Aadhaar last-4 rule and employee_code, which had been reachable from ONLY the deleted form \u2014 and `lockedClientId` shows the client as a fixed label rather than hiding the field. The inline form and its `addEmployee` are gone, with them a browser-supplied `firm_id` the server took off the token anyway.",
+      "reread_on": "2026-09-18",
+      "needs": "Nothing. `apps/web/scripts/payroll-money-is-exact.test.ts` holds the rule: exactly one employee form, the client workspace opens it, no second create path on that page, and every field the deleted form held reaches the PAYLOAD \u2014 asserted on the payload object rather than on the file, because the first version passed its own negative control (a name deleted from the payload survives in the form state and on the input, so a field can be collected from the CA and silently dropped)."
     },
     "GST-27": {
       "status": "closed",

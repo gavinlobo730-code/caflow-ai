@@ -1,7 +1,7 @@
 "use client";
 
-import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
-import { useState, useEffect, useCallback } from "react";
+import { bpsFromPercentInput } from "@/lib/money/rupeeInput";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Users, Plus, Play, CheckCircle,
   FileText, TrendingUp, IndianRupee, Download, Upload,
@@ -21,6 +21,7 @@ import type { AnnexureIIResponse } from "@/lib/api";
 import { financialYearOfMonth, financialYearChoicesAround } from "@/lib/dates/periods";
 import { DisburseModal } from "@/components/payroll/DisburseModal";
 import EmployeeDrawer from "@/components/payroll/EmployeeDrawer";
+import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
 import ApplyStructureModal from "@/components/payroll/ApplyStructureModal";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
@@ -270,15 +271,23 @@ const EMPLOYEE_EXPORT_COLUMNS: { key: string; header: string; accessor: (row: Em
   { key: "status", header: "Status", accessor: (e) => e.status },
 ];
 
-function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }) {
+// firmId is gone from the signature with the POST that used it: the server
+// takes the firm off the caller's token, and passing it from the browser was
+// always a value the backend ignored.
+function EmployeesTab({ clientId }: { clientId: string }) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [form, setForm] = useState({ name: "", employee_code: "", date_of_birth: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false, pt_state: "" });
-  const [aadhaarError, setAadhaarError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  // AddEmployeeModal shows the client as a fixed label when `lockedClientId`
+  // is set and reads the NAME out of this list. One entry is all it needs, and
+  // building it here leaves the modal's own contract unchanged rather than
+  // teaching it a second way to be told who the client is. This tab is only
+  // ever mounted inside one client's workspace, so there is no second row to
+  // offer and no picker to render.
+  const clientsForModal = useMemo(
+    () => [{ id: clientId, client_name: "This client" }],
+    [clientId]);
   // M17: distinguish a failed roster fetch from a client with no employees.
   const [loadFailed, setLoadFailed] = useState(false);
   // PAY-11. The roster used to render seven read-only cells and no row action,
@@ -339,78 +348,12 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
     }
   }
 
-  async function addEmployee() {
-    if (!form.name || !form.basic_paise) return;
-    // Aadhaar: keep only the last 4 digits; never send the full number.
-    const { aadhaar, ...rest } = form;
-    const aadhaarDigits = aadhaar.replace(/\D/g, "");
-    if (aadhaarDigits && aadhaarDigits.length !== 12) {
-      setAadhaarError("Aadhaar must be 12 digits");
-      return;
-    }
-    setAadhaarError(null);
-    // basic_paise is the payload key; the field holds RUPEES. Read wrong, it is
-    // the base for PF, HRA, gratuity and every month's withholding thereafter.
-    const basic = paiseFromRupeeInput(form.basic_paise);
-    if (basic === null) {
-      setSaveError("Basic salary must be an amount in rupees, e.g. 50000 or "
-                   + "50000.50 — without commas.");
-      return;
-    }
-    // The percentage beside it was still parseFloat. HRA is a salary head:
-    // it feeds the s.192 projection, s.10(13A) and Annexure II, so a comma
-    // that reads as 1% where the CA meant 10% is money.
-    const hraBps = bpsFromPercentInput(form.hra_percent);
-    if (hraBps === null) {
-      setSaveError("HRA % must be a plain percentage, e.g. 40 or 40.5 — without commas.");
-      return;
-    }
-    if (form.pt_applicable && !form.pt_state.trim()) {
-      setSaveError("Professional tax is ticked but no state is set. Professional "
-                   + "tax is levied by the state (Article 276), so without one "
-                   + "nothing is withheld and nothing can be — set the state, or "
-                   + "untick PT.");
-      return;
-    }
-    setSaveError(null);
-    setSaving(true);
-    try {
-      const res = await apiFetch("/api/payroll/employees", {
-        method: "POST",
-        body: JSON.stringify({
-          client_id: clientId,
-          firm_id: firmId,
-          ...rest,
-          // Empty strings, not omissions: '' would hit migration 333's
-          // not-blank CHECK on the code, and Postgres will not read '' as a
-          // date. Both columns mean "unknown" when NULL.
-          employee_code: rest.employee_code?.trim() || undefined,
-          date_of_birth: rest.date_of_birth || undefined,
-          pt_state: rest.pt_state?.trim() || undefined,
-          aadhaar_last4: aadhaarDigits ? aadhaarDigits.slice(-4) : undefined,
-          basic_paise: basic,
-          hra_percent: hraBps / 100,
-        }),
-      }) as { success?: boolean; error?: string | null } | null;
-      // task #229: this previously discarded the response and unconditionally
-      // closed the modal + reset the form — a rejected employee (RBAC, bad PAN,
-      // internal-client guardrail) looked identical to a successful add, and
-      // the employee was silently absent from every subsequent payroll run.
-      if (!res || res.success === false) {
-        setSaveError(res?.error ?? "Could not add employee — the request failed.");
-        return;
-      }
-      await load();
-      setShowAdd(false);
-      setForm({ name: "", employee_code: "", date_of_birth: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false, pt_state: "" });
-    } catch {
-      // Replaces a .catch(() => null) on the request alone, which left the
-      // reload after it unguarded.
-      setSaveError("Could not add employee — the request failed.");
-    } finally {
-      setSaving(false);
-    }
-  }
+  // `addEmployee` lived here and is gone with the form it saved (PAY-13). It
+  // POSTed to /api/payroll/employees over `apiFetch` with `firm_id` in the
+  // BODY -- which the server takes off the token anyway -- and its payload
+  // could carry no PAN, UAN, ESIC number, joining date or bank detail, because
+  // the form above it had no boxes for them. AddEmployeeModal saves through
+  // `api.payroll.createEmployee` with the full set.
 
   if (loading) return <div className="p-6"><TableSkeleton cols={7} rows={5} /></div>;
 
@@ -450,74 +393,26 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
         />
       )}
 
+      {/* PAY-13. THIS WAS A SECOND EMPLOYEE FORM and the two disagreed about
+          what an employee is. It held employee code, date of birth and Aadhaar
+          and NOT pan, uan, esi_number, joining_date, gender, da_percent or any
+          bank detail — so an employee added here could not be filed for at all
+          (`domain/payroll/ecr.py` REFUSES a member with no twelve-digit UAN),
+          withheld at s.206AA's 20% floor for want of a PAN, and had their pay
+          annualised as a full year's for want of a joining date.
+
+          `AddEmployeeModal` is now the only employee form in the product and
+          carries the union, so the Aadhaar last-4 rule and the employee code
+          reach BOTH surfaces. `lockedClientId` shows this client as a fixed
+          label rather than hiding the field: a form that does not say which
+          client it is adding to is how an employee lands on the wrong one. */}
       {showAdd && (
-        <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] p-4 space-y-3">
-          <p className="text-[12px] font-semibold text-[#1E293B]">New Employee</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Name *" value={form.name} onChange={v => setForm(f => ({...f, name: v}))} placeholder="Employee name" />
-            <div>
-              <Field label="Employee Code" value={form.employee_code} onChange={v => setForm(f => ({...f, employee_code: v}))} placeholder="e.g. EMP001" />
-              <p className="text-[10px] text-[#94A3B8] mt-0.5">Your own code. A bulk import that repeats it updates this employee instead of adding a second one.</p>
-            </div>
-            <div>
-              <Field label="Date of Birth" value={form.date_of_birth} onChange={v => setForm(f => ({...f, date_of_birth: v}))} placeholder="YYYY-MM-DD" type="date" />
-              {/* Not demographics. Part III of the First Schedule widens the
-                  OLD-regime nil band at 60 and again at 80, and without this
-                  every employee is withheld on the general ladder. */}
-              <p className="text-[10px] text-[#94A3B8] mt-0.5">Decides the old-regime slab at 60 and 80. Leave blank if unknown — the run will say so.</p>
-            </div>
-            <Field label="Designation" value={form.designation} onChange={v => setForm(f => ({...f, designation: v}))} placeholder="e.g. Manager" />
-            <Field label="Department" value={form.department} onChange={v => setForm(f => ({...f, department: v}))} placeholder="e.g. Accounts" />
-            <Field label="Basic Salary (₹/month) *" value={form.basic_paise} onChange={v => setForm(f => ({...f, basic_paise: v}))} placeholder="e.g. 25000" type="number" />
-            <Field label="HRA %" value={form.hra_percent} onChange={v => setForm(f => ({...f, hra_percent: v}))} placeholder="40" type="number" />
-            <div>
-              <Field label="Aadhaar" value={form.aadhaar} onChange={v => setForm(f => ({...f, aadhaar: v}))} placeholder="12-digit Aadhaar" />
-              <p className="text-[10px] text-[#94A3B8] mt-0.5">Only the last 4 digits are stored.</p>
-              {aadhaarError && <p className="text-[10px] text-red-500 mt-0.5">{aadhaarError}</p>}
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            {(["pf_applicable", "esi_applicable", "pt_applicable"] as const).map(k => (
-              <label key={k} className="flex items-center gap-1.5 text-[12px] text-[#64748B] cursor-pointer">
-                <input type="checkbox" checked={form[k]} onChange={e => setForm(f => ({...f, [k]: e.target.checked}))} className="rounded" />
-                {k === "pf_applicable" ? "PF" : k === "esi_applicable" ? "ESI" : "PT"}
-              </label>
-            ))}
-          </div>
-          {/* PROFESSIONAL TAX IS LEVIED BY THE STATE (Article 276), so the tick
-              on its own withholds nothing (PAY-05). This form had the checkbox
-              and no state field at all, so a CA could mark an employee liable
-              and every month deduct ₹0 — no gap raised, nothing on the payslip
-              — while the employer stayed liable for what was not deducted.
-              Which states are modelled, and which are a named gap, is the
-              server's answer (domain/payroll/professional_tax.py); the run's
-              statutory_gaps say so per employee. */}
-          {form.pt_applicable && (
-            <div>
-              <label className="block text-[11px] font-medium text-[#475569] mb-1">
-                Professional tax state <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={form.pt_state}
-                onChange={e => setForm(f => ({ ...f, pt_state: e.target.value.toUpperCase().slice(0, 2) }))}
-                placeholder="e.g. MH"
-                aria-label="Professional tax state"
-                className="w-28 px-3 py-1.5 text-[12px] uppercase border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-[10px] text-[#94A3B8] mt-0.5">
-                The two-letter state code whose professional tax law applies. Required
-                once PT is ticked — without it nothing is withheld and nothing can be.
-              </p>
-            </div>
-          )}
-          {saveError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{saveError}</p>}
-          <div className="flex gap-2">
-            <button onClick={addEmployee} disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              {saving ? "Saving…" : "Add Employee"}
-            </button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 text-[12px] text-[#64748B] border border-[#E2E8F0] rounded-lg hover:bg-[#F1F5F9]">Cancel</button>
-          </div>
-        </div>
+        <AddEmployeeModal
+          clients={clientsForModal}
+          lockedClientId={clientId}
+          onClose={() => setShowAdd(false)}
+          onSaved={() => { setShowAdd(false); load(); }}
+        />
       )}
 
       <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
@@ -1989,7 +1884,7 @@ export default function PayrollPage() {
         {tab === "inputs" && (
           <div className="space-y-6">
             <DashboardTab clientId={clientId} />
-            <EmployeesTab clientId={clientId} firmId={firmId} />
+            <EmployeesTab clientId={clientId} />
             <SalaryStructuresTab clientId={clientId} firmId={firmId} />
           </div>
         )}
