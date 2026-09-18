@@ -21,6 +21,7 @@ from domain.income_tax.capital_gains_engine import (
     ASSESSEE_TYPES, ASSESSEE_UNSPECIFIED,
 )
 from domain.income_tax.assessee import AssesseeKind, assessee_kind_for_entity_type
+from domain.income_tax import msmed_interest as _msmed
 from domain.income_tax import reinvestment_exemption as rex
 from services import capital_gain_exemption_service as cgx
 from domain.income_tax.advance_tax_interest_engine import (
@@ -1719,6 +1720,12 @@ class Section32BlockIn(BaseModel):
 def msme_section_43bh(
     client_id: str,
     fy: Annotated[FYLabel, Query(description="YYYY-YY, e.g. 2025-26")],
+    bank_rate_bps: Annotated[Optional[int], Query(
+        ge=0, le=5000,
+        description="RBI Bank Rate over the delay, in basis points (675 = 6.75%). "
+                    "MSMED §16 charges THREE TIMES this. Omit it and the §16 "
+                    "working still comes back, with the charge refused and named.",
+    )] = None,
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
     """What §43B(h) adds back this year, and what it releases — DERIVED (PUR-15).
@@ -1743,6 +1750,20 @@ def msme_section_43bh(
     Every live bill is read, not only the year's own — an earlier year's bill
     paid late during this year comes back as a deduction now.
 
+    AND `msmed_interest` IS THE OTHER NUMBER. §43B(h) defers a DEDUCTION; MSMED
+    §16 makes the buyer liable to the SUPPLIER for compound interest with
+    monthly rests at three times the RBI Bank Rate, which §23 then disallows
+    outright — so paying it never releases it, and the two add-backs are
+    independent. A working that reports only the deferral reports the smaller
+    figure.
+
+    **THE BANK RATE IS NOT HELD HERE AND IS NOT GUESSED.** It moves by RBI
+    notification partway through a year and a delay spanning a change is
+    governed by more than one, so `bank_rate_bps` is the CA's own figure — the
+    shape `public.dtaa_treaty_rates` uses for a treaty rate. Omit it and the
+    working still names which bills are accruing, from when and over how many
+    monthly rests, with the charge itself refused in `gaps`.
+
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal. This
     # computes a working for the tax computation; it writes nothing.
     """
@@ -1752,11 +1773,16 @@ def msme_section_43bh(
         return api_response(True, {
             "financial_year": fy, "applicable": True, "disallowed_paise": 0,
             "allowed_on_payment_paise": 0, "bills": [], "gaps": [],
-            "caveats": [], "source": "mock", "ca_review_required": True})
+            "caveats": [], "source": "mock", "ca_review_required": True,
+            # The §16 shape is present in mock mode too, so a screen reading it
+            # does not have to branch on which backend answered.
+            "msmed_interest": _msmed.compute(
+                [], financial_year=fy, bank_rate_bps=bank_rate_bps).to_dict()})
     from services.msme_43bh_service import MSME43BHError, for_financial_year
     try:
         return api_response(True, for_financial_year(
-            db, current_user["firm_id"], client_id, fy))
+            db, current_user["firm_id"], client_id, fy,
+            bank_rate_bps=bank_rate_bps))
     except MSME43BHError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

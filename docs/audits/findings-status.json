@@ -599,11 +599,11 @@
       "reread_on": "2026-09-17"
     },
     "PUR-15": {
-      "status": "partial",
-      "verified_on": "2026-09-17",
-      "why": "the browser-side rule is gone and rebuilt on the purchase ledger: msme_43bh_service._bills derives the whole answer from purchase_bills, BOTH payment shapes and vendors.msme_status through section_43b_h.compute, with migration 373 giving the written agreement its own column",
-      "reread_on": "2026-09-17",
-      "what_is_left": "MSMED \u00a716 interest \u2014 three times the RBI bank rate, compounded monthly \u2014 which the finding names in its evidence, its ca_experience and its suggested fix. It is neither computed nor carried as a named refusal in Section43BHResult.caveats, unlike \u00a747's late fee or SECTION_50_3_NOTIFIED_RATE_BPS"
+      "status": "closed",
+      "verified_on": "2026-09-18",
+      "why": "CLOSED 18-09-2026, both halves. THE DEDUCTION HALF: the browser-side rule is gone and rebuilt on the purchase ledger \u2014 `msme_43bh_service._bills` derives the whole answer from `purchase_bills`, BOTH payment shapes and `vendors.msme_status` through `section_43b_h.compute`, with migration 373 giving the written agreement its own column. THE INTEREST HALF: `domain/income_tax/msmed_interest.py` is MSMED \u00a716 \u2014 compound interest WITH MONTHLY RESTS at THREE TIMES the RBI Bank Rate, which is a DEBT TO THE SUPPLIER rather than a deferral of the buyer's own deduction, so a working reporting only the add-back reports the smaller of the two numbers. \u00a723 then disallows that interest OUTRIGHT, which is the part a CA can miss: unlike \u00a743B(h), paying it never releases it, so the two add-backs are independent and are reported separately. \u00a722's disclosure is named on every answer. It rides on the SAME `section_43b_h` result rather than re-reading anything \u2014 \u00a716's clock starts at the appointed day, which is exactly `outcome.due_by` \u2014 and `GET /api/income-tax/msme-43bh` serves it as `msmed_interest`, rendered by `/accounting/msme-tracker`. THREE DECISIONS WORTH KEEPING: the charge is ONE PRINCIPAL PER LATE TRANCHE (a bill part-paid one month late and cleared six months late owes two periods, and one principal over the longer one over-charges); a REST IS A MONTH THAT HAS FALLEN DUE, so 45 days is one rest and 14 reported days, because a proportion of a rest is simple interest wearing a compound name; and every rounding goes UP, the direction that cannot leave a small supplier short.",
+      "reread_on": "2026-09-18",
+      "needs": "Nothing in code. The RBI BANK RATE is a human step by design \u2014 `perquisites.py` refuses the SBI rate for Rule 3(7)(i) the same way and `public.dtaa_treaty_rates` the same way again: it moves by notification partway through a year, so a delay spanning a change is governed by more than one, and \u00a716 TRIPLES whatever it is given. `interest_refusal` returns a sentence naming what to look up and the working (which bills, from when, over how many rests) survives the refusal, so the screen is useful before anybody records a figure. A guessed rate would be unsafe in BOTH directions and by a factor of three."
     },
     "PUR-22": {
       "status": "closed",

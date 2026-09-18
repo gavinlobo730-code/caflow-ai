@@ -42,9 +42,33 @@ test("the screen no longer writes the hand-keyed side table", () => {
 });
 
 test("it asks the server for the working", () => {
-  assert.match(PAGE, /api\.incomeTax\.msme43bh\(clientId, fy\)/);
+  // THE RULE, NOT THE ARGUMENT LIST. This asserted the exact call
+  // `msme43bh(clientId, fy)` and broke the day a third argument was added for
+  // the RBI Bank Rate — a change that does not touch what it cares about,
+  // which is that the figure comes from the server. That is the fourth time
+  // this shape has had to be restated in this repository; write the rule.
+  assert.match(PAGE, /api\.incomeTax\.msme43bh\(/);
   assert.match(code(read("lib/api/index.ts")),
     /\/api\/income-tax\/msme-43bh\?client_id=/);
+});
+
+test("MSMED §16 is shown, and its refusal is not a nil", () => {
+  // §43B(h) defers a DEDUCTION; §16 makes the client liable to the SUPPLIER
+  // for compound interest at three times the RBI Bank Rate, which §23 then
+  // disallows outright. A screen showing only the add-back shows the smaller
+  // of the two numbers.
+  assert.match(PAGE, /msmed_interest/,
+    "the §16 working must reach the screen");
+  // Nothing here holds the Bank Rate — it moves by RBI notification partway
+  // through a year — so it is the CA's own figure, typed, and a missing one
+  // means the server REFUSES with a sentence rather than reporting zero.
+  assert.match(PAGE, /bpsFromPercentInput/,
+    "a typed percentage goes through the one parser, never a bare parseFloat");
+  assert.doesNotMatch(PAGE, /\b6\.75\b(?!")/,
+    "a Bank Rate spelled into the screen is a rate nobody read off a " +
+    "notification, and §16 triples whatever it is given");
+  assert.doesNotMatch(PAGE, /\* 3\b/,
+    "the three-times multiplier is §16's and lives in the engine");
 });
 
 test("a refusal is shown, not swallowed", () => {

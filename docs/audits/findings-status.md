@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **243** | re-read against the code. The defect is gone. |
-| partial | **25** | part of the finding is answered, part is not. Each says which. |
+| closed | **244** | re-read against the code. The defect is gone. |
+| partial | **24** | part of the finding is answered, part is not. Each says which. |
 | open | **5** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 30 items — 5 open and 25 partial — not 254.**
+**The work left is 29 items — 5 open and 24 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -52,7 +52,6 @@ is left as "unknown".
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **IT-13** | §234A and §234B are implemented and tested but exposed by no endpoint and no screen — only §234C |
 | high | **IT-17** | itr_field_placements() — 'this figure goes in this field' against the Department's own committed |
-| high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
 | high | **SALES-13** | Firm branding, invoice templates, bank/UPI details and footer text are stored by a full Settings |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
@@ -170,6 +169,7 @@ is left as "unknown".
 | high | **PUR-11** | The GSTR-2A/2B reconciliation asks the CA to export and re-upload the purchase register the plat |
 | high | **PUR-13** | §194Q deducts 0.1% on the whole purchase value instead of on the value exceeding ₹50 lakh, and h |
 | high | **PUR-14** | The TDS register's statutory gaps are computed on every receive and never reach a screen — the e |
+| high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
 | high | **SALES-03** | Invoice PDF always states "tax payable on reverse charge basis: No", and never prints the place  |
 | high | **SALES-04** | Deleting a middle draft credit note (or sales debit note) permanently wedges that client's numbe |
 | high | **SALES-05** | The Sales screen's "Outstanding" tile overstates receivables — it sums the full invoice total fo |
