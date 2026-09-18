@@ -77,14 +77,25 @@ body {
   color: #0d1635;
 }
 
-/* Centered content column used across every section. */
+/* THE HEADER'S GUTTER, AND ONLY THE HEADER'S — the two users are the bar and
+   the mobile panel under it (`components/SiteHeader.tsx`). The comment here
+   used to say "centered content column used across every section", which was
+   true of an earlier layout and of nothing since: the footer and every panel
+   run on `max-w-content` (1100px) and the hero runs flush-left.
+   Kept as a class rather than inlined because those two elements must not
+   drift apart.
+
+   IT IS THE HERO'S OWN CLAMP, CHARACTER FOR CHARACTER. A centred 1200px cap
+   put the logo at a gutter that GREW with the window — 57px at 1280, 137 at
+   1440, 217 at 1600, 377 at 1920 — while the hero copy is pinned at a flat
+   72px from `lg` up. So the two agreed at 1280 and nowhere else, and the
+   owner saw it on a 1600px window: the logo sat 145px right of the headline
+   it is read as a lockup with. `tests/test_the_marketing_site_says_what_the_
+   product_does.py` pins the two expressions equal from the Python side. */
 .container-ps {
   width: 100%;
-  max-width: 1200px;
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: 1.5rem;
-  padding-right: 1.5rem;
+  padding-left: clamp(20px, 6vw, 72px);
+  padding-right: clamp(20px, 6vw, 72px);
 }
 
 /* Subtle dotted grid used behind dark hero/CTA panels. */

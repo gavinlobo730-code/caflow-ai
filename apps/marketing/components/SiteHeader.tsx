@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
 import { Magnetic } from "./Cursor";
 import { Menu, X } from "./icons";
@@ -44,6 +45,19 @@ import { NAV } from "@/lib/site";
  *
  * The threshold is deliberately small (24px): it has to fire before the reader
  * has scrolled far enough for anything to look unanchored.
+ *
+ * THE BAR IS FLUSH-LEFT ON THE HERO'S OWN GUTTER, not a centred column, and
+ * that is an owner decision of 18-09-2026 reversing a trade the Hero's comment
+ * used to record. `container-ps` was `max-width:1200px` with `margin:auto`, so
+ * the logo's distance from the window edge GREW with the window — 57px at
+ * 1280, 137 at 1440, 217 at 1600, 377 at 1920 — while the hero copy is pinned
+ * flat at 72px. The two therefore matched at 1280 and diverged everywhere
+ * above it, and on a 1600px window the logo sat 145px right of the headline it
+ * reads as one lockup with. It now carries the hero's clamp verbatim.
+ *
+ * Both uses below take the class — the bar AND the mobile panel. Inlining the
+ * gutter on one of them is how the sheet comes to start at a different edge
+ * from the logo that opened it.
  */
 
 const SOLID_AFTER_PX = 24;
@@ -74,6 +88,12 @@ export function SiteHeader() {
   // carries a full list of links.
   const filled = solid || open;
 
+  // The homepage is the only route that puts a photograph behind this bar; see
+  // the scrim note below for what happened when that was assumed either way.
+  // Compared after trimming the trailing slash because the static export serves
+  // `/` and `/index.html` alike and a client-side nav can leave either.
+  const overArtwork = (usePathname() ?? "/").replace(/\/+$/, "") === "";
+
   const linkCls =
     "text-[13px] font-medium leading-none text-white/70 transition-colors hover:text-white";
 
@@ -84,14 +104,48 @@ export function SiteHeader() {
     // changes height by a pixel as you start scrolling is precisely the drift
     // this redesign was meant to end. An inset shadow draws the same line and
     // costs no layout.
+    // THE SCRIM IS HERE, IT IS FIXED, AND IT IS ON THE HOMEPAGE ONLY — and each
+    // of those three came from a measurement, having been got wrong twice.
+    //
+    // WHY IT EXISTS. The nav is white text and on the homepage it floats over a
+    // photograph. The hero's own 100deg wash has faded to nothing by 58% of the
+    // viewport, so every link right of that sits on raw picture — the sunrise
+    // glare and the planet rim. Measured with this bar's ink hidden: 10.31:1 at
+    // 1280, 10.23 at 1440, 2.92 at 1600, 1.04 at 1920, 1.84 at 2560, against a
+    // 4.5:1 floor. "Support" and "Resources" were unreadable at 1920.
+    //
+    // WHY IT IS NOT IN THE HERO, which is the obvious home for it and was tried:
+    // the hero SCROLLS and this bar does not. It stays transparent until 24px
+    // (see SOLID_AFTER_PX), so a band living in the hero slides out from under
+    // the nav during exactly that window — measured 5.55:1 → 3.98 at 12px →
+    // 3.41 at 24px at 1920. A backdrop for a fixed bar has to be fixed too.
+    //
+    // WHY IT IS GATED ON THE ROUTE. Applied unconditionally it darkened the top
+    // of the six pages that open on a flat navy panel by a measured 12 levels —
+    // this colour is darker than `bg-brand-dark` — which is a vignette nobody
+    // asked for on pages with no artwork at all. One route is the honest
+    // expression of "one page has a photograph behind this bar"; the cheaper
+    // spellings (always on, or dropped) are each wrong on one side.
+    //
+    // It fades to nothing 132px down rather than filling the 68px bar, so it
+    // reads as sky rather than the "bulky header" §3 rules out, and it is off
+    // whenever `filled` — under the navy bar it is invisible, and over the open
+    // mobile sheet it would be a seam.
     <header
       className={`fixed inset-x-0 top-0 z-50 transition-[background-color,box-shadow,backdrop-filter] duration-300 ${
+        overArtwork
+          ? "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[132px] before:bg-[linear-gradient(to_bottom,rgba(2,8,22,0.80),rgba(2,8,22,0.46)_46%,rgba(2,8,22,0))] before:transition-opacity before:duration-300"
+          : ""
+      } ${
         filled
-          ? "bg-brand-dark/85 shadow-[inset_0_-1px_0_rgba(175,210,250,0.14)] backdrop-blur-[14px]"
-          : "bg-transparent"
+          ? "bg-brand-dark/85 shadow-[inset_0_-1px_0_rgba(175,210,250,0.14)] backdrop-blur-[14px] before:opacity-0"
+          : "bg-transparent before:opacity-100"
       }`}
     >
-      <div className="container-ps flex h-[68px] items-center justify-between gap-4">
+      {/* `relative` so the bar's own contents paint ABOVE the scrim: the
+          pseudo-element is positioned and would otherwise cover this static
+          row, greying the logo and every link by 80%. */}
+      <div className="container-ps relative flex h-[68px] items-center justify-between gap-4">
         {/* One mark, one colour, in both states — see the header note. */}
         <Logo theme="dark" />
 

@@ -941,6 +941,121 @@ def test_a_tailwind_opacity_modifier_is_one_tailwind_generates():
     )
 
 
+def test_a_shared_link_has_a_picture():
+    """A MARKETING SITE FOR ACCOUNTANTS SPREADS BY BEING FORWARDED.
+
+    The metadata carried a title and a description and NO image, and no
+    `metadataBase` for a relative one to resolve against — so a link pasted into
+    WhatsApp, LinkedIn, Slack or iMessage rendered as a bare line of text. Every
+    one of those fetches the picture from its own servers against an ABSOLUTE
+    url, which is why the base matters as much as the image: without it Next
+    falls back to localhost and the preview is dropped silently.
+
+    The card is rendered by `scripts/build-og-image.mjs` against the BUILT site,
+    so it is set in the pages' own Manrope and Instrument Serif and carries the
+    real logo mark. That is also why this guard checks the FILE and not just the
+    tags: the first render of it came out in a system sans, because the card was
+    missing the `__variable_*` classes `next/font` hangs the families on, and it
+    looked like a deliberate design rather than a bug."""
+    layout = (MARKETING / "app" / "layout.tsx").read_text(encoding="utf-8")
+    live = "\n".join(line for _no, line in _live_lines(layout))
+
+    assert "metadataBase" in live, (
+        "app/layout.tsx has no `metadataBase`. Without it a relative og:image "
+        "resolves against nothing and every preview is dropped."
+    )
+    assert re.search(r"openGraph[\s\S]{0,800}?images", live), (
+        "app/layout.tsx declares openGraph without an image. The link is what "
+        "gets forwarded; the picture is most of what a reader sees of it."
+    )
+    assert "summary_large_image" in live, (
+        "no `twitter.card` of summary_large_image. Twitter/X reads its own tags "
+        "in preference to the Open Graph ones and shows a small square "
+        "thumbnail without it."
+    )
+
+    card = MARKETING / "public" / "og.jpg"
+    assert card.exists(), (
+        "apps/marketing/public/og.jpg is missing, so every preview 404s. "
+        "Regenerate it with `pnpm build && node scripts/build-og-image.mjs`."
+    )
+    data = card.read_bytes()
+    assert data[:2] == b"\xff\xd8", (
+        f"public/og.jpg is not a JPEG (starts {data[:4]!r}). If the format "
+        f"changed, the metadata's filename has to change with it."
+    )
+
+    # Its real dimensions, read from the JPEG's own frame header rather than
+    # trusting the numbers written in the metadata beside it — those two
+    # disagreeing is exactly how a preview gets cropped wrongly.
+    width = height = None
+    i = 2
+    while i < len(data) - 9:
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker in (0xC0, 0xC1, 0xC2):  # start of frame
+            height = int.from_bytes(data[i + 5 : i + 7], "big")
+            width = int.from_bytes(data[i + 7 : i + 9], "big")
+            break
+        if marker in (0xD8, 0xD9) or 0xD0 <= marker <= 0xD7:
+            i += 2
+            continue
+        i += 2 + int.from_bytes(data[i + 2 : i + 4], "big")
+    assert (width, height) == (1200, 630), (
+        f"public/og.jpg is {width}x{height}. 1200x630 is what every consumer "
+        f"crops from — LinkedIn uses it whole, WhatsApp takes a centre square, "
+        f"Twitter letterboxes it — and the metadata states those numbers."
+    )
+    kb = len(data) / 1024
+    assert kb < 400, (
+        f"public/og.jpg is {kb:.0f}KB. Several consumers refuse a large "
+        f"preview outright, and it is fetched before the page is."
+    )
+
+
+def test_the_site_loads_only_the_typefaces_it_uses():
+    """A FONT NOBODY USES IS STILL A FONT EVERYBODY DOWNLOADS.
+
+    The root layout loaded **Inter** from `next/font/google` and put it on
+    `<body>`, while the design is Manrope and Instrument Serif. Every page sets
+    its own face — the `(site)` group around its chrome, `/access` on its own
+    root — so Inter was only ever reached as a fallback, and it had already
+    caught someone out once: `(site)/layout.tsx` still carries a note about the
+    header and footer "silently falling back to the root layout's Inter".
+
+    The rule is that `lib/fonts.ts` is the ONE place a typeface is loaded, and
+    that every family it loads is one Tailwind actually maps. A second loader
+    somewhere else is how the first one got there."""
+    fonts_module = MARKETING / "lib" / "fonts.ts"
+    assert fonts_module.exists(), "lib/fonts.ts is the single place fonts are loaded"
+
+    loaders = []
+    for path, src in _sources():
+        if "next/font" in "\n".join(line for _no, line in _live_lines(src)):
+            loaders.append(_rel(path))
+    assert not loaders, (
+        "these load a typeface directly instead of taking it from "
+        f"lib/fonts.ts: {loaders}. That is how Inter came to be downloaded on "
+        "every page for a face the design does not use."
+    )
+
+    families = re.findall(r'^import\s*\{([^}]*)\}\s*from\s*"next/font/google"',
+                          fonts_module.read_text(encoding="utf-8"), re.M)
+    loaded = {f.strip() for group in families for f in group.split(",") if f.strip()}
+    assert loaded, "lib/fonts.ts imports no font families at all"
+
+    tailwind = (MARKETING / "tailwind.config.ts").read_text(encoding="utf-8")
+    for family in loaded:
+        token = family.replace("_", " ").lower().split()[0]
+        assert token in tailwind.lower(), (
+            f"lib/fonts.ts loads {family!r} but tailwind.config.ts maps no "
+            f"family for it, so nothing can be set in it — which means it is "
+            f"downloaded and never used."
+        )
+
+
 def test_the_heros_vertical_rhythm_is_measured_against_the_window():
     """A HERO THAT ASKS FOR A FIXED HEIGHT DOES NOT FIT MOST LAPTOPS.
 
@@ -1072,4 +1187,201 @@ def test_the_hero_copy_does_not_drift_away_from_an_edge_bleeding_artwork():
         "the hero's copy column is not capped. With the container uncapped, a "
         "plain `1fr` copy column takes the full viewport width and the "
         "headline runs out under the artwork. Cap the first track."
+    )
+
+
+def _container_ps_block() -> str:
+    """The body of `.container-ps`, with its comments blanked.
+
+    Read off the raw file rather than through `_live_lines`, which is written
+    for JSX and would have to be trusted with a stylesheet's own comment
+    syntax for no gain — there is exactly one rule to find here.
+    """
+    css = GLOBALS_CSS.read_text(encoding="utf-8")
+    css = re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
+    match = re.search(r"\.container-ps\s*\{(.*?)\}", css, flags=re.S)
+    assert match, (
+        "`.container-ps` is not in app/globals.css. It is the header's gutter "
+        "and the rule below is about what it must equal — if it has been "
+        "renamed or inlined, move this guard with it rather than deleting it."
+    )
+    return match.group(1)
+
+
+def test_the_header_shares_the_heros_gutter():
+    """THE LOGO AND THE HEADLINE ARE READ AS ONE LOCKUP, SO THEY TAKE ONE GUTTER.
+
+    `.container-ps` was `max-width:1200px` with `margin:auto`, so the header
+    logo's distance from the window edge GREW with the window — measured 57px
+    at 1280, 137 at 1440, 217 at 1600 and 377 at 1920 — while the hero copy is
+    pinned flat at 72px from `lg` up (the guard above is why). The two agreed
+    at 1280 and at no width above it, and the owner saw it on a 1600px window:
+    the logo sat 145px right of the headline directly beneath it.
+
+    The easy misreading of that is that the header was aligned to something
+    and the hero broke it. It was not. A centred 1200px cap tracked the other
+    six pages' content at a constant 98px offset — a consistent NON-alignment,
+    not an alignment — and tracked the homepage at nothing. Giving the header
+    the hero's own clamp puts the logo at 72px at every width.
+
+    ⚠️ The cost is stated rather than hidden: the header is now flush-left
+    over the inner pages' centred `max-w-content` columns, 83px clear at 1280
+    rising to 403 at 1920. That is an ordinary full-bleed header; it was
+    measured before the change and accepted (owner decision, 18-09-2026).
+
+    THE RULE HELD HERE IS THE EQUALITY, not either value, so re-tuning the
+    gutter moves both or fails. A browser is what proves the alignment and
+    this suite has none."""
+    body = _container_ps_block()
+
+    # 1. The header may not re-introduce the centring that caused this.
+    assert "max-width" not in body, (
+        "`.container-ps` caps itself again. A cap plus `margin:auto` is "
+        "exactly what made the header logo drift away from the hero headline "
+        "as the window widened — 57px at 1280 to 377px at 1920. The header's "
+        "gutter must be a flat distance from the window edge."
+    )
+    assert not re.search(r"margin(-left|-right)?\s*:\s*auto", body), (
+        "`.container-ps` centres itself again. With no cap this is inert, and "
+        "it is the half of the old rule that makes a cap drift — leaving it "
+        "in place invites the cap back."
+    )
+
+    # 2. Its gutter is the hero's gutter, character for character.
+    padding = re.search(r"padding-left\s*:\s*([^;]+);", body)
+    assert padding, (
+        "`.container-ps` sets no `padding-left`. The header would then start "
+        "hard against the window edge on every page."
+    )
+    header_gutter = re.sub(r"\s+", "", padding.group(1))
+
+    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+    containers = [
+        line
+        for _no, line in _live_lines(hero)
+        if "className=" in line and "grid" in line and "lg:grid-cols-[" in line
+    ]
+    assert len(containers) == 1, (
+        f"expected exactly one hero grid container to read the gutter off, "
+        f"found {len(containers)}. If the hero's layout moved, move this "
+        f"guard with it — do not delete it."
+    )
+    hero_px = re.search(r"\bpx-\[([^\]]+)\]", containers[0])
+    assert hero_px, (
+        "the hero's content container sets no `px-[...]`. Its gutter is what "
+        "the header's is required to equal, so there is nothing to compare."
+    )
+    hero_gutter = re.sub(r"\s+", "", hero_px.group(1))
+
+    assert header_gutter == hero_gutter, (
+        f"the header's gutter and the hero's have come apart:\n"
+        f"  app/globals.css  .container-ps padding-left: {header_gutter}\n"
+        f"  components/home/Hero.tsx       px-[{hero_gutter}]\n"
+        f"The nav logo sits directly above the hero headline and is read as "
+        f"one lockup with it, so the two must be the same expression. Change "
+        f"both or neither."
+    )
+
+    # 3. And both of the header's own containers take the class, or the mobile
+    #    sheet starts at a different edge from the logo that opened it.
+    header = (MARKETING / "components" / "SiteHeader.tsx").read_text(encoding="utf-8")
+    uses = sum(1 for _no, line in _live_lines(header) if "container-ps" in line)
+    assert uses >= 2, (
+        f"SiteHeader.tsx uses `container-ps` {uses} time(s); the bar and the "
+        f"mobile panel both need it. A gutter inlined on one of them is how "
+        f"the open menu comes to sit at a different edge from the logo."
+    )
+
+
+def test_the_transparent_header_is_not_bare_over_the_hero_artwork():
+    """WHITE NAV LINKS ON A PHOTOGRAPH NEED A BACKDROP, AND THIS ONE HAD NONE.
+
+    The unscrolled header is `bg-transparent` by design — the brief asks for a
+    page that "feels like one continuous premium experience" — but the hero's
+    own scrim is a 100deg gradient that has faded to nothing by 58% of the
+    viewport, so every link right of that sat on raw artwork, and the artwork's
+    top-right is the sunrise glare and the planet rim.
+
+    Measured with the bar's own ink hidden and the scrim left in frame, white
+    on what is behind it ran 10.31:1 at 1280, 10.23 at 1440, 2.92 at 1600,
+    1.04 at 1920 and 1.84 at 2560 — three of five below the 4.5:1 AA floor,
+    with "Support" and "Resources" plainly unreadable at 1920 on the live
+    site. The same measurement with the scrim is 16.23 / 17.17 / 6.98 / 5.58 /
+    4.98. It is a legibility fix, not a decoration, which is why it is pinned:
+    it looks like something to delete when tidying a transparent header.
+
+    (Flushing the bar to the hero's gutter moved the nav a further 145px into
+    the glare, which is what made this urgent rather than what caused it.)
+
+    THREE PROPERTIES, AND TWO OF THEM COST A BROKEN ATTEMPT EACH. The scrim
+    must be FIXED, because the bar is: put in the hero's own scrim — the
+    obvious home, since the hero owns the artwork — it scrolled with the hero
+    and slid out from under the nav during the 24px the bar is still
+    transparent, measured 5.55:1 at rest but 3.98 after 12px and 3.41 after
+    24px at 1920. And it must be GATED ON THE ROUTE, because applied to every
+    page it darkened the top of the six that open on a flat navy panel by a
+    measured 12 levels — this colour is darker than `bg-brand-dark` — a
+    vignette nobody asked for on pages with no artwork at all."""
+    header = "\n".join(
+        line
+        for _no, line in _live_lines(
+            (MARKETING / "components" / "SiteHeader.tsx").read_text(encoding="utf-8")
+        )
+    )
+
+    assert re.search(r"before:bg-\[linear-gradient\(", header), (
+        "the unscrolled header carries no scrim. Its links are white text on "
+        "the hero photograph from 58% of the viewport rightwards, where the "
+        "artwork is brightest — measured 1.04:1 at 1920, against a 4.5:1 "
+        "floor. If the backdrop has been re-done another way, move this guard "
+        "to it rather than deleting it."
+    )
+
+    # It must be OFF once the bar is opaque: invisible under the navy bar, and
+    # a seam across the open mobile sheet.
+    assert "before:opacity-0" in header and "before:opacity-100" in header, (
+        "the header's scrim is not toggled between its two states. It belongs "
+        "to the transparent state only — `before:opacity-100` there and "
+        "`before:opacity-0` once `filled` (scrolled, or the mobile menu open)."
+    )
+
+    # The bar's contents must out-paint it, or the scrim greys the whole row.
+    assert re.search(r'className="container-ps relative\b', header), (
+        "the header's content row is not `relative`. The scrim is an "
+        "absolutely positioned pseudo-element, so without a positioned row it "
+        "paints OVER the logo and every link and dims them by 80%."
+    )
+
+    # It is for the one route with a photograph behind the bar, and the RULE is
+    # that whatever gates it is DERIVED FROM THE ROUTE — not that `usePathname`
+    # appears somewhere in the file. The first draft of this assertion tested
+    # exactly that, and a control replacing the whole condition with `true`
+    # passed it, because the import was still at the top. That is the spelling
+    # -not-the-rule failure this module's own history keeps recording.
+    gate = re.search(r"(\w+)\s*\?\s*\"before:pointer-events-none", header)
+    assert gate, (
+        "cannot find what gates the header's scrim. It is expected as "
+        "`{flag} ? \"before:pointer-events-none …\" : \"\"` so this guard can "
+        "follow the flag back to its definition."
+    )
+    assert re.search(rf"const\s+{gate.group(1)}\s*=[^;]*usePathname", header), (
+        f"the header's scrim is gated on `{gate.group(1)}`, which is not "
+        f"derived from the route. It is darker than `bg-brand-dark`, so on "
+        f"the six pages that open on a flat navy panel it darkens the top by "
+        f"a measured 12 levels to fix a problem only the homepage has."
+    )
+
+    # And it may NOT go back into the hero, which scrolls out from under it.
+    hero = "\n".join(
+        line
+        for _no, line in _live_lines(
+            (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+        )
+    )
+    assert not re.search(r"linear-gradient\(\s*to bottom", hero), (
+        "the hero's scrim has grown a top-edge band again. That layer SCROLLS "
+        "and the header does not, so the band slides out from under the nav "
+        "during the 24px the bar is still transparent — measured 3.41:1 at "
+        "1920 after 24px of scroll, against a 4.5:1 floor. A backdrop for a "
+        "fixed bar has to be fixed too."
     )
