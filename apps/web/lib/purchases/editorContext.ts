@@ -42,7 +42,15 @@ export async function loadPurchaseBillEditorContext(clientId: string): Promise<P
     supabase.from("clients").select("client_name, gstin, state_code").eq("id", clientId).maybeSingle(),
   ]);
   const c = clientData as { client_name: string | null; gstin: string | null; state_code: string | null } | null;
-  const clientStateCode = (c?.state_code || (c?.gstin ? c.gstin.slice(0, 2) : "")) ?? "";
+  // THE GSTIN FIRST, matching `domain/gst/place_of_supply.supplier_state_code`.
+  // This read `state_code || gstin.slice(0,2)` — the OPPOSITE precedence to the
+  // server that actually decides the tax — so for a client with both recorded
+  // and disagreeing, the preview and the saved document could differ by the
+  // whole of it: IGST on screen, central + State tax in the ledger. CGST §25
+  // makes the first two characters of a GSTIN the registration's state, so for
+  // a registered person it is the authority and `clients.state_code` may be a
+  // stale postal address.
+  const clientStateCode = ((c?.gstin ? c.gstin.slice(0, 2) : "") || c?.state_code) ?? "";
   return {
     vendors: (vendorData as PurchaseVendor[]) ?? [],
     accounts: (accData as AccountLike[]) ?? [],

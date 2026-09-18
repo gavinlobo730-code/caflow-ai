@@ -724,7 +724,11 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             # Fetch client state code from GSTIN (firm-scoped)
             client_resp = (
                 db.table("clients")
-                .select("gstin")
+                # BOTH columns, because `supplier_state_code` reads both and a
+                # narrow projection would make its second link a silent no-op —
+                # the trap `domain/accounting/opening_documents` records for
+                # `is_opening` and `domain/firm/identity` for `gst_number`.
+                .select("gstin, state_code")
                 .eq("id", client_id)
                 .eq("firm_id", firm_id)
                 .limit(1)
@@ -736,7 +740,16 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         # Business guard: never raise an invoice against a deactivated customer.
         if customer.get("is_active") is False:
             raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before invoicing.")
-        client_state_code = _get_state_code_from_gstin(client_rec.get("gstin")) or ""
+        # THE CLIENT'S OWN STATE HAS TWO SOURCES AND THIS READ ONLY ONE.
+        # `_get_state_code_from_gstin` alone answers "" for an UNREGISTERED
+        # client — who has no GSTIN by definition and may well have
+        # `clients.state_code` recorded — and an empty supplier state makes
+        # every sale intra-State whatever the customer's state is.
+        # `place_of_supply.supplier_state_code` is the authority and has
+        # carried the chain since it was written: the GSTIN first, because
+        # CGST §25 makes its first two characters the registration's state,
+        # then the recorded column.
+        client_state_code = place_of_supply.supplier_state_code(client_rec) or ""
 
     if bulk_cache is not None:
         # Rule 46(b) applies to an imported number exactly as it does to a typed
@@ -1299,7 +1312,14 @@ def bulk_create_invoices(
                 customers_by_id[(r["client_id"], r["id"])] = r
         for i in range(0, len(client_ids), CHUNK):
             chunk = client_ids[i:i + CHUNK]
-            resp = db.table("clients").select("id, gstin").eq("firm_id", firm_id).in_("id", chunk).execute()
+            # BOTH columns — the bulk path places the client through the same
+            # `supplier_state_code` chain the single path does, and a narrow
+            # projection would make its second link a silent no-op for
+            # IMPORTED invoices only. A cache that drops a column is a
+            # divergence between one invoice and a hundred, which is the kind
+            # of defect a suite structurally cannot see: both paths pass their
+            # own tests.
+            resp = db.table("clients").select("id, gstin, state_code").eq("firm_id", firm_id).in_("id", chunk).execute()
             for r in (resp.data or []):
                 clients_by_id[r["id"]] = r
         for cid in client_ids:

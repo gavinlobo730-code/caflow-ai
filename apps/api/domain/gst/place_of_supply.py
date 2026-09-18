@@ -55,8 +55,24 @@ def supplier_state_code(client: Optional[dict]) -> Optional[str]:
     recorded. Neither is required by the schema, so both can be absent.
     """
     c = client or {}
-    from_gstin = _state_code_of_gstin((c.get("gstin") or "").strip().upper())
-    if from_gstin:
+    # THE PREFIX, not `gstin.state_code` — the same decision
+    # `recipient_place_of_supply` records four lines below, and this function
+    # disagreed with its own sibling until 18-09-2026.
+    #
+    # `gstin.state_code` requires a fully VALID GSTIN and returns None on a bad
+    # check digit. The question here is which state, not whether the
+    # registration number is well-formed, and the two come apart exactly where
+    # it matters: a transposed digit made this return None, the caller read the
+    # supplier as having no state, and the comparison downstream then made an
+    # INTER-state supply intra-state — central and State tax on a supply that
+    # owes integrated tax. That is the failure the sibling's comment names, and
+    # it was live in this half.
+    #
+    # A malformed GSTIN is refused where it is TYPED (`gstin.problem_with` at
+    # every door). Reading its prefix here is not trusting it; it is answering
+    # a narrower question than the one the validator asks.
+    from_gstin = (c.get("gstin") or "").strip().upper()[:2]
+    if len(from_gstin) == 2 and from_gstin in _VALID_STATE_CODES():
         return from_gstin
     code = (c.get("state_code") or "").strip()
     return code or None
