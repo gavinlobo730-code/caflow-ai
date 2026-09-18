@@ -69,7 +69,7 @@ function fmt(paise?: number | null) {
 
 const FIELD =
   "border border-ps-border rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400 w-full";
-const LABEL = "text-[11px] text-ps-label block";
+const LABEL = "text-2xs text-ps-label block";
 
 /** A typed rupee amount, through the one parser. Returns null for anything that
  *  is not an amount — see lib/money/rupeeInput. Never parseFloat. */
@@ -83,8 +83,8 @@ function Money({ label, value, onChange, hint }: {
       <input value={value} onChange={(e) => onChange(e.target.value)}
         type="text" inputMode="decimal" placeholder="0"
         className={`${FIELD} mt-1 ${bad ? "border-red-300" : ""}`} />
-      {bad && <span className="text-[10px] text-red-600">Not an amount.</span>}
-      {hint && !bad && <span className="text-[10px] text-ps-hint">{hint}</span>}
+      {bad && <span className="text-3xs text-red-600">Not an amount.</span>}
+      {hint && !bad && <span className="text-3xs text-ps-hint">{hint}</span>}
     </label>
   );
 }
@@ -99,18 +99,18 @@ function Notes({ gaps, problems }: { gaps?: string[]; problems?: string[] }) {
     <div className="space-y-2">
       {!!problems?.length && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-2.5">
-          <p className="text-[11px] font-semibold text-red-700">
+          <p className="text-2xs font-semibold text-red-700">
             {problems.length} problem{problems.length === 1 ? "" : "s"}
           </p>
-          {problems.map((p, i) => <p key={i} className="text-[11px] text-red-700 mt-0.5">· {p}</p>)}
+          {problems.map((p, i) => <p key={i} className="text-2xs text-red-700 mt-0.5">· {p}</p>)}
         </div>
       )}
       {!!gaps?.length && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
-          <p className="text-[11px] font-semibold text-amber-800">
+          <p className="text-2xs font-semibold text-amber-800">
             What payroll cannot know
           </p>
-          {gaps.map((g, i) => <p key={i} className="text-[11px] text-amber-800 mt-0.5">· {g}</p>)}
+          {gaps.map((g, i) => <p key={i} className="text-2xs text-amber-800 mt-0.5">· {g}</p>)}
         </div>
       )}
     </div>
@@ -136,7 +136,7 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
         <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[14px] font-semibold text-ps-ink truncate">{employee.name}</p>
-            <p className="text-[11px] text-ps-hint">
+            <p className="text-2xs text-ps-hint">
               {[employee.designation, employee.department].filter(Boolean).join(" · ") || "—"}
               {employee.status && employee.status !== "active" ? ` · ${employee.status}` : ""}
             </p>
@@ -159,7 +159,7 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
           ))}
         </div>
 
-        <p className="px-5 pt-3 text-[11px] text-ps-hint">
+        <p className="px-5 pt-3 text-2xs text-ps-hint">
           {SECTIONS.find((s) => s.key === section)?.hint}
         </p>
 
@@ -272,7 +272,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
         <label className={LABEL}>Last working day
           <input type="date" value={leavingDate} onChange={(e) => setLeavingDate(e.target.value)}
             className={`${FIELD} mt-1`} />
-          <span className="text-[10px] text-ps-hint">
+          <span className="text-3xs text-ps-hint">
             Joined {employee.joining_date || "— not recorded, so gratuity cannot be computed"}.
           </span>
         </label>
@@ -284,7 +284,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
             <option value="terminated">Terminated</option>
             <option value="deceased">Deceased</option>
           </select>
-          <span className="text-[10px] text-ps-hint">
+          <span className="text-3xs text-ps-hint">
             §9 of the Bonus Act turns on dismissal, so this is not cosmetic.
           </span>
         </label>
@@ -295,17 +295,17 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
           is fully taxable. It is a checkbox because it is a fact, not a
           preference. */}
       <div className="flex flex-wrap gap-4">
-        <label className="text-[11px] text-ps-label flex items-center gap-1.5">
+        <label className="text-2xs text-ps-label flex items-center gap-1.5">
           <input type="checkbox" checked={onRetirement}
             onChange={(e) => setOnRetirement(e.target.checked)} />
           On retirement (decides §10(10AA))
         </label>
-        <label className="text-[11px] text-ps-label flex items-center gap-1.5">
+        <label className="text-2xs text-ps-label flex items-center gap-1.5">
           <input type="checkbox" checked={onDeath}
             onChange={(e) => setOnDeath(e.target.checked)} />
           On death or disablement
         </label>
-        <label className="text-[11px] text-ps-label flex items-center gap-1.5">
+        <label className="text-2xs text-ps-label flex items-center gap-1.5">
           <input type="checkbox" checked={isGovernment}
             onChange={(e) => setIsGovernment(e.target.checked)} />
           Government employee
@@ -337,7 +337,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
           className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
           {busy === "preview" ? "Computing…" : "Compute"}
         </button>
-        {!canPreview && <span className="text-[11px] text-ps-hint">A last working day first.</span>}
+        {!canPreview && <span className="text-2xs text-ps-hint">A last working day first.</span>}
       </div>
 
       {err && <p className="text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
@@ -345,7 +345,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
 
       {result && (
         <div className="space-y-3">
-          <table className="w-full text-[11px]">
+          <table className="w-full text-2xs">
             <thead>
               <tr className="text-left text-ps-label border-b border-ps-border">
                 <th className="py-1.5 pr-2">Component</th>
@@ -384,13 +384,13 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
               ["Taxable under §17(1)", result.totals.taxable_paise],
               ["Net payable", result.totals.net_payable_paise]].map(([label, value]) => (
               <div key={String(label)} className="rounded-lg border border-ps-border p-2.5">
-                <p className="text-[10px] text-ps-hint">{label}</p>
+                <p className="text-3xs text-ps-hint">{label}</p>
                 <p className="text-[13px] font-semibold text-ps-ink">{fmt(Number(value ?? 0))}</p>
               </div>
             ))}
           </div>
           {/* The one thing about a settlement that is easy to get backwards. */}
-          <p className="text-[10px] text-ps-hint">
+          <p className="text-3xs text-ps-hint">
             A recovery reduces what the employer pays and never reduces §17(1) —
             taking notice pay back does not un-earn the salary, so the two figures
             above legitimately differ.
@@ -400,8 +400,8 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
 
           {canFinalize && !done && (
             <div className="rounded-xl border border-ps-border p-3">
-              <p className="text-[11px] font-semibold text-ps-ink">Record this settlement</p>
-              <p className="text-[10px] text-ps-hint mt-1">
+              <p className="text-2xs font-semibold text-ps-ink">Record this settlement</p>
+              <p className="text-3xs text-ps-hint mt-1">
                 This ends the employment, withholds under §192 against the year, posts
                 an immutable journal and closes the employee. It cannot be undone by
                 editing — a correction is a reversal.
@@ -432,7 +432,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
             </div>
           )}
           {!canFinalize && (
-            <p className="text-[11px] text-ps-hint">
+            <p className="text-2xs text-ps-hint">
               Recording a settlement needs payroll finalise rights. This is the
               computation only.
             </p>
@@ -503,8 +503,8 @@ function RevisionsSection({ employee, clientId, onSaved }: {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-ps-border p-3">
-        <p className="text-[11px] font-semibold text-ps-ink">New revision</p>
-        <p className="text-[10px] text-ps-hint mt-1">
+        <p className="text-2xs font-semibold text-ps-ink">New revision</p>
+        <p className="text-3xs text-ps-hint mt-1">
           The WHOLE component set as at the date, not a change to it. Months already
           finalised keep the figures they were paid on; a backdated revision creates a
           difference, and settling it is a separate decision — see §89 relief.
@@ -546,7 +546,7 @@ function RevisionsSection({ employee, clientId, onSaved }: {
         : rows.length === 0
           ? <p className="text-[12px] text-ps-hint">No revisions recorded. The employee master&apos;s own figures apply.</p>
           : (
-            <table className="w-full text-[11px]">
+            <table className="w-full text-2xs">
               <thead>
                 <tr className="text-left text-ps-label border-b border-ps-border">
                   <th className="py-1.5 pr-2">Effective from</th>
@@ -620,8 +620,8 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-ps-border p-3">
-        <p className="text-[11px] font-semibold text-ps-ink">New loan or advance</p>
-        <p className="text-[10px] text-ps-hint mt-1">
+        <p className="text-2xs font-semibold text-ps-ink">New loan or advance</p>
+        <p className="text-3xs text-ps-hint mt-1">
           Recovered through the payslip AFTER the statutory deductions and only out of
           what is left — PF, ESI, professional tax and TDS are owed to somebody else.
         </p>
@@ -631,7 +631,7 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
           <label className={LABEL}>Interest rate %
             <input value={ratePercent} onChange={(e) => setRatePercent(e.target.value)}
               type="text" inputMode="decimal" className={`${FIELD} mt-1`} />
-            <span className="text-[10px] text-ps-hint">
+            <span className="text-3xs text-ps-hint">
               Zero is interest-free — and Rule 3(7)(i) makes the shortfall against the
               SBI rate a perquisite. Recording the recovery does not value it.
             </span>
@@ -648,7 +648,7 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
         {err && <p className="mt-2 text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
         {!!notes.length && (
           <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
-            {notes.map((n, i) => <p key={i} className="text-[11px] text-amber-800">· {n}</p>)}
+            {notes.map((n, i) => <p key={i} className="text-2xs text-amber-800">· {n}</p>)}
           </div>
         )}
         <div className="mt-3 flex justify-end">
@@ -663,7 +663,7 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
         : rows.length === 0
           ? <p className="text-[12px] text-ps-hint">No loans or advances recorded.</p>
           : (
-            <table className="w-full text-[11px]">
+            <table className="w-full text-2xs">
               <thead>
                 <tr className="text-left text-ps-label border-b border-ps-border">
                   <th className="py-1.5 pr-2">Purpose</th>
@@ -786,10 +786,10 @@ function PerquisitesSection({ employee, clientId }: {
       </div>
 
       <details className="rounded-xl border border-ps-border p-3">
-        <summary className="text-[11px] font-semibold text-ps-ink cursor-pointer">
+        <summary className="text-2xs font-semibold text-ps-ink cursor-pointer">
           Rule 3(1) — accommodation
         </summary>
-        <label className="text-[11px] text-ps-label flex items-center gap-1.5 mt-2">
+        <label className="text-2xs text-ps-label flex items-center gap-1.5 mt-2">
           <input type="checkbox" checked={accommodation}
             onChange={(e) => setAccommodation(e.target.checked)} />
           Accommodation provided
@@ -800,7 +800,7 @@ function PerquisitesSection({ employee, clientId }: {
               <input value={populationLakh} onChange={(e) => setPopulationLakh(e.target.value.replace(/[^0-9]/g, ""))}
                 inputMode="numeric" className={`${FIELD} mt-1`} />
             </label>
-            <label className="text-[11px] text-ps-label flex items-center gap-1.5 mt-5">
+            <label className="text-2xs text-ps-label flex items-center gap-1.5 mt-5">
               <input type="checkbox" checked={employerOwns}
                 onChange={(e) => setEmployerOwns(e.target.checked)} />
               Employer-owned (otherwise leased)
@@ -812,10 +812,10 @@ function PerquisitesSection({ employee, clientId }: {
       </details>
 
       <details className="rounded-xl border border-ps-border p-3">
-        <summary className="text-[11px] font-semibold text-ps-ink cursor-pointer">
+        <summary className="text-2xs font-semibold text-ps-ink cursor-pointer">
           Rule 3(2) — motor car
         </summary>
-        <label className="text-[11px] text-ps-label flex items-center gap-1.5 mt-2">
+        <label className="text-2xs text-ps-label flex items-center gap-1.5 mt-2">
           <input type="checkbox" checked={motorCar} onChange={(e) => setMotorCar(e.target.checked)} />
           Car provided
         </label>
@@ -826,12 +826,12 @@ function PerquisitesSection({ employee, clientId }: {
                 type="text" inputMode="decimal" className={`${FIELD} mt-1`} />
             </label>
             <div className="flex flex-col gap-1.5 mt-5">
-              <label className="text-[11px] text-ps-label flex items-center gap-1.5">
+              <label className="text-2xs text-ps-label flex items-center gap-1.5">
                 <input type="checkbox" checked={employerBearsRunning}
                   onChange={(e) => setEmployerBearsRunning(e.target.checked)} />
                 Employer bears running costs
               </label>
-              <label className="text-[11px] text-ps-label flex items-center gap-1.5">
+              <label className="text-2xs text-ps-label flex items-center gap-1.5">
                 <input type="checkbox" checked={withDriver}
                   onChange={(e) => setWithDriver(e.target.checked)} />
                 With driver
@@ -842,10 +842,10 @@ function PerquisitesSection({ employee, clientId }: {
       </details>
 
       <details className="rounded-xl border border-ps-border p-3">
-        <summary className="text-[11px] font-semibold text-ps-ink cursor-pointer">
+        <summary className="text-2xs font-semibold text-ps-ink cursor-pointer">
           Rule 3(7)(i) — concessional loan
         </summary>
-        <label className="text-[11px] text-ps-label flex items-center gap-1.5 mt-2">
+        <label className="text-2xs text-ps-label flex items-center gap-1.5 mt-2">
           <input type="checkbox" checked={loan} onChange={(e) => setLoan(e.target.checked)} />
           Loan provided
         </label>
@@ -856,7 +856,7 @@ function PerquisitesSection({ employee, clientId }: {
               <input value={sbiRatePercent} onChange={(e) => setSbiRatePercent(e.target.value)}
                 type="text" inputMode="decimal" placeholder="leave blank if not known"
                 className={`${FIELD} mt-1`} />
-              <span className="text-[10px] text-ps-hint">
+              <span className="text-3xs text-ps-hint">
                 Published by SBI on the first day of the previous year. Left blank, the
                 loan is refused rather than valued at a guess.
               </span>
@@ -881,7 +881,7 @@ function PerquisitesSection({ employee, clientId }: {
       {result && (
         <div className="space-y-3">
           {result.items?.length ? (
-            <table className="w-full text-[11px]">
+            <table className="w-full text-2xs">
               <thead>
                 <tr className="text-left text-ps-label border-b border-ps-border">
                   <th className="py-1.5 pr-2">Perquisite</th>
@@ -893,7 +893,7 @@ function PerquisitesSection({ employee, clientId }: {
                 {result.items.map((i, n) => (
                   <tr key={n} className="border-b border-ps-muted">
                     <td className="py-1.5 pr-2 text-ps-ink">{i.label}
-                      {i.note && <span className="block text-[10px] text-ps-hint">{i.note}</span>}</td>
+                      {i.note && <span className="block text-3xs text-ps-hint">{i.note}</span>}</td>
                     <td className="py-1.5 pr-2 text-ps-hint">{i.rule}</td>
                     <td className="py-1.5 text-right">{fmt(i.value_paise)}</td>
                   </tr>
@@ -912,8 +912,8 @@ function PerquisitesSection({ employee, clientId }: {
 
           {!!result.items?.length && (
             <div className="rounded-xl border border-ps-border p-3">
-              <p className="text-[11px] font-semibold text-ps-ink">Record for {fy}</p>
-              <p className="text-[10px] text-ps-hint mt-1">
+              <p className="text-2xs font-semibold text-ps-ink">Record for {fy}</p>
+              <p className="text-3xs text-ps-hint mt-1">
                 Replaces the year&apos;s whole set rather than adding to it — a car
                 returned in June must not stay valued for the full year. These reach the
                 employee&apos;s Form 16 through 24Q Annexure II.
@@ -975,7 +975,7 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
 
   return (
     <div className="space-y-4">
-      <p className="text-[10px] text-ps-hint">
+      <p className="text-3xs text-ps-hint">
         Salary is taxed in the year of RECEIPT (§15), so a revision backdated three
         years lands three years&apos; arrears in one year and pushes the employee
         through slabs they would never have reached. §89 compares the tax with what
@@ -994,12 +994,12 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
           <input value={form10e} onChange={(e) => setForm10e(e.target.value)}
             placeholder="filed on the e-filing portal"
             className={`${FIELD} mt-1`} />
-          <span className="text-[10px] text-ps-hint">
+          <span className="text-3xs text-ps-hint">
             The proviso to §89 with Rule 21AA: no Form 10E, no relief. Nothing here
             files it.
           </span>
         </label>
-        <label className="text-[11px] text-ps-label flex items-center gap-1.5 mt-5">
+        <label className="text-2xs text-ps-label flex items-center gap-1.5 mt-5">
           <input type="checkbox" checked={useNewRegime}
             onChange={(e) => setUseNewRegime(e.target.checked)} />
           New regime (§115BAC)
@@ -1007,10 +1007,10 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
       </div>
 
       <div className="rounded-xl border border-ps-border p-3">
-        <p className="text-[11px] font-semibold text-ps-ink">
+        <p className="text-2xs font-semibold text-ps-ink">
           Which year each slice of the arrears belongs to
         </p>
-        <p className="text-[10px] text-ps-hint mt-1">
+        <p className="text-3xs text-ps-hint mt-1">
           The total income for an earlier year comes off the employee&apos;s own
           return — the employer never held it, so it is asked for rather than assumed.
         </p>
@@ -1029,12 +1029,12 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
         ))}
         <div className="mt-2 flex gap-2">
           <button onClick={() => setSlices((v) => [...v, { fy: "", amount: "", income: "" }])}
-            className="px-2.5 py-1 text-[11px] border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
+            className="px-2.5 py-1 text-2xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
             Add a year
           </button>
           {slices.length > 1 && (
             <button onClick={() => setSlices((v) => v.slice(0, -1))}
-              className="px-2.5 py-1 text-[11px] border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
+              className="px-2.5 py-1 text-2xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
               Remove the last
             </button>
           )}
@@ -1056,8 +1056,8 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
               a substituted year makes the whole relief a plausible fiction. */}
           {result.available === false ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-[11px] font-semibold text-amber-800">Relief is not available</p>
-              <p className="text-[11px] text-amber-800 mt-1">
+              <p className="text-2xs font-semibold text-amber-800">Relief is not available</p>
+              <p className="text-2xs text-amber-800 mt-1">
                 {result.blocked_reason || "The server did not say why."}
               </p>
             </div>
@@ -1067,7 +1067,7 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
                 ["Tax spread over the years", result.tax_without_arrears_paise],
                 ["§89 relief", result.relief_paise]].map(([label, v]) => (
                 <div key={String(label)} className="rounded-lg border border-ps-border p-2.5">
-                  <p className="text-[10px] text-ps-hint">{label}</p>
+                  <p className="text-3xs text-ps-hint">{label}</p>
                   <p className="text-[13px] font-semibold text-ps-ink">{fmt(Number(v ?? 0))}</p>
                 </div>
               ))}

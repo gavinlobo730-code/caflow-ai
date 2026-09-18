@@ -86,7 +86,7 @@ export default function PlatformAdminPage() {
       key: "status", header: "Status", accessor: (f) => f.status,
       sortable: true,
       render: (f) => (
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[f.status] ?? "bg-ps-muted text-ps-label"}`}>
+        <span className={`px-2 py-0.5 rounded-full text-3xs font-medium ${STATUS_BADGE[f.status] ?? "bg-ps-muted text-ps-label"}`}>
           {f.status}
         </span>
       ),
@@ -394,7 +394,7 @@ export default function PlatformAdminPage() {
                 <label className="text-xs font-medium text-ps-label flex items-center gap-1"><KeyRound size={12} /> Authenticator code</label>
                 <input value={purgeCode} onChange={(e) => setPurgeCode(e.target.value)} inputMode="numeric" maxLength={6} placeholder="6-digit code"
                   className="mt-1 w-full rounded-lg border border-ps-border px-3 py-2 text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-red-200" />
-                <p className="text-[11px] text-ps-hint mt-1">From the authenticator app you enrolled for this account.</p>
+                <p className="text-2xs text-ps-hint mt-1">From the authenticator app you enrolled for this account.</p>
               </div>
               {purgeErr && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{purgeErr}</p>}
             </div>

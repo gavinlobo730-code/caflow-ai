@@ -155,7 +155,7 @@ export default function TrialBalanceImportPage() {
                 onChange={e => setOpeningDate(e.target.value)}
                 className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
               />
-              <p className="text-[11px] text-ps-hint mt-1">
+              <p className="text-2xs text-ps-hint mt-1">
                 Defaults to the client&apos;s financial-year start (1 April).
               </p>
             </div>

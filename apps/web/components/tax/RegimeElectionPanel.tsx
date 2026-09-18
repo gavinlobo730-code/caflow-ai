@@ -72,7 +72,7 @@ export default function RegimeElectionPanel({
   useEffect(() => { load(); }, [load]);
 
   if (error) {
-    return <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">{error}</p>;
+    return <p className="text-2xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">{error}</p>;
   }
   if (!data) return null;
 
@@ -84,7 +84,7 @@ export default function RegimeElectionPanel({
 
   return (
     <div className={`rounded-lg border p-2.5 space-y-1.5 ${tone}`}>
-      <p className="text-[11px] font-semibold">
+      <p className="text-2xs font-semibold">
         {data.form_10iea_required
           ? `Form 10-IEA is required${data.due_date ? `, on or before ${data.due_date}` : ""}`
           : data.route === "in_the_return"
@@ -92,7 +92,7 @@ export default function RegimeElectionPanel({
             : "No election is needed for the new regime"}
       </p>
       {data.reasons.map((r, i) => (
-        <p key={i} className="text-[11px] leading-snug">{r}</p>
+        <p key={i} className="text-2xs leading-snug">{r}</p>
       ))}
 
       {/* §115BAC(6)(i)'s once-only withdrawal cannot be derived from anything
@@ -102,7 +102,7 @@ export default function RegimeElectionPanel({
           CA the old regime is open when the client spent it years ago. */}
       {data.route === "form_10iea" && (
         <div className="pt-1 space-y-1">
-          <label className="text-[10px] block opacity-80">
+          <label className="text-3xs block opacity-80">
             Earlier years, if you know them — this decides whether the option is still available
           </label>
           <div className="flex flex-wrap gap-1.5">
@@ -114,7 +114,7 @@ export default function RegimeElectionPanel({
                   p.some((x) => x.endsWith(`:${action}`))
                     ? p.filter((x) => !x.endsWith(`:${action}`))
                     : [...p, `${previousFy(financialYear)}:${action}`])}
-                className={`text-[10px] px-2 py-0.5 rounded border ${
+                className={`text-3xs px-2 py-0.5 rounded border ${
                   prior.some((x) => x.endsWith(`:${action}`))
                     ? "bg-brand-dark text-white border-brand-dark"
                     : "bg-white border-ps-border text-ps-label"}`}
@@ -124,7 +124,7 @@ export default function RegimeElectionPanel({
             ))}
             {prior.length > 0 && (
               <button type="button" onClick={() => setPrior([])}
-                className="text-[10px] px-2 py-0.5 rounded border bg-white border-ps-border text-ps-hint">
+                className="text-3xs px-2 py-0.5 rounded border bg-white border-ps-border text-ps-hint">
                 Clear
               </button>
             )}

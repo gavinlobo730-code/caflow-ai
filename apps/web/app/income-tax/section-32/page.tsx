@@ -244,7 +244,7 @@ export default function Section32Page() {
               <p key={`g${i}`} className="text-xs text-state-attention">⚠ {g}</p>
             ))}
             {answer.additional_depreciation.caveats.map((c, i) => (
-              <p key={`c${i}`} className="text-[11px] text-ps-hint">{c}</p>
+              <p key={`c${i}`} className="text-2xs text-ps-hint">{c}</p>
             ))}
             {answer.additional_depreciation.reaches_the_assessee
               && answer.additional_depreciation.gaps.length === 0 && (
@@ -310,10 +310,10 @@ export default function Section32Page() {
                     <td className="px-4 py-3">
                       <p className="font-medium text-ps-ink">{b.block_key}</p>
                       {b.gaps.map((g, i) => (
-                        <p key={i} className="text-[10px] text-amber-700 mt-0.5">{g}</p>
+                        <p key={i} className="text-3xs text-amber-700 mt-0.5">{g}</p>
                       ))}
                       {b.short_term_capital_gain_paise !== 0 && (
-                        <p className="text-[10px] text-amber-800 mt-0.5">
+                        <p className="text-3xs text-amber-800 mt-0.5">
                           §50: {b.short_term_capital_gain_paise > 0 ? "short-term capital gain" : "short-term capital loss"}{" "}
                           {formatPaise(Math.abs(b.short_term_capital_gain_paise))} — no depreciation this year.
                         </p>
@@ -325,7 +325,7 @@ export default function Section32Page() {
                     <td className="px-3 py-3 text-right tabular-nums">
                       {formatPaise(b.additions_half_rate_paise)}
                       {b.additions_not_put_to_use_paise > 0 && (
-                        <span className="block text-[10px] text-ps-hint">
+                        <span className="block text-3xs text-ps-hint">
                           {formatPaise(b.additions_not_put_to_use_paise)} not yet put to use
                         </span>
                       )}
@@ -334,7 +334,7 @@ export default function Section32Page() {
                     <td className="px-3 py-3 text-right tabular-nums font-medium">
                       {formatPaise(b.depreciation_paise)}
                       {b.additional_depreciation_paise > 0 && (
-                        <span className="block text-[10px] text-ps-hint">
+                        <span className="block text-3xs text-ps-hint">
                           + {formatPaise(b.additional_depreciation_paise)} u/s 32(1)(iia)
                         </span>
                       )}
@@ -432,7 +432,7 @@ function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
       <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Add a §32 block — FY {fy}</h3>
-          <p className="text-[11px] text-ps-label mt-1">
+          <p className="text-2xs text-ps-label mt-1">
             A block is a group of assets of the same nature carrying the same rate (§2(11)),
             so its name and its rate are one decision. Its opening written-down value comes
             off last year&apos;s return.
@@ -450,7 +450,7 @@ function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
             Rate (%)
             <input className={input} type="number" min={0} max={100} step={1}
                    value={rate} onChange={e => setRate(e.target.value)} />
-            <span className="block text-[10px] text-ps-hint mt-1">
+            <span className="block text-3xs text-ps-hint mt-1">
               From Appendix I to the Income-tax Rules.
             </span>
           </label>
@@ -458,7 +458,7 @@ function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
             Opening WDV (₹)
             <input className={input} value={openingRs} onChange={e => setOpeningRs(e.target.value)}
                    placeholder="1250000" />
-            <span className="block text-[10px] text-ps-hint mt-1">
+            <span className="block text-3xs text-ps-hint mt-1">
               Off last year&apos;s return. A zero allows no depreciation at all.
             </span>
           </label>
@@ -472,7 +472,7 @@ function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
             <option value="no">No — every asset has gone</option>
             <option value="unknown">Not established</option>
           </select>
-          <span className="block text-[10px] text-ps-hint mt-1">
+          <span className="block text-3xs text-ps-hint mt-1">
             §50 turns an emptied block into a short-term capital loss and allows no
             depreciation on it. A positive written-down value does not settle it.
           </span>

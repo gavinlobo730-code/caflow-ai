@@ -220,7 +220,7 @@ export function CustomerFormModal({
             className={`${inputCls} font-mono ${gstinProblem(gstin) ? "border-red-300" : ""}`}
           />
           {gstinProblem(gstin) && (
-            <p className="text-[10px] text-red-500 mt-0.5">{gstinProblem(gstin)}</p>
+            <p className="text-3xs text-red-500 mt-0.5">{gstinProblem(gstin)}</p>
           )}
         </div>
         <div>
@@ -248,7 +248,7 @@ export function CustomerFormModal({
             placeholder="MUMA12345B" maxLength={10}
             className={`${inputCls} font-mono ${tan && !isValidTan(tan) ? "border-red-300" : ""}`}
           />
-          {tan && !isValidTan(tan) && <p className="text-[10px] text-red-500 mt-0.5">Invalid TAN</p>}
+          {tan && !isValidTan(tan) && <p className="text-3xs text-red-500 mt-0.5">Invalid TAN</p>}
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Email</label>
@@ -281,7 +281,7 @@ export function CustomerFormModal({
             <input type="number" min="0" value={creditDays} onChange={(e) => setCreditDays(e.target.value)}
               placeholder="Credit days" aria-label="Custom credit days" className={`mt-1 ${inputCls}`} />
           )}
-          <p className="mt-1 text-[10px] text-ps-hint">Default terms for this customer&apos;s new invoices.</p>
+          <p className="mt-1 text-3xs text-ps-hint">Default terms for this customer&apos;s new invoices.</p>
         </div>
       </div>
 

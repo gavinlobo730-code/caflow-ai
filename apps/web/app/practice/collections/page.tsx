@@ -69,16 +69,16 @@ function Collections() {
 
       <div className="grid grid-cols-3 gap-3 mb-5">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-[11px] text-gray-500 uppercase">Overdue</p>
+          <p className="text-2xs text-gray-500 uppercase">Overdue</p>
           <p className="text-lg font-semibold text-red-600 tabular-nums mt-1">{formatPaise(dash?.overdue_paise ?? 0)}</p>
-          <p className="text-[11px] text-gray-400">{dash?.overdue_count ?? 0} invoice(s)</p>
+          <p className="text-2xs text-gray-400">{dash?.overdue_count ?? 0} invoice(s)</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-[11px] text-gray-500 uppercase">Total receivable</p>
+          <p className="text-2xs text-gray-500 uppercase">Total receivable</p>
           <p className="text-lg font-semibold text-brand tabular-nums mt-1">{formatPaise(dash?.total_receivable_paise ?? 0)}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-[11px] text-gray-500 uppercase">Collected (cash)</p>
+          <p className="text-2xs text-gray-500 uppercase">Collected (cash)</p>
           <p className="text-lg font-semibold text-green-600 tabular-nums mt-1">{formatPaise(dash?.collected_cash_paise ?? 0)}</p>
         </div>
       </div>
@@ -94,7 +94,7 @@ function Collections() {
           <Bell size={14} /> Flag for follow-up
         </button>
       </div>
-      <p className="text-[11px] text-gray-400 mt-4">
+      <p className="text-2xs text-gray-400 mt-4">
         Both actions are on the practice&apos;s own fee invoices only. Flagging is cadence-gated
         and recorded to the internal client&apos;s Timeline &mdash; <strong>nothing is emailed</strong>.
         To email a customer, open that client&apos;s Sales tab and use Remind. Overdue is derived

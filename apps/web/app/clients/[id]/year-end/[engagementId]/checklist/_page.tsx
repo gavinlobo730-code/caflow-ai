@@ -217,7 +217,7 @@ export default function ChecklistPage() {
       {Object.entries(grouped).map(([category, catItems]) => (
         <div key={category} className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-4 py-2.5 border-b border-ps-bg bg-ps-bg">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-ps-label">{category}</p>
+            <p className="text-3xs font-semibold uppercase tracking-wide text-ps-label">{category}</p>
           </div>
           <div className="divide-y divide-ps-bg">
             {catItems.map((item) => {
@@ -246,7 +246,7 @@ export default function ChecklistPage() {
                         <p className={`text-xs font-medium text-ps-ink ${item.status === "not_applicable" ? "opacity-50" : ""}`}>
                           {item.item_label}
                         </p>
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_BADGE[item.status]}`}>
+                        <span className={`text-3xs font-medium px-1.5 py-0.5 rounded-full ${STATUS_BADGE[item.status]}`}>
                           {STATUS_LABEL[item.status]}
                         </span>
                       </div>
@@ -266,7 +266,7 @@ export default function ChecklistPage() {
                         </div>
                       ) : noteValue ? (
                         <p
-                          className="text-[10px] text-ps-label mt-1 cursor-pointer hover:text-ps-body"
+                          className="text-3xs text-ps-label mt-1 cursor-pointer hover:text-ps-body"
                           onClick={() => setEditingNotes((prev) => ({ ...prev, [item.id]: noteValue }))}
                         >
                           {noteValue}
@@ -274,7 +274,7 @@ export default function ChecklistPage() {
                       ) : (
                         <button
                           onClick={() => setEditingNotes((prev) => ({ ...prev, [item.id]: "" }))}
-                          className="text-[10px] text-ps-disabled hover:text-ps-hint mt-1"
+                          className="text-3xs text-ps-disabled hover:text-ps-hint mt-1"
                         >
                           + Add note
                         </button>
@@ -282,7 +282,7 @@ export default function ChecklistPage() {
 
                       {/* Completed by/at */}
                       {item.completed_by && (
-                        <p className="text-[10px] text-ps-hint mt-0.5">
+                        <p className="text-3xs text-ps-hint mt-0.5">
                           Completed by {item.completed_by}
                           {item.completed_at && ` · ${new Date(item.completed_at).toLocaleDateString("en-IN")}`}
                         </p>
@@ -294,7 +294,7 @@ export default function ChecklistPage() {
                       <button
                         onClick={() => markNA(item)}
                         disabled={!!updatingId}
-                        className="text-[10px] text-ps-disabled hover:text-ps-hint flex-shrink-0 disabled:opacity-50"
+                        className="text-3xs text-ps-disabled hover:text-ps-hint flex-shrink-0 disabled:opacity-50"
                         title="Mark N/A"
                       >
                         N/A
@@ -326,7 +326,7 @@ export default function ChecklistPage() {
         </button>
       </div>
       {!allDone && (
-        <p className="text-[10px] text-ps-hint text-right">
+        <p className="text-3xs text-ps-hint text-right">
           Complete or mark N/A all {total - complete} remaining items to enable submission.
         </p>
       )}

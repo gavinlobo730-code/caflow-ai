@@ -714,7 +714,7 @@ export function PurchaseBillEditor({
   }
 
   const busy = saving;
-  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-[10px] text-red-600">{msg}</p> : null);
+  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-3xs text-red-600">{msg}</p> : null);
 
   const toolbar = (
     <>
@@ -746,11 +746,11 @@ export function PurchaseBillEditor({
       {totals.cess_paise > 0 && (
         <Row label="Compensation cess" value={fmtAmt(totals.cess_paise)} />
       )}
-      <p className="text-[10px] text-ps-hint">
+      <p className="text-3xs text-ps-hint">
         {gstAuto ? `${isInterstate ? "Interstate" : "Intra-state"} — ${isInterstate ? "IGST" : "CGST + SGST"} (CGST Act §8)` : "Pick a vendor to preview CGST/SGST vs IGST."}
       </p>
       {isReverseCharge && (
-        <p className="text-[10px] text-amber-700">
+        <p className="text-3xs text-amber-700">
           Reverse charge — the GST above is self-assessed by you (GSTR-3B 3.1(d)), not payable to the vendor.
         </p>
       )}
@@ -762,7 +762,7 @@ export function PurchaseBillEditor({
       {blockedGstPaise > 0 && (
         <div className="border-t border-ps-muted pt-2 mt-1">
           <Row label="ITC blocked (§17(5))" value={fmtAmt(blockedGstPaise)} />
-          <p className="text-[10px] text-ps-hint">
+          <p className="text-3xs text-ps-hint">
             Claimed in GSTR-3B Table 4(A) and reversed in 4(B)(1). It does not
             change what you pay the vendor.
           </p>
@@ -783,7 +783,7 @@ export function PurchaseBillEditor({
               that crosses it. */}
           {tds.loading && <Row label="TDS" value="…" muted />}
           {!tds.loading && tds.error && (
-            <p className="text-[10px] text-red-600 bg-red-50 rounded px-2 py-1.5">{tds.error}</p>
+            <p className="text-3xs text-red-600 bg-red-50 rounded px-2 py-1.5">{tds.error}</p>
           )}
           {!tds.loading && !tds.error && tds.data && tdsPaise !== null && netPayable !== null && (
             <>
@@ -797,30 +797,30 @@ export function PurchaseBillEditor({
                   cannot check, and this one moves with the year's running
                   total. */}
               {tds.data.tds_basis && (
-                <p className="text-[10px] text-ps-hint">{tds.data.tds_basis}</p>
+                <p className="text-3xs text-ps-hint">{tds.data.tds_basis}</p>
               )}
               {/* s.201(1A) runs at 1% a month on an under-deduction. The
                   shortfall is not lost — the next bill to the same payee
                   re-charges it — but a net payable of nil is not where a CA
                   should have to infer that from. */}
               {tds.data.tds_shortfall_paise > 0 && (
-                <p className="text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">
+                <p className="text-3xs text-amber-700 bg-amber-50 rounded px-2 py-1.5">
                   The year&apos;s aggregate demands {fmt(tds.data.tds_shortfall_paise)} more than this
                   bill can carry. It is recovered on the next bill to this payee; §201(1A) interest
                   runs at 1% a month until it is deducted.
                 </p>
               )}
-              {isForeign && <p className="text-[10px] text-ps-hint">TDS is always deducted in ₹ per IT Act §194.</p>}
+              {isForeign && <p className="text-3xs text-ps-hint">TDS is always deducted in ₹ per IT Act §194.</p>}
             </>
           )}
         </div>
       )}
-      <p className="text-[10px] text-ps-hint pt-1">
+      <p className="text-3xs text-ps-hint pt-1">
         GST above is a preview and is confirmed by the server on save. The TDS figure
         is computed by the server now, by the same code that will withhold it.
       </p>
       {attempted && !validation.ok && (
-        <div className="flex items-start gap-1.5 text-[10px] text-red-600 bg-red-50 rounded px-2 py-1.5">
+        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-red-50 rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.lines ?? validation.errors.exchangeRate}</span>
         </div>
@@ -836,7 +836,7 @@ export function PurchaseBillEditor({
         { label: isEdit ? `Edit ${billNo || "Purchase Bill"}` : "New Purchase Bill" },
       ]}
       title={isEdit ? `Edit ${billNo || "Purchase Bill"}` : "New Purchase Bill"}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">{isEdit ? (existing?.status ?? "draft").replace("_", " ") : "Draft"}</span>}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">{isEdit ? (existing?.status ?? "draft").replace("_", " ") : "Draft"}</span>}
       dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Unsaved changes</span> : undefined}
       toolbar={toolbar}
       summary={summary}
@@ -847,7 +847,7 @@ export function PurchaseBillEditor({
         {isEdit ? (
           documentUrl && (
             <section className="bg-amber-50 border border-amber-100 rounded-lg p-3">
-              <p className="text-[10px] text-amber-700">
+              <p className="text-3xs text-amber-700">
                 📎 Original invoice attached — retained on this bill as supporting evidence (CGST Rule 36).
               </p>
             </section>
@@ -862,7 +862,7 @@ export function PurchaseBillEditor({
               </button>
             </div>
             {aiExtracted && (
-              <div className="mt-1 text-[10px] text-amber-700 bg-amber-100 rounded px-2 py-1.5">
+              <div className="mt-1 text-3xs text-amber-700 bg-amber-100 rounded px-2 py-1.5">
                 ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>
               </div>
             )}
@@ -876,8 +876,8 @@ export function PurchaseBillEditor({
                 save over that would stop a CA saving a correct bill. */}
             {aiExtracted && (
               <div className="mt-1 rounded border border-amber-200 bg-white px-2 py-1.5 space-y-1">
-                <p className="text-[10px] font-medium text-ps-label">Read from the document</p>
-                <div className="grid grid-cols-5 gap-1 text-[10px] text-ps-label">
+                <p className="text-3xs font-medium text-ps-label">Read from the document</p>
+                <div className="grid grid-cols-5 gap-1 text-3xs text-ps-label">
                   {([
                     ["Taxable", "taxable_amount_paise"],
                     ["CGST", "cgst_paise"],
@@ -894,7 +894,7 @@ export function PurchaseBillEditor({
                   ))}
                 </div>
                 {aiTotals?.checked && !aiTotals.agrees && (
-                  <p className="flex items-start gap-1 text-[10px] text-red-700 bg-red-50 rounded px-1.5 py-1">
+                  <p className="flex items-start gap-1 text-3xs text-red-700 bg-red-50 rounded px-1.5 py-1">
                     <AlertTriangle size={11} className="mt-px flex-shrink-0" />
                     <span>
                       These do not add up — off by {fmt(Math.abs(aiTotals.difference_paise))}.{" "}
@@ -903,7 +903,7 @@ export function PurchaseBillEditor({
                   </p>
                 )}
                 {aiTotals && !aiTotals.checked && (
-                  <p className="text-[10px] text-ps-hint">{aiTotals.note}</p>
+                  <p className="text-3xs text-ps-hint">{aiTotals.note}</p>
                 )}
                 {/* And against the lines actually going to be saved, once they
                     compute anything: previewBillTotals skips a line with no
@@ -913,7 +913,7 @@ export function PurchaseBillEditor({
                 {totals.grand_total_paise > 0
                   && Number(aiExtracted.total_paise ?? 0) > 0
                   && Math.abs(totals.grand_total_paise - Number(aiExtracted.total_paise ?? 0)) > 100 && (
-                  <p className="flex items-start gap-1 text-[10px] text-amber-800 bg-amber-50 rounded px-1.5 py-1">
+                  <p className="flex items-start gap-1 text-3xs text-amber-800 bg-amber-50 rounded px-1.5 py-1">
                     <AlertTriangle size={11} className="mt-px flex-shrink-0" />
                     <span>
                       The lines below come to {fmtAmt(totals.grand_total_paise)} against the{" "}
@@ -926,7 +926,7 @@ export function PurchaseBillEditor({
               </div>
             )}
             {documentUrl && (
-              <p className="text-[10px] text-amber-700">
+              <p className="text-3xs text-amber-700">
                 📎 Original invoice attached — retained on this bill as supporting evidence (CGST Rule 36).
               </p>
             )}
@@ -939,14 +939,14 @@ export function PurchaseBillEditor({
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
               <VendorLookup vendors={vendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
-              {isEdit && <p className="mt-1 text-[10px] text-ps-hint">Vendor can&apos;t be changed once a bill exists — it&apos;s locked to the TDS section resolved at creation.</p>}
+              {isEdit && <p className="mt-1 text-3xs text-ps-hint">Vendor can&apos;t be changed once a bill exists — it&apos;s locked to the TDS section resolved at creation.</p>}
               {fieldErr(validation.errors.vendor)}
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor Invoice No.</label>
               <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001" disabled={isLocked}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
-              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Frozen once received.</p>}
+              {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once received.</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Our Reference</label>
@@ -958,7 +958,7 @@ export function PurchaseBillEditor({
               <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} disabled={isLocked}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
               {fieldErr(validation.errors.billDate)}
-              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Frozen once received — issue a Debit Note to correct (CGST Act §34).</p>}
+              {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once received — issue a Debit Note to correct (CGST Act §34).</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
@@ -970,7 +970,7 @@ export function PurchaseBillEditor({
                 <input type="checkbox" checked={isReverseCharge} disabled={isEdit} onChange={(e) => setIsReverseCharge(e.target.checked)} className="rounded" />
                 Reverse Charge (RCM)
               </label>
-              <p className="mt-1 text-[10px] text-ps-hint">
+              <p className="mt-1 text-3xs text-ps-hint">
                 {isEdit ? "Locked once a bill exists." : "CGST Act §9(3)/(4) — GTA, import of services, notified supplies, or purchases from an unregistered person in a specified category."}
               </p>
             </div>
@@ -1027,7 +1027,7 @@ export function PurchaseBillEditor({
             <h2 className="text-xs font-semibold text-ps-body">
               Foreign remittance — Form 15CA / 15CB (IT Act §195(6), Rule 37BB)
             </h2>
-            <p className="mt-1 text-[10px] text-ps-hint">
+            <p className="mt-1 text-3xs text-ps-hint">
               File on incometax.gov.in under the remitter&apos;s login, then record
               the acknowledgement here. Nothing on this page is submitted to any
               portal. These three can still be edited after the bill is received,
@@ -1057,13 +1057,13 @@ export function PurchaseBillEditor({
                 <input value={form15cbUdin} onChange={(e) => setForm15cbUdin(e.target.value)}
                   placeholder="UDIN of the certifying member"
                   className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <p className="mt-1 text-[10px] text-ps-hint">
+                <p className="mt-1 text-3xs text-ps-hint">
                   What makes the certificate traceable to the member who signed it.
                 </p>
               </div>
             </div>
             {!form15caAckNo.trim() && (
-              <p className="mt-3 text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">
+              <p className="mt-3 text-3xs text-amber-700 bg-amber-50 rounded px-2 py-1.5">
                 Recorded as a gap on the TDS register until the acknowledgement is
                 entered. Not a refusal — the bill saves either way, because the
                 15CA is filed when the money moves and that may be after this.
@@ -1089,13 +1089,13 @@ export function PurchaseBillEditor({
                         itc_eligible: false,
                         blocked_credit_reason: reasonForHintLabel(h.label) ?? "other",
                       })}
-                      className="text-[10px] px-1.5 py-0.5 rounded-full bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 disabled:opacity-40">
+                      className="text-3xs px-1.5 py-0.5 rounded-full bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 disabled:opacity-40">
                       Mark line {h.lineIndex + 1} blocked
                     </button>
                   )}
                 </p>
               ))}
-              <p className="text-[10px] text-amber-700">This is a heuristic prompt, not a legal determination — confirm eligibility before claiming ITC.</p>
+              <p className="text-3xs text-amber-700">This is a heuristic prompt, not a legal determination — confirm eligibility before claiming ITC.</p>
             </div>
           </div>
         )}
@@ -1112,12 +1112,12 @@ export function PurchaseBillEditor({
                   onChange={(e) => setShowCess(e.target.checked)}
                   className="h-3.5 w-3.5 rounded border-ps-border-strong accent-brand-dark"
                 />
-                <span className="text-[11px] text-ps-label">Compensation cess</span>
+                <span className="text-2xs text-ps-label">Compensation cess</span>
               </label>
             )}
           </div>
           {isLocked && (
-            <p className="mb-2 text-[10px] text-ps-hint">
+            <p className="mb-2 text-3xs text-ps-hint">
               Frozen once received — issue a Debit Note to correct a quantity, rate, or item (CGST Act §34).
             </p>
           )}
@@ -1189,7 +1189,7 @@ export function PurchaseBillEditor({
                             it is one checkbox; the fifteen-clause select appears
                             only once a line is marked, where a column would have
                             crowded out the figures on every row of every bill. */}
-                        <label className="mt-1 flex items-center gap-1.5 text-[10px] text-ps-label">
+                        <label className="mt-1 flex items-center gap-1.5 text-3xs text-ps-label">
                           <input type="checkbox" checked={!lineIsItcEligible(line)}
                             aria-label={`Line ${idx + 1} ITC blocked under section 17(5)`}
                             onChange={(e) => setLine(idx, e.target.checked
@@ -1205,7 +1205,7 @@ export function PurchaseBillEditor({
                             <select value={line.blocked_credit_reason ?? ""}
                               aria-label={`Line ${idx + 1} section 17(5) clause`}
                               onChange={(e) => setLine(idx, { blocked_credit_reason: e.target.value })}
-                              className={`mt-1 w-full px-1 py-1 border rounded focus:outline-none text-[10px] ${
+                              className={`mt-1 w-full px-1 py-1 border rounded focus:outline-none text-3xs ${
                                 (line.blocked_credit_reason ?? "").trim() === ""
                                   ? "border-red-300" : "border-ps-border"}`}>
                               <option value="">— which clause? —</option>
@@ -1335,7 +1335,7 @@ export function PurchaseBillEditor({
             <button
               type="button"
               onClick={() => onDone(`${billNo.trim() || "Purchase bill"} saved as draft`)}
-              className="rounded-md bg-amber-900 px-3 py-1.5 text-[11px] font-semibold text-white">
+              className="rounded-md bg-amber-900 px-3 py-1.5 text-2xs font-semibold text-white">
               I have checked — close
             </button>
           </div>

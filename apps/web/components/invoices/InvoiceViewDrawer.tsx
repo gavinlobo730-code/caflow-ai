@@ -215,17 +215,17 @@ export function InvoiceViewDrawer({
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-ps-ink truncate">{customerName}</p>
-                <p className="text-[10px] text-ps-hint">{inv.is_interstate ? "Inter-state · IGST" : "Intra-state · CGST+SGST"}</p>
+                <p className="text-3xs text-ps-hint">{inv.is_interstate ? "Inter-state · IGST" : "Intra-state · CGST+SGST"}</p>
               </div>
               <div className="text-right flex-shrink-0">
                 <p className="text-base font-semibold text-ps-ink font-mono">{fmt(inv.total_paise)}</p>
-                <p className="text-[10px] text-ps-hint">Grand total</p>
+                <p className="text-3xs text-ps-hint">Grand total</p>
               </div>
             </div>
 
             {/* Three independent status groups */}
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[inv.status] ?? "bg-ps-muted text-ps-label"}`}>
+              <span className={`px-2 py-0.5 rounded-full text-3xs font-medium ${STATUS_BADGE[inv.status] ?? "bg-ps-muted text-ps-label"}`}>
                 {inv.status.replace("_", " ")}
               </span>
               {inv.status !== "draft" && (
@@ -280,7 +280,7 @@ export function InvoiceViewDrawer({
           <section>
             <h4 className="text-xs font-semibold text-ps-body mb-2">Line items</h4>
             <div className="overflow-x-auto border border-ps-muted rounded-lg">
-              <table className="w-full text-[11px]">
+              <table className="w-full text-2xs">
                 <thead>
                   <tr className="text-ps-hint border-b border-ps-muted">
                     <th className="px-2 py-1.5 text-left font-semibold">Description</th>
@@ -314,7 +314,7 @@ export function InvoiceViewDrawer({
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-semibold text-ps-body">Accounting</h4>
               {posted && actions?.viewJournal && (
-                <button onClick={openJournal} className="text-[11px] text-blue-600 hover:underline flex items-center gap-1">
+                <button onClick={openJournal} className="text-2xs text-blue-600 hover:underline flex items-center gap-1">
                   <BookOpen size={11} /> View Journal {showJournal ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                 </button>
               )}
@@ -325,9 +325,9 @@ export function InvoiceViewDrawer({
             {showJournal && (
               <div className="border border-ps-muted rounded-lg p-2 bg-ps-bg">
                 {journalLoading ? (
-                  <div className="flex items-center gap-2 text-[11px] text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
+                  <div className="flex items-center gap-2 text-2xs text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
                 ) : journal?.lines?.length ? (
-                  <table className="w-full text-[11px]">
+                  <table className="w-full text-2xs">
                     <thead><tr className="text-ps-hint"><th className="text-left font-semibold py-1">Account</th><th className="text-right font-semibold">Debit</th><th className="text-right font-semibold">Credit</th></tr></thead>
                     <tbody>
                       {journal.lines.map((jl, i) => (
@@ -340,7 +340,7 @@ export function InvoiceViewDrawer({
                     </tbody>
                   </table>
                 ) : (
-                  <p className="text-[11px] text-ps-hint py-1">Journal {inv.journal_entry_id} — line detail unavailable here.</p>
+                  <p className="text-2xs text-ps-hint py-1">Journal {inv.journal_entry_id} — line detail unavailable here.</p>
                 )}
               </div>
             )}
@@ -353,7 +353,7 @@ export function InvoiceViewDrawer({
               <DetailRow label="Email status" value={(del.lastStatus ? DELIVERY_STATUS_LABEL[del.lastStatus] ?? del.lastStatus : "—")} />
               <DetailRow label="Sent to" value={del.lastSentTo ?? "—"} />
               <DetailRow label="Sent at" value={fmtDateTime(del.lastSentAt)} />
-              {del.attempts > 1 && <p className="text-[10px] text-ps-hint">{del.attempts} delivery attempts</p>}
+              {del.attempts > 1 && <p className="text-3xs text-ps-hint">{del.attempts} delivery attempts</p>}
             </section>
           )}
 
@@ -379,9 +379,9 @@ export function InvoiceViewDrawer({
                 {activity.map((a, i) => (
                   <li key={i} className="relative">
                     <span className="absolute -left-[15px] top-1 h-1.5 w-1.5 rounded-full bg-ps-border-strong" />
-                    <p className="text-[11px] text-ps-body">{a.title}</p>
-                    {a.detail && <p className="text-[10px] text-ps-hint">{a.detail}</p>}
-                    <p className="text-[10px] text-ps-disabled">{fmtDateTime(a.at)}</p>
+                    <p className="text-2xs text-ps-body">{a.title}</p>
+                    {a.detail && <p className="text-3xs text-ps-hint">{a.detail}</p>}
+                    <p className="text-3xs text-ps-disabled">{fmtDateTime(a.at)}</p>
                   </li>
                 ))}
               </ol>
@@ -427,7 +427,7 @@ function Badge({ children, tone, title }: { children: React.ReactNode; tone: "gr
   const cls = tone === "green" ? "bg-green-50 text-green-700 border-green-200"
     : tone === "blue" ? "bg-blue-50 text-blue-700 border-blue-200"
     : "bg-ps-bg text-ps-hint border-ps-border";
-  return <span title={title} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${cls}`}>{children}</span>;
+  return <span title={title} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-3xs font-medium border ${cls}`}>{children}</span>;
 }
 
 function Action({ children, onClick, icon, primary, danger }: {
@@ -488,7 +488,7 @@ function RecordPaymentModal({ invoice, clientId, outstanding, onClose, onDone, o
   return (
     <ModalShell title={`Record Payment — ${invoice.invoice_no}`} onClose={onClose}>
       <Field label="Amount (₹)"><input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputCls} /></Field>
-      <p className="text-[10px] text-ps-hint -mt-2">Outstanding {fmt(outstanding)}</p>
+      <p className="text-3xs text-ps-hint -mt-2">Outstanding {fmt(outstanding)}</p>
       <Field label="Date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
       <Field label="Mode">
         <select value={mode} onChange={(e) => setMode(e.target.value)} className={inputCls}>
@@ -554,7 +554,7 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
 
   return (
     <ModalShell title={`Credit Note — ${invoice.invoice_no}`} onClose={onClose}>
-      <p className="text-[11px] text-ps-label">Creates a full-value <strong>draft</strong> credit note copying this invoice&apos;s lines. Adjust or issue it from the Credit Notes tab.</p>
+      <p className="text-2xs text-ps-label">Creates a full-value <strong>draft</strong> credit note copying this invoice&apos;s lines. Adjust or issue it from the Credit Notes tab.</p>
       <Field label="Credit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
       <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the credit note" className={inputCls} /></Field>
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Credit Note" />
@@ -610,7 +610,7 @@ function CreateSalesDebitNoteModal({ invoice, clientId, onClose, onDone, onError
 
   return (
     <ModalShell title={`Debit Note — ${invoice.invoice_no}`} onClose={onClose}>
-      <p className="text-[11px] text-ps-label">Creates a full-value <strong>draft</strong> debit note copying this invoice&apos;s lines — for when the customer was undercharged and owes more. Adjust or issue it from the Debit Notes tab (CGST Act §34(3)).</p>
+      <p className="text-2xs text-ps-label">Creates a full-value <strong>draft</strong> debit note copying this invoice&apos;s lines — for when the customer was undercharged and owes more. Adjust or issue it from the Debit Notes tab (CGST Act §34(3)).</p>
       <Field label="Debit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
       <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the debit note" className={inputCls} /></Field>
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Debit Note" />

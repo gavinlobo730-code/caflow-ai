@@ -229,7 +229,7 @@ export default function ClientRelationshipsPage() {
                         </Link>
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={`text-[10px] ${ROLE_TYPE_COLORS[r.role_type] ?? "bg-gray-100 text-gray-600"}`}>
+                        <Badge className={`text-3xs ${ROLE_TYPE_COLORS[r.role_type] ?? "bg-gray-100 text-gray-600"}`}>
                           {r.role_type}
                         </Badge>
                       </td>
@@ -268,14 +268,14 @@ export default function ClientRelationshipsPage() {
                   {matches.map((m) => (
                     <tr key={m.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3">
-                        <Badge className="bg-amber-100 text-amber-700 text-[10px]">{m.match_type.toUpperCase()}</Badge>
+                        <Badge className="bg-amber-100 text-amber-700 text-3xs">{m.match_type.toUpperCase()}</Badge>
                       </td>
                       <td className="px-3 py-3 text-gray-700 text-xs font-mono">{m.pan}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">
                         {m.client_id_a === clientId ? m.client_id_b.slice(0, 8) : m.client_id_a.slice(0, 8)}…
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={m.is_confirmed ? "bg-red-100 text-red-700 text-[10px]" : "bg-amber-100 text-amber-700 text-[10px]"}>
+                        <Badge className={m.is_confirmed ? "bg-red-100 text-red-700 text-3xs" : "bg-amber-100 text-amber-700 text-3xs"}>
                           {m.is_reviewed ? (m.is_confirmed ? "Confirmed" : "Dismissed") : "Pending"}
                         </Badge>
                       </td>

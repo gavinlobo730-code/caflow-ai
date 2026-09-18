@@ -313,7 +313,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
         <>
           {editable && (
             <button onClick={() => act("Couldn't set aside", () => api.banking.ignoreTransaction(t.id)).then((ok) => ok && onClose())} disabled={busy}
-              className="text-[11px] text-ps-hint hover:text-ps-label hover:underline mr-auto disabled:opacity-50">Set aside</button>
+              className="text-2xs text-ps-hint hover:text-ps-label hover:underline mr-auto disabled:opacity-50">Set aside</button>
           )}
           {aside && (
             <button onClick={() => act("Couldn't restore", () => api.banking.unignoreTransaction(t.id))} disabled={busy}
@@ -339,12 +339,12 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
           to try again — never the whole body replaced by an error. */}
       {enrich === "failed" && (
         <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2 flex items-start gap-2">
-          <p className="text-[11px] text-state-attention flex-1 min-w-0">
+          <p className="text-2xs text-state-attention flex-1 min-w-0">
             Couldn&apos;t load this line&apos;s suggested documents, payee and history
             {enrichError ? `: ${enrichError}` : "."} Everything else on this line is
             here — the ledger, GST, split and Pass all work.
           </p>
-          <button onClick={load} className="text-[11px] px-2.5 py-1 border border-amber-300 bg-white text-amber-900 rounded-lg hover:bg-state-attention-border shrink-0">
+          <button onClick={load} className="text-2xs px-2.5 py-1 border border-amber-300 bg-white text-amber-900 rounded-lg hover:bg-state-attention-border shrink-0">
             Try again
           </button>
         </div>
@@ -352,20 +352,20 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
 
       {/* ── what it becomes ── */}
       <section className={`rounded-lg px-3 py-2.5 border ${t.draft_error ? "border-state-problem-border bg-state-problem-surface/50" : coded ? "border-state-ready-border bg-state-ready-surface/50" : t.draft_source ? "border-ps-border bg-ps-bg" : "border-state-attention-border bg-state-attention-surface/50"}`}>
-        <p className="text-[10px] uppercase tracking-wide text-ps-hint mb-0.5">
+        <p className="text-3xs uppercase tracking-wide text-ps-hint mb-0.5">
           {passed ? "Passed" : aside ? "Set aside" : covered ? "Covered" : coded ? "Will pass as" : t.draft_source ? (t.draft_grade === "ready" ? "Proposed — ready" : "Proposed — your call") : "Needs you"}
           {t.posted_by_rule_id ? " · by a trusted rule" : ""}
         </p>
         <p className="text-sm font-medium text-ps-ink">{s.text}</p>
-        {s.sub && <p className="text-[11px] text-ps-label mt-0.5">{s.sub}</p>}
-        {t.draft_error && <p className="text-[11px] text-money-out mt-1">Last pass refused: {t.draft_error}</p>}
+        {s.sub && <p className="text-2xs text-ps-label mt-0.5">{s.sub}</p>}
+        {t.draft_error && <p className="text-2xs text-money-out mt-1">Last pass refused: {t.draft_error}</p>}
       </section>
 
       {/* ── the ledger and GST ── */}
       {editable && !isSplit && !t.transfer_pair_id && (
         <section className="space-y-2">
           <div>
-            <label className="block text-[11px] font-medium text-ps-label mb-1">Book under</label>
+            <label className="block text-2xs font-medium text-ps-label mb-1">Book under</label>
             <AccountLookup accounts={accounts} value={t.account_id ?? ""} disabled={busy} ariaLabel="Ledger"
               placeholder={t.draft_account_id ? `Proposed: ${accountName(t.draft_account_id)}` : "Choose a ledger…"}
               onChange={(id) => id && patch("Couldn't book under that ledger",
@@ -373,7 +373,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
                 () => api.banking.setTransactionAccount(t.id, { account_id: id, derive_category: true }))} />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-ps-label mb-1">GST inside this amount</label>
+            <label className="block text-2xs font-medium text-ps-label mb-1">GST inside this amount</label>
             {t.gst_allowed ? (
               <div className="flex items-center gap-3 flex-wrap">
                 <select value={gstRateBps} disabled={busy} onChange={(e) => setGstRateBps(e.target.value)}
@@ -388,10 +388,10 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
                     IGST (inter-state)
                   </label>
                 )}
-                <span className="text-[10px] text-ps-hint">{t.credit_paise > 0 ? "Output tax owed — CGST Act s.9" : "Input credit claimed — CGST Act s.16"}</span>
+                <span className="text-3xs text-ps-hint">{t.credit_paise > 0 ? "Output tax owed — CGST Act s.9" : "Input credit claimed — CGST Act s.16"}</span>
               </div>
             ) : (
-              <p className="text-[11px] text-ps-hint">{GST_WHY_LONG[gstWhy(asQueueTxn(t))] ?? "Not available on this line."}</p>
+              <p className="text-2xs text-ps-hint">{GST_WHY_LONG[gstWhy(asQueueTxn(t))] ?? "Not available on this line."}</p>
             )}
           </div>
         </section>
@@ -400,7 +400,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
       {/* ── the document ── */}
       {editable && !isSplit && !t.transfer_pair_id && (
         <section className="space-y-1.5">
-          <p className="text-[11px] font-medium text-ps-label">{t.credit_paise > 0 ? "Invoice" : "Bill"} this settles</p>
+          <p className="text-2xs font-medium text-ps-label">{t.credit_paise > 0 ? "Invoice" : "Bill"} this settles</p>
           {t.matched_entity_id ? (
             <div className="flex items-center gap-2">
               <p className="text-xs text-ps-body">
@@ -408,12 +408,12 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
                 {t.matched_document_no ? <span className="font-medium"> {t.matched_document_no}</span> : null}.
               </p>
               <button onClick={() => act("Couldn't unlink", () => api.banking.unmatch(t.id))} disabled={busy}
-                className="text-[11px] px-2.5 py-1 border border-state-problem-border text-state-problem rounded-lg hover:bg-state-problem-surface">Unlink</button>
+                className="text-2xs px-2.5 py-1 border border-state-problem-border text-state-problem rounded-lg hover:bg-state-problem-surface">Unlink</button>
             </div>
           ) : (
             <>
               {enrich === "loading" && t.suggestions.length === 0 && (
-                <p className="text-[11px] text-ps-hint">Looking for {t.credit_paise > 0 ? "invoices" : "bills"} that match this amount…</p>
+                <p className="text-2xs text-ps-hint">Looking for {t.credit_paise > 0 ? "invoices" : "bills"} that match this amount…</p>
               )}
               {t.suggestions.length > 0 && (
                 <ul className="divide-y divide-ps-muted border border-ps-border rounded-lg overflow-hidden">
@@ -421,16 +421,16 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
                     <li key={sg.matched_entity_id} className="flex items-center gap-2 px-3 py-1.5">
                       <div className="min-w-0 flex-1">
                         <p className="text-xs text-ps-body truncate">{sg.label}</p>
-                        <p className="text-[10px] text-ps-hint">
+                        <p className="text-3xs text-ps-hint">
                           {fmt(sg.amount_paise)} · {sg.reasons.join(", ")}
                           {sg.difference_paise > 0 && <span className="text-state-attention"> · short by {fmt(sg.difference_paise)}{sg.tds_rate_bps ? ` (TDS ${sg.tds_rate_bps / 100}%?)` : ""}</span>}
                         </p>
                       </div>
                       {sg.difference_paise > 0 ? (
-                        <button onClick={() => openSettle(sg)} disabled={busy} className="text-[11px] px-2.5 py-1 border border-state-attention-border bg-state-attention-surface text-state-attention rounded-lg hover:bg-state-attention-border shrink-0">Settle…</button>
+                        <button onClick={() => openSettle(sg)} disabled={busy} className="text-2xs px-2.5 py-1 border border-state-attention-border bg-state-attention-surface text-state-attention rounded-lg hover:bg-state-attention-border shrink-0">Settle…</button>
                       ) : (
                         <button onClick={() => act("Couldn't link", () => api.banking.matchEntity(t.id, { matched_entity_type: sg.matched_entity_type, matched_entity_id: sg.matched_entity_id }))}
-                          disabled={busy} className="text-[11px] px-2.5 py-1 border border-state-ready-border bg-state-ready-surface text-state-ready rounded-lg hover:bg-state-ready-hover shrink-0">Link</button>
+                          disabled={busy} className="text-2xs px-2.5 py-1 border border-state-ready-border bg-state-ready-surface text-state-ready rounded-lg hover:bg-state-ready-hover shrink-0">Link</button>
                       )}
                     </li>
                   ))}
@@ -455,8 +455,8 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
       {/* ── a split already made ── */}
       {isSplit && (
         <section className="flex items-start gap-2 flex-wrap">
-          <p className="text-[11px] text-ps-label min-w-0">Split across <span className="text-ps-body">{(t.splits ?? []).map((sp) => `${accountName(sp.account_id)} ${fmt(sp.amount_paise)}`).join(" · ")}</span></p>
-          {editable && <button onClick={() => setSplitMode("ledgers")} disabled={busy} className="text-[10px] px-2 py-0.5 border border-ps-border rounded hover:bg-white text-ps-label shrink-0">Edit the split</button>}
+          <p className="text-2xs text-ps-label min-w-0">Split across <span className="text-ps-body">{(t.splits ?? []).map((sp) => `${accountName(sp.account_id)} ${fmt(sp.amount_paise)}`).join(" · ")}</span></p>
+          {editable && <button onClick={() => setSplitMode("ledgers")} disabled={busy} className="text-3xs px-2 py-0.5 border border-ps-border rounded hover:bg-white text-ps-label shrink-0">Edit the split</button>}
         </section>
       )}
 
@@ -465,14 +465,14 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
         <section className="flex items-center gap-2 flex-wrap">
           {t.transfer_pair_id ? (
             <>
-              <p className="text-[11px] text-ps-label">{t.transfer_is_primary ? "Paying side of a transfer — this one carries the journal." : "Receiving side of a transfer — the paying side carries the journal."}</p>
-              <button onClick={() => act("Couldn't unpair", () => api.banking.unpairTransfer(t.id))} disabled={busy} className="text-[10px] px-2 py-0.5 border border-ps-border rounded hover:bg-white text-ps-label">Not a transfer</button>
+              <p className="text-2xs text-ps-label">{t.transfer_is_primary ? "Paying side of a transfer — this one carries the journal." : "Receiving side of a transfer — the paying side carries the journal."}</p>
+              <button onClick={() => act("Couldn't unpair", () => api.banking.unpairTransfer(t.id))} disabled={busy} className="text-3xs px-2 py-0.5 border border-ps-border rounded hover:bg-white text-ps-label">Not a transfer</button>
             </>
           ) : t.transfer_candidate ? (
             <>
-              <p className="text-[11px] text-ps-label">Looks like a transfer between own accounts: <span className="text-ps-body">{t.transfer_candidate.summary}</span></p>
+              <p className="text-2xs text-ps-label">Looks like a transfer between own accounts: <span className="text-ps-body">{t.transfer_candidate.summary}</span></p>
               <button onClick={() => act("Couldn't confirm the transfer", () => api.banking.pairTransfer(t.transfer_candidate!.primary_id, t.transfer_candidate!.counterpart_id))}
-                disabled={busy} className="text-[11px] px-2.5 py-1 border border-brand-light bg-ps-hover text-brand rounded-lg hover:bg-brand-light">Confirm transfer</button>
+                disabled={busy} className="text-2xs px-2.5 py-1 border border-brand-light bg-ps-hover text-brand rounded-lg hover:bg-brand-light">Confirm transfer</button>
             </>
           ) : null}
         </section>
@@ -483,26 +483,26 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
         <section className="space-y-1.5 border-l-2 border-ps-border pl-3">
           {t.payee_name ? (
             <div className="flex items-center gap-2">
-              <p className="text-[10px] text-ps-hint min-w-0 truncate">Payee <span className="text-ps-body">{t.payee_name}</span>{t.payee_type ? <span className="text-ps-disabled"> ({t.payee_type})</span> : null}</p>
-              <button onClick={() => act("Couldn't clear the payee", () => api.banking.setPayee(t.id, { payee_name: "" }))} disabled={busy} className="text-[10px] text-ps-hint hover:text-state-problem hover:underline shrink-0">Clear payee</button>
+              <p className="text-3xs text-ps-hint min-w-0 truncate">Payee <span className="text-ps-body">{t.payee_name}</span>{t.payee_type ? <span className="text-ps-disabled"> ({t.payee_type})</span> : null}</p>
+              <button onClick={() => act("Couldn't clear the payee", () => api.banking.setPayee(t.id, { payee_name: "" }))} disabled={busy} className="text-3xs text-ps-hint hover:text-state-problem hover:underline shrink-0">Clear payee</button>
             </div>
           ) : t.suggested_payee ? (
             <div className="flex items-center gap-2">
-              <p className="text-[10px] text-ps-hint min-w-0 truncate">Payee looks like <span className="text-ps-body font-medium">{t.suggested_payee.payee_name}</span><span className="text-ps-disabled"> ({t.suggested_payee.source === "narration" ? "from the narration" : "from the matched party"})</span></p>
+              <p className="text-3xs text-ps-hint min-w-0 truncate">Payee looks like <span className="text-ps-body font-medium">{t.suggested_payee.payee_name}</span><span className="text-ps-disabled"> ({t.suggested_payee.source === "narration" ? "from the narration" : "from the matched party"})</span></p>
               <button onClick={() => act("Couldn't confirm the payee", () => api.banking.setPayee(t.id, { payee_name: t.suggested_payee!.payee_name, payee_type: t.suggested_payee!.payee_type, payee_id: t.suggested_payee!.payee_id ?? undefined }))}
-                disabled={busy} className="text-[10px] px-2 py-0.5 border border-ps-border rounded hover:bg-white text-ps-label shrink-0">Confirm payee</button>
+                disabled={busy} className="text-3xs px-2 py-0.5 border border-ps-border rounded hover:bg-white text-ps-label shrink-0">Confirm payee</button>
             </div>
           ) : null}
           {t.history && !t.account_id && !isSplit && (
             <div className="flex items-center gap-2">
-              <p className="text-[10px] text-ps-hint min-w-0 truncate">
+              <p className="text-3xs text-ps-hint min-w-0 truncate">
                 <span className={t.history.is_unanimous ? "text-state-ready" : "text-state-attention"}>{t.history.summary}</span>
                 {t.history.account_id ? ` · ${accountName(t.history.account_id)}` : ""}
                 {t.history.alternatives.length > 0 && <span className="text-ps-disabled"> (also {t.history.alternatives.map((a) => `${accountName(a.account_id)} ×${a.times}`).join(", ")})</span>}
               </p>
               {t.history.account_id && (
                 <button onClick={() => act("Couldn't apply", () => api.banking.setTransactionAccount(t.id, { account_id: t.history!.account_id!, derive_category: true }))}
-                  disabled={busy} className="text-[10px] px-2 py-0.5 border border-state-ready-border bg-state-ready-surface text-state-ready rounded hover:bg-state-ready-hover shrink-0">Book like last time</button>
+                  disabled={busy} className="text-3xs px-2 py-0.5 border border-state-ready-border bg-state-ready-surface text-state-ready rounded hover:bg-state-ready-hover shrink-0">Book like last time</button>
               )}
             </div>
           )}
@@ -517,7 +517,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
           expense with no bill on file — bank charges, petty cash, anything
           booked straight to a ledger. */}
       <section className="space-y-1.5">
-        <p className="text-[11px] font-medium text-ps-label">Supporting documents</p>
+        <p className="text-2xs font-medium text-ps-label">Supporting documents</p>
 
         {attachments.length > 0 && (
           <ul className="divide-y divide-ps-muted border border-ps-border rounded-lg overflow-hidden">
@@ -534,7 +534,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
                       () => api.banking.attachments.remove(t.id,
                         a.document_id ? { document_id: a.document_id } : { url: a.url ?? "" }))}
                     disabled={busy}
-                    className="text-[10px] text-ps-hint hover:text-state-problem hover:underline shrink-0">Remove</button>
+                    className="text-3xs text-ps-hint hover:text-state-problem hover:underline shrink-0">Remove</button>
                 )}
               </li>
             ))}
@@ -550,11 +550,11 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
               <Paperclip size={13} /> {uploading ? "Attaching…" : "Attach a file"}
             </button>
             {t.matched_entity_id ? (
-              <span className="text-[10px] text-ps-hint">
+              <span className="text-3xs text-ps-hint">
                 This line settles {t.matched_document_no ?? "a document"}, which is already on file with its own copy.
               </span>
             ) : attachments.length === 0 ? (
-              <span className="text-[10px] text-ps-hint">The receipt or bill behind this line, if there is no document for it in the books.</span>
+              <span className="text-3xs text-ps-hint">The receipt or bill behind this line, if there is no document for it in the books.</span>
             ) : null}
           </div>
         )}
@@ -562,8 +562,8 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
 
       {/* ── what the bank sent ── */}
       <section>
-        <p className="text-[10px] uppercase tracking-wide text-ps-hint mb-0.5">Bank narration</p>
-        <p className="text-[10px] text-ps-label break-words select-text font-mono leading-relaxed">{t.description}</p>
+        <p className="text-3xs uppercase tracking-wide text-ps-hint mb-0.5">Bank narration</p>
+        <p className="text-3xs text-ps-label break-words select-text font-mono leading-relaxed">{t.description}</p>
         {/* THE IDENTIFIERS, AND A CHEQUE HAS ONLY ONE (BANK-28). A cheque line
             carries no UTR and usually no reference on the row, so before this
             it showed a bank narration and nothing at all beneath it — while
@@ -587,7 +587,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
             t.parsed?.ifsc,
           ].filter(Boolean);
           return bits.length > 0 ? (
-            <p className="text-[10px] text-ps-hint break-words select-text mt-0.5">
+            <p className="text-3xs text-ps-hint break-words select-text mt-0.5">
               {bits.join(" · ")}
             </p>
           ) : null;

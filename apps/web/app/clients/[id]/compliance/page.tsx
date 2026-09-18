@@ -487,7 +487,7 @@ export default function CompliancePage() {
                 </div>
               </div>
             )}
-            {bulkError && <p className="mx-5 mt-2 text-[11px] text-red-600">{bulkError}</p>}
+            {bulkError && <p className="mx-5 mt-2 text-2xs text-red-600">{bulkError}</p>}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

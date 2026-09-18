@@ -619,7 +619,7 @@ export default function DeductionsPage() {
           ))}
           <button onClick={() => upd({ donations: [...state.donations, { description: "", amountPaise: 0, deductionPct: 100, subjectToLimit: true, paidInCash: null }] })}
             className="text-xs text-blue-600 hover:underline">+ Add Donation</button>
-          <p className="text-[11px] text-ps-label pt-1">
+          <p className="text-2xs text-ps-label pt-1">
             Section 80G(4) caps the total of the limited donations at 10% of adjusted gross
             total income. Section 80G(5D) disallows a cash donation over ₹2,000 outright.
             Both are applied server-side; the computed figure shows what was allowed.

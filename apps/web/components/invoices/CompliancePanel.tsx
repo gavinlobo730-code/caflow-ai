@@ -189,7 +189,7 @@ export function CompliancePanel({
         <Row label="Recipient GSTIN" value={recipientGstin || "Unregistered (B2C)"} mono={!!recipientGstin} />
         <Row label="Place of supply" value={invoice.supply_state_code || "—"} />
         {posIssues.map((i, k) => (
-          <p key={k} className={`text-[11px] flex items-start gap-1 ${i.severity === "error" ? "text-red-600" : "text-amber-600"}`}>
+          <p key={k} className={`text-2xs flex items-start gap-1 ${i.severity === "error" ? "text-red-600" : "text-amber-600"}`}>
             <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" /> {i.message}
           </p>
         ))}
@@ -207,17 +207,17 @@ export function CompliancePanel({
             {irn.record?.ack_number && <Row label="Ack no." value={irn.record.ack_number} mono />}
             {irn.qrData && (
               <div className="rounded bg-ps-bg border border-[#EEF2F7] p-2">
-                <p className="text-[10px] text-ps-hint flex items-center gap-1 mb-1"><QrCode size={11} /> Signed QR payload</p>
-                <p className="text-[10px] font-mono text-ps-label break-all max-h-16 overflow-y-auto">{irn.qrData}</p>
+                <p className="text-3xs text-ps-hint flex items-center gap-1 mb-1"><QrCode size={11} /> Signed QR payload</p>
+                <p className="text-3xs font-mono text-ps-label break-all max-h-16 overflow-y-auto">{irn.qrData}</p>
               </div>
             )}
-            <button onClick={() => setModal("cancelIrn")} className="text-[11px] text-red-600 hover:underline inline-flex items-center gap-1"><XCircle size={11} /> Cancel IRN</button>
+            <button onClick={() => setModal("cancelIrn")} className="text-2xs text-red-600 hover:underline inline-flex items-center gap-1"><XCircle size={11} /> Cancel IRN</button>
           </div>
         ) : irn.state === "cancelled" ? (
-          <p className="text-[11px] text-ps-hint">IRN cancelled{irn.record?.cancellation_reason ? ` — ${irn.record.cancellation_reason}` : ""}.</p>
+          <p className="text-2xs text-ps-hint">IRN cancelled{irn.record?.cancellation_reason ? ` — ${irn.record.cancellation_reason}` : ""}.</p>
         ) : irn.state === "draft" ? (
           <div className="space-y-2">
-            <p className="text-[11px] text-ps-label">Record prepared ({irn.record?.gst_treatment ? treatmentLabel(irn.record.gst_treatment) : "regular"}). Generate the IRN on the IRP portal, then record it.</p>
+            <p className="text-2xs text-ps-label">Record prepared ({irn.record?.gst_treatment ? treatmentLabel(irn.record.gst_treatment) : "regular"}). Generate the IRN on the IRP portal, then record it.</p>
             {/* A record stored BEFORE the write door started reconciling the two
                 can still contradict its own invoice (SALES-19), and the two
                 labels then sat on this screen side by side with nothing saying
@@ -225,7 +225,7 @@ export function CompliancePanel({
                 disagreement. */}
             {irn.record?.gst_treatment && invoice.gst_treatment
               && irn.record.gst_treatment !== invoice.gst_treatment && (
-              <p className="text-[11px] text-amber-600 flex items-start gap-1">
+              <p className="text-2xs text-amber-600 flex items-start gap-1">
                 <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />
                 This record says {treatmentLabel(irn.record.gst_treatment)}; the invoice reads{" "}
                 {treatmentLabel(invoice.gst_treatment)}. The invoice is what the GSTR-1 is
@@ -253,13 +253,13 @@ export function CompliancePanel({
           <div className="space-y-2">
             <Row label="EWB no." value={eway.ewbNumber ?? "—"} mono />
             {eway.validUpto && <Row label="Valid upto" value={eway.validUpto} />}
-            <button onClick={() => setModal("cancelEway")} className="text-[11px] text-red-600 hover:underline inline-flex items-center gap-1"><XCircle size={11} /> Cancel E-Way Bill</button>
+            <button onClick={() => setModal("cancelEway")} className="text-2xs text-red-600 hover:underline inline-flex items-center gap-1"><XCircle size={11} /> Cancel E-Way Bill</button>
           </div>
         ) : eway.state === "cancelled" ? (
-          <p className="text-[11px] text-ps-hint">E-Way Bill cancelled{eway.record?.cancellation_reason ? ` — ${eway.record.cancellation_reason}` : ""}.</p>
+          <p className="text-2xs text-ps-hint">E-Way Bill cancelled{eway.record?.cancellation_reason ? ` — ${eway.record.cancellation_reason}` : ""}.</p>
         ) : eway.state === "draft" ? (
           <div className="space-y-2">
-            <p className="text-[11px] text-ps-label">Record prepared. Generate the E-Way Bill on the NIC portal, then record it.</p>
+            <p className="text-2xs text-ps-label">Record prepared. Generate the E-Way Bill on the NIC portal, then record it.</p>
             <PrimaryBtn onClick={() => setModal("recordEway")}>Record E-Way Bill</PrimaryBtn>
           </div>
         ) : (
@@ -295,8 +295,8 @@ export function CompliancePanel({
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <span className="text-[11px] text-ps-hint flex-shrink-0">{label}</span>
-      <span className={`text-[11px] text-ps-body text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
+      <span className="text-2xs text-ps-hint flex-shrink-0">{label}</span>
+      <span className={`text-2xs text-ps-body text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
 }
@@ -312,8 +312,8 @@ function ComplianceCard({ icon, title, state, children }: { icon: React.ReactNod
   return (
     <div className="rounded-lg border border-ps-muted p-3 space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold text-ps-body flex items-center gap-1.5">{icon} {title}</span>
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATE_BADGE[state] ?? STATE_BADGE.none}`}>
+        <span className="text-2xs font-semibold text-ps-body flex items-center gap-1.5">{icon} {title}</span>
+        <span className={`px-2 py-0.5 rounded-full text-3xs font-medium ${STATE_BADGE[state] ?? STATE_BADGE.none}`}>
           {state === "none" ? "Not started" : state}
         </span>
       </div>
@@ -326,10 +326,10 @@ function EligibilityBlock({ elig, actionLabel, onAction }: { elig: { eligible: b
   return (
     <div className="space-y-2">
       {elig.blockers.map((b, i) => (
-        <p key={`b${i}`} className="text-[11px] text-red-600 flex items-start gap-1"><XCircle size={11} className="mt-0.5 flex-shrink-0" /> {b}</p>
+        <p key={`b${i}`} className="text-2xs text-red-600 flex items-start gap-1"><XCircle size={11} className="mt-0.5 flex-shrink-0" /> {b}</p>
       ))}
       {elig.warnings.map((w, i) => (
-        <p key={`w${i}`} className="text-[11px] text-amber-600 flex items-start gap-1"><AlertTriangle size={11} className="mt-0.5 flex-shrink-0" /> {w}</p>
+        <p key={`w${i}`} className="text-2xs text-amber-600 flex items-start gap-1"><AlertTriangle size={11} className="mt-0.5 flex-shrink-0" /> {w}</p>
       ))}
       <PrimaryBtn disabled={!elig.eligible} onClick={onAction}>{actionLabel}</PrimaryBtn>
     </div>
@@ -371,7 +371,7 @@ function PrepareIrnModal({ busy, derived, onClose, onSubmit }: { busy: boolean; 
         {derived ? (
           <>
             <p className="px-3 py-1.5 text-xs border border-ps-border rounded-lg bg-ps-bg text-ps-body">{treatmentLabel(derived)}</p>
-            <p className="text-[10px] text-ps-hint">
+            <p className="text-3xs text-ps-hint">
               Read from this invoice&apos;s own supply type and invoice type — the fields the
               GSTR-1 is built from. To change it, correct the invoice.
             </p>
@@ -446,7 +446,7 @@ function PrepareEwayModal({ busy, invoice, onClose, onSubmit }: { busy: boolean;
           </select>
         </L>
       </div>
-      <p className="text-[10px] text-ps-hint">
+      <p className="text-3xs text-ps-hint">
         Distance decides how long the bill is valid — one day per 200 km, or per 20 km
         for Over Dimensional Cargo (CGST Rule 138(10)). Leave it blank and the expiry
         has to be read off the portal.
@@ -500,16 +500,16 @@ function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean;
             className={inputCls} />
         </L>
       </div>
-      {computed?.gap && <p className="text-[10px] text-amber-700">{computed.gap}</p>}
+      {computed?.gap && <p className="text-3xs text-amber-700">{computed.gap}</p>}
       {computed?.valid_upto && (
-        <p className="text-[10px] text-ps-hint">
+        <p className="text-3xs text-ps-hint">
           {computed.days} day{computed.days === 1 ? "" : "s"} at one per {computed.slab_km} km — {computed.source}.
           The portal&apos;s own date is what counts; correct this if it differs.
         </p>
       )}
-      {computed?.caveat && <p className="text-[10px] text-amber-700">{computed.caveat}</p>}
+      {computed?.caveat && <p className="text-3xs text-amber-700">{computed.caveat}</p>}
       {disagrees && (
-        <p className="text-[10px] text-amber-700">
+        <p className="text-3xs text-amber-700">
           This differs from the {computed?.valid_upto} that Rule 138(10) gives for the recorded
           distance. Recording the portal&apos;s date is right — but check the distance too, since
           it is what every later expiry warning is worked out from.
@@ -552,13 +552,13 @@ function IrpFindings({ findings, state }: {
   if (!findings.length || state === "generated" || state === "cancelled") return null;
   return (
     <div className="mt-2 rounded bg-amber-50 border border-amber-200 p-2 space-y-1.5">
-      <p className="text-[10px] font-semibold text-amber-800 flex items-center gap-1">
+      <p className="text-3xs font-semibold text-amber-800 flex items-center gap-1">
         <AlertTriangle size={11} /> The e-invoice portal will refuse this as it stands
       </p>
       {findings.map((f, i) => (
-        <p key={i} className="text-[11px] text-amber-800">
-          <span className="font-mono text-[10px] mr-1">{f.field}</span>
-          {f.value && <span className="font-mono text-[10px] mr-1">&ldquo;{f.value}&rdquo;</span>}
+        <p key={i} className="text-2xs text-amber-800">
+          <span className="font-mono text-3xs mr-1">{f.field}</span>
+          {f.value && <span className="font-mono text-3xs mr-1">&ldquo;{f.value}&rdquo;</span>}
           {f.reason}
         </p>
       ))}

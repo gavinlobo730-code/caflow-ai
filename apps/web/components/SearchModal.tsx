@@ -224,7 +224,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
                 return (
                   <div key={cat}>
                     <div className="px-4 py-1.5">
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-ps-hint flex items-center gap-1">
+                      <span className="text-3xs font-semibold uppercase tracking-widest text-ps-hint flex items-center gap-1">
                         <Icon size={10} />
                         {CATEGORY_LABELS[cat as keyof typeof CATEGORY_LABELS]}
                       </span>

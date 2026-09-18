@@ -393,7 +393,7 @@ export default function ITRFilingPage() {
       <div className="flex items-center gap-1 overflow-x-auto pb-1">
         {STATUS_ORDER.map((s, i) => (
           <div key={s} className="flex items-center gap-1 flex-shrink-0">
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[s]}`}>
+            <span className={`text-3xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[s]}`}>
               {STATUS_LABEL[s]}
             </span>
             {i < STATUS_ORDER.length - 1 && <ChevronRight size={10} className="text-ps-disabled" />}
@@ -407,21 +407,21 @@ export default function ITRFilingPage() {
           <p className="text-xs font-semibold text-ps-body">New ITR Filing</p>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-[10px] text-ps-label mb-1 block">Form</label>
+              <label className="text-3xs text-ps-label mb-1 block">Form</label>
               <select value={form} onChange={e => setForm(e.target.value)}
                 className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                 {forms.map(f => <option key={f}>{f}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-ps-label mb-1 block">Financial Year</label>
+              <label className="text-3xs text-ps-label mb-1 block">Financial Year</label>
               <select value={fy} onChange={e => setFy(e.target.value)}
                 className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                 {FY_OPTIONS.map(f => <option key={f}>{f}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-ps-label mb-1 block">Assessment Year</label>
+              <label className="text-3xs text-ps-label mb-1 block">Assessment Year</label>
               <select value={ay} onChange={e => setAy(e.target.value)}
                 className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                 {AY_OPTIONS.map(a => <option key={a}>{a}</option>)}
@@ -429,7 +429,7 @@ export default function ITRFilingPage() {
             </div>
           </div>
           <div>
-            <label className="text-[10px] text-ps-label mb-1 block">Kind of return</label>
+            <label className="text-3xs text-ps-label mb-1 block">Kind of return</label>
             <select value={kind} onChange={e => setKind(e.target.value)}
               className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
               {kinds.map(k => (
@@ -452,7 +452,7 @@ export default function ITRFilingPage() {
                   ? "bg-amber-50 border-amber-200"
                   : "bg-ps-bg border-ps-border"
             }`}>
-              <p className="text-[11px] font-medium text-ps-body">
+              <p className="text-2xs font-medium text-ps-body">
                 {selectedKind.window.is_open === false
                   ? "This window has closed"
                   : selectedKind.window.is_open === null
@@ -463,7 +463,7 @@ export default function ITRFilingPage() {
                   && ` (the other reading: ${selectedKind.window.alternative_closes_on})`}
               </p>
               {[...selectedKind.window.caveats, ...selectedKind.window.gaps].map((c, i) => (
-                <p key={i} className="text-[10px] text-ps-label">{c}</p>
+                <p key={i} className="text-3xs text-ps-label">{c}</p>
               ))}
             </div>
           )}
@@ -471,7 +471,7 @@ export default function ITRFilingPage() {
           {selectedKind?.needs_the_earlier_receipt && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] text-ps-label mb-1 block">
+                <label className="text-3xs text-ps-label mb-1 block">
                   Earlier return&apos;s acknowledgement number
                 </label>
                 <input value={originalAck} onChange={e => setOriginalAck(e.target.value)}
@@ -479,14 +479,14 @@ export default function ITRFilingPage() {
                   placeholder="e.g. 123456789012345" />
               </div>
               <div>
-                <label className="text-[10px] text-ps-label mb-1 block">
+                <label className="text-3xs text-ps-label mb-1 block">
                   Earlier return&apos;s filing date
                 </label>
                 <input type="date" value={originalAckDate}
                   onChange={e => setOriginalAckDate(e.target.value)}
                   className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
               </div>
-              <p className="col-span-2 text-[10px] text-ps-hint">
+              <p className="col-span-2 text-3xs text-ps-hint">
                 Both are fields on the form itself, not bookkeeping: a revised
                 or updated return re-declares a year already declared and quotes
                 the earlier return&apos;s receipt.
@@ -541,14 +541,14 @@ export default function ITRFilingPage() {
                     </span>
                   )}
                 </p>
-                <p className="text-[10px] text-ps-hint">
+                <p className="text-3xs text-ps-hint">
                   AY {f.assessment_year} · {new Date(f.created_at).toLocaleDateString("en-IN")}
                   {f.acknowledgement_number && ` · Ack: ${f.acknowledgement_number}`}
                   {f.original_acknowledgement_number
                     && ` · supersedes ${f.original_acknowledgement_number}`}
                 </p>
               </div>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[f.status]}`}>
+              <span className={`text-3xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[f.status]}`}>
                 {STATUS_LABEL[f.status]}
               </span>
             </button>
@@ -563,7 +563,7 @@ export default function ITRFilingPage() {
             <p className="text-xs font-semibold text-ps-body">
               {selectedFiling.itr_form} — FY {selectedFiling.financial_year}
             </p>
-            <button onClick={() => { setSelectedFiling(null); setSheet(null); setSheetError(null); }} className="text-[10px] text-ps-hint hover:text-ps-label">Close</button>
+            <button onClick={() => { setSelectedFiling(null); setSheet(null); setSheetError(null); }} className="text-3xs text-ps-hint hover:text-ps-label">Close</button>
           </div>
 
           {/* Workflow Progress */}
@@ -587,7 +587,7 @@ export default function ITRFilingPage() {
               <CheckCircle size={14} className="text-green-500" />
               <div>
                 <p className="text-xs font-medium text-green-800">Filed Successfully</p>
-                <p className="text-[10px] text-green-600">Ack: {selectedFiling.acknowledgement_number} · {selectedFiling.filing_date}</p>
+                <p className="text-3xs text-green-600">Ack: {selectedFiling.acknowledgement_number} · {selectedFiling.filing_date}</p>
               </div>
             </div>
           )}
@@ -648,17 +648,17 @@ export default function ITRFilingPage() {
           {showAck && (
             <div className="border border-ps-border rounded-xl p-4 space-y-3">
               <p className="text-xs font-medium text-ps-body">Record Filing Acknowledgement</p>
-              <p className="text-[10px] text-amber-700 bg-amber-50 p-2 rounded">
+              <p className="text-3xs text-amber-700 bg-amber-50 p-2 rounded">
                 CA REVIEW REQUIRED — Only record after manually filing on Income Tax Portal
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-ps-label mb-1 block">Acknowledgement Number</label>
+                  <label className="text-3xs text-ps-label mb-1 block">Acknowledgement Number</label>
                   <input value={ackNumber} onChange={e => setAckNumber(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-ps-label mb-1 block">Filing Date</label>
+                  <label className="text-3xs text-ps-label mb-1 block">Filing Date</label>
                   <input type="date" value={ackDate} onChange={e => setAckDate(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
                 </div>
@@ -716,7 +716,7 @@ function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filin
           <p className="text-xs font-semibold text-ps-ink">
             Keying sheet — {sheet.form}, AY {sheet.assessment_year}
           </p>
-          <p className="text-[10px] text-ps-label mt-0.5">
+          <p className="text-3xs text-ps-label mt-0.5">
             FY {filing.financial_year} · every figure and the field it goes in.
             {sheet.snapshot_status === "reviewed"
               ? " Computed from the reviewed snapshot."
@@ -734,7 +734,7 @@ function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filin
       {/* THE PRODUCT DOES NOT FILE. Said on the sheet itself rather than only
           on the screen around it, because the sheet is what gets printed and
           carried to the desk where the utility is open. */}
-      <p className="px-4 py-2 text-[10px] text-state-attention bg-state-attention-surface border-b border-state-attention-border">
+      <p className="px-4 py-2 text-3xs text-state-attention bg-state-attention-surface border-b border-state-attention-border">
         Key these into the Income Tax Department&apos;s own offline utility. This
         software prepares; it does not file, and nothing here has been submitted.
         {!sheet.schema_is_verified
@@ -743,19 +743,19 @@ function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filin
       </p>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-[11px]">
+        <table className="w-full text-2xs">
           <thead>
             <tr className="border-b border-ps-border bg-ps-bg">
-              <th className="px-3 py-2 text-left font-semibold text-ps-label uppercase text-[10px]">Figure</th>
-              <th className="px-3 py-2 text-right font-semibold text-ps-label uppercase text-[10px]">₹</th>
-              <th className="px-3 py-2 text-left font-semibold text-ps-label uppercase text-[10px]">Field</th>
+              <th className="px-3 py-2 text-left font-semibold text-ps-label uppercase text-3xs">Figure</th>
+              <th className="px-3 py-2 text-right font-semibold text-ps-label uppercase text-3xs">₹</th>
+              <th className="px-3 py-2 text-left font-semibold text-ps-label uppercase text-3xs">Field</th>
             </tr>
           </thead>
           <tbody>
             {groups.map(g => (
               <Fragment key={g.schedule}>
                 <tr className="bg-ps-bg">
-                  <td colSpan={3} className="px-3 py-1.5 text-[10px] font-semibold text-ps-label uppercase">
+                  <td colSpan={3} className="px-3 py-1.5 text-3xs font-semibold text-ps-label uppercase">
                     {g.schedule}
                   </td>
                 </tr>
@@ -763,7 +763,7 @@ function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filin
                   <tr key={p.key} className="border-b border-ps-border align-top">
                     <td className="px-3 py-2">
                       <p className="text-ps-ink">{p.label}</p>
-                      <p className="text-[10px] text-ps-hint">{p.reference}</p>
+                      <p className="text-3xs text-ps-hint">{p.reference}</p>
                     </td>
                     {/* Whole rupees — the schemas take integers, and the
                         rounding happens once, at the server's payload
@@ -776,11 +776,11 @@ function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filin
                           reader of this file has to be able to see which of
                           the three a branch renders. */}
                       {p.json_path ? (
-                        <code className="text-[10px] text-ps-body break-all">{p.json_path}</code>
+                        <code className="text-3xs text-ps-body break-all">{p.json_path}</code>
                       ) : p.not_on_this_form ? (
-                        <p className="text-[10px] text-ps-hint">{p.absence_reason}</p>
+                        <p className="text-3xs text-ps-hint">{p.absence_reason}</p>
                       ) : p.not_mapped ? (
-                        <p className="text-[10px] text-state-attention">
+                        <p className="text-3xs text-state-attention">
                           No field is mapped for this figure yet — find it in the
                           utility and key it by hand.
                         </p>
@@ -800,10 +800,10 @@ function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filin
       {(sheet.gaps.length > 0 || sheet.notes.length > 0) && (
         <div className="px-4 py-3 border-t border-ps-border space-y-1.5">
           {sheet.gaps.map((g, i) => (
-            <p key={`g${i}`} className="text-[10px] text-state-attention">⚠ {g}</p>
+            <p key={`g${i}`} className="text-3xs text-state-attention">⚠ {g}</p>
           ))}
           {sheet.notes.map((n, i) => (
-            <p key={`n${i}`} className="text-[10px] text-ps-hint">{n}</p>
+            <p key={`n${i}`} className="text-3xs text-ps-hint">{n}</p>
           ))}
         </div>
       )}

@@ -48,7 +48,7 @@ function Tally({ value, label, tone }: { value: number; label: string; tone: key
   return (
     <div className={`${bg} rounded-lg p-3 text-center`}>
       <p className={`text-lg font-bold ${fg}`}>{value}</p>
-      <p className={`text-[10px] ${labelFg}`}>{label}</p>
+      <p className={`text-3xs ${labelFg}`}>{label}</p>
     </div>
   );
 }
@@ -289,7 +289,7 @@ export default function Form26ASPage() {
         <div className="bg-white border border-ps-border rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-ps-body">Reconciliation Summary</p>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+            <span className={`text-3xs px-2 py-0.5 rounded-full font-medium ${
               recon.status === "completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
             }`}>{recon.status}</span>
           </div>
@@ -342,7 +342,7 @@ export default function Form26ASPage() {
           )}
 
           {(recon.not_a_tds_credit?.length ?? 0) > 0 && (
-            <div className="text-[11px] bg-ps-bg border border-ps-border rounded-lg px-3 py-2 space-y-1">
+            <div className="text-2xs bg-ps-bg border border-ps-border rounded-lg px-3 py-2 space-y-1">
               <p className="text-ps-body">
                 <span className="font-semibold">{paise(recon.not_a_tds_credit_paise ?? 0)}</span>{" "}
                 on this 26AS is <span className="font-semibold">not a TDS credit</span> and is
@@ -441,7 +441,7 @@ export default function Form26ASPage() {
       {showUpload && (
         <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
           <p className="text-xs font-semibold text-ps-body">Upload 26AS Text</p>
-          <p className="text-[11px] text-ps-label">
+          <p className="text-2xs text-ps-label">
             Download Form 26AS from the TRACES portal (tdscpc.gov.in) or via the e-filing portal login, convert PDF to text, and paste below.
           </p>
           <textarea
@@ -475,7 +475,7 @@ export default function Form26ASPage() {
               </ul>
               <button
                 onClick={() => { setShowUpload(false); setRawText(""); setSkipped(null); }}
-                className="rounded-md bg-amber-900 px-3 py-1.5 text-[11px] font-semibold text-white">
+                className="rounded-md bg-amber-900 px-3 py-1.5 text-2xs font-semibold text-white">
                 I have read these — close
               </button>
             </div>
@@ -504,7 +504,7 @@ export default function Form26ASPage() {
               <div key={u.id} className="flex items-center justify-between p-3 bg-ps-bg rounded-lg">
                 <div>
                   <p className="text-xs font-medium text-ps-ink">FY {u.financial_year}</p>
-                  <p className="text-[10px] text-ps-hint">
+                  <p className="text-3xs text-ps-hint">
                     {new Date(u.uploaded_at).toLocaleDateString("en-IN")} · {u.total_records} records
                   </p>
                 </div>
@@ -513,7 +513,7 @@ export default function Form26ASPage() {
                     ? <CheckCircle size={12} className="text-green-500" />
                     : <Loader2 size={12} className="text-amber-500 animate-spin" />
                   }
-                  <span className={`text-[10px] ${u.parse_status === "parsed" ? "text-green-600" : "text-amber-600"}`}>
+                  <span className={`text-3xs ${u.parse_status === "parsed" ? "text-green-600" : "text-amber-600"}`}>
                     {u.parse_status}
                   </span>
                 </div>

@@ -193,7 +193,7 @@ export default function CoaImportPage() {
       {/* Format guide */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800 space-y-1">
         <p className="font-semibold">Expected columns (CSV/Excel):</p>
-        <p className="font-mono text-[10px] text-blue-700">account_code, account_name, account_type, account_subtype, parent_group, sub_group, tax_category, schedule_iii_mapping</p>
+        <p className="font-mono text-3xs text-blue-700">account_code, account_name, account_type, account_subtype, parent_group, sub_group, tax_category, schedule_iii_mapping</p>
         <p className="mt-1">• <strong>account_type</strong> must be one of: Asset, Liability, Equity, Revenue, Expense</p>
         <p>• Tally exports (Ledger Name, Under, Account Type) are auto-detected</p>
         <p>• Duplicate codes are skipped — safe to re-import</p>
@@ -237,7 +237,7 @@ export default function CoaImportPage() {
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden max-h-72 overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-ps-bg">
-                <tr className="text-[10px] text-ps-hint border-b border-ps-muted">
+                <tr className="text-3xs text-ps-hint border-b border-ps-muted">
                   <th className="px-4 py-2 text-left font-medium w-16">Code</th>
                   <th className="px-3 py-2 text-left font-medium">Name</th>
                   <th className="px-3 py-2 text-left font-medium">Type</th>
@@ -247,7 +247,7 @@ export default function CoaImportPage() {
               <tbody className="divide-y divide-ps-bg">
                 {preview.map((row, i) => (
                   <tr key={i} className="hover:bg-ps-bg">
-                    <td className="px-4 py-2 font-mono text-[10px] text-ps-hint">{row.account_code}</td>
+                    <td className="px-4 py-2 font-mono text-3xs text-ps-hint">{row.account_code}</td>
                     <td className="px-3 py-2 font-medium text-ps-ink">{row.account_name}</td>
                     <td className="px-3 py-2 text-ps-label">{row.account_type}</td>
                     <td className="px-3 py-2 text-ps-label">{row.parent_group || "—"}</td>

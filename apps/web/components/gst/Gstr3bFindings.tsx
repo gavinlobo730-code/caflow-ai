@@ -55,14 +55,14 @@ export function Gstr3bPeriodWindow({
       <p className="font-medium text-indigo-900">
         Quarterly return (QRMP) — {w.label}
       </p>
-      <p className="text-[11px] text-indigo-800">
+      <p className="text-2xs text-indigo-800">
         This registration furnishes quarterly under CGST Rule 61A, so the
         figures above cover {w.start} to {w.end} — {w.months_covered} months,
         not one. It is stored and locked under period {w.key}, the quarter&apos;s
         first month.
       </p>
       {monthsWithout2b.length > 0 && (
-        <p className="text-[11px] text-indigo-800 border-t border-indigo-200 pt-1">
+        <p className="text-2xs text-indigo-800 border-t border-indigo-200 pt-1">
           No GSTR-2B has been reconciled for {monthsWithout2b.join(", ")}. A
           quarter has one 2B per month and the Rule 36(4) ceiling is built from
           the ones on file, so the credit available above is short by whatever
@@ -100,7 +100,7 @@ export function Gstr3bLateFiling({ lateFiling }: { lateFiling?: LateFilingBlock 
         <span className="font-mono">{rupees(lf.interest_total_paise ?? 0)}</span>
       </div>
       {heads.length > 0 && (
-        <table className="w-full text-[11px] text-amber-800">
+        <table className="w-full text-2xs text-amber-800">
           <tbody>
             {heads.map((h) => (
               <tr key={h.head}>
@@ -113,7 +113,7 @@ export function Gstr3bLateFiling({ lateFiling }: { lateFiling?: LateFilingBlock 
         </table>
       )}
       {lf.late_fee?.refused ? (
-        <p className="text-[11px] text-amber-800 border-t border-amber-200 pt-1">
+        <p className="text-2xs text-amber-800 border-t border-amber-200 pt-1">
           {lf.late_fee.reason}
         </p>
       ) : (
@@ -123,7 +123,7 @@ export function Gstr3bLateFiling({ lateFiling }: { lateFiling?: LateFilingBlock 
         </div>
       )}
       {(lf.caveats ?? []).map((c, i) => (
-        <p key={i} className="text-[11px] text-amber-700">{c}</p>
+        <p key={i} className="text-2xs text-amber-700">{c}</p>
       ))}
     </div>
   );
@@ -167,7 +167,7 @@ export function Gstr3bBankLines({
         </div>
       )}
       {notes.map((c, i) => (
-        <p key={i} className="text-[11px] text-sky-800 border-t border-sky-200 pt-1">{c}</p>
+        <p key={i} className="text-2xs text-sky-800 border-t border-sky-200 pt-1">{c}</p>
       ))}
     </div>
   );
@@ -189,7 +189,7 @@ export function Gstr3bUndeclarableRows({ rows = [] }: { rows?: UndeclarableRow[]
         Nil because this product cannot derive it — {rows.length} row
         {rows.length === 1 ? "" : "s"}
       </p>
-      <p className="text-[11px] text-ps-label">
+      <p className="text-2xs text-ps-label">
         These are filed as nil. That is correct for a client with none, and wrong
         for a client with any — nothing here can tell the two apart, so
         check each on the portal before you file.
@@ -199,7 +199,7 @@ export function Gstr3bUndeclarableRows({ rows = [] }: { rows?: UndeclarableRow[]
           <li key={g.row} className="border-t border-slate-200 pt-1.5">
             <span className="font-mono text-xs text-ps-body">Table {g.row}</span>
             <span className="text-xs text-ps-label"> — {g.label}</span>
-            <p className="text-[11px] text-ps-label mt-0.5">{g.reason}</p>
+            <p className="text-2xs text-ps-label mt-0.5">{g.reason}</p>
           </li>
         ))}
       </ul>

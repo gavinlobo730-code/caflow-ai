@@ -206,7 +206,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">GST registrations</h2>
-          <p className="text-[11px] text-ps-label mt-1 max-w-2xl">
+          <p className="text-2xs text-ps-label mt-1 max-w-2xl">
             One client, one legal person — and as many GSTINs as it is registered
             under. CGST Act s.25(1) makes registration state-wise and s.25(2)
             allows one per place of business, so each registration prepares and
@@ -238,7 +238,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       <div className="rounded-lg border border-ps-border bg-white p-4 space-y-3">
         <div>
           <h3 className="text-xs font-semibold text-ps-ink">Aggregate turnover</h3>
-          <p className="text-[11px] text-ps-label mt-1 max-w-2xl">
+          <p className="text-2xs text-ps-label mt-1 max-w-2xl">
             CGST Act s.2(6) aggregate turnover, per financial year. GSTR-1 Table
             12&apos;s minimum HSN digits come off the <strong>preceding</strong>{" "}
             year&apos;s figure (Notification 78/2020-Central Tax): six digits above
@@ -250,7 +250,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
         </div>
 
         {turnover && (
-          <div className={`rounded-lg px-3 py-2 text-[11px] flex items-start gap-1.5 ${
+          <div className={`rounded-lg px-3 py-2 text-2xs flex items-start gap-1.5 ${
             turnover.governing_turnover_paise === null
               ? "bg-amber-50 border border-amber-200 text-amber-900"
               : "bg-ps-bg border border-ps-border text-ps-label"}`}>
@@ -355,12 +355,12 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                   <td className="py-2">
                     <span className="font-mono text-ps-ink">{r.gstin}</span>
                     {r.trade_name && (
-                      <span className="block text-[10px] text-ps-label">{r.trade_name}</span>
+                      <span className="block text-3xs text-ps-label">{r.trade_name}</span>
                     )}
                     {/* The primary is the client record's own GSTIN, so it is
                         shown and never editable here. */}
                     {r.is_primary && (
-                      <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px]">
+                      <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-3xs">
                         Primary
                       </span>
                     )}
@@ -372,7 +372,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                         one — offering it a GSTR-3B screen offers a return it
                         must not file. */}
                     {r.other_return_form && (
-                      <span className="block text-[10px] text-amber-800 max-w-xs flex gap-1 mt-0.5">
+                      <span className="block text-3xs text-amber-800 max-w-xs flex gap-1 mt-0.5">
                         <Info size={10} className="shrink-0 mt-0.5" />{r.other_return_form}
                       </span>
                     )}
@@ -384,7 +384,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                           Cancelled {String(r.effective_to).slice(0, 10)}
                           {/* s.29: a cancelled registration still owes the returns
                               for every period it was live, so it stays listed. */}
-                          <span className="block text-[10px] text-ps-hint">
+                          <span className="block text-3xs text-ps-hint">
                             Returns for the periods it was live are still owed
                           </span>
                         </span>
@@ -396,7 +396,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                         {!r.effective_to && closing?.id !== r.id && (
                           <button onClick={() => setClosing({ id: r.id as string, on: "" })}
                             disabled={busy}
-                            className="px-2 py-1 text-[11px] border border-ps-border rounded hover:bg-ps-bg disabled:opacity-40">
+                            className="px-2 py-1 text-2xs border border-ps-border rounded hover:bg-ps-bg disabled:opacity-40">
                             Cancelled…
                           </button>
                         )}
@@ -405,20 +405,20 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                             <input type="date" value={closing.on} autoFocus
                               aria-label={`Date ${r.gstin} was cancelled or surrendered`}
                               onChange={(e) => setClosing({ id: r.id as string, on: e.target.value })}
-                              className="px-1.5 py-1 text-[11px] border border-ps-border rounded" />
+                              className="px-1.5 py-1 text-2xs border border-ps-border rounded" />
                             <button onClick={() => handleClose(r, closing.on)}
                               disabled={busy || !closing.on}
-                              className="px-2 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40">
+                              className="px-2 py-1 text-2xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40">
                               Record
                             </button>
                             <button onClick={() => setClosing(null)} disabled={busy}
-                              className="px-1.5 py-1 text-[11px] text-ps-hint hover:text-ps-body">
+                              className="px-1.5 py-1 text-2xs text-ps-hint hover:text-ps-body">
                               Cancel
                             </button>
                           </span>
                         )}
                         <button onClick={() => handleWithdraw(r)} disabled={busy}
-                          className="ml-1 px-2 py-1 text-[11px] text-ps-hint hover:text-red-600 disabled:opacity-40">
+                          className="ml-1 px-2 py-1 text-2xs text-ps-hint hover:text-red-600 disabled:opacity-40">
                           Remove
                         </button>
                       </>
@@ -447,7 +447,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                   onChange={(e) => setForm(f => ({ ...f, gstin: e.target.value.toUpperCase() }))}
                   placeholder="29AABCU9603R1ZJ"
                   className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg font-mono" />
-                <span className="block text-[10px] text-ps-hint mt-1 leading-tight">
+                <span className="block text-3xs text-ps-hint mt-1 leading-tight">
                   The state is the GSTIN&apos;s own first two characters and is not asked
                   for separately — a registration is state-wise.
                 </span>
@@ -466,7 +466,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                 {(() => {
                   const chosen = kinds?.registration_types?.find(t => t.value === form.registration_type);
                   return chosen?.other_return_form ? (
-                    <span className="block text-[10px] text-amber-800 mt-1 leading-tight">
+                    <span className="block text-3xs text-amber-800 mt-1 leading-tight">
                       {chosen.other_return_form} — which this product does not build, so
                       no GSTR-1 or GSTR-3B will be prepared for it.
                     </span>
@@ -491,7 +491,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                   onChange={(e) => setForm(f => ({ ...f, trade_name: e.target.value }))}
                   placeholder="Bengaluru depot"
                   className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
-                <span className="block text-[10px] text-ps-hint mt-1 leading-tight">
+                <span className="block text-3xs text-ps-hint mt-1 leading-tight">
                   Two registrations in one state are told apart only by this.
                 </span>
               </label>

@@ -159,7 +159,7 @@ export function ClientContextPanel() {
             >
               <ArrowLeft size={15} />
             </Link>
-            <span className="flex-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500 truncate px-1">
+            <span className="flex-1 text-3xs font-semibold uppercase tracking-widest text-slate-500 truncate px-1">
               Client Workspace
             </span>
             <button
@@ -232,7 +232,7 @@ export function ClientContextPanel() {
                 onClick={() => setMobileOpen(false)}
               >
                 <ArrowLeft size={15} />
-                <span className="text-[10px] font-semibold uppercase tracking-widest">
+                <span className="text-3xs font-semibold uppercase tracking-widest">
                   Client Workspace
                 </span>
               </Link>

@@ -155,7 +155,7 @@ export default function TasksPage() {
                           <button
                             onClick={() => advance(t)}
                             disabled={busy === t.id}
-                            className="shrink-0 flex items-center gap-1 text-[11px] border border-ps-border rounded-md px-2 py-1 text-ps-label hover:bg-ps-muted disabled:opacity-50"
+                            className="shrink-0 flex items-center gap-1 text-2xs border border-ps-border rounded-md px-2 py-1 text-ps-label hover:bg-ps-muted disabled:opacity-50"
                           >
                             {busy === t.id
                               ? <Loader2 size={11} className="animate-spin" />

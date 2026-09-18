@@ -181,7 +181,7 @@ export default function SchedulesPage() {
               <p className="text-xs font-semibold text-ps-body">
                 {SCHEDULE_TABS.find((t) => t.id === tab)?.label} Schedule
               </p>
-              <p className="text-[10px] text-ps-hint mt-0.5">
+              <p className="text-3xs text-ps-hint mt-0.5">
                 All values derived from the General Ledger.
               </p>
             </div>

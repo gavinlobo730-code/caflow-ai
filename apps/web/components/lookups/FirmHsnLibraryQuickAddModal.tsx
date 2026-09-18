@@ -108,7 +108,7 @@ export function FirmHsnLibraryQuickAddModal({
             inputMode="numeric"
           />
           {!codeValid && hsnCode.length > 0 && (
-            <span className="block text-[11px] text-red-600">2–8 digits.</span>
+            <span className="block text-2xs text-red-600">2–8 digits.</span>
           )}
         </label>
 
@@ -148,7 +148,7 @@ export function FirmHsnLibraryQuickAddModal({
           <input value={uqc} onChange={(e) => setUqc(e.target.value)} placeholder="e.g. NOS, OTH" className={inputCls} />
         </label>
 
-        {error && <p className="text-[11px] text-red-600">{error}</p>}
+        {error && <p className="text-2xs text-red-600">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">

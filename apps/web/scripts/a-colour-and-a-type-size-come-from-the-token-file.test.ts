@@ -93,12 +93,22 @@ function count(re: RegExp): { total: number; byFile: Map<string, number> } {
 // 18 Sep 2026, before this pass:  hex 10,146   ·  arbitrary text size 2,265
 // 18 Sep 2026, after it:          hex     116   ·  arbitrary text size 2,265
 //
-// The type figure is deliberately UNCHANGED by this pass: `fontSize` gained
-// `3xs` (10px) and `2xs` (11px) so the 1,860 sites at those two sizes finally
-// have a name, and renaming them is T4's own commit — the point of this pass
-// was to make the rename possible, not to make it.
+// 18 Sep 2026, after the T4 rename:   arbitrary text size 405
+//
+// The rename moved 1,855 sites — 994 at 10px and 861 at 11px — onto `text-3xs`
+// and `text-2xs`. It is a PURE rename: both steps are bare font sizes, so
+// `.text-\\[10px\\]{font-size:10px}` and `.text-3xs{font-size:10px}` are the
+// same declaration, verified in the built stylesheet before and after.
+//
+// THE 405 LEFT ARE NOT RENAMES AND THAT IS WHY THEY ARE LEFT. `text-[12px]`
+// (202) and `text-[14px]` (40) are exactly Tailwind's own `text-xs` and
+// `text-sm` — but those set a LINE-HEIGHT as well (12px/16px, 14px/20px), so
+// the substitution would change leading on 242 sites. `text-[13px]` (88) has
+// no name at all, and `text-[9px]` (29) deliberately has none: it is below the
+// size at which the remaining steps are distinguishable, and naming it would
+// bless it. Each needs a decision, which belongs with the reference screens.
 const HEX_BUDGET = 116;
-const PX_TEXT_BUDGET = 2_265;
+const PX_TEXT_BUDGET = 405;
 
 test("a colour is not written as a raw hex class", () => {
   const { total, byFile } = count(HEX_CLASS);

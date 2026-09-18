@@ -196,15 +196,15 @@ export default function AdjustmentsPage() {
                 {adjustments.map((adj) => (
                   <tr key={adj.id} className="hover:bg-ps-bg">
                     <td className="px-4 py-2.5">
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${TYPE_BADGE[adj.adjustment_type]}`}>
+                      <span className={`text-3xs font-medium px-1.5 py-0.5 rounded-full ${TYPE_BADGE[adj.adjustment_type]}`}>
                         {TYPE_LABELS[adj.adjustment_type]}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-ps-body max-w-[180px] truncate">{adj.description}</td>
-                    <td className="px-3 py-2.5 font-mono text-ps-label text-[10px]">
+                    <td className="px-3 py-2.5 font-mono text-ps-label text-3xs">
                       {adj.debit_account_name ?? adj.debit_account_id}
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-ps-label text-[10px]">
+                    <td className="px-3 py-2.5 font-mono text-ps-label text-3xs">
                       {adj.credit_account_name ?? adj.credit_account_id}
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono font-semibold text-ps-ink">
@@ -212,7 +212,7 @@ export default function AdjustmentsPage() {
                     </td>
                     <td className="px-3 py-2.5 text-ps-label whitespace-nowrap">{adj.adjustment_date}</td>
                     <td className="px-3 py-2.5">
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_BADGE[adj.status]}`}>
+                      <span className={`text-3xs font-medium px-1.5 py-0.5 rounded-full ${STATUS_BADGE[adj.status]}`}>
                         {STATUS_LABEL[adj.status]}
                       </span>
                     </td>
@@ -255,7 +255,7 @@ export default function AdjustmentsPage() {
 function RegisterTotal({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] text-ps-hint">{label}</p>
+      <p className="text-3xs text-ps-hint">{label}</p>
       <p className="text-sm font-semibold text-ps-ink font-mono">{value}</p>
     </div>
   );
@@ -289,7 +289,7 @@ function AdjActions({
       </button>
     );
   }
-  return <span className="text-[10px] text-ps-hint">—</span>;
+  return <span className="text-3xs text-ps-hint">—</span>;
 }
 
 // ── New Adjustment Form ────────────────────────────────────────────────────

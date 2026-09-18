@@ -219,7 +219,7 @@ export default function MSME43BHPage() {
                   {working.gaps.map((g, i) => (
                     <p key={i} className="text-xs text-amber-800">• {g}</p>
                   ))}
-                  <p className="text-[11px] text-amber-700 pt-1">
+                  <p className="text-2xs text-amber-700 pt-1">
                     Record it on the client&apos;s Schedule III ageing screen, then recompute.
                   </p>
                 </div>
@@ -234,7 +234,7 @@ export default function MSME43BHPage() {
                 {working.caveats.map((c, i) => (
                   <p key={i} className="text-xs text-ps-label">{c}</p>
                 ))}
-                <p className="text-[11px] text-ps-hint">{working.source}</p>
+                <p className="text-2xs text-ps-hint">{working.source}</p>
               </div>
             </div>
           </div>
@@ -371,13 +371,13 @@ function MsmedInterestPanel({ interest }: { interest: MSMEDInterest }) {
         <table className="w-full text-sm min-w-[820px]">
           <thead>
             <tr className="border-b border-ps-border bg-ps-bg">
-              <th className="px-3 py-2 text-left text-[11px] font-semibold text-ps-label uppercase">Supplier</th>
-              <th className="px-3 py-2 text-left text-[11px] font-semibold text-ps-label uppercase">Bill</th>
-              <th className="px-3 py-2 text-right text-[11px] font-semibold text-ps-label uppercase">Amount</th>
-              <th className="px-3 py-2 text-left text-[11px] font-semibold text-ps-label uppercase">Interest from</th>
-              <th className="px-3 py-2 text-left text-[11px] font-semibold text-ps-label uppercase">To</th>
-              <th className="px-3 py-2 text-right text-[11px] font-semibold text-ps-label uppercase">Rests</th>
-              <th className="px-3 py-2 text-right text-[11px] font-semibold text-ps-label uppercase">Interest</th>
+              <th className="px-3 py-2 text-left text-2xs font-semibold text-ps-label uppercase">Supplier</th>
+              <th className="px-3 py-2 text-left text-2xs font-semibold text-ps-label uppercase">Bill</th>
+              <th className="px-3 py-2 text-right text-2xs font-semibold text-ps-label uppercase">Amount</th>
+              <th className="px-3 py-2 text-left text-2xs font-semibold text-ps-label uppercase">Interest from</th>
+              <th className="px-3 py-2 text-left text-2xs font-semibold text-ps-label uppercase">To</th>
+              <th className="px-3 py-2 text-right text-2xs font-semibold text-ps-label uppercase">Rests</th>
+              <th className="px-3 py-2 text-right text-2xs font-semibold text-ps-label uppercase">Interest</th>
             </tr>
           </thead>
           <tbody>
@@ -390,7 +390,7 @@ function MsmedInterestPanel({ interest }: { interest: MSMEDInterest }) {
                 <td className="px-3 py-2.5 text-ps-label tabular-nums">
                   {a.to_date ?? "—"}
                   {a.still_running && (
-                    <span className="ml-1.5 text-[10px] text-state-attention">still accruing</span>
+                    <span className="ml-1.5 text-3xs text-state-attention">still accruing</span>
                   )}
                 </td>
                 <td className="px-3 py-2.5 tabular-nums text-right" title={a.reason}>
@@ -399,7 +399,7 @@ function MsmedInterestPanel({ interest }: { interest: MSMEDInterest }) {
                     /* A part month is a rest that has not fallen due, so it is
                        reported and NOT charged — shown so the figure below can
                        be reconciled rather than looking arbitrary. */
-                    <span className="text-[10px] text-ps-hint"> +{a.part_days}d</span>
+                    <span className="text-3xs text-ps-hint"> +{a.part_days}d</span>
                   )}
                 </td>
                 <td className="px-3 py-2.5 tabular-nums text-right font-medium">

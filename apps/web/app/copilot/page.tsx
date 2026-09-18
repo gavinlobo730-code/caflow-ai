@@ -103,9 +103,9 @@ function MessageBubble({ msg, onRate }: { msg: Message; onRate: (id: string, rat
         </div>
         {!isUser && (
           <div className="flex items-center gap-2 mt-1.5 px-1">
-            <span className="text-[10px] text-ps-hint">{fmtTime(msg.created_at)}</span>
+            <span className="text-3xs text-ps-hint">{fmtTime(msg.created_at)}</span>
             {msg.tokens_used && (
-              <span className="text-[10px] text-ps-disabled">{msg.tokens_used} tokens</span>
+              <span className="text-3xs text-ps-disabled">{msg.tokens_used} tokens</span>
             )}
             <div className="flex gap-1 ml-auto">
               <button
@@ -350,7 +350,7 @@ export default function CopilotPage() {
             {conversationsError ? (
               <div className="text-center py-6 space-y-2">
                 <p className="text-xs text-red-600 font-medium px-2">{conversationsError}</p>
-                <button onClick={loadConversations} className="text-[11px] px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
+                <button onClick={loadConversations} className="text-2xs px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </div>
             ) : conversations.length === 0 ? (
               <p className="text-xs text-ps-hint text-center py-6">No conversations yet</p>
@@ -373,7 +373,7 @@ export default function CopilotPage() {
                       <p className="text-xs font-medium line-clamp-2">{conv.title}</p>
                       <div className="flex items-center gap-1 mt-0.5">
                         <Clock size={9} className="text-ps-disabled" />
-                        <span className="text-[10px] text-ps-disabled">
+                        <span className="text-3xs text-ps-disabled">
                           {conv.last_message_at ? fmtTime(conv.last_message_at) : "new"}
                         </span>
                       </div>
@@ -486,7 +486,7 @@ export default function CopilotPage() {
                     <Send size={15} className={input.trim() ? "text-white" : "text-ps-hint"} />
                   </button>
                 </div>
-                <p className="text-center text-[10px] text-ps-disabled mt-2">
+                <p className="text-center text-3xs text-ps-disabled mt-2">
                   AI responses are advisory — always verify with source documents. Never auto-submit to government portals.
                 </p>
               </div>
@@ -522,20 +522,20 @@ export default function CopilotPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${PRIORITY_STYLES[rec.priority]}`}>
+                              <span className={`text-3xs px-2 py-0.5 rounded-full font-semibold border ${PRIORITY_STYLES[rec.priority]}`}>
                                 {rec.priority.toUpperCase()}
                               </span>
-                              <span className="text-[10px] bg-ps-muted text-ps-label px-2 py-0.5 rounded-full">
+                              <span className="text-3xs bg-ps-muted text-ps-label px-2 py-0.5 rounded-full">
                                 {REC_TYPE_LABELS[rec.recommendation_type] || rec.recommendation_type}
                               </span>
                               {rec.client_name && (
-                                <span className="text-[10px] text-ps-hint">{rec.client_name}</span>
+                                <span className="text-3xs text-ps-hint">{rec.client_name}</span>
                               )}
                             </div>
                             <p className="font-medium text-brand text-sm">{rec.title}</p>
                             <p className="text-xs text-ps-label mt-1">{rec.description}</p>
                             {rec.rationale && (
-                              <p className="text-[11px] text-ps-hint mt-1 italic">{rec.rationale}</p>
+                              <p className="text-2xs text-ps-hint mt-1 italic">{rec.rationale}</p>
                             )}
                           </div>
                         </div>

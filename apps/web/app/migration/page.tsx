@@ -217,29 +217,29 @@ export default function MigrationPage() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-ps-label mb-1 block">Job Name</label>
+                  <label className="text-3xs text-ps-label mb-1 block">Job Name</label>
                   <input value={name} onChange={e => setName(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" placeholder="e.g. Tally FY2025 Import" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-ps-label mb-1 block">Source File Name</label>
+                  <label className="text-3xs text-ps-label mb-1 block">Source File Name</label>
                   <input value={fileName} onChange={e => setFileName(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" placeholder="export.xml" />
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-ps-label mb-1 block">Financial Year</label>
+                <label className="text-3xs text-ps-label mb-1 block">Financial Year</label>
                 <select value={fy} onChange={e => setFy(e.target.value)}
                   className="text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                   {FY_OPTIONS.map(f => <option key={f}>{f}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-[10px] text-ps-label mb-2 block">Import Types</label>
+                <label className="text-3xs text-ps-label mb-2 block">Import Types</label>
                 <div className="flex flex-wrap gap-2">
                   {IMPORT_TYPES.map(t => (
                     <button key={t} onClick={() => toggleType(t)}
-                      className={`text-[10px] px-2 py-1 rounded-full border ${selectedTypes.includes(t) ? "bg-blue-600 text-white border-blue-600" : "border-ps-border text-ps-label"}`}>
+                      className={`text-3xs px-2 py-1 rounded-full border ${selectedTypes.includes(t) ? "bg-blue-600 text-white border-blue-600" : "border-ps-border text-ps-label"}`}>
                       {t}
                     </button>
                   ))}
@@ -255,7 +255,7 @@ export default function MigrationPage() {
           {step === "parse" && (
             <div className="space-y-3">
               <p className="text-xs font-medium text-ps-body">Paste Tally XML Export</p>
-              <p className="text-[11px] text-ps-label">
+              <p className="text-2xs text-ps-label">
                 In Tally: Gateway of Tally → Export → XML. Paste the exported XML content below.
               </p>
               <textarea value={xmlContent} onChange={e => setXmlContent(e.target.value)} rows={12}
@@ -276,7 +276,7 @@ export default function MigrationPage() {
                   {Object.entries(parseResult.parsed_counts ?? {}).map(([k, v]) => (
                     <div key={k} className="bg-ps-bg rounded-lg p-3 text-center">
                       <p className="text-sm font-bold text-ps-ink">{v as number}</p>
-                      <p className="text-[10px] text-ps-label capitalize">{k}</p>
+                      <p className="text-3xs text-ps-label capitalize">{k}</p>
                     </div>
                   ))}
                 </div>
@@ -325,7 +325,7 @@ export default function MigrationPage() {
                   <p className="text-xs font-semibold text-green-800">
                     {importResult.is_dry_run ? "Dry Run Completed" : "Import Completed"}
                   </p>
-                  <p className="text-[10px] text-green-600">
+                  <p className="text-3xs text-green-600">
                     {importResult.imported ?? 0} imported · {importResult.failed ?? 0} failed · {importResult.skipped ?? 0} skipped
                   </p>
                 </div>
@@ -367,13 +367,13 @@ export default function MigrationPage() {
               <Database size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-ps-ink">{j.name}</p>
-                <p className="text-[10px] text-ps-hint">
+                <p className="text-3xs text-ps-hint">
                   FY {j.target_financial_year} · {j.source_file_name} · {j.total_items} items
                   {j.imported_items > 0 && ` · ${j.imported_items} imported`}
                   {j.is_dry_run && " · Dry Run"}
                 </p>
               </div>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[j.status]}`}>
+              <span className={`text-3xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[j.status]}`}>
                 {j.status.replace(/_/g, " ")}
               </span>
             </div>

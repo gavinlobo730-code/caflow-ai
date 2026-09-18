@@ -225,7 +225,7 @@ export default function PortalActivatePage() {
               {error && (
                 <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-red-50 border border-red-100">
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-red-500 text-[10px] font-bold leading-none">!</span>
+                    <span className="text-red-500 text-3xs font-bold leading-none">!</span>
                   </div>
                   <p className="text-[13px] text-red-600 leading-snug">{error}</p>
                 </div>
@@ -266,7 +266,7 @@ export default function PortalActivatePage() {
               {reauthError && (
                 <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-red-50 border border-red-100">
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-red-500 text-[10px] font-bold leading-none">!</span>
+                    <span className="text-red-500 text-3xs font-bold leading-none">!</span>
                   </div>
                   <p className="text-[13px] text-red-600 leading-snug">{reauthError}</p>
                 </div>

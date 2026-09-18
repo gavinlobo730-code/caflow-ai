@@ -65,7 +65,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     <label className="block text-xs">
       <span className="block text-ps-hint mb-1">{label}</span>
       {children}
-      {hint && <span className="block text-[10px] text-ps-hint mt-1">{hint}</span>}
+      {hint && <span className="block text-3xs text-ps-hint mt-1">{hint}</span>}
     </label>
   );
 }
@@ -201,7 +201,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
                     <td className="px-5 py-2 text-ps-ink">
                       {p.project_name}
                       {p.project_code && (
-                        <span className="ml-1.5 font-mono text-[10px] text-ps-hint">{p.project_code}</span>
+                        <span className="ml-1.5 font-mono text-3xs text-ps-hint">{p.project_code}</span>
                       )}
                     </td>
                     <td className="px-5 py-2 text-ps-label">{p.started_on}</td>
@@ -217,7 +217,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
                           </span>}
                     </td>
                     <td className="px-5 py-2">
-                      <span className={`text-[11px] px-1.5 py-0.5 rounded ${
+                      <span className={`text-2xs px-1.5 py-0.5 rounded ${
                         p.status === "capitalised" ? "bg-emerald-50 text-emerald-700"
                         : p.status === "suspended" ? "bg-amber-50 text-amber-700"
                         : p.status === "abandoned" ? "bg-ps-muted text-ps-label"
@@ -229,25 +229,25 @@ export function CwipTab({ clientId, asOf, openDoc }:
                       {(p.status === "in_progress" || p.status === "suspended") && (
                         <>
                           <button onClick={() => setCostFor(p)}
-                            className="text-[11px] px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
+                            className="text-2xs px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
                             Add cost
                           </button>
                           {p.status === "in_progress" ? (
                             <button onClick={() => setStatus(p, "suspended")}
                               title="Suspend — the balance stays in capital work-in-progress"
                               aria-label="Suspend project"
-                              className="text-[11px] px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
+                              className="text-2xs px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
                               <PauseCircle size={11} className="inline" />
                             </button>
                           ) : (
                             <button onClick={() => setStatus(p, "in_progress")}
                               aria-label="Resume project"
-                              className="text-[11px] px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
+                              className="text-2xs px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
                               <PlayCircle size={11} className="inline" />
                             </button>
                           )}
                           <button onClick={() => setCapitalising(p)}
-                            className="text-[11px] px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50">
+                            className="text-2xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50">
                             <CheckCircle2 size={11} className="inline" /> Capitalise
                           </button>
                         </>
@@ -265,7 +265,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-50">
             <h3 className="text-sm font-semibold text-ps-ink">CWIP ageing schedule</h3>
-            <p className="text-[11px] text-ps-hint mt-0.5">Schedule III, as at {ag.as_of}</p>
+            <p className="text-2xs text-ps-hint mt-0.5">Schedule III, as at {ag.as_of}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -313,7 +313,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
           </div>
           {ag.notes.length > 0 && (
             <div className="px-5 py-3 border-t border-ps-muted space-y-1">
-              {ag.notes.map((n, i) => <p key={i} className="text-[11px] text-ps-label">{n}</p>)}
+              {ag.notes.map((n, i) => <p key={i} className="text-2xs text-ps-label">{n}</p>)}
             </div>
           )}
         </div>
@@ -363,7 +363,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
               from the settled notes above, the same split the RCM panel makes. */}
           {cs.gaps.length > 0 && (
             <div className="px-5 py-3 border-t border-ps-muted bg-amber-50 space-y-1">
-              {cs.gaps.map((g, i) => <p key={i} className="text-[11px] text-amber-900">{g}</p>)}
+              {cs.gaps.map((g, i) => <p key={i} className="text-2xs text-amber-900">{g}</p>)}
             </div>
           )}
         </div>
@@ -535,7 +535,7 @@ function CapitaliseModal({ clientId, project, onClose, onSaved }: {
       <Field label="Useful life (years, optional)">
         <input value={life} inputMode="numeric" onChange={(e) => setLife(e.target.value)} className={INPUT} />
       </Field>
-      <p className="text-[11px] text-amber-700">
+      <p className="text-2xs text-amber-700">
         This cannot be undone from here — it creates the asset and posts a journal entry.
       </p>
     </Shell>

@@ -249,7 +249,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
             ) : (
               <VendorLookup vendors={parties} value={partyId} onChange={setPartyId} ariaLabel="Vendor" placeholder={`Select vendor…`} />
             )}
-            <p className="text-[10px] text-ps-hint mt-1">All selected {docLabel}s must belong to this one {isCredit ? "customer" : "vendor"}.</p>
+            <p className="text-3xs text-ps-hint mt-1">All selected {docLabel}s must belong to this one {isCredit ? "customer" : "vendor"}.</p>
           </div>
 
           {partyId && (
@@ -264,7 +264,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
                     <input type="checkbox" checked={checked.has(d.id)} onChange={() => toggle(d)} className="h-3.5 w-3.5 rounded border-ps-disabled shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium text-ps-ink truncate">{d.no}</p>
-                      <p className="text-[10px] text-ps-hint">{d.date} · Outstanding {fmt(d.outstanding_paise)} {d.currency !== "INR" ? d.currency : ""}</p>
+                      <p className="text-3xs text-ps-hint">{d.date} · Outstanding {fmt(d.outstanding_paise)} {d.currency !== "INR" ? d.currency : ""}</p>
                     </div>
                     {checked.has(d.id) && (
                       <input
@@ -290,7 +290,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
                 type="number" min="0" step="0.01" value={tds}
                 onChange={(e) => setTds(e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="0.00" />
-              <p className="text-[10px] text-ps-hint mt-1">
+              <p className="text-3xs text-ps-hint mt-1">
                 {tdsPaise > 0
                   ? `Invoices totalling ${fmt(settlementCap)} can be settled from this ${fmt(txnAmount)} receipt — the ${fmt(tdsPaise)} withheld clears the receivable too.`
                   : "Leave blank unless the customer deducted tax at source. Enter the amount deducted, not the rate."}

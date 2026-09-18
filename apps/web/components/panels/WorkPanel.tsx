@@ -26,11 +26,11 @@ export function WorkPanel() {
     <div className="flex flex-col h-full">
       <div className="px-4 py-3 border-b border-gray-200 shrink-0">
         <p className="text-[13px] font-semibold text-brand">Work</p>
-        <p className="text-[11px] text-gray-500 mt-0.5">Personal execution</p>
+        <p className="text-2xs text-gray-500 mt-0.5">Personal execution</p>
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-1">
+        <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-1">
           My Work
         </p>
         <div className="space-y-0.5">
@@ -60,7 +60,7 @@ export function WorkPanel() {
           })}
         </div>
 
-        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-4">
+        <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-4">
           Automation
         </p>
         <div className="space-y-0.5">

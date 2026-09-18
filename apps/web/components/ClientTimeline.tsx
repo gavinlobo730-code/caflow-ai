@@ -175,14 +175,14 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search events…"
-          className="flex-1 min-w-[120px] bg-ps-bg border border-ps-border rounded-lg px-2.5 py-1 text-[11px] text-ps-label placeholder:text-ps-disabled outline-none focus:border-blue-300"
+          className="flex-1 min-w-[120px] bg-ps-bg border border-ps-border rounded-lg px-2.5 py-1 text-2xs text-ps-label placeholder:text-ps-disabled outline-none focus:border-blue-300"
         />
         {/* Category filter */}
         <div className="relative">
           <select
             value={catFilter}
             onChange={(e) => setCatFilter(e.target.value as EventCategory | "all")}
-            className="appearance-none bg-ps-bg border border-ps-border rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-ps-label outline-none focus:border-blue-300 cursor-pointer"
+            className="appearance-none bg-ps-bg border border-ps-border rounded-lg pl-2.5 pr-6 py-1 text-2xs text-ps-label outline-none focus:border-blue-300 cursor-pointer"
           >
             {CATEGORY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -195,7 +195,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           <select
             value={sevFilter}
             onChange={(e) => setSevFilter(e.target.value)}
-            className="appearance-none bg-ps-bg border border-ps-border rounded-lg pl-2.5 pr-6 py-1 text-[11px] text-ps-label outline-none focus:border-blue-300 cursor-pointer"
+            className="appearance-none bg-ps-bg border border-ps-border rounded-lg pl-2.5 pr-6 py-1 text-2xs text-ps-label outline-none focus:border-blue-300 cursor-pointer"
           >
             {SEVERITY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -221,7 +221,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
           <button
             onClick={() => load(false, true)}
-            className="text-[11px] text-ps-label px-3 py-1 rounded border border-ps-border hover:border-blue-300"
+            className="text-2xs text-ps-label px-3 py-1 rounded border border-ps-border hover:border-blue-300"
           >
             Retry
           </button>
@@ -244,7 +244,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
       {/* Pinned events */}
       {pinned.length > 0 && (
         <div className="mb-1 space-y-1">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-ps-hint px-1 flex items-center gap-1">
+          <p className="text-3xs font-semibold uppercase tracking-widest text-ps-hint px-1 flex items-center gap-1">
             <Pin size={9} /> Pinned
           </p>
           {pinned.map((e) => (
@@ -257,7 +257,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
       {feed.length > 0 && (
         <div className="space-y-1">
           {pinned.length > 0 && (
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-ps-hint px-1">Activity</p>
+            <p className="text-3xs font-semibold uppercase tracking-widest text-ps-hint px-1">Activity</p>
           )}
           {feed.map((e) => (
             <TimelineEventRow key={e.id} event={e} onPin={togglePin} pinning={pinning === e.id} />
@@ -271,7 +271,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           {page > 0 && (
             <button
               onClick={() => { setPage((p) => p - 1); load(false, false); }}
-              className="text-[11px] text-ps-hint hover:text-ps-label px-3 py-1 rounded border border-ps-border hover:border-blue-300"
+              className="text-2xs text-ps-hint hover:text-ps-label px-3 py-1 rounded border border-ps-border hover:border-blue-300"
             >
               ← Previous
             </button>
@@ -279,7 +279,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           {hasMore && (
             <button
               onClick={() => { setPage((p) => p + 1); load(false, false); }}
-              className="text-[11px] text-ps-hint hover:text-ps-label px-3 py-1 rounded border border-ps-border hover:border-blue-300"
+              className="text-2xs text-ps-hint hover:text-ps-label px-3 py-1 rounded border border-ps-border hover:border-blue-300"
             >
               Load more →
             </button>
@@ -318,15 +318,15 @@ function TimelineEventRow({
       <div className="flex-1 min-w-0">
         <p className="text-[12px] font-medium text-ps-ink leading-snug">{event.title}</p>
         {event.description && (
-          <p className="text-[11px] text-ps-hint mt-0.5 leading-snug">{event.description}</p>
+          <p className="text-2xs text-ps-hint mt-0.5 leading-snug">{event.description}</p>
         )}
       </div>
       <div className="shrink-0 text-right flex flex-col items-end gap-0.5">
-        <p className="text-[10px] text-ps-hint whitespace-nowrap">{timeAgo(event.created_at)}</p>
+        <p className="text-3xs text-ps-hint whitespace-nowrap">{timeAgo(event.created_at)}</p>
         {event.action_label && event.action_url && (
           <a
             href={event.action_url}
-            className="text-[10px] text-blue-600 hover:text-blue-800 underline underline-offset-2"
+            className="text-3xs text-blue-600 hover:text-blue-800 underline underline-offset-2"
           >
             {event.action_label}
           </a>

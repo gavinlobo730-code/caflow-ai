@@ -311,7 +311,7 @@ function MfaCard() {
         <ShieldCheck size={15} className="text-blue-600" />
         <h2 className="text-sm font-semibold text-ps-ink">Two-Factor Authentication (TOTP)</h2>
         {mfaEnabled && (
-          <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+          <span className="ml-auto inline-flex items-center gap-1 text-2xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
             <CheckCircle2 size={11} /> Enabled
           </span>
         )}

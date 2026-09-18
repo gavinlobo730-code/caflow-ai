@@ -212,11 +212,11 @@ export default function YearEndPage() {
                 <p className="text-xs font-semibold text-ps-ink">
                   {eng.engagement_name ?? `FY ${eng.financial_year}`}
                 </p>
-                <p className="text-[10px] text-ps-hint">
+                <p className="text-3xs text-ps-hint">
                   Created {new Date(eng.created_at).toLocaleDateString("en-IN")}
                 </p>
               </div>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full capitalize ${STATUS_BADGE[eng.status] ?? "bg-ps-muted text-ps-label"}`}>
+              <span className={`text-3xs font-medium px-2 py-0.5 rounded-full capitalize ${STATUS_BADGE[eng.status] ?? "bg-ps-muted text-ps-label"}`}>
                 {eng.status.replace("_", " ")}
               </span>
               <ChevronRight size={14} className="text-ps-disabled flex-shrink-0" />

@@ -93,19 +93,19 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
             <Scale size={13} className="text-ps-label" />
             <p className="text-xs font-semibold text-ps-ink">Cost formula</p>
             {!policy.is_recorded && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700 border border-amber-200">
+              <span className="px-1.5 py-0.5 rounded text-3xs bg-amber-50 text-amber-700 border border-amber-200">
                 Not recorded
               </span>
             )}
           </div>
           <p className="text-xs text-ps-label mt-1">{policy.label}</p>
           {policy.unrecorded_means && (
-            <p className="text-[11px] text-ps-label mt-1.5 leading-relaxed">
+            <p className="text-2xs text-ps-label mt-1.5 leading-relaxed">
               {policy.unrecorded_means}
             </p>
           )}
           {policy.methods_used.length > 1 && (
-            <div className="mt-2 text-[11px] text-ps-label leading-relaxed">
+            <div className="mt-2 text-2xs text-ps-label leading-relaxed">
               <p className="font-medium text-ps-body">What actually priced the ledger</p>
               <ul className="mt-0.5 space-y-0.5">
                 {policy.methods_used.map((s) => (
@@ -127,7 +127,7 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
       {open && (
         <div className="border-t border-ps-border px-4 py-3 space-y-3">
           <div>
-            <label htmlFor="cost-formula" className="block text-[10px] font-medium text-ps-hint mb-1">
+            <label htmlFor="cost-formula" className="block text-3xs font-medium text-ps-hint mb-1">
               Cost formula (AS-2 paragraph 14)
             </label>
             <select id="cost-formula" value={method} onChange={(e) => setMethod(e.target.value)}
@@ -138,21 +138,21 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
             </select>
           </div>
           <div>
-            <label htmlFor="cost-formula-from" className="block text-[10px] font-medium text-ps-hint mb-1">
+            <label htmlFor="cost-formula-from" className="block text-3xs font-medium text-ps-hint mb-1">
               Takes effect from
             </label>
             <input id="cost-formula-from" type="date" value={effectiveFrom}
                    onChange={(e) => setEffectiveFrom(e.target.value)}
                    className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <p className="text-[11px] text-ps-label mt-1 leading-relaxed">
+            <p className="text-2xs text-ps-label mt-1 leading-relaxed">
               A change is prospective. Nothing already priced is re-costed, so
               the date has to be after the last recorded movement — the start
               of the next period is the usual answer.
             </p>
           </div>
-          <p className="text-[11px] text-ps-label leading-relaxed">{policy.standard_cost_refused}</p>
+          <p className="text-2xs text-ps-label leading-relaxed">{policy.standard_cost_refused}</p>
           {refusal && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-[11px] text-red-700 leading-relaxed">
+            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-2xs text-red-700 leading-relaxed">
               {refusal}
             </div>
           )}

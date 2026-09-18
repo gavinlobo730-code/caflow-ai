@@ -192,7 +192,7 @@ export default function XBRLPage() {
         <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
           <p className="text-xs font-semibold text-ps-body">New XBRL Package</p>
           <div>
-            <label className="text-[10px] text-ps-label mb-1 block">Financial Year</label>
+            <label className="text-3xs text-ps-label mb-1 block">Financial Year</label>
             <select value={fy} onChange={e => setFy(e.target.value)}
               className="text-xs px-3 py-1.5 border border-ps-border rounded-lg">
               {FY_OPTIONS.map(f => <option key={f}>{f}</option>)}
@@ -232,9 +232,9 @@ export default function XBRLPage() {
               <Code size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-ps-ink">FY {pkg.financial_year} — {pkg.taxonomy_version}</p>
-                <p className="text-[10px] text-ps-hint">v{pkg.version} · {new Date(pkg.created_at).toLocaleDateString("en-IN")}</p>
+                <p className="text-3xs text-ps-hint">v{pkg.version} · {new Date(pkg.created_at).toLocaleDateString("en-IN")}</p>
               </div>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[pkg.status]}`}>
+              <span className={`text-3xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[pkg.status]}`}>
                 {pkg.status.replace(/_/g, " ")}
               </span>
             </button>
@@ -246,16 +246,16 @@ export default function XBRLPage() {
         <div className="bg-white border border-ps-border rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-ps-body">FY {selected.financial_year} Package</p>
-            <button onClick={() => setSelected(null)} className="text-[10px] text-ps-hint">Close</button>
+            <button onClick={() => setSelected(null)} className="text-3xs text-ps-hint">Close</button>
           </div>
 
           {selected.validation_errors.length > 0 && (
             <div className="space-y-1">
-              <p className="text-[10px] font-semibold text-red-600">Validation Errors</p>
+              <p className="text-3xs font-semibold text-red-600">Validation Errors</p>
               {selected.validation_errors.map((e, i) => (
                 <div key={i} className="flex items-start gap-1.5">
                   <XCircle size={10} className="text-red-500 mt-0.5 flex-shrink-0" />
-                  <p className="text-[10px] text-red-700">{e}</p>
+                  <p className="text-3xs text-red-700">{e}</p>
                 </div>
               ))}
             </div>
@@ -263,15 +263,15 @@ export default function XBRLPage() {
 
           {selected.missing_tags.length > 0 && (
             <div className="space-y-1">
-              <p className="text-[10px] font-semibold text-amber-600">Missing Mandatory Tags ({selected.missing_tags.length})</p>
+              <p className="text-3xs font-semibold text-amber-600">Missing Mandatory Tags ({selected.missing_tags.length})</p>
               {selected.missing_tags.slice(0, 5).map((t, i) => (
                 <div key={i} className="flex items-start gap-1.5">
                   <AlertTriangle size={10} className="text-amber-500 mt-0.5 flex-shrink-0" />
-                  <p className="text-[10px] text-amber-700 font-mono">{t}</p>
+                  <p className="text-3xs text-amber-700 font-mono">{t}</p>
                 </div>
               ))}
               {selected.missing_tags.length > 5 && (
-                <p className="text-[10px] text-ps-hint">+{selected.missing_tags.length - 5} more missing tags</p>
+                <p className="text-3xs text-ps-hint">+{selected.missing_tags.length - 5} more missing tags</p>
               )}
             </div>
           )}

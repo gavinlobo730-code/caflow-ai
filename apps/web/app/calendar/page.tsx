@@ -281,7 +281,7 @@ function DeadlineChip({ deadline, clientMap, compact = false, onToggle }: Deadli
 
   return (
     <div
-      className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-medium cursor-pointer select-none transition-opacity
+      className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-3xs font-medium cursor-pointer select-none transition-opacity
         ${style.chip} ${deadline.done ? "opacity-50 line-through" : ""}`}
       onClick={() => onToggle(deadline.id)}
       title={deadline.description}
@@ -554,7 +554,7 @@ export default function CalendarPage() {
                       />
                     ))}
                     {chips.length > 3 && (
-                      <div className="text-[10px] text-ps-hint pl-1">+{chips.length - 3} more</div>
+                      <div className="text-3xs text-ps-hint pl-1">+{chips.length - 3} more</div>
                     )}
                   </div>
                 </div>
@@ -600,7 +600,7 @@ export default function CalendarPage() {
                         </button>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${style.chip}`}>
+                            <span className={`text-3xs px-1.5 py-0.5 rounded border font-medium ${style.chip}`}>
                               {CATEGORY_LABELS[dl.category]}
                             </span>
                             <span className={`text-sm font-medium ${dl.done ? "line-through text-ps-hint" : "text-ps-ink"}`}>
@@ -609,7 +609,7 @@ export default function CalendarPage() {
                           </div>
                           <p className="text-xs text-ps-label mt-0.5">{dl.description}</p>
                           {clientLabel && (
-                            <p className="text-[10px] text-ps-hint mt-0.5">{clientLabel}</p>
+                            <p className="text-3xs text-ps-hint mt-0.5">{clientLabel}</p>
                           )}
                         </div>
                       </div>
@@ -640,11 +640,11 @@ export default function CalendarPage() {
                       <span className={`w-2 h-2 rounded-full shrink-0 ${style.badge}`} />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-ps-ink truncate">{dl.label}</p>
-                        <p className="text-[10px] text-ps-hint">
+                        <p className="text-3xs text-ps-hint">
                           {dl.date.getDate()} {MONTH_NAMES[dl.date.getMonth()]}
                         </p>
                       </div>
-                      <span className={`text-[10px] shrink-0 ${urgentClass}`}>
+                      <span className={`text-3xs shrink-0 ${urgentClass}`}>
                         {daysAway === 0 ? "Today" : daysAway === 1 ? "Tomorrow" : `${daysAway}d`}
                       </span>
                       <button

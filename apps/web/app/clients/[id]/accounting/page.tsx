@@ -483,7 +483,7 @@ function AccountingDashboard({
       {/* Every figure below is for one financial year, so the year is named
           and changeable here rather than assumed from elsewhere. */}
       <div className="flex items-center justify-end gap-2">
-        <span className="text-[11px] text-ps-hint">Figures for</span>
+        <span className="text-2xs text-ps-hint">Figures for</span>
         <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} ariaLabel="Dashboard financial year" />
       </div>
       {/* Say so, rather than presenting a failed load as a client with no
@@ -532,7 +532,7 @@ function AccountingDashboard({
                   <td className="px-3 py-2.5 text-ps-body truncate max-w-xs">{e.narration}</td>
                   <td className="px-3 py-2.5 text-ps-hint">{e.entry_type}</td>
                   <td className="px-4 py-2.5">
-                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>
+                    <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>
                       {e.is_posted ? "Posted" : "Draft"}
                     </span>
                   </td>
@@ -562,7 +562,7 @@ function DashCard({ label, value, accent, action }: { label: string; value: stri
       onClick={action}
       className={`rounded-xl border p-4 text-left transition-shadow hover:shadow-sm ${colors[accent] ?? colors.gray}`}
     >
-      <p className="text-[10px] font-medium text-ps-label mb-1">{label}</p>
+      <p className="text-3xs font-medium text-ps-label mb-1">{label}</p>
       <p className={`text-lg font-bold tabular-nums ${textColors[accent] ?? "text-ps-ink"}`}>{value}</p>
     </button>
   );
@@ -586,11 +586,11 @@ function ChartOfAccounts({ accounts, loading, error, onRefresh }: { accounts: Ac
     { key: "account_name", header: "Account", accessor: (a) => a.account_name, searchable: true, sortable: true,
       render: (a) => <span className="font-medium text-ps-ink">{a.account_name}</span> },
     { key: "account_type", header: "Type", accessor: (a) => a.account_type, sortable: true,
-      render: (a) => <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${TYPE_COLORS[a.account_type] ?? "text-ps-label bg-ps-muted"}`}>{a.account_type}</span> },
+      render: (a) => <span className={`text-3xs font-semibold px-2 py-0.5 rounded-full ${TYPE_COLORS[a.account_type] ?? "text-ps-label bg-ps-muted"}`}>{a.account_type}</span> },
     { key: "account_subtype", header: "Subtype", accessor: (a) => a.account_subtype ?? "",
       render: (a) => <span className="text-ps-hint">{a.account_subtype ?? "—"}</span> },
     { key: "scope", header: "Scope", accessor: (a) => (a.client_id ? "Client" : "Firm"), align: "right",
-      render: (a) => <span className="text-[10px] px-1.5 py-0.5 rounded bg-ps-bg text-ps-hint">{a.client_id ? "Client" : "Firm"}</span> },
+      render: (a) => <span className="text-3xs px-1.5 py-0.5 rounded bg-ps-bg text-ps-hint">{a.client_id ? "Client" : "Firm"}</span> },
   ];
 
   const filters: FilterDef<Account>[] = [
@@ -759,7 +759,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       exportValue: (e) => (e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0) / 100,
       render: (e) => <span className="font-mono text-ps-body">{fmt((e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0))}</span> },
     { key: "status", header: "Status", accessor: (e) => (e.is_posted ? "Posted" : "Draft"),
-      render: (e) => <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>{e.is_posted ? "Posted" : "Draft"}</span> },
+      render: (e) => <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>{e.is_posted ? "Posted" : "Draft"}</span> },
     // Day book only: the manual list is by definition all one source, so the
     // column would say "manual" on every row. Here it is the point — it is what
     // tells a CA that a voucher came from an invoice rather than from someone's
@@ -768,7 +768,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       key: "source_type", header: "Source", accessor: (e: JournalEntry) => e.source_type ?? "",
       sortable: true,
       render: (e: JournalEntry) => (
-        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-ps-muted text-ps-label">
+        <span className="text-3xs px-1.5 py-0.5 rounded-full font-medium bg-ps-muted text-ps-label">
           {sourceLabel(e.source_type)}
         </span>
       ),
@@ -1087,7 +1087,7 @@ function LedgerDrillDown({
   }, [onClose]);
 
   const bal = (paise: number, isDebit: boolean) => (
-    <>{fmt(Math.abs(paise))}<span className="text-[10px] font-normal ml-1 opacity-60">{isDebit ? "Dr" : "Cr"}</span></>
+    <>{fmt(Math.abs(paise))}<span className="text-3xs font-normal ml-1 opacity-60">{isDebit ? "Dr" : "Cr"}</span></>
   );
   const hasActivity = !!ledger && (ledger.lines.length > 0 || ledger.opening_balance_paise !== 0);
   const accountName = ledger?.account_name ?? accounts.find((a) => a.id === accountId)?.account_name ?? "";
@@ -1140,14 +1140,14 @@ function LedgerDrillDown({
         <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between shrink-0">
           <div>
             <p className="text-sm font-semibold text-ps-ink">{accountName || "Ledger"}</p>
-            <p className="text-[11px] text-ps-hint mt-0.5">Account ledger</p>
+            <p className="text-2xs text-ps-hint mt-0.5">Account ledger</p>
           </div>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Back">×</button>
         </div>
 
         <div className="px-5 py-3 border-b border-ps-muted flex items-end gap-3 flex-wrap shrink-0">
           <div className="w-64">
-            <label className="block text-[10px] font-medium text-ps-hint mb-1">Account</label>
+            <label className="block text-3xs font-medium text-ps-hint mb-1">Account</label>
             <AccountLookup
               accounts={accounts}
               value={accountId}
@@ -1157,12 +1157,12 @@ function LedgerDrillDown({
             />
           </div>
           <div>
-            <label className="block text-[10px] font-medium text-ps-hint mb-1">From</label>
+            <label className="block text-3xs font-medium text-ps-hint mb-1">From</label>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
               className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label className="block text-[10px] font-medium text-ps-hint mb-1">To</label>
+            <label className="block text-3xs font-medium text-ps-hint mb-1">To</label>
             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
               className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
@@ -1403,7 +1403,7 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
           <table className="w-full text-xs">
             <thead>
               {periodic && (
-                <tr className="text-ps-hint text-[10px]">
+                <tr className="text-ps-hint text-3xs">
                   <th colSpan={3} />
                   <th colSpan={2} className="px-3 pt-2 text-center font-semibold">Opening</th>
                   <th colSpan={2} className="px-3 pt-2 text-center font-semibold">This period</th>
@@ -1514,7 +1514,7 @@ interface FXAuditData {
 }
 
 function CcyBadge({ code }: { code: string }) {
-  return <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-semibold text-[#4338CA]">{code}</span>;
+  return <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2 py-0.5 text-3xs font-semibold text-[#4338CA]">{code}</span>;
 }
 
 /** Signed base amount with gain(green)/loss(red) colour — a realized/unrealized delta. */
@@ -2095,19 +2095,19 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
         <div className="bg-white rounded-xl border border-ps-muted overflow-x-auto print:border-0">
           <div className="px-5 py-4 bg-ps-bg border-b border-ps-muted print:bg-white">
             <p className="text-xs font-bold text-ps-label uppercase tracking-wide">Statement of Profit & Loss{basis === "cash" ? " (Cash Basis)" : ""}</p>
-            <p className="text-[10px] text-ps-hint mt-0.5">
+            <p className="text-3xs text-ps-hint mt-0.5">
               {columns.length > 1 ? `${columns.length} periods: ${columns[0]?.label} – ${columns[columns.length - 1]?.label}` : columns[0]?.label}
             </p>
           </div>
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-ps-muted text-ps-hint text-[10px]">
+              <tr className="border-b border-ps-muted text-ps-hint text-3xs">
                 <th className="px-5 py-2 text-left font-semibold">Particulars</th>
                 {columns.map((c, i) => <th key={i} className="px-4 py-2 text-right font-semibold whitespace-nowrap">{c.label} (₹)</th>)}
               </tr>
             </thead>
             <tbody>
-              <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-ps-body bg-ps-bg text-[10px] uppercase tracking-wide">I. Revenue</td></tr>
+              <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-ps-body bg-ps-bg text-3xs uppercase tracking-wide">I. Revenue</td></tr>
               {[...PL_REV_ORDER, ...revExtraBuckets].map((bucket) => {
                 const items = revBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
@@ -2117,7 +2117,7 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
                 <td className="px-5 py-2.5 text-ps-ink">Total Revenue (I)</td>
                 {totalRevenueByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-ps-ink">{fmt(v)}</td>)}
               </tr>
-              <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-ps-body bg-ps-bg text-[10px] uppercase tracking-wide">II. Expenses</td></tr>
+              <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-ps-body bg-ps-bg text-3xs uppercase tracking-wide">II. Expenses</td></tr>
               {[...PL_EXP_ORDER, ...expExtraBuckets].map((bucket) => {
                 const items = expBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
@@ -2442,7 +2442,7 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
       {!loading && loaded && (
         <div className="space-y-4">
           {columns.length > 1 && (
-            <p className="text-[10px] text-ps-hint">
+            <p className="text-3xs text-ps-hint">
               {columns.length} snapshots, each as of the end of its period: {columns[0]?.label} – {columns[columns.length - 1]?.label}
             </p>
           )}
@@ -2452,19 +2452,19 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
             </div>
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint text-[10px]">
+                <tr className="border-b border-ps-muted text-ps-hint text-3xs">
                   <th className="px-5 py-2 text-left font-semibold">Particulars</th>
                   {columns.map((c, i) => <th key={i} className="px-4 py-2 text-right font-semibold whitespace-nowrap">{c.label} (₹)</th>)}
                 </tr>
               </thead>
               <tbody>
-                <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-ps-body bg-ps-bg text-[10px] uppercase tracking-wide">(A) Equity</td></tr>
+                <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-ps-body bg-ps-bg text-3xs uppercase tracking-wide">(A) Equity</td></tr>
                 {[...BS_EQ_ORDER, ...eqExtraBuckets].map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
                 <tr className="border-t border-ps-border font-semibold">
                   <td className="px-5 py-2.5 text-ps-ink">Total Equity</td>
                   {totalEquityByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-ps-ink">{fmt(v)}</td>)}
                 </tr>
-                <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-ps-body bg-ps-bg text-[10px] uppercase tracking-wide">(B) Liabilities</td></tr>
+                <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-ps-body bg-ps-bg text-3xs uppercase tracking-wide">(B) Liabilities</td></tr>
                 {[...BS_LIAB_ORDER, ...liabExtraBuckets].map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
                 <tr className="border-t border-ps-border font-semibold">
                   <td className="px-5 py-2.5 text-ps-ink">Total Liabilities</td>
@@ -2483,7 +2483,7 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
             </div>
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint text-[10px]">
+                <tr className="border-b border-ps-muted text-ps-hint text-3xs">
                   <th className="px-5 py-2 text-left font-semibold">Particulars</th>
                   {columns.map((c, i) => <th key={i} className="px-4 py-2 text-right font-semibold whitespace-nowrap">{c.label} (₹)</th>)}
                 </tr>
@@ -2638,7 +2638,7 @@ function CFMatrix({ columns }: { columns: CFColumn[] }) {
             {columns.map((c) => (
               <th key={c.label} className="px-4 py-2.5 text-right font-semibold text-ps-body whitespace-nowrap">
                 {c.label}
-                {c.error && <span className="block text-[10px] font-normal text-red-600">failed to load</span>}
+                {c.error && <span className="block text-3xs font-normal text-red-600">failed to load</span>}
               </th>
             ))}
           </tr>
@@ -2940,7 +2940,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
               { label: "Net Change", paise: agg.netChange },
             ].map((s) => (
               <div key={s.label} className="rounded-xl border border-ps-muted bg-white p-3 text-center">
-                <p className="text-[10px] font-medium text-ps-label mb-1">{s.label}</p>
+                <p className="text-3xs font-medium text-ps-label mb-1">{s.label}</p>
                 <p className={`text-sm font-bold tabular-nums ${s.paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(s.paise)}</p>
               </div>
             ))}
@@ -2949,17 +2949,17 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
           {/* Opening → Closing */}
           <div className="bg-white rounded-xl border border-ps-muted p-4 flex items-center gap-4 flex-wrap">
             <div>
-              <p className="text-[10px] text-ps-hint">Opening Cash</p>
+              <p className="text-3xs text-ps-hint">Opening Cash</p>
               <p className="text-sm font-semibold text-ps-ink">{fmtSigned(agg.opening)}</p>
             </div>
             <span className="text-ps-disabled font-medium">+</span>
             <div>
-              <p className="text-[10px] text-ps-hint">Net Change</p>
+              <p className="text-3xs text-ps-hint">Net Change</p>
               <p className={`text-sm font-semibold ${agg.netChange >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(agg.netChange)}</p>
             </div>
             <span className="text-ps-disabled font-medium">=</span>
             <div>
-              <p className="text-[10px] text-ps-hint">Closing Cash</p>
+              <p className="text-3xs text-ps-hint">Closing Cash</p>
               <p className="text-sm font-semibold text-ps-ink">{fmtSigned(agg.closing)}</p>
             </div>
             {agg.reconciles && agg.complete && <CheckCircle size={16} className="text-green-500 ml-auto shrink-0" />}
@@ -3003,7 +3003,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
             <CFMatrix columns={columns} />
           )}
 
-          <p className="text-[10px] text-ps-hint text-center">
+          <p className="text-3xs text-ps-hint text-center">
             AS-3 (Accounting Standard on Cash Flow Statements) · Companies Act 2013 Schedule III · Indirect Method
           </p>
         </>
@@ -3104,7 +3104,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
                     <td className="px-3 py-2 whitespace-nowrap text-ps-label">{j.entry_date ? String(j.entry_date).slice(0, 10) : "—"}</td>
                     <td className="px-3 py-2 font-mono text-ps-hint">{j.reference_no ?? "—"}</td>
                     <td className="px-3 py-2 max-w-[240px] truncate text-ps-body" title={j.narration ?? ""}>{j.narration ?? "—"}</td>
-                    <td className="px-3 py-2"><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-label">{SOURCE_LABEL[j.source_type ?? "manual"] ?? "Manual"}</span></td>
+                    <td className="px-3 py-2"><span className="text-3xs px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-label">{SOURCE_LABEL[j.source_type ?? "manual"] ?? "Manual"}</span></td>
                     <td className="px-3 py-2 text-right font-mono text-ps-body">{fmt(j.total_debit_paise)}</td>
                     <td className="px-3 py-2 text-right font-mono text-ps-body">{fmt(j.total_credit_paise)}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
@@ -3126,7 +3126,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      <p className="text-[10px] text-ps-hint text-center">
+      <p className="text-3xs text-ps-hint text-center">
         Approving posts the draft to the books and triggers any deferred action (e.g. bank settlement). Requires approval permission; locked financial years are blocked.
       </p>
     </div>
@@ -3262,7 +3262,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
 
       {runs.length > 0 && (
         <div className="bg-white rounded-xl border border-ps-muted p-3 flex items-center gap-2 overflow-x-auto">
-          <span className="text-[10px] text-ps-hint flex-shrink-0 pl-1">Past runs:</span>
+          <span className="text-3xs text-ps-hint flex-shrink-0 pl-1">Past runs:</span>
           {runs.map((r) => (
             <button
               key={r.id}
@@ -3299,10 +3299,10 @@ function VerifyBooks({ clientId }: { clientId: string }) {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${SEVERITY_STYLE[f.severity] ?? SEVERITY_STYLE.warning}`}>
+                    <span className={`text-3xs px-1.5 py-0.5 rounded-full border font-medium ${SEVERITY_STYLE[f.severity] ?? SEVERITY_STYLE.warning}`}>
                       {f.severity === "critical" ? "Critical" : "Warning"}
                     </span>
-                    <span className="text-[10px] text-ps-hint">{checkLabel(f.check_name)}</span>
+                    <span className="text-3xs text-ps-hint">{checkLabel(f.check_name)}</span>
                   </div>
                   <p className="text-sm text-ps-body mt-1.5">{f.summary}</p>
                   {f.amount_paise != null && (
@@ -3350,7 +3350,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      <p className="text-[10px] text-ps-hint text-center">
+      <p className="text-3xs text-ps-hint text-center">
         Report-only — nothing here is auto-corrected. A finding needs a deliberate fix (a correcting journal entry or
         ledger adjustment), reviewed and made by a CA, the same way any past finding would have been.
       </p>
@@ -3579,7 +3579,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
             <p className="text-xs font-semibold text-ps-body">Financial Statements</p>
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} ariaLabel="Statements financial year" />
           </div>
-          <p className="text-[10px] text-ps-hint mt-0.5">Export to XLSX or share directly to the client portal. The year above also decides which year Year-End Close locks.</p>
+          <p className="text-3xs text-ps-hint mt-0.5">Export to XLSX or share directly to the client portal. The year above also decides which year Year-End Close locks.</p>
         </div>
         <div className="divide-y divide-ps-bg">
           {REPORT_LINKS.map((r) => (
@@ -3587,7 +3587,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
               <span className="text-2xl">{r.icon}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-ps-ink">{r.label}</p>
-                <p className="text-[10px] text-ps-hint mt-0.5">{r.description}</p>
+                <p className="text-3xs text-ps-hint mt-0.5">{r.description}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -3631,7 +3631,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50">
             <p className="text-xs font-semibold text-ps-body">Foreign Currency</p>
-            <p className="text-[10px] text-ps-hint mt-0.5">Exposure, realized and unrealized gain/loss, open items, and the rate audit trail.</p>
+            <p className="text-3xs text-ps-hint mt-0.5">Exposure, realized and unrealized gain/loss, open items, and the rate audit trail.</p>
           </div>
           <button
             onClick={() => setOpenReport("fx")}
@@ -3640,7 +3640,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
             <span className="text-2xl">🌐</span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-ps-ink">FX Reports</p>
-              <p className="text-[10px] text-ps-hint mt-0.5">Five views across your foreign-currency documents</p>
+              <p className="text-3xs text-ps-hint mt-0.5">Five views across your foreign-currency documents</p>
             </div>
             <span className="text-xs text-ps-hint">Open →</span>
           </button>
@@ -3671,7 +3671,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       {/* Schedule III note */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
         <p className="text-xs font-semibold text-blue-800">Schedule III Compliance</p>
-        <p className="text-[11px] text-blue-600 mt-1">
+        <p className="text-2xs text-blue-600 mt-1">
           P&L and Balance Sheet are structured per <strong>Companies Act 2013, Schedule III</strong> (as amended).
           Account classification follows account_subtype mapping.
         </p>
@@ -3681,7 +3681,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
           <p className="text-xs font-semibold text-ps-body">Shared Reports</p>
-          <p className="text-[10px] text-ps-hint mt-0.5">Reports previously shared with this client via portal.</p>
+          <p className="text-3xs text-ps-hint mt-0.5">Reports previously shared with this client via portal.</p>
         </div>
         {loadingShared ? (
           <TableSkeleton cols={5} rows={2} bare />
@@ -3695,7 +3695,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                 <tr key={r.id} className="hover:bg-ps-bg">
                   <td className="px-5 py-2.5 font-medium text-ps-ink">{r.report_label}</td>
                   <td className="px-3 py-2.5 text-ps-label">FY {r.financial_year}</td>
-                  <td className="px-3 py-2.5 text-ps-label font-mono text-[10px] truncate max-w-[130px]">{r.file_name}</td>
+                  <td className="px-3 py-2.5 text-ps-label font-mono text-3xs truncate max-w-[130px]">{r.file_name}</td>
                   <td className="px-4 py-2.5 text-ps-hint">{new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</td>
                   <td className="px-3 py-2.5">
                     <button
@@ -3704,7 +3704,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                         const { data } = await supabase.storage.from("Documents").createSignedUrl(r.storage_path, 3600);
                         if (data) window.open(data.signedUrl, "_blank");
                       }}
-                      className="text-[10px] text-blue-600 hover:underline flex items-center gap-1"
+                      className="text-3xs text-blue-600 hover:underline flex items-center gap-1"
                     >
                       <Download size={10} /> Download
                     </button>

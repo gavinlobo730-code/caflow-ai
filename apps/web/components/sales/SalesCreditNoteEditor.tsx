@@ -315,7 +315,7 @@ export function SalesCreditNoteEditor({
   }
 
   const busy = saving;
-  const fieldErr = (msg?: string) => (!isLocked && attempted && msg ? <p className="mt-1 text-[10px] text-red-600">{msg}</p> : null);
+  const fieldErr = (msg?: string) => (!isLocked && attempted && msg ? <p className="mt-1 text-3xs text-red-600">{msg}</p> : null);
 
   const toolbar = (
     <>
@@ -340,7 +340,7 @@ export function SalesCreditNoteEditor({
           <Row label="SGST" value={fmt(totals.sgst_paise)} />
         </>
       )}
-      <p className="text-[10px] text-ps-hint">
+      <p className="text-3xs text-ps-hint">
         {isInterstate ? "Interstate — IGST" : "Intra-state — CGST + SGST"} (CGST Act §8)
       </p>
       <div className="flex justify-between font-semibold text-ps-ink border-t border-ps-border pt-1.5 mt-1">
@@ -348,7 +348,7 @@ export function SalesCreditNoteEditor({
         <span className="font-mono">{fmt(totals.grand_total_paise)}</span>
       </div>
       {selectedInvoice && (
-        <p className="text-[10px] text-ps-hint pt-1">
+        <p className="text-3xs text-ps-hint pt-1">
           Invoice outstanding: {fmt(invoiceOutstanding(selectedInvoice))}
           {exceedsOutstanding && (
             <span className="block text-amber-700 mt-0.5">
@@ -357,11 +357,11 @@ export function SalesCreditNoteEditor({
           )}
         </p>
       )}
-      <p className="text-[10px] text-ps-hint pt-1">
+      <p className="text-3xs text-ps-hint pt-1">
         Preview — GST is confirmed by the server on save.
       </p>
       {!isLocked && attempted && !validation.ok && (
-        <div className="flex items-start gap-1.5 text-[10px] text-red-600 bg-red-50 rounded px-2 py-1.5">
+        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-red-50 rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.customer ?? validation.errors.creditNoteDate ?? validation.errors.lines}</span>
         </div>
@@ -377,7 +377,7 @@ export function SalesCreditNoteEditor({
         { label: isEdit ? `Edit ${existing?.credit_note_no || "Credit Note"}` : "New Credit Note" },
       ]}
       title={isEdit ? `Edit ${existing?.credit_note_no || "Credit Note"}` : "New Credit Note"}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">{isEdit ? (existing?.status ?? "draft") : "Draft"}</span>}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">{isEdit ? (existing?.status ?? "draft") : "Draft"}</span>}
       dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Unsaved changes</span> : undefined}
       toolbar={toolbar}
       summary={summary}
@@ -389,7 +389,7 @@ export function SalesCreditNoteEditor({
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
               <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isEdit} />
-              {isEdit && <p className="mt-1 text-[10px] text-ps-hint">Customer can&apos;t be changed once a credit note exists.</p>}
+              {isEdit && <p className="mt-1 text-3xs text-ps-hint">Customer can&apos;t be changed once a credit note exists.</p>}
               {fieldErr(validation.errors.customer)}
             </div>
             <div>
@@ -397,7 +397,7 @@ export function SalesCreditNoteEditor({
               <input type="date" value={cnDate} onChange={(e) => setCnDate(e.target.value)} disabled={isLocked}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
               {fieldErr(validation.errors.creditNoteDate)}
-              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Frozen once issued — issue a fresh credit note to correct (CGST Act §34).</p>}
+              {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once issued — issue a fresh credit note to correct (CGST Act §34).</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Against Invoice (optional)</label>
@@ -438,7 +438,7 @@ export function SalesCreditNoteEditor({
         <section className="bg-white rounded-xl border border-ps-muted p-4">
           <h2 className="text-xs font-semibold text-ps-body mb-2">Line items</h2>
           {isLocked && (
-            <p className="mb-2 text-[10px] text-ps-hint">
+            <p className="mb-2 text-3xs text-ps-hint">
               Frozen once issued — issue a fresh credit note to correct a quantity, rate, or item (CGST Act §34).
             </p>
           )}

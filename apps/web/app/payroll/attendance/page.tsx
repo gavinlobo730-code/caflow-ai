@@ -853,12 +853,12 @@ export default function AttendancePage() {
                                     and the old Save turned every one of the first
                                     kind into the second. */}
                                 {!isEntered && !isTouched && (
-                                  <div className="text-[10px] font-medium text-amber-600 mt-0.5">
+                                  <div className="text-3xs font-medium text-amber-600 mt-0.5">
                                     Not entered — the run will assume a full month
                                   </div>
                                 )}
                                 {isTouched && (
-                                  <div className="text-[10px] font-medium text-blue-600 mt-0.5">
+                                  <div className="text-3xs font-medium text-blue-600 mt-0.5">
                                     Edited — will be saved
                                   </div>
                                 )}
@@ -880,7 +880,7 @@ export default function AttendancePage() {
                                   // Shown rather than floored. The server refuses
                                   // this row, and quietly displaying 0 would leave
                                   // the CA wondering why the save was rejected.
-                                  <span className="text-[10px] font-medium text-red-700">
+                                  <span className="text-3xs font-medium text-red-700">
                                     {row.days_present + row.casual_leaves + row.sick_leaves + row.earned_leaves} days
                                     entered vs {row.working_days} working
                                   </span>
@@ -1260,7 +1260,7 @@ export default function AttendancePage() {
                                   amount simply shows nothing instead of a number
                                   that is not what was typed. */}
                               {paiseFromRupeeInput(r.amount_rs) !== null && (
-                                <div className="text-[11px] text-ps-label text-right mt-0.5">
+                                <div className="text-2xs text-ps-label text-right mt-0.5">
                                   {formatPaise(paiseFromRupeeInput(r.amount_rs) as number)}
                                 </div>
                               )}

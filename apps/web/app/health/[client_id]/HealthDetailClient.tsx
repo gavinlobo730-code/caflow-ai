@@ -253,7 +253,7 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <p className="text-xs text-gray-700 font-medium">{meta.label}</p>
-              <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+              <span className="text-3xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
                 {weightLabel}
               </span>
             </div>
@@ -267,14 +267,14 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
               />
             </div>
           </div>
-          <p className="text-[10px] text-gray-400 mb-2">{meta.description}</p>
+          <p className="text-3xs text-gray-400 mb-2">{meta.description}</p>
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all ${scoreBarColor(value.score)}`}
               style={{ width: `${value.score}%` }}
             />
           </div>
-          <p className="text-[10px] text-gray-400 mt-1">
+          <p className="text-3xs text-gray-400 mt-1">
             Weighted contribution: {value.weighted} pts
           </p>
         </button>
@@ -289,7 +289,7 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
                 <p className="text-xs text-red-600">Couldn&apos;t load factors — the request failed or timed out.</p>
                 <button
                   onClick={loadFactors}
-                  className="text-[10px] text-brand border border-brand/30 px-2 py-0.5 rounded hover:bg-brand-light/20 whitespace-nowrap"
+                  className="text-3xs text-brand border border-brand/30 px-2 py-0.5 rounded hover:bg-brand-light/20 whitespace-nowrap"
                 >
                   Retry
                 </button>
@@ -302,11 +302,11 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
                   <li key={i} className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <p className="text-xs text-gray-700">{f.label}</p>
-                      <span className="text-[10px] text-red-600 font-medium">{f.impact} pts</span>
+                      <span className="text-3xs text-red-600 font-medium">{f.impact} pts</span>
                     </div>
                     <a
                       href={f.action_url}
-                      className="text-[10px] text-brand border border-brand/30 px-2 py-0.5 rounded hover:bg-brand-light/20 whitespace-nowrap"
+                      className="text-3xs text-brand border border-brand/30 px-2 py-0.5 rounded hover:bg-brand-light/20 whitespace-nowrap"
                     >
                       {f.action_label}
                     </a>
@@ -636,7 +636,7 @@ export default function ClientHealthDetailPage() {
                         <span className="text-xs text-gray-400">/100</span>
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={`text-[11px] ${gradeBadgeColor((record.health_grade ?? "Critical") as Grade)}`}>
+                        <Badge className={`text-2xs ${gradeBadgeColor((record.health_grade ?? "Critical") as Grade)}`}>
                           {record.health_grade ?? "—"}
                         </Badge>
                       </td>
@@ -666,11 +666,11 @@ export default function ClientHealthDetailPage() {
                 <CardContent className="p-4 flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <Badge className={`text-[10px] ${SEVERITY_COLORS[alert.severity]}`}>
+                      <Badge className={`text-3xs ${SEVERITY_COLORS[alert.severity]}`}>
                         {alert.severity.toUpperCase()}
                       </Badge>
                       {alert.dimension && (
-                        <span className="text-[10px] text-gray-500">
+                        <span className="text-3xs text-gray-500">
                           {DIMENSION_META[alert.dimension as DimensionKey]?.label ?? alert.dimension}
                         </span>
                       )}
@@ -721,7 +721,7 @@ export default function ClientHealthDetailPage() {
                   {overrides.map((override) => (
                     <tr key={override.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3">
-                        <Badge className="bg-emerald-100 text-emerald-700 text-[11px]">
+                        <Badge className="bg-emerald-100 text-emerald-700 text-2xs">
                           {DIMENSION_META[override.dimension as DimensionKey]?.label ?? override.dimension}
                         </Badge>
                       </td>

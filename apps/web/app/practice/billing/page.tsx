@@ -127,7 +127,7 @@ function Billing() {
               placeholder="Product/Service…"
             />
           ) : (
-            <p className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 col-span-1 flex items-center">
+            <p className="text-2xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 col-span-1 flex items-center">
               Provision the practice (internal client) before billing — see Practice settings.
             </p>
           )}
@@ -140,7 +140,7 @@ function Billing() {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200">
+            <tr className="text-left text-2xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
               <th className="px-4 py-2.5 font-medium">Client</th>
               <th className="px-4 py-2.5 font-medium">Cadence</th>
               <th className="px-4 py-2.5 font-medium text-right">Fee</th>

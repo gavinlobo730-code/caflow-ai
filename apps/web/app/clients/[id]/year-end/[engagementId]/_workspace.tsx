@@ -152,7 +152,7 @@ function YearEndWorkspaceInner() {
               key={id}
               onClick={() => openStage(id)}
               title={label}
-              className={`w-full flex flex-col items-center py-2.5 px-1 gap-1 text-[10px] font-medium transition-colors rounded-none
+              className={`w-full flex flex-col items-center py-2.5 px-1 gap-1 text-3xs font-medium transition-colors rounded-none
                 ${isActive
                   ? "bg-indigo-50 text-indigo-700 border-r-2 border-indigo-600"
                   : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"

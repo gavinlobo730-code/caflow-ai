@@ -77,7 +77,7 @@ export default function AtRiskClientsPage() {
                   <tr key={c.id} className="hover:bg-brand-light/10">
                     <td className="px-5 py-3 text-gray-800 text-xs font-medium">{c.client_name ?? c.client_id.slice(0,12)}</td>
                     <td className="px-3 py-3"><span className={`font-bold ${scoreColor(c.overall_score)}`}>{c.overall_score}</span><span className="text-xs text-gray-400">/100</span></td>
-                    <td className="px-3 py-3"><Badge className={`text-[10px] ${gradeBadge(c.health_grade)}`}>{c.health_grade}</Badge></td>
+                    <td className="px-3 py-3"><Badge className={`text-3xs ${gradeBadge(c.health_grade)}`}>{c.health_grade}</Badge></td>
                     <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(c.last_calculated_at)}</td>
                     <td className="px-3 py-3"><Link href={`/health/${c.client_id}`} className="text-xs text-brand hover:text-brand/70 hover:underline">View →</Link></td>
                   </tr>

@@ -466,7 +466,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
           <span
             className={cn(
               "truncate",
-              !triggerLabel && (plain ? "text-[10px] font-medium text-blue-600" : "text-ps-hint"),
+              !triggerLabel && (plain ? "text-3xs font-medium text-blue-600" : "text-ps-hint"),
             )}
           >
             {!multiple && selectedArr[0] && renderTrigger
@@ -554,14 +554,14 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
             )}
 
             {displayError ? (
-              <div className="px-3 py-3 text-center text-[11px] text-red-600">
+              <div className="px-3 py-3 text-center text-2xs text-red-600">
                 {displayError}.{" "}
                 <button type="button" onClick={doRetry} className="underline hover:text-red-700">
                   Retry
                 </button>
               </div>
             ) : results.length === 0 && (busy || !bottomCreateVisible) ? (
-              <div className="px-3 py-3 text-center text-[11px] text-ps-hint">
+              <div className="px-3 py-3 text-center text-2xs text-ps-hint">
                 <p>{busy ? "Loading…" : emptyText}</p>
                 {/* Offered before typing when emptyCreateLabel is set (an
                     entirely empty list, e.g. a new client's catalogue), or
@@ -619,7 +619,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                         <span className="min-w-0">
                           <span className="block truncate text-xs text-ps-ink">{getLabel(o)}</span>
                           {getSecondary?.(o) && (
-                            <span className="block truncate text-[10px] text-ps-hint">
+                            <span className="block truncate text-3xs text-ps-hint">
                               {getSecondary(o)}
                             </span>
                           )}

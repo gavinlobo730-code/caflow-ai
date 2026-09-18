@@ -19,7 +19,7 @@ export function SettingsPanel() {
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
-        <p className="text-[11px] font-semibold text-ps-hint uppercase tracking-wider">
+        <p className="text-2xs font-semibold text-ps-hint uppercase tracking-wider">
           Settings
         </p>
       </div>

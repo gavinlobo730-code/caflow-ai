@@ -150,43 +150,43 @@ export default function ClientTrendPage() {
         <div className="min-w-0">
           <button
             onClick={() => router.push(`/clients/${clientId}/reports`)}
-            className="flex items-center gap-1 text-[11px] text-ps-hint hover:text-ps-label mb-1.5"
+            className="flex items-center gap-1 text-2xs text-ps-hint hover:text-ps-label mb-1.5"
           >
             <ArrowLeft size={12} /> Reports
           </button>
           <h2 className="text-sm font-semibold text-ps-ink">Multi-year trend</h2>
-          <p className="text-[11px] text-ps-hint mt-0.5">
+          <p className="text-2xs text-ps-hint mt-0.5">
             Schedule III captions and the clause (Q) ratios, year on year, with the
             movement between them
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <label className="text-[11px] text-ps-label">Years</label>
+          <label className="text-2xs text-ps-label">Years</label>
           <select
             value={years}
             onChange={(e) => setYears(Number(e.target.value))}
-            className="text-[11px] border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"
+            className="text-2xs border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"
           >
             {YEAR_CHOICES.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
-          <label className="text-[11px] text-ps-label">to</label>
+          <label className="text-2xs text-ps-label">to</label>
           <select
             value={toFy}
             onChange={(e) => setToFy(e.target.value)}
-            className="text-[11px] border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"
+            className="text-2xs border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"
           >
             {fyChoices.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
           <button
             onClick={load}
-            className="flex items-center gap-1.5 text-[11px] text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-2.5 py-1.5"
+            className="flex items-center gap-1.5 text-2xs text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-2.5 py-1.5"
           >
             <RefreshCw size={12} /> Refresh
           </button>
           <button
             onClick={exportExcel}
             disabled={!trend || trend.fys.length === 0}
-            className="flex items-center gap-1.5 text-[11px] text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-2.5 py-1.5 disabled:opacity-40"
+            className="flex items-center gap-1.5 text-2xs text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-2.5 py-1.5 disabled:opacity-40"
           >
             <Download size={12} /> Excel
           </button>
@@ -194,7 +194,7 @@ export default function ClientTrendPage() {
       </div>
 
       {loading && (
-        <div className="flex items-center gap-2 text-[11px] text-ps-hint py-8">
+        <div className="flex items-center gap-2 text-2xs text-ps-hint py-8">
           <Loader2 size={14} className="animate-spin" /> Building the window…
         </div>
       )}
@@ -202,7 +202,7 @@ export default function ClientTrendPage() {
       {error && (
         <div className="flex items-start gap-2.5 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
           <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
-          <p className="text-[11px] text-red-700">{error}</p>
+          <p className="text-2xs text-red-700">{error}</p>
         </div>
       )}
 
@@ -211,13 +211,13 @@ export default function ClientTrendPage() {
           {/* The banner is the point, not the chrome. */}
           <div className="flex items-start gap-2.5 bg-blue-50/60 border border-blue-100 rounded-xl px-4 py-3">
             <Info size={14} className="text-blue-500 flex-shrink-0 mt-0.5" />
-            <p className="text-[11px] text-blue-900">{trend.basis}</p>
+            <p className="text-2xs text-blue-900">{trend.basis}</p>
           </div>
 
           {trend.dropped_fys.length > 0 && (
             <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
               <AlertTriangle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-amber-900">
+              <p className="text-2xs text-amber-900">
                 <span className="font-medium">
                   {trend.dropped_fys.join(", ")} left out
                 </span>{" "}
@@ -236,7 +236,7 @@ export default function ClientTrendPage() {
           {trend.unreadable_fys.length > 0 && (
             <div className="flex items-start gap-2.5 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
               <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-red-800">
+              <p className="text-2xs text-red-800">
                 <span className="font-medium">
                   {trend.unreadable_fys.join(", ")} could not be read
                 </span>{" "}
@@ -258,7 +258,7 @@ export default function ClientTrendPage() {
                 .map((g) => (
                   <div key={g.code} className="flex items-start gap-2.5">
                     <Info size={13} className="text-ps-hint flex-shrink-0 mt-0.5" />
-                    <p className="text-[10px] text-ps-label">{g.message}</p>
+                    <p className="text-3xs text-ps-label">{g.message}</p>
                   </div>
                 ))}
             </div>
@@ -289,7 +289,7 @@ export default function ClientTrendPage() {
 
 function ColumnHeads({ fys }: { fys: string[] }) {
   return (
-    <tr className="text-[10px] text-ps-hint">
+    <tr className="text-3xs text-ps-hint">
       <th className="text-left font-medium px-4 py-2">Particulars</th>
       {fys.map((fy) => (
         <th key={fy} className="text-right font-medium px-3 py-2 tabular-nums">{fy}</th>
@@ -305,7 +305,7 @@ function AmountTable({ title, note, fys, series }: {
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-50">
         <p className="text-xs font-semibold text-ps-body">{title}</p>
-        <p className="text-[10px] text-ps-hint mt-0.5">{note}</p>
+        <p className="text-3xs text-ps-hint mt-0.5">{note}</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px]">
@@ -313,10 +313,10 @@ function AmountTable({ title, note, fys, series }: {
           <tbody className="divide-y divide-gray-50">
             {series.map((s) => (
               <tr key={s.key}>
-                <td className="px-4 py-2 text-[11px] text-ps-body">{s.label}</td>
+                <td className="px-4 py-2 text-2xs text-ps-body">{s.label}</td>
                 {s.values_paise.map((v, i) => (
                   <td key={fys[i]} className="px-3 py-2 text-right">
-                    <div className="text-[11px] tabular-nums text-ps-ink">{formatPaise(v)}</div>
+                    <div className="text-2xs tabular-nums text-ps-ink">{formatPaise(v)}</div>
                     {/* Movement sits under the year it moved INTO, so the first
                         column has none — there is nothing before it. */}
                     {i > 0 && (
@@ -345,7 +345,7 @@ function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[]
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-50">
         <p className="text-xs font-semibold text-ps-body">Ratios</p>
-        <p className="text-[10px] text-ps-hint mt-0.5">
+        <p className="text-3xs text-ps-hint mt-0.5">
           The same eleven ratios as the clause (Q) note, so a figure here cannot mean
           something different from the same figure there. The note is where the 25%
           movements are explained; this is the movement across the whole window.
@@ -359,20 +359,20 @@ function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[]
               <tr key={s.key}>
                 <td className="px-4 py-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-ps-hint tabular-nums">{s.clause}</span>
-                    <span className="text-[11px] text-ps-body">{s.label}</span>
+                    <span className="text-3xs text-ps-hint tabular-nums">{s.clause}</span>
+                    <span className="text-2xs text-ps-body">{s.label}</span>
                   </div>
                   {/* A gap is stated, never left blank — a dash reads as
                       "nothing to report", which is its opposite. */}
                   {s.unavailable_reason && (
-                    <p className="text-[10px] text-amber-800 mt-1 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                    <p className="text-3xs text-amber-800 mt-1 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
                       {s.unavailable_reason}
                     </p>
                   )}
                 </td>
                 {s.values_bps.map((v, i) => (
                   <td key={fys[i]} className="px-3 py-2 text-right">
-                    <div className="text-[11px] tabular-nums text-ps-ink">
+                    <div className="text-2xs tabular-nums text-ps-ink">
                       {s.unavailable_reason && v === null ? "Not computed" : formatBps(v, s.unit)}
                     </div>
                     {/* Deliberately uncoloured. A ratio rising is not good or

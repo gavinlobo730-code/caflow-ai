@@ -670,10 +670,10 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
       {/* Meta */}
       <div className="space-y-1.5">
         <div className="flex items-center gap-1.5 text-xs text-ps-label">
-          <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-medium">
+          <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-3xs font-medium">
             {lead.entityType}
           </span>
-          <span className="px-1.5 py-0.5 bg-ps-bg text-ps-label rounded text-[10px] font-medium">
+          <span className="px-1.5 py-0.5 bg-ps-bg text-ps-label rounded text-3xs font-medium">
             {lead.source}
           </span>
         </div>

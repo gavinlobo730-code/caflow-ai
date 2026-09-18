@@ -249,9 +249,9 @@ function ColumnHeads({ current, prior }: { current: string; prior: string | null
   return (
     <div className="flex items-baseline px-4 py-1.5 border-b border-ps-border bg-white">
       <span className="flex-1" />
-      <span className="text-[10px] uppercase tracking-wide text-ps-label w-36 text-right">{current}</span>
+      <span className="text-3xs uppercase tracking-wide text-ps-label w-36 text-right">{current}</span>
       {prior && (
-        <span className="text-[10px] uppercase tracking-wide text-ps-hint w-36 text-right">{prior}</span>
+        <span className="text-3xs uppercase tracking-wide text-ps-hint w-36 text-right">{prior}</span>
       )}
     </div>
   );
@@ -509,7 +509,7 @@ export default function ScheduleIIIPage() {
               {/* Para 5's own exception, stated rather than left as an empty
                   column a reader would take for nil. */}
               {!showPrior && data?.comparatives?.reason && (
-                <div className="mx-4 mt-3 px-4 py-2.5 rounded-lg text-[11px] bg-ps-bg border border-ps-border text-ps-label flex items-start gap-2">
+                <div className="mx-4 mt-3 px-4 py-2.5 rounded-lg text-2xs bg-ps-bg border border-ps-border text-ps-label flex items-start gap-2">
                   <AlertTriangle size={13} className="text-ps-hint flex-shrink-0 mt-0.5" />
                   <span>
                     <span className="font-medium text-ps-body">No comparative column.</span>{" "}

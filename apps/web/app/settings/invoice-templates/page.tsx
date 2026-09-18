@@ -197,7 +197,7 @@ function TemplateCard({
         <div className="px-5 pb-3 space-y-1.5">
           {(template.statutory_notes ?? []).map((note, i) => (
             <p key={i}
-               className={`text-[11px] rounded-lg px-3 py-2 border ${
+               className={`text-2xs rounded-lg px-3 py-2 border ${
                  template.signature_placement === "none" && i === 0
                    ? "text-state-attention bg-state-attention-surface border-state-attention-border"
                    : "text-ps-label bg-ps-bg border-ps-border"}`}>

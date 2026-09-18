@@ -91,7 +91,7 @@ export default function PurchaseBillPageClient() {
           { label: "New Purchase Bill" },
         ]}
         title="New Purchase Bill"
-        statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">Draft</span>}
+        statusPill={<span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">Draft</span>}
       >
         <EmptyState
           title="No vendors yet"
@@ -130,7 +130,7 @@ export default function PurchaseBillPageClient() {
         { label: isNew ? "New Purchase Bill" : (bill ? `Edit ${bill.bill_no}` : "Edit Purchase Bill") },
       ]}
       title={isNew ? "New Purchase Bill" : (bill ? `Edit ${bill.bill_no}` : "Edit Purchase Bill")}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">{isNew ? "Draft" : (bill ? bill.status.replace("_", " ") : "…")}</span>}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">{isNew ? "Draft" : (bill ? bill.status.replace("_", " ") : "…")}</span>}
       toolbar={!error ? <InvoiceToolbarSkeleton /> : undefined}
       summary={!error ? <SummaryPanelSkeleton /> : undefined}
     >

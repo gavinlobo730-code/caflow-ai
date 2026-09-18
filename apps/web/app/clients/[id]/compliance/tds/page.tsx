@@ -801,7 +801,7 @@ function Form26ASTab({ clientId }: { clientId: string }) {
             Register: {rupees(m.book_paise as number)}, 26AS: {rupees(m.form26as_paise as number)}
             {(m.diff_paise as number) ? `, Diff: ${rupees(m.diff_paise as number)}` : ""}
             {m.reason ? (
-              <p className="text-[11px] text-ps-label mt-0.5">{m.reason as string}</p>
+              <p className="text-2xs text-ps-label mt-0.5">{m.reason as string}</p>
             ) : null}
           </div>
         ))}
@@ -1000,7 +1000,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2">
                   Form {(r.certificate_form as string) ?? (r.certificate_type as string)}
                   {r.certificate_note ? (
-                    <span className="block text-[11px] text-amber-700">{r.certificate_note as string}</span>
+                    <span className="block text-2xs text-amber-700">{r.certificate_note as string}</span>
                   ) : null}
                 </td>
                 <td className="px-3 py-2">{r.deductee_name as string}</td>
@@ -1310,7 +1310,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
               <tr key={c.id} className="border-b last:border-0">
                 <td className="py-2">{vendorName(c.vendor_id)}</td>
                 <td>§{c.section}</td>
-                <td className="font-mono text-[11px]">{c.certificate_no}</td>
+                <td className="font-mono text-2xs">{c.certificate_no}</td>
                 <td className="text-right tabular-nums">
                   {Number(c.rate_bps) === 0 ? "Nil" : `${Number(c.rate_bps) / 100}%`}
                 </td>

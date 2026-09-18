@@ -211,7 +211,7 @@ export function JournalEditor({
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-ps-ink">{title}</h2>
           {!isNew && (
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+            <span className={`px-2 py-0.5 rounded-full text-3xs font-medium ${
               isPosted ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>
               {isPosted ? "Posted" : "Draft"}
             </span>
@@ -284,7 +284,7 @@ export function JournalEditor({
         <div>
           <p className="block text-xs font-medium text-ps-label mb-1">Supporting documents</p>
           {attachmentsReadOnly && attachments.length === 0 && (
-            <p className="text-[11px] text-ps-hint mb-1">
+            <p className="text-2xs text-ps-hint mb-1">
               None were attached when this entry was posted.
             </p>
           )}
@@ -331,7 +331,7 @@ export function JournalEditor({
               </button>
             </div>
           )}
-          <p className="text-[10px] text-ps-hint mt-1">
+          <p className="text-3xs text-ps-hint mt-1">
             {attachmentsReadOnly
               ? "A posted entry's documents cannot be changed — the ledger lets a "
                 + "posted entry be corrected only through the edit path, which "
@@ -412,13 +412,13 @@ export function JournalEditor({
                   {totalCredit > 0 ? `₹${rupeeInputFromPaise(totalCredit)}` : "—"}
                 </td>
                 <td colSpan={2} className="pt-2 pl-3">
-                  {hasUnparseable && <span className="text-red-500 text-[10px]">Check the highlighted amounts</span>}
+                  {hasUnparseable && <span className="text-red-500 text-3xs">Check the highlighted amounts</span>}
                   {!hasUnparseable && totalDebit > 0 && totalDebit !== totalCredit && (
-                    <span className="text-red-500 text-[10px]">
+                    <span className="text-red-500 text-3xs">
                       Difference: ₹{rupeeInputFromPaise(Math.abs(totalDebit - totalCredit))}
                     </span>
                   )}
-                  {isBalanced && <span className="text-green-600 text-[10px]">✓ Balanced</span>}
+                  {isBalanced && <span className="text-green-600 text-3xs">✓ Balanced</span>}
                 </td>
               </tr>
             </tfoot>

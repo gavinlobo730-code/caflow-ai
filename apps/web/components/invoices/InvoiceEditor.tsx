@@ -726,7 +726,7 @@ export function InvoiceEditor({
   const busy = saving !== null;
   // In locked mode the frozen fields aren't validated (see save()) — never
   // surface a create-time field error on a field the CA can't change here.
-  const fieldErr = (msg?: string) => (!isLocked && attempted && msg ? <p className="mt-1 text-[10px] text-red-600">{msg}</p> : null);
+  const fieldErr = (msg?: string) => (!isLocked && attempted && msg ? <p className="mt-1 text-3xs text-red-600">{msg}</p> : null);
 
   // ── Toolbar (workspace shell slot) ────────────────────────────────────────────
   // Locked (issued) edit: the only outcome is saving the soft-field changes —
@@ -801,23 +801,23 @@ export function InvoiceEditor({
       <Row label="Taxable value" value={fmtAmt(totals.taxable_paise)} />
       {!isLocked && (
         <div className="flex items-center gap-2 pt-1">
-          <label htmlFor="inv-doc-discount" className="text-[11px] text-ps-label whitespace-nowrap">
+          <label htmlFor="inv-doc-discount" className="text-2xs text-ps-label whitespace-nowrap">
             Discount on bill
           </label>
           <input id="inv-doc-discount" type="text" inputMode="decimal" value={docDiscount}
             onChange={(e) => setDocDiscount(e.target.value)}
             placeholder="0"
-            className="w-16 px-2 py-1 border border-ps-border rounded text-right text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            className="w-16 px-2 py-1 border border-ps-border rounded text-right text-2xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
           <select value={docDiscountMode} aria-label="Discount on bill unit"
             onChange={(e) => setDocDiscountMode(e.target.value as "percent" | "amount")}
-            className="px-1.5 py-1 border border-ps-border rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500">
+            className="px-1.5 py-1 border border-ps-border rounded text-2xs focus:outline-none focus:ring-1 focus:ring-blue-500">
             <option value="percent">%</option>
             <option value="amount">{isForeign ? currency : "₹"}</option>
           </select>
         </div>
       )}
       {docDiscount.trim() !== "" && (totals.discount_paise ?? 0) === 0 && (
-        <p className="text-[10px] text-red-600">
+        <p className="text-3xs text-red-600">
           {/* The preview refuses rather than capping: the server returns 422 on
               a discount larger than the bill, and a preview that quietly showed
               a capped figure would show a total that cannot be saved. */}
@@ -851,7 +851,7 @@ export function InvoiceEditor({
             onChange={(e) => setRoundOffEnabled(e.target.checked)}
             className="h-3.5 w-3.5 rounded border-ps-border-strong accent-brand-dark"
           />
-          <span className="text-[11px] text-ps-label">Round total to nearest ₹1</span>
+          <span className="text-2xs text-ps-label">Round total to nearest ₹1</span>
         </label>
       )}
       <div className="flex justify-between font-semibold text-ps-ink border-t border-ps-border pt-1.5 mt-1">
@@ -865,11 +865,11 @@ export function InvoiceEditor({
         <Row label="Due date" value={dueDate || "—"} />
         {outstanding != null && <Row label="Outstanding" value={fmtAmt(outstanding)} />}
       </div>
-      <p className="text-[10px] text-ps-hint pt-1">
+      <p className="text-3xs text-ps-hint pt-1">
         Preview — GST, round-off and the exact total are confirmed by the server on save.
       </p>
       {!isLocked && attempted && !validation.ok && (
-        <div className="flex items-start gap-1.5 text-[10px] text-red-600 bg-red-50 rounded px-2 py-1.5">
+        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-red-50 rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.customer ?? validation.errors.invoiceNo ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate ?? validation.errors.supplyState ?? validation.errors.supplyType}</span>
         </div>
@@ -882,7 +882,7 @@ export function InvoiceEditor({
       breadcrumbs={invoiceBreadcrumbs(clientId, clientName, isEdit ? `Edit ${existing?.invoice_no ?? ""}` : "New Invoice")}
       title={isEdit ? `Edit ${existing?.invoice_no ?? "Invoice"}` : "New Sales Invoice"}
       statusPill={
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[existing?.status ?? "draft"] ?? STATUS_BADGE.draft}`}>
+        <span className={`px-2 py-0.5 rounded-full text-3xs font-medium ${STATUS_BADGE[existing?.status ?? "draft"] ?? STATUS_BADGE.draft}`}>
           {(existing?.status ?? "draft").replace("_", " ")}
         </span>
       }
@@ -897,7 +897,7 @@ export function InvoiceEditor({
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
               <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isLocked} />
-              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Customer can&apos;t be changed once issued — issue a Credit Note to correct (CGST Act §34).</p>}
+              {isLocked && <p className="mt-1 text-3xs text-ps-hint">Customer can&apos;t be changed once issued — issue a Credit Note to correct (CGST Act §34).</p>}
               {fieldErr(validation.errors.customer)}
             </div>
             <div>
@@ -915,23 +915,23 @@ export function InvoiceEditor({
                   `sequence_warning` is the CONSECUTIVE limb: said once, never
                   blocking, because a gap has legitimate causes. */}
               {!isLocked && numberSeries?.gap && (
-                <p className="mt-1 text-[10px] text-amber-700">{numberSeries.gap}</p>
+                <p className="mt-1 text-3xs text-amber-700">{numberSeries.gap}</p>
               )}
               {!isLocked && !validation.errors.invoiceNo && numberSeries?.format_problem && (
-                <p className="mt-1 text-[10px] text-red-600">{numberSeries.format_problem}</p>
+                <p className="mt-1 text-3xs text-red-600">{numberSeries.format_problem}</p>
               )}
               {!isLocked && !numberSeries?.format_problem && numberSeries?.sequence_warning && (
-                <p className="mt-1 text-[10px] text-amber-700">{numberSeries.sequence_warning}</p>
+                <p className="mt-1 text-3xs text-amber-700">{numberSeries.sequence_warning}</p>
               )}
               {!isLocked && !isEdit && !numberSeries?.gap && !numberSeries?.format_problem
                 && !numberSeries?.sequence_warning && numberSeries?.suggested_number && (
-                <p className="mt-1 text-[10px] text-ps-hint">
+                <p className="mt-1 text-3xs text-ps-hint">
                   Next in your series ({numberSeries.series_head}…) — edit it if this
                   client&apos;s numbering differs.
                 </p>
               )}
               {isLocked && (
-                <p className="mt-1 text-[10px] text-ps-hint">Frozen once issued.</p>
+                <p className="mt-1 text-3xs text-ps-hint">Frozen once issued.</p>
               )}
             </div>
             <div>
@@ -940,7 +940,7 @@ export function InvoiceEditor({
                 disabled={isLocked}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
               {fieldErr(validation.errors.invoiceDate)}
-              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Frozen once issued — issue a Credit Note to correct (CGST Act §34).</p>}
+              {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once issued — issue a Credit Note to correct (CGST Act §34).</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Payment Terms</label>
@@ -960,7 +960,7 @@ export function InvoiceEditor({
               <label className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
               <input type="date" value={dueDate ?? ""} onChange={(e) => onDueDateChange(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <p className="mt-1 text-[10px] text-ps-hint">Auto-set from terms; edit for a custom date.</p>
+              <p className="mt-1 text-3xs text-ps-hint">Auto-set from terms; edit for a custom date.</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Supply State</label>
@@ -971,13 +971,13 @@ export function InvoiceEditor({
                   here — a draft may be incomplete, an issued invoice may not,
                   and finding out at the GSTR-1 build is six weeks too late. */}
               {!isLocked && !(supplyStateCode ?? "").trim() && (
-                <p className="mt-1 text-[10px] text-amber-700">
+                <p className="mt-1 text-3xs text-amber-700">
                   Needed to issue — CGST Rule 46(n). Defaults from the customer&apos;s
                   state or GSTIN, and failing that the client&apos;s own state
                   (IGST §12(2)(b)(ii)).
                 </p>
               )}
-              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Frozen once issued (CGST Act §34).</p>}
+              {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once issued (CGST Act §34).</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>
@@ -989,7 +989,7 @@ export function InvoiceEditor({
                 <input type="checkbox" checked={isInterstate} disabled={isLocked} onChange={(e) => setIsInterstate(e.target.checked)} className="rounded" />
                 Interstate (IGST)
               </label>
-              <p className="mt-1 text-[10px] text-ps-hint">
+              <p className="mt-1 text-3xs text-ps-hint">
                 {isLocked
                   ? "Frozen once issued (CGST Act §34)."
                   : gstAuto
@@ -1011,7 +1011,7 @@ export function InvoiceEditor({
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
                 {SUPPLY_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <p className="mt-1 text-[10px] text-ps-hint">
+              <p className="mt-1 text-3xs text-ps-hint">
                 {isLocked ? "Frozen once issued (CGST Act §34)." : SUPPLY_TYPES.find((o) => o.value === supplyType)?.note}
               </p>
             </div>
@@ -1022,7 +1022,7 @@ export function InvoiceEditor({
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
                 {INVOICE_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <p className="mt-1 text-[10px] text-ps-hint">
+              <p className="mt-1 text-3xs text-ps-hint">
                 {isLocked ? "Frozen once issued (CGST Act §34)." : INVOICE_TYPES.find((o) => o.value === invoiceType)?.note}
               </p>
             </div>
@@ -1032,7 +1032,7 @@ export function InvoiceEditor({
                   onChange={(e) => setIsReverseCharge(e.target.checked)} className="rounded" />
                 Reverse charge
               </label>
-              <p className="mt-1 text-[10px] text-ps-hint">
+              <p className="mt-1 text-3xs text-ps-hint">
                 {isLocked ? "Frozen once issued (CGST Act §34)." : "The recipient pays the tax, not this client (CGST §9(3)/(4))."}
               </p>
             </div>
@@ -1078,7 +1078,7 @@ export function InvoiceEditor({
                     onChange={(e) => setPortCode(e.target.value.toUpperCase())}
                     placeholder="INMAA1"
                     className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase" />
-                  <p className="mt-1 text-[10px] text-ps-hint">
+                  <p className="mt-1 text-3xs text-ps-hint">
                     ICEGATE port code, 6 characters.
                   </p>
                 </div>
@@ -1090,7 +1090,7 @@ export function InvoiceEditor({
               before issuing — these are the invoices that get filed in the wrong
               GSTR-1 table when nobody looks. Presentational only. */}
           {!isLocked && isNonStandard({ supplyType, invoiceType, isReverseCharge }) && (
-            <p className="mt-3 text-[11px] text-[#92400E] bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2">
+            <p className="mt-3 text-2xs text-[#92400E] bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2">
               This invoice is not an ordinary domestic taxable sale, so it will be reported
               in a different part of GSTR-1. Check the classification before issuing —
               it cannot be changed afterwards without a credit note.
@@ -1122,7 +1122,7 @@ export function InvoiceEditor({
             </div>
           )}
           {isEdit && isForeign && (
-            <div className="mt-3 bg-[#EEF2FF] border border-[#C7D2FE] rounded-lg px-3 py-2 text-[11px] text-[#4338CA]">
+            <div className="mt-3 bg-[#EEF2FF] border border-[#C7D2FE] rounded-lg px-3 py-2 text-2xs text-[#4338CA]">
               Foreign-currency invoice ({currency}, rate {exchangeRate || "—"}) — currency and rate are frozen after creation.
             </div>
           )}
@@ -1148,12 +1148,12 @@ export function InvoiceEditor({
                   onChange={(e) => setShowCess(e.target.checked)}
                   className="h-3.5 w-3.5 rounded border-ps-border-strong accent-brand-dark"
                 />
-                <span className="text-[11px] text-ps-label">Compensation cess</span>
+                <span className="text-2xs text-ps-label">Compensation cess</span>
               </label>
             )}
           </div>
           {isLocked && (
-            <p className="mb-2 text-[10px] text-ps-hint">
+            <p className="mb-2 text-3xs text-ps-hint">
               Frozen once issued — issue a Credit Note to correct a quantity, rate, or item (CGST Act §34). Units stay editable.
             </p>
           )}
@@ -1380,12 +1380,12 @@ export function InvoiceEditor({
             placeholder="Optional notes shown on the invoice (terms, PO reference…)"
             className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           {isEdit && !isLocked && (
-            <p className="mt-2 text-[10px] text-ps-hint">
+            <p className="mt-2 text-3xs text-ps-hint">
               Editing a draft. GST is recomputed by the backend on save.
             </p>
           )}
           {isLocked && (
-            <p className="mt-2 text-[10px] text-ps-hint">
+            <p className="mt-2 text-3xs text-ps-hint">
               This invoice is issued — only reference, notes, payment terms, due date and line units can still change.
               To correct the amount, dates, customer or line items, issue a Credit Note instead (CGST Act §34).
             </p>

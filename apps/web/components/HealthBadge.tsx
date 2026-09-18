@@ -94,7 +94,7 @@ export function HealthBadge({ score, size = "sm", showLabel = false, trend, href
   const shape = cn(
     "inline-flex items-center gap-1 rounded-full font-semibold ring-1",
     ringFor(score),
-    size === "sm" ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]",
+    size === "sm" ? "px-2 py-0.5 text-3xs" : "px-2.5 py-1 text-2xs",
   );
 
   if (!href) {
@@ -120,7 +120,7 @@ export function HealthBadgeLight({ score, trend }: { score: number; trend?: stri
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 select-none",
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-3xs font-semibold ring-1 select-none",
         ringFor(score),
       )}
       title={`Health: ${score}/100 — ${scoreToLabel(score)}`}

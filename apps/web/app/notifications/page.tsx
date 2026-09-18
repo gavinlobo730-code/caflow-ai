@@ -169,7 +169,7 @@ export default function NotificationsPage() {
               <a
                 href={n.action_url}
                 onClick={e => e.stopPropagation()}
-                className="mt-1 inline-flex items-center gap-0.5 text-[11px] text-blue-600 hover:text-blue-700"
+                className="mt-1 inline-flex items-center gap-0.5 text-2xs text-blue-600 hover:text-blue-700"
               >
                 View <ExternalLink size={9} />
               </a>
@@ -184,7 +184,7 @@ export default function NotificationsPage() {
       accessor: (n) => n.type,
       sortable: true,
       render: (n) => (
-        <Badge className="text-[10px] px-1.5 py-0 bg-ps-muted text-ps-label">
+        <Badge className="text-3xs px-1.5 py-0 bg-ps-muted text-ps-label">
           {n.type.replace(/_/g, " ")}
         </Badge>
       ),
@@ -219,7 +219,7 @@ export default function NotificationsPage() {
       sortable: true,
       align: "right",
       render: (n) => (
-        <span className="text-[11px] text-ps-hint whitespace-nowrap" title={n.created_at}>
+        <span className="text-2xs text-ps-hint whitespace-nowrap" title={n.created_at}>
           {timeAgo(n.created_at)}
         </span>
       ),

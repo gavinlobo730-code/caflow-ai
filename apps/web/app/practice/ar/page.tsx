@@ -56,7 +56,7 @@ function ARDashboard() {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200">
+            <tr className="text-left text-2xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
               <th className="px-4 py-2.5 font-medium">Bucket</th>
               <th className="px-4 py-2.5 font-medium text-right">Outstanding</th>
               <th className="px-4 py-2.5 font-medium text-right">Invoices</th>

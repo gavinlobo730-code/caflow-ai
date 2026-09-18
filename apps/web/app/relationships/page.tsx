@@ -192,7 +192,7 @@ export default function RelationshipsPage() {
     { key: "full_name", header: "Name", accessor: (e) => e.full_name, searchable: true, sortable: true, sticky: true, hideable: false,
       render: (e) => <span className="font-medium text-ps-ink">{e.full_name}</span> },
     { key: "entity_type", header: "Type", accessor: (e) => e.entity_type, sortable: true,
-      render: (e) => <Badge className={`text-[11px] ${ENTITY_TYPE_COLORS[e.entity_type]}`}>{e.entity_type}</Badge> },
+      render: (e) => <Badge className={`text-2xs ${ENTITY_TYPE_COLORS[e.entity_type]}`}>{e.entity_type}</Badge> },
     { key: "pan", header: "PAN", accessor: (e) => e.pan ?? "", searchable: true,
       render: (e) => <span className="font-mono text-xs text-ps-label">{e.pan || "—"}</span> },
     { key: "gstin", header: "GSTIN", accessor: (e) => e.gstin ?? "", searchable: true, defaultHidden: true,

@@ -167,12 +167,12 @@ export default function EInvoicePage() {
           <p className="text-xs font-semibold text-ps-body">New E-Invoice Record</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] text-ps-label mb-1 block">Invoice Number</label>
+              <label className="text-3xs text-ps-label mb-1 block">Invoice Number</label>
               <input value={invNo} onChange={e => setInvNo(e.target.value)}
                 className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
             </div>
             <div>
-              <label className="text-[10px] text-ps-label mb-1 block">Invoice Date</label>
+              <label className="text-3xs text-ps-label mb-1 block">Invoice Date</label>
               <input type="date" value={invDate} onChange={e => setInvDate(e.target.value)}
                 className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
             </div>
@@ -202,17 +202,17 @@ export default function EInvoicePage() {
               <Zap size={16} className={r.status === "generated" ? "text-green-500" : r.status === "cancelled" ? "text-red-400" : "text-ps-hint"} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-ps-ink">{r.invoice_number} — {r.invoice_date}</p>
-                <p className="text-[10px] text-ps-hint">
+                <p className="text-3xs text-ps-hint">
                   {r.irn ? `IRN: ${r.irn.slice(0, 20)}...` : "No IRN recorded"}
                   {r.ack_number && ` · Ack: ${r.ack_number}`}
                 </p>
               </div>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[r.status]}`}>
+              <span className={`text-3xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[r.status]}`}>
                 {r.status}
               </span>
               {r.status === "draft" && (
                 <button onClick={() => setShowIRN(r.id)}
-                  className="text-[10px] text-blue-600 hover:underline flex-shrink-0">Record IRN</button>
+                  className="text-3xs text-blue-600 hover:underline flex-shrink-0">Record IRN</button>
               )}
             </div>
           ))}
@@ -222,22 +222,22 @@ export default function EInvoicePage() {
       {showIRN && (
         <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
           <p className="text-xs font-semibold text-ps-body">Record IRN from IRP Portal</p>
-          <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded">
+          <p className="text-2xs text-amber-700 bg-amber-50 p-2 rounded">
             CA REVIEW REQUIRED — Generate IRN on IRP portal first, then enter details below
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="text-[10px] text-ps-label mb-1 block">IRN (64-char hash)</label>
+              <label className="text-3xs text-ps-label mb-1 block">IRN (64-char hash)</label>
               <input value={irn} onChange={e => setIrn(e.target.value)}
                 className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg font-mono" />
             </div>
             <div>
-              <label className="text-[10px] text-ps-label mb-1 block">Ack Number</label>
+              <label className="text-3xs text-ps-label mb-1 block">Ack Number</label>
               <input value={ackNo} onChange={e => setAckNo(e.target.value)}
                 className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
             </div>
             <div>
-              <label className="text-[10px] text-ps-label mb-1 block">Ack Date</label>
+              <label className="text-3xs text-ps-label mb-1 block">Ack Date</label>
               <input type="datetime-local" value={ackDate} onChange={e => setAckDate(e.target.value)}
                 className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
             </div>

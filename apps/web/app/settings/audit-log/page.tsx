@@ -445,7 +445,7 @@ function AuditLogContent() {
               <span className="col-span-2 text-ps-ink truncate font-medium" title={row.entity_name}>
                 {row.entity_name}
                 {row.entity_id && row.entity_id !== row.entity_name && (
-                  <span className="block font-mono text-ps-hint text-[10px] truncate">{row.entity_id}</span>
+                  <span className="block font-mono text-ps-hint text-3xs truncate">{row.entity_id}</span>
                 )}
               </span>
               <span className="col-span-2 text-ps-label truncate" title={row.detail}>{row.detail || "—"}</span>

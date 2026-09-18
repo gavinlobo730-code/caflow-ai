@@ -70,7 +70,7 @@ export default function ClientKnowledgePage() {
           {articles.map((a) => (
             <div key={a.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
               <p className="text-[13px] font-medium text-brand">{a.title}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">v{a.current_version}{a.tags && a.tags.length ? ` · ${a.tags.join(", ")}` : ""}</p>
+              <p className="text-2xs text-gray-400 mt-0.5">v{a.current_version}{a.tags && a.tags.length ? ` · ${a.tags.join(", ")}` : ""}</p>
             </div>
           ))}
         </div>

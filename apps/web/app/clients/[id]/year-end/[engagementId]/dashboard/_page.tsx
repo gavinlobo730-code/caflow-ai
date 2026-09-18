@@ -313,7 +313,7 @@ export default function YearEndDashboardPage() {
           <p className="text-lg font-bold text-ps-ink tabular-nums">
             {checklist_complete} <span className="text-ps-hint text-sm font-normal">of {checklist_total}</span>
           </p>
-          <p className="text-[10px] text-ps-hint mb-2">items complete</p>
+          <p className="text-3xs text-ps-hint mb-2">items complete</p>
           {/* Progress bar */}
           <div className="w-full h-1.5 bg-ps-muted rounded-full overflow-hidden">
             <div
@@ -321,7 +321,7 @@ export default function YearEndDashboardPage() {
               style={{ width: `${checklistPct}%` }}
             />
           </div>
-          <p className="text-[10px] text-ps-hint mt-1">{checklistPct}%</p>
+          <p className="text-3xs text-ps-hint mt-1">{checklistPct}%</p>
         </div>
 
         {/* Adjustments */}
@@ -334,9 +334,9 @@ export default function YearEndDashboardPage() {
             <p className="text-xs font-semibold text-ps-body">Adjustments</p>
           </div>
           <p className="text-lg font-bold text-ps-ink tabular-nums">{adjustments_count}</p>
-          <p className="text-[10px] text-ps-hint mb-1">adjustments</p>
+          <p className="text-3xs text-ps-hint mb-1">adjustments</p>
           <p className="text-xs font-semibold text-ps-body">{fmt(adjustments_total_paise)}</p>
-          <p className="text-[10px] text-ps-hint">total value</p>
+          <p className="text-3xs text-ps-hint">total value</p>
         </div>
 
         {/* Financial Statements */}
@@ -351,14 +351,14 @@ export default function YearEndDashboardPage() {
           {current_version ? (
             <>
               <p className="text-lg font-bold text-ps-ink">Version {current_version}</p>
-              <p className="text-[10px] text-ps-hint">
+              <p className="text-3xs text-ps-hint">
                 Generated {statementsGeneratedDate ?? "—"}
               </p>
             </>
           ) : (
             <>
               <p className="text-sm text-ps-hint">Not generated yet</p>
-              <p className="text-[10px] text-ps-hint mt-1">Click to generate</p>
+              <p className="text-3xs text-ps-hint mt-1">Click to generate</p>
             </>
           )}
         </div>
@@ -407,7 +407,7 @@ export default function YearEndDashboardPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-ps-body">{event.description}</p>
-                  <p className="text-[10px] text-ps-hint mt-0.5">
+                  <p className="text-3xs text-ps-hint mt-0.5">
                     {event.actor && <span>{event.actor} · </span>}
                     {timeAgo(event.created_at)}
                   </p>

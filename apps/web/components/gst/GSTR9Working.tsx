@@ -63,7 +63,7 @@ export default function GSTR9Working({
           <h4 className="text-sm font-semibold text-ps-ink">
             Consolidate FY {financialYear} from the year&apos;s returns
           </h4>
-          <p className="text-[11px] text-ps-label mt-1 max-w-2xl">
+          <p className="text-2xs text-ps-label mt-1 max-w-2xl">
             CGST Act s.44 with Rule 80(1): the annual return consolidates this
             year&apos;s GSTR-1 and GSTR-3B. This adds them up and says which rows
             it could not derive. Nothing is saved and nothing is filed.
@@ -144,7 +144,7 @@ export default function GSTR9Working({
                                 beside its own figure — a note in a list at the
                                 bottom is read as being about some other row. */}
                             {r.note && (
-                              <span className="block text-[10px] text-amber-800 mt-0.5 max-w-xl">
+                              <span className="block text-3xs text-amber-800 mt-0.5 max-w-xl">
                                 {r.note}
                               </span>
                             )}
@@ -211,7 +211,7 @@ export default function GSTR9Working({
               <p className="text-xs font-semibold text-ps-body">
                 Still to be completed on the portal
               </p>
-              <dl className="text-[11px] text-ps-label space-y-1">
+              <dl className="text-2xs text-ps-label space-y-1">
                 {Object.entries(working.not_built).map(([table, why]) => (
                   <div key={table} className="flex gap-2">
                     <dt className="font-mono text-ps-hint shrink-0">Table {table}</dt>
@@ -222,7 +222,7 @@ export default function GSTR9Working({
             </div>
           )}
 
-          <p className="text-[10px] text-ps-hint">{working.source}</p>
+          <p className="text-3xs text-ps-hint">{working.source}</p>
         </>
       )}
     </div>

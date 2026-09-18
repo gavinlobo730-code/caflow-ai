@@ -226,7 +226,7 @@ export default function FixedAssetsPage() {
       <div className="bg-white border-b border-ps-border px-6 py-4 flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-base font-semibold text-ps-ink">Fixed Assets</h1>
-          <p className="text-[11px] text-ps-hint mt-0.5">
+          <p className="text-2xs text-ps-hint mt-0.5">
             Companies Act 2013, Schedule II — WDV &amp; SL depreciation
           </p>
         </div>
@@ -355,7 +355,7 @@ function RegisterTab({ clientId, openDoc }:
           { label: "Net Block (WDV)", value: loadFailed ? "—" : fmt(totalWDV), accent: "green" },
         ].map((c) => (
           <div key={c.label} className="bg-white rounded-xl border border-ps-border px-5 py-4">
-            <p className="text-[11px] text-ps-hint font-medium">{c.label}</p>
+            <p className="text-2xs text-ps-hint font-medium">{c.label}</p>
             <p className="text-lg font-bold text-ps-ink mt-1 font-mono">{c.value}</p>
           </div>
         ))}
@@ -417,7 +417,7 @@ function RegisterTab({ clientId, openDoc }:
                     <td className="px-4 py-2.5 text-ps-hint">
                       {expanded === a.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </td>
-                    <td className="px-2 py-2.5 font-mono text-[10px] text-ps-hint">{a.asset_code ?? "—"}</td>
+                    <td className="px-2 py-2.5 font-mono text-3xs text-ps-hint">{a.asset_code ?? "—"}</td>
                     <td className="px-3 py-2.5 font-medium text-ps-ink">{a.asset_name}</td>
                     <td className="px-3 py-2.5 text-ps-label">{a.asset_category}</td>
                     <td className="px-3 py-2.5 text-ps-label">{fmtDate(a.purchase_date)}</td>
@@ -432,7 +432,7 @@ function RegisterTab({ clientId, openDoc }:
                         : `SL ${a.useful_life_years}yr`}
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${LIFECYCLE_BADGE[a.lifecycle] ?? "bg-ps-muted text-ps-label"}`}>
+                      <span className={`text-3xs px-1.5 py-0.5 rounded-full font-medium ${LIFECYCLE_BADGE[a.lifecycle] ?? "bg-ps-muted text-ps-label"}`}>
                         {a.lifecycle.replace("_", " ")}
                       </span>
                     </td>
@@ -446,13 +446,13 @@ function RegisterTab({ clientId, openDoc }:
                     <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                       <button
                         onClick={() => setCorrecting(a)}
-                        className="text-[11px] text-blue-600 hover:underline"
+                        className="text-2xs text-blue-600 hover:underline"
                       >
                         Correct
                       </button>
                       <button
                         onClick={() => setDeleting(a)}
-                        className="text-[11px] text-red-600 hover:underline ml-3"
+                        className="text-2xs text-red-600 hover:underline ml-3"
                       >
                         Delete
                       </button>
@@ -544,7 +544,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
       <div className="bg-white w-full max-w-md h-full overflow-y-auto p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Correct {asset.asset_code ?? asset.asset_name}</h3>
-          <p className="text-[11px] text-ps-hint mt-1">
+          <p className="text-2xs text-ps-hint mt-1">
             A change to the cost reverses the acquisition journal and re-posts it. A
             revised rate or life applies from the next financial year, never to a
             month already posted.
@@ -568,7 +568,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
           { k: "reason" as const,            label: "Why (recorded on the audit trail)" },
         ].map(f => (
           <div key={f.k}>
-            <label className="block text-[11px] font-medium text-ps-label mb-1">{f.label}</label>
+            <label className="block text-2xs font-medium text-ps-label mb-1">{f.label}</label>
             <input
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-200"
               value={form[f.k]}
@@ -580,7 +580,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
         {error && (
           <div className="flex gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
             <AlertCircle size={13} className="text-red-600 shrink-0 mt-0.5" />
-            <p className="text-[11px] text-red-700">{error}</p>
+            <p className="text-2xs text-red-700">{error}</p>
           </div>
         )}
 
@@ -621,7 +621,7 @@ function DeleteAssetDialog({ asset, onClose, onSaved }: { asset: Asset; onClose:
           <Trash2 size={15} className="text-red-600 shrink-0 mt-0.5" />
           <div>
             <h3 className="text-sm font-semibold text-ps-ink">Delete {asset.asset_code ?? asset.asset_name}?</h3>
-            <p className="text-[11px] text-ps-label mt-1">
+            <p className="text-2xs text-ps-label mt-1">
               For an asset created by mistake. Its acquisition journal is reversed and the
               asset leaves the register — its code is kept so no later asset can take it.
               An asset with depreciation posted against it cannot be deleted; reverse the
@@ -633,7 +633,7 @@ function DeleteAssetDialog({ asset, onClose, onSaved }: { asset: Asset; onClose:
         {error && (
           <div className="flex gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
             <AlertCircle size={13} className="text-red-600 shrink-0 mt-0.5" />
-            <p className="text-[11px] text-red-700">{error}</p>
+            <p className="text-2xs text-red-700">{error}</p>
           </div>
         )}
 
@@ -895,7 +895,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
             </Field>
           </div>
           {catsFailed && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-amber-800 text-[11px] flex items-center justify-between gap-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-amber-800 text-2xs flex items-center justify-between gap-3">
               {/* No fallback list: a category picked from a stale copy of the
                   Schedule is the defect this change removed. The form waits. */}
               <span>Couldn&apos;t load the Schedule II categories — the request failed or timed out.</span>
@@ -958,12 +958,12 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
           {form.depreciation_method === "WDV" ? (
             <Field label="WDV Rate (% per year)">
               <input type="number" step="0.01" className={INPUT} value={form.wdv_rate_percent} onChange={e => setForm(f => ({ ...f, wdv_rate_percent: e.target.value }))} />
-              <p className="text-[10px] text-ps-hint mt-1">{scheduleIINote(selected, selectedClass, "WDV")}</p>
+              <p className="text-3xs text-ps-hint mt-1">{scheduleIINote(selected, selectedClass, "WDV")}</p>
             </Field>
           ) : (
             <Field label="Useful Life (years)">
               <input type="number" className={INPUT} value={form.useful_life_years} onChange={e => setForm(f => ({ ...f, useful_life_years: e.target.value }))} />
-              <p className="text-[10px] text-ps-hint mt-1">{scheduleIINote(selected, selectedClass, "SL")}</p>
+              <p className="text-3xs text-ps-hint mt-1">{scheduleIINote(selected, selectedClass, "SL")}</p>
             </Field>
           )}
 
@@ -981,7 +981,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
               machine bought on credit went in as if cash had left the
               building, and one already on a purchase bill went in TWICE. */}
           <div className="border-t border-ps-muted pt-4 space-y-3">
-            <p className="text-[11px] font-semibold text-ps-body">How was it acquired?</p>
+            <p className="text-2xs font-semibold text-ps-body">How was it acquired?</p>
             <div className="space-y-1.5">
               {([
                 ["paid",      "Paid for now", "Credits the bank or cash account the money left."],
@@ -996,7 +996,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                   />
                   <span>
                     <span className="text-ps-ink font-medium">{label}</span>
-                    <span className="block text-[10px] text-ps-hint">{why}</span>
+                    <span className="block text-3xs text-ps-hint">{why}</span>
                   </span>
                 </label>
               ))}
@@ -1049,7 +1049,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-ps-hint mt-1">
+                <p className="text-3xs text-ps-hint mt-1">
                   A bill can be capitalised once. Its cost moves out of purchases
                   into this asset; the payable is untouched.
                 </p>
@@ -1065,7 +1065,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
               rather than defaulted: it changes the balance sheet and every
               depreciation charge the asset will ever take. */}
           <div className="border-t border-ps-muted pt-4 space-y-3">
-            <p className="text-[11px] font-semibold text-ps-body">GST on the purchase</p>
+            <p className="text-2xs font-semibold text-ps-body">GST on the purchase</p>
             <div className="grid grid-cols-3 gap-2">
               <Field label="IGST (₹)">
                 <input type="number" className={INPUT} value={form.igst_paise} placeholder="0"
@@ -1095,7 +1095,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                                onChange={() => setForm(f => ({ ...f, itc_eligible: v }))} />
                         <span>
                           <span className="text-ps-ink font-medium">{label}</span>
-                          <span className="block text-[10px] text-ps-hint">{why}</span>
+                          <span className="block text-3xs text-ps-hint">{why}</span>
                         </span>
                       </label>
                     ))}
@@ -1123,7 +1123,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                     <option value="yes">Yes — new plant or machinery</option>
                     <option value="no">No</option>
                   </select>
-                  <p className="mt-1 text-[10px] text-ps-hint">
+                  <p className="mt-1 text-3xs text-ps-hint">
                     {form.additional_depreciation_eligible === "yes"
                       ? "This asserts the whole first proviso: not used by anybody before you installed it, not in office premises, residential accommodation or a guest house, not an office appliance or a road transport vehicle, and its whole cost is not allowed as a deduction in one year."
                       : form.additional_depreciation_eligible === "no"
@@ -1146,7 +1146,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                       <option value="common">Both taxable and exempt — 43(1)(c)</option>
                       <option value="exclusively_exempt">Only exempt or non-business — 43(1)(a)</option>
                     </select>
-                    <p className="mt-1 text-[10px] text-ps-hint">
+                    <p className="mt-1 text-3xs text-ps-hint">
                       {form.rule_43_use === "common"
                         ? "One-sixtieth of this credit is apportioned by exempt turnover every month for five years, and added back to output tax."
                         : form.rule_43_use === "exclusively_exempt"
@@ -1334,7 +1334,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
       <div className="bg-white rounded-xl border border-ps-border px-5 py-4 flex items-center justify-between">
         <div className="space-y-1">
           <p className="text-xs font-semibold text-ps-ink">Post Depreciation</p>
-          <p className="text-[11px] text-ps-hint">Posts journal entry: Dr Depreciation Expense / Cr Accumulated Depreciation. Idempotent per period.</p>
+          <p className="text-2xs text-ps-hint">Posts journal entry: Dr Depreciation Expense / Cr Accumulated Depreciation. Idempotent per period.</p>
         </div>
         <div className="flex items-center gap-3">
           <input
@@ -1343,7 +1343,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
             value={period}
             onChange={e => setPeriod(e.target.value)}
           />
-          <span className="text-[11px] text-ps-hint">to</span>
+          <span className="text-2xs text-ps-hint">to</span>
           <input
             type="month"
             className="border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-200"
@@ -1361,7 +1361,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
       </div>
 
       {runError && (
-        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-2.5 text-[11px] text-red-700">{runError}</div>
+        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-2.5 text-2xs text-red-700">{runError}</div>
       )}
       {runResult && (
         /* What the run DID, per asset. The browser loop reported nothing at
@@ -1376,7 +1376,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
           {runResult.assets.filter(a => a.reason).length > 0 && (
             <ul className="space-y-1">
               {runResult.assets.filter(a => a.reason).map(a => (
-                <li key={a.asset_id} className="text-[11px] text-amber-800">
+                <li key={a.asset_id} className="text-2xs text-amber-800">
                   <span className="font-medium">{a.asset_code ?? a.asset_name}</span>
                   {a.months_posted > 0 && <> — {a.months_posted} posted, then</>} stopped at {a.stopped_at}: {a.reason}
                 </li>
@@ -1389,11 +1389,11 @@ function DepreciationTab({ clientId }: { clientId: string }) {
       {/* Summary */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-ps-border px-5 py-4">
-          <p className="text-[11px] text-ps-hint">Total Annual Depreciation</p>
+          <p className="text-2xs text-ps-hint">Total Annual Depreciation</p>
           <p className="text-lg font-bold text-ps-ink font-mono mt-1">{loadFailed ? "—" : fmt(totalAnnual)}</p>
         </div>
         <div className="bg-white rounded-xl border border-ps-border px-5 py-4">
-          <p className="text-[11px] text-ps-hint">Monthly Charge</p>
+          <p className="text-2xs text-ps-hint">Monthly Charge</p>
           <p className="text-lg font-bold text-ps-ink font-mono mt-1">{loadFailed ? "—" : fmt(totalMonthly)}</p>
         </div>
       </div>
@@ -1425,7 +1425,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                   <td className="px-4 py-2.5 font-medium text-ps-ink">
                     {r.asset_name}
                     {r.depreciation_posted_through && (
-                      <span className="block text-[10px] text-ps-hint font-normal">
+                      <span className="block text-3xs text-ps-hint font-normal">
                         posted through {r.depreciation_posted_through}
                       </span>
                     )}
@@ -1441,7 +1441,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                       // A zero with a reason beside it is not the same number
                       // as a zero: this asset has no statutory basis for a
                       // charge, so nothing is posted until a CA records one.
-                      <span className="text-[10px] text-amber-700">{r.statutory_gap}</span>
+                      <span className="text-3xs text-amber-700">{r.statutory_gap}</span>
                     ) : r.annual_depreciation_paise > 0 ? (
                       <>
                         <button
@@ -1452,14 +1452,14 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                           {posting === r.asset_id ? "Posting…" : `Post ${period}`}
                         </button>
                         {notices[r.asset_id] && (
-                          <span className="block text-[10px] text-amber-700 mt-1 max-w-xs">{notices[r.asset_id]}</span>
+                          <span className="block text-3xs text-amber-700 mt-1 max-w-xs">{notices[r.asset_id]}</span>
                         )}
                         {errors[r.asset_id] && (
-                          <span className="block text-[10px] text-red-600 mt-1 max-w-xs">{errors[r.asset_id]}</span>
+                          <span className="block text-3xs text-red-600 mt-1 max-w-xs">{errors[r.asset_id]}</span>
                         )}
                       </>
                     ) : (
-                      <span className="text-[10px] text-ps-hint">Fully depreciated</span>
+                      <span className="text-3xs text-ps-hint">Fully depreciated</span>
                     )}
                     {r.depreciation_posted_through && (
                       // FA-10: a month posted on a wrong cost or a wrong rate
@@ -1469,7 +1469,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                       <button
                         onClick={() => reverseLastMonth(r.asset_id, r.depreciation_posted_through!)}
                         disabled={posting === r.asset_id}
-                        className="block text-[10px] text-red-600 hover:underline disabled:opacity-50 mt-1"
+                        className="block text-3xs text-red-600 hover:underline disabled:opacity-50 mt-1"
                       >
                         Reverse {r.depreciation_posted_through}
                       </button>
@@ -1484,7 +1484,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
 
       <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
         <p className="text-xs font-semibold text-amber-800">CA Review Required</p>
-        <p className="text-[11px] text-amber-700 mt-1">
+        <p className="text-2xs text-amber-700 mt-1">
           Depreciation journals are posted to the ledger after CA review. Rates follow <strong>Companies Act 2013, Schedule II</strong>.
           WDV rates are applied to the Written Down Value; SL rates to the original cost less salvage.
         </p>
@@ -1675,7 +1675,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
             {fmt(Math.abs(lastDisposal.gainLoss))}
           </p>
           {lastDisposal.partMonthUncharged && (
-            <p className="text-[11px] text-amber-700">
+            <p className="text-2xs text-amber-700">
               Part-month depreciation was NOT charged. Depreciation posts whole
               months — Schedule II Note 3 makes the purchase month the only
               pro-rated one — so the days between the last month end and the
@@ -1688,7 +1688,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
         <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
         <div>
           <p className="text-xs font-semibold text-red-800">Asset Disposal — CA Review Required</p>
-          <p className="text-[11px] text-red-700 mt-0.5">
+          <p className="text-2xs text-red-700 mt-0.5">
             Disposal creates a journal entry: Dr Accumulated Depreciation + Dr/Cr Bank / Cr Fixed Asset ± Profit/Loss on Disposal.
             This action cannot be undone. CA must review before confirming.
           </p>
@@ -1784,7 +1784,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
               </label>
             </Field>
           </div>
-          <p className="text-[11px] text-ps-hint -mt-2">
+          <p className="text-2xs text-ps-hint -mt-2">
             Sale proceeds are the amount the buyer paid, GST included. The tax is
             worked out of it, so the P&amp;L below is measured on the value net of tax.
           </p>
@@ -1835,7 +1835,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
                   <span className="font-mono">{fmt(preview.section_18_6.credit_taken.total_paise)}</span>
                 </div>
               )}
-              <table className="w-full text-[11px] text-indigo-900">
+              <table className="w-full text-2xs text-indigo-900">
                 <tbody>
                   {preview.section_18_6.readings.map(r => (
                     <tr key={r.reading} className="align-top">
@@ -1852,22 +1852,22 @@ function DisposalTab({ clientId }: { clientId: string }) {
                 </tbody>
               </table>
               {!preview.section_18_6.readings_agree && (
-                <p className="text-[11px] text-indigo-800 border-t border-indigo-200 pt-1">
+                <p className="text-2xs text-indigo-800 border-t border-indigo-200 pt-1">
                   The two readings differ. The disposal posts the tax on the
                   transaction value only; the excess under whichever reading you
                   follow is raised separately.
                 </p>
               )}
               {preview.section_18_6.caveats.map((c, i) => (
-                <p key={i} className="text-[11px] text-indigo-800">{c}</p>
+                <p key={i} className="text-2xs text-indigo-800">{c}</p>
               ))}
               {preview.section_18_6.gaps.map((g, i) => (
-                <p key={i} className="text-[11px] text-amber-800">{g}</p>
+                <p key={i} className="text-2xs text-amber-800">{g}</p>
               ))}
             </div>
           )}
           {(preview?.depreciation_months_outstanding?.length ?? 0) > 0 && (
-            <p className="text-[11px] text-amber-800">
+            <p className="text-2xs text-amber-800">
               Depreciation for {preview!.depreciation_months_outstanding.join(", ")} has
               not been posted. The disposal will be refused until it is — the gain
               is computed from the written-down value.
@@ -2009,9 +2009,9 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
           { label: "Net Block",      value: fmt(totals?.closing_net_paise ?? 0), sub: `FY ${financialYear}` },
         ].map(c => (
           <div key={c.label} className="bg-white rounded-xl border border-ps-border px-4 py-4">
-            <p className="text-[11px] text-ps-hint">{c.label}</p>
+            <p className="text-2xs text-ps-hint">{c.label}</p>
             <p className="text-base font-bold text-ps-ink mt-1 font-mono">{loading ? "…" : c.value}</p>
-            {c.sub && <p className="text-[10px] text-ps-hint mt-0.5">{c.sub}</p>}
+            {c.sub && <p className="text-3xs text-ps-hint mt-0.5">{c.sub}</p>}
           </div>
         ))}
       </div>
@@ -2032,7 +2032,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
           <p className="text-xs font-semibold text-ps-body">
             Movement in Fixed Assets — FY {movement?.financial_year ?? financialYear}
           </p>
-          <p className="text-[10px] text-ps-hint mt-0.5">
+          <p className="text-3xs text-ps-hint mt-0.5">
             Schedule III, Division I — gross block and depreciation, opening to closing.
           </p>
         </div>
@@ -2085,7 +2085,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
           </div>
         )}
         {movement?.posted_depreciation_paise != null && (
-          <div className="px-5 py-2.5 border-t border-ps-muted flex justify-between text-[11px]">
+          <div className="px-5 py-2.5 border-t border-ps-muted flex justify-between text-2xs">
             <span className="text-ps-hint">Depreciation posted to the ledger this year</span>
             <span className="font-mono text-ps-ink">{fmt(movement.posted_depreciation_paise)}</span>
           </div>
@@ -2193,12 +2193,12 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold text-ps-body">Register integrity</p>
-          <p className="text-[11px] text-ps-hint">
+          <p className="text-2xs text-ps-hint">
             Where the register disagrees with the ledger, or with Schedule II Part C
           </p>
         </div>
         <button type="button" onClick={load}
-          className="text-[11px] text-ps-label hover:text-ps-ink underline underline-offset-2">
+          className="text-2xs text-ps-label hover:text-ps-ink underline underline-offset-2">
           Re-check
         </button>
       </div>
@@ -2221,7 +2221,7 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
 
       {state.phase === "ok" && state.findings.length > 0 && (
         <>
-          <p className="text-[11px] text-ps-label">
+          <p className="text-2xs text-ps-label">
             {state.findings.length} to look at, of {state.checked} asset
             {state.checked === 1 ? "" : "s"} checked. Nothing here has been changed —
             each one is a judgement only you can make.
@@ -2233,25 +2233,25 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
                 <div className="flex items-start gap-2">
                   <AlertCircle size={12} className="text-amber-600 mt-0.5 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-amber-900">
+                    <p className="text-2xs font-semibold text-amber-900">
                       {FINDING_TITLE[f.kind] ?? f.kind}
                       {f.asset_code ? ` — ${f.asset_code}` : ""}
                       {f.asset_codes?.length ? ` — ${f.asset_codes.filter(Boolean).join(", ")}` : ""}
                     </p>
                     {f.asset_name && (
-                      <p className="text-[11px] text-amber-800">{f.asset_name}</p>
+                      <p className="text-2xs text-amber-800">{f.asset_name}</p>
                     )}
                     {/* The sentence is composed on the SERVER, next to the rule
                         it states. Rendered, never rebuilt here. */}
-                    <p className="text-[11px] text-amber-800 mt-0.5">{f.what_it_means}</p>
+                    <p className="text-2xs text-amber-800 mt-0.5">{f.what_it_means}</p>
                     {f.field === "wdv_rate_percent" && f.schedule_ii_prescribes?.length ? (
-                      <p className="text-[10px] text-amber-700 mt-0.5">
+                      <p className="text-3xs text-amber-700 mt-0.5">
                         Stored {f.stored}% · Schedule II Part C prescribes{" "}
                         {f.schedule_ii_prescribes.join("%, ")}% for {f.asset_category}
                       </p>
                     ) : null}
                     {f.field === "useful_life_years" && f.schedule_ii_prescribes?.length ? (
-                      <p className="text-[10px] text-amber-700 mt-0.5">
+                      <p className="text-3xs text-amber-700 mt-0.5">
                         Stored {f.stored} years · Schedule II Part C prescribes{" "}
                         {f.schedule_ii_prescribes.join(", ")} for {f.asset_category}
                       </p>
@@ -2274,7 +2274,7 @@ const INPUT = "w-full border border-ps-border rounded-lg px-3 py-1.5 text-xs tex
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] font-medium text-ps-label">{label}</label>
+      <label className="text-2xs font-medium text-ps-label">{label}</label>
       {children}
     </div>
   );

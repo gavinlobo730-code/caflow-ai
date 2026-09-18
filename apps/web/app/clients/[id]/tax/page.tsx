@@ -72,11 +72,11 @@ export default function TaxPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-xs font-semibold text-ps-ink">{mod.title}</p>
-                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-ps-muted text-ps-label">
+                  <span className="text-3xs font-medium px-2 py-0.5 rounded-full bg-ps-muted text-ps-label">
                     {mod.badge}
                   </span>
                 </div>
-                <p className="text-[11px] text-ps-label mt-0.5">{mod.desc}</p>
+                <p className="text-2xs text-ps-label mt-0.5">{mod.desc}</p>
               </div>
               <ArrowRight size={14} className="text-ps-disabled flex-shrink-0 group-hover:text-ps-hint" />
             </button>
@@ -86,7 +86,7 @@ export default function TaxPage() {
 
       <div className="bg-ps-bg border border-ps-muted rounded-xl p-4 space-y-2">
         <p className="text-xs font-semibold text-ps-body">Tax Filing Rules</p>
-        <ul className="text-[11px] text-ps-label space-y-1">
+        <ul className="text-2xs text-ps-label space-y-1">
           <li>• Advance tax: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)</li>
           <li>• ITR due date: 31st July (individuals), 31st October (audited entities)</li>
           <li>• All monetary values computed in integer paise — never floating point</li>

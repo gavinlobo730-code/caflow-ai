@@ -251,27 +251,27 @@ export default function TaskTemplatesPage() {
               </CardHeader>
               <CardContent className="pt-0 space-y-2.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge className={`text-[11px] px-2 py-0.5 font-medium ${PRIORITY_COLORS[t.default_priority]}`}>
+                  <Badge className={`text-2xs px-2 py-0.5 font-medium ${PRIORITY_COLORS[t.default_priority]}`}>
                     {t.default_priority}
                   </Badge>
                   {t.estimated_hours && (
-                    <span className="flex items-center gap-1 text-[11px] text-ps-label">
+                    <span className="flex items-center gap-1 text-2xs text-ps-label">
                       <Clock size={11} /> {t.estimated_hours}h est.
                     </span>
                   )}
                   {t.default_assignee_role && (
-                    <span className="flex items-center gap-1 text-[11px] text-ps-label">
+                    <span className="flex items-center gap-1 text-2xs text-ps-label">
                       <User size={11} /> {t.default_assignee_role}
                     </span>
                   )}
                   {!t.firm_id && (
-                    <Badge className="text-[11px] px-2 py-0.5 bg-violet-100 text-violet-700">System</Badge>
+                    <Badge className="text-2xs px-2 py-0.5 bg-violet-100 text-violet-700">System</Badge>
                   )}
                 </div>
                 {(t.tags?.length ?? 0) > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {(t.tags ?? []).map((tag) => (
-                      <span key={tag} className="flex items-center gap-0.5 text-[11px] bg-ps-muted text-ps-label px-2 py-0.5 rounded-full">
+                      <span key={tag} className="flex items-center gap-0.5 text-2xs bg-ps-muted text-ps-label px-2 py-0.5 rounded-full">
                         <Tag size={9} /> {tag}
                       </span>
                     ))}

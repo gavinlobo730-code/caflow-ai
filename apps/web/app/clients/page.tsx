@@ -576,7 +576,7 @@ export default function ClientsPage() {
             onChange={toggleSelectAll}
             className="h-3.5 w-3.5 rounded border-ps-border-strong"
           />
-          <span className="text-[10px] text-ps-hint">Select all visible</span>
+          <span className="text-3xs text-ps-hint">Select all visible</span>
         </div>
       )}
 

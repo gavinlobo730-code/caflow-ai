@@ -131,7 +131,7 @@ export default function ApplyStructureModal({
         <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
           <div>
             <p className="text-[14px] font-semibold text-ps-ink">Apply “{structureName}”</p>
-            <p className="text-[11px] text-ps-hint">
+            <p className="text-2xs text-ps-hint">
               Writes a salary revision per employee, effective from the date below.
               Months already released keep the figures they were paid on.
             </p>
@@ -144,12 +144,12 @@ export default function ApplyStructureModal({
 
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-[11px] text-ps-label block">Effective from
+            <label className="text-2xs text-ps-label block">Effective from
               <input type="date" value={effectiveFrom}
                 onChange={(e) => { setEffectiveFrom(e.target.value); setResult(null); }}
                 className={`${FIELD} w-full mt-1`} />
             </label>
-            <label className="text-[11px] text-ps-label block">Reason
+            <label className="text-2xs text-ps-label block">Reason
               <input value={reason} onChange={(e) => setReason(e.target.value)}
                 placeholder="Annual revision, restructure…"
                 className={`${FIELD} w-full mt-1`} />
@@ -158,7 +158,7 @@ export default function ApplyStructureModal({
 
           <div className="rounded-xl border border-ps-border">
             <div className="px-3 py-2 border-b border-ps-muted flex items-center justify-between">
-              <p className="text-[11px] font-semibold text-ps-ink">
+              <p className="text-2xs font-semibold text-ps-ink">
                 Employees · {chosen} selected
               </p>
               <button
@@ -166,7 +166,7 @@ export default function ApplyStructureModal({
                   chosen === employees.length
                     ? {}
                     : Object.fromEntries(employees.map((e) => [e.id, true])))}
-                className="text-[11px] px-2 py-1 border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
+                className="text-2xs px-2 py-1 border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
                 {chosen === employees.length ? "Clear" : "Select all"}
               </button>
             </div>
@@ -175,7 +175,7 @@ export default function ApplyStructureModal({
                 This client has no employees to apply a structure to.
               </p>
             ) : (
-              <table className="w-full text-[11px]">
+              <table className="w-full text-2xs">
                 <thead>
                   <tr className="text-left text-ps-label border-b border-ps-muted">
                     <th className="px-3 py-1.5 w-8"></th>
@@ -209,7 +209,7 @@ export default function ApplyStructureModal({
           </div>
 
           {missingGross && (
-            <p className="text-[11px] text-red-600">
+            <p className="text-2xs text-red-600">
               Every selected employee needs a monthly gross — the structure&apos;s
               percentages are of the gross, and it is not inferred from the master.
             </p>
@@ -217,12 +217,12 @@ export default function ApplyStructureModal({
 
           {err && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-              <p className="text-[11px] font-semibold text-red-700">
+              <p className="text-2xs font-semibold text-red-700">
                 Nothing was changed
               </p>
               {problems.length
-                ? problems.map((p, i) => <p key={i} className="text-[11px] text-red-700 mt-0.5">· {p}</p>)
-                : <p className="text-[11px] text-red-700 mt-0.5">{err}</p>}
+                ? problems.map((p, i) => <p key={i} className="text-2xs text-red-700 mt-0.5">· {p}</p>)
+                : <p className="text-2xs text-red-700 mt-0.5">{err}</p>}
             </div>
           )}
 
@@ -231,11 +231,11 @@ export default function ApplyStructureModal({
               {!!result.notes?.length && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                   {result.notes.map((n, i) => (
-                    <p key={i} className="text-[11px] text-amber-800">· {n}</p>
+                    <p key={i} className="text-2xs text-amber-800">· {n}</p>
                   ))}
                 </div>
               )}
-              <table className="w-full text-[11px]">
+              <table className="w-full text-2xs">
                 <thead>
                   <tr className="text-left text-ps-label border-b border-ps-border">
                     <th className="py-1.5 pr-2">Employee</th>
@@ -258,7 +258,7 @@ export default function ApplyStructureModal({
                 </tbody>
               </table>
               {result.preview && (
-                <p className="text-[11px] text-ps-hint">
+                <p className="text-2xs text-ps-hint">
                   Nothing has been written. Apply below to record a revision per employee.
                 </p>
               )}

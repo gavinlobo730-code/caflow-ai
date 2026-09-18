@@ -96,7 +96,7 @@ export function RcmDocumentPanel({
             </p>
             {/* The SECTION comes off the wire, so the screen never asserts
                 which provision it is issuing under. */}
-            <p className="text-[11px] text-ps-hint mt-0.5">
+            <p className="text-2xs text-ps-hint mt-0.5">
               {preview?.section} · {preview?.rule}
             </p>
           </div>
@@ -248,7 +248,7 @@ export function RcmDocumentPanel({
         </div>
 
         <div className="px-5 py-3 border-t border-ps-muted flex items-center justify-between">
-          <p className="text-[10px] text-ps-hint max-w-sm">
+          <p className="text-3xs text-ps-hint max-w-sm">
             Check the particulars before issuing. Nothing is sent to any portal.
           </p>
           <div className="flex gap-2">

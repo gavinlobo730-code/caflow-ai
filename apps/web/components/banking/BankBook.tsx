@@ -210,7 +210,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
       <div className="bg-white rounded-xl border border-ps-muted p-10 text-center max-w-3xl mx-auto">
         <Landmark size={24} className="mx-auto text-ps-disabled" />
         <p className="text-sm text-ps-hint mt-2">No bank account yet.</p>
-        <p className="text-[11px] text-ps-hint mt-1">
+        <p className="text-2xs text-ps-hint mt-1">
           Add one from <strong>Bank › Entries › Accounts</strong>, then import a statement —
           the register builds itself from what the bank sent.
         </p>
@@ -223,7 +223,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
       {/* Account + filters */}
       <div className="bg-white rounded-xl border border-ps-muted p-3 flex flex-wrap items-end gap-3">
         <label className="block">
-          <span className="text-[10px] font-medium text-ps-label">Account</span>
+          <span className="text-3xs font-medium text-ps-label">Account</span>
           <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs">
             {accounts.map((a) => (
@@ -232,24 +232,24 @@ export function BankRegister({ clientId }: { clientId: string }) {
           </select>
         </label>
         <label className="block">
-          <span className="text-[10px] font-medium text-ps-label">From</span>
+          <span className="text-3xs font-medium text-ps-label">From</span>
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">
-          <span className="text-[10px] font-medium text-ps-label">To</span>
+          <span className="text-3xs font-medium text-ps-label">To</span>
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">
-          <span className="text-[10px] font-medium text-ps-label">Show</span>
+          <span className="text-3xs font-medium text-ps-label">Show</span>
           <select value={status} onChange={(e) => setStatus(e.target.value as RegisterStatus)}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs">
             {REGISTER_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </label>
         <label className="block flex-1 min-w-[160px]">
-          <span className="text-[10px] font-medium text-ps-label">Search</span>
+          <span className="text-3xs font-medium text-ps-label">Search</span>
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Narration, reference or category"
             className="mt-1 block w-full border border-ps-border rounded px-2 py-1.5 text-xs" />
@@ -257,16 +257,16 @@ export function BankRegister({ clientId }: { clientId: string }) {
         <div className="flex items-center gap-2">
           {filtersActive && (
             <button onClick={() => { setDateFrom(""); setDateTo(""); setStatus("all"); setSearch(""); }}
-              className="text-[11px] px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
+              className="text-2xs px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
               Clear
             </button>
           )}
           <button onClick={load} disabled={loading}
-            className="text-[11px] px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label inline-flex items-center gap-1">
+            className="text-2xs px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label inline-flex items-center gap-1">
             <RefreshCw size={11} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
           <button onClick={exportCsv} disabled={!data || data.lines.length === 0}
-            className="text-[11px] px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label inline-flex items-center gap-1 disabled:opacity-40">
+            className="text-2xs px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label inline-flex items-center gap-1 disabled:opacity-40">
             <Download size={11} /> CSV
           </button>
         </div>
@@ -284,8 +284,8 @@ export function BankRegister({ clientId }: { clientId: string }) {
           <p className="text-xs font-semibold text-amber-900">
             This account&apos;s opening balance has no date
           </p>
-          <p className="text-[11px] text-state-attention mt-1">{data.account.opening_balance_gap}</p>
-          <p className="text-[11px] text-state-attention mt-1">
+          <p className="text-2xs text-state-attention mt-1">{data.account.opening_balance_gap}</p>
+          <p className="text-2xs text-state-attention mt-1">
             Set it under Bank › Entries › Accounts. Until then the balances below,
             and any difference against the statement, may be out by the total of
             whatever predates the opening figure.
@@ -298,14 +298,14 @@ export function BankRegister({ clientId }: { clientId: string }) {
           <p className="text-xs font-semibold text-amber-900">
             This register stops agreeing with the statement on {data.divergence.transaction_date}
           </p>
-          <p className="text-[11px] text-state-attention mt-1">
+          <p className="text-2xs text-state-attention mt-1">
             After “{data.divergence.description}” the bank says the balance was{" "}
             <span className="font-mono">{fmt(data.divergence.statement_balance_paise ?? 0)}</span>;
             from the imported lines it works out to{" "}
             <span className="font-mono">{fmt(data.divergence.computed_balance_paise)}</span> — a
             difference of <span className="font-mono font-semibold">{fmt(Math.abs(data.divergence.delta_paise))}</span>.
           </p>
-          <p className="text-[11px] text-state-attention mt-1">
+          <p className="text-2xs text-state-attention mt-1">
             Usually a missing, duplicated or misdated line, or an opening balance that needs
             correcting under Bank › Entries › Accounts. Only the first mismatch is shown — every balance after
             it inherits the same difference.
@@ -315,7 +315,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
 
       {summary && summary.precedes_opening_count > 0 && (
         <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
-          <p className="text-[11px] text-blue-800">
+          <p className="text-2xs text-blue-800">
             {summary.precedes_opening_count} transaction{summary.precedes_opening_count === 1 ? " is" : "s are"} dated
             before this account&apos;s opening balance
             {data?.account?.opening_balance_date ? ` (${data.account.opening_balance_date})` : ""} and{" "}
@@ -335,7 +335,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
             { label: "Closing balance", value: fmt(summary.closing_balance_paise), tone: "text-ps-ink font-semibold" },
           ].map((c) => (
             <div key={c.label} className="bg-white rounded-xl border border-ps-muted px-4 py-3">
-              <p className="text-[10px] text-ps-hint uppercase tracking-wide">{c.label}</p>
+              <p className="text-3xs text-ps-hint uppercase tracking-wide">{c.label}</p>
               <p className={`text-sm font-mono mt-0.5 ${c.tone}`}>{c.value}</p>
             </div>
           ))}
@@ -353,7 +353,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
             {filtersActive ? "Nothing matches these filters." : "No transactions on this account yet."}
           </p>
           {!filtersActive && (
-            <p className="text-[11px] text-ps-hint mt-1">Import a statement from <strong>Bank › Entries</strong>.</p>
+            <p className="text-2xs text-ps-hint mt-1">Import a statement from <strong>Bank › Entries</strong>.</p>
           )}
         </div>
       ) : (
@@ -389,7 +389,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
                     <td className="px-3 py-1.5 whitespace-nowrap text-ps-label">{l.transaction_date ?? "—"}</td>
                     <td className="px-3 py-1.5 min-w-[220px]">
                       <span className="text-ps-ink">{l.description}</span>
-                      {l.reference_no && <span className="text-[10px] text-ps-hint ml-1.5">{l.reference_no}</span>}
+                      {l.reference_no && <span className="text-3xs text-ps-hint ml-1.5">{l.reference_no}</span>}
                       {!l.posted_journal_id && (
                         <span className="text-[9px] px-1 py-0.5 rounded bg-ps-muted text-ps-label ml-1.5">not posted</span>
                       )}
@@ -401,10 +401,10 @@ export function BankRegister({ clientId }: { clientId: string }) {
                     <td className="px-3 py-1.5 text-center">
                       {l.cleared === "R" ? (
                         <span title="Reconciled — part of a completed reconciliation"
-                              className="text-[10px] font-semibold text-money-in">R</span>
+                              className="text-3xs font-semibold text-money-in">R</span>
                       ) : l.cleared === "C" ? (
                         <span title="Cleared — claimed by a reconciliation still in progress"
-                              className="text-[10px] font-semibold text-amber-600">C</span>
+                              className="text-3xs font-semibold text-amber-600">C</span>
                       ) : <span className="text-ps-disabled">—</span>}
                     </td>
                     <td className="px-3 py-1.5 text-right font-mono text-money-out whitespace-nowrap">
@@ -427,7 +427,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
             </table>
           </div>
 
-          <div className="px-3 py-2 border-t border-ps-muted flex items-center justify-between text-[11px] text-ps-label">
+          <div className="px-3 py-2 border-t border-ps-muted flex items-center justify-between text-2xs text-ps-label">
             <span>
               {data.filtered_count === data.total_count
                 ? `${data.total_count} transaction${data.total_count === 1 ? "" : "s"}`
@@ -447,7 +447,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      <p className="text-[10px] text-ps-hint text-center">
+      <p className="text-3xs text-ps-hint text-center">
         The register is read-only. A posted journal cannot be edited — correct it with a
         reversal from the Accounting workspace, and the register will follow.
       </p>

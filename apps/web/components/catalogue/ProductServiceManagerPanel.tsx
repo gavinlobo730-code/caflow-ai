@@ -254,9 +254,9 @@ export function ProductServiceManagerPanel({
           <p className="font-medium text-ps-ink">
             {s.name}
             <span className="ml-2 text-[9px] uppercase tracking-wide text-ps-hint">{formatServiceKind(s.kind)}</span>
-            {!s.is_active && <span className="ml-2 text-[10px] uppercase tracking-wide text-ps-hint">archived</span>}
+            {!s.is_active && <span className="ml-2 text-3xs uppercase tracking-wide text-ps-hint">archived</span>}
           </p>
-          {s.description && <p className="text-[11px] text-ps-hint truncate max-w-[280px]">{s.description}</p>}
+          {s.description && <p className="text-2xs text-ps-hint truncate max-w-[280px]">{s.description}</p>}
         </div>
       ) },
     { key: "hsn_sac", header: "SAC/HSN", accessor: (s) => s.hsn_sac ?? "", searchable: true,
@@ -374,7 +374,7 @@ export function ProductServiceManagerPanel({
         rowActions={(s) => (
           <div className="flex items-center justify-end gap-1">
             {onPick && (
-              <button onClick={(e) => { e.stopPropagation(); handlePick(s); }} className="px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 rounded" aria-label={`Select ${s.name}`}>
+              <button onClick={(e) => { e.stopPropagation(); handlePick(s); }} className="px-2 py-1 text-2xs font-medium text-emerald-700 hover:bg-emerald-50 rounded" aria-label={`Select ${s.name}`}>
                 Select
               </button>
             )}

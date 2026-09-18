@@ -156,7 +156,7 @@ export default function AllocateReceiptModal({
             <p className="text-[14px] font-semibold text-ps-ink">
               Apply {receipt.receipt_no}
             </p>
-            <p className="text-[11px] text-ps-hint">
+            <p className="text-2xs text-ps-hint">
               {receipt.customer_name ?? "Customer"} · {fmt(settlement)} to settle
               {Number(receipt.tds_paise ?? 0) > 0
                 ? ` (${fmt(receipt.amount_paise)} received + ${fmt(Number(receipt.tds_paise))} TDS)`
@@ -177,7 +177,7 @@ export default function AllocateReceiptModal({
                   Couldn&apos;t load this customer&apos;s invoices — the request failed.
                 </p>
                 <button onClick={load}
-                  className="text-[11px] px-2 py-1 border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
+                  className="text-2xs px-2 py-1 border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
                   Retry
                 </button>
               </div>
@@ -187,7 +187,7 @@ export default function AllocateReceiptModal({
                 an advance against an invoice not yet raised.
               </p>
             ) : (
-              <table className="w-full text-[11px]">
+              <table className="w-full text-2xs">
                 <thead>
                   <tr className="text-left text-ps-label border-b border-ps-border">
                     <th className="py-1.5 pr-2">Invoice</th>
@@ -213,17 +213,17 @@ export default function AllocateReceiptModal({
                             <input value={amounts[inv.id] ?? ""} type="text" inputMode="decimal"
                               aria-label={`Amount to apply to ${inv.invoice_no}`}
                               onChange={(ev) => setAmounts((a) => ({ ...a, [inv.id]: ev.target.value }))}
-                              className={`w-28 px-2 py-1 border rounded text-right text-[11px] outline-none focus:border-blue-400 ${
+                              className={`w-28 px-2 py-1 border rounded text-right text-2xs outline-none focus:border-blue-400 ${
                                 problem ? "border-red-300" : "border-ps-border"}`} />
                             <button type="button"
                               onClick={() => setAmounts((a) => ({
                                 ...a, [inv.id]: String(ceilingFor(inv) / 100) }))}
-                              className="text-[10px] px-1.5 py-1 border border-ps-border rounded text-ps-label hover:bg-ps-bg">
+                              className="text-3xs px-1.5 py-1 border border-ps-border rounded text-ps-label hover:bg-ps-bg">
                               All
                             </button>
                           </div>
                           {problem && (
-                            <p className="text-[10px] text-red-600 mt-0.5">{problem}</p>
+                            <p className="text-3xs text-red-600 mt-0.5">{problem}</p>
                           )}
                         </td>
                       </tr>
@@ -254,7 +254,7 @@ export default function AllocateReceiptModal({
           </div>
 
           {overRun && (
-            <p className="text-[11px] text-red-600">
+            <p className="text-2xs text-red-600">
               That is more than the receipt settles. Reduce a line, or record a
               second receipt.
             </p>
@@ -264,7 +264,7 @@ export default function AllocateReceiptModal({
           {/* Leaving an advance unallocated is a legitimate outcome, not a
               failure — a customer may genuinely have paid ahead of an invoice.
               Saying so stops the CA hunting for an invoice to force it onto. */}
-          <p className="text-[10px] text-ps-hint">
+          <p className="text-3xs text-ps-hint">
             An amount left over stays on the receipt as unallocated and can be
             applied to a later invoice from here.
           </p>

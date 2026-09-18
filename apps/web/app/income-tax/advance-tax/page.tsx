@@ -533,7 +533,7 @@ export default function AdvanceTaxPage() {
             <h2 className="text-sm font-semibold text-ps-ink">
               Late filing and short payment — §234A, §234B
             </h2>
-            <span className="text-[11px] text-ps-hint">
+            <span className="text-2xs text-ps-hint">
               Computed from the estimated tax and the instalments above.
             </span>
           </div>
@@ -558,7 +558,7 @@ export default function AdvanceTaxPage() {
               <input type="date" value={furnishedOn}
                 onChange={e => setFurnishedOn(e.target.value)}
                 className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
-              <p className="text-[10px] text-ps-hint mt-1 max-w-[16rem]">
+              <p className="text-3xs text-ps-hint mt-1 max-w-[16rem]">
                 Leave blank if it has not been filed — the §234A period then runs to today
                 and keeps running.
               </p>
@@ -589,7 +589,7 @@ export default function AdvanceTaxPage() {
                 <InterestBlock r={lateResult.section_234b} />
               </div>
               <div className="rounded-lg bg-ps-bg border border-[#EEF2F7] px-3 py-2 space-y-1">
-                <p className="text-[11px] text-ps-label">
+                <p className="text-2xs text-ps-label">
                   §139(1) due date <span className="font-medium tabular-nums">{lateResult.itr_due_date.due_date}</span>
                   {" — "}{lateResult.itr_due_date.basis}
                 </p>
@@ -598,7 +598,7 @@ export default function AdvanceTaxPage() {
                     the §234A figure above is a FLOOR. Saying nothing would let a
                     CA read a floor as the answer. */}
                 {!lateResult.itr_due_date.decided && (
-                  <p className="text-[11px] text-amber-600 flex items-start gap-1">
+                  <p className="text-2xs text-amber-600 flex items-start gap-1">
                     <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />
                     The due date is not settled on what is recorded for this client, so the
                     earlier of the two was used and the §234A interest above is a floor.
@@ -607,7 +607,7 @@ export default function AdvanceTaxPage() {
                   </p>
                 )}
                 {!lateResult.return_furnished_on && (
-                  <p className="text-[11px] text-ps-label">
+                  <p className="text-2xs text-ps-label">
                     Not yet furnished — §234A is charged to {lateResult.assessment_date} and
                     grows by a further month, or part of one, until it is.
                   </p>
@@ -625,7 +625,7 @@ export default function AdvanceTaxPage() {
             <h2 className="text-sm font-semibold text-ps-ink">
               Self-assessment tax — §140A, Challan 280
             </h2>
-            <span className="text-[11px] text-ps-hint">
+            <span className="text-2xs text-ps-hint">
               Payable before the return is furnished; the return is accompanied by proof.
             </span>
           </div>
@@ -648,11 +648,11 @@ export default function AdvanceTaxPage() {
               the tax, which is the figure §234A and §234B keep charging on. */}
           {saPosition?.appropriation && (
             <div className="rounded-lg bg-ps-bg border border-ps-border px-3 py-2">
-              <p className="text-[11px] text-ps-body mb-1">
+              <p className="text-2xs text-ps-body mb-1">
                 §140A(1) appropriates a short payment in its own order — fee, then
                 interest, then tax. It is not split proportionally.
               </p>
-              <div className="grid grid-cols-3 gap-2 text-[11px] text-ps-body">
+              <div className="grid grid-cols-3 gap-2 text-2xs text-ps-body">
                 <span>Towards fee <span className="font-medium tabular-nums">
                   {formatPaise(saPosition.appropriation.towards_fee_paise)}</span></span>
                 <span>Towards interest <span className="font-medium tabular-nums">
@@ -773,12 +773,12 @@ export default function AdvanceTaxPage() {
               §140A balance needs doing something about; the statement that
               the interest came from the panel above needs reading once. */}
           {saPosition?.gaps.map((g, i) => (
-            <p key={`g${i}`} className="text-[11px] text-state-attention flex items-start gap-1">
+            <p key={`g${i}`} className="text-2xs text-state-attention flex items-start gap-1">
               <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />{g}
             </p>
           ))}
           {saPosition?.caveats.map((c, i) => (
-            <p key={`c${i}`} className="text-[11px] text-ps-hint">{c}</p>
+            <p key={`c${i}`} className="text-2xs text-ps-hint">{c}</p>
           ))}
         </CardContent>
       </Card>
@@ -799,7 +799,7 @@ function SaFigure({ label, value, red }: { label: string; value: string; red?: b
   return (
     <div className="rounded-lg bg-ps-bg border border-ps-border px-3 py-2">
       <p className={`text-sm font-semibold tabular-nums ${red ? "text-state-problem" : "text-ps-ink"}`}>{value}</p>
-      <p className="text-[11px] text-ps-label mt-0.5">{label}</p>
+      <p className="text-2xs text-ps-label mt-0.5">{label}</p>
     </div>
   );
 }
@@ -817,13 +817,13 @@ function InterestBlock({ r }: { r: SectionInterestResult }) {
         </span>
       </div>
       {r.applies && (
-        <p className="text-[11px] text-ps-label tabular-nums">
+        <p className="text-2xs text-ps-label tabular-nums">
           {formatPaise(r.base_paise)} × 1% × {r.months} month{r.months === 1 ? "" : "s"}
           {r.from_date && r.to_date ? ` · ${r.from_date} to ${r.to_date}` : ""}
         </p>
       )}
       {r.reasons.map((x, i) => (
-        <p key={i} className="text-[10px] text-ps-hint">{x}</p>
+        <p key={i} className="text-3xs text-ps-hint">{x}</p>
       ))}
     </div>
   );

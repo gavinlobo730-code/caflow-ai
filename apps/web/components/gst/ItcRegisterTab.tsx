@@ -71,7 +71,7 @@ const HEADS: { key: keyof ITCHeads; label: string }[] = [
 
 function HeadTotals({ totals }: { totals?: Partial<ITCHeads> }) {
   return (
-    <span className="font-mono text-[11px] text-ps-label">
+    <span className="font-mono text-2xs text-ps-label">
       {HEADS.map((h) => `${h.label} ${money(totals?.[h.key])}`).join(" · ")}
     </span>
   );
@@ -86,10 +86,10 @@ function RegisterTable({ rows, title, table, empty }: {
         {title} <span className="text-ps-hint font-normal">· Table {table}</span>
       </p>
       {rows.length === 0 ? (
-        <p className="text-[11px] text-ps-hint mt-2">{empty}</p>
+        <p className="text-2xs text-ps-hint mt-2">{empty}</p>
       ) : (
         <div className="overflow-x-auto mt-2">
-          <table className="w-full text-[11px]">
+          <table className="w-full text-2xs">
             <thead>
               <tr className="text-left text-ps-label border-b border-ps-border">
                 <th className="py-1.5 pr-2">Reason</th>
@@ -107,7 +107,7 @@ function RegisterTable({ rows, title, table, empty }: {
                     {REASONS.find((x) => x.code === r.reason_code)?.label
                       ?? r.reason_code ?? "—"}
                   </td>
-                  <td className="py-1.5 pr-2 font-mono text-[10px] text-ps-hint">
+                  <td className="py-1.5 pr-2 font-mono text-3xs text-ps-hint">
                     {r.journal_entry_id?.slice(0, 8) ?? "—"}
                   </td>
                   {HEADS.map((h) => (
@@ -210,7 +210,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
           Reclaimable ITC reversals (Table <b>4(B)(2)</b>) and the reclaims that
           bring them back (Table <b>4(D)(1)</b>).
         </p>
-        <p className="text-[10px] text-ps-hint mt-1 max-w-[90ch]">
+        <p className="text-3xs text-ps-hint mt-1 max-w-[90ch]">
           Nothing here posts to the ledger. The CA raises the journal like any other
           entry; this says what it <i>was</i>, so the return can declare it — and a row
           claiming more than its journal actually moved is refused. Rules 38, 42, 43 and
@@ -220,7 +220,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
       </div>
 
       <div className="flex items-end gap-2 flex-wrap">
-        <label className="text-[11px] text-ps-label">
+        <label className="text-2xs text-ps-label">
           Period
           <input value={period} placeholder="062026"
             onChange={(e) => setPeriod(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
@@ -232,7 +232,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
           {busy === "load" ? "Loading…" : "Load the register"}
         </button>
         {isGstPeriod(period) && (
-          <span className="text-[11px] text-ps-hint pb-1.5">{gstPeriodLabel(period)}</span>
+          <span className="text-2xs text-ps-hint pb-1.5">{gstPeriodLabel(period)}</span>
         )}
       </div>
 
@@ -243,11 +243,11 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg border border-ps-border p-2.5">
-              <p className="text-[10px] text-ps-hint">Reversed · Table 4(B)(2)</p>
+              <p className="text-3xs text-ps-hint">Reversed · Table 4(B)(2)</p>
               <HeadTotals totals={register.reversal_totals} />
             </div>
             <div className="rounded-lg border border-ps-border p-2.5">
-              <p className="text-[10px] text-ps-hint">Reclaimed · Table 4(D)(1)</p>
+              <p className="text-3xs text-ps-hint">Reclaimed · Table 4(D)(1)</p>
               <HeadTotals totals={register.reclaim_totals} />
             </div>
           </div>
@@ -273,14 +273,14 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
             ))}
           </div>
 
-          <p className="text-[10px] text-ps-hint max-w-[90ch]">
+          <p className="text-3xs text-ps-hint max-w-[90ch]">
             {kind === "reversal"
               ? "Point at a journal already posted for this reversal and say which rule it was under. The server checks it against the GST Input movement on that journal and refuses a row the ledger cannot support."
               : "Point at a journal already posted for the reclaim and name the reversal it brings back. Refused if it would reclaim more than that reversal still has outstanding — credit can only come back once."}
           </p>
 
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-[11px] text-ps-label">
+            <label className="text-2xs text-ps-label">
               Journal entry id
               <input value={journalId} onChange={(e) => setJournalId(e.target.value)}
                 placeholder="the posted journal this classifies"
@@ -288,7 +288,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
             </label>
 
             {kind === "reversal" ? (
-              <label className="text-[11px] text-ps-label">
+              <label className="text-2xs text-ps-label">
                 Reason
                 <select value={reason} onChange={(e) => setReason(e.target.value)}
                   className={`${FIELD} w-full mt-1`}>
@@ -296,12 +296,12 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
                     <option key={r.code} value={r.code}>{r.label}</option>
                   ))}
                 </select>
-                <span className="block text-[10px] text-ps-hint mt-0.5">
+                <span className="block text-3xs text-ps-hint mt-0.5">
                   {REASONS.find((r) => r.code === reason)?.note}
                 </span>
               </label>
             ) : (
-              <label className="text-[11px] text-ps-label">
+              <label className="text-2xs text-ps-label">
                 Reverses which register row?
                 <select value={reverses} onChange={(e) => setReverses(e.target.value)}
                   className={`${FIELD} w-full mt-1`}>
@@ -315,7 +315,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
                   ))}
                 </select>
                 {!register?.reversals?.length && (
-                  <span className="block text-[10px] text-amber-700 mt-0.5">
+                  <span className="block text-3xs text-amber-700 mt-0.5">
                     Load a period that has a reversal first — a reclaim has to name one.
                   </span>
                 )}
@@ -323,14 +323,14 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
             )}
 
             {kind === "reversal" && (
-              <label className="text-[11px] text-ps-label">
+              <label className="text-2xs text-ps-label">
                 Purchase bill (optional)
                 <input value={purchaseBillId} onChange={(e) => setPurchaseBillId(e.target.value)}
                   className={`${FIELD} w-full mt-1`} />
               </label>
             )}
 
-            <label className="text-[11px] text-ps-label">
+            <label className="text-2xs text-ps-label">
               Note
               <input value={notes} onChange={(e) => setNotes(e.target.value)}
                 className={`${FIELD} w-full mt-1`} />
@@ -342,19 +342,19 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
               const bad = (amounts[h.key] ?? "").trim() !== ""
                 && paiseFromRupeeInput(amounts[h.key] ?? "") === null;
               return (
-                <label key={h.key} className="text-[11px] text-ps-label">
+                <label key={h.key} className="text-2xs text-ps-label">
                   {h.label}
                   <input value={amounts[h.key] ?? ""} type="text" inputMode="decimal"
                     onChange={(e) => setAmounts((a) => ({ ...a, [h.key]: e.target.value }))}
                     className={`${FIELD} w-full mt-1 text-right ${bad ? "border-red-300" : ""}`} />
-                  {bad && <span className="text-[10px] text-red-600">Not an amount.</span>}
+                  {bad && <span className="text-3xs text-red-600">Not an amount.</span>}
                 </label>
               );
             })}
           </div>
 
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-ps-label">
+            <span className="text-2xs text-ps-label">
               Total <span className="font-mono text-ps-ink">{money(total)}</span>
               {total === 0 && !anyBad && (
                 <span className="text-ps-hint"> · a nil row declares nothing</span>
@@ -385,18 +385,18 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
           <div className={advances.table_11_computed
             ? "rounded-lg border border-ps-border bg-ps-bg p-2.5"
             : "rounded-lg border border-amber-200 bg-amber-50 p-2.5"}>
-            <p className={`text-[11px] font-semibold ${
+            <p className={`text-2xs font-semibold ${
               advances.table_11_computed ? "text-ps-body" : "text-amber-800"}`}>
               {advances.table_11_computed
                 ? "Table 11 is computed for this client"
                 : "Table 11 is not computed for this client"}
             </p>
-            <p className={`text-[11px] mt-0.5 max-w-[90ch] ${
+            <p className={`text-2xs mt-0.5 max-w-[90ch] ${
               advances.table_11_computed ? "text-ps-label" : "text-amber-800"}`}>
               {advances.why}
             </p>
             {advances.rule && (
-              <p className={`text-[10px] mt-1 ${
+              <p className={`text-3xs mt-1 ${
                 advances.table_11_computed ? "text-ps-label" : "text-amber-700"}`}>
                 {advances.rule}
               </p>
@@ -404,11 +404,11 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
           </div>
 
           {advances.unadjusted_advances.length === 0 ? (
-            <p className="text-[11px] text-ps-hint">
+            <p className="text-2xs text-ps-hint">
               No unadjusted advances in {gstPeriodLabel(advances.period)}.
             </p>
           ) : (
-            <table className="w-full text-[11px]">
+            <table className="w-full text-2xs">
               <thead>
                 <tr className="text-left text-ps-label border-b border-ps-border">
                   <th className="py-1.5 pr-2">Receipt</th>
@@ -426,7 +426,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
                     <td className="py-1.5 pr-2 text-ps-label">
                       {a.customer_name ?? "—"}
                       {a.customer_gstin && (
-                        <span className="block text-[10px] text-ps-hint font-mono">
+                        <span className="block text-3xs text-ps-hint font-mono">
                           {a.customer_gstin}
                         </span>
                       )}

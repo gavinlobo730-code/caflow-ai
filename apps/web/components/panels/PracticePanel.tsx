@@ -32,7 +32,7 @@ export function PracticePanel() {
         </div>
         <div>
           <p className="text-[12px] font-semibold text-brand leading-none">Practice</p>
-          <p className="text-[10px] text-gray-500 mt-0.5 leading-none">Firm revenue &amp; operations</p>
+          <p className="text-3xs text-gray-500 mt-0.5 leading-none">Firm revenue &amp; operations</p>
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto py-2 px-2">

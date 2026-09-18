@@ -165,28 +165,28 @@ export function PurchaseCreditNoteViewDrawer({
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-ps-ink truncate">{vendorName || "—"}</p>
-                <p className="text-[10px] text-ps-hint">{isInterstate ? "Inter-state · IGST" : "Intra-state · CGST+SGST"}</p>
+                <p className="text-3xs text-ps-hint">{isInterstate ? "Inter-state · IGST" : "Intra-state · CGST+SGST"}</p>
               </div>
               <div className="text-right flex-shrink-0">
                 <p className="text-base font-semibold text-ps-ink font-mono">{fmt(pcn.total_paise ?? 0)}</p>
-                <p className="text-[10px] text-ps-hint">Credit note total</p>
+                <p className="text-3xs text-ps-hint">Credit note total</p>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${PCN_STATUS_BADGE[pcn.status] ?? "bg-ps-muted text-ps-label"}`}>
+              <span className={`px-2 py-0.5 rounded-full text-3xs font-medium ${PCN_STATUS_BADGE[pcn.status] ?? "bg-ps-muted text-ps-label"}`}>
                 {pcn.status}
               </span>
               {pcn.is_reverse_charge && (
                 <>
                   <span className="text-ps-border">·</span>
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">RCM</span>
+                  <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-amber-50 text-amber-700 border border-amber-200">RCM</span>
                 </>
               )}
               {pcn.document_url && (
                 <>
                   <span className="text-ps-border">·</span>
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-ps-bg text-ps-hint border border-ps-border">
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-3xs font-medium bg-ps-bg text-ps-hint border border-ps-border">
                     <Paperclip size={9} /> Attached
                   </span>
                 </>
@@ -216,7 +216,7 @@ export function PurchaseCreditNoteViewDrawer({
           <section>
             <h4 className="text-xs font-semibold text-ps-body mb-2">Line items</h4>
             <div className="overflow-x-auto border border-ps-muted rounded-lg">
-              <table className="w-full text-[11px]">
+              <table className="w-full text-2xs">
                 <thead>
                   <tr className="text-ps-hint border-b border-ps-muted">
                     <th className="px-2 py-1.5 text-left font-semibold">Description</th>
@@ -260,7 +260,7 @@ export function PurchaseCreditNoteViewDrawer({
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-semibold text-ps-body">Accounting</h4>
               {posted && (
-                <button onClick={openJournal} className="text-[11px] text-blue-600 hover:underline flex items-center gap-1">
+                <button onClick={openJournal} className="text-2xs text-blue-600 hover:underline flex items-center gap-1">
                   <BookOpen size={11} /> View Journal {showJournal ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                 </button>
               )}
@@ -270,9 +270,9 @@ export function PurchaseCreditNoteViewDrawer({
             {showJournal && (
               <div className="border border-ps-muted rounded-lg p-2 bg-ps-bg">
                 {journalLoading ? (
-                  <div className="flex items-center gap-2 text-[11px] text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
+                  <div className="flex items-center gap-2 text-2xs text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
                 ) : journal?.lines?.length ? (
-                  <table className="w-full text-[11px]">
+                  <table className="w-full text-2xs">
                     <thead><tr className="text-ps-hint"><th className="text-left font-semibold py-1">Account</th><th className="text-right font-semibold">Debit</th><th className="text-right font-semibold">Credit</th></tr></thead>
                     <tbody>
                       {journal.lines.map((jl, i) => (
@@ -285,7 +285,7 @@ export function PurchaseCreditNoteViewDrawer({
                     </tbody>
                   </table>
                 ) : (
-                  <p className="text-[11px] text-ps-hint py-1">Journal {pcn.journal_entry_id} — line detail unavailable here.</p>
+                  <p className="text-2xs text-ps-hint py-1">Journal {pcn.journal_entry_id} — line detail unavailable here.</p>
                 )}
               </div>
             )}
@@ -300,9 +300,9 @@ export function PurchaseCreditNoteViewDrawer({
                 {activity.map((a, i) => (
                   <li key={i} className="relative">
                     <span className="absolute -left-[15px] top-1 h-1.5 w-1.5 rounded-full bg-ps-border-strong" />
-                    <p className="text-[11px] text-ps-body">{a.title}</p>
-                    {a.detail && <p className="text-[10px] text-ps-hint">{a.detail}</p>}
-                    <p className="text-[10px] text-ps-disabled">{formatDateTime(a.at)}</p>
+                    <p className="text-2xs text-ps-body">{a.title}</p>
+                    {a.detail && <p className="text-3xs text-ps-hint">{a.detail}</p>}
+                    <p className="text-3xs text-ps-disabled">{formatDateTime(a.at)}</p>
                   </li>
                 ))}
               </ol>

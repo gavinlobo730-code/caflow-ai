@@ -60,7 +60,7 @@ function Revenue() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
         {cards.map((c) => (
           <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-[11px] text-gray-500 uppercase tracking-wide">{c.label}</p>
+            <p className="text-2xs text-gray-500 uppercase tracking-wide">{c.label}</p>
             <p className="text-base font-semibold text-brand tabular-nums mt-1.5">{c.value}</p>
           </div>
         ))}
