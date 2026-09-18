@@ -27,7 +27,7 @@ import { api, type ClientGstRegistration, type GstRegistrationKinds,
          type ClientGstTurnover } from "@/lib/api";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -291,7 +291,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
         <div className="flex items-end gap-2 flex-wrap">
           <label className="text-xs">
             <span className="block text-ps-body font-medium mb-1">Financial year</span>
-            <PeriodPicker value={tvForm.fy} onChange={v => setTvForm(f => ({ ...f, fy: v }))}
+            <YearPicker value={tvForm.fy} onChange={v => setTvForm(f => ({ ...f, fy: v }))}
             count={8} size="sm" className="w-auto" />
           </label>
           <label className="text-xs">

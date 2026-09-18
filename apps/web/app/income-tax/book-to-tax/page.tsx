@@ -43,7 +43,7 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { request } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 interface BridgeLine {
   label: string;
@@ -149,7 +149,7 @@ export default function BookToTaxBridgePage() {
             onChange={(id) => setClientId(id)} ariaLabel="Client"
             placeholder="Select a client" />
         </div>
-        <PeriodPicker value={fy} onChange={setFy} className="w-auto" />
+        <YearPicker value={fy} onChange={setFy} className="w-auto" />
       </div>
 
       {error && <div className="bg-state-problem-surface text-state-problem rounded-lg px-5 py-4 text-sm">{error}</div>}

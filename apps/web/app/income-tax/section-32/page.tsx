@@ -40,7 +40,7 @@ import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { GapList, StatutoryNotes } from "@/components/ui/callout";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -180,7 +180,7 @@ export default function Section32Page() {
         </div>
         <div>
           <label className="text-xs text-ps-label">Previous year</label>
-          <PeriodPicker value={fy} onChange={setFy} className="mt-1 w-auto" />
+          <YearPicker value={fy} onChange={setFy} className="mt-1 w-auto" />
         </div>
       </div>
 

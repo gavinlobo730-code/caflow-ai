@@ -9,7 +9,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -819,7 +819,7 @@ function Form26ASTab({ clientId }: { clientId: string }) {
         you paste. IT Act s.285BB with Rule 114-I.
       </p>
       <div className="space-y-3">
-        <PeriodPicker value={fy} onChange={setFy} />
+        <YearPicker value={fy} onChange={setFy} />
         {/* NO SPECIMEN PAN, even as a placeholder. A screen must not carry a
             statutory identifier it could send —
             scripts/no-screen-invents-a-statutory-identifier.test.ts holds that

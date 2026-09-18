@@ -21,7 +21,7 @@ import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 import {
   computeReturnFromBooks, approveTDSReturn, markTDSFiled,
   saveTDSReturn, downloadTDSJSON, currentFinancialYear, currentQuarter,
@@ -226,7 +226,7 @@ export default function TDSReturnsPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Financial Year</label>
-            <PeriodPicker value={financialYear} onChange={setFinancialYear} />
+            <YearPicker value={financialYear} onChange={setFinancialYear} />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Quarter</label>

@@ -44,7 +44,7 @@ import { api, type MSME43BHWorking, type MSMEDInterest } from "@/lib/api";
 import * as XLSX from "xlsx";
 import type { Client } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 export default function MSME43BHPage() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -137,7 +137,7 @@ export default function MSME43BHPage() {
             placeholder="Select a client"
           />
         </div>
-        <PeriodPicker value={fy} onChange={setFy} className="w-auto" />
+        <YearPicker value={fy} onChange={setFy} className="w-auto" />
         <div className="flex items-center gap-2">
           <label htmlFor="bank-rate" className="text-xs text-ps-label whitespace-nowrap">
             RBI Bank Rate

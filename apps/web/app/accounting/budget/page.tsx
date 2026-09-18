@@ -13,7 +13,7 @@ import { getClients } from "@/lib/data/clients";
 import { api, type BudgetRow, type BudgetVsActuals } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -221,7 +221,7 @@ export default function BudgetPage() {
           <Download size={14} /> Export
         </button>
         {/* FY Selector — derived from the clock, never a list of literals. */}
-        <PeriodPicker value={fy} onChange={v => setFy(v as FY)} size="sm" className="w-auto" />
+        <YearPicker value={fy} onChange={v => setFy(v as FY)} size="sm" className="w-auto" />
       </div>
 
       {/* Summary Bar */}

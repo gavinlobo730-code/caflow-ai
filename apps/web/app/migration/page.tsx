@@ -6,7 +6,7 @@ import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { Can } from "@/components/Can";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -230,7 +230,7 @@ export default function MigrationPage() {
               </div>
               <div>
                 <label className="text-3xs text-ps-label mb-1 block">Financial Year</label>
-                <PeriodPicker value={fy} onChange={setFy} size="sm" />
+                <YearPicker value={fy} onChange={setFy} size="sm" />
               </div>
               <div>
                 <label className="text-3xs text-ps-label mb-2 block">Import Types</label>

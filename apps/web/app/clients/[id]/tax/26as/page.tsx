@@ -6,7 +6,7 @@ import { formatWhole } from "@/lib/money/format";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL (TDS-20's first half).
@@ -262,7 +262,7 @@ export default function Form26ASPage() {
           <h2 className="text-sm font-semibold text-ps-ink">Form 26AS Reconciliation</h2>
           <p className="text-xs text-ps-hint mt-0.5">IT Act §285BB — Annual Information Statement</p>
         </div>
-        <PeriodPicker value={fy} onChange={setFy} size="sm" className="w-auto" />
+        <YearPicker value={fy} onChange={setFy} size="sm" className="w-auto" />
       </div>
 
       <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">

@@ -29,7 +29,7 @@ import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/Fili
 import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
 import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
 import { GapList } from "@/components/ui/callout";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1406,7 +1406,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <PeriodPicker value={fy} onChange={setFy} anchorMonth={month} size="sm" className="w-auto" />
+          <YearPicker value={fy} onChange={setFy} anchorMonth={month} size="sm" className="w-auto" />
           <button onClick={() => setOpen((v) => !v)}
             className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
             {open ? "Hide" : "Show"}

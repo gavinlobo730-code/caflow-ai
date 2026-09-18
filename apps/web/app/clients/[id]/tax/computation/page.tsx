@@ -9,7 +9,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { assessmentYearChoicesAround } from "@/lib/dates/periods";
 import RegimeElectionPanel from "@/components/tax/RegimeElectionPanel";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1089,7 +1089,7 @@ export default function TaxComputationPage() {
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="text-3xs text-ps-label mb-1 block">Assessment Year</label>
-                <PeriodPicker kind="ay" value={ay} onChange={setAy} size="sm" />
+                <YearPicker kind="ay" value={ay} onChange={setAy} size="sm" />
               </div>
               <div className="flex-1">
                 {/* s.115BAC's new/old election reaches an individual or HUF.
@@ -2243,7 +2243,7 @@ export default function TaxComputationPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <label className="text-2xs text-ps-label">
                     Assessment year the loss was computed in
-                    <PeriodPicker id="bf-loss-ay" kind="ay" count={10} placeholder="Select…" size="sm"
+                    <YearPicker id="bf-loss-ay" kind="ay" count={10} placeholder="Select…" size="sm"
                     className="mt-1" value={lossForm.assessment_year}
                     onChange={v => setLossForm(f => ({ ...f, assessment_year: v }))} />
                   </label>
@@ -2288,7 +2288,7 @@ export default function TaxComputationPage() {
                   </label>
                   <label className="text-2xs text-ps-label">
                     Last assessment year it may be set off in
-                    <PeriodPicker id="bf-loss-expiry" kind="ay" count={12} size="sm" className="mt-1"
+                    <YearPicker id="bf-loss-expiry" kind="ay" count={12} size="sm" className="mt-1"
                     placeholder="Work it out from the section" value={lossForm.expiry}
                     onChange={v => setLossForm(f => ({ ...f, expiry: v }))} />
                   </label>

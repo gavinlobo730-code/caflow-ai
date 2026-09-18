@@ -36,7 +36,7 @@ import type {
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { financialYearOfMonth } from "@/lib/dates/periods";
 import { GapList } from "@/components/ui/callout";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 export type DrawerEmployee = {
   id: string;
@@ -772,7 +772,7 @@ function PerquisitesSection({ employee, clientId }: {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <label className={LABEL}>Financial year
-          <PeriodPicker className="mt-1" value={fy}
+          <YearPicker className="mt-1" value={fy}
           onChange={v => { setFy(v); setResult(null); setDone(null); }} />
         </label>
         <Money label="Salary for Rule 3" value={salaryForRule3} onChange={setSalaryForRule3} />
@@ -977,7 +977,7 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
 
       <div className="grid grid-cols-2 gap-3">
         <label className={LABEL}>Year of receipt
-          <PeriodPicker className="mt-1" value={receiptFy} onChange={setReceiptFy} />
+          <YearPicker className="mt-1" value={receiptFy} onChange={setReceiptFy} />
         </label>
         <Money label="Total income in the year of receipt" value={totalIncome} onChange={setTotalIncome} />
         <label className={LABEL}>Form 10E acknowledgement

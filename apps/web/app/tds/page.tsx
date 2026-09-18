@@ -74,7 +74,7 @@ import {
   listTdsSections, previewTdsDeduction, createTdsDeduction, createTdsChallan,
   fetchDepositDue, type DepositDueWorksheet,
 } from "@/lib/data/tds";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 // ─── TDS section labels ──────────────────────────────────────────────────────
 //
@@ -753,7 +753,7 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">FY</label>
-              <PeriodPicker value={fy} onChange={setFy} />
+              <YearPicker value={fy} onChange={setFy} />
             </div>
           </div>
           <div>

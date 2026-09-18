@@ -125,16 +125,16 @@ test("every screen this was found on builds its list from a helper", () => {
   ];
   // THE RULE, NOT A SPELLING OF IT — again, and this file's own header already
   // records being fixed once for exactly this. On 18 Sep the 25 hand-rolled
-  // dropdowns became `<PeriodPicker>`, which CALLS the helper: the rule is
+  // dropdowns became `<YearPicker>`, which CALLS the helper: the rule is
   // better satisfied and every one of these assertions failed. What matters is
   // that the screen's list is DERIVED, by the screen or by a component that
   // derives it. `PeriodPicker` is checked below to be one.
-  const DERIVED = new RegExp(`${HELPER}|${AY_HELPER}|<PeriodPicker`);
+  const DERIVED = new RegExp(`${HELPER}|${AY_HELPER}|<YearPicker`);
   for (const path of FY_SCREENS) {
     const src = readFileSync(path, "utf8");
     assert.ok(DERIVED.test(src),
       `${path} no longer builds its financial-year list from ${HELPER}() ` +
-      "or from <PeriodPicker>, which does.");
+      "or from <YearPicker>, which does.");
   }
   // An ASSESSMENT year is the financial year plus one (IT Act §2(9) with §3),
   // so it goes stale identically and is derived from the same place.
@@ -142,7 +142,7 @@ test("every screen this was found on builds its list from a helper", () => {
                       "app/clients/[id]/tax/filing/page.tsx",
                       "app/income-tax/notices/page.tsx"]) {
     const src = readFileSync(path, "utf8");
-    assert.ok(new RegExp(`${AY_HELPER}|<PeriodPicker[^>]*kind="ay"`).test(src),
+    assert.ok(new RegExp(`${AY_HELPER}|<YearPicker[^>]*kind="ay"`).test(src),
       `${path} no longer builds its assessment-year list from ${AY_HELPER}().`);
   }
 });
@@ -151,7 +151,7 @@ test("the picker every one of those screens defers to is itself derived", () => 
   // The clause above lets a screen satisfy the rule by USING `PeriodPicker`,
   // so the rule now rests on this file. Without this test the whole guard
   // could be satisfied by a component that hard-codes a list.
-  const src = readFileSync("components/ui/period.tsx", "utf8");
+  const src = readFileSync("components/ui/year-picker.tsx", "utf8");
   assert.ok(src.includes(HELPER) && src.includes(AY_HELPER),
     "PeriodPicker no longer derives its years from lib/dates/periods, so " +
     "every screen deferring to it is now showing a list from nowhere");

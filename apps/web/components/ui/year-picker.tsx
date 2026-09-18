@@ -1,6 +1,24 @@
 /**
- * The financial-year and assessment-year picker.
+ * The financial-year and assessment-year picker — a YEAR, not a period.
  *
+ * ── IT IS NOT `components/PeriodPicker.tsx`, AND THE NAME IS THE FIX ────────
+ * This shipped as `PeriodPicker` for one commit, which put TWO components of
+ * that name in the tree: this one, and `components/PeriodPicker.tsx` — the
+ * RANGE control (Today / Yesterday / This Week / Last 3 Months / each FY by
+ * name / All Time / Custom Range, plus the Total-Monthly-Quarterly-Yearly
+ * granularity split) that the Trial Balance, the P&L and the Balance Sheet
+ * already use. The imports resolved, the build was green, and the trap was
+ * the one `lib/money/rupeeInput.ts` records in its own comment: *"Two
+ * functions with one name in one directory is how the wrong one gets
+ * called."*
+ *
+ * They are different questions. That one answers WHICH DATES, and its own
+ * docstring explains why the financial year is chosen inside it rather than
+ * in a header — a lesson worth not undoing. This one answers WHICH YEAR, for
+ * the ~25 screens whose whole scope is one FY or AY: a TDS quarter, an ITR
+ * filing, a year-end pack. A screen that needs a date RANGE wants the other.
+ *
+
  * ── WHY ─────────────────────────────────────────────────────────────────────
  * 21 of these across 24 files, in **14 distinct class strings** and FOUR
  * different focus treatments — `focus:border-blue-500`, `focus:ring-2
@@ -43,11 +61,11 @@ import {
   assessmentYearChoicesAround,
 } from "@/lib/dates/periods";
 
-export type PeriodKind = "fy" | "ay";
+export type YearKind = "fy" | "ay";
 
-export interface PeriodPickerProps {
+export interface YearPickerProps {
   /** Which year this is. `fy` is April–March; `ay` is the year after it. */
-  kind?: PeriodKind;
+  kind?: YearKind;
   value: string;
   onChange: (value: string) => void;
   /** Anchors the list so a screen already showing an older year keeps it in
@@ -79,12 +97,12 @@ export interface PeriodPickerProps {
  *  IT Act §2(9) with §3 makes AY 2026-27 the same period as FY 2025-26, and a
  *  CA reading two dropdowns on one screen has no other way to tell them
  *  apart. The stored VALUE is the bare year, unchanged. */
-function optionLabel(kind: PeriodKind, year: string): string {
+function optionLabel(kind: YearKind, year: string): string {
   return `${kind === "ay" ? "AY" : "FY"} ${year}`;
 }
 
-export function periodChoices(
-  kind: PeriodKind,
+export function yearChoices(
+  kind: YearKind,
   anchorMonth?: string | null,
   include?: string[],
   count?: number,
@@ -97,7 +115,7 @@ export function periodChoices(
   return extra.length ? [...base, ...extra].sort().reverse() : base;
 }
 
-export function PeriodPicker({
+export function YearPicker({
   kind = "fy",
   value,
   onChange,
@@ -110,11 +128,11 @@ export function PeriodPicker({
   include,
   placeholder,
   count,
-}: PeriodPickerProps) {
+}: YearPickerProps) {
   // The CURRENT value is always selectable, whatever the window says. A
   // `<select>` whose value matches no option shows its first option instead,
   // so a screen restored to an old year would silently read as a new one.
-  const years = periodChoices(kind, anchorMonth, [...(include ?? []), value].filter(Boolean), count);
+  const years = yearChoices(kind, anchorMonth, [...(include ?? []), value].filter(Boolean), count);
   const control = (
     <Select
       id={id}

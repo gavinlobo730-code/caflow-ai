@@ -24,7 +24,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { todayLocalISO } from "@/lib/dateMath";
-import { PeriodPicker } from "@/components/ui/period";
+import { YearPicker } from "@/components/ui/year-picker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -174,7 +174,7 @@ function AddModal({ clients, onClose, onAdded }: {
             </div>
             <div>
               <label className={lbl}>Assessment Year</label>
-              <PeriodPicker kind="ay" value={form.assessmentYear} onChange={v => upd({ assessmentYear: v })} />
+              <YearPicker kind="ay" value={form.assessmentYear} onChange={v => upd({ assessmentYear: v })} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

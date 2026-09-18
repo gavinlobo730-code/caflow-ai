@@ -171,3 +171,48 @@ test("the guards fire on the defect they name", () => {
   // `statutory_gaps.map(` must NOT be counted twice by the gaps regex.
   assert.equal((`{x.statutory_gaps.map((g) => <p/>)}`.match(/\bgaps\.map\(/g) ?? []).length, 0);
 });
+
+// ── 5. NO TWO COMPONENTS SHARE A NAME ──────────────────────────────────────
+// `components/ui/year-picker.tsx` shipped for one commit as `PeriodPicker`,
+// which is also `components/PeriodPicker.tsx` — the RANGE control the Trial
+// Balance, the P&L and the Balance Sheet use. Different paths, so every import
+// resolved and the build was green; the trap is the one
+// `lib/money/rupeeInput.ts` records in its own comment: *"Two functions with
+// one name in one directory is how the wrong one gets called."* It is not
+// confined to one directory, and `components/` is flat enough that it did not
+// need to be.
+//
+// Stated over the whole tree rather than over that pair, because naming the
+// pair is naming a spelling — the thing this file exists to stop doing.
+test("no exported component name is declared in two files", () => {
+  const DECL = /^export\s+(?:default\s+)?function\s+([A-Z]\w*)/gm;
+  const homes = new Map<string, string[]>();
+  for (const f of FILES) {
+    if (f.startsWith("app/")) continue; // a route's default export is its page
+    for (const m of read(f).matchAll(DECL)) {
+      const at = homes.get(m[1]) ?? [];
+      at.push(f);
+      homes.set(m[1], at);
+    }
+  }
+  const clashes = [...homes.entries()]
+    .filter(([, at]) => new Set(at).size > 1)
+    .map(([name, at]) => `${name}: ${[...new Set(at)].join(", ")}`);
+  assert.deepEqual(
+    clashes,
+    [],
+    "two components share a name. Imports still resolve and the build stays " +
+      "green, so nothing tells the next reader which one they reached for:\n  " +
+      clashes.join("\n  "),
+  );
+});
+
+test("the clash detector finds one when there is one", () => {
+  // Against strings written here, so it cannot go inert once the tree is clean.
+  const DECL = /^export\s+(?:default\s+)?function\s+([A-Z]\w*)/gm;
+  const names = (src: string) => [...src.matchAll(DECL)].map((m) => m[1]);
+  assert.deepEqual(names("export function PeriodPicker({a}: P) {}"), ["PeriodPicker"]);
+  assert.deepEqual(names("export default function PeriodPicker({a}: P) {}"), ["PeriodPicker"]);
+  assert.deepEqual(names("function NotExported() {}"), []);
+  assert.deepEqual(names("export function useThing() {}"), []); // hooks are not components
+});
