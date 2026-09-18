@@ -1,3 +1,4 @@
+import { formatWhole } from "@/lib/money/format";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type {
   TeamAnalyticsReport,
@@ -48,13 +49,18 @@ export async function getTeamWorkload(): Promise<TeamWorkload> {
   return resp.data;
 }
 
-export function formatRupees(paise: number): string {
-  const rupees = paise / 100;
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(rupees);
+/**
+ * A whole-rupee figure, for a dashboard tile where the paise are noise.
+ *
+ * DELEGATES to `lib/money/format.formatWhole`, which differs from this body in
+ * one way that matters: it does not ROUND. This one did, so ₹1,23,456.50 came
+ * out ₹1,23,457 — a second implementation of a rounding rule, disagreeing with
+ * CGST §170 (half rounded up, `domain/gst/money.py`) at exactly the value it is
+ * most often asked about. A figure carrying paise now renders WITH them, so
+ * the row stands out instead of quietly differing from what will be filed.
+ */
+export function formatRupees(paise: number | string | null | undefined): string {
+  return formatWhole(paise);
 }
 
 export function formatHours(minutes: number): string {
