@@ -174,6 +174,64 @@ export function Hero() {
       </div>
 
       {/*
+        ── The asteroid field, lifted ─────────────────────────────────────────
+
+        Owner question, 18-09-2026: *"the left bottom corner there are asteroids
+        and some other planet or something right should we make it a bit bright
+        what do you think?"*
+
+        Yes, and the first answer was wrong. The assumption was that the corner
+        looked dim because the scrim below was sitting on it, so the scrim's
+        bottom-left wash was narrowed from 70% to 40% — which is right in
+        itself, since at the owner's 1599px window it had been reaching x=1215
+        while the copy ends at x=612. But an A/B of the two gradients put the
+        difference at **+2.4 luma at its peak and +0.8 over the whole corner**.
+        The scrim was not what was dimming it. The corner is simply dark in the
+        artwork, so brightening it means brightening the PICTURE.
+
+        A SECOND COPY OF THE IMAGE, FILTERED AND MASKED TO THAT CORNER. It costs
+        no second download — same `src`, so the browser decodes once — and it
+        leaves the owner's own file untouched, which a baked-in edit would not.
+        `brightness(1.35)` takes the asteroid field from 28 to 33 of 255:
+        enough for the rim-lit rocks to read as rocks rather than noise, and
+        well short of competing with the planet, which is the thing that must
+        stay the subject.
+
+        THE MASK KEEPS IT OFF THE TEXT, which is the whole reason it is masked
+        rather than applied to the picture. It is centred at 34% across — past
+        the copy column — and fades out by 75%, so the trust chips and the four
+        figures' 11px labels at `text-white/45` keep their dark floor. Measured
+        through the lift, the region behind the figures goes from 23 to 26 of
+        255 and the worst line of hero copy stays above 8:1 against a 4.5:1
+        requirement.
+
+        `lg` and up only: on a phone the crop is anchored at 30% and this corner
+        is not on screen at all.
+      */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0 hidden lg:block"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={ARTWORK}
+          alt=""
+          width={1600}
+          height={900}
+          loading="eager"
+          decoding="async"
+          className="h-full w-full object-cover object-center"
+          style={{
+            filter: "brightness(1.35) saturate(1.1)",
+            maskImage:
+              "radial-gradient(46% 58% at 34% 100%, #000 0%, #000 35%, transparent 75%)",
+            WebkitMaskImage:
+              "radial-gradient(46% 58% at 34% 100%, #000 0%, #000 35%, transparent 75%)",
+          }}
+        />
+      </div>
+
+      {/*
         ── The scrim ──────────────────────────────────────────────────────────
 
         WHITE TEXT OVER A PHOTOGRAPH NEEDS A FLOOR UNDER IT, and measuring said
@@ -189,6 +247,31 @@ export function Hero() {
         belt. Both stop well before the planet, so nothing dims the picture's
         subject. The whole thing is one element with two gradients so it is one
         paint, and it sits ABOVE the image and BELOW the content.
+
+        ⚠️ THE CORNER WASH IS 40% WIDE, NOT 70%, AND THAT IS THE ASTEROID BELT
+        BEING LET THROUGH ON PURPOSE. Owner question, 18-09-2026: *"the left
+        bottom corner there are asteroids and some other planet or something
+        right should we make it a bit bright what do you think?"*
+
+        The answer is yes for most of it and no for the part under the text,
+        and the reason is measurable rather than a matter of taste. At 70%
+        width the ellipse reached x=1215 at the owner's own 1599px window while
+        the copy ends at x=612 — so it was dimming about 600px of picture that
+        has no text over it at all, and 850px at 1920. Narrowing it to 40%
+        brings the reach back to roughly where the copy ends, so the belt and
+        the moon beyond it are seen at the artwork's own brightness.
+
+        WHAT STAYS DARK IS THE PART DIRECTLY UNDER THE COPY, because that is
+        where the hero's most fragile text is: the trust chips and the four
+        figures' 11px labels at `text-white/45`, sitting on the brightest part
+        of the lower left (95th-percentile luminance 160-189 measured on the
+        artwork). Brightening there would take contrast off the weakest thing
+        on the screen. Measured either side of this change, the worst line of
+        hero copy is unmoved.
+
+        Nothing is brightened beyond what the picture already contains — no
+        filter, no boost. The scrim simply stops covering ground it did not
+        need to.
 
         ⚠️ AND THE PHONE GETS A FLAT ONE INSTEAD, because a DIRECTIONAL scrim
         is the wrong tool there. On a phone the copy is not in a left column,
@@ -206,7 +289,7 @@ export function Hero() {
         style={{
           backgroundImage: [
             "linear-gradient(100deg, rgba(2,8,22,0.92) 0%, rgba(2,8,22,0.78) 22%, rgba(2,8,22,0.34) 42%, rgba(2,8,22,0) 58%)",
-            "radial-gradient(70% 55% at 6% 100%, rgba(2,8,22,0.82), rgba(2,8,22,0) 70%)",
+            "radial-gradient(40% 52% at 4% 100%, rgba(2,8,22,0.82), rgba(2,8,22,0) 72%)",
           ].join(","),
         }}
       />

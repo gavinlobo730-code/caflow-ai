@@ -633,15 +633,25 @@ def test_the_hero_picture_is_decorative_and_the_modules_are_named_on_the_page():
     live_hero = "\n".join(line for _no, line in _live_lines(hero))
 
     tags = [("<img" + chunk).split(">")[0] for chunk in live_hero.split("<img")[1:]]
-    assert len(tags) == 1, (
-        f"expected exactly one image in the hero — the background — and found "
-        f"{len(tags)}. If another arrived, decide whether it carries content "
-        f"and extend this check; do not delete it."
+    assert 1 <= len(tags) <= 2, (
+        f"the hero has {len(tags)} images. It should have one — the background "
+        f"— or two, where the second is the masked brightness lift over the "
+        f"asteroid field. A third means something is carrying content as a "
+        f"picture again, which is what the module labels used to do."
     )
-    assert 'alt=""' in tags[0], (
-        "the hero background needs an empty alt. It is decorative, and it has "
-        "been through three arrangements of the module labels without that "
-        "changing."
+    # EVERY one of them is decorative, which is the durable rule. The second
+    # image is the SAME src as the first, filtered and masked to one corner, so
+    # describing it would make a screen reader read the same scenery twice.
+    for i, tag in enumerate(tags):
+        assert 'alt=""' in tag, (
+            f"hero image {i + 1} of {len(tags)} has a non-empty alt. Both are "
+            f"decorative: the background carries no content since the module "
+            f"labels became the Ecosystem section's job, and the lift is a "
+            f"second copy of that same file."
+        )
+    assert all("ARTWORK" in t for t in tags), (
+        "a hero image is not the committed artwork. Both layers have to be the "
+        "same `src` — that is what makes the second one free to decode."
     )
 
     # The modules, anywhere the homepage renders. Ecosystem is where they live
