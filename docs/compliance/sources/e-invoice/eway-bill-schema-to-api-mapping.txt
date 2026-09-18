@@ -1,0 +1,71 @@
+Mapping of E-way bill schema with API (IRN) schema
+Skip to Main Content|
+Skip to Navigation|
+Text Size    A- A A+
+A
+A
+GOODS AND SERVICES TAX
+e - Invoice System
+e - Invoice APIDeveloper's Portal
+
+Ewaybill Attribute IRN Attribute Description Remarks
+supplyType NA Supply Type
+supplyType of e-
+waybill generated for
+IRN is always 'O' -
+Outward
+subSupplyType NA Sub Supply Type
+subSupplyType =
+'3'(Export) when
+TranDtls.SupTyp is
+EXPWOP/EXPWP,
+subSupplyType =
+'1'(Supply) otherwise
+subSupplyDesc NA Not Applicable
+transactionType NA Transaction type
+transaction type =
+1(Regular), if
+Dispatch-from and
+Ship-to details are
+not provided,
+transaction type =
+2(Ship to), if only
+Ship-to details are
+provided, transaction
+type = 3(Dispatch
+from), if only
+Dispatch-from details
+are provided ,
+transaction type =
+4(Combination), if
+both Dispatch-from
+and Ship-to details
+are provided
+docType DocDtls.Typ Document Type
+Applicable only for
+INV(Invoice) in e
+Invoice
+E-Waybill
+ API 
+Dev. Portal
+(https://docs.ewaybillgst.gov.in/apidocs/)
+
+Site is designed and hosted by : National Informatics Centre (https://www.nic.in/)
+Contents on this website is published and managed by: e-Invoice Team, National Informatics Centre,
+Govt. of India.
+© 2020 e-Invoice Team, National Informatics Centre, Govt. of India. All rights reserved.
+ 
+
+
+Home (index.html)
+Contact Us (contact-us.html)
+Sitemap (sitemap.html)
+Terms & Conditions (terms-and-conditions.html)
+Privacy Policy (privacy-policy.html)
+Copyright Policy (copyright-policy.html)
+Hyperlink Policy (hyperlinking-policy.html)
+E-Waybill
+ API 
+Dev. Portal
+(https://docs.ewaybillgst.gov.in/apidocs/)
+

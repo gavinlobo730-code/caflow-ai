@@ -1,0 +1,103 @@
+Sr.No. (Published in GSTN Portal) Regular Expression 
+1 Basic Details   
+1.1 Document_Num ^([a-zA-Z1-9]{1}[a-zA-Z0-9/-]{0,15})$ 
+1.2 Document_Date ^[0-3][0-9]/[0-1][0-9]/[2][0][1-2][0-9]$ 
+2 Delivery_or_Invoice_Period   
+  Document_Period_Start_Date ^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[012])/(19[8-9][0-
+9]|20[0-5][0-9])$ 
+  Document_Period_End_ Date ^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[012])/(19[8-9][0-
+9]|20[0-5][0-9])$ 
+3 Preceding Document / Contract 
+Reference   
+3.1 Preceding Document Reference   
+3.1.1 Preceding_Document_ Number ^([a-zA-Z1-9]{1}[a-zA-Z0-9/-]{0,15})$ 
+3.1.2 Preceding_Document_ Date ^[0-3][0-9]/[0-1][0-9]/[2][0][1-2][0-9]$ 
+3.2 Receipt / Contract References   
+3.2.1 Receipt_Advice _Date ^[0-3][0-9]/[0-1][0-9]/[2][0][1-2][0-9]$ 
+3.2.2 PO_Ref_Date ^[0-3][0-9]/[0-1][0-9]/[2][0][1-2][0-9]$ 
+4 Supplier Information   
+4.1 Supplier_GSTIN ([0-9]{2}[A-Z 0-9]{13}) 
+4.2 Supplier_State_Code ^([0-9]{1,2})$ 
+4.3 Supplier_Phone ^([0-9]{6,12})$ 
+4.4 Supplier_Email ^[a-zA-Z0-9+_.-]+@[a-zA-Z0-9.-]+$ 
+5 Recipient Information   
+5.1 Recipient_GSTIN ([0-9]{2}[A-Z 0-9]{13})|URP      
+5.2 Place_Of_Supply_State_Code ^([0-9]{1,2})$ 
+5.3 Recipient_State_Code ^([0-9]{1,2})$ 
+5.4 Recipient_Phone ^([0-9]{6,12})$ 
+5.5 Recipient_email_ID ^[a-zA-Z0-9+_.-]+@[a-zA-Z0-9.-]+$ 
+9 Extra Information   
+9.1 Export_Duty_Amount ^\d+.?\d{0,2}$ 
+9.2 ECOM_GSTIN ([0-9]{2}[A-Z 0-9]{13}) 
+10 E-way Bill Details   
+10.1 Transporter_ID ([0-9]{2}[A-Z 0-9]{13}) 
+10.2 Trans_Mode ([1-4]{1})? 
+10.3 Trans_Doc_No. ^[a-zA-Z0-9]{1}[a-zA-Z0-9-/]*$ 
+10.4 Trans_Doc_Date ^[0-3][0-9]/[0-1][0-9]/[2][0][1-2][0-9]$ 
+A.1.0 Ship to Details   
+A.1.0.1 ShipTo_GSTIN ([0-9]{2}[A-Z 0-9]{13})|URP 
+A.1.1 Dispatch From Details   
+A.1.1.1 DispatchFrom_State_Code ^([0-9]{1,2})$ 
+A.1.2 Item Details   
+A.1.2.1 Sl_No. ^[0-9]*$ 
+A.1.2.2 HSN_Code ^[0-9]*$ 
+A.1.2.3 Quantity ^\d+.?\d{0,3}$ 
+A.1.2.4 Free_Qty ^\d+.?\d{0,3}$ 
+A.1.2.5 Item_Price ^\d+.?\d{0,3}$ 
+A.1.2.6 Gross_Amount ^\d+.?\d{0,2}$ 
+A.1.2.7 Item_Discount_Amount ^\d+.?\d{0,2}$ 
+A.1.2.8 Pre_Tax_Value ^\d+.?\d{0,2}$ 
+A.1.2.9 Item_Taxable_Value ^\d+.?\d{0,2}$ 
+A.1.2.1
+0 GST_Rate ^\d+.?\d{0,3}$ 
+A.1.2.1
+1 IGST_Amt ^\d+.?\d{0,2}$ 
+A.1.2.1
+2 CGST_Amt ^\d+.?\d{0,2}$ 
+A.1.2.1
+3 SGST_UTGST_Amt ^\d+.?\d{0,2}$ 
+A.1.2.1
+4 Comp_Cess_Rate_Ad_Valorem ^\d+.?\d{0,3}$ 
+A.1.2.1
+5 Comp_Cess_Amt_ Ad_Valorem ^\d+.?\d{0,2}$ 
+A.1.2.1
+6 
+Comp_Cess_Amt_Non_Ad_Valor
+em ^\d+.?\d{0,2}$ 
+A.1.2.1
+7 State_Cess_Rate_Ad_Valorem ^\d+.?\d{0,3}$ 
+A.1.2.1
+8 State_Cess_Amt_Ad_Valorem ^\d+.?\d{0,2}$ 
+A.1.2.1
+9 
+State_Cess_Amt_Non_Ad_Valore
+m ^\d+.?\d{0,2}$ 
+A.1.2.2
+0 Other_Charges_Item_Level ^\d+.?\d{0,2}$ 
+A.1.2.2
+1 Item_Total_Amt ^\d+.?\d{0,2}$ 
+A.1.3 Document Total Details   
+A.1.3.1 Taxable_Value_Total ^\d+.?\d{0,2}$ 
+A.1.3.2 IGST_Amt_Total ^\d+.?\d{0,2}$ 
+A.1.3.3 CGST_Amt_Total ^\d+.?\d{0,2}$ 
+A.1.3.4 SGST_UTGST_Amt_Total ^\d+.?\d{0,2}$ 
+A.1.3.5 Comp_CESS_Amt_Total ^\d+.?\d{0,2}$ 
+A.1.3.6 State_Cess_Amt_Total ^\d+.?\d{0,2}$ 
+A.1.3.7 Discount_Amt_Invoice_Level ^\d+.?\d{0,2}$ 
+A.1.3.8 Other_Charges_Invoice_Level ^\d+.?\d{0,2}$ 
+A.1.3.9 Round_off_amount ^-?\d+.?\d{0,2}$ 
+A.1.3.1
+0 Total_Invoice_Value_INR ^\d+.?\d{0,2}$ 
+A.1.3.1
+1 Total_Invoice_Value_FCNR ^\d+.?\d{0,2}$ 
+A.1.3.1
+2 Paid_Amount ^\d+.?\d{0,2}$ 
+A.1.3.1
+3 Amount_due ^\d+.?\d{0,2}$ 
+A.1.4 colBatch Details   
+A.1.4.1 Batch_Expiry_Date ^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[012])/(19[8-9][0-
+9]|20[0-5][0-9])$ 
+A.1.4.2 Warranty_Date ^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[012])/(19[8-9][0-
+9]|20[0-5][0-9])$ 
+ 
+ 

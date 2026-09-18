@@ -1,0 +1,54 @@
+Mapping of Notified schema with API (IRN) schema
+Skip to Main Content|
+Skip to Navigation|
+Text Size    A- A A+
+A
+A
+GOODS AND SERVICES TAX
+e - Invoice System
+e - Invoice APIDeveloper's Portal
+
+Sr.No. (Published in GSTN Portal) (ListName.ObjectName.AttributeName
+1 Basic Details
+1.0 Version Version
+1.1 IRN Irn
+1.2 Supply_Type_Code TranDtls.SupTyp
+1.3 Document_Type_Code DocDtls.Typ
+1.4 Document_Num DocDtls.No
+1.5 Document_Date DocDtls.Dt
+1.6 Additional_Currency_Code ExpDtls.ForCur
+1.7 Reverse_Charge TranDtls.RegRev
+1.8 IGST_on_IntraState_Supply TranDtls.IgstOnIntra
+2 Delivery_or_Invoice_Period
+2.1 Document_Period_Start_Date RefDtls.DocPerdDtls.InvStDt
+2.2 Document_Period_End_ Date RefDtls.DocPerdDtls.InvEndDt
+3 Preceding Document / Contract Reference
+3.1 Preceding Document Reference
+3.1.1 Preceding_Document_ Number RefDtls.PrecDoc.InvNo
+3.1.2 Preceding_Document_ Date RefDtls.PrecDoc.InvDt
+3.1.3 Other_ Reference RefDtls.PrecDoc.OthRefNo
+E-Waybill
+ API 
+Dev. Portal
+(https://docs.ewaybillgst.gov.in/apidocs/)
+
+Site is designed and hosted by : National Informatics Centre (https://www.nic.in/)
+Contents on this website is published and managed by: e-Invoice Team, National Informatics Centre,
+Govt. of India.
+© 2020 e-Invoice Team, National Informatics Centre, Govt. of India. All rights reserved.
+ 
+
+
+3 2 i / C f
+Home (index.html)
+Contact Us (contact-us.html)
+Sitemap (sitemap.html)
+Terms & Conditions (terms-and-conditions.html)
+Privacy Policy (privacy-policy.html)
+Copyright Policy (copyright-policy.html)
+Hyperlink Policy (hyperlinking-policy.html)
+E-Waybill
+ API 
+Dev. Portal
+(https://docs.ewaybillgst.gov.in/apidocs/)
+
