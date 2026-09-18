@@ -90,23 +90,41 @@ export function Hero() {
         section, and the flat `#010918` behind it plus the derived star field
         that used to extend it are both gone, along with their generator.
 
-        ⚠️ `object-contain`, NOT `cover`, AND THAT IS AN OWNER DECISION WITH A COST.
-        Owner review of the preview, 18-09-2026: *"can the whole image fit on
-        the first page i guess some parts is cutting right?"* — and they were
-        right, `cover` was cropping it. Contain shows all of it.
+        ⚠️ `object-cover`, AND THE FIT HAS NOW BEEN SET THREE TIMES BY THE OWNER
+        LOOKING AT IT. The sequence is worth keeping, because each instruction
+        was right about what was on their screen and the two requirements
+        cannot both hold:
 
-        What it costs is that the section is `min-h-screen` and a screen is
-        rarely 16:9, so wherever the two aspects differ the picture no longer
-        reaches the section's edge. The remainder is filled with `#020a18`,
-        which is the artwork's own darkest corner, and the image's outermost
-        rows are FADED into it — see the mask below — because the edge means are
-        rgb(4,14,38) top and rgb(10,20,43) bottom against a bar of rgb(2,10,24),
-        and a 14-level step across a whole screen width is a visible seam even
-        though each colour alone reads as black. Bright pixels sit on those
-        edges too (max luma 173 top, 248 bottom), which would end abruptly.
+          1. `cover` — *"can the whole image fit on the first page i guess some
+             parts is cutting right?"* Correct: cover crops whatever does not
+             fit the section's shape.
 
-        On a viewport that IS 16:9 — 1920x1080, 1366x768, 2560x1440 — there is
-        no remainder at all and the fade touches only the outermost few rows.
+          2. `contain` — the whole frame, and then bars wherever the viewport
+             is not 16:9. Measured at their own window, 1598x745: the picture
+             came out 1459x821 inside a 1583-wide box, so **62px of flat colour
+             down each side**.
+
+          3. `cover` again — *"the image is not fitting on the whole hero first
+             page right so i guess you will have to trim the image on something
+             right so can you do it"*. Trimming is accepted, which is what
+             settles it: cover fills the section edge to edge at every size and
+             the browser does the trimming per viewport, so no trimmed asset is
+             needed and no window ever shows flat colour.
+
+        WHAT COVER TRIMS, AND WHY IT IS THE RIGHT THING TO LOSE. On a box WIDER
+        than 16:9 it fits by width and takes equal slices off the top and
+        bottom — the moon and some galaxy above, the asteroid belt's corner
+        below. On a NARROWER box it fits by height and takes equal slices off
+        the sides — the galaxy's left edge and the right-hand moon. The globe
+        is centred in the frame and survives every case; only the periphery
+        goes. A wider export of the same picture would reduce how much.
+
+        ⚠️ AND A SEPARATE THING IS ALSO TRUE AT THAT WINDOW, which no fit can
+        fix: the hero is `min-h-screen` and the copy needs 821px, so at a
+        745px-tall viewport the section is **76px TALLER than the screen** and
+        its last 76px are below the fold whatever the picture does. That is
+        ordinary for a hero carrying this much copy, and the band it puts below
+        the fold is the artwork's bottom corner rather than anything in it.
 
         `alt=""` because the picture now carries no content: the eight module
         labels that used to be baked into an earlier asset, and then briefly
@@ -146,19 +164,12 @@ export function Hero() {
             was unreadable, while 30% lands on the planet's dark limb and the
             galaxy beside it. The picture is cropped and the globe is there.
 
-            The whole frame is the DESKTOP requirement — "can the whole image
-            fit on the first page" was asked of the desktop preview — and on a
-            phone the two requirements genuinely cannot both hold.
+            Desktop cropped too in the end — see above — so the two agree on
+            the fit now and differ only in the ANCHOR, because a phone's crop
+            is severe enough that which fifth of the picture it keeps decides
+            whether the body text is readable.
           */
-          /*
-            `hero-letterbox-fade` is what makes the bars invisible, and it
-            lives in globals.css rather than here because it must apply ONLY
-            from `lg` up — where `contain` leaves a bar — and a style attribute
-            cannot carry a media query. On a phone `cover` fills the box, so the
-            same mask there would only vignette the picture against the header
-            and the next section.
-          */
-          className="hero-letterbox-fade h-full w-full object-cover object-[30%_center] lg:object-contain lg:object-center"
+          className="h-full w-full object-cover object-[30%_center] lg:object-center"
         />
       </div>
 
