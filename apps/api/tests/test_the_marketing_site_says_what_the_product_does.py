@@ -1311,29 +1311,49 @@ def test_the_transparent_header_is_not_bare_over_the_hero_artwork():
     it looks like something to delete when tidying a transparent header.
 
     (Flushing the bar to the hero's gutter moved the nav a further 145px into
-    the glare, which is what made this urgent rather than what caused it.)"""
-    header = (MARKETING / "components" / "SiteHeader.tsx").read_text(encoding="utf-8")
-    live = "\n".join(line for _no, line in _live_lines(header))
+    the glare, which is what made this urgent rather than what caused it.)
 
-    assert re.search(r"before:bg-\[linear-gradient\(", live), (
-        "the unscrolled header carries no scrim. Its links are white text on "
-        "the hero photograph from 58% of the viewport rightwards, where the "
-        "artwork is at its brightest — measured 1.04:1 at 1920, against a "
-        "4.5:1 floor. If the backdrop has been re-done another way, move this "
-        "guard to the new one rather than deleting it."
+    THE BACKDROP BELONGS TO THE HERO, NOT THE HEADER, and this guard looks
+    there on purpose. It was on the header first, as a pseudo-element under
+    the bar — and the header is shared by seven pages, six of which open on a
+    flat navy panel with no artwork. Measured, it darkened the top of every
+    one of them by 12 levels: a vignette nobody asked for, to fix a problem
+    only the homepage has. So the rule is held against the hero's own scrim,
+    which is the layer that exists because of the artwork."""
+    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+    live = "\n".join(line for _no, line in _live_lines(hero))
+
+    # The desktop scrim is the one that leaves the right of the frame bare —
+    # the phone's is a flat veil over the whole section and needs nothing.
+    assert re.search(r"linear-gradient\(\s*to bottom[^)]*rgba\(2,8,22", live), (
+        "the hero's scrim has no top-edge band, so the nav floating over this "
+        "section is white text on raw photograph from 58% of the viewport "
+        "rightwards, where the artwork is brightest — measured 1.04:1 at "
+        "1920, against a 4.5:1 floor. If the backdrop has been re-done "
+        "another way, move this guard to it rather than deleting it."
     )
 
-    # And it must be OFF once the bar is opaque: a scrim under the navy bar is
-    # invisible at best, and a seam across the open mobile sheet at worst.
-    assert "before:opacity-0" in live and "before:opacity-100" in live, (
-        "the header's scrim is not toggled between its two states. It belongs "
-        "to the transparent state only — `before:opacity-100` there and "
-        "`before:opacity-0` once `filled` (scrolled, or the mobile menu open)."
+    # It protects a bar of a FIXED height, so it is measured in pixels: a
+    # percentage band is a fraction of a `min-h-screen` section and is a
+    # different size on every window.
+    band = re.search(r"linear-gradient\(\s*to bottom(.*?)\)\",", live, flags=re.S)
+    assert band and "px" in band.group(1) and "%" not in band.group(1), (
+        "the hero's top-edge band is not measured in pixels. It exists to "
+        "cover a 68px header, and the section is `min-h-screen` — as a "
+        "percentage it is a different size on every window, and on a short "
+        "one it reaches down over the headline."
     )
 
-    # The bar's contents must out-paint it, or the scrim greys the whole row.
-    assert re.search(r'className="container-ps relative\b', live), (
-        "the header's content row is not `relative`. The scrim is an "
-        "absolutely positioned pseudo-element, so without a positioned row it "
-        "paints OVER the logo and every link and dims them by 80%."
+    # And the header must NOT have grown one of its own again.
+    header = "\n".join(
+        line
+        for _no, line in _live_lines(
+            (MARKETING / "components" / "SiteHeader.tsx").read_text(encoding="utf-8")
+        )
+    )
+    assert "linear-gradient" not in header, (
+        "the header carries a gradient again. It is shared by seven pages and "
+        "six of them open on a flat navy panel with no artwork, where this "
+        "darkened the top by a measured 12 levels. The backdrop belongs to "
+        "the hero, which is what owns the picture."
     )

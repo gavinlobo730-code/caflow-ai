@@ -97,36 +97,22 @@ export function SiteHeader() {
     // changes height by a pixel as you start scrolling is precisely the drift
     // this redesign was meant to end. An inset shadow draws the same line and
     // costs no layout.
-    // THE UNSCROLLED STATE CARRIES A SCRIM, and it is not cosmetic: without one
-    // the nav is white text laid directly on the hero artwork. The hero's own
-    // desktop scrim fades out at 58% of the viewport, so every link right of
-    // that sits on raw picture — and the picture's top-right is the sunrise
-    // glare and the planet rim, the brightest thing in the frame. Measured with
-    // the header's own ink hidden, white-on-backdrop was 2.92:1 at 1600, 1.04:1
-    // at 1920 and 1.84:1 at 2560 BEFORE the gutter moved; "Support" and
-    // "Resources" were already unreadable at 1920 on the live site. Flushing the
-    // bar left pushed the nav a further 145px into it, so this ships with it.
-    //
-    // A GRADIENT TALLER THAN THE BAR, not a background on it: a 68px block of
-    // colour is the "bulky header" §3 rules out and would draw a hard edge
-    // across the artwork. This fades to nothing 132px down, which reads as part
-    // of the sky. It is drawn on a pseudo-element so the bar keeps its own
-    // `bg-transparent` and the scrolled state is unchanged.
-    //
-    // Off whenever `filled` — the navy bar and the mobile sheet are opaque, so a
-    // scrim under them is invisible at best and a seam over the open panel at
-    // worst.
+    // THE BACKDROP FOR THE TRANSPARENT STATE IS NOT HERE, DELIBERATELY. The nav
+    // is white text and on the homepage it floats over a photograph, where it
+    // measured 1.04:1 against a 4.5:1 floor at 1920. The fix for that is the
+    // top band of the HERO's own scrim (`components/home/Hero.tsx`), not a
+    // layer on this bar: this component is shared by seven pages and six of
+    // them open on a flat navy panel with no artwork, where a scrim darkened
+    // the top by a measured 12 levels for no reason. The artwork belongs to one
+    // page, so the backdrop does too. Do not move it back here.
     <header
-      className={`fixed inset-x-0 top-0 z-50 transition-[background-color,box-shadow,backdrop-filter] duration-300 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[132px] before:bg-[linear-gradient(to_bottom,rgba(2,8,22,0.80),rgba(2,8,22,0.46)_46%,rgba(2,8,22,0))] before:transition-opacity before:duration-300 ${
+      className={`fixed inset-x-0 top-0 z-50 transition-[background-color,box-shadow,backdrop-filter] duration-300 ${
         filled
-          ? "bg-brand-dark/85 shadow-[inset_0_-1px_0_rgba(175,210,250,0.14)] backdrop-blur-[14px] before:opacity-0"
-          : "bg-transparent before:opacity-100"
+          ? "bg-brand-dark/85 shadow-[inset_0_-1px_0_rgba(175,210,250,0.14)] backdrop-blur-[14px]"
+          : "bg-transparent"
       }`}
     >
-      {/* `relative` so the bar's own contents paint ABOVE the scrim: the
-          pseudo-element is positioned and would otherwise cover this static
-          row, greying the logo and every link by 80%. */}
-      <div className="container-ps relative flex h-[68px] items-center justify-between gap-4">
+      <div className="container-ps flex h-[68px] items-center justify-between gap-4">
         {/* One mark, one colour, in both states — see the header note. */}
         <Logo theme="dark" />
 

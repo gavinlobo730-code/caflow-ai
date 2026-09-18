@@ -278,6 +278,30 @@ export function Hero() {
         it is the whole width — so a wash that fades out by 58% leaves the
         right-hand half of every line of body text unprotected, which is
         exactly how it rendered. Below `lg` it is a single even veil.
+
+        THE THIRD GRADIENT IS THE TOP EDGE, AND IT IS THE NAV'S BACKDROP. The
+        header floats over this section transparent until you scroll, and the
+        100deg wash above has faded to nothing by 58% of the viewport — so
+        every nav link right of that was white text on raw photograph, over
+        the sunrise glare and the planet rim. Measured with the bar's own ink
+        hidden, white on what is behind it was 10.31:1 at 1280, 10.23 at 1440,
+        2.92 at 1600, 1.04 at 1920 and 1.84 at 2560; "Support" and "Resources"
+        were unreadable at 1920. With this band: 16.23 / 17.17 / 6.98 / 5.58 /
+        4.98.
+
+        IT LIVES HERE RATHER THAN ON THE HEADER, and that is the whole point.
+        It was on the header first — a pseudo-element under the bar — and the
+        header is shared by seven pages, six of which open on a flat navy
+        panel with no artwork at all. Measured, it darkened the top of every
+        one of them by 12 levels: a vignette nobody asked for, applied to fix
+        a problem only this page has. The artwork is the hero's, so the
+        backdrop for anything floating over the artwork is the hero's too.
+
+        132px so it has faded out below a 68px bar rather than drawing a block
+        of colour across the picture, and `0px`/`60px`/`132px` in pixels
+        rather than percentages because it is protecting a bar of a fixed
+        height, not a fraction of the section. Desktop only: below `lg` the
+        flat veil above already covers it, and the nav is a hamburger.
       */}
       <div
         aria-hidden="true"
@@ -288,6 +312,7 @@ export function Hero() {
         className="pointer-events-none absolute inset-0 z-[1] hidden lg:block"
         style={{
           backgroundImage: [
+            "linear-gradient(to bottom, rgba(2,8,22,0.80) 0px, rgba(2,8,22,0.46) 60px, rgba(2,8,22,0) 132px)",
             "linear-gradient(100deg, rgba(2,8,22,0.92) 0%, rgba(2,8,22,0.78) 22%, rgba(2,8,22,0.34) 42%, rgba(2,8,22,0) 58%)",
             "radial-gradient(40% 52% at 4% 100%, rgba(2,8,22,0.82), rgba(2,8,22,0) 72%)",
           ].join(","),
