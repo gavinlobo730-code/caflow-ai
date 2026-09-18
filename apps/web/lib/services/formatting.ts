@@ -1,11 +1,25 @@
-/** Format paise (integer) to Indian currency display string */
-export function formatPaise(paise: number): string {
-  const rupees = paise / 100;
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 2,
-  }).format(rupees);
+import {
+  formatPaise as formatPaiseAuthority,
+  type PaiseInput,
+} from "@/lib/money/format";
+
+/**
+ * Format paise (integer) to an Indian currency display string.
+ *
+ * DELEGATES to `lib/money/format`, which is the authority, rather than
+ * building a second `Intl.NumberFormat`. This signature is kept because 73
+ * files import it, and re-exporting is what lets them move one at a time.
+ *
+ * The delegation is not cosmetic — it fixes what this body did:
+ * `formatPaise(undefined)` rendered the literal **"₹NaN"** on a screen, and
+ * `formatPaise(null)` rendered **"₹0.00"**, which is worse, because a figure
+ * nobody holds was shown as one somebody computed. Both now render an em
+ * dash. The widened parameter type is why: a `number`-only signature could
+ * not say so, while every caller was already free to pass an absent value
+ * through it.
+ */
+export function formatPaise(paise: PaiseInput): string {
+  return formatPaiseAuthority(paise);
 }
 
 /**

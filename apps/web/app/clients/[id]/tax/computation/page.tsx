@@ -3,6 +3,7 @@
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Save } from "lucide-react";
+import { formatWhole } from "@/lib/money/format";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -85,10 +86,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 
-function paise(amount: number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })
-    .format(amount / 100);
-}
+const paise = formatWhole;
 
 interface Snapshot {
   id: string;

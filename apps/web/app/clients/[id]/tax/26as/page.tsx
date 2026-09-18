@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Upload, RefreshCw, Loader2, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { formatWhole } from "@/lib/money/format";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
@@ -52,9 +53,7 @@ function Tally({ value, label, tone }: { value: number; label: string; tone: key
   );
 }
 
-function paise(v: number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v / 100);
-}
+const paise = formatWhole;
 
 interface Upload26AS {
   id: string;

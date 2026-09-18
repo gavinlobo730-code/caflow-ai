@@ -47,7 +47,7 @@ _Last updated: 2026-09-16_
 |---|---|---|---|---|
 | **T1** | Repair the safety net | 🔧 C | 4–6d | `DONE` — 7 of 7 |
 | **T2** | A demo firm that exists | 🔧 C | 2–3d | `DOING` — T2-0 done |
-| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `DOING` — T3-a, T3-b and T3-f done 18 Sep |
+| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `DOING` — T3-a, T3-b, T3-f and T3-c's money cell done 18 Sep |
 | **T4** | Token adoption | 🔧 C | 5–8d | `DOING` — colour done (10,146 → 116); type is next |
 | **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `TODO` — unblocked 16 Sep |
 | **T6** | Navigation + the hub | 🔧 C | 11–17d | `BLOCKED` on T4 |
@@ -244,7 +244,7 @@ So T3 is replace-and-migrate, not define.
 
 | component | why it is not generic | today |
 |---|---|---|
-| **Money cell** | integer paise, Indian grouping (D6), tabular numerals, explicit zero/negative policy (D5) | **53 independent formatters, 11 different behaviours** |
+| **Money cell** | ✅ **18 Sep** — `lib/money/format.ts`. Re-measured: **248 formatters, 26 behaviours**, not 53/11. **139 had no `en-IN` locale at all**, ~150 were null-unsafe, the shared one rendered `undefined` as "₹NaN" and `null` as "₹0.00", and the whole-rupee one ROUNDED — a second CGST §170. Four Intl construction sites became two, both inside the authority | ~~53 / 11~~ **done** |
 | **Dr/Cr pair** | signed paise + a normal side | 4 sites, no component |
 | **Statutory-gap callout** | the backend emits 32 differently-named gap fields from 96 files | 63 sites, 36 files, no component |
 | **Refusal banner** | `ErrorState`/`AsyncBoundary` already exist and are right | 198 inline sites in 125 files — adoption, not design |
@@ -282,9 +282,17 @@ right answer already; what it lacked was reach and two correct values.
   names. Folding them into `brand` changes what the banking screens look like,
   so it goes with the reference screens.
 
-**⚠️ T3-c's money cell changes visible figures on ~6 screens** (four currently
-show whole rupees, two silently drop paise). D5 settles the policy; the change
-still needs to be called out when it ships.
+**⚠️ T3-c's money cell changes visible figures, and the two that shipped on 18
+Sep are named.** `/clients/[id]/tax/26as` and `/clients/[id]/tax/computation`
+each carried a `paise()` helper at `maximumFractionDigits: 0`, so they ROUNDED.
+They now show the paise on any figure the server has not rounded — which is
+most of them — because a browser-side round is a second implementation of CGST
+§170 and disagrees with it at exactly ₹x.50. More information rather than less,
+and a visible change: ₹1,23,457 becomes ₹1,23,456.50.
+
+The remaining screens move with T4's adoption pass, one at a time, because 103
+of the sites that divide by 100 are CSV cells and `<input value>` strings that
+must NOT carry a ₹ or a comma — the one rule a naive sweep would get wrong.
 
 ---
 
@@ -617,7 +625,7 @@ c=collections.Counter(v['status'] for v in d['findings'].values()); print(c['ope
 | screens deletable in silence | ~~133~~ **77** of 159 | see note | T1-b done, rest → T1-e |
 | redirect rules used | **98** of 100 | ≤ 90 | T6-a |
 | hardcoded hex colours | ~~10,850~~ **116** | 0 | ✅ T3-a / T4-a |
-| money formatters | **53** | 1 | T3-c |
+| money formatters | ~~53~~ **257** (re-measured) | 1 | T3-c done · adoption is T4 |
 | browser Excel writers | **7** | 0 | T5b |
 | analytical endpoints with no screen | **~40** | 0 | T7-L1 |
 | backlog open + partial | ~~35~~ **49** | ≤ 10 | T9 |
