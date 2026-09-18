@@ -156,12 +156,29 @@ INTEREST_IS_NOT_ON_THE_COMPUTATION = (
     "and are keyed from there."
 )
 SELF_ASSESSMENT_TAX_HAS_NO_SOURCE = (
-    "§140A self-assessment tax is nil on this sheet. Nothing here records a "
-    "Challan 280, so the figure is keyed from the challan itself."
+    "§140A self-assessment tax is nil on this sheet — no Challan 280 is "
+    "recorded for this client and year. Record it on the Advance Tax screen "
+    "(IT-13) and the figure lands here; until then it is keyed from the "
+    "challan itself."
+)
+#: Where the figure DID come from. Said on the sheet rather than left to look
+#: computed: §140A tax is the one total here that is not a derivation from the
+#: return at all — it is a payment somebody made at a bank, and a CA checking
+#: the sheet against Schedule IT needs to know it is the challans' own total
+#: rather than a balancing figure.
+SELF_ASSESSMENT_TAX_IS_THE_CHALLANS = (
+    "§140A self-assessment tax on this sheet is the total of the {count} "
+    "Challan 280 record(s) held for this client and year. Schedule IT declares "
+    "each one separately with its own BSR code, date and serial number — this "
+    "is their sum, not a row."
 )
 
 
-def tax_figures_from_computation(computation: dict, snapshot: dict) -> dict:
+def tax_figures_from_computation(
+    computation: dict,
+    snapshot: dict,
+    self_assessment_tax_paise: int = 0,
+) -> dict:
     """The tax-computation totals, as `build_itr_payload` names them.
 
     The rename lives here, in one place, so the router and the screen hold none
@@ -193,7 +210,11 @@ def tax_figures_from_computation(computation: dict, snapshot: dict) -> dict:
         # Both nil, and both SAID rather than left to look computed — see the
         # two sentences above. A zero a CA has been told about is a box to fill
         # in; a zero they have not is a figure they will file.
-        "self_assessment_tax_paise": 0,
+        # PASSED IN, never read here. `services/self_assessment_service` totals
+        # the challans; this module derives nothing and a test walks its AST to
+        # keep it that way. A caller that holds no challans passes nothing and
+        # gets the nil the gap above explains.
+        "self_assessment_tax_paise": int(self_assessment_tax_paise or 0),
         "interest_234a_paise": 0,
         "interest_234b_paise": 0,
         "interest_234c_paise": 0,
@@ -206,6 +227,8 @@ def keying_sheet(
     assessment_year: str,
     computation: Optional[dict],
     snapshot: Optional[dict] = None,
+    self_assessment_tax_paise: int = 0,
+    self_assessment_challan_count: int = 0,
 ) -> dict[str, Any]:
     """The whole sheet: every figure, its box, and what has no box.
 
@@ -240,12 +263,24 @@ def keying_sheet(
               "usual reason.")
 
     gaps.append(INTEREST_IS_NOT_ON_THE_COMPUTATION)
-    gaps.append(SELF_ASSESSMENT_TAX_HAS_NO_SOURCE)
+    # TWO SENTENCES, NOT ONE WITH A ZERO IN IT. "Nothing records a challan" and
+    # "this is the total of the challans that are recorded" are different facts
+    # and send a CA to different places; the count is what tells them apart,
+    # never the amount — a challan recorded for nil is still a challan, and a
+    # sheet reading "no challan is recorded" over a record somebody entered is
+    # the kind of wrong that survives a review.
+    if self_assessment_challan_count:
+        gaps.append(SELF_ASSESSMENT_TAX_IS_THE_CHALLANS.format(
+            count=self_assessment_challan_count))
+    else:
+        gaps.append(SELF_ASSESSMENT_TAX_HAS_NO_SOURCE)
 
     payload = build_itr_payload(
         form=form, assessment_year=assessment_year,
         income_heads_paise=heads, chapter_vi_a_paise=via,
-        **tax_figures_from_computation(computation, snapshot or {}))
+        **tax_figures_from_computation(
+            computation, snapshot or {},
+            self_assessment_tax_paise=self_assessment_tax_paise))
     placements = itr_field_placements(payload)
     unmapped = [p["label"] for p in placements if p["not_mapped"]]
     if unmapped:

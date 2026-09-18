@@ -282,6 +282,52 @@ change. The code is the authority; keep this file in step with it.
   return back). **A filing that pins NOTHING is allowed through**: the column is
   nullable and a CA who computed outside the product has no snapshot to pin, so
   refusing would make the pin mandatory by accident.
+- **§140A IS PAID BEFORE THE RETURN IS FURNISHED, AND A SHORT CHALLAN LANDS
+  FEE FIRST** (IT-13, migration 407). §140A(1) makes the tax, interest and fee
+  on a return payable *before* it is furnished and requires the return to be
+  "accompanied by proof of payment" — a Challan 280, which this product held no
+  record of, so Schedule IT's BSR code, date, serial number and amount were
+  keyed off a bank receipt and the ITR keying sheet printed §140A as a
+  structural nil. **`advance_tax_payments` could not have held it**: that table
+  is keyed `UNIQUE (client_id, financial_year, installment_number)` with the
+  number CHECKed to 1–4, which is §208's schedule, and self-assessment tax is
+  not an instalment of anything. `domain/income_tax/self_assessment.py` is the
+  authority.
+  **THE EXPLANATION'S ORDER IS NOT PRO RATA AND DOES NOT READ THE CHALLAN'S OWN
+  BOXES.** A payment short of the aggregate is "first adjusted towards the fee
+  payable and thereafter towards the interest payable and the balance, if any,
+  ... towards the tax payable" — so ₹50,000 against ₹80,000 tax + ₹12,000
+  interest + ₹5,000 fee leaves **₹47,000 of TAX** outstanding where a
+  proportional split would report ₹38,763, and the tax is the figure §234A and
+  §234B go on charging on. The order runs off what is DUE: the provision exists
+  to override the payer's own labelling, so two clients paying the same money on
+  the same day with the boxes filled in differently must get the same
+  outstanding tax. `appropriate` takes four scalars and an AST guard forbids it
+  reaching into a challan row at all. The five-way split is nonetheless STORED,
+  because it is what the DOCUMENT says; where it does not foot to the total the
+  position SAYS so and **moves neither figure**, and a challan recording only
+  its total is not a mismatch — that is the bank receipt the table exists to
+  keep recordable.
+  **`tax_payable_on_return` is §140A(1)'s own subtraction** (TDS/TCS, advance
+  tax, §90/90A/91 relief, §115JAA/JD credit), floored at nil because a refund is
+  §143(1)'s business, and **deliberately not read off §234A's base** — Explanation
+  1 lists the same reductions and the figures coincide, but a later amendment to
+  one is not an amendment to the other. It is served as
+  `section_140a_tax_due_paise` on `POST /interest/234ab`, so the screen passes a
+  server figure through rather than subtracting credits in the browser.
+  **Uniqueness is the CHALLAN's own identity** — (firm, BSR code, deposit date,
+  serial) — and there is deliberately **no key on (client, financial_year)**,
+  because Schedule IT has a row per challan and a return may be accompanied by
+  several. **The keying sheet's two sentences are told apart by the COUNT and
+  never by the amount**: a challan recorded for nil is still a challan, and a
+  sheet reading "no challan is recorded" over a record somebody entered is the
+  kind of wrong that survives a review. **Nothing is posted** (a payment of the
+  client's own income tax is not a transaction of the books unless the CA raises
+  it) and **§140A(3) is NAMED, never scored** — §221's penalty is what the
+  Assessing Officer directs, a discretion and not a formula. ⚠️ `VERIFIED` is
+  False: the Explanation's wording is recorded from knowledge, egress being
+  refused here, and is pinned exactly by
+  `tests/test_a_short_self_assessment_challan_lands_fee_first.py`.
 - **A RETURN OF INCOME HAS THREE KINDS, AND `itr_filings` HELD ONE** (IT-23,
   migration 381). §139(1) is the ORIGINAL, §139(5) the REVISED and §139(8A) the
   UPDATED return (ITR-U) — and the table could not have carried a second one
