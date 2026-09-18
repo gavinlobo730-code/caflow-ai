@@ -406,22 +406,27 @@ def test_our_story_is_the_homepage_and_every_door_to_it_agrees():
     site = (MARKETING / "lib" / "site.ts").read_text(encoding="utf-8")
     nav = re.search(r"export const NAV = \[(.*?)\];", site, re.S)
     assert nav, "lib/site.ts no longer exports a NAV array"
-    hrefs = re.findall(r'href:\s*"([^"]+)"', nav.group(1))
-    assert "/#story" in hrefs, (
-        f"the header's Our Story entry does not point at the homepage panel. "
-        f"NAV hrefs are {hrefs}."
+    nav_entries = dict(re.findall(r'label:\s*"([^"]+)",\s*href:\s*"([^"]+)"', nav.group(1)))
+    assert nav_entries.get("Our Story") == "/", (
+        f"the header's Our Story entry points at {nav_entries.get('Our Story')!r}. "
+        f"It has to be `/` — the top of the homepage. It was `/#story` for a "
+        f"few hours on 18-09-2026 and the owner said what that did: \"when we "
+        f"click the our story it its starting from below the heropage it should "
+        f"gp tp the hero right directly?\""
     )
 
-    # Every OTHER door, by searching rather than by naming the file: the footer
-    # was missed exactly once by a test that checked NAV alone.
+    # EVERY OTHER DOOR, by searching rather than by naming the file: the footer
+    # was missed exactly once by a test that checked NAV alone. Both the deleted
+    # page and the fragment are wrong destinations now.
     offenders = []
     for path, src in _sources():
         for n, line in _live_lines(src):
-            if "Our Story" in line and "/story" in line and "/#story" not in line:
+            if "Our Story" in line and ("/story" in line or "#story" in line):
                 offenders.append(f"{_rel(path)}:{n}  {line.strip()[:110]}")
     assert not offenders, (
-        "an Our Story link still points at the deleted page rather than the "
-        "homepage panel:\n  " + "\n  ".join(offenders)
+        "an Our Story link points somewhere other than the top of the "
+        "homepage — either the deleted page or the panel below the hero:\n  "
+        + "\n  ".join(offenders)
     )
 
     # The page was live and linkable for two days, so the route is redirected
@@ -600,59 +605,62 @@ def test_the_hero_earth_is_artwork_and_is_not_drawn_in_code():
     )
 
 
-def test_the_eight_modules_are_real_text_and_the_artwork_is_decorative():
-    """⚠️ THIS GUARD USED TO ASSERT THE OPPOSITE, AND THE REVERSAL IS THE POINT.
+def test_the_hero_picture_is_decorative_and_the_modules_are_named_on_the_page():
+    """⚠️ THIS GUARD HAS NOW BEEN WRITTEN THREE WAYS IN TWO DAYS, WHICH IS THE
+    LESSON RATHER THAN A FOOTNOTE.
 
-    The 17-09-2026 artwork had the eight capability cards baked into it, so its
-    `alt` was the only route by which a third of the hero's content reached
-    assistive technology at all. This test therefore required that alt to NAME
-    all eight, and forbade `alt=""` anywhere in the file.
+    First it required the hero artwork's `alt` to NAME all eight capability
+    modules, because they were pixels baked into the image and the alt was the
+    only route by which they reached a screen reader. Then the owner supplied a
+    clean render, asked for the cards as HTML, and it required the opposite —
+    labels as text and an empty alt. Then, on the deploy preview the same day:
+    *"remove the cards it doesnt look good you know"*. So the hero has no
+    labels in it at all now.
 
-    On 18-09-2026 the owner supplied a clean render and asked whether the cards
-    should be added back — *"the cards that will you add that would look good or
-    i have given you the image where the cards are there"* — and they are real
-    HTML again. So the claim inverts on both halves: the labels must be TEXT
-    rather than alt prose, and the artwork must be `alt=""`, because a
-    decorative image with a descriptive alt makes a screen reader read out
-    scenery between the eyebrow and the headline.
+    Two of those three versions asserted a TRANSIENT design. What is durable is
+    the pair of facts underneath, and that is all this holds now:
 
-    The deciding fact for choosing the clean render was measured, not
-    aesthetic: in the baked-in one the leftmost card begins at 33.4% of the
-    width and the hero's copy runs to 38%, so it could not have been used
-    full-bleed without a card under the headline."""
+      * the hero's picture carries no content, so its alt is empty. Whether the
+        module names are baked in, rendered over it, or absent, a decorative
+        photograph with descriptive alt text makes a screen reader read out
+        scenery between the eyebrow and the headline.
+
+      * the eight modules are named SOMEWHERE on the homepage. They were in the
+        hero for a day and are not any more, and the thing that would actually
+        be a defect is the page ceasing to list them at all — which is why this
+        looks at the whole page rather than at Hero.tsx."""
     hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
-    live = "\n".join(line for _no, line in _live_lines(hero))
+    live_hero = "\n".join(line for _no, line in _live_lines(hero))
 
-    for label in (
-        "Compliance", "Clients", "Practice analytics", "Banking",
-        "Accounting", "Payroll", "Documents", "AI assistant",
-    ):
-        assert f'title: "{label}"' in live, (
-            f"the {label!r} module is not a real text node in Hero.tsx. These "
-            f"eight were pixels inside the artwork until 18-09-2026 and the "
-            f"whole point of bringing them back out is that a screen reader, a "
-            f"translation and a zoom all reach them."
-        )
-
-    # The artwork itself carries no content now, so it takes an empty alt — and
-    # the check is PER IMAGE rather than per file, because a file-level rule
-    # about alt text forbids the right answer for one of two images. The
-    # previous incarnation of this test learned that the other way round.
-    tags = [("<img" + chunk).split(">")[0] for chunk in live.split("<img")[1:]]
+    tags = [("<img" + chunk).split(">")[0] for chunk in live_hero.split("<img")[1:]]
     assert len(tags) == 1, (
         f"expected exactly one image in the hero — the background — and found "
         f"{len(tags)}. If another arrived, decide whether it carries content "
         f"and extend this check; do not delete it."
     )
     assert 'alt=""' in tags[0], (
-        "the hero background needs an empty alt. It is decorative: every label "
-        "it used to carry is real text now."
+        "the hero background needs an empty alt. It is decorative, and it has "
+        "been through three arrangements of the module labels without that "
+        "changing."
     )
-    assert "ARTWORK_CARDS" not in live, (
-        "ARTWORK_CARDS is the alt-text list from the artwork that had the cards "
-        "baked in. The cards are real elements now, so a second list of their "
-        "names is a second place to change a label."
+
+    # The modules, anywhere the homepage renders. Ecosystem is where they live
+    # today; naming that file here would be the same mistake as naming a
+    # method in a guard, so the search is the page's whole component tree.
+    homepage_text = "\n".join(
+        src for path, src in _sources()
+        if "/home/" in _rel(path) or _rel(path).endswith("(site)/page.tsx")
     )
+    for label in (
+        "Compliance", "Clients", "Banking", "Accounting", "Payroll",
+        "Documents",
+    ):
+        assert label in homepage_text, (
+            f"the homepage no longer names the {label!r} module anywhere. The "
+            f"eight were in the hero until 18-09-2026 and the section below it "
+            f"is what carries them now — if that has gone too, the page has "
+            f"stopped saying what the product does."
+        )
 
 
 def test_no_two_pages_carry_the_same_headline():

@@ -2,122 +2,44 @@
 
 import { RotatingWord, HERO_WORDS } from "./RotatingWord";
 import { Magnetic } from "../Cursor";
-import {
-  ArrowRight,
-  BarChart,
-  FileText,
-  Landmark,
-  Sparkles,
-  Users,
-} from "../icons";
+import { ArrowRight } from "../icons";
 import { Parallax } from "../motion";
 
 /**
- * THE HERO'S EARTH IS ARTWORK AND THE CARDS OVER IT ARE NOT.
+ * THE HERO'S EARTH IS ARTWORK, AND NOTHING IS DRAWN OVER IT.
  *
  * Four passes tried to draw this scene in the browser — a dotted globe, a
  * shaded planet, a WebGL night Earth from a coastline mask, and a table of
  * world cities. On 17-09-2026 the owner supplied finished artwork instead and
  * the instruction was explicit: *"This is a static image, not something to draw
  * with code ... Do not attempt to recreate the globe, city lights, starfield,
- * or card artwork with SVG, Canvas, or CSS shapes."* That is why the planet,
- * the network, the orbits, the galaxy, the moons and the asteroid belt are one
- * committed image and there is no scene code left. It is all in git at e566d9f5
- * if the animated version is ever wanted.
+ * or card artwork with SVG, Canvas, or CSS shapes."* It is all in git at
+ * e566d9f5 if the animated version is ever wanted.
  *
- * ⚠️ THE CARDS ARE THE ONE PART THAT CAME BACK OUT OF THE IMAGE, AND THE OWNER
- * ASKED FOR THAT DIRECTLY on 18-09-2026, having supplied two renders — one
- * clean, one with the eight capability cards baked in — and asked *"the cards
- * that will you add that would look good or i have given you the image where
- * the cards are there"*.
+ * ⚠️ THE EIGHT CAPABILITY CARDS WERE BUILT AS REAL HTML HERE FOR ONE DAY AND
+ * THE OWNER REMOVED THEM ON SIGHT: *"remove the cards it doesnt look good you
+ * know"* (18-09-2026, on the deploy preview). They had been added the same day,
+ * also on their instruction, after they supplied a render with the cards baked
+ * in and asked whether HTML ones would look better. So both answers have now
+ * been tried on a real screen and the picture wins on its own.
  *
- * It is the clean render plus real HTML cards, and the deciding fact is
- * measured rather than aesthetic: in the baked-in render the leftmost card
- * (Clients) begins at x=535 of 1600, which is 33.4% of the width, and this
- * hero's copy column runs to 38% of the width at every size from 1280 up. The
- * two overlap by about 5% of the screen. Using that render as a full-bleed
- * background therefore means either a card under the headline or a headline
- * shrunk to fit around art — and the collisions that reached production on
- * 17-09-2026 were exactly this class of defect, found by a render harness
- * rather than by eye.
+ * WHAT IS WORTH KEEPING FROM THAT DAY, because it is the reason not to reach
+ * for them again casually:
  *
- * Real HTML also gives back the four things the previous artwork's own note
- * listed as the cost of baking them in: a screen reader can read them, they
- * reflow, they can be translated, and a label can change without re-exporting
- * a 200KB image. What it costs is that their look is now CSS approximating the
- * render's — see CARD_SKIN — so if the artwork's card treatment changes, this
- * has to be re-matched by hand.
+ *   * the baked-in render could not have been used full-bleed either. Its
+ *     leftmost card begins at x=535 of 1600 — 33.4% of the width — and this
+ *     hero's copy runs to 38%, so the two overlap by about 5% of the screen.
  *
- * The two images are NOT the same base: `ImageChops.difference` over the pair
- * differs in every 100px band of the frame, from 16.8% of pixels at the left
- * edge to 55.3% at x=1300, so the second is a separate render and the cards
- * could not have been cut out of it cleanly even if that had been wanted.
+ *   * two of the CSS classes the cards were styled with generated no rule at
+ *     all, because `bg-[#081b3d]/72` is not on Tailwind's opacity scale. The
+ *     panels were absent rather than translucent and one card rendered white
+ *     text at 1.1:1. `test_a_tailwind_opacity_modifier_is_one_tailwind_generates`
+ *     exists because of it and is worth more than the cards were.
+ *
+ * The eight modules are not lost: the Ecosystem section immediately below names
+ * every one of them, which is where a reader who wants the list goes.
  */
 const ARTWORK = "/hero/space-earth.webp";
-
-/**
- * The eight modules, in the reading order the artwork put them in.
- *
- * Titles and one-line descriptions are the owner's own, transcribed from the
- * supplied render so the page says what the picture said.
- */
-const MODULES = [
-  { icon: FileText, title: "Compliance", line: "GST, TDS, ITR & ROC" },
-  { icon: Users, title: "Clients", line: "Every entity, one record" },
-  { icon: BarChart, title: "Practice analytics", line: "The whole firm at a glance" },
-  { icon: Landmark, title: "Banking", line: "Statements become vouchers" },
-  { icon: BarChart, title: "Accounting", line: "A ledger that looks ahead" },
-  { icon: Users, title: "Payroll", line: "Salary, PF, ESI & TDS" },
-  { icon: FileText, title: "Documents", line: "Read by AI, checked by you" },
-  { icon: Sparkles, title: "AI assistant", line: "It knows your practice" },
-] as const;
-
-/**
- * Where each card sits, as a PERCENTAGE of the hero rather than in pixels.
- *
- * The background is `object-cover`, so it scales with the section; a card
- * placed in pixels would drift off the feature it is meant to sit beside as
- * the window changes. Percentages keep each one in the same relation to the
- * planet at every width.
- *
- * TWO LOOSE COLUMNS, which is the arrangement the supplied render uses: four
- * cards down the planet's left limb and four down its right, staggered so no
- * two share a horizontal line. `inner` is the left column's x and it is
- * RESPONSIVE — at the narrow end of `lg` the copy is proportionally wider, so
- * the column has to start further right; `xl` moves it back in beside the
- * planet where the render has it.
- *
- * `top` values avoid the two things underneath that must stay legible: India's
- * own light cluster, which is the focal point of the picture and sits around
- * 60% across and 37-58% down, and the bright asteroid belt in the lower left.
- */
-const PLACEMENT = [
-  { inner: true, top: "17%" },
-  { inner: true, top: "34%" },
-  { inner: true, top: "53%" },
-  { inner: true, top: "71%" },
-  { inner: false, top: "23%" },
-  { inner: false, top: "42%" },
-  { inner: false, top: "60%" },
-  { inner: false, top: "79%" },
-] as const;
-
-/**
- * The card's own look, matched by eye to the supplied render.
- *
- * A single constant rather than eight copies, and named so the next reader
- * knows it is an approximation of somebody else's artwork rather than a design
- * token: the render draws a semi-transparent navy panel with a soft blue rim
- * and an outer glow, an icon at the left, a white semibold title and a lighter
- * second line.
- *
- * `backdrop-blur` is deliberately SMALL. The panel sits over a starfield, and
- * a heavy blur turns the stars behind it into grey mush that reads as a smear
- * rather than glass.
- */
-const CARD_SKIN =
-  "rounded-2xl border border-[#5da8ff]/30 bg-[#081b3d]/80 px-4 py-3 " +
-  "shadow-[0_0_46px_-10px_rgba(70,140,255,0.55)] backdrop-blur-[3px]";
 
 /**
  * The hero.
@@ -168,19 +90,27 @@ export function Hero() {
         section, and the flat `#010918` behind it plus the derived star field
         that used to extend it are both gone, along with their generator.
 
-        `object-cover object-center`: the hero is `min-h-screen` and so is
-        rarely 16:9, and cover is the only fit that leaves no bare section
-        showing. It crops rather than letterboxes, which is why the previous
-        asset needed a top-and-bottom mask and this one does not.
+        ⚠️ `object-contain`, NOT `cover`, AND THAT IS AN OWNER DECISION WITH A COST.
+        Owner review of the preview, 18-09-2026: *"can the whole image fit on
+        the first page i guess some parts is cutting right?"* — and they were
+        right, `cover` was cropping it. Contain shows all of it.
 
-        The background colour underneath is the artwork's own darkest corner,
-        so the single frame the image has not decoded in is the right colour
-        rather than white.
+        What it costs is that the section is `min-h-screen` and a screen is
+        rarely 16:9, so wherever the two aspects differ the picture no longer
+        reaches the section's edge. The remainder is filled with `#020a18`,
+        which is the artwork's own darkest corner, and the image's outermost
+        rows are FADED into it — see the mask below — because the edge means are
+        rgb(4,14,38) top and rgb(10,20,43) bottom against a bar of rgb(2,10,24),
+        and a 14-level step across a whole screen width is a visible seam even
+        though each colour alone reads as black. Bright pixels sit on those
+        edges too (max luma 173 top, 248 bottom), which would end abruptly.
 
-        `alt=""` AND THAT IS NOW CORRECT, where on the previous asset it would
-        have been a defect. That one had the eight module labels baked into it,
-        so its alt was the only route by which a third of the hero's content
-        reached a screen reader. These labels are real text below.
+        On a viewport that IS 16:9 — 1920x1080, 1366x768, 2560x1440 — there is
+        no remainder at all and the fade touches only the outermost few rows.
+
+        `alt=""` because the picture now carries no content: the eight module
+        labels that used to be baked into an earlier asset, and then briefly
+        rendered over this one, are the Ecosystem section's job.
       */}
       <div
         aria-hidden="true"
@@ -196,17 +126,39 @@ export function Hero() {
           fetchPriority="high"
           decoding="async"
           /*
-            THE CROP ANCHOR IS DIFFERENT ON A PHONE, and that is measured
-            rather than tidy. At 390x1124 `cover` scales the 16:9 frame to
-            1998px wide and shows 19.5% of it, so the anchor decides which
-            fifth of the picture a phone gets. `center` gives the globe's
-            brightest quarter — India's own light cluster — and the copy, the
-            trust chips and the four figures all sit directly on it, which was
-            unreadable. 30% moves the window onto the planet's dark limb and
-            the galaxy beside it: still the globe, still the subject, without
-            the lit continents behind body text.
+            ⚠️ THE PHONE STILL CROPS, AND `contain` WAS TRIED THERE AND
+            MEASURED AS WORSE. Owner question, 18-09-2026: *"what abt the
+            mobile how is it going to look on mobile can you look into that as
+            well"*.
+
+            A 16:9 picture in a 9:19.5 viewport is the hardest case there is.
+            Contained, the whole frame survives as a band 375x211 — and the
+            hero on a phone is 1124 tall against an 844 viewport, so that band
+            lands at y=913 and a phone reader sees a plain dark screen with no
+            artwork on it at all. Measured on the render, not guessed.
+            `object-top` instead would show it and push the headline off the
+            first screen.
+
+            So below `lg` it is `cover` at the 30% anchor. At 390x1124 cover
+            scales the frame to 1998px wide and shows a fifth of it, and the
+            anchor decides WHICH fifth: `center` gives India's own light
+            cluster, which put every line of body text on lit continents and
+            was unreadable, while 30% lands on the planet's dark limb and the
+            galaxy beside it. The picture is cropped and the globe is there.
+
+            The whole frame is the DESKTOP requirement — "can the whole image
+            fit on the first page" was asked of the desktop preview — and on a
+            phone the two requirements genuinely cannot both hold.
           */
-          className="h-full w-full object-cover object-[30%_center] lg:object-center"
+          /*
+            `hero-letterbox-fade` is what makes the bars invisible, and it
+            lives in globals.css rather than here because it must apply ONLY
+            from `lg` up — where `contain` leaves a bar — and a style attribute
+            cannot carry a media query. On a phone `cover` fills the box, so the
+            same mask there would only vignette the picture against the header
+            and the next section.
+          */
+          className="hero-letterbox-fade h-full w-full object-cover object-[30%_center] lg:object-contain lg:object-center"
         />
       </div>
 
@@ -247,60 +199,6 @@ export function Hero() {
           ].join(","),
         }}
       />
-
-      {/*
-        ── The cards ──────────────────────────────────────────────────────────
-
-        A LAYER OF ITS OWN, absolutely positioned against the SECTION, for the
-        same reason the old artwork was: the content container below is capped
-        and padded, so anything positioned inside it measures against that box
-        and cannot reach the screen's right edge where the outer column belongs.
-
-        HIDDEN BELOW `lg`, and that is a decision rather than an omission. Eight
-        floating panels over a cropped photograph on a 390px screen is not a
-        smaller version of this composition, it is a different and worse one —
-        and the modules are stated again, in full, by the Ecosystem section
-        immediately below the hero, so nothing is lost on a phone.
-
-        `pointer-events-none` on the layer: these are labels, not controls. They
-        are not links, because where each one should lead is a navigation
-        decision nobody has taken, and a card that looks clickable and is not is
-        worse than one that plainly is not.
-      */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-[2] hidden lg:block"
-      >
-        {MODULES.map((m, i) => {
-          const Icon = m.icon;
-          const place = PLACEMENT[i];
-          return (
-            <div
-              key={m.title}
-              className={
-                "absolute flex items-center gap-3 " +
-                CARD_SKIN +
-                (place.inner
-                  ? " left-[46%] xl:left-[40.5%]"
-                  : " right-[2.5%] xl:right-[3.5%]")
-              }
-              style={{ top: place.top }}
-            >
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#2f7dff]/20 text-[#7cc0ff] ring-1 ring-[#7cc0ff]/25">
-                <Icon size={18} />
-              </span>
-              <span className="block">
-                <span className="block text-[14.5px] font-semibold leading-tight text-white">
-                  {m.title}
-                </span>
-                <span className="mt-0.5 block whitespace-nowrap text-[12.5px] leading-tight text-white/65">
-                  {m.line}
-                </span>
-              </span>
-            </div>
-          );
-        })}
-      </div>
 
       {/*
         ── The copy, ANCHORED LEFT RATHER THAN CENTRED ────────────────────────

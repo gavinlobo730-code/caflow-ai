@@ -28,25 +28,28 @@ export const appLinks = {
 
 /** Primary navigation shown in the site header.
  *
- *  ⚠️ "OUR STORY" IS THE HOMEPAGE'S OWN PANEL AND NOT A PAGE, WHICH REVERSES A
- *  DECISION TAKEN ON 16-09-2026. It pointed at `/#story` originally; that day it
- *  was given a page of its own, on the note that "our story is a big page if you
- *  see i guess we have to split it". The split was made by COPYING the homepage
- *  panel, the copy was never re-written, and for two days both pages carried the
- *  same section 02 heading and the same gold callout. The owner found it by
- *  clicking the logo and then this item and landing on the same panel twice, and
- *  settled it on 18-09-2026: *"at first the our story and the home were the same
- *  page right so our story must contain the homepage only not the existing our
+ *  ⚠️ "OUR STORY" IS THE HOMEPAGE — THE WHOLE OF IT, FROM THE TOP — AND THIS
+ *  HAS NOW MOVED THREE TIMES. It was `/#story`, an anchor onto a homepage
+ *  panel; on 16-09-2026 it became a page of its own, on the note "our story is
+ *  a big page if you see i guess we have to split it"; on 18-09-2026 that page
+ *  was deleted, because it had been made by COPYING the homepage panel and the
+ *  copy was never re-written, so both carried the same heading and the same
+ *  callout — *"our story must contain the homepage only not the existing our
  *  story page delete that page."*
  *
- *  So this is a FRAGMENT, deliberately, and the earlier objection to that is
- *  recorded rather than deleted: a fragment in the primary nav does nothing
- *  visible to a reader who is already on the homepage at that scroll position,
- *  and the browser restores it without a page change. That was the reason for
- *  the page; it is outranked by there being only one of this content. Anything
- *  still linking to `/story` is redirected in `public/_redirects`. */
+ *  It pointed at `/#story` for a few hours after that, which put the reader a
+ *  screen and a half down the page, and the owner said what they actually
+ *  wanted: *"when we click the our story it its starting from below the
+ *  heropage it should gp tp the hero right directly?"* So it is `/` — the top
+ *  of the homepage, hero first.
+ *
+ *  THE LOGO GOES TO THE SAME PLACE, and that is accepted rather than
+ *  overlooked: two doors onto one destination is the consequence of Our Story
+ *  BEING the homepage. `id="story"` stays on the panel because `/#story` is a
+ *  link people already hold, and `/story` is a 301 in `public/_redirects`,
+ *  but nothing on the site points at either any more. */
 export const NAV = [
-  { label: "Our Story", href: "/#story" },
+  { label: "Our Story", href: "/" },
   { label: "Products", href: "/products" },
   { label: "Pricing", href: "/pricing" },
   { label: "Support", href: "/support" },

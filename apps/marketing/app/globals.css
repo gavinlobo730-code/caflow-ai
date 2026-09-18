@@ -87,6 +87,39 @@ body {
   padding-right: 1.5rem;
 }
 
+/* The hero picture's own top and bottom edges, faded into the letterbox.
+ *
+ * `object-contain` shows the whole 16:9 artwork, which the owner asked for, and
+ * leaves a bar wherever the viewport is not 16:9. The bar is #020a18 — the
+ * artwork's darkest corner — but the picture's edge means are rgb(4,14,38) at
+ * the top and rgb(10,20,43) at the bottom, so the join is a 14-level step
+ * across the full width: each colour reads as black alone and the seam between
+ * them does not. Bright pixels sit on those edges too (max luma 173 top, 248
+ * bottom, the asteroid belt) and would otherwise stop dead.
+ *
+ * FROM `lg` ONLY, because below it the hero uses `cover` and there is no bar to
+ * hide — a mask there would just vignette the picture against the header. That
+ * breakpoint dependency is the whole reason this is a class and not a style
+ * attribute on the element. 2.5% is about 20px of an 800px-tall picture. */
+@media (min-width: 1024px) {
+  .hero-letterbox-fade {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      #000 2.5%,
+      #000 97.5%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      #000 2.5%,
+      #000 97.5%,
+      transparent 100%
+    );
+  }
+}
+
 /* Subtle dotted grid used behind dark hero/CTA panels. */
 .bg-grid {
   background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.07) 1px, transparent 0);

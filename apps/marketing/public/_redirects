@@ -14,7 +14,10 @@
 # homepage's own "Our Story" panel and the copy was never re-written, so both
 # carried the same heading and the same callout; the owner's instruction was to
 # keep one — "our story must contain the homepage only not the existing our
-# story page delete that page" — and the nav item points at `/#story` again.
-# Kept as a permanent redirect because the page was live and linkable.
-/story /#story 301
-/story/ /#story 301
+# story page delete that page". The nav item now points at `/` — the hero — on
+# their follow-up: "when we click the our story it its starting from below the
+# heropage it should gp tp the hero right directly?" So this lands there too,
+# rather than on the panel, or the redirect and the nav would disagree about
+# where Our Story is. Kept permanently because the page was live and linkable.
+/story / 301
+/story/ / 301
