@@ -365,47 +365,71 @@ def test_the_header_is_brand_navy_and_not_a_grey():
     )
 
 
-def test_our_story_is_a_page_and_the_nav_holds_no_fragment():
-    """Owner review: "our story is a big page if you see i guess we have to
-    split it".
+def test_our_story_is_the_homepage_and_every_door_to_it_agrees():
+    """⚠️ THIS GUARD USED TO ASSERT THE OPPOSITE, AND THE REVERSAL IS THE POINT.
 
-    There was no Our Story page — the nav pointed at `/#story`, an anchor onto a
-    homepage panel headed "Every CA firm runs like this", which is a statement
-    about the READER's practice rather than a story about this one. A fragment
-    in the primary nav is also invisible to a reader arriving from another page,
-    since the browser restores it without a page change."""
-    assert (MARKETING / "app" / "(site)" / "story" / "page.tsx").exists(), (
-        "app/(site)/story/page.tsx is missing — the nav's Our Story link 404s."
+    Until 16-09-2026 "Our Story" was `/#story`, an anchor onto a homepage panel.
+    That day it was given a page, on the note "our story is a big page if you
+    see i guess we have to split it", and this test asserted the page existed
+    and that no nav entry was a fragment.
+
+    The split was made by COPYING the homepage panel and the copy was never
+    re-written. For two days both pages carried the same section 02 heading and
+    the same gold callout; the owner found it by clicking the logo and then the
+    nav item and landing on the same panel twice, and on 18-09-2026 settled it
+    the other way: *"at first the our story and the home were the same page
+    right so our story must contain the homepage only not the existing our
+    story page delete that page."*
+
+    So the fragment objection stands as a fact and is OUTRANKED: a fragment does
+    nothing visible for a reader already at that scroll position, and that is
+    accepted in exchange for there being exactly one of this content. What this
+    guard holds now is the part that broke last time — that every door agrees.
+    Three files link to Our Story (the header's NAV, the footer's Company
+    column, and the homepage panel's own id) and the previous incarnation of
+    this test was written because pointing the header somewhere left the footer
+    behind."""
+    story_page = MARKETING / "app" / "(site)" / "story" / "page.tsx"
+    assert not story_page.exists(), (
+        "app/(site)/story/page.tsx is back. Our Story is the homepage's own "
+        "panel — a second page of it is what the owner had deleted, because the "
+        "two carried the same copy. If it is wanted again, the heading and the "
+        "callout have to be written fresh rather than copied."
     )
+
+    home = (MARKETING / "app" / "(site)" / "page.tsx").read_text(encoding="utf-8")
+    assert 'id="story"' in home, (
+        'the homepage has no id="story", so every Our Story link on the site '
+        "now scrolls nowhere."
+    )
+
     site = (MARKETING / "lib" / "site.ts").read_text(encoding="utf-8")
     nav = re.search(r"export const NAV = \[(.*?)\];", site, re.S)
     assert nav, "lib/site.ts no longer exports a NAV array"
     hrefs = re.findall(r'href:\s*"([^"]+)"', nav.group(1))
-    assert hrefs, "NAV has no entries"
-    assert "/story" in hrefs, "NAV must link to the Our Story page"
-    bad = [h for h in hrefs if "#" in h]
-    assert not bad, (
-        f"these primary nav entries are fragments rather than pages: {bad}. "
-        f"A fragment link does not navigate for a reader on another page."
+    assert "/#story" in hrefs, (
+        f"the header's Our Story entry does not point at the homepage panel. "
+        f"NAV hrefs are {hrefs}."
     )
 
-    # AND THE FOOTER, because checking NAV alone missed it. Pointing the header
-    # at /story left SiteFooter's Company column still on /#story — the same
-    # link, the same label, one file over. A guard that names one of two doors
-    # is one edit from naming neither.
+    # Every OTHER door, by searching rather than by naming the file: the footer
+    # was missed exactly once by a test that checked NAV alone.
     offenders = []
     for path, src in _sources():
         for n, line in _live_lines(src):
-            if "Our Story" in line and "#story" in line:
+            if "Our Story" in line and "/story" in line and "/#story" not in line:
                 offenders.append(f"{_rel(path)}:{n}  {line.strip()[:110]}")
     assert not offenders, (
-        "an Our Story link still points at the homepage anchor rather than the "
-        "page:\n  " + "\n  ".join(offenders)
+        "an Our Story link still points at the deleted page rather than the "
+        "homepage panel:\n  " + "\n  ".join(offenders)
     )
-    # The old anchor is in the wild, so the homepage keeps the id.
-    home = (MARKETING / "app" / "(site)" / "page.tsx").read_text(encoding="utf-8")
-    assert 'id="story"' in home, (
-        "the homepage dropped id=\"story\"; /#story is a link people already hold."
+
+    # The page was live and linkable for two days, so the route is redirected
+    # rather than left to 404.
+    redirects = (MARKETING / "public" / "_redirects").read_text(encoding="utf-8")
+    assert re.search(r"^/story\s+\S+\s+301", redirects, re.M), (
+        "public/_redirects has no 301 for /story. The page was live from 16 to "
+        "18 September 2026 and anything that linked to it now 404s."
     )
 
 
@@ -528,9 +552,9 @@ def test_the_hero_earth_is_artwork_and_is_not_drawn_in_code():
 
     # The artwork is present, is really a WebP, and is a sane weight for
     # something above the fold on a marketing homepage.
-    art = MARKETING / "public" / "hero" / "earth-network.webp"
+    art = MARKETING / "public" / "hero" / "space-earth.webp"
     assert art.exists(), (
-        "apps/marketing/public/hero/earth-network.webp is missing. The hero has "
+        "apps/marketing/public/hero/space-earth.webp is missing. The hero has "
         "no Earth at all without it — this is the artwork itself, not a cache."
     )
     head = art.read_bytes()[:12]
@@ -544,7 +568,7 @@ def test_the_hero_earth_is_artwork_and_is_not_drawn_in_code():
         f"the homepage, so a heavy export is felt directly."
     )
 
-    assert "/hero/earth-network.webp" in hero, (
+    assert "/hero/space-earth.webp" in hero, (
         "Hero.tsx no longer references the artwork. Nothing else does either — "
         "it is the only consumer."
     )
@@ -576,67 +600,59 @@ def test_the_hero_earth_is_artwork_and_is_not_drawn_in_code():
     )
 
 
-def test_the_artwork_names_the_eight_modules_it_has_baked_in():
-    """The one real cost of artwork over code, and the only mitigation there is.
+def test_the_eight_modules_are_real_text_and_the_artwork_is_decorative():
+    """⚠️ THIS GUARD USED TO ASSERT THE OPPOSITE, AND THE REVERSAL IS THE POINT.
 
-    The eight capability cards are PIXELS now — "Compliance", "Payroll", "AI
-    assistant" and five more. A screen reader cannot read them, they do not
-    reflow, and they cannot be translated. Everything else in the hero stayed
-    real HTML precisely so it would keep those properties; the cards could not,
-    because they arrived inside the image.
+    The 17-09-2026 artwork had the eight capability cards baked into it, so its
+    `alt` was the only route by which a third of the hero's content reached
+    assistive technology at all. This test therefore required that alt to NAME
+    all eight, and forbade `alt=""` anywhere in the file.
 
-    So the `alt` text has to carry them, and that is not decoration — it is the
-    only route by which a third of the hero's content reaches assistive
-    technology at all. An empty or generic alt would silently drop it."""
+    On 18-09-2026 the owner supplied a clean render and asked whether the cards
+    should be added back — *"the cards that will you add that would look good or
+    i have given you the image where the cards are there"* — and they are real
+    HTML again. So the claim inverts on both halves: the labels must be TEXT
+    rather than alt prose, and the artwork must be `alt=""`, because a
+    decorative image with a descriptive alt makes a screen reader read out
+    scenery between the eyebrow and the headline.
+
+    The deciding fact for choosing the clean render was measured, not
+    aesthetic: in the baked-in one the leftmost card begins at 33.4% of the
+    width and the hero's copy runs to 38%, so it could not have been used
+    full-bleed without a card under the headline."""
     hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+    live = "\n".join(line for _no, line in _live_lines(hero))
 
     for label in (
         "Compliance", "Clients", "Practice analytics", "Banking",
         "Accounting", "Payroll", "Documents", "AI assistant",
     ):
-        assert label in hero, (
-            f"the artwork shows a {label!r} card and Hero.tsx never says so. "
-            f"It is baked into the image, so if it is not in the alt text it "
-            f"is not anywhere a screen reader can reach."
+        assert f'title: "{label}"' in live, (
+            f"the {label!r} module is not a real text node in Hero.tsx. These "
+            f"eight were pixels inside the artwork until 18-09-2026 and the "
+            f"whole point of bringing them back out is that a screen reader, a "
+            f"translation and a zoom all reach them."
         )
 
-    # And the alt must actually be wired to the image rather than the labels
-    # merely existing somewhere in the file.
-    assert "alt={" in hero and "ARTWORK_CARDS" in hero, (
-        "the module names are in Hero.tsx but are not reaching the image's alt "
-        "attribute, which is the only thing that makes them readable."
-    )
-    # AND THE EMPTY-ALT CHECK IS PER IMAGE, NOT PER FILE, because the hero has
-    # two of them and they need OPPOSITE alts. The artwork carries eight
-    # content labels and must never have `alt=""`; the star field behind it
-    # carries nothing and must always have one, since a decorative image with
-    # descriptive alt text makes a screen reader read out scenery. A file-level
-    # `'alt=""' not in hero` was the first version of this and it failed the
-    # moment the correct second image was added — a guard that forbids the
-    # right answer somewhere else in the file.
-    # Comment spans blanked first: the artwork's own note says "A plain <img>,
-    # deliberately", and a raw scan counts that prose as a third image.
-    live = "\n".join(line for _no, line in _live_lines(hero))
+    # The artwork itself carries no content now, so it takes an empty alt — and
+    # the check is PER IMAGE rather than per file, because a file-level rule
+    # about alt text forbids the right answer for one of two images. The
+    # previous incarnation of this test learned that the other way round.
     tags = [("<img" + chunk).split(">")[0] for chunk in live.split("<img")[1:]]
-    assert len(tags) == 2, (
-        f"expected the hero to have exactly two images — the artwork and the "
-        f"decorative star field — and found {len(tags)}. If a third arrived, "
-        f"decide which kind it is and extend this check."
+    assert len(tags) == 1, (
+        f"expected exactly one image in the hero — the background — and found "
+        f"{len(tags)}. If another arrived, decide whether it carries content "
+        f"and extend this check; do not delete it."
     )
-    for tag in tags:
-        if "ARTWORK" in tag and "STARS" not in tag:
-            assert 'alt=""' not in tag, (
-                "the hero artwork has an empty alt. It is not decorative — it "
-                "carries eight of the page's content labels, and the alt is "
-                "the only route by which they reach assistive technology."
-            )
-            assert "alt={" in tag, "the artwork's alt is not an expression naming the cards."
-        elif "STARS" in tag:
-            assert 'alt=""' in tag, (
-                "the decorative star field needs an empty alt. It carries no "
-                "content, so describing it makes a screen reader read out "
-                "scenery between the eyebrow and the headline."
-            )
+    assert 'alt=""' in tags[0], (
+        "the hero background needs an empty alt. It is decorative: every label "
+        "it used to carry is real text now."
+    )
+    assert "ARTWORK_CARDS" not in live, (
+        "ARTWORK_CARDS is the alt-text list from the artwork that had the cards "
+        "baked in. The cards are real elements now, so a second list of their "
+        "names is a second place to change a label."
+    )
 
 
 def test_no_two_pages_carry_the_same_headline():
@@ -847,6 +863,63 @@ def test_no_two_pages_carry_the_same_body_copy():
         + "\n".join(shared)
         + "\nIf the same words genuinely belong on both, they belong in a "
         "component that both pages render, not typed twice."
+    )
+
+
+def test_a_tailwind_opacity_modifier_is_one_tailwind_generates():
+    """AN OFF-SCALE OPACITY MODIFIER GENERATES NO RULE AT ALL, SILENTLY.
+
+    Tailwind's opacity modifiers are the multiples of five. `bg-black/70` works;
+    `bg-black/72` is not a step, is not bracketed, and so produces NOTHING — no
+    warning, no fallback, no rule in the bundle. The element simply has no
+    background, and it looks like a design choice rather than a broken class.
+
+    It shipped. The hero's cards were written with `bg-[#081b3d]/72` and an icon
+    tile with `bg-[#2f7dff]/20`'s predecessor `/18`, and `grep -F 081b3d` over
+    the built CSS returned ZERO. The panels were not translucent navy over the
+    artwork, they were absent — so the Accounting card, which sits on the
+    picture's sunrise glow, rendered white text on a near-white background at
+    1.1:1 against a 4.5:1 requirement, and three more cards were under 4:1. The
+    screenshots looked plausible, because over the dark parts of the picture a
+    card with no panel looks much like a card with one. Only measuring the
+    composited pixels found it.
+
+    It was also not new: `components/home/Ecosystem.tsx` carried
+    `border-white/12` on the ecosystem dial's resting state, a border that has
+    never once rendered, in a file whose other five borders are all on-scale.
+
+    The bracketed form `/[0.72]` is legal and is allowed here, because that one
+    does generate. What is rejected is the bare off-scale number, which is
+    indistinguishable from a working class by eye."""
+    allowed = {str(n) for n in range(0, 101, 5)}
+    utils = (
+        "bg", "text", "border", "ring", "ring-offset", "from", "via", "to",
+        "divide", "placeholder", "decoration", "outline", "shadow", "accent",
+        "caret", "fill", "stroke",
+    )
+    pattern = re.compile(
+        r"\b(" + "|".join(utils) + r")-(\[[^\]\s]+\]|[a-z]+(?:-\d{2,3})?)/(\d{1,3})\b"
+    )
+
+    offenders, seen = [], 0
+    for path, src in _sources():
+        for n, line in _live_lines(src):
+            for m in pattern.finditer(line):
+                seen += 1
+                if m.group(3) not in allowed:
+                    offenders.append(f"{_rel(path)}:{n}  {m.group(0)}")
+
+    assert seen >= 90, (
+        f"only found {seen} colour-with-opacity classes to check (118 at the time this was written), which is too "
+        f"few for this scan to be doing anything on a site built in Tailwind. "
+        f"The pattern has stopped matching — fix it rather than this number."
+    )
+    assert not offenders, (
+        "these Tailwind opacity modifiers are not on Tailwind's scale, so they "
+        "generate no CSS and the colour is simply absent:\n"
+        + "\n".join("  " + o for o in offenders)
+        + "\nUse the nearest multiple of five, or the bracketed arbitrary form "
+        "(/[0.72]), which does generate."
     )
 
 

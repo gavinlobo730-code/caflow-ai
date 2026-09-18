@@ -9,3 +9,12 @@
 # anything that linked to the document directly.
 /practicesync-homepage /  301
 /practicesync-homepage.html /  301
+
+# `/story` was a page from 16 to 18 September 2026. It was made by copying the
+# homepage's own "Our Story" panel and the copy was never re-written, so both
+# carried the same heading and the same callout; the owner's instruction was to
+# keep one — "our story must contain the homepage only not the existing our
+# story page delete that page" — and the nav item points at `/#story` again.
+# Kept as a permanent redirect because the page was live and linkable.
+/story /#story 301
+/story/ /#story 301

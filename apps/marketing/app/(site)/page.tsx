@@ -133,11 +133,20 @@ export default function HomePage() {
       </div>
 
       {/* 02 — the positioning statement, and the problem ─────────────────
-          Deliberately SHORT, and it hands off. The long version — the problem,
-          the four decisions the product is built on, the four things it refuses
-          to do — is /story, which exists because the "Our Story" nav item used
-          to point at this very panel. `id="story"` is kept because `/#story` is
-          in the wild. */}
+
+          THIS PANEL IS "OUR STORY". `id="story"` is what the nav item and the
+          footer link point at, and it is load-bearing rather than a leftover
+          from an old anchor — see NAV in lib/site.ts. Between 16 and 18
+          September the long version lived at `/story`, a page made by copying
+          this panel; the copy was never re-written, both pages ended up with
+          the same heading and the same callout, and the owner's instruction was
+          to keep one of them: *"our story must contain the homepage only not
+          the existing our story page delete that page."*
+
+          So the "Read why we built it" link that used to sit under this panel
+          is gone with the page it pointed at, and this panel is the whole of
+          it. The deleted page's four decisions and four refusals are in git at
+          e55227e0 if any of that copy is ever wanted here. */}
       <Panel id="story" theme="light">
         <SerifHeading
           layout="split"
@@ -151,15 +160,6 @@ export default function HomePage() {
           ]}
           subtitle="PracticeSync replaces Tally, ClearTax, Winman and WhatsApp with a single workspace for compliance, accounting, banking, payroll, clients and documents — where every return is computed from the books rather than assembled beside them."
         />
-        <CineReveal delay={140}>
-          <Link
-            href="/story"
-            className="mt-9 inline-flex items-center gap-2 border-b border-brand/25 pb-1 text-[14px] font-semibold text-brand transition-colors hover:border-brand hover:text-brand-hover"
-          >
-            Read why we built it
-            <ArrowRight size={15} />
-          </Link>
-        </CineReveal>
       </Panel>
 
       {/* 03 — the platform ecosystem ───────────────────────────────────── */}

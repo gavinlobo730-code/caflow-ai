@@ -16,7 +16,10 @@ const COLUMNS: { title: string; links: FooterLink[] }[] = [
   {
     title: "Company",
     links: [
-      { label: "Our Story", href: "/story" },
+      // A fragment, not a page — see NAV in lib/site.ts for why `/story` was
+      // deleted on 18-09-2026. The footer already links `/products#security`
+      // and `/resources#calendar` the same way.
+      { label: "Our Story", href: "/#story" },
       { label: "Support", href: "/support" },
       { label: "Contact", href: `mailto:${CONTACT.email}`, external: true },
     ],

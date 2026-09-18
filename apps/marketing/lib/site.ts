@@ -28,13 +28,25 @@ export const appLinks = {
 
 /** Primary navigation shown in the site header.
  *
- *  Every entry is a PAGE. "Our Story" pointed at `/#story` until 16-09-2026 —
- *  an anchor onto a homepage panel — so the one nav item promising to explain
- *  the company scrolled you a screen and a half down the page you were already
- *  on. A fragment in the primary nav is also invisible to a reader who arrives
- *  from anywhere else, since the browser restores it without a page change. */
+ *  ⚠️ "OUR STORY" IS THE HOMEPAGE'S OWN PANEL AND NOT A PAGE, WHICH REVERSES A
+ *  DECISION TAKEN ON 16-09-2026. It pointed at `/#story` originally; that day it
+ *  was given a page of its own, on the note that "our story is a big page if you
+ *  see i guess we have to split it". The split was made by COPYING the homepage
+ *  panel, the copy was never re-written, and for two days both pages carried the
+ *  same section 02 heading and the same gold callout. The owner found it by
+ *  clicking the logo and then this item and landing on the same panel twice, and
+ *  settled it on 18-09-2026: *"at first the our story and the home were the same
+ *  page right so our story must contain the homepage only not the existing our
+ *  story page delete that page."*
+ *
+ *  So this is a FRAGMENT, deliberately, and the earlier objection to that is
+ *  recorded rather than deleted: a fragment in the primary nav does nothing
+ *  visible to a reader who is already on the homepage at that scroll position,
+ *  and the browser restores it without a page change. That was the reason for
+ *  the page; it is outranked by there being only one of this content. Anything
+ *  still linking to `/story` is redirected in `public/_redirects`. */
 export const NAV = [
-  { label: "Our Story", href: "/story" },
+  { label: "Our Story", href: "/#story" },
   { label: "Products", href: "/products" },
   { label: "Pricing", href: "/pricing" },
   { label: "Support", href: "/support" },
