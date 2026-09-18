@@ -941,6 +941,121 @@ def test_a_tailwind_opacity_modifier_is_one_tailwind_generates():
     )
 
 
+def test_a_shared_link_has_a_picture():
+    """A MARKETING SITE FOR ACCOUNTANTS SPREADS BY BEING FORWARDED.
+
+    The metadata carried a title and a description and NO image, and no
+    `metadataBase` for a relative one to resolve against — so a link pasted into
+    WhatsApp, LinkedIn, Slack or iMessage rendered as a bare line of text. Every
+    one of those fetches the picture from its own servers against an ABSOLUTE
+    url, which is why the base matters as much as the image: without it Next
+    falls back to localhost and the preview is dropped silently.
+
+    The card is rendered by `scripts/build-og-image.mjs` against the BUILT site,
+    so it is set in the pages' own Manrope and Instrument Serif and carries the
+    real logo mark. That is also why this guard checks the FILE and not just the
+    tags: the first render of it came out in a system sans, because the card was
+    missing the `__variable_*` classes `next/font` hangs the families on, and it
+    looked like a deliberate design rather than a bug."""
+    layout = (MARKETING / "app" / "layout.tsx").read_text(encoding="utf-8")
+    live = "\n".join(line for _no, line in _live_lines(layout))
+
+    assert "metadataBase" in live, (
+        "app/layout.tsx has no `metadataBase`. Without it a relative og:image "
+        "resolves against nothing and every preview is dropped."
+    )
+    assert re.search(r"openGraph[\s\S]{0,800}?images", live), (
+        "app/layout.tsx declares openGraph without an image. The link is what "
+        "gets forwarded; the picture is most of what a reader sees of it."
+    )
+    assert "summary_large_image" in live, (
+        "no `twitter.card` of summary_large_image. Twitter/X reads its own tags "
+        "in preference to the Open Graph ones and shows a small square "
+        "thumbnail without it."
+    )
+
+    card = MARKETING / "public" / "og.jpg"
+    assert card.exists(), (
+        "apps/marketing/public/og.jpg is missing, so every preview 404s. "
+        "Regenerate it with `pnpm build && node scripts/build-og-image.mjs`."
+    )
+    data = card.read_bytes()
+    assert data[:2] == b"\xff\xd8", (
+        f"public/og.jpg is not a JPEG (starts {data[:4]!r}). If the format "
+        f"changed, the metadata's filename has to change with it."
+    )
+
+    # Its real dimensions, read from the JPEG's own frame header rather than
+    # trusting the numbers written in the metadata beside it — those two
+    # disagreeing is exactly how a preview gets cropped wrongly.
+    width = height = None
+    i = 2
+    while i < len(data) - 9:
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker in (0xC0, 0xC1, 0xC2):  # start of frame
+            height = int.from_bytes(data[i + 5 : i + 7], "big")
+            width = int.from_bytes(data[i + 7 : i + 9], "big")
+            break
+        if marker in (0xD8, 0xD9) or 0xD0 <= marker <= 0xD7:
+            i += 2
+            continue
+        i += 2 + int.from_bytes(data[i + 2 : i + 4], "big")
+    assert (width, height) == (1200, 630), (
+        f"public/og.jpg is {width}x{height}. 1200x630 is what every consumer "
+        f"crops from — LinkedIn uses it whole, WhatsApp takes a centre square, "
+        f"Twitter letterboxes it — and the metadata states those numbers."
+    )
+    kb = len(data) / 1024
+    assert kb < 400, (
+        f"public/og.jpg is {kb:.0f}KB. Several consumers refuse a large "
+        f"preview outright, and it is fetched before the page is."
+    )
+
+
+def test_the_site_loads_only_the_typefaces_it_uses():
+    """A FONT NOBODY USES IS STILL A FONT EVERYBODY DOWNLOADS.
+
+    The root layout loaded **Inter** from `next/font/google` and put it on
+    `<body>`, while the design is Manrope and Instrument Serif. Every page sets
+    its own face — the `(site)` group around its chrome, `/access` on its own
+    root — so Inter was only ever reached as a fallback, and it had already
+    caught someone out once: `(site)/layout.tsx` still carries a note about the
+    header and footer "silently falling back to the root layout's Inter".
+
+    The rule is that `lib/fonts.ts` is the ONE place a typeface is loaded, and
+    that every family it loads is one Tailwind actually maps. A second loader
+    somewhere else is how the first one got there."""
+    fonts_module = MARKETING / "lib" / "fonts.ts"
+    assert fonts_module.exists(), "lib/fonts.ts is the single place fonts are loaded"
+
+    loaders = []
+    for path, src in _sources():
+        if "next/font" in "\n".join(line for _no, line in _live_lines(src)):
+            loaders.append(_rel(path))
+    assert not loaders, (
+        "these load a typeface directly instead of taking it from "
+        f"lib/fonts.ts: {loaders}. That is how Inter came to be downloaded on "
+        "every page for a face the design does not use."
+    )
+
+    families = re.findall(r'^import\s*\{([^}]*)\}\s*from\s*"next/font/google"',
+                          fonts_module.read_text(encoding="utf-8"), re.M)
+    loaded = {f.strip() for group in families for f in group.split(",") if f.strip()}
+    assert loaded, "lib/fonts.ts imports no font families at all"
+
+    tailwind = (MARKETING / "tailwind.config.ts").read_text(encoding="utf-8")
+    for family in loaded:
+        token = family.replace("_", " ").lower().split()[0]
+        assert token in tailwind.lower(), (
+            f"lib/fonts.ts loads {family!r} but tailwind.config.ts maps no "
+            f"family for it, so nothing can be set in it — which means it is "
+            f"downloaded and never used."
+        )
+
+
 def test_the_heros_vertical_rhythm_is_measured_against_the_window():
     """A HERO THAT ASKS FOR A FIXED HEIGHT DOES NOT FIT MOST LAPTOPS.
 

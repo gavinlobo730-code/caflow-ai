@@ -8,6 +8,23 @@
 export const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL || "https://caflow-ai.pages.dev";
 
+/**
+ * This site's own origin, which `metadataBase` needs before a relative social
+ * image can resolve to an absolute URL.
+ *
+ * Every consumer of an Open Graph tag fetches the image from its own servers,
+ * from a URL it has never seen a page for — so `/og.jpg` on its own resolves
+ * against nothing and the preview is dropped. Next warns about a missing
+ * `metadataBase` in dev and then silently falls back to localhost, which is why
+ * this is worth stating rather than leaving to a default.
+ *
+ * Overridable, the same way APP_URL is, for a custom domain later — the
+ * marketing project's *.pages.dev subdomain is `practicesync`, which is NOT the
+ * app's (`caflow-ai`); the two are separate Cloudflare Pages projects.
+ */
+export const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL || "https://practicesync.pages.dev";
+
 /** Cross-app destinations (routes that live in apps/web). */
 export const appLinks = {
   /** Chartered Accountant / firm staff sign-in (email + password + TOTP MFA). */
