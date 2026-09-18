@@ -22,6 +22,7 @@ from models.common import api_response
 from services import bank_erasure
 from services.audit_service import log_event
 from core.authz import assert_client_access, filter_by_client
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.banking")
 
@@ -1432,6 +1433,54 @@ def list_transactions(
     return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
+@router.get("/worth-a-look")
+def worth_a_look(
+    client_id: str = Query(..., description="The client whose bank is being reviewed."),
+    from_date: str = Query(..., description="Period start, YYYY-MM-DD. REQUIRED."),
+    to_date: str = Query(..., description="Period end, YYYY-MM-DD. REQUIRED."),
+    bank_account_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("banking", "read")),
+):
+    """Posted bank lines carrying a reason for a partner to look, worst first.
+
+    `domain/banking/exceptions.py` decides which and why;
+    `services/bank_exception_service.py` gathers what the rules need. This
+    endpoint decides nothing.
+
+    READ-ONLY AND ADVISORY. Nothing here blocks or reverses a posting — the
+    owner's decision of 17-09-2026, and the domain module's own argument: a
+    platform should not hold a CA's books hostage to a threshold it invented,
+    and raising a flag is not blocking a posting. Each exception carries the
+    rules' own `blocking` so the screen can say a rule WOULD stop this if
+    anything did; nothing acts on it.
+
+    THE PERIOD IS REQUIRED, not defaulted. The subjects are one period's posted
+    lines and the ledger behind them is unbounded, so an optional period is how
+    a report comes to read the whole ledger — the BANK-07 shape.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        # Mock mode has no statements to review. An empty `flagged` with no gap
+        # would read as "reviewed and clean", which is a stronger claim than
+        # mock mode can make — the `probe_near_duplicates` bargain.
+        return api_response(True, {
+            "from_date": from_date, "to_date": to_date,
+            "bank_account_id": bank_account_id, "reviewed_count": 0,
+            "flagged": [], "gaps": [{"code": "not_checked",
+                                     "message": "No bank data is available here."}],
+            "policy": {}})
+    try:
+        from services import bank_exception_service
+        return api_response(True, bank_exception_service.review_list(
+            db, current_user["firm_id"], client_id,
+            from_date=from_date, to_date=to_date, bank_account_id=bank_account_id))
+    except Exception as e:
+        _logger.error("worth_a_look: %s", e)
+        capture_soft_failure(e, operation="bank_worth_a_look")
+        return api_response(False, None, "Unable to build the review list.")
+
+
 # ─── Bank register (Tier 1.1) ────────────────────────────────────────────────
 # Declared before /transactions/{txn_id} — FastAPI matches in declaration order,
 # and a parameterised route above this would swallow the static path.
@@ -2467,6 +2516,9 @@ def create_rule(
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     assert_client_access(current_user, data.client_id)
+    # BANK-11 step 3 — before the mock short-circuit, so the refusal is the same
+    # in both modes. The model has already checked the TYPE; this is the PAIR.
+    _refuse_an_unresolvable_party(data.model_dump())
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
@@ -2535,6 +2587,7 @@ def update_rule(
             status_code=422,
             detail=("A GST rate needs a ledger to code the amount to — "
                     "the split books the ex-tax amount there."))
+    _refuse_an_unresolvable_party(merged)
     row = (db.table("bank_matching_rules").update(fields)
            .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
     # What the rule proposes may have changed; what it is trusted to do has not
@@ -2543,13 +2596,39 @@ def update_rule(
     # `description_patterns` all change WHICH lines this rule covers or which
     # rule wins, so each of them re-proposes for the same reason the pattern
     # does. Leaving them out would show the CA an old draft under a new rule.
+    # BANK-11 step 3 — the party travels on the draft, so changing it changes
+    # what a CA is shown and has to re-propose like every other payload field.
     if any(k in fields for k in ("description_pattern", "description_patterns",
                                  "amount_min_paise", "amount_max_paise",
                                  "txn_type", "priority", "match_field", "match_operator",
                                  "suggested_account_id", "suggested_category",
-                                 "suggested_gst_rate_bps", "suggested_is_interstate", "is_active")):
+                                 "suggested_gst_rate_bps", "suggested_is_interstate",
+                                 "payee_type", "payee_id", "is_active")):
         bank_entry_service.mark_stale(db, current_user["firm_id"], rule["client_id"])
     return api_response(True, (row.data or [{}])[0])
+
+
+def _refuse_an_unresolvable_party(rule: dict) -> None:
+    """BANK-11 step 3, migration 404's CHECK said at the door.
+
+    Judged on the MERGED rule for the GST pairing's reason: the model sees one
+    patch, and "id supplied, type already stored" is perfectly valid. Both
+    directions are refused because both produce a tag nothing can apply —
+    `bank_payee_service.apply_rule_party` would silently drop it, and a rule
+    that silently does nothing is worse than one that refuses to be saved.
+    """
+    from domain.banking.rules import PAYEE_TYPES_WITH_AN_ID
+    ptype = (rule.get("payee_type") or "").strip().lower()
+    pid = rule.get("payee_id") or None
+    if pid and ptype not in PAYEE_TYPES_WITH_AN_ID:
+        raise HTTPException(
+            status_code=422,
+            detail="A linked party must be a customer or a vendor. Use 'other' for a "
+                   "party that is neither — it tags a name and no link.")
+    if ptype in PAYEE_TYPES_WITH_AN_ID and not pid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Choose the {ptype} this rule tags, or tag the party as 'other'.")
 
 
 def _now_iso() -> str:

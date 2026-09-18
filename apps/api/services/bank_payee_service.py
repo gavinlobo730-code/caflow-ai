@@ -99,15 +99,61 @@ class BankPayeeService:
             pass
         return {**txn, **update}
 
-    def _validate_party(self, db, firm_id: str, client_id: str, ptype: str, party_id: str) -> None:
+    # ── BANK-11 step 3: the party a RULE proposed ───────────────────────────
+
+    def apply_rule_party(self, db, firm_id: str, txn_id: str, *,
+                         payee_type: Optional[str], payee_id: Optional[str],
+                         actor_id: Optional[str] = None) -> Optional[dict]:
+        """Record the party a matching rule proposed, through the human door.
+
+        `set_payee` is the one writer and this delegates to it rather than
+        updating the row itself — the firm-and-client check on a polymorphic
+        `payee_id` is the only thing between a typo and a bank line pointing at
+        another client's customer, and a second write path would be a second
+        place to forget it.
+
+        **WHAT THE LINE ALREADY SAYS WINS.** `set_payee` requires a name and a
+        rule proposes none, so the name is the transaction's own `payee_name`
+        where it has one and the PARTY's name otherwise. A rule saying "this is
+        vendor X" must not rewrite what the statement called the counterparty —
+        the same order `match_and_settle_multi`'s reference fallback takes: a
+        machine reading never displaces what a person or the statement itself
+        said.
+
+        Returns None when the rule proposed no party, so the caller has nothing
+        to branch on.
+        """
+        ptype = (payee_type or "").strip().lower()
+        if not ptype:
+            return None
+        txn = self._get_txn(db, firm_id, txn_id)
+        name = (txn.get("payee_name") or "").strip()
+        if not name and payee_id and ptype in ("customer", "vendor"):
+            party = self._validate_party(db, firm_id, txn["client_id"], ptype, payee_id)
+            name = str(party.get("name") or "").strip()
+        if not name:
+            # Nothing to call it. A party tag with no name would be a dangling
+            # id, which is exactly what `set_payee`'s clearing branch exists to
+            # prevent, so the proposal is dropped rather than half-applied.
+            return None
+        return self.set_payee(db, firm_id, txn_id, payee_name=name,
+                              payee_type=ptype, payee_id=payee_id, actor_id=actor_id)
+
+    def _validate_party(self, db, firm_id: str, client_id: str, ptype: str,
+                        party_id: str) -> dict:
         """The linked party must belong to this firm AND this client.
 
         payee_id carries no foreign key (the reference is polymorphic — see
         migration 257), so this check is the only thing standing between a typo
         and a bank line pointing at another client's customer.
+
+        Returns the row, because the party's own NAME is what a rule-proposed
+        tag falls back to when the line carries none (BANK-11 step 3) and one
+        read answers both questions. The projection is written out rather than
+        `*` so tests/test_backend_columns_exist_pg.py can check it.
         """
         table = "customers" if ptype == "customer" else "vendors"
-        rows = (db.table(table).select("id, client_id")
+        rows = (db.table(table).select("id, client_id, name")
                 .eq("id", party_id).eq("firm_id", firm_id).limit(1).execute().data) or []
         if not rows:
             raise HTTPException(status_code=422,
@@ -115,6 +161,7 @@ class BankPayeeService:
         if rows[0].get("client_id") not in (None, client_id):
             raise HTTPException(status_code=422,
                                 detail=f"That {ptype} belongs to a different client.")
+        return rows[0]
 
     # ── 1.3 auto-fill ───────────────────────────────────────────────────────
     def suggest_payee(self, db, firm_id: str, client_id: str, txn: dict,

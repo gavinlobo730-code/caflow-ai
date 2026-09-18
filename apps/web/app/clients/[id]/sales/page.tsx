@@ -1621,33 +1621,91 @@ function SalesInvoices({
   // Bulk Send — same per-invoice guard as the single "Send" row action (no
   // sending a draft/cancelled invoice, and no email on file is a per-row
   // skip, not a hard stop for the rest of the batch).
+  // Every email these two send carries a generated PDF, so they are the HEAVIEST
+  // bulk actions on this screen — and this one ran an unbounded Promise.all
+  // while bulkIssueInvoices, directly below, caps at 8 and its own comment says
+  // why. Same cap here now, for the same reason.
   async function bulkSendInvoices(selected: SalesInvoice[]): Promise<boolean> {
     const token = await getAuthToken();
-    let sent = 0;
     const failures: string[] = [];
-    await Promise.all(selected.map(async (inv) => {
+    const results = await mapWithConcurrency(selected, 8, async (inv): Promise<boolean> => {
       if (inv.status === "draft" || inv.status === "cancelled") {
         failures.push(`${inv.invoice_no}: cannot send a ${inv.status} invoice`);
-        return;
+        return false;
       }
       const cust = customers.find((c) => c.id === inv.customer_id);
       if (!cust?.email) {
         failures.push(`${inv.invoice_no}: no email on file`);
-        return;
+        return false;
       }
       try {
         const result = await apiCall(`/api/sales-invoices/${inv.id}/send`, "POST", { to_email: cust.email }, token);
         if (!result.success) throw new Error(result.error ?? "send failed");
-        sent++;
+        return true;
       } catch (e) {
         failures.push(`${inv.invoice_no}: ${e instanceof Error ? e.message : "failed"}`);
+        return false;
       }
-    }));
+    });
+    const sent = results.filter(Boolean).length;
     const summary = failures.length
       ? `${sent} sent, ${failures.length} failed (${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""})`
       : `${sent} invoice${sent !== 1 ? "s" : ""} sent`;
     showToast(summary, failures.length ? "error" : "success");
     return failures.length === 0;
+  }
+
+  // SALES-23's remaining half. The single-invoice reminder (openRemind, below)
+  // has been the ONLY customer-facing sender with a real caller, so chasing a
+  // month's overdue invoices meant opening the row menu once per invoice.
+  //
+  // MANUAL, NEVER A CADENCE. An automated customer-facing reminder run is an
+  // owner decision already taken the other way — email is a feature and the CA
+  // presses the button — so this is a bulk action on rows the CA selected and
+  // nothing schedules it. The nightly collections job flags the practice's own
+  // fee invoices internally and emails nobody (migration 405).
+  //
+  // Only OVERDUE invoices are sent: POST /remind re-validates that server-side
+  // and 422s otherwise, so non-overdue rows are skipped HERE with a reason
+  // rather than turned into a wall of 422s — the shape bulkIssueInvoices uses
+  // for non-draft rows. isOverdueForUi is the same predicate the row menu uses
+  // to decide whether to offer Remind at all, so what is offered in bulk and
+  // what is offered per row cannot disagree.
+  async function bulkRemindInvoices(selected: SalesInvoice[]): Promise<boolean> {
+    const token = await getAuthToken();
+    const overdue = selected.filter(isOverdueForUi);
+    const skipped = selected.length - overdue.length;
+
+    type RemindResult = { ok: true } | { ok: false; reason: string };
+    const results: RemindResult[] = await mapWithConcurrency(overdue, 8, async (inv): Promise<RemindResult> => {
+      const cust = customers.find((c) => c.id === inv.customer_id);
+      if (!cust?.email) return { ok: false, reason: "no email on file" };
+      try {
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token);
+        if (result.success) return { ok: true };
+        return { ok: false, reason: result.error ?? "Failed to send reminder" };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.message : "Failed to send reminder" };
+      }
+    });
+
+    const sent = results.filter((r) => r.ok).length;
+    const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
+
+    if (sent > 0) load();   // reminder_count and last_reminded_at both move
+
+    const parts: string[] = [];
+    if (sent > 0) parts.push(`${sent} reminder${sent === 1 ? "" : "s"} sent`);
+    if (skipped > 0) parts.push(`${skipped} skipped (not overdue)`);
+    if (failures.length > 0) {
+      const reasons = Array.from(new Set(failures.map((f) => f.reason)));
+      parts.push(`${failures.length} failed (${reasons.join("; ")})`);
+    }
+    showToast(
+      parts.length > 0 ? `${parts.join(", ")}.` : "No overdue invoices selected.",
+      (skipped > 0 || failures.length > 0) ? "error" : "success",
+    );
+    return skipped === 0 && failures.length === 0;
   }
 
   // Bulk issue over the DataTable's selected rows. POST
@@ -2078,6 +2136,18 @@ function SalesInvoices({
             icon: <Send size={13} />,
             confirm: "Email the selected invoices to their customers?",
             run: bulkSendInvoices,
+          },
+          {
+            id: "remind",
+            label: "Remind",
+            icon: <AlertTriangle size={13} />,
+            // Names the escalation, because the tone of each email depends on
+            // how many that customer has already had: the third and later read
+            // as a final demand (email_service.send_payment_reminder_to_customer).
+            confirm: "Email an overdue-payment reminder to the customers of the selected invoices? "
+              + "Invoices that are not overdue are skipped. Each customer's third and later reminder "
+              + "is worded as a final notice.",
+            run: bulkRemindInvoices,
           },
           exportSelectedAction("sales-invoices-selected.csv", columns),
         ]}

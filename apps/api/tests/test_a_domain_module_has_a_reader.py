@@ -39,6 +39,18 @@ WHY `domain/` AND NOT `services/` OR `routers/`
     called by a router. `domain/` is where the STATUTORY RULES live, and a
     statutory rule with no reader is the failure this codebase keeps finding:
     the software knows the law and never applies it.
+
+AND AN ENTRY'S OWN REASON IS A CLAIM THE SCAN HAS TO BE ABLE TO CHECK
+    `domain/notification_service.py` sat here with the reason "nothing in the
+    production tree imports it", which was FALSE the day it was written:
+    `repositories/notifications_repository.py` imports its MOCK_NOTIFICATIONS
+    under `if _USE_MOCK`, and mock mode is what this entire suite runs in — so
+    the deletion the entry recommended would have broken every test in it.
+    The entry was not careless. The SCAN said so, because `repositories` was
+    missing from the hand-written tuple of roots, and twenty-seven modules the
+    routers import all day were invisible to it. A list of roots is a spelling
+    of "the production tree"; `_production_packages()` is the rule, so the next
+    package is in the scan the day it appears.
 """
 from __future__ import annotations
 
@@ -63,30 +75,6 @@ NO_READER_YET: dict[str, str] = {
         "module uses 'Rs.' (no space, for a table cell). They are two "
         "answers to two questions; unifying them would change a document a "
         "client receives.",
-    "domain/banking/exceptions.py":
-        "A REAL GAP, named rather than silently fixed. 315 lines of rules for "
-        "'what a partner should look at' on a bank transaction, and the only "
-        "importer is its own test. Its docstring says the context is gathered "
-        "by `services/bank_exception_service.py` — THAT FILE DOES NOT EXIST. "
-        "So no flag is raised, no partner sees one, and `blocking` is "
-        "computed by nobody. The module itself records that nothing here "
-        "gating a posting is a PRODUCT DECISION and not an oversight, and "
-        "surfacing it is a review queue somebody has to want: it is in "
-        "docs/audits/questions-for-the-owner.md rather than built on a guess "
-        "about how a firm reviews.",
-    "domain/notification_service.py":
-        "DEAD DUPLICATE, and the hazard is which one gets imported next. "
-        "`services/notification_service.py` is the live one — routers/tasks.py "
-        "calls it — and this is an older copy whose store is a module-level "
-        "MOCK_NOTIFICATIONS list. Nothing in the production tree imports it; "
-        "the one importer anywhere is tests/test_pilot_features.py, which "
-        "reads MOCK_NOTIFICATIONS directly. The risk is the retired "
-        "supplier table's shape (migration 378, not named here because a "
-        "guard reserves that name and is right to — a real read of it could "
-        "be a raw SQL string): a future reader reaches for the name, gets "
-        "the mock, and writes notifications nobody receives. "
-        "Deleting it is the right end state and is an owner decision, like "
-        "the two DROPs in questions-for-the-owner.md §9.",
 }
 
 
@@ -124,6 +112,25 @@ def _imported_names(tree: ast.AST, own: str) -> set[str]:
     return out
 
 
+_NOT_PRODUCTION = {"tests", "migrations", "scripts"}
+
+
+def _production_packages() -> tuple[str, ...]:
+    """Every importable package under apps/api that ships.
+
+    Derived from the tree, minus the three that do not ship, so the scan
+    cannot go quietly narrow again when a package is added.
+    """
+    return tuple(sorted(
+        d.name for d in API.iterdir()
+        if d.is_dir() and d.name not in _NOT_PRODUCTION
+        and not d.name.startswith((".", "__"))
+        and (d / "__init__.py").exists()))
+
+
+_PRODUCTION_PACKAGES = _production_packages()
+
+
 def _modules_with_no_reader() -> dict[str, str]:
     modules = {}
     for path in sorted(DOMAIN.rglob("*.py")):
@@ -135,7 +142,18 @@ def _modules_with_no_reader() -> dict[str, str]:
     # a module imported only by its own tests is exactly the shape this test
     # exists to find — all three examples in the docstring were well tested.
     imported: set[str] = set()
-    for root in ("domain", "services", "routers", "core", "models", "jobs", "seed"):
+    # EVERY production package, which is not the same as every package that
+    # came to mind. `repositories/` was missing from this tuple until
+    # 17-09-2026, and it is twenty-seven modules the routers import all day
+    # — so a domain module read ONLY from a repository reported as unread,
+    # and an allowlist entry could state "nothing in the production tree
+    # imports it" and pass. One did, about domain/notification_service.py,
+    # whose MOCK_NOTIFICATIONS the notifications repository has always
+    # imported; deleting it on that entry's word would have broken every
+    # test in this suite, because mock mode is what the suite runs in. The
+    # roots are derived rather than listed for exactly that reason: a
+    # package added later is in the scan the day it appears.
+    for root in _PRODUCTION_PACKAGES:
         base = API / root
         if not base.exists():
             continue

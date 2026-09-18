@@ -231,40 +231,40 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
           <div>
-            <h3 className="text-sm font-semibold text-[#0F172A]">Settle {docLabel}s</h3>
-            <p className="text-xs text-[#64748B] mt-0.5">{txn.description} · {fmt(txnAmount)} {isCredit ? "credit" : "debit"}</p>
+            <h3 className="text-sm font-semibold text-ps-ink">Settle {docLabel}s</h3>
+            <p className="text-xs text-ps-label mt-0.5">{txn.description} · {fmt(txnAmount)} {isCredit ? "credit" : "debit"}</p>
           </div>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         {modeSwitch && <div className="px-5 pt-3">{modeSwitch}</div>}
         <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1">
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">{isCredit ? "Customer" : "Vendor"} *</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">{isCredit ? "Customer" : "Vendor"} *</label>
             {isCredit ? (
               <CustomerLookup customers={parties} value={partyId} onChange={setPartyId} ariaLabel="Customer" placeholder={`Select customer…`} />
             ) : (
               <VendorLookup vendors={parties} value={partyId} onChange={setPartyId} ariaLabel="Vendor" placeholder={`Select vendor…`} />
             )}
-            <p className="text-[10px] text-[#94A3B8] mt-1">All selected {docLabel}s must belong to this one {isCredit ? "customer" : "vendor"}.</p>
+            <p className="text-[10px] text-ps-hint mt-1">All selected {docLabel}s must belong to this one {isCredit ? "customer" : "vendor"}.</p>
           </div>
 
           {partyId && (
             loadingDocs ? (
               <TransactionListSkeleton rows={3} />
             ) : docs.length === 0 ? (
-              <p className="text-xs text-[#94A3B8] text-center py-6">No open {docLabel}s for this {isCredit ? "customer" : "vendor"}.</p>
+              <p className="text-xs text-ps-hint text-center py-6">No open {docLabel}s for this {isCredit ? "customer" : "vendor"}.</p>
             ) : (
-              <div className="border border-[#F1F5F9] rounded-lg divide-y divide-[#F8FAFC]">
+              <div className="border border-ps-muted rounded-lg divide-y divide-ps-bg">
                 {docs.map((d) => (
                   <div key={d.id} className="flex items-center gap-2 px-3 py-2">
-                    <input type="checkbox" checked={checked.has(d.id)} onChange={() => toggle(d)} className="h-3.5 w-3.5 rounded border-[#CBD5E1] shrink-0" />
+                    <input type="checkbox" checked={checked.has(d.id)} onChange={() => toggle(d)} className="h-3.5 w-3.5 rounded border-ps-disabled shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-[#1E293B] truncate">{d.no}</p>
-                      <p className="text-[10px] text-[#94A3B8]">{d.date} · Outstanding {fmt(d.outstanding_paise)} {d.currency !== "INR" ? d.currency : ""}</p>
+                      <p className="text-xs font-medium text-ps-ink truncate">{d.no}</p>
+                      <p className="text-[10px] text-ps-hint">{d.date} · Outstanding {fmt(d.outstanding_paise)} {d.currency !== "INR" ? d.currency : ""}</p>
                     </div>
                     {checked.has(d.id) && (
                       <input
@@ -283,14 +283,14 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
               inside the bill's net payable, so adding it here would double it. */}
           {isCredit && (
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">
+              <label className="block text-xs font-medium text-ps-label mb-1">
                 TDS withheld by the customer (₹)
               </label>
               <input
                 type="number" min="0" step="0.01" value={tds}
                 onChange={(e) => setTds(e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="0.00" />
-              <p className="text-[10px] text-[#94A3B8] mt-1">
+              <p className="text-[10px] text-ps-hint mt-1">
                 {tdsPaise > 0
                   ? `Invoices totalling ${fmt(settlementCap)} can be settled from this ${fmt(txnAmount)} receipt — the ${fmt(tdsPaise)} withheld clears the receivable too.`
                   : "Leave blank unless the customer deducted tax at source. Enter the amount deducted, not the rate."}
@@ -300,24 +300,24 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
 
           {isForeign && (
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Exchange rate ({currency} → INR) *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Exchange rate ({currency} → INR) *</label>
               <input type="number" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. 83.25" />
             </div>
           )}
 
           {checked.size > 0 && (
-            <div className={`rounded-lg px-3 py-2 text-xs ${remaining < 0 ? "bg-red-50 text-red-700" : "bg-[#F8FAFC] text-[#475569]"}`}>
+            <div className={`rounded-lg px-3 py-2 text-xs ${remaining < 0 ? "bg-state-problem-surface text-money-out" : "bg-ps-bg text-ps-label"}`}>
               Allocated {fmt(totalAllocatedPaise)} of {fmt(settlementCap)}
               {tdsPaise > 0 && ` (${fmt(txnAmount)} received + ${fmt(tdsPaise)} TDS)`}
               {remaining > 0 && ` — ${fmt(remaining)} will remain unallocated on the ${isCredit ? "receipt" : "payment"}.`}
               {remaining < 0 && (tdsPaise > 0 ? " — exceeds the receipt plus TDS." : " — exceeds the transaction amount.")}
             </div>
           )}
-          {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+          {error && <p className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
         </div>
-        <div className="flex gap-3 justify-end px-5 py-4 border-t border-[#F1F5F9]">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+        <div className="flex gap-3 justify-end px-5 py-4 border-t border-ps-muted">
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={save} disabled={saving || checked.size === 0 || remaining < 0} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
             {saving ? "Settling…" : `Confirm allocation`}
           </button>

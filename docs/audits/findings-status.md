@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **241** | re-read against the code. The defect is gone. |
-| partial | **27** | part of the finding is answered, part is not. Each says which. |
+| closed | **243** | re-read against the code. The defect is gone. |
+| partial | **25** | part of the finding is answered, part is not. Each says which. |
 | open | **5** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 32 items — 5 open and 27 partial — not 254.**
+**The work left is 30 items — 5 open and 25 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -57,7 +57,6 @@ is left as "unknown".
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
 | medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
-| medium | **BANK-13** | The exception-rules engine — materiality, duplicates, cash withdrawals, new payees — is complete |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **GST-19** | Rule 36(4) is applied as an aggregate per-head cap, not invoice-level 2B matching, and the cappe |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
@@ -70,7 +69,6 @@ is left as "unknown".
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
 | medium | **SALES-28** | E-invoice and e-way bill are record-keeping ledgers only — no JSON is produced, no applicability |
 | low | **INV-09** | Stock quantity is NUMERIC(10,3) with no unit conversion, so high-count or fine-grained items bre |
-| low | **PUR-32** | Duplicate-bill detection is exact-match on vendor plus bill number only, so an OCR typo or a dup |
 
 
 ## Not a defect as stated
@@ -207,6 +205,7 @@ is left as "unknown".
 | medium | **ACC-27** | entry_date is an unvalidated string on the journal models, so a malformed date reaches the datab |
 | medium | **BANK-03** | A foreign-currency bank account can be created, and its statement imports and posts to the ledge |
 | medium | **BANK-10** | Auto-match never suggests a part payment against a partially-paid invoice, because the amount ba |
+| medium | **BANK-13** | The exception-rules engine — materiality, duplicates, cash withdrawals, new payees — is complete |
 | medium | **BANK-14** | A PDF whose first page has ruled table lines and whose later pages do not silently loses the lat |
 | medium | **BANK-15** | Transfer detection scans only the newest 1,000 lines, and is re-run from scratch for every 100-l |
 | medium | **BANK-16** | The nightly trusted-rule sweep will auto-post a line the CA coded themselves, and credit it to t |
@@ -325,6 +324,7 @@ is left as "unknown".
 | low | **PUR-29** | Reverse charge and §17(5) eligibility have no test coverage on the purchase-bill compute path at |
 | low | **PUR-30** | A dead _TDS_DEFAULT_BPS table at the top of purchase_bills.py carries a §194H rate that is 2.5x  |
 | low | **PUR-31** | Vendor payment numbering is count+1, so a deleted or compensated payment guarantees a collision  |
+| low | **PUR-32** | Duplicate-bill detection is exact-match on vendor plus bill number only, so an OCR typo or a dup |
 | low | **SALES-18** | Statutory rules live in TypeScript with no backend counterpart, against the house rule "zero bus |
 | low | **SALES-30** | A credit note's is_interstate can be inherited from another client's invoice in the same firm |
 | low | **SALES-31** | SalesInvoiceIn.place_of_supply is accepted by the API and silently ignored in production |

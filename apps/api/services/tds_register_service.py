@@ -321,11 +321,50 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
         # the statute leaves two lawful answers and the books hold neither of
         # the facts that pick between them.
         _returned, _increased = notes_against_bill(db, firm_id, bill)
+        # WHICH OF THE TWO LAWFUL ANSWERS APPLIES TURNS ON WHETHER THE TAX HAS
+        # GONE, and `tds_deductions.challan_date` / `status` have recorded that
+        # since migration 014 — nothing read them until this finding closed, and
+        # the recorded plan called for a migration to ADD them. There was none
+        # to add.
+        #
+        # Read here rather than defaulted: `credit_moved_after_deduction`
+        # resolves an absent date to "not yet deposited", which is the honest
+        # reading of the column's own default and the WRONG answer for a bill
+        # whose challan has gone. A caller that forgets to pass these gets the
+        # recompute branch on money already with the department, so a test pins
+        # that this call site passes both.
+        # GUARDED SEPARATELY FROM THE WRITE, on its own merits. The deductee row
+        # existing is what keeps the challan and the 26Q right; this read only
+        # decides which sentence a REPORT carries. A read that broke must not
+        # take the write down with it — and it must not be read as an answer
+        # either, so `deposit_facts_known=False` resolves to "cannot be told"
+        # rather than to the recompute branch.
+        _prior: dict = {}
+        _prior_read = True
+        try:
+            _existing = (
+                db.table("tds_deductions")
+                .select("challan_date, status")
+                .eq("firm_id", firm_id)
+                .eq("purchase_bill_id", bill_id)
+                .limit(1)
+                .execute()
+            ).data or []
+            _prior = _existing[0] if _existing else {}
+        except Exception:
+            _prior_read = False
+            _logger.warning(
+                "could not read the existing TDS deduction for bill %s; the "
+                "purchase-return note will say the challan position is unknown",
+                bill_id, exc_info=True)
         _moved = credit_moved_after_deduction(
             bill_no=bill.get("bill_no"), section=bill.get("tds_section"),
             credited_paise=int(bill.get("taxable_amount_paise") or 0),
             tds_paise=deducted,
-            returned_taxable_paise=_returned, increased_taxable_paise=_increased)
+            returned_taxable_paise=_returned, increased_taxable_paise=_increased,
+            challan_date=_prior.get("challan_date"),
+            deduction_status=_prior.get("status"),
+            deposit_facts_known=_prior_read)
         if _moved:
             gaps.append(GAP_CREDIT_MOVED_AFTER_DEDUCTION)
         # Payload written INLINE with literal keys — tests/test_backend_columns_

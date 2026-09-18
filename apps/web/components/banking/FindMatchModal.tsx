@@ -133,25 +133,25 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
   const lastPage = Math.max(0, Math.ceil(total / PER_PAGE) - 1);
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-[#0F172A]">Find other matches</h3>
-            <p className="text-xs text-[#64748B] mt-0.5 truncate">
+            <h3 className="text-sm font-semibold text-ps-ink">Find other matches</h3>
+            <p className="text-xs text-ps-label mt-0.5 truncate">
               {txn.description} · {txn.transaction_date} · {fmt(txnAmount)} {isCredit ? "credit" : "debit"}
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
+          <button onClick={onClose} aria-label="Close" className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
 
-        <form onSubmit={submit} className="px-5 py-3 border-b border-[#F1F5F9] space-y-2">
+        <form onSubmit={submit} className="px-5 py-3 border-b border-ps-muted space-y-2">
           <div className="flex gap-2">
             <input
               value={q} onChange={(e) => setQ(e.target.value)}
               placeholder="Invoice number, party name…"
               aria-label="Search documents"
-              className="flex-1 px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="flex-1 px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" />
             <button type="submit" disabled={loading}
               className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
               {loading ? "Searching…" : "Search"}
@@ -160,7 +160,7 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
           <div className="flex flex-wrap gap-2">
             <select value={entityType} onChange={(e) => setEntityType(e.target.value)}
               aria-label="Document type"
-              className="px-2 py-1 text-[11px] border border-[#E2E8F0] rounded text-[#475569]">
+              className="px-2 py-1 text-[11px] border border-ps-border rounded text-ps-label">
               {/* Only what money moving THIS way can settle. The backend applies
                   the same rule and refuses anything else outright, so this list
                   narrows the request rather than deciding it. */}
@@ -169,53 +169,53 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
                 <option key={t} value={t}>{CANDIDATE_TYPE_LABELS[t] ?? t}</option>
               ))}
             </select>
-            <label className="flex items-center gap-1 text-[10px] text-[#94A3B8]">
+            <label className="flex items-center gap-1 text-[10px] text-ps-hint">
               From
               <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
                 aria-label="Dated from"
-                className="px-1.5 py-1 text-[11px] border border-[#E2E8F0] rounded text-[#475569]" />
+                className="px-1.5 py-1 text-[11px] border border-ps-border rounded text-ps-label" />
             </label>
-            <label className="flex items-center gap-1 text-[10px] text-[#94A3B8]">
+            <label className="flex items-center gap-1 text-[10px] text-ps-hint">
               To
               <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
                 aria-label="Dated to"
-                className="px-1.5 py-1 text-[11px] border border-[#E2E8F0] rounded text-[#475569]" />
+                className="px-1.5 py-1 text-[11px] border border-ps-border rounded text-ps-label" />
             </label>
-            <label className="flex items-center gap-1 text-[10px] text-[#94A3B8]">
+            <label className="flex items-center gap-1 text-[10px] text-ps-hint">
               ₹ min
               <input type="number" step="0.01" min="0" value={minRs} onChange={(e) => setMinRs(e.target.value)}
                 aria-label="Minimum amount in rupees"
-                className="w-24 px-1.5 py-1 text-[11px] border border-[#E2E8F0] rounded text-[#475569]" />
+                className="w-24 px-1.5 py-1 text-[11px] border border-ps-border rounded text-ps-label" />
             </label>
-            <label className="flex items-center gap-1 text-[10px] text-[#94A3B8]">
+            <label className="flex items-center gap-1 text-[10px] text-ps-hint">
               ₹ max
               <input type="number" step="0.01" min="0" value={maxRs} onChange={(e) => setMaxRs(e.target.value)}
                 aria-label="Maximum amount in rupees"
-                className="w-24 px-1.5 py-1 text-[11px] border border-[#E2E8F0] rounded text-[#475569]" />
+                className="w-24 px-1.5 py-1 text-[11px] border border-ps-border rounded text-ps-label" />
             </label>
           </div>
         </form>
 
         <div className="px-5 py-3 overflow-y-auto flex-1 space-y-1.5">
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs text-state-problem">{error}</p>}
           {!error && !loading && shown.length === 0 && (
-            <p className="text-xs text-[#94A3B8]">
+            <p className="text-xs text-ps-hint">
               Nothing here matches. Widen the dates or clear a filter — this search already
               looks past the amount, so a document of any size is reachable.
             </p>
           )}
           {data?.truncated && (
-            <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            <p className="text-[10px] text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-2 py-1">
               There were more documents than this search reads at once. Narrow the dates or
               the amount to be sure you are seeing everything.
             </p>
           )}
           {shown.map((r) => (
             <div key={`${r.matched_entity_type}:${r.matched_entity_id}`}
-              className="flex items-center justify-between gap-3 border border-[#F1F5F9] rounded px-2.5 py-1.5">
+              className="flex items-center justify-between gap-3 border border-ps-muted rounded px-2.5 py-1.5">
               <div className="min-w-0">
-                <p className="text-[11px] text-[#334155] truncate">{r.label}</p>
-                <p className="text-[10px] text-[#94A3B8]">
+                <p className="text-[11px] text-ps-body truncate">{r.label}</p>
+                <p className="text-[10px] text-ps-hint">
                   {r.entity_date ?? "—"} · {fmt(r.amount_paise)}
                   {r.outstanding_paise !== null && r.outstanding_paise !== r.amount_paise
                     ? ` · ${fmt(r.outstanding_paise)} open` : ""}
@@ -244,18 +244,18 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
           ))}
         </div>
 
-        <div className="flex items-center justify-between px-5 py-3 border-t border-[#F1F5F9]">
-          <p className="text-[10px] text-[#94A3B8]">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-ps-muted">
+          <p className="text-[10px] text-ps-hint">
             {total === 0 ? "No documents" :
               `${page * PER_PAGE + 1}–${Math.min((page + 1) * PER_PAGE, total)} of ${total}`}
           </p>
           <div className="flex gap-2">
             <button onClick={() => goTo(page - 1)} disabled={page === 0 || loading}
-              className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded text-[#475569] disabled:opacity-40">
+              className="text-[11px] px-2 py-1 border border-ps-border rounded text-ps-label disabled:opacity-40">
               Previous
             </button>
             <button onClick={() => goTo(page + 1)} disabled={page >= lastPage || loading}
-              className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded text-[#475569] disabled:opacity-40">
+              className="text-[11px] px-2 py-1 border border-ps-border rounded text-ps-label disabled:opacity-40">
               Next
             </button>
           </div>

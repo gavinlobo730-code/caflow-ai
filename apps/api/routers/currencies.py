@@ -257,3 +257,190 @@ def set_client_currency_policy(
         raise HTTPException(status_code=404, detail="Client not found.")
     _logger.info("caflow.currencies client %s multi_currency_enabled=%s", client_id, bool(enabled))
     return api_response(True, {"client_id": client_id, "multi_currency_enabled": bool(enabled)})
+
+
+# ─── FX rates (the table nothing could write) ─────────────────────────────────
+#
+# `public.fx_rates` (migration 146) is READ by `ManualRateProvider` — which is
+# what every foreign document's booking rate resolves through — and was WRITTEN
+# BY NOTHING. No endpoint, no Pydantic field, no screen, no seed. Only a manual
+# INSERT against the database could put a rate in it, so with the ACC-19 gates
+# now switchable a Partner could turn multi-currency ON and then find that the
+# one thing it needs cannot be recorded. Exactly the shape ACC-19 itself was,
+# and the shape `capital_wip` and `fx_revaluations` were: built, reached,
+# structurally empty.
+#
+# THE TABLE STAYS GLOBAL, AND THE TENANCY OBJECTION IS ANSWERED ON THE WRITE
+# SIDE. USD→INR on a date is a fact about the world — the RBI publishes one —
+# so a firm-scoped table would have every firm re-typing the same number, and
+# the rate a document was booked at would depend on who typed it. The answer is
+# Partner-only plus `created_by`, and a screen that SAYS the rate is shared.
+# Owner decision, recorded in docs/audits/questions-for-the-owner.md.
+
+_RATE_TYPES = ("booking", "gst_notified", "customs", "closing")
+
+#: What each rate_type is FOR. Served rather than spelled on the screen, for the
+#: reason the Schedule III captions are: a browser copy of a vocabulary drifts.
+#: The four are NOT interchangeable and a screen must never let one figure be
+#: typed for all of them —
+#:   booking       the rate a transaction is recorded at (AS 11 paragraph 9);
+#:   gst_notified  CGST Rule 34 fixes the rate for GST at the one notified under
+#:                 s.14 of the Customs Act, which is NOT the day's market rate;
+#:   customs       the rate the Bill of Entry was assessed at;
+#:   closing       AS 11 paragraph 11's closing rate, which the year-end
+#:                 revaluation retranslates monetary items at.
+_RATE_TYPE_MEANINGS = {
+    "booking": "The rate a transaction is recorded at (AS 11 paragraph 9). "
+               "This is the one every foreign invoice, bill, receipt and "
+               "payment resolves through.",
+    "gst_notified": "CGST Rule 34: the rate of exchange for GST is the one "
+                    "notified under s.14 of the Customs Act, not the day's "
+                    "market rate. Recording the market rate here declares a "
+                    "different taxable value from the one the Act fixes.",
+    "customs": "The rate a Bill of Entry was assessed at.",
+    "closing": "AS 11 paragraph 11's closing rate, at which monetary items are "
+               "retranslated on a balance sheet date. Used by the year-end FX "
+               "revaluation and by nothing else.",
+}
+
+
+@router.get("/rate-types")
+def get_rate_types(current_user: dict = Depends(rbac("client", "read"))):
+    """The four rate types and what each one is for.
+
+    Served rather than spelled on the screen: the CHECK on `fx_rates.rate_type`
+    admits exactly these four, and a browser list of them is a second
+    vocabulary one migration away from disagreeing with the database.
+    """
+    return api_response(True, {"rate_types": [
+        {"code": c, "meaning": _RATE_TYPE_MEANINGS[c]} for c in _RATE_TYPES]})
+
+
+@router.get("/rates")
+def list_fx_rates(
+    base: str = Query("USD", min_length=3, max_length=3),
+    quote: str = Query("INR", min_length=3, max_length=3),
+    rate_type: str = Query("booking"),
+    limit: int = Query(60, ge=1, le=365),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """The most recent rates for one (base, quote, rate_type), newest first.
+
+    Bounded by `limit` rather than by a date range, because the question the
+    screen asks is "what has been recorded lately" and the answer is a screenful
+    — CLAUDE.md's rule that what crosses the wire is proportional to the ANSWER.
+    """
+    rate_type = (rate_type or "").strip().lower()
+    if rate_type not in _RATE_TYPES:
+        raise HTTPException(status_code=422,
+                            detail=f"rate_type must be one of {', '.join(_RATE_TYPES)}.")
+    if _USE_MOCK:
+        return api_response(True, {"base": base.upper(), "quote": quote.upper(),
+                                   "rate_type": rate_type, "rates": []})
+    from core.supabase_client import get_supabase
+
+    rows = (get_supabase().table("fx_rates")
+            .select("id, base, quote, rate_date, rate_type, rate, source, created_at")
+            .eq("base", base.upper()).eq("quote", quote.upper())
+            .eq("rate_type", rate_type)
+            .order("rate_date", desc=True).limit(limit).execute().data) or []
+    return api_response(True, {"base": base.upper(), "quote": quote.upper(),
+                               "rate_type": rate_type, "rates": rows})
+
+
+@router.put("/rates")
+def record_fx_rate(
+    base: str = Body(..., embed=True),
+    quote: str = Body(..., embed=True),
+    rate_date: str = Body(..., embed=True),
+    rate: str = Body(..., embed=True),
+    rate_type: str = Body("booking", embed=True),
+    current_user: dict = Depends(rbac("settings", "write")),
+):
+    """Record one rate. Partner-only, and the rate is shared across the platform.
+
+    `source` is ALWAYS 'manual' and is not settable. It is the provider
+    identifier `ManualRateProvider` matches on, so a value typed here would
+    write a rate that nothing reads — and the unique key is
+    (base, quote, rate_date, rate_type, source), so a second source silently
+    becomes a second rate for the same day rather than a correction.
+
+    THE RATE IS PARSED AS A DECIMAL FROM ITS TEXT, never through a float. The
+    column is NUMERIC(18,8) precisely so the rate is exact, and
+    `RateQuote` reads it back with `Decimal(str(...))` for the same reason;
+    taking a JSON number here would put a float round trip in front of all of
+    that. Same discipline as `lib/money/rupeeInput.ts` on the rupee side.
+
+    AN EXISTING RATE FOR THAT DAY IS REPLACED, not added to. A correction is
+    the ordinary case — somebody typed 83.42 for 84.32 — and the unique key
+    means a second INSERT would fail rather than correct. What it does NOT do
+    is reach back into documents already booked at the old rate: a posted
+    journal is immutable (migration 251), and re-rating one is a reversal the
+    CA raises. The response SAYS which of the two happened.
+    """
+    from decimal import Decimal, InvalidOperation
+    from datetime import date as _date
+
+    base, quote = (base or "").strip().upper(), (quote or "").strip().upper()
+    rate_type = (rate_type or "booking").strip().lower()
+    if len(base) != 3 or len(quote) != 3:
+        raise HTTPException(status_code=422, detail="base and quote are ISO 4217 codes.")
+    if base == quote:
+        raise HTTPException(
+            status_code=422,
+            detail="A currency's rate against itself is 1 by definition and is "
+                   "resolved without a stored rate — see the identity source.")
+    if rate_type not in _RATE_TYPES:
+        raise HTTPException(status_code=422,
+                            detail=f"rate_type must be one of {', '.join(_RATE_TYPES)}.")
+    try:
+        parsed = Decimal(str(rate).strip())
+    except (InvalidOperation, ValueError):
+        raise HTTPException(status_code=422, detail="rate must be a decimal number.")
+    if parsed <= 0:
+        # The column CHECKs rate > 0; saying so here costs a keystroke rather
+        # than a 500 from the database.
+        raise HTTPException(status_code=422, detail="rate must be greater than zero.")
+    try:
+        when = _date.fromisoformat(str(rate_date)[:10]).isoformat()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="rate_date must be YYYY-MM-DD.")
+
+    if _USE_MOCK:
+        return api_response(True, {"base": base, "quote": quote, "rate_date": when,
+                                   "rate_type": rate_type, "rate": str(parsed),
+                                   "source": "manual", "replaced": False})
+    from core.supabase_client import get_supabase
+
+    db = get_supabase()
+    existing = (db.table("fx_rates").select("id")
+                .eq("base", base).eq("quote", quote).eq("rate_date", when)
+                .eq("rate_type", rate_type).eq("source", "manual")
+                .limit(1).execute().data) or []
+    # THE KEYS ARE WRITTEN OUT AT EACH CALL, not passed as a variable.
+    # `tests/test_backend_columns_exist_pg.py` reads an insert or update payload
+    # as a dict LITERAL, so a `payload` built above and handed in is invisible
+    # to it — a column renamed out from under this would be found in production
+    # rather than in CI. The duplication is the price, and it is the same
+    # decision `domain/firm/identity` and `_document_numbers` both record.
+    # created_by FKs to public.users.id (the INTERNAL id), not the Supabase auth
+    # id — CLAUDE.md.
+    if existing:
+        (db.table("fx_rates").update({
+            "base": base, "quote": quote, "rate_date": when,
+            "rate_type": rate_type, "rate": str(parsed), "source": "manual",
+            "created_by": current_user.get("id"),
+        }).eq("id", existing[0]["id"]).execute())
+    else:
+        db.table("fx_rates").insert({
+            "base": base, "quote": quote, "rate_date": when,
+            "rate_type": rate_type, "rate": str(parsed), "source": "manual",
+            "created_by": current_user.get("id"),
+        }).execute()
+    payload = {"base": base, "quote": quote, "rate_date": when,
+               "rate_type": rate_type, "rate": str(parsed), "source": "manual",
+               "created_by": current_user.get("id")}
+    _logger.info("caflow.currencies %s %s/%s %s %s=%s by %s",
+                 "replaced" if existing else "recorded", base, quote, when,
+                 rate_type, parsed, current_user.get("id"))
+    return api_response(True, {**payload, "replaced": bool(existing)})

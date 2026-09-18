@@ -29,6 +29,58 @@ _USER_LOOKUP_CACHE_TTL_SECONDS = 30
 _user_lookup_cache: dict[str, tuple[float, dict, Optional[dict]]] = {}
 
 
+def _permission_overrides(supabase, user_id) -> dict:
+    """This person's per-person access overrides (migration 403), keyed
+    ``"resource:action"`` -> bool.
+
+    Read HERE, inside the 30-second cached lookup, rather than in `rbac()`:
+    `apps/api` runs in Singapore and Postgres in Mumbai, so a read per request
+    would put a cross-region round trip in front of all 1037 guarded endpoints.
+    Here it costs one read per user per 30 seconds.
+
+    That TTL means a permission change takes up to 30 seconds to bite, which is
+    exactly how a ROLE change already behaves on this same cache — the same
+    delay, on the same row, for the same reason.
+
+    A FAILED read returns {} — no overrides — which falls back to the role. That
+    is the safe direction and the only defensible one: failing closed would
+    lock every user out of everything on a transient PostgREST error, while
+    failing to the role is precisely the behaviour this firm had before anybody
+    ticked a box. It is logged, not swallowed.
+    """
+    if not user_id:
+        return {}
+    try:
+        rows = (
+            supabase.table("user_permissions")
+            .select("resource, action, granted")
+            .eq("user_id", user_id)
+            .execute()
+        ).data or []
+    except Exception:
+        _logger.exception("permission-override lookup failed for user_id=%s", user_id)
+        return {}
+    if not isinstance(rows, list):
+        # A row set, always — this is a plain filtered select with no
+        # `.single()`. Anything else is a caller or a stub handing back a shape
+        # this function does not read, and iterating a dict here would walk its
+        # KEYS and then fail on `str.get` inside the auth path, turning a
+        # malformed read into a 500 on every request rather than into the
+        # role-default fallback the failure above deliberately chooses.
+        _logger.warning("permission-override lookup returned %s, not a list, for user_id=%s",
+                        type(rows).__name__, user_id)
+        return {}
+    out: dict = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        resource, action = row.get("resource"), row.get("action")
+        granted = row.get("granted")
+        if resource and action and isinstance(granted, bool):
+            out[f"{resource}:{action}"] = granted
+    return out
+
+
 def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Optional[dict]]:
     cached = _user_lookup_cache.get(auth_user_id)
     if cached is not None and (time.monotonic() - cached[0]) < _USER_LOOKUP_CACHE_TTL_SECONDS:
@@ -118,6 +170,14 @@ def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Opt
             _logger.warning(
                 "user %s names firm_id=%s, which has no row", auth_user_id, firm_id_for_status)
 
+    # Carried ON the user row rather than as a fourth return value: every caller
+    # of this function reads `user_data`, and a separate channel is one caller
+    # away from being dropped — which would read as "this person has no
+    # overrides", i.e. silently back to role-only access with nothing to see.
+    user_data = {
+        **user_data,
+        "permission_overrides": _permission_overrides(supabase, user_data.get("id")),
+    }
     _user_lookup_cache[auth_user_id] = (time.monotonic(), user_data, firm_row)
     return user_data, firm_row
 
@@ -265,6 +325,11 @@ def get_current_user(
         # aal2 = MFA satisfied). Used by require_mfa() when REQUIRE_MFA is enabled.
         "aal": payload.get("aal", "aal1"),
         "access_token": token,
+        # Per-person access overrides (migration 403). `core.permissions.can_user`
+        # reads this key, so it must be present on EVERY principal rbac() can
+        # see. An absent key and an empty map resolve identically — to the role —
+        # which is what keeps the dev/mock path below working unchanged.
+        "permission_overrides": user_data.get("permission_overrides") or {},
     }
 
 

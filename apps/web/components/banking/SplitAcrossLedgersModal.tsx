@@ -170,28 +170,28 @@ export function SplitAcrossLedgersModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-[#0F172A]">Split across ledgers</h3>
-            <p className="text-xs text-[#64748B] mt-0.5 truncate" title={description}>
+            <h3 className="text-sm font-semibold text-ps-ink">Split across ledgers</h3>
+            <p className="text-xs text-ps-label mt-0.5 truncate" title={description}>
               {description} · {formatPaise(amountPaise)} {isCredit ? "received" : "spent"}
             </p>
           </div>
           <button onClick={onClose} aria-label="Close"
-            className="text-[#94A3B8] hover:text-[#475569] shrink-0"><X size={16} /></button>
+            className="text-ps-hint hover:text-ps-label shrink-0"><X size={16} /></button>
         </div>
 
         {modeSwitch && <div className="px-5 pt-3">{modeSwitch}</div>}
 
         <div className="px-5 py-4 space-y-2 overflow-y-auto flex-1">
           {loading ? (
-            <p className="text-xs text-[#94A3B8] py-6 text-center">Loading the current split…</p>
+            <p className="text-xs text-ps-hint py-6 text-center">Loading the current split…</p>
           ) : (
             <>
               {!editable && (
-                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                <p className="text-[11px] text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
                   This line already has a journal, so its split is frozen. Undo the posting first.
                 </p>
               )}
@@ -214,7 +214,7 @@ export function SplitAcrossLedgersModal({
                       onChange={(e) => update(l.key, { narration: e.target.value })}
                       placeholder="What this part was for (optional)"
                       aria-label={`Note for line ${i + 1}`}
-                      className="mt-1 w-full border border-[#E2E8F0] rounded px-2 py-1 text-[11px]"
+                      className="mt-1 w-full border border-ps-border rounded px-2 py-1 text-[11px]"
                     />
                   </div>
                   <div className="w-32 shrink-0">
@@ -224,13 +224,13 @@ export function SplitAcrossLedgersModal({
                       disabled={!editable || saving}
                       onChange={(e) => update(l.key, { amount: e.target.value })}
                       aria-label={`Amount for line ${i + 1}`}
-                      className="w-full border border-[#E2E8F0] rounded px-2 py-1.5 text-xs text-right font-mono"
+                      className="w-full border border-ps-border rounded px-2 py-1.5 text-xs text-right font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => takeTheRest(l.key)}
                       disabled={!editable || saving}
-                      className="mt-1 w-full text-[10px] text-[#4338CA] hover:underline disabled:opacity-40">
+                      className="mt-1 w-full text-[10px] text-brand hover:underline disabled:opacity-40">
                       Take the rest
                     </button>
                   </div>
@@ -240,7 +240,7 @@ export function SplitAcrossLedgersModal({
                     disabled={!editable || saving || legs.length <= 2}
                     aria-label={`Remove line ${i + 1}`}
                     title={legs.length <= 2 ? "A split needs at least two ledgers" : "Remove this line"}
-                    className="mt-1.5 text-[#CBD5E1] hover:text-red-600 disabled:opacity-30 shrink-0">
+                    className="mt-1.5 text-ps-disabled hover:text-state-problem disabled:opacity-30 shrink-0">
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -250,19 +250,19 @@ export function SplitAcrossLedgersModal({
                 type="button"
                 onClick={() => { setLegs((ls) => [...ls, blankLeg(seq)]); setSeq((n) => n + 1); }}
                 disabled={!editable || saving}
-                className="inline-flex items-center gap-1 text-xs px-2.5 py-1 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569] disabled:opacity-50">
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-1 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label disabled:opacity-50">
                 <Plus size={12} /> Add a ledger
               </button>
             </>
           )}
 
-          {error && <p className="text-[11px] text-red-600">{error}</p>}
+          {error && <p className="text-[11px] text-state-problem">{error}</p>}
         </div>
 
-        <div className="px-5 py-3 border-t border-[#F1F5F9] flex items-center gap-3">
+        <div className="px-5 py-3 border-t border-ps-muted flex items-center gap-3">
           {/* The figure that has to reach zero, kept in front of the reader
               rather than produced as a validation error on Save. */}
-          <p className={`text-xs font-mono ${left === 0 ? "text-[#15803D]" : "text-[#B45309]"}`}>
+          <p className={`text-xs font-mono ${left === 0 ? "text-state-ready" : "text-state-attention"}`}>
             {left === 0 ? "Fully allocated" : left > 0
               ? `${formatPaise(left)} unallocated`
               : `${formatPaise(-left)} over`}
@@ -270,24 +270,24 @@ export function SplitAcrossLedgersModal({
           {/* Only when the amount is NOT the problem — otherwise the figure to
               its left is already saying the same thing twice. */}
           {left === 0 && blocked && (
-            <p className="text-[10px] text-[#94A3B8] truncate">{blocked}</p>
+            <p className="text-[10px] text-ps-hint truncate">{blocked}</p>
           )}
           <div className="ml-auto flex items-center gap-2">
             {wasSplit && editable && (
               <button onClick={clearSplit} disabled={saving}
-                className="text-xs px-3 py-1.5 text-[#B91C1C] hover:underline disabled:opacity-50">
+                className="text-xs px-3 py-1.5 text-state-problem hover:underline disabled:opacity-50">
                 Clear the split
               </button>
             )}
             <button onClick={onClose} disabled={saving}
-              className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]">
+              className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
               Cancel
             </button>
             <button
               onClick={save}
               disabled={!editable || saving || Boolean(blocked)}
               title={blocked ?? "Save this allocation"}
-              className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40 disabled:cursor-not-allowed">
+              className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed">
               {saving ? "Saving…" : "Save the split"}
             </button>
           </div>

@@ -1476,8 +1476,11 @@ change. The code is the authority; keep this file in step with it.
   but whose payload this product never held** is named too: its tax is in the
   3B row and its Table 4 breakdown is not.
   **Tables 10–14, 15, 16, 18 and 19 are NOT built and each says why** —
-  §47's late-fee rates are deliberately EMPTY in `domain/gst/late_filing.py`,
-  so Table 19 must not invent one. ⚠️ The FORM's own numbering and row labels
+  §47(2)'s ANNUAL-return fee is not held in `domain/gst/late_filing.py` — a
+  different figure from the monthly ladder that module now carries — so Table
+  19 must not invent one. Its guard used to assert `LATE_FEE_RATES == {}`,
+  which was a spelling and broke the day the monthly figures were written in;
+  it asks for a `gstr9` fee and requires a refusal. ⚠️ The FORM's own numbering and row labels
   are `[S]`, written from knowledge because every `.gov.in` is refused at this
   environment's proxy; the FIGURES are not affected, each being a total of
   figures this product computed and the CA filed.
@@ -1631,23 +1634,40 @@ change. The code is the authority; keep this file in step with it.
   understate it. **§50(3) REFUSES TWICE OVER.** Its base is credit wrongly
   availed **AND UTILISED** (Rule 88B(3)), never the availed figure — credit
   availed and never utilised bears nothing, so the substitution would charge a
-  taxpayer who owes nothing. And **its RATE is a named gap, not 24%**: the
-  Act's own ceiling is "not exceeding twenty-four per cent" and Notification
-  13/2017-CT notified 24% against the ORIGINAL sub-section, but the Finance
-  Act 2022 substituted §50(3) retrospectively from 01-07-2017 and Notification
-  09/2022-CT appears to notify **18%** for the substituted text. A THIRD of
-  the charge separates the two and this is money a CA pays over on the
-  client's behalf, so over-stating takes it from somebody who does not owe it —
-  the opposite direction from the ESI rounding, and the reason this one refuses
-  where that one rounds up. `SECTION_50_3_NOTIFIED_RATE_BPS` is `None` and the
-  engine works the moment a figure is written in.
-  **THE §47 LATE FEE IS NOT COMPUTED AT ALL.** The statutory ₹100 a day per Act
-  capped at ₹5,000 is held so nobody has to look up what the notifications
-  reduced, and is deliberately NOT a fallback — no registered person has paid
-  it since 2018 (Notifications 4/2018 and 76/2018 reduced it; 19/2021 and
-  20/2021 capped it by turnover band), and ₹200 a day where ₹50 is notified is
-  four times a figure a CA would pay over. `LATE_FEE_RATES` is EMPTY and adding
-  a row is a human step like the state professional-tax slabs. Two conventions
+  taxpayer who owes nothing. That refusal STANDS and is not about a rate.
+  **ITS RATE IS 18%, `[S]`-GRADED, AND WAS REFUSED TWICE BEFORE THAT.** The
+  module first stated 24% (what 13/2017-CT notified against the ORIGINAL
+  sub-section), then refused entirely, because the Finance Act 2022 substituted
+  §50(3) retrospectively from 01-07-2017 — a THIRD of the charge apart on money
+  a CA pays over, where over-stating takes it from somebody who does not owe
+  it. The mechanism is **s.111** (the substitution), **s.116 with the Sixth
+  Schedule** (the rate, 24% → 18%) and **Notification 9/2022-CT, 05-07-2022**
+  (commencement) — which corrects an earlier note here that had 9/2022 itself
+  notifying the figure. The refusal is lifted because the DIRECTION of the
+  doubt is what justified it and nothing now argues for 24%; a refusal is not
+  free either, since a CA who gets no figure computes one by hand.
+  `SECTION_50_3_RATE_VERIFIED` stays False, the source travels on every charge
+  as a caveat, the Act's 24% CEILING stays recorded as the ceiling it is, and
+  the constant stays `Optional` so a later reader can withdraw it back to a
+  refusal — which a test exercises, so the branch cannot rot.
+  **THE §47 LATE FEE IS COMPUTED FROM FY 2021-22 AND REFUSED BEFORE IT.**
+  Notifications **19/2021-CT** (GSTR-3B) and **20/2021-CT** (GSTR-1), 43rd
+  Council: **₹50 a day** (₹25 + ₹25), **₹20** for a nil return capped at
+  **₹500**, and the cap banded by aggregate turnover — **₹2,000** to ₹1.5
+  crore, **₹5,000** to ₹5 crore, **₹10,000** above. `[S]` throughout,
+  `verified=False`, each figure pinned exactly. **THE CAP IS BANDED AND THE
+  PER-DAY RATE IS NOT**, which is why this is not one number; an unrecorded
+  turnover takes the LOWEST cap and the answer SAYS it assumed, because the
+  PORTAL computes the fee at filing so an understatement is corrected there
+  while an overstatement tells a CA to budget for money nobody owes.
+  `_late_fee_turnover` resolves it through the same
+  `client_gst_turnover_service.turnover_governing_period` hop the HSN digits
+  use — NOT `highest_turnover_within_rule_48_4`, which is a ratchet because
+  Rule 48(4) reads "any preceding financial year" while 19/2021 reads on the
+  preceding year alone. **An earlier year and GSTR-9 still REFUSE**: 4/2018 and
+  76/2018 carry different caps and no bands, and §47(2)'s annual fee is a
+  different figure. The statutory ₹200 a day stays recorded and is still
+  deliberately NOT a fallback. Two conventions
   are stated rather than assumed: **DAYS, not months** (due 20 July, paid 21
   July is one day — NOT the §201(1A) "month or part of a month" arithmetic,
   which would be thirty times wrong here), and **rounded UP**, because interest
@@ -2197,8 +2217,7 @@ the response. Adding any of them is a human step, like the ITR schemas.
 | a vendor's MSMED classification | `vendors.msme_status`, surfaced by `public.schedule_iii_ageing` | it is a fact about the SUPPLIER — their Udyam registration — that no ledger holds, and it is not presentational: §43B(h) (Finance Act 2023, AY 2024-25) disallows a deduction for sums payable to a micro or small enterprise beyond the MSMED §15 limit unless actually paid, so calling an unclassified vendor "Others" changes taxable income. The column has NO default; an unclassified balance is reported beside the payables table, never inside a row |
 | whether a supplier has a WRITTEN payment agreement, and for how long | `vendors.msmed_agreement_days` (migration 373), recorded on the Schedule III ageing screen | MSMED §15 requires payment "on or before the date agreed upon ... IN WRITING, or, where there is no agreement in this behalf, before the appointed day", and §2(b) makes the appointed day fifteen days from acceptance. So the limit is **FIFTEEN days by default and forty-five only under a written agreement** — forty-five is the number every article quotes and it is the exception. Whether such an agreement exists is a fact about a contract no ledger holds, and `credit_days` is NOT evidence of one: it is a commercial term, and reading it as the §15 period would give 30 days where the Act gives 15 on every vendor carrying the default. NULL means no written agreement, which is the statutory default rather than an absence. A recorded period above 45 is STORED as the contract says and capped by the engine, which says it capped |
 | the DTAA rate for a payment to a non-resident | `public.dtaa_treaty_rates` (migration 310) — one row per (country, nature), firm-scoped; `vendors.treaty_rate_bps` is now only a per-vendor override. Refused on the purchase-bill path when a TRC is held and nothing is recorded | §194C, §194J and their neighbours charge, in their own words, sums paid "to a **resident**" — so for a non-resident payee they do not apply at all and §195 does, at rates in force under Part II of the First Schedule by NATURE of income, with surcharge and cess, displaced by the DTAA under §90(2) where a TRC and Form 10F are held. Nature of income × ninety-odd treaties × surcharge band cannot be written from memory, and §206AA's 20% floor has a non-resident carve-out (§206AA(7) with Rule 37BC) that residents do not get. Under-deducting disallows the WHOLE expenditure under §40(a)(i). The ACT side is now computed — `domain/tds/section_195_rates.py` holds §115A and Part II by nature of income, with surcharge and cess — but §90(2) gives the assessee whichever of the Act and the AGREEMENT is more beneficial, and the agreement cannot be: ninety-odd treaties, differing royalty/FTS/interest articles, MFN clauses needing their own §90(1) notification (*AO v. Nestle SA*, 2023), and several — the UAE and Singapore among them — with no FTS article at all. So a CA reads the agreement once per country and nature and records what they read (Settings → DTAA Treaty Rates); the engine then applies §90(2) to the two numbers it has, and REFUSES where a TRC is on file and nothing is recorded, because falling back to the Act rate would over-deduct exactly where somebody has established a treaty applies. **"No article" is an ANSWER, not a missing rate**: several agreements — the UAE and Singapore among them — have no FTS article, which makes the income Article 7 business profits and not taxable here without a PE, so it needs the same no-PE declaration chargeability does |
-| the §47 GST late-fee rates | `domain/gst/late_filing.LATE_FEE_RATES`, empty; the refusal reaches the screen as a sentence naming the notification | the statutory figure is ₹100 a day per Act capped at ₹5,000, and nobody has paid it since 2018 — Notifications 4/2018 and 76/2018 reduced it and 19/2021 and 20/2021 capped it by turnover band, so the figure in force depends on the return, the year AND the taxpayer's own turnover. This environment's proxy refuses every `.gov.in`, and a late fee written from memory is a number a CA would pay over. §50 INTEREST is computed — its rates are in the Act |
-| the §50(3) interest rate | `domain/gst/late_filing.SECTION_50_3_NOTIFIED_RATE_BPS`, `None`; the refusal names both notifications and the Act's ceiling | the sub-section charges "not exceeding twenty-four per cent as may be notified". Notification 13/2017-CT notified 24% against the ORIGINAL §50(3); the Finance Act 2022 substituted it retrospectively from 01-07-2017 and Notification 09/2022-CT appears to notify 18% for the substituted text. A THIRD of the charge separates them, egress is refused here, and this is a sum paid over on the client's behalf — over-stating takes money from a taxpayer who does not owe it. §50(1)'s 18% is held because 13/2017-CT notified it against text that has not moved |
+| the §47 late fee for a year BEFORE 2021-22, and for GSTR-9 | `domain/gst/late_filing.LATE_FEE_RATES`; the refusal names the notifications to read | the 2021 ladder IS held (see below). Notifications 4/2018 and 76/2018 govern earlier periods with different caps and no turnover bands, and §47(2)'s ANNUAL-return fee is a different figure again — charging either at the 2021 figures is a rate that was not in force |
 | which accounts hold unbilled dues | `chart_of_accounts.unbilled_dues_side` + `public.schedule_iii_unbilled_reviews` (migration 305) | both ageing notes end "Unbilled dues shall be disclosed separately", and an unbilled due has no document — having none is what makes it unbilled — so the figure is a BALANCE on accounts somebody marked. No account name decides it: "Accrued Interest" may be income receivable or an expense payable. And the review is a SECOND fact: the markings say which accounts hold them, only the review says there are no others, so an unreviewed client shows no figure rather than a zero that claims it has none |
 
 **§89 also refuses a year the rate registry does not hold**, and that is worth
@@ -2390,6 +2409,56 @@ PostgREST. That is why:
   RLS is genuinely enforced on the API path too.
 - RBAC: `Partner > Manager > Executive > Reviewer > Client`
   (`core/permissions.py`, applied as `rbac(resource, action)`).
+- **ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO**
+  (migration 403). `rbac()` used to decide every one of its 1037 call sites from
+  the caller's ROLE alone, and a role is five buckets: a practice is not staffed
+  in five buckets, so a firm either promoted somebody to reach one screen —
+  handing them every other screen that tier opens — or did the work outside the
+  product. `user_permissions` holds one row per (person, resource, action) and
+  `core/permissions.can_user` is the authority. **`rbac()` is the seam, which is
+  why all 1037 call sites are unchanged**: the override is resolved there rather
+  than beside each guard, and the overrides ride on `current_user`, loaded once
+  per user per 30s inside `core.auth._get_user_and_firm`, so no request pays a
+  Singapore-to-Mumbai round trip for it.
+  **THREE STATES, AND THE THIRD IS THE ABSENCE OF THE ROW.** `granted` is NOT
+  NULL and the ROW is what is optional: no row means the role decides, true
+  means allowed however junior, false means refused however senior. There is
+  **no backfill**, so an empty table reproduces today's behaviour for every
+  existing member exactly and nobody's access moved on the day it landed. A
+  two-state control could never hand a permission BACK to the role and would
+  freeze today's role map into the person's row — the `account_group_mappings`
+  mistake, where a cached derivation outranked the derivation.
+  **THE ROLE IS NOT REPLACED, and the measurement is why.** `public.get_my_role()`
+  is asked at **61 sites across 32 migrations**, and those policies protect the
+  ~83 tables the browser reads directly over PostgREST where `rbac()` never runs;
+  rewriting them per-person is a migration touching ~50 tables whose failure mode
+  is a silent cross-client read. So the role keeps answering the SQL policies and
+  `core.authz._FIRMWIDE_ROLES` — **a different question this grid deliberately
+  does not answer**: whether somebody sees every client or only their assigned
+  book is about SCOPE, and folding it into the same checkbox would let a firm
+  widen client access while believing they had granted a module. It also stays
+  the template a new hire's grid is pre-filled from, so onboarding is one choice
+  rather than thirty silent toggles.
+  **A PARTNER CANNOT BE DENIED THE FOUR PAIRS THAT REACH THIS SCREEN**
+  (`UNREVOKABLE_FOR_PARTNER`: `team:read/write`, `firm:read/admin`). Without it
+  the grid is unrepairable — the only person who could restore access is the one
+  whose access was removed, and `team:write` is the only thing that can write the
+  table. Refused at the write door AND ignored by the resolver: the door so the
+  screen can explain, the resolver as the backstop for a row that arrived another
+  way. **`PRIVILEGE_CHANGING` is named, not refused** — a Partner appointing
+  somebody to run the firm's access is a real decision, and `team:write` IS "may
+  become a Partner", so the screen says so rather than letting it look like the
+  other thirty ticks.
+  **The pair is free TEXT with no CHECK**: the vocabulary is a Python dict and
+  SQL cannot read one, so `GET /api/identity/permission-vocabulary` serves it,
+  the write door validates against it, and the resolver treats an unrecognised
+  pair as INERT — override or not — so a row written under an older vocabulary
+  cannot pre-grant an `rbac()` somebody adds next year.
+  **`get_accessible_resources` takes the overrides too**, because
+  `/api/identity/permissions` decides what a screen renders and `rbac()` decides
+  what it does; two derivations of one answer is how the Schedule III caption
+  list came to offer five captions the engine had never heard of. A test asserts
+  they agree over every pair.
 - **THERE ARE THREE PRINCIPALS AND ONLY ONE OF THEM IS STAFF.** `rbac()` decides
   a staff request; `core/portal_auth.get_current_portal_client` is the CLIENT
   principal (a real Supabase JWT, no staff `users` row, no RBAC role); and
@@ -2422,20 +2491,28 @@ PostgREST. That is why:
   PAY-10 deleted. **There is deliberately no `/me`**: the portal already reads
   its own `payroll_employees` row over PostgREST, and the reachability ratchet
   named the duplicate on the first run.
-- **ACCESS IS BY ROLE, AND THERE IS NO PER-MEMBER OVERRIDE.** `rbac()` decides
-  every request from the role alone. The Team screen used to render a "Module
-  Access Matrix" of per-member toggles headed *"Changes are saved instantly.
-  Overrides the role default for that individual"* — and every clause was
-  false: the toggles wrote into `localStorage`, reaching no other user, device
-  or server, and nothing in `core/permissions.py` could have honoured them
-  anyway. A Partner who unticked Payroll for an Executive believed they had
-  removed access and had not. The grid is READ-ONLY now, and a browser
-  carrying old overrides has them purged, because "custom" asserted a
-  restriction that never existed.
+- **THE TEAM GRID IS REAL, AND WHAT IT REPLACED IS WORTH KNOWING.** It used to
+  render per-member toggles headed *"Changes are saved instantly. Overrides the
+  role default for that individual"* — and every clause was false: the toggles
+  wrote into `localStorage`, reaching no other user, device or server, and
+  nothing in `core/permissions.py` could have honoured them anyway. A Partner
+  who unticked Payroll for an Executive believed they had removed access and
+  had not. It was left READ-ONLY rather than deleted because the need was real;
+  migration 403 built the need (see the per-person bullet above). **The
+  browser-local map is still PURGED on load and deliberately NOT migrated into
+  `user_permissions`**: nobody can tell at this distance which of those ticks
+  was an intention and which was somebody finding out what the control did, so
+  carrying them into a screen that now MEANS something would silently reassert
+  decisions against a control that did nothing.
 - **A screen showing what a role can reach ASKS.** `GET /api/identity/permissions`
-  answers for the caller (what to render); `GET /api/identity/role-matrix`
-  answers for all five roles (what the Team screen shows a Partner). Both are
-  `get_accessible_resources` and neither is a security boundary. The Team
+  answers for the CALLER — resolved against their own overrides, so it agrees
+  with what `rbac()` will do — and carries `role_defaults` beside it so a screen
+  can show what the person has that their role does not give them;
+  `GET /api/identity/role-matrix` answers for all five roles (the template);
+  `GET /api/identity/users/{id}/permissions` answers for one member, with all
+  three maps, because showing only the effect makes an inherited permission and
+  a deliberate one look identical. All three are
+  `get_accessible_resources` and none is a security boundary — `rbac()` is. The Team
   screen's own `ROLE_DEFAULTS` copy had drifted in the expensive direction —
   it showed an Executive reaching Clients and Tasks only, when PERMISSIONS
   gives them accounting, gst, income_tax, mca, report and tds besides, and it

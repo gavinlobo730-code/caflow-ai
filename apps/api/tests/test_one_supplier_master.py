@@ -28,10 +28,12 @@ WHAT THIS HOLDS
 """
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
 import pytest
+from tests._python_source import blank_python_docstrings
 
 TABLE = "suppliers"
 
@@ -115,7 +117,7 @@ def _strip_comments(body: str, suffix: str) -> str:
         # inside a string survives.
         return re.sub(r'(^|[^:])//[^\n]*', r"\1", body)
     if suffix == ".py":
-        return re.sub(r"(?m)#[^\n]*", "", body)
+        return blank_python_docstrings(re.sub(r"(?m)#[^\n]*", "", body))
     if suffix == ".sql":
         return re.sub(r"(?m)--[^\n]*", "", body)
     return body
@@ -336,3 +338,31 @@ def test_the_screen_records_a_section_and_not_a_rate():
     # The money rule survives the inversion: the screen still takes a credit
     # limit in rupees, and `parseFloat(x) * 100` is banned there too.
     assert "parseFloat" not in body
+
+
+def test_a_docstring_is_prose_but_a_sql_constant_is_a_read():
+    """The blanking above is what lets a module EXPLAIN this ban, and it is one
+    careless widening away from hiding a real query.
+
+    A triple-quoted module-level constant holding SQL is quoted exactly like a
+    docstring and IS a read of the table, so the blanking goes through the AST
+    node by node rather than over every triple-quoted string. Both halves are
+    asserted here, because only the second one can fail silently.
+    """
+    q = chr(34) * 3
+    prose = f"{q}Its hazard is public.suppliers' shape.{q}\nx = 1\n"
+    assert "public.suppliers" not in _strip_comments(prose, ".py")
+
+    constant = f"SQL = {q}\n    SELECT id FROM suppliers\n{q}\n"
+    assert "FROM suppliers" in _strip_comments(constant, ".py"), (
+        "a triple-quoted SQL constant is not a docstring and must stay visible "
+        "to the scan")
+
+    nested = (f"def f():\n    {q}reads public.suppliers{q}\n\n"
+              f"class C:\n    {q}also public.suppliers{q}\n")
+    assert "public.suppliers" not in _strip_comments(nested, ".py")
+
+    # A file that does not parse keeps its whole body: the scan must never go
+    # quiet on a file it could not read.
+    broken = 'def f(:\n    x = supabase.table("suppliers")\n'
+    assert 'table("suppliers")' in _strip_comments(broken, ".py")

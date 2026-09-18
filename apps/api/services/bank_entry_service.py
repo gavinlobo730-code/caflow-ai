@@ -53,9 +53,16 @@ MAX_CHUNK = 200
 _ERROR_MAX = 300
 
 _TRANSFER_TYPE = "bank_transaction"
-# The columns _apply_draft can write through set_account / categorize / match.
+# The columns _apply_draft can write through set_account / categorize / match /
+# set_payee. The PARTY is here for the snapshot's own stated reason: a pass that
+# then fails would leave the machine's tag on the row looking like the CA's
+# answer, and the next reader would trust it. It is a LABEL rather than a
+# posting, which is what makes a trusted rule safe to apply it — but a label
+# somebody else appears to have chosen is exactly the thing this rollback
+# exists to prevent (BANK-11 step 3).
 _CODING_COLS = ("account_id", "category", "match_status", "matched_entity_type",
-                "matched_entity_id", "matched_by", "matched_at", "needs_review")
+                "matched_entity_id", "matched_by", "matched_at", "needs_review",
+                "payee_name", "payee_type", "payee_id")
 
 
 def _now() -> str:
@@ -617,7 +624,13 @@ class BankEntryService:
                     "matched_entity_type": before["matched_entity_type"],
                     "matched_entity_id": before["matched_entity_id"],
                     "matched_by": before["matched_by"], "matched_at": before["matched_at"],
-                    "needs_review": before["needs_review"], "updated_at": _now(),
+                    "needs_review": before["needs_review"],
+                    # The three move together: set_payee clears all of them when
+                    # the name goes, so restoring a subset could leave a
+                    # dangling id with no name — the state that method's own
+                    # clearing branch exists to prevent.
+                    "payee_name": before["payee_name"], "payee_type": before["payee_type"],
+                    "payee_id": before["payee_id"], "updated_at": _now(),
                 }).eq("id", txn["id"]).eq("firm_id", firm_id).execute())
         except Exception as e:  # pragma: no cover - the refusal is still reported
             _logger.warning("could not restore bank line %s after a failed pass: %s", txn["id"], e)
@@ -639,6 +652,23 @@ class BankEntryService:
                                             derive_category=not category)
             elif not category:
                 raise HTTPException(status_code=422, detail="The proposal names no ledger.")
+            # BANK-11 step 3 — the party the rule proposed, applied through
+            # bank_payee_service (the human door, so the firm-and-client check
+            # on a polymorphic payee_id runs). Deliberately AFTER the coding and
+            # deliberately NOT fatal: a party tag is a LABEL — nothing in the
+            # posting map, the settlement or the reversal reads it — so a
+            # tagging that fails must not stop the line being coded and posted,
+            # which is what the CA actually asked for.
+            if txn.get("draft_payee_type"):
+                try:
+                    bank_payee_service.apply_rule_party(
+                        db, firm_id, txn_id,
+                        payee_type=txn.get("draft_payee_type"),
+                        payee_id=txn.get("draft_payee_id"), actor_id=actor_id)
+                except Exception as e:
+                    from core.observability import capture_soft_failure
+                    capture_soft_failure(e, operation="bank_entries.rule_party",
+                                         transaction_id=str(txn_id))
             return txn_id, txn.get("draft_gst_rate_bps"), bool(txn.get("draft_is_interstate"))
         if source == E.SOURCE_DOCUMENT:
             if txn.get("draft_grade") != E.GRADE_READY:

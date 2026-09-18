@@ -31,6 +31,7 @@ import { RoleGuard } from "@/components/RoleGuard";
 import { api, type CurrencyPolicy } from "@/lib/api/index";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { FxRatesPanel } from "@/components/currency/FxRatesPanel";
 
 type ClientRow = { id: string; name?: string; client_name?: string };
 type Row = { client: ClientRow; policy: CurrencyPolicy | null };
@@ -226,6 +227,10 @@ export default function MultiCurrencyPage() {
                 </table>
               )}
             </div>
+            {/* The rate the whole feature runs on. `fx_rates` was read by the
+                booking path and written by nothing, so switching the gates on
+                above left a Partner with no way to record one. */}
+            <FxRatesPanel />
           </>
         )}
       </div>

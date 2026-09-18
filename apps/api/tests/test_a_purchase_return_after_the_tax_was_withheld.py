@@ -17,6 +17,8 @@ from datetime import date
 
 import pytest
 
+import domain.tds.purchase_return as pr
+
 from domain.tds.purchase_return import (
     GAP_CREDIT_MOVED_AFTER_DEDUCTION, credit_moved_after_deduction,
 )
@@ -50,14 +52,103 @@ def test_the_sentence_carries_both_figures_and_the_bill():
     assert "section 194J" in m.sentence
 
 
-def test_the_sentence_names_both_lawful_answers_and_chooses_neither():
+# ── Which of the two lawful answers applies (PUR-23 closed) ──────────────────
+#
+# THIS USED TO BE ONE TEST asserting the sentence "names both lawful answers
+# and chooses NEITHER", which was the right behaviour while the books held no
+# fact that could pick between them. They did: `tds_deductions.challan_date`
+# and `status` have existed since MIGRATION 014 and nothing read them — the
+# recorded plan to close this finding called for a migration to ADD them, and
+# there was none to add.
+#
+# So the branch is decided now, and the three answers are NOT interchangeable:
+# one says go and reduce the challan, one says do not try and carry the excess
+# instead, and one says go and record when the money went. A shared sentence
+# would say the wrong thing about two of them.
+
+
+def test_no_challan_recorded_means_the_deduction_may_still_be_recomputed():
+    """s.194J(1) and its neighbours charge on "the aggregate of the amounts of
+    such sums credited or paid". Until the tax has gone, the deductor can still
+    deposit the smaller figure the smaller aggregate calls for."""
     m = _moved()
-    assert "199" in m.sentence, "tax already paid over is the deductee's"
-    assert "aggregate" in m.sentence, "the section charges the aggregate credited"
-    assert "excess deposit" in m.sentence
-    assert "adjusts either figure" in m.sentence, (
-        "the whole point is that the software states the divergence and moves "
-        "no number — see domain/tds/purchase_return")
+    assert m.deposit_state == pr.DEPOSIT_NOT_MADE
+    assert "has not been paid over" in m.sentence
+    assert "RECOMPUTED on ₹3,00,000" in m.sentence
+    # AND IT MUST NOT INVITE THE RATE TO BE APPLIED TO THAT FIGURE. A return can
+    # take the YEAR'S aggregate back below the section's threshold, at which
+    # point the deduction falls away rather than shrinking pro rata — which is
+    # a fact about the year and not about this bill.
+    assert "threshold" in m.sentence and "falls away" in m.sentence
+
+
+def test_a_recorded_challan_date_means_the_deduction_STANDS():
+    """s.200 discharged the duty and s.199 vested the credit in the deductee.
+    The remedy is an excess deposit, not a smaller deduction."""
+    m = _moved(challan_date=date(2025, 7, 7))
+    assert m.deposit_state == pr.DEPOSIT_MADE
+    assert "2025-07-07" in m.sentence, "the answer names the date that decided it"
+    assert "STANDS" in m.sentence
+    assert "excess deposit of the tax on ₹2,00,000" in m.sentence
+    assert "RECOMPUTED" not in m.sentence, (
+        "telling a CA to reduce a challan already with the department is the "
+        "one thing this branch exists to prevent"
+    )
+
+
+def test_deposited_with_no_date_is_its_own_answer_and_not_the_unpaid_one():
+    """The dangerous conflation. A status of `deposited` with no date is
+    somebody's assertion with nothing behind it: reading it as unpaid tells a
+    CA to reduce a deduction whose money may be with the department, and
+    reading it as paid tells them their remedy is an excess deposit when the
+    challan may still be theirs to reduce."""
+    m = _moved(deduction_status="deposited")
+    assert m.deposit_state == pr.DEPOSIT_UNRECORDED
+    assert m.deposit_state != pr.DEPOSIT_NOT_MADE
+    assert "cannot be told from the books" in m.sentence
+    assert "Record the challan date" in m.sentence
+
+
+def test_a_date_is_proof_and_a_status_alone_is_not():
+    """A recorded date settles it whatever the status says — somebody wrote
+    down the day the money went — and `filed` is stronger than `deposited` but
+    lands in the same branch, because what decides is the payment."""
+    assert pr.deposit_state(challan_date=date(2025, 7, 7),
+                            status="deducted") == pr.DEPOSIT_MADE
+    assert pr.deposit_state(status="filed") == pr.DEPOSIT_UNRECORDED
+    assert pr.deposit_state(status="deducted") == pr.DEPOSIT_NOT_MADE
+    assert pr.deposit_state() == pr.DEPOSIT_NOT_MADE, (
+        "the column's own default is `deducted`, so a register nobody has "
+        "reconciled answers 'not yet deposited', which is true of it"
+    )
+
+
+@pytest.mark.parametrize("kw", [
+    {}, {"challan_date": date(2025, 7, 7)}, {"deduction_status": "deposited"},
+])
+def test_no_branch_adjusts_the_register(kw):
+    """The invariant that SURVIVES the change. Deciding the branch is the
+    automation; writing a new figure into `tds_deductions` is a CA's act, and
+    the recompute branch in particular cannot be computed from this bill
+    alone."""
+    m = _moved(**kw)
+    assert "adjusts the register" in m.sentence
+    # The figures reported are what the books say, never a restatement.
+    assert m.credited_paise == 5_00_000_00
+    assert m.tds_paise == 50_000_00, "the withheld figure is never moved"
+    assert m.net_credited_paise == 3_00_000_00
+
+
+def test_the_three_endings_are_actually_different():
+    """Asserted on the ANSWERS rather than on the data, so moving a reason in
+    or out cannot make this vacuous — the discipline
+    `deduction_section_refusal`'s own test takes."""
+    endings = {
+        _moved().sentence,
+        _moved(challan_date=date(2025, 7, 7)).sentence,
+        _moved(deduction_status="deposited").sentence,
+    }
+    assert len(endings) == 3
 
 
 def test_a_bill_that_withheld_nothing_has_no_deductee_row_to_be_wrong():
@@ -457,3 +548,76 @@ def test_the_resync_never_fails_the_note(monkeypatch):
     out = dn.issue_debit_note(note["id"], E2E_CALLER)
     assert out["success"] is True
     assert (out["data"].get("status") or "") == "issued"
+
+
+# ── The caller must READ the two columns, not default them ───────────────────
+
+def test_the_register_passes_the_challan_facts_it_reads():
+    """`credit_moved_after_deduction` resolves an ABSENT challan date to "not
+    yet deposited", which is the honest reading of the column's own default and
+    the WRONG answer for a bill whose challan has gone. A caller that simply
+    forgets these two arguments therefore gets the recompute branch on money
+    already with the department — silently, because the sentence reads
+    perfectly well.
+
+    Asserted on the AST rather than by a substring, so a rename of either
+    keyword fails here instead of passing on a stale spelling."""
+    import ast
+    import pathlib
+
+    src = pathlib.Path(__file__).resolve().parents[1] / "services" / "tds_register_service.py"
+    tree = ast.parse(src.read_text(encoding="utf-8"))
+    calls = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Name)
+        and n.func.id == "credit_moved_after_deduction"
+    ]
+    assert calls, "the register no longer calls the purchase-return rule at all"
+    for call in calls:
+        passed = {k.arg for k in call.keywords}
+        missing = {"challan_date", "deduction_status"} - passed
+        assert not missing, (
+            f"the call at line {call.lineno} does not pass {sorted(missing)}, so "
+            f"it would report the RECOMPUTE branch on a deduction whose tax may "
+            f"already be with the department"
+        )
+
+
+def test_an_unreadable_row_is_not_the_unpaid_answer():
+    """A fourth situation, and the one a test double exposed. A read that BROKE
+    tells us nothing; an ABSENT row tells us there is no deduction and
+    therefore no challan, and "not yet deposited" is true of it. Collapsing the
+    two would report the recompute branch every time the read failed."""
+    m = _moved(deposit_facts_known=False)
+    assert m.deposit_state == pr.DEPOSIT_UNRECORDED
+    assert "could not be read" in m.sentence
+    assert pr.deposit_state(facts_known=False) == pr.DEPOSIT_UNRECORDED
+    assert pr.deposit_state() == pr.DEPOSIT_NOT_MADE
+
+
+def test_the_read_cannot_take_the_register_write_down_with_it():
+    """The deductee row existing is what keeps the challan and the 26Q right;
+    this read only decides which sentence a REPORT carries. So it is guarded
+    separately, and a database that cannot answer it still gets the row."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "services" / "tds_register_service.py").read_text(encoding="utf-8")
+    assert "deposit_facts_known=_prior_read" in src, (
+        "a failed read must reach the rule as 'cannot be told', not as an absent "
+        "challan date, which resolves to the recompute branch"
+    )
+
+
+def test_the_register_reads_both_columns_from_the_existing_row():
+    """And it must actually SELECT them. Passing `_prior.get("challan_date")`
+    off a projection that never named the column is a silent None, which is the
+    same defect one layer down — the trap `domain/accounting/opening_documents`
+    records for `is_opening` and `domain/firm/identity` for `gst_number`."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "services" / "tds_register_service.py").read_text(encoding="utf-8")
+    assert '.select("challan_date, status")' in src, (
+        "a narrow projection that omits either column makes the branch a "
+        "silent no-op that always answers 'not yet deposited'"
+    )

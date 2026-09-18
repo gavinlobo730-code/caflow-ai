@@ -381,55 +381,55 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
       return String(a.transaction_date).localeCompare(String(b.transaction_date)) * dir;
     });
   })();
-  const statusBadge = (s: string) => s === "completed" ? "bg-green-100 text-green-700" : s === "in_progress" ? "bg-amber-100 text-amber-700" : "bg-[#F1F5F9] text-[#64748B]";
+  const statusBadge = (s: string) => s === "completed" ? "bg-green-100 text-money-in" : s === "in_progress" ? "bg-state-attention-border text-state-attention" : "bg-ps-muted text-ps-label";
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
       {/* Session selector */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 flex items-end gap-3 flex-wrap">
+      <div className="bg-white rounded-xl border border-ps-muted p-4 flex items-end gap-3 flex-wrap">
         <div className="flex-1 min-w-[240px]">
-          <label className="block text-xs font-medium text-[#475569] mb-1.5">Reconciliation session</label>
-          {loading ? <div className="h-9 bg-[#F8FAFC] rounded animate-pulse" /> : (
-            <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <label className="block text-xs font-medium text-ps-label mb-1.5">Reconciliation session</label>
+          {loading ? <div className="h-9 bg-ps-bg rounded animate-pulse" /> : (
+            <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
               <option value="">— Select a reconciliation —</option>
               {sessions.map((s) => <option key={s.id} value={s.id}>{s.statement_start_date} → {s.statement_end_date} · {s.account_no ?? "account"} · {s.status}</option>)}
             </select>
           )}
         </div>
-        <button onClick={() => { setShowNew((v) => !v); setSelectedId(""); }} className="text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]">
+        <button onClick={() => { setShowNew((v) => !v); setSelectedId(""); }} className="text-xs px-3 py-2 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
           {showNew ? "Cancel" : "New Reconciliation"}
         </button>
       </div>
 
-      {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{error}</p>}
+      {error && <p className="text-xs text-money-out bg-state-problem-surface border border-red-100 rounded-lg p-3">{error}</p>}
 
       {/* New session form */}
       {showNew && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-3">
-          <p className="text-xs font-semibold text-[#334155]">Open a reconciliation</p>
+        <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-3">
+          <p className="text-xs font-semibold text-ps-body">Open a reconciliation</p>
           <div className="grid grid-cols-2 gap-3">
             <label className="block col-span-2">
-              <span className="text-[11px] font-medium text-[#475569]">Bank account</span>
-              <select value={form.bank_account_id} onChange={(e) => setForm((f) => ({ ...f, bank_account_id: e.target.value }))} className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+              <span className="text-[11px] font-medium text-ps-label">Bank account</span>
+              <select value={form.bank_account_id} onChange={(e) => setForm((f) => ({ ...f, bank_account_id: e.target.value }))} className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand">
                 <option value="">— Select bank account —</option>
                 {bankAccounts.map((b) => <option key={b.id} value={b.id}>{b.bank_name} · {b.account_no}</option>)}
               </select>
             </label>
-            <label className="block"><span className="text-[11px] font-medium text-[#475569]">Statement start</span>
-              <input type="date" value={form.start} onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))} className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500" /></label>
-            <label className="block"><span className="text-[11px] font-medium text-[#475569]">Statement end</span>
-              <input type="date" value={form.end} onChange={(e) => setForm((f) => ({ ...f, end: e.target.value }))} className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500" /></label>
-            <label className="block"><span className="text-[11px] font-medium text-[#475569]">Opening balance (₹)</span>
-              <input type="number" step="0.01" value={form.opening} onChange={(e) => setForm((f) => ({ ...f, opening: e.target.value }))} placeholder="0.00" className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded text-right focus:outline-none focus:ring-1 focus:ring-blue-500" /></label>
-            <label className="block"><span className="text-[11px] font-medium text-[#475569]">Closing balance (₹)</span>
-              <input type="number" step="0.01" value={form.closing} onChange={(e) => setForm((f) => ({ ...f, closing: e.target.value }))} placeholder="0.00" className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded text-right focus:outline-none focus:ring-1 focus:ring-blue-500" /></label>
+            <label className="block"><span className="text-[11px] font-medium text-ps-label">Statement start</span>
+              <input type="date" value={form.start} onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))} className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" /></label>
+            <label className="block"><span className="text-[11px] font-medium text-ps-label">Statement end</span>
+              <input type="date" value={form.end} onChange={(e) => setForm((f) => ({ ...f, end: e.target.value }))} className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" /></label>
+            <label className="block"><span className="text-[11px] font-medium text-ps-label">Opening balance (₹)</span>
+              <input type="number" step="0.01" value={form.opening} onChange={(e) => setForm((f) => ({ ...f, opening: e.target.value }))} placeholder="0.00" className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded text-right focus:outline-none focus:ring-1 focus:ring-brand" /></label>
+            <label className="block"><span className="text-[11px] font-medium text-ps-label">Closing balance (₹)</span>
+              <input type="number" step="0.01" value={form.closing} onChange={(e) => setForm((f) => ({ ...f, closing: e.target.value }))} placeholder="0.00" className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded text-right focus:outline-none focus:ring-1 focus:ring-brand" /></label>
           </div>
 
           {/* Where the opening balance came from, and whether the books agree. */}
-          {openingLoading && <p className="text-[10px] text-[#94A3B8]">Looking up the previous reconciliation…</p>}
+          {openingLoading && <p className="text-[10px] text-ps-hint">Looking up the previous reconciliation…</p>}
           {opening && !openingLoading && (
             <>
-              <p className="text-[10px] text-[#94A3B8]">
+              <p className="text-[10px] text-ps-hint">
                 {opening.source === "previous_reconciliation" && opening.previous_reconciliation ? (
                   <>Carried forward from the reconciliation completed to {opening.previous_reconciliation.period_end} — closing {fmt(opening.suggested_opening_paise)}.</>
                 ) : (
@@ -437,11 +437,11 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                 )}
               </p>
               {!opening.matches && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                  <p className="text-[11px] font-semibold text-amber-800">
+                <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2">
+                  <p className="text-[11px] font-semibold text-state-attention">
                     Beginning balance doesn&apos;t match the books
                   </p>
-                  <p className="text-[10px] text-amber-700 mt-1">
+                  <p className="text-[10px] text-state-attention mt-1">
                     The last completed reconciliation closed at {fmt(opening.suggested_opening_paise)}, but the
                     books&apos; own record of everything reconciled so far comes to{" "}
                     {fmt(opening.reconciled_book_balance_paise)} — a difference of{" "}
@@ -449,7 +449,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                     reconciliation was completed: a transaction un-reconciled, an adjustment altered, or a
                     posted journal reversed.
                   </p>
-                  <p className="text-[10px] text-amber-700 mt-1">
+                  <p className="text-[10px] text-state-attention mt-1">
                     You can still open this period — but the difference will follow you into it, so it is
                     worth finding first.
                   </p>
@@ -466,9 +466,9 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
       {selectedId && (loadingReport ? <StatementSkeleton sections={1} rowsPerSection={4} /> : report && (
         <>
           {/* Tie-out summary (cash-flow style reconciles flag) */}
-          <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-3">
+          <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-[#334155]">Balance tie-out</p>
+              <p className="text-xs font-semibold text-ps-body">Balance tie-out</p>
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusBadge(report.reconciliation.status)}`}>{report.reconciliation.status}</span>
             </div>
             <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs font-mono">
@@ -479,15 +479,15 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               {report.summary.adjustments_paise !== 0 && (
                 // The figure alone is what BANK-05 is about. Beside it on the
                 // screen, beside it on the PDF.
-                <p className="col-span-2 -mt-0.5 text-[11px] font-sans text-[#64748B] pl-3">
+                <p className="col-span-2 -mt-0.5 text-[11px] font-sans text-ps-label pl-3">
                   {report.reconciliation.adjustments_reason || "No reason recorded."}
                 </p>
               )}
               <Row label="= Reconciled book balance" paise={report.summary.reconciled_book_balance_paise} strong />
               <Row label="Statement closing balance" paise={report.summary.statement_closing_balance_paise} strong />
             </div>
-            <div className={`flex items-center justify-between rounded-lg px-3 py-2 ${report.ties_out ? "bg-green-50" : "bg-red-50"}`}>
-              <span className={`text-xs font-medium flex items-center gap-1.5 ${report.ties_out ? "text-green-700" : "text-red-700"}`}>
+            <div className={`flex items-center justify-between rounded-lg px-3 py-2 ${report.ties_out ? "bg-state-ready-surface" : "bg-state-problem-surface"}`}>
+              <span className={`text-xs font-medium flex items-center gap-1.5 ${report.ties_out ? "text-money-in" : "text-money-out"}`}>
                 {report.ties_out ? <><CheckCircle size={14} /> Statement ties out to the book balance</> : <>Difference {fmt(Math.abs(report.summary.difference_paise))} — does not tie out</>}
               </span>
             </div>
@@ -500,13 +500,13 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                 Collapsed by default because the tie-out is what the CA works
                 against day to day. */}
             {brs && (
-              <div className="border border-[#E2E8F0] rounded-lg">
+              <div className="border border-ps-border rounded-lg">
                 <button
                   onClick={() => setShowBrs((v) => !v)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-[#334155] hover:bg-[#F8FAFC]"
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-ps-body hover:bg-ps-bg"
                 >
                   <span>Bank Reconciliation Statement{brs.frozen ? " (as certified)" : ""}</span>
-                  <span className="text-[#64748B]">{showBrs ? "Hide" : "Show"}</span>
+                  <span className="text-ps-label">{showBrs ? "Hide" : "Show"}</span>
                 </button>
                 {showBrs && (
                   <div className="px-3 pb-3 space-y-1 text-xs font-mono">
@@ -524,7 +524,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                     {brs.statement_balance_paise !== null && (
                       <>
                         <Row label="Balance per the statement" paise={brs.statement_balance_paise} />
-                        <div className={`mt-1 rounded px-2 py-1.5 font-sans text-[11px] ${brs.agrees ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                        <div className={`mt-1 rounded px-2 py-1.5 font-sans text-[11px] ${brs.agrees ? "bg-state-ready-surface text-money-in" : "bg-state-problem-surface text-money-out"}`}>
                           {brs.agrees
                             ? "The books reconcile to the statement."
                             : `Unexplained difference ${fmt(Math.abs(brs.difference_paise ?? 0))} — something is neither in the books nor accounted for above.`}
@@ -532,7 +532,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                       </>
                     )}
                     {brs.gap && (
-                      <p className="font-sans text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
+                      <p className="font-sans text-[11px] text-state-attention bg-state-attention-surface border border-amber-100 rounded px-2 py-1.5">
                         {brs.gap}
                       </p>
                     )}
@@ -549,12 +549,12 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                  answers 403 to anyone below, and the message says so. */
               <div className="pt-1 space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-[#64748B]">Adjustment (₹)</span>
-                  <input type="number" step="0.01" value={adj} onChange={(e) => setAdj(e.target.value)} className="w-28 px-2 py-1 text-xs border border-[#E2E8F0] rounded text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                  <span className="text-[11px] text-ps-label">Adjustment (₹)</span>
+                  <input type="number" step="0.01" value={adj} onChange={(e) => setAdj(e.target.value)} className="w-28 px-2 py-1 text-xs border border-ps-border rounded text-right focus:outline-none focus:ring-1 focus:ring-brand" />
                   <input
                     type="text" value={adjReason} onChange={(e) => setAdjReason(e.target.value)}
                     placeholder="What is it? e.g. bank charges debited 31 Mar, not yet in the books"
-                    className="flex-1 min-w-0 px-2 py-1 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="flex-1 min-w-0 px-2 py-1 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand"
                   />
                   <button
                     onClick={() => {
@@ -570,21 +570,21 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                         selectedId, paise, paise === 0 ? null : reason));
                     }}
                     disabled={busy}
-                    className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]"
+                    className="text-[11px] px-2 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label"
                   >Apply</button>
                 </div>
-                <p className="text-[10px] text-[#94A3B8]">
+                <p className="text-[10px] text-ps-hint">
                   A Manager or Partner records an adjustment, and the reason is printed on the
                   reconciliation. Set it to 0 to remove one.
                 </p>
               </div>
             )}
-            <div className="flex items-center gap-2 pt-1 border-t border-[#F8FAFC]">
-              <button onClick={() => api.banking.reconciliations.exportCsv(selectedId)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><Download size={12} /> CSV</button>
+            <div className="flex items-center gap-2 pt-1 border-t border-ps-bg">
+              <button onClick={() => api.banking.reconciliations.exportCsv(selectedId)} className="text-xs px-3 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label flex items-center gap-1.5"><Download size={12} /> CSV</button>
               {/* The document a CA actually hands to a client or an auditor.
                   For a completed session it renders the FROZEN snapshot. */}
-              <button onClick={() => api.banking.reconciliations.exportPdf(selectedId)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] flex items-center gap-1.5"><FileText size={12} /> PDF</button>
-              <button onClick={() => setShowHistory((v) => !v)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+              <button onClick={() => api.banking.reconciliations.exportPdf(selectedId)} className="text-xs px-3 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label flex items-center gap-1.5"><FileText size={12} /> PDF</button>
+              <button onClick={() => setShowHistory((v) => !v)} className="text-xs px-3 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
                 {showHistory ? "Hide history" : "History"}
               </button>
               {!completed && (
@@ -592,11 +592,11 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               )}
               {completed && (
                 <>
-                  <span className="text-[11px] text-green-700 ml-auto flex items-center gap-1"><CheckCircle size={12} /> Completed {report.reconciliation.completed_at ? String(report.reconciliation.completed_at).slice(0, 10) : ""} · locked</span>
+                  <span className="text-[11px] text-money-in ml-auto flex items-center gap-1"><CheckCircle size={12} /> Completed {report.reconciliation.completed_at ? String(report.reconciliation.completed_at).slice(0, 10) : ""} · locked</span>
                   {/* The deliberate escape hatch. Partner-only server-side; a
                       non-Partner gets a 403 and the message says so. */}
                   <button onClick={() => setReopening(true)} disabled={busy}
-                    className="text-[11px] px-2.5 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#64748B]">
+                    className="text-[11px] px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
                     Reopen…
                   </button>
                 </>
@@ -606,7 +606,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
             {/* A period that has been reopened is a fact about the books, so it
                 stays visible on the session rather than only in the audit log. */}
             {(report.reconciliation.reopen_count ?? 0) > 0 && (
-              <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2">
+              <p className="text-[10px] text-state-attention bg-state-attention-surface border border-amber-100 rounded px-3 py-2">
                 Reopened {report.reconciliation.reopen_count}
                 {report.reconciliation.reopen_count === 1 ? " time" : " times"}
                 {report.reconciliation.reopened_at ? ` · last on ${String(report.reconciliation.reopened_at).slice(0, 10)}` : ""}
@@ -616,33 +616,33 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
           </div>
 
           {reopening && (
-            <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-                <div className="px-5 py-4 border-b border-[#F1F5F9]">
-                  <h3 className="text-sm font-semibold text-[#0F172A]">Reopen this reconciliation</h3>
-                  <p className="text-xs text-[#64748B] mt-0.5">
+                <div className="px-5 py-4 border-b border-ps-muted">
+                  <h3 className="text-sm font-semibold text-ps-ink">Reopen this reconciliation</h3>
+                  <p className="text-xs text-ps-label mt-0.5">
                     {report.reconciliation.statement_start_date} → {report.reconciliation.statement_end_date}
                   </p>
                 </div>
                 <div className="px-5 py-4 space-y-3">
-                  <p className="text-[11px] text-[#475569]">
+                  <p className="text-[11px] text-ps-label">
                     This undoes a completed period so it can be corrected. The report as it was
                     certified is kept, the change is recorded against your name, and the period must
                     tie out again before it can be completed. Reconciled transactions stay reconciled
                     — untick whatever was wrong after reopening.
                   </p>
                   <label className="block">
-                    <span className="text-[11px] font-medium text-[#475569]">Reason *</span>
+                    <span className="text-[11px] font-medium text-ps-label">Reason *</span>
                     <textarea value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} rows={3}
                       placeholder="e.g. April rent was reconciled into March by mistake"
-                      className="mt-1 w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                    <span className="text-[10px] text-[#94A3B8]">At least 10 characters — this goes into the audit trail.</span>
+                      className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" />
+                    <span className="text-[10px] text-ps-hint">At least 10 characters — this goes into the audit trail.</span>
                   </label>
-                  {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+                  {error && <p className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
                 </div>
-                <div className="flex gap-2 justify-end px-5 py-4 border-t border-[#F1F5F9]">
+                <div className="flex gap-2 justify-end px-5 py-4 border-t border-ps-muted">
                   <button onClick={() => { setReopening(false); setReopenReason(""); setError(null); }}
-                    className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+                    className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
                   <button onClick={doReopen} disabled={busy || reopenReason.trim().length < 10}
                     className="text-xs px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
                     {busy ? "Reopening…" : "Reopen"}
@@ -656,24 +656,24 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               reopened and completed again; only the newest snapshot lives on the
               session, the rest are preserved in reopen_history. */}
           {showHistory && (
-            <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-2">
-              <p className="text-xs font-semibold text-[#334155]">Certification history</p>
+            <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-2">
+              <p className="text-xs font-semibold text-ps-body">Certification history</p>
               {!history ? (
-                <p className="text-[11px] text-[#94A3B8]">Loading…</p>
+                <p className="text-[11px] text-ps-hint">Loading…</p>
               ) : !history.current && history.superseded.length === 0 ? (
-                <p className="text-[11px] text-[#94A3B8]">
+                <p className="text-[11px] text-ps-hint">
                   This reconciliation has never been completed, so there is nothing certified yet.
                 </p>
               ) : (
-                <div className="divide-y divide-[#F8FAFC]">
+                <div className="divide-y divide-ps-bg">
                   {history.current && (
                     <div className="py-2 flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-[11px] font-medium text-[#1E293B]">
+                        <p className="text-[11px] font-medium text-ps-ink">
                           Current certification
-                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">in force</span>
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-state-ready-surface text-money-in">in force</span>
                         </p>
-                        <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                        <p className="text-[10px] text-ps-hint mt-0.5">
                           Completed {String(history.current.completed_at ?? "").slice(0, 10)}
                         </p>
                       </div>
@@ -685,17 +685,17 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                   {history.superseded.map((h, i) => (
                     <div key={i} className="py-2 flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-[11px] font-medium text-[#64748B]">
+                        <p className="text-[11px] font-medium text-ps-label">
                           Superseded certification
-                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#94A3B8]">replaced</span>
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-hint">replaced</span>
                         </p>
-                        <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                        <p className="text-[10px] text-ps-hint mt-0.5">
                           Completed {String(h.completed_at ?? "").slice(0, 10)} · reopened{" "}
                           {String(h.superseded_at ?? "").slice(0, 10)}
                           {h.reason ? ` — “${h.reason}”` : ""}
                         </p>
                       </div>
-                      <span className="text-[11px] font-mono text-[#64748B] shrink-0">
+                      <span className="text-[11px] font-mono text-ps-label shrink-0">
                         {h.summary ? fmt(h.summary.statement_closing_balance_paise) : "—"}
                       </span>
                     </div>
@@ -708,19 +708,19 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
           {/* Item buckets + find/sort. A long statement is unusable without
               them — hunting one ₹4,500 line in 300 rows is the actual work. */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
+            <div className="flex gap-1 bg-ps-muted p-1 rounded-lg w-fit">
               {([["unreconciled", "Unreconciled", report.counts.unreconciled], ["reconciled", "Reconciled", report.counts.reconciled], ["exceptions", "Exceptions", report.counts.exceptions], ["not_passed", "Not yet passed", report.counts.not_passed ?? 0]] as const).map(([id, label, n]) => (
-                <button key={id} onClick={() => { setView(id); setSel({}); }} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>{label} ({n})</button>
+                <button key={id} onClick={() => { setView(id); setSel({}); }} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === id ? "bg-white text-ps-ink shadow-sm" : "text-ps-label hover:text-ps-body"}`}>{label} ({n})</button>
               ))}
             </div>
             <input
               value={lineSearch} onChange={(e) => setLineSearch(e.target.value)}
               placeholder="Find description, reference or date…"
               aria-label="Filter reconciliation lines"
-              className="flex-1 min-w-[180px] px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="flex-1 min-w-[180px] px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" />
             <select value={lineSort} onChange={(e) => setLineSort(e.target.value as typeof lineSort)}
               aria-label="Sort reconciliation lines"
-              className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+              className="px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand">
               <option value="date">Date ↑</option>
               <option value="-date">Date ↓</option>
               <option value="amount">Amount ↑</option>
@@ -728,7 +728,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
             </select>
           </div>
           {lineSearch.trim() && (
-            <p className="text-[10px] text-[#94A3B8]">
+            <p className="text-[10px] text-ps-hint">
               Showing {lines.length} of {(report[view] ?? []).length} — filtering hides rows, it does not
               exclude them from the tie-out.
             </p>
@@ -738,7 +738,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
             <div className="flex flex-wrap items-center gap-2">
               {view === "unreconciled"
                 ? <button onClick={() => act(() => api.banking.reconciliations.reconcile(selectedId, selectedIds))} disabled={busy} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">Reconcile {selectedIds.length} selected</button>
-                : <button onClick={() => act(() => api.banking.reconciliations.unreconcile(selectedId, selectedIds))} disabled={busy} className="text-xs px-4 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">Unreconcile {selectedIds.length} selected</button>}
+                : <button onClick={() => act(() => api.banking.reconciliations.unreconcile(selectedId, selectedIds))} disabled={busy} className="text-xs px-4 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label">Unreconcile {selectedIds.length} selected</button>}
 
               {/* Live difference: what the tie-out becomes if you commit this
                   selection. Answers "am I nearly there?" before the commit,
@@ -746,16 +746,16 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               {projection && (
                 <span className={`text-[11px] px-2.5 py-1 rounded-lg border font-mono ${
                   projection.would_tie_out
-                    ? "bg-green-50 border-green-200 text-green-800"
-                    : "bg-[#F8FAFC] border-[#E2E8F0] text-[#475569]"}`}>
+                    ? "bg-state-ready-surface border-green-200 text-green-800"
+                    : "bg-ps-bg border-ps-border text-ps-label"}`}>
                   {projection.would_tie_out
                     ? "Ties out if reconciled ✓"
                     : <>Difference would be {fmt(Math.abs(projection.projected.difference_paise))}
-                        <span className="text-[#94A3B8]"> (now {fmt(Math.abs(projection.current.difference_paise))})</span></>}
+                        <span className="text-ps-hint"> (now {fmt(Math.abs(projection.current.difference_paise))})</span></>}
                 </span>
               )}
               {projection && projection.ineligible_ids.length > 0 && (
-                <span className="text-[10px] text-amber-700">
+                <span className="text-[10px] text-state-attention">
                   {projection.ineligible_ids.length} selected line(s) can&apos;t be reconciled here.
                 </span>
               )}
@@ -769,11 +769,11 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               Nothing on this screen can fix them: there is no journal here to
               reconcile, which is why the bucket has no checkboxes. */}
           {view === "not_passed" && lines.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-1">
+            <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 space-y-1">
               <p className="text-xs font-semibold text-amber-900">
                 These lines are on the statement and not yet in the books
               </p>
-              <p className="text-[11px] text-amber-800">
+              <p className="text-[11px] text-state-attention">
                 Each one is part of the bank&apos;s balance for this period and none of
                 them is part of yours, so the difference above includes them. Pass
                 them — or set them aside — under Bank › Entries, then come back.
@@ -782,7 +782,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               {onGoToEntries && report.reconciliation.bank_account_id && (
                 <button
                   onClick={() => onGoToEntries(report.reconciliation.bank_account_id)}
-                  className="text-[11px] font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700">
+                  className="text-[11px] font-medium text-amber-900 underline underline-offset-2 hover:text-state-attention">
                   Open Entries for this account →
                 </button>
               )}
@@ -790,24 +790,24 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
           )}
 
           {lines.length === 0 ? (
-            <div className="bg-white rounded-xl border border-[#F1F5F9] p-8 text-center text-xs text-[#94A3B8]">
+            <div className="bg-white rounded-xl border border-ps-muted p-8 text-center text-xs text-ps-hint">
               {view === "not_passed"
                 ? "Every statement line in this period is in the books."
                 : `No ${view} transactions.`}
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden divide-y divide-[#F8FAFC]">
+            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden divide-y divide-ps-bg">
               {lines.map((t) => (
-                <label key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#F8FAFC] cursor-pointer">
+                <label key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-ps-bg cursor-pointer">
                   {!completed && !isReadOnlyView(view) && (
                     <input type="checkbox" checked={!!sel[t.id]} onChange={(e) => setSel((m) => ({ ...m, [t.id]: e.target.checked }))} className="shrink-0" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-[#1E293B] truncate">{t.description}</p>
-                    <p className="text-[10px] text-[#94A3B8]">{t.transaction_date} · {t.reference_no ?? ""}{t.exception_reason ? ` · ⚠ ${t.exception_reason}` : ""}</p>
+                    <p className="text-xs font-medium text-ps-ink truncate">{t.description}</p>
+                    <p className="text-[10px] text-ps-hint">{t.transaction_date} · {t.reference_no ?? ""}{t.exception_reason ? ` · ⚠ ${t.exception_reason}` : ""}</p>
                   </div>
                   <div className="shrink-0 text-right font-mono">
-                    {t.credit_paise > 0 ? <span className="text-xs text-green-700">{fmt(t.credit_paise)} Cr</span> : <span className="text-xs text-red-700">{fmt(t.debit_paise)} Dr</span>}
+                    {t.credit_paise > 0 ? <span className="text-xs text-money-in">{fmt(t.credit_paise)} Cr</span> : <span className="text-xs text-money-out">{fmt(t.debit_paise)} Dr</span>}
                   </div>
                 </label>
               ))}
@@ -817,7 +817,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
       ))}
 
       {!selectedId && !showNew && !loading && (
-        <div className="text-center py-12 text-[#94A3B8] text-sm">
+        <div className="text-center py-12 text-ps-hint text-sm">
           {sessions.length === 0 ? "No reconciliations yet. Click “New Reconciliation” to begin." : "Select a reconciliation to view its tie-out."}
         </div>
       )}
@@ -837,7 +837,7 @@ function BrsBucketRows({ label, bucket }: { label: string; bucket: BrsBucket }) 
     <>
       <Row label={`${label} (${bucket.count})`} paise={bucket.total_paise} />
       {bucket.items.map((it) => (
-        <div key={it.id} className="flex items-center justify-between text-[#94A3B8] pl-4">
+        <div key={it.id} className="flex items-center justify-between text-ps-hint pl-4">
           <span className="font-sans text-[10px] truncate pr-2" title={it.particulars}>
             {it.date} · {it.particulars}
             {it.reference_no ? ` · ${it.reference_no}` : ""}
@@ -846,7 +846,7 @@ function BrsBucketRows({ label, bucket }: { label: string; bucket: BrsBucket }) 
         </div>
       ))}
       {bucket.listed < bucket.count && (
-        <p className="font-sans text-[10px] text-[#94A3B8] pl-4">
+        <p className="font-sans text-[10px] text-ps-hint pl-4">
           … and {bucket.count - bucket.listed} more, included in the total above.
         </p>
       )}
@@ -856,7 +856,7 @@ function BrsBucketRows({ label, bucket }: { label: string; bucket: BrsBucket }) 
 
 function Row({ label, paise, strong }: { label: string; paise: number; strong?: boolean }) {
   return (
-    <div className={`flex items-center justify-between ${strong ? "text-[#0F172A] font-semibold border-t border-[#F8FAFC] pt-1" : "text-[#475569]"}`}>
+    <div className={`flex items-center justify-between ${strong ? "text-ps-ink font-semibold border-t border-ps-bg pt-1" : "text-ps-label"}`}>
       <span className="font-sans text-[11px]">{label}</span>
       <span>{fmt(paise)}</span>
     </div>

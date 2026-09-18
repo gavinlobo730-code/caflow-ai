@@ -87,6 +87,12 @@ class Draft:
     rule_id: Optional[str] = None
     gst_rate_bps: Optional[int] = None
     is_interstate: bool = False
+    # BANK-11 step 3. The party a rule PROPOSED; `payee_*` is what was
+    # recorded. Two columns rather than one because the pair is what migration
+    # 404's CHECK constrains, and because a proposal a CA rejects must leave
+    # the recorded party alone.
+    payee_type: Optional[str] = None
+    payee_id: Optional[str] = None
 
     def as_columns(self) -> dict:
         """The bank_transactions columns this draft is stored in."""
@@ -98,6 +104,8 @@ class Draft:
             "draft_rule_id": self.rule_id,
             "draft_gst_rate_bps": self.gst_rate_bps,
             "draft_is_interstate": bool(self.is_interstate),
+            "draft_payee_type": self.payee_type,
+            "draft_payee_id": self.payee_id,
         }
 
 
@@ -106,6 +114,7 @@ EMPTY_DRAFT_COLUMNS: dict = {
     "draft_reason": None, "draft_account_id": None, "draft_category": None,
     "draft_entity_type": None, "draft_entity_id": None, "draft_rule_id": None,
     "draft_gst_rate_bps": None, "draft_is_interstate": False,
+    "draft_payee_type": None, "draft_payee_id": None,
 }
 
 
@@ -173,6 +182,7 @@ def from_rule(hit: Optional[RuleSuggestion], account_name: Optional[str]) -> Opt
         source=SOURCE_RULE, grade=GRADE_READY, label=label, reason=reason,
         account_id=hit.account_id, category=hit.category, rule_id=hit.rule_id,
         gst_rate_bps=hit.gst_rate_bps, is_interstate=bool(hit.is_interstate),
+        payee_type=hit.payee_type, payee_id=hit.payee_id,
     )
 
 

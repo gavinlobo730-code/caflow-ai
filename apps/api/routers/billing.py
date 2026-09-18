@@ -289,10 +289,24 @@ def run_overdue_sweep(current_user: dict = Depends(rbac("billing", "write"))):
     return api_response(True, collections_service.sweep_overdue(current_user["firm_id"]))
 
 
-@router.post("/collections/send-reminders")
-def send_reminders(current_user: dict = Depends(rbac("billing", "write"))):
-    """Send collections reminders for overdue invoices (cadence-gated, idempotent)."""
-    return api_response(True, collections_service.send_overdue_reminders(current_user["firm_id"]))
+@router.post("/collections/flag-followups")
+def flag_overdue_for_followup(current_user: dict = Depends(rbac("billing", "write"))):
+    """Flag overdue FEE invoices for the practice's own follow-up. SENDS NOTHING.
+
+    It was `/collections/send-reminders` and it never sent anything: the service
+    writes a timeline entry and a counter, and `jobs/scheduler.py`'s own header
+    has always called it "internal reminder logging (no email)". The route, the
+    function and the response key all said "sent", and the Collections screen
+    reported "N reminder(s) sent" from that key — so a CA could believe their
+    clients had been chased when nobody had been contacted.
+
+    The CUSTOMER-facing reminder is `POST /api/sales-invoices/{id}/remind`,
+    which emails and records an `invoice_deliveries` row with `kind='reminder'`.
+    """
+    return api_response(
+        True,
+        collections_service.flag_overdue_for_internal_followup(current_user["firm_id"]),
+    )
 
 
 # ── Phase 4.2 — Customer payment reminders (collections only) ────────────────
