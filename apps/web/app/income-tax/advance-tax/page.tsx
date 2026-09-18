@@ -38,6 +38,7 @@ import type { Client } from "@/lib/types";
 import { todayLocalISO } from "@/lib/dateMath";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { StatutoryNotes } from "@/components/ui/callout";
+import { PeriodPicker } from "@/components/ui/period";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -390,10 +391,7 @@ export default function AdvanceTaxPage() {
         </div>
         <div>
           <label className="text-xs text-ps-label">Financial Year</label>
-          <select value={fy} onChange={e => setFy(e.target.value)}
-            className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
-            {FY_OPTIONS.map(f => <option key={f} value={f}>FY {f}</option>)}
-          </select>
+          <PeriodPicker value={fy} onChange={setFy} className="mt-1 w-auto" />
         </div>
         <div>
           <label className="text-xs text-ps-label">Estimated Annual Tax (₹)</label>

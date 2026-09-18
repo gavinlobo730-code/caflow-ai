@@ -10,6 +10,7 @@ import { ListSkeleton } from "@/components/ui/skeleton";
 import { useClientEntityType, offerWhenKnown } from "@/lib/clients/useClientEntityType";
 import { isCompaniesActCompany, usesScheduleIII } from "@/lib/entityObligations";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { PeriodPicker } from "@/components/ui/period";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -160,15 +161,7 @@ export default function YearEndPage() {
           <p className="text-xs font-semibold text-ps-body">New Year-End Engagement</p>
           <div>
             <label className="text-xs text-ps-label mb-1 block">Financial Year</label>
-            <select
-              value={selectedFY}
-              onChange={(e) => setSelectedFY(e.target.value)}
-              className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {FY_OPTIONS.map((fy) => (
-                <option key={fy} value={fy}>{fy}</option>
-              ))}
-            </select>
+            <PeriodPicker value={selectedFY} onChange={setSelectedFY} size="sm" />
           </div>
           {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">

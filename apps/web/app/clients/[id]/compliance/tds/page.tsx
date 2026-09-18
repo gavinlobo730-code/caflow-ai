@@ -4,12 +4,12 @@ import { useState, useEffect, useCallback } from "react";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 // The year picker comes from the clock, never a literal list (CLAUDE.md).
-import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { PeriodPicker } from "@/components/ui/period";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -819,12 +819,7 @@ function Form26ASTab({ clientId }: { clientId: string }) {
         you paste. IT Act s.285BB with Rule 114-I.
       </p>
       <div className="space-y-3">
-        <select value={fy} onChange={(e) => setFy(e.target.value)}
-          className="w-full border rounded px-3 py-1.5 text-sm">
-          {financialYearChoicesAround(null).map((y) => (
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
+        <PeriodPicker value={fy} onChange={setFy} />
         {/* NO SPECIMEN PAN, even as a placeholder. A screen must not carry a
             statutory identifier it could send —
             scripts/no-screen-invents-a-statutory-identifier.test.ts holds that

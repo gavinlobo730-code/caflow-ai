@@ -82,7 +82,16 @@ test("a carried-forward loss can be recorded", async (t) => {
   });
 
   await t.test("the year pickers come from the clock", () => {
-    assert.match(code, /assessmentYearChoicesAround\(null,\s*1[02]\)/);
+    // THE RULE, NOT A SPELLING OF IT. This asserted the literal call
+    // `assessmentYearChoicesAround(null, 10)`, which broke on 18 Sep when both
+    // pickers became `<PeriodPicker kind="ay" count={10}>` — a component that
+    // calls that very helper. The rule is that the list is DERIVED, whether
+    // the screen derives it or a component does.
+    assert.match(
+      code,
+      /assessmentYearChoicesAround\(null,\s*1[02]\)|<PeriodPicker[^>]*kind="ay"/,
+      "the assessment-year lists are no longer derived from the clock",
+    );
     assert.ok(!/value="20\d\d-\d\d"/.test(code), "a year is hardcoded as an option");
   });
 

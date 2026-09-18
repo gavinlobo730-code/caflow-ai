@@ -59,6 +59,7 @@ import { todayLocalISO, daysBetweenLocalISO, currentFinancialYearLabel } from "@
 import { useToast } from "@/components/ui/use-toast";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { GapList } from "@/components/ui/callout";
+import { PeriodPicker } from "@/components/ui/period";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1256,19 +1257,8 @@ export default function IncomeTaxPage() {
                     (the year the return reports on)
                   </span>
                 </label>
-                <select
-                  value={addForm.financial_year}
-                  onChange={(e) =>
-                    handleAddFormChange("financial_year", e.target.value)
-                  }
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {FINANCIAL_YEARS.map((fy) => (
-                    <option key={fy} value={fy}>
-                      {fy}
-                    </option>
-                  ))}
-                </select>
+                <PeriodPicker value={addForm.financial_year}
+                onChange={v => handleAddFormChange("financial_year", v)} />
               </div>
 
               {/* Due Date — computed by apps/api, editable */}

@@ -24,7 +24,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { todayLocalISO } from "@/lib/dateMath";
-import { assessmentYearChoicesAround } from "@/lib/dates/periods";
+import { PeriodPicker } from "@/components/ui/period";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,7 +51,6 @@ const STATUS_OPTIONS: NoticeStatus[] = ["pending", "responded", "closed", "appea
 // FROM THE CLOCK, NOT A LITERAL — the same rule as the financial-year list,
 // derived from it so the two cannot disagree about which year is current
 // (IT Act §2(9): the AY is the FY plus one).
-const ASSESSMENT_YEARS = assessmentYearChoicesAround(null, 6);
 const STORAGE_BUCKET = "Documents";
 
 function statusBadge(status: NoticeStatus) {
@@ -175,9 +174,7 @@ function AddModal({ clients, onClose, onAdded }: {
             </div>
             <div>
               <label className={lbl}>Assessment Year</label>
-              <select value={form.assessmentYear} onChange={e => upd({ assessmentYear: e.target.value })} className={inputCls}>
-                {ASSESSMENT_YEARS.map(ay => <option key={ay} value={ay}>{ay}</option>)}
-              </select>
+              <PeriodPicker kind="ay" value={form.assessmentYear} onChange={v => upd({ assessmentYear: v })} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

@@ -20,6 +20,7 @@ import { useToast } from "@/components/ui/use-toast";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { PeriodPicker } from "@/components/ui/period";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -260,18 +261,8 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
             <label className="mb-1 block text-sm font-medium text-ps-body">
               Financial Year
             </label>
-            <select
-              value={financialYear}
-              onChange={(e) => setFinancialYear(e.target.value as FinancialYear)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-              disabled={uploading}
-            >
-              {FINANCIAL_YEARS.map((fy) => (
-                <option key={fy} value={fy}>
-                  {fy}
-                </option>
-              ))}
-            </select>
+            <PeriodPicker value={financialYear} onChange={v => setFinancialYear(v as FinancialYear)}
+            disabled={uploading} />
           </div>
 
           {/* File picker */}

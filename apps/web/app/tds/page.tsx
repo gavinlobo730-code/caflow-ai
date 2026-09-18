@@ -74,7 +74,7 @@ import {
   listTdsSections, previewTdsDeduction, createTdsDeduction, createTdsChallan,
   fetchDepositDue, type DepositDueWorksheet,
 } from "@/lib/data/tds";
-import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { PeriodPicker } from "@/components/ui/period";
 
 // ─── TDS section labels ──────────────────────────────────────────────────────
 //
@@ -121,7 +121,6 @@ const QUARTER_LABEL: Record<string, string> = {
 // 1 April with nothing saying so. `financialYearChoicesAround` is the one
 // helper (lib/dates/periods.ts); see
 // scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
-const FY_LIST = financialYearChoicesAround(null);
 
 // Keyed by the values the CHECK constraints actually store (migration 037),
 // lower case. The capitalised keys this held were unreachable: nothing in the
@@ -754,9 +753,7 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">FY</label>
-              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={fy} onChange={e => setFy(e.target.value)}>
-                {FY_LIST.map(f => <option key={f}>{f}</option>)}
-              </select>
+              <PeriodPicker value={fy} onChange={setFy} />
             </div>
           </div>
           <div>

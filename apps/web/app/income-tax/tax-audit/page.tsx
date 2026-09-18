@@ -25,6 +25,7 @@ import { getClients } from "@/lib/data/clients";
 import { api, type TaxAuditDueDates, type TaxAuditApplicability } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { PeriodPicker } from "@/components/ui/period";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -268,9 +269,8 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Financial Year</label>
-              <select value={form.financialYear} onChange={e => upd({ financialYear: e.target.value })} className={inputCls} disabled={!!editAudit}>
-                {FY_OPTIONS.map(f => <option key={f} value={f}>FY {f}</option>)}
-              </select>
+              <PeriodPicker value={form.financialYear} onChange={v => upd({ financialYear: v })}
+              disabled={!!editAudit} />
             </div>
             <div>
               <label className={lbl}>Form Type</label>
@@ -487,10 +487,7 @@ export default function TaxAuditPage() {
               : <> | due dates unavailable</>}
           </p>
         </div>
-        <select value={fyFilter} onChange={e => setFyFilter(e.target.value)}
-          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
-          {FY_OPTIONS.map(f => <option key={f} value={f}>FY {f}</option>)}
-        </select>
+        <PeriodPicker value={fyFilter} onChange={setFyFilter} className="w-auto" />
         <Button size="sm" onClick={() => setShowAdd(true)}>
           <Plus size={14} className="mr-1" /> Add Audit
         </Button>

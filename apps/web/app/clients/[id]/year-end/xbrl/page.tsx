@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useClientEntityType } from "@/lib/clients/useClientEntityType";
 import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { PeriodPicker } from "@/components/ui/period";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
@@ -193,10 +194,7 @@ export default function XBRLPage() {
           <p className="text-xs font-semibold text-ps-body">New XBRL Package</p>
           <div>
             <label className="text-3xs text-ps-label mb-1 block">Financial Year</label>
-            <select value={fy} onChange={e => setFy(e.target.value)}
-              className="text-xs px-3 py-1.5 border border-ps-border rounded-lg">
-              {FY_OPTIONS.map(f => <option key={f}>{f}</option>)}
-            </select>
+            <PeriodPicker value={fy} onChange={setFy} size="sm" className="w-auto" />
           </div>
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>

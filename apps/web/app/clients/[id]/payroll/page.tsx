@@ -18,7 +18,7 @@ import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { api } from "@/lib/api";
 import type { AnnexureIIResponse } from "@/lib/api";
-import { financialYearOfMonth, financialYearChoicesAround } from "@/lib/dates/periods";
+import { financialYearOfMonth } from "@/lib/dates/periods";
 import { DisburseModal } from "@/components/payroll/DisburseModal";
 import EmployeeDrawer from "@/components/payroll/EmployeeDrawer";
 import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
@@ -29,6 +29,7 @@ import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/Fili
 import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
 import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
 import { GapList } from "@/components/ui/callout";
+import { PeriodPicker } from "@/components/ui/period";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1405,10 +1406,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <select value={fy} onChange={(e) => setFy(e.target.value)}
-            className="border border-ps-border rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400">
-            {financialYearChoicesAround(month).map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <PeriodPicker value={fy} onChange={setFy} anchorMonth={month} size="sm" className="w-auto" />
           <button onClick={() => setOpen((v) => !v)}
             className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
             {open ? "Hide" : "Show"}

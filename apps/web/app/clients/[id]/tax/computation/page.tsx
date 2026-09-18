@@ -9,6 +9,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { assessmentYearChoicesAround } from "@/lib/dates/periods";
 import RegimeElectionPanel from "@/components/tax/RegimeElectionPanel";
+import { PeriodPicker } from "@/components/ui/period";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1088,10 +1089,7 @@ export default function TaxComputationPage() {
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="text-3xs text-ps-label mb-1 block">Assessment Year</label>
-                <select value={ay} onChange={e => setAy(e.target.value)}
-                  className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
-                  {AY_OPTIONS.map(a => <option key={a}>{a}</option>)}
-                </select>
+                <PeriodPicker kind="ay" value={ay} onChange={setAy} size="sm" />
               </div>
               <div className="flex-1">
                 {/* s.115BAC's new/old election reaches an individual or HUF.
@@ -2245,17 +2243,9 @@ export default function TaxComputationPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <label className="text-2xs text-ps-label">
                     Assessment year the loss was computed in
-                    <select
-                      id="bf-loss-ay"
-                      className="mt-1 w-full border border-ps-border rounded px-2 py-1 text-xs bg-white"
-                      value={lossForm.assessment_year}
-                      onChange={e => setLossForm(f => ({ ...f, assessment_year: e.target.value }))}
-                    >
-                      <option value="">Select…</option>
-                      {assessmentYearChoicesAround(null, 10).map(ay => (
-                        <option key={ay} value={ay}>{ay}</option>
-                      ))}
-                    </select>
+                    <PeriodPicker id="bf-loss-ay" kind="ay" count={10} placeholder="Select…" size="sm"
+                    className="mt-1" value={lossForm.assessment_year}
+                    onChange={v => setLossForm(f => ({ ...f, assessment_year: v }))} />
                   </label>
                   <label className="text-2xs text-ps-label">
                     Head
@@ -2298,17 +2288,9 @@ export default function TaxComputationPage() {
                   </label>
                   <label className="text-2xs text-ps-label">
                     Last assessment year it may be set off in
-                    <select
-                      id="bf-loss-expiry"
-                      className="mt-1 w-full border border-ps-border rounded px-2 py-1 text-xs bg-white"
-                      value={lossForm.expiry}
-                      onChange={e => setLossForm(f => ({ ...f, expiry: e.target.value }))}
-                    >
-                      <option value="">Work it out from the section</option>
-                      {assessmentYearChoicesAround(null, 12).map(ay => (
-                        <option key={ay} value={ay}>{ay}</option>
-                      ))}
-                    </select>
+                    <PeriodPicker id="bf-loss-expiry" kind="ay" count={12} size="sm" className="mt-1"
+                    placeholder="Work it out from the section" value={lossForm.expiry}
+                    onChange={v => setLossForm(f => ({ ...f, expiry: v }))} />
                   </label>
                 </div>
                 <p className="text-3xs text-ps-hint">

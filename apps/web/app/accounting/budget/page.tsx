@@ -13,6 +13,7 @@ import { getClients } from "@/lib/data/clients";
 import { api, type BudgetRow, type BudgetVsActuals } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
+import { PeriodPicker } from "@/components/ui/period";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -220,15 +221,7 @@ export default function BudgetPage() {
           <Download size={14} /> Export
         </button>
         {/* FY Selector — derived from the clock, never a list of literals. */}
-        <select
-          value={fy}
-          onChange={e => setFy(e.target.value as FY)}
-          className="text-sm border border-ps-border px-3 py-1.5 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {financialYearChoicesAround(null).map(y => (
-            <option key={y} value={y}>FY {y.replace("-", "–")}</option>
-          ))}
-        </select>
+        <PeriodPicker value={fy} onChange={v => setFy(v as FY)} size="sm" className="w-auto" />
       </div>
 
       {/* Summary Bar */}
