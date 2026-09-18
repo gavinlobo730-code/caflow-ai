@@ -264,7 +264,16 @@ def test_the_tab_no_longer_asks_for_the_register():
 @pytest.mark.skipif(not _TAB.is_file(), reason="needs apps/web")
 def test_the_tabs_year_picker_comes_from_the_clock():
     """It was a free-text box the CA typed a year into. CLAUDE.md: a year
-    picker is derived from the clock, never listed — and never typed."""
+    picker is derived from the clock, never listed — and never typed.
+
+    THE RULE, NOT A SPELLING OF IT. This asserted the helper's NAME, and broke
+    on 18 September when the control became `<PeriodPicker>` — which calls that
+    very helper and is guarded, in `a-financial-year-choice-comes-from-the-
+    clock.test.ts`, to carry no year literal of its own. The rule is that the
+    list is DERIVED, by the screen or by a component that derives it.
+    """
     src = _TAB.read_text()
-    assert "financialYearChoicesAround" in src
+    assert "financialYearChoicesAround" in src or "<PeriodPicker" in src, (
+        "the tab's year list is neither derived here nor delegated to the one "
+        "picker that derives it — it is listed or typed again")
     assert 'placeholder="Financial Year (e.g. 2025-26)"' not in src

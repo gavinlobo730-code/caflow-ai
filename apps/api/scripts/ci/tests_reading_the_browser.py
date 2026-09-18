@@ -59,6 +59,37 @@ TESTS = pathlib.Path(__file__).resolve().parents[2] / "tests"
 # never run on the diff it exists to check.
 _BUILDS_WEB_PATH = re.compile(r'/\s*"apps"\s*/\s*"(web|marketing)"')
 
+# THERE ARE TWO SPELLINGS OF THAT PATH AND THIS SCRIPT KNEW ONE (18-09-2026).
+# `parents[3] / "apps" / "web" / …` is the common one. The other puts the whole
+# tail in a single literal and lets `parents[2]` supply `apps/`:
+#
+#     _SCREEN = "web/app/income-tax/advance-tax/page.tsx"
+#     pathlib.Path(__file__).resolve().parents[2] / _SCREEN
+#
+# Two modules are written that way — the §140A challan guard and the ITR
+# keying-sheet one — and NEITHER was in this list, so a frontend-only PR
+# skipped both. That is precisely the defect this script's docstring says it
+# exists to prevent, and it is how a gap-callout adoption on 18 September broke
+# `test_the_panel_tells_a_gap_from_a_caveat` with the browser-contract job
+# reporting green.
+#
+# Matched on a STRING CONSTANT via the AST rather than on the raw text, because
+# the docstring's own rule holds: a path in a comment is not a read.
+_WEB_TAIL = re.compile(r'^(web|marketing)/')
+
+
+def _has_web_literal(path: pathlib.Path) -> bool:
+    try:
+        tree = ast.parse(path.read_text(errors="ignore"))
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(n, ast.Constant)
+        and isinstance(n.value, str)
+        and _WEB_TAIL.match(n.value)
+        for n in ast.walk(tree)
+    )
+
 
 def _module_name(path: pathlib.Path) -> str:
     return path.stem
@@ -95,6 +126,7 @@ def modules_reading_the_browser() -> list[pathlib.Path]:
         _module_name(p)
         for p in files
         if _BUILDS_WEB_PATH.search(p.read_text(errors="ignore"))
+        or _has_web_literal(p)
     }
 
     # Close over imports until nothing new is added — a module that imports a

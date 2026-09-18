@@ -16,6 +16,7 @@ WHAT THIS MODULE HOLDS
 """
 from __future__ import annotations
 
+import re
 import inspect
 import pathlib
 
@@ -535,10 +536,29 @@ def test_the_panel_renders_the_appropriation_and_calls_it_not_pro_rata():
 
 def test_the_panel_tells_a_gap_from_a_caveat():
     """A mis-headed challan needs doing something about; the statement that
-    the module is unverified needs reading once."""
+    the module is unverified needs reading once.
+
+    THE RULE, NOT A SPELLING OF IT. This asserted `saPosition?.gaps.map` and
+    `saPosition?.caveats.map` — one spelling of "the two lists are rendered
+    apart" — and broke on 18 September when the pair became a single
+    `<StatutoryNotes gaps={…} caveats={…}>`, the component that EXISTS to keep
+    them apart and gives the caller no way to collapse them. The comment this
+    screen carries ("GAPS ARE ACTIONABLE AND CAVEATS ARE NOT") is what that
+    component was built from.
+
+    That is the twelfth time in this repository a guard has named a spelling
+    rather than its rule; CLAUDE.md records the earlier ones. What this needs
+    is that BOTH arrays reach a renderer and that nothing merges them.
+    """
     src = _screen_source()
     start = src.index("{/* §140A — the Challan 280")
     end = src.index("Interest computed under IT Act Section 234C", start)
     panel = src[start:end]
-    assert "saPosition?.gaps.map" in panel
-    assert "saPosition?.caveats.map" in panel
+    assert re.search(r"gaps=\{saPosition\??\.?gaps|saPosition\?\.gaps\.map", panel), (
+        "the §140A gaps reach no renderer")
+    assert re.search(r"caveats=\{saPosition\??\.?caveats|saPosition\?\.caveats\.map", panel), (
+        "the §140A caveats reach no renderer")
+    # And they must not be poured into one list: a caveat rendered as a gap is
+    # exactly what this test is named for.
+    assert not re.search(r"\[\s*\.\.\.\s*saPosition\??\.?gaps.{0,40}caveats", panel), (
+        "the gaps and the caveats have been merged into one list")
