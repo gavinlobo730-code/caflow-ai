@@ -835,6 +835,89 @@ export type StockCountSheet = {
 /** INV-04 — one item's units ON HAND, bucketed by how long they have been
  *  held. Migration 408. Everything here is the server's: the bands, the FIFO
  *  consumption, the value split and the four caveats. */
+/** PAY-27 — one employee's movement between two payroll months. */
+export type PayrollEmployeeVariance = {
+  employee_id: string;
+  name: string;
+  /** `joined` | `left` | `changed` | `unchanged`. A leaver's name comes off
+   *  the month that HAS them, so the one report that exists to name them
+   *  never shows an unnamed row. */
+  status: string;
+  gross_paise: number;
+  prior_gross_paise: number;
+  gross_delta_paise: number;
+  net_paise: number;
+  prior_net_paise: number;
+  net_delta_paise: number;
+  /** EVERY component that moved, largest absolute first. No single cause is
+   *  ever named — a payroll total moves for several reasons at once. */
+  moved: { label: string; delta_paise: number }[];
+  /** Days are not money and are reported apart. */
+  days_moved: { label: string; delta: number }[];
+  /** Gross moved with no component behind it: the figure is real and what
+   *  explains it is not in the slip's own columns. */
+  unexplained: boolean;
+};
+
+export type PayrollMonthOnMonth = {
+  month: string;
+  prior_month: string;
+  /** False where the preceding month has no RELEASED run. The figures below
+   *  are then this month's alone and the prior columns are nil — a draft is
+   *  not a baseline, and an earlier month is not the preceding one. */
+  comparable: boolean;
+  gross_paise: number;
+  prior_gross_paise: number;
+  gross_delta_paise: number;
+  net_paise: number;
+  prior_net_paise: number;
+  net_delta_paise: number;
+  headcount: number;
+  prior_headcount: number;
+  employees: PayrollEmployeeVariance[];
+  changed_count: number;
+  notes: string[];
+};
+
+export type PayrollDepartmentCost = {
+  month: string;
+  rows: {
+    department: string;
+    headcount: number;
+    gross_paise: number;
+    employer_contribution_paise: number;
+    cost_paise: number;
+  }[];
+  total_gross_paise: number;
+  total_employer_contribution_paise: number;
+  total_cost_paise: number;
+  total_headcount: number;
+  notes: string[];
+};
+
+export type PayrollBankAdvice = {
+  month: string;
+  /** The account number is MASKED here and whole in the FILE — a screen
+   *  showing thirty account numbers in full is a shoulder-surfing surface for
+   *  no gain. */
+  rows: {
+    employee_id: string; name: string; account_no_masked: string;
+    ifsc: string; net_paise: number;
+  }[];
+  /** Held OUT of the file, each with what is missing. */
+  excluded: {
+    employee_id: string; name: string; reason: string; why: string;
+    net_paise: number;
+  }[];
+  payable_count: number;
+  excluded_count: number;
+  total_paise: number;
+  /** That this file moves no money, that the layout is generic, and — on an
+   *  unreleased run — that a draft has paid nobody. Rendered, never
+   *  re-worded here. */
+  notes: string[];
+};
+
 export type StockAgeingItem = {
   service_catalogue_id: string;
   name: string;
@@ -3324,6 +3407,32 @@ export const api = {
       downloadFile(
         `/api/payroll/reports/salary-register.csv?client_id=${encodeURIComponent(clientId)}&month=${encodeURIComponent(month)}`,
         `salary-register-${month}.csv`),
+    /** PAY-27 — why is this month bigger than last month, and by whom. The
+     *  BASELINE must be a released run and the month being looked at need not
+     *  be; every reason, every threshold and the comparison itself are the
+     *  server's. */
+    monthOnMonth: (params: Record<string, string>) =>
+      request<ApiResp<PayrollMonthOnMonth>>(
+        `/api/payroll/reports/month-on-month?${new URLSearchParams(params)}`),
+    /** PAY-27 — what each department cost. Gross and the EMPLOYER's own
+     *  contributions apart, because they are two debits and two accounts
+     *  (PAY-25); net pay is not cost and is deliberately absent. */
+    departmentCost: (params: Record<string, string>) =>
+      request<ApiResp<PayrollDepartmentCost>>(
+        `/api/payroll/reports/department-cost?${new URLSearchParams(params)}`),
+    /** PAY-27 — who this run pays and who it CANNOT. Prepare-only: the file
+     *  below is uploaded to the firm's own bank by a person. */
+    bankAdvice: (params: Record<string, string>) =>
+      request<ApiResp<PayrollBankAdvice>>(
+        `/api/payroll/reports/bank-advice?${new URLSearchParams(params)}`),
+    /** The payment file itself. Only the payable rows: an employee who cannot
+     *  be paid by transfer is named in `bankAdvice` above and is NOT a row
+     *  with blanks, because some banks drop such a row silently and leave the
+     *  CA believing everybody was paid. */
+    downloadBankAdvice: (clientId: string, month: string) =>
+      downloadFile(
+        `/api/payroll/reports/bank-advice.csv?client_id=${encodeURIComponent(clientId)}&month=${encodeURIComponent(month)}`,
+        `bank-advice-${month}.csv`),
     /** THE EMPLOYEE MASTER, AS ONE FILE AND ONE DECISION.
      *
      *  This replaces a browser-side validator (`buildEmployees`) and a loop

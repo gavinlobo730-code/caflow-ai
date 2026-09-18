@@ -23,6 +23,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Download, AlertCircle, AlertTriangle, CheckCircle, Clock,
   BarChart2, CalendarDays, TrendingUp, Users, IndianRupee, FileText,
+  Banknote,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ import type {
   Employee, EmployeeYearTotals, PayrollRun, PayrollSlip,
 } from "@/lib/payroll/types";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { MonthlyReview } from "@/components/payroll/MonthlyReview";
 import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
 import { api, type PayrollDepositDueDates_FY, type PayrollTdsProjection } from "@/lib/api";
 
@@ -441,6 +443,54 @@ function PayslipSummaryTab({
 }
 
 // ── 2. Year-to-Date ───────────────────────────────────────────────────────
+
+/** PAY-27 — the three questions of the 3rd, on one tab.
+ *
+ *  THE SELECTOR IS A RUN, NOT A MONTH, and the reason is the one
+ *  `PayslipSummaryTab` records: a firm running payroll for two clients in
+ *  August would otherwise have both clients under one TOTAL, which is nobody's
+ *  payroll. A run is exactly one client for exactly one month, which is also
+ *  what a bank advice is — a payment file spanning two clients is two clients'
+ *  money in one instruction.
+ */
+function MonthlyReviewTab({ runs, clientNames }: {
+  runs: PayrollRun[]; clientNames: Record<string, string>;
+}) {
+  const runOptions = [...runs].sort(
+    (a, b) => b.month.localeCompare(a.month)
+           || (clientNames[a.client_id] ?? "").localeCompare(clientNames[b.client_id] ?? ""),
+  );
+  const [selectedRunId, setSelectedRunId] = useState(runOptions[0]?.id ?? "");
+  const run = runs.find(r => r.id === selectedRunId);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-end gap-3 flex-wrap">
+        <div>
+          <label className="block text-xs font-medium text-ps-label mb-1">Payroll run</label>
+          <select value={selectedRunId} onChange={e => setSelectedRunId(e.target.value)}
+            className="px-3 py-1.5 border border-ps-border rounded-lg text-xs min-w-[16rem]">
+            {runOptions.length === 0 && <option value="">No payroll runs</option>}
+            {runOptions.map(r => (
+              <option key={r.id} value={r.id}>
+                {(clientNames[r.client_id] ?? "Client")} — {monthLabel(r.month)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {run ? (
+        <MonthlyReview clientId={run.client_id} month={run.month} />
+      ) : (
+        <p className="text-xs text-ps-label">
+          No payroll runs yet. Create one to see how a month compares with the
+          one before it.
+        </p>
+      )}
+    </div>
+  );
+}
 
 function YtdTab({ employees, runs, fyOptions }: {
   employees: Employee[]; runs: PayrollRun[]; fyOptions: string[];
@@ -1446,6 +1496,12 @@ export default function PayrollReportsPage() {
             <TabsTrigger value="payslip-summary" className="flex items-center gap-1.5 text-xs">
               <FileText size={13} />Payslip Summary
             </TabsTrigger>
+            {/* PAY-27 — SECOND, not last. This is what a CA opens on the 3rd:
+                why the payroll moved, what each department cost, and the bank
+                file. The five tabs after it are lookups. */}
+            <TabsTrigger value="monthly-review" className="flex items-center gap-1.5 text-xs">
+              <Banknote size={13} />Monthly Review
+            </TabsTrigger>
             <TabsTrigger value="ytd" className="flex items-center gap-1.5 text-xs">
               <TrendingUp size={13} />Year-to-Date
             </TabsTrigger>
@@ -1465,6 +1521,9 @@ export default function PayrollReportsPage() {
 
           <TabsContent value="payslip-summary">
             <PayslipSummaryTab runs={runs} employees={employees} clientNames={clientNames} />
+          </TabsContent>
+          <TabsContent value="monthly-review">
+            <MonthlyReviewTab runs={runs} clientNames={clientNames} />
           </TabsContent>
           <TabsContent value="ytd">
             <YtdTab employees={employees} runs={runs} fyOptions={fyOptions} />
