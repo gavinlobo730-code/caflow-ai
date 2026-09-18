@@ -403,13 +403,33 @@ def _customer_for(db, firm_id: str, customer_id: Optional[str]) -> dict:
         return {}
 
 
+def _client_supplier_name(db, firm_id: str, client_id) -> str:
+    """The name the CLIENT supplies under, for a mail to their customer.
+
+    `legal_name` first, then `client_name` — the preference
+    `invoice_pdf_service._client_party(legal_name_first=True)` applies to the
+    invoice this reminder attaches, so the covering mail agrees with the
+    document. A failure falls back to a neutral word rather than to the
+    practice's name: no name at all is better than the wrong party's.
+    """
+    if not db or not client_id:
+        return "Your supplier"
+    try:
+        row = (db.table("clients").select("legal_name, client_name")
+               .eq("id", client_id).eq("firm_id", firm_id)
+               .maybe_single().execute()).data or {}
+    except Exception:                       # noqa: BLE001 — see the docstring
+        return "Your supplier"
+    return row.get("legal_name") or row.get("client_name") or "Your supplier"
+
+
 def _dispatch_invoice_reminder(db, firm_id: str, inv: dict, customer: dict,
                                reminder_number: int, actor_id: Optional[str] = None,
                                attach_pdf: bool = True, manual: bool = False) -> bool:
     """Send ONE customer reminder, record the delivery, and on success advance
     last_reminded_at / reminder_count. Returns True on send success."""
     from services.email_service import send_payment_reminder_to_customer
-    from services.invoice_pdf_service import _load_firm, get_sales_invoice_pdf
+    from services.invoice_pdf_service import get_sales_invoice_pdf
     from services.timeline_service import timeline_service
 
     to_email = (customer or {}).get("email")
@@ -435,7 +455,12 @@ def _dispatch_invoice_reminder(db, firm_id: str, inv: dict, customer: dict,
     except Exception:  # pragma: no cover
         pass
 
-    firm_name = (_load_firm(firm_id) or {}).get("name") or "Your Chartered Accountant"
+    # WHOSE INVOICE IS OVERDUE — the CLIENT's, not the practice's (no finding;
+    # found building SALES-13). A reminder demands payment, and naming the CA
+    # practice on a mail to the client's own customer misstates who is owed.
+    # `_client_supplier_name` applies the same `legal_name` preference the PDF
+    # this mail attaches already uses.
+    firm_name = _client_supplier_name(db, firm_id, inv.get("client_id"))
     success, provider = send_payment_reminder_to_customer(
         to=to_email, customer_name=(customer or {}).get("name") or "Customer",
         firm_name=firm_name, invoice_no=inv.get("invoice_no", ""),

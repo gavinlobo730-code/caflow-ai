@@ -6,6 +6,8 @@ import os
 import logging
 from typing import Optional
 
+from domain.branding import email_template
+
 _logger = logging.getLogger("caflow.email")
 _RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 _FROM_EMAIL = os.environ.get("EMAIL_FROM", "PracticeSync AI <noreply@caflow.ai>")
@@ -77,6 +79,48 @@ def _send(to: str, subject: str, html: str) -> bool:
         _logger.error("Email transport error to %s (subject=%r): %s: %s",
                       to, subject, type(e).__name__, e)
         return False
+
+
+# ── The firm's own wording, where it has written one (SALES-13) ──────────────
+#
+# `public.email_templates` (migration 126) has held one active template per
+# kind per firm since the module was built, written by a full Settings screen,
+# and THIS FILE MENTIONED NO TEMPLATE AT ALL — every subject and body below is
+# a hard-coded f-string. So a CA who rewrote the engagement email in their own
+# words saved it and watched the product send the stock one.
+#
+# `domain/branding/email_template.py` is the authority for the merge fields,
+# for which kinds have a live mail at all, and for what a render refuses.
+
+def _firm_wording(kind: str, firm_id: Optional[str],
+                  values: dict) -> Optional[tuple[str, str]]:
+    """(subject, html) from the firm's own template, or None.
+
+    NONE MEANS SEND THE BUILT-IN, and every path here returns it: no firm_id,
+    no template saved, a read that failed, or a placeholder this particular
+    mail has no value for. Half-applying a template is the one outcome nobody
+    wants — the client would see the CA's sentence with a gap in it, and the
+    stock wording is merely impersonal rather than wrong.
+    """
+    if not firm_id:
+        return None
+    try:
+        from repositories.branding_repository import branding_repo
+        row = branding_repo.get_active_email_template(firm_id, kind)
+    except Exception:                       # noqa: BLE001 — see the docstring
+        _logger.warning("caflow.email: could not read the %s template for "
+                        "firm %s; sending the built-in wording", kind, firm_id)
+        return None
+    if not row:
+        return None
+    subject = email_template.render(row.get("subject"), values)
+    body = email_template.render(row.get("body"), values)
+    if not subject or not body:
+        _logger.info("caflow.email: the firm's %s template uses a merge field "
+                     "this mail has no value for; sending the built-in wording",
+                     kind)
+        return None
+    return subject, email_template.as_html(body)
 
 
 def send_task_assigned(to: str, assignee_name: str, task_title: str, client_name: str, due_date: Optional[str]) -> bool:
@@ -247,6 +291,18 @@ def _send_with_attachment(
 def send_invoice_to_customer(
     to: str,
     customer_name: str,
+    # WHOSE INVOICE THIS IS — the CA firm's CLIENT, not the practice. The
+    # parameter keeps its old name so every caller and test still works; what
+    # changed is who the caller passes, and the two callers were passing the
+    # PRACTICE (no finding; found building SALES-13).
+    #
+    # `build_sales_invoice_pdf` has refused the practice's branding on this
+    # document since it was written, and `send_statement_to_customer` right
+    # below carries the same note in its own words — the EMAIL that carries
+    # that PDF was the one place left saying "Invoice INV/001 from Sharma &
+    # Co" and "Regards, Sharma & Co" to a stranger who bought goods from Acme
+    # Traders. It misstates who supplied and who is owed, and it discloses the
+    # client's accountant to their customer.
     firm_name: str,
     invoice_no: str,
     invoice_date: str,
@@ -258,6 +314,11 @@ def send_invoice_to_customer(
     """
     Send a GST tax invoice PDF to a customer by email via Resend.
     Returns (success, provider_message_id).
+
+    NO FIRM TEMPLATE, DELIBERATELY. `email_templates` is the PRACTICE's, and
+    this mail goes from the client to the client's customer — the same boundary
+    `build_sales_invoice_pdf` holds for `branding` and `layout`. A client
+    wanting their own wording needs their own store, which is a migration.
     """
     subject = f"Invoice {invoice_no} from {firm_name}"
     amount_str = _fmt_rupees(total_paise)
@@ -281,6 +342,10 @@ def send_invoice_to_customer(
 def send_payment_reminder_to_customer(
     to: str,
     customer_name: str,
+    #: WHOSE INVOICE IS OVERDUE — the CA firm's CLIENT. See the note on
+    #: send_invoice_to_customer above; this mail had the same defect and it is
+    #: worse here, because a reminder demands payment and naming the practice
+    #: misstates who is owed.
     firm_name: str,
     invoice_no: str,
     invoice_date: str,
@@ -297,6 +362,8 @@ def send_payment_reminder_to_customer(
 
     This is a COLLECTIONS communication only — it posts no journal and changes no
     accounting figure.
+
+    NO FIRM TEMPLATE, for the same reason as the invoice mail above.
     """
     amount_str = _fmt_rupees(max(outstanding_paise, 0))
     if reminder_number <= 1:
@@ -339,6 +406,7 @@ def send_engagement_letter(
     pdf_bytes: Optional[bytes] = None,
     pdf_filename: Optional[str] = None,
     sign_url: Optional[str] = None,
+    firm_id: Optional[str] = None,
 ) -> tuple[bool, Optional[str]]:
     """
     Email an engagement letter to the prospective client.
@@ -351,6 +419,15 @@ def send_engagement_letter(
 
     This is a CLIENT communication only — it is NOT a government-portal
     submission and has no accounting side effect.
+
+    THE PRACTICE IS THE SENDER HERE, which is what makes the firm's own
+    `email_templates` wording apply (SALES-13). It is the only one of the four
+    kinds that has a live mail AND a practice on the sending end — the
+    customer-facing invoice and reminder below go from the CLIENT to the
+    client's customer, and the firm's wording must never reach those.
+
+    `firm_id` is optional so every existing caller keeps working; without it
+    the built-in wording is used, which is what the product has always sent.
     """
     subject = f"Engagement Letter {engagement_number} from {firm_name}"
     accept_instruction = (
@@ -385,6 +462,20 @@ def send_engagement_letter(
     reply to this email.</p>
     """
     html = intro + (letter_html or "") + closing
+
+    # The firm's own wording replaces the SUBJECT and the INTRO. The letter
+    # itself and the closing stay: the letter is the document being sent, and
+    # the closing is the disclosure that the mail came through this product on
+    # the firm's behalf — neither is wording a template is choosing.
+    override = _firm_wording("engagement", firm_id, {
+        "firm_name": firm_name,
+        "client_name": recipient_name or "Client",
+        "portal_link": sign_url,
+    })
+    if override:
+        subject, intro_html = override
+        html = intro_html + "<hr/>" + (letter_html or "") + closing
+
     if pdf_bytes and pdf_filename:
         return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)
     return (_send(to, subject, html), None)

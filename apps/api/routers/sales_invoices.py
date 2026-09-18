@@ -2476,11 +2476,27 @@ def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict
         }).eq("id", delivery_id).execute()
         raise HTTPException(status_code=500, detail="PDF generation failed")
 
-    # 7. Load firm name for email body
-    firm_row = (
-        db.table("firms").select("name").eq("id", firm_id).maybe_single().execute()
+    # 7. WHOSE INVOICE THIS IS, for the email body.
+    #
+    # THE CLIENT'S, NOT THE PRACTICE'S (no finding; found building SALES-13).
+    # This mail carries a CLIENT's sales invoice to that client's CUSTOMER —
+    # the PDF has refused the practice's name, logo and bank details since
+    # `build_sales_invoice_pdf` was written, and the covering email was still
+    # saying "Invoice INV/001 from Sharma & Co" and "Regards, Sharma & Co" to
+    # somebody who bought goods from Acme Traders. It misstates who supplied,
+    # and it tells the customer who their supplier's accountant is.
+    #
+    # `legal_name` first, then `client_name`: the same preference
+    # `invoice_pdf_service._client_party(legal_name_first=True)` applies to
+    # this very document, because Rule 46(b) wants the name the registration
+    # is held in and the covering mail must agree with the invoice it carries.
+    supplier_row = (
+        db.table("clients").select("legal_name, client_name")
+        .eq("id", inv["client_id"]).eq("firm_id", firm_id)
+        .maybe_single().execute()
     ).data or {}
-    firm_name = firm_row.get("name") or "Your Chartered Accountant"
+    firm_name = (supplier_row.get("legal_name")
+                 or supplier_row.get("client_name") or "Your supplier")
 
     # 8. Send via Resend
     success, provider_id = _send_email(

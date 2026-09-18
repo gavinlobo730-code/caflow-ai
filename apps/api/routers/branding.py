@@ -19,12 +19,22 @@ from services.audit_service import log_event
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
+# The four kinds, and everything about them, live in the domain module
+# now (SALES-13) — a second copy here is how the browser came to hold a
+# merge-field list the backend had never heard of.
+from domain.branding import email_template as _et
+from domain.branding import invoice_layout as _il
+
 router = APIRouter(prefix="/api/settings", tags=["branding"])
 
 _HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _VALID_FONTS = {"Inter", "Roboto", "Poppins", "Lato", "Montserrat", "Open Sans", "Nunito"}
-_VALID_TEMPLATE_TYPES = {"classic", "modern", "professional_ca", "corporate", "minimal"}
-_VALID_EMAIL_TYPES = {"invoice", "engagement", "document_request", "reminder"}
+#: The renderer's own vocabulary, not a second copy — `domain/branding/
+#: invoice_layout.py` is the authority and migration 126's CHECK is behind it.
+_VALID_TEMPLATE_TYPES = set(_il.TEMPLATE_TYPES)
+#: Kept only because two other routes still name it; `_et.problem_with` is
+#: what decides, and it holds the same four.
+_VALID_EMAIL_TYPES = set(_et.TEMPLATE_KINDS)
 _LOGO_BUCKET = "firm-assets"
 
 
@@ -272,9 +282,28 @@ def upsert_invoice_settings(body: InvoiceSettingsUpdate, current_user: dict = De
 
 @router.get("/invoice-templates")
 def list_invoice_templates(current_user: dict = Depends(rbac("branding", "read"))):
+    """Every layout the firm has saved, each with what it obliges (SALES-13).
+
+    `statutory_notes` is served rather than spelled on the screen: CGST Rule
+    46(q) and the first proviso to Rule 46 are statutory rules, and this
+    codebase keeps a rule in one place. The reassurance travels with the
+    warning — a CA choosing `minimal` needs to know it is not dropping the HSN.
+    """
     firm_id = current_user["firm_id"]
     templates = branding_repo.list_invoice_templates(firm_id)
-    return api_response(True, {"templates": templates, "total": len(templates)})
+    for t in templates:
+        t["statutory_notes"] = _il.layout_from_row(t).statutory_notes()
+    return api_response(True, {
+        "templates": templates, "total": len(templates),
+        "vocabulary": {
+            "template_type": list(_il.TEMPLATE_TYPES),
+            "logo_position": list(_il.LOGO_POSITIONS),
+            "header_style": list(_il.HEADER_STYLES),
+            "footer_style": list(_il.FOOTER_STYLES),
+            "signature_placement": list(_il.SIGNATURE_PLACEMENTS),
+        },
+        "layout_never_changes_particulars": _il.LAYOUT_NEVER_CHANGES_PARTICULARS,
+    })
 
 
 @router.post("/invoice-templates")
@@ -359,21 +388,36 @@ def delete_invoice_template(template_id: str, current_user: dict = Depends(rbac(
 
 @router.get("/email-templates")
 def list_email_templates(current_user: dict = Depends(rbac("branding", "read"))):
+    """The firm's own wordings, the merge fields, and WHICH KINDS ARE SENT.
+
+    The last of those is the part that was missing (SALES-13). The screen
+    offers four kinds as equals and only ONE of them has a live mail with the
+    practice on the sending end; a CA rewriting the other three was writing
+    into a void. `status_by_kind` says which, and says why not — measured
+    against `services/email_service.py` and its callers, not assumed from the
+    four names.
+    """
     firm_id = current_user["firm_id"]
     templates = branding_repo.list_email_templates(firm_id)
-    return api_response(True, {"templates": templates, "total": len(templates)})
+    return api_response(True, {
+        "templates": templates,
+        "total": len(templates),
+        **_et.merge_field_vocabulary(),
+    })
 
 
 @router.post("/email-templates")
 def upsert_email_template(body: EmailTemplateUpsert, current_user: dict = Depends(rbac("branding", "write"))):
     firm_id = current_user["firm_id"]
 
-    if body.template_type not in _VALID_EMAIL_TYPES:
-        raise HTTPException(status_code=422, detail=f"template_type must be one of: {', '.join(sorted(_VALID_EMAIL_TYPES))}")
-    if not body.subject.strip():
-        raise HTTPException(status_code=422, detail="subject is required.")
-    if not body.body.strip():
-        raise HTTPException(status_code=422, detail="body is required.")
+    # ONE VALIDATOR, AND IT IS THE DOMAIN MODULE'S. A merge field this kind of
+    # mail cannot fill is refused HERE, where a human is looking at the box
+    # they typed it into — never blanked at send time, where there is nobody
+    # to tell. `problem_with` also covers the kind, the subject and the body,
+    # so the three checks this endpoint used to spell are its answer now.
+    problem = _et.problem_with(body.template_type, body.subject, body.body)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
 
     data = {"subject": body.subject.strip(), "body": body.body.strip(), "is_active": body.is_active}
     saved = branding_repo.upsert_email_template(firm_id, body.template_type, data)
@@ -393,10 +437,15 @@ def update_email_template(
         raise HTTPException(status_code=404, detail="Email template not found")
 
     updates = body.model_dump(exclude_unset=True)
-    if "subject" in updates and not updates["subject"].strip():
-        raise HTTPException(status_code=422, detail="subject cannot be empty.")
-    if "body" in updates and not updates["body"].strip():
-        raise HTTPException(status_code=422, detail="body cannot be empty.")
+    # THE SAME VALIDATOR ON THIS DOOR TOO. A check on create alone is one
+    # PATCH from being none, and this is the door reached SECOND — after the
+    # template already looks saved.
+    problem = _et.problem_with(
+        existing.get("template_type") or "",
+        updates.get("subject", existing.get("subject")),
+        updates.get("body", existing.get("body")))
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
 
     updated = branding_repo.update_email_template(template_id, updates)
     if not updated:

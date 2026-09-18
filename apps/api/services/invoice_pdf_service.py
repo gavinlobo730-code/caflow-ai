@@ -72,6 +72,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing
 
+from domain.branding.invoice_layout import DEFAULT_LAYOUT, InvoiceLayout, layout_from_row
+
 logger = logging.getLogger("caflow.services")
 
 # SAC 998211 is "legal and accounting services" — the PRACTICE's own supply.
@@ -609,6 +611,7 @@ def _render_tax_invoice(
     fallback_line_label: Optional[str],
     report_gaps: bool,
     branding: Optional[dict] = None,
+    layout: Optional["InvoiceLayout"] = None,
 ) -> bytes:
     """Render a Rule 46 tax invoice. `supplier` and `recipient` are already
     normalised party dicts — this function never decides who the supplier is.
@@ -621,6 +624,15 @@ def _render_tax_invoice(
     the accountant. That is the same confusion the supplier line, the customer
     statement and the payslip employer each had, so this argument is passed by
     build_invoice_pdf and deliberately not by build_sales_invoice_pdf.
+
+    `layout` IS THE SUPPLIER'S OWN TOO, and for the same reason. It says where
+    the logo and the signature sit and how much room the header and footer
+    take — see `domain/branding/invoice_layout.py`, where the rule over all of
+    it is written down: A TEMPLATE CHANGES THE LAYOUT AND NEVER THE
+    PARTICULARS. Every CGST Rule 46 particular is printed on every layout, and
+    `signature_placement = 'none'` is the one apparent exception, honoured
+    because Rule 46's first proviso allows it for a digitally signed invoice
+    and NAMED on the template so the CA is told where they choose.
     """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -634,6 +646,7 @@ def _render_tax_invoice(
     cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, leading=10)
 
     brand = branding or {}
+    lay = layout or DEFAULT_LAYOUT
     accent = _accent_colour(brand.get("primary_color"))
 
     story = []
@@ -641,15 +654,19 @@ def _render_tax_invoice(
     # a slow or dead URL must not take the invoice down with it — see _logo.
     logo = _logo(brand.get("logo_url"))
     if logo is not None:
+        # WHERE it sits is the template's; WHETHER it is fetched is not.
+        logo.hAlign = lay.logo_alignment
         story.append(logo)
         story.append(Spacer(1, 3 * mm))
     story.append(Paragraph("TAX INVOICE", ParagraphStyle(
         "title", parent=styles["Title"], fontSize=16, spaceAfter=2,
         textColor=accent or colors.black)))
     story.append(Paragraph("(Issued under Section 31, CGST Act 2017 read with Rule 46, CGST Rules 2017)", small))
-    if brand.get("tagline"):
+    # The tagline is the one thing a header style removes, and it is not a
+    # Rule 46 particular — see LAYOUT_NEVER_CHANGES_PARTICULARS.
+    if brand.get("tagline") and lay.prints_tagline:
         story.append(Paragraph(str(brand["tagline"]), small))
-    story.append(Spacer(1, 6 * mm))
+    story.append(Spacer(1, lay.header_space_mm * mm))
 
     meta_lines = [
         f"<b>Invoice No:</b> {invoice.get('invoice_no', '')}",
@@ -848,14 +865,27 @@ def _render_tax_invoice(
         story.append(block)
 
     story.append(Spacer(1, 14 * mm))
-    # Rule 46(q): the signature is the SUPPLIER's.
-    story.append(Paragraph(f"For {supplier['name']}", bold))
-    story.append(Spacer(1, 14 * mm))
-    story.append(Paragraph("Authorised Signatory", styles["Normal"]))
+    # Rule 46(q): the signature is the SUPPLIER's. WHERE it sits is the
+    # template's, and `none` omits the block — lawful only under Rule 46's
+    # first proviso, for an invoice digitally signed under the IT Act 2000,
+    # which is why the template carries RULE_46_Q_NOTE beside the picker.
+    if lay.prints_signature_block:
+        align = lay.signature_alignment
+        story.append(Paragraph(f"For {supplier['name']}", ParagraphStyle(
+            "sig_for", parent=bold, alignment=align)))
+        story.append(Spacer(1, 14 * mm))
+        story.append(Paragraph("Authorised Signatory", ParagraphStyle(
+            "sig_line", parent=styles["Normal"], alignment=align)))
 
     if brand.get("footer_text"):
-        story.append(Spacer(1, 8 * mm))
+        story.append(Spacer(1, lay.footer_space_mm * mm))
         story.append(Paragraph(str(brand["footer_text"]), small))
+    if lay.prints_computer_generated_note:
+        # An ADDITION, never a removal. `detailed` is the only footer style
+        # that puts anything extra on the page.
+        story.append(Spacer(1, 3 * mm))
+        story.append(Paragraph(
+            "This is a computer-generated invoice.", small))
 
     doc.build(story)
     return buf.getvalue()
@@ -863,7 +893,8 @@ def _render_tax_invoice(
 
 def build_invoice_pdf(invoice: dict, firm: dict, client: dict,
                       engagement: Optional[dict] = None,
-                      branding: Optional[dict] = None) -> bytes:
+                      branding: Optional[dict] = None,
+                      layout: Optional[InvoiceLayout] = None) -> bytes:
     """Render the PRACTICE's own fee invoice: the firm supplies, the client
     receives. Do not use this for a client's sales invoice — see
     build_sales_invoice_pdf().
@@ -871,6 +902,10 @@ def build_invoice_pdf(invoice: dict, firm: dict, client: dict,
     `branding` is the FIRM's — logo, accent colour, tagline, bank account, UPI
     and footer, from firm_branding + invoice_settings. This is the document
     those settings were always for, and it is the only invoice they belong on.
+
+    `layout` is the firm's chosen invoice TEMPLATE (SALES-13), the same way
+    and for the same reason: `invoice_templates` says where the practice wants
+    its own logo and signature, and nothing else's.
     """
     label = "Professional Services — Chartered Accountancy"
     if engagement and engagement.get("service_type"):
@@ -880,6 +915,7 @@ def build_invoice_pdf(invoice: dict, firm: dict, client: dict,
         _firm_party(firm),
         _client_party(client),
         branding=branding,
+        layout=layout,
         line_detail=False,
         # The practice's own supply genuinely is SAC 998211 (legal and
         # accounting services), so it remains this document's default.
@@ -896,9 +932,12 @@ def build_sales_invoice_pdf(invoice: dict, client: dict, customer: dict) -> byte
     customer receives. The CA practice is not a party to this supply and appears
     nowhere on it.
 
-    NO `branding` ARGUMENT, DELIBERATELY. firm_branding and invoice_settings are
-    the PRACTICE's, and the practice's logo, bank account and UPI on this
-    document would ask the client's customer to pay the accountant. It is the
+    NO `branding` AND NO `layout` ARGUMENT, DELIBERATELY. firm_branding,
+    invoice_settings and invoice_templates are all the PRACTICE's, and the
+    practice's logo, bank account and UPI on this document would ask the
+    client's customer to pay the accountant; its chosen signature placement on
+    a document its client issues to a stranger is the same confusion one step
+    quieter. It is the
     same confusion the supplier line, the customer statement and the payslip
     employer each had. A client's own branding would be a different store —
     `clients` has no logo, bank, UPI or footer column at all — and adding one is
@@ -947,7 +986,8 @@ def get_invoice_pdf(invoice_id: str) -> tuple[bytes, str]:
             engagement = None
 
     pdf = build_invoice_pdf(invoice, firm, client, engagement,
-                            branding=_load_branding(invoice.get("firm_id")))
+                            branding=_load_branding(invoice.get("firm_id")),
+                            layout=_load_layout(invoice.get("firm_id")))
     filename = f"invoice-{invoice.get('invoice_no', invoice_id)}.pdf"
     return pdf, filename
 
@@ -982,6 +1022,26 @@ def _load_branding(firm_id: Optional[str]) -> dict:
         logger.warning("caflow.invoice_pdf: could not load branding for firm %s", firm_id)
         return {}
     return out
+
+
+def _load_layout(firm_id: Optional[str]) -> InvoiceLayout:
+    """The firm's chosen invoice template, or migration 126's own defaults.
+
+    Same shape and same rule as `_load_branding` above: a tax invoice that
+    renders with the logo on the left is valid under Rule 46, and one that does
+    not render is not — so every failure, and every firm that has never opened
+    the Settings screen, gets the layout every invoice had before this was
+    read at all.
+    """
+    if not firm_id:
+        return DEFAULT_LAYOUT
+    try:
+        from repositories.branding_repository import branding_repo
+        return layout_from_row(branding_repo.get_default_invoice_template(firm_id))
+    except Exception:                       # noqa: BLE001 — see the docstring
+        logger.warning("caflow.invoice_pdf: could not load the invoice "
+                       "template for firm %s", firm_id)
+        return DEFAULT_LAYOUT
 
 
 def _load_firm(firm_id: Optional[str]) -> dict:

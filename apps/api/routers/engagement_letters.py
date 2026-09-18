@@ -641,6 +641,11 @@ def _deliver_engagement_email(db, eng: dict, firm_id: str, to_email: Optional[st
         pdf_bytes=pdf_bytes,
         pdf_filename=pdf_filename,
         sign_url=sign_url,
+        # SALES-13. The firm's own `email_templates` wording, where it has
+        # written one. Passed as an id rather than resolved here: which table
+        # holds the wording is the email service's business, and a second
+        # reader of `email_templates` is how a second vocabulary starts.
+        firm_id=firm_id,
     )
     if not success:
         # The true cause is logged in full by the email transport layer

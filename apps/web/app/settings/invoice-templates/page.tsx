@@ -19,6 +19,10 @@ interface InvoiceTemplate {
   is_active: boolean;
   is_default: boolean;
   created_at: string;
+  /** What this layout obliges, in CGST Rule 46's terms — SERVED, never spelled
+   *  here. `domain/branding/invoice_layout.py` is the authority; a statutory
+   *  sentence written into a screen is the Schedule III caption mistake. */
+  statutory_notes?: string[];
 }
 
 const TEMPLATE_DESCRIPTIONS: Record<InvoiceTemplate["template_type"], { label: string; desc: string; accent: string }> = {
@@ -183,6 +187,25 @@ function TemplateCard({
         <span className="px-2 py-0.5 bg-[#F8FAFC] rounded border border-[#E2E8F0]">Footer: {template.footer_style}</span>
         <span className="px-2 py-0.5 bg-[#F8FAFC] rounded border border-[#E2E8F0]">Signature: {template.signature_placement}</span>
       </div>
+
+      {/* THE FIRST NOTE IS THE WARNING AND THE LAST IS THE REASSURANCE, and
+          both matter: `signature_placement: none` is lawful only for a
+          digitally signed invoice (Rule 46's first proviso), and a CA choosing
+          `minimal` needs to know it is not dropping the HSN. Rendered from the
+          server's own sentences so the statute lives in one place. */}
+      {(template.statutory_notes ?? []).length > 0 && (
+        <div className="px-5 pb-3 space-y-1.5">
+          {(template.statutory_notes ?? []).map((note, i) => (
+            <p key={i}
+               className={`text-[11px] rounded-lg px-3 py-2 border ${
+                 template.signature_placement === "none" && i === 0
+                   ? "text-state-attention bg-state-attention-surface border-state-attention-border"
+                   : "text-ps-label bg-ps-bg border-ps-border"}`}>
+              {note}
+            </p>
+          ))}
+        </div>
+      )}
 
       <div className="px-5 py-3 border-t border-[#F8FAFC] flex items-center gap-2">
         {!template.is_default && (
