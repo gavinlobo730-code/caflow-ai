@@ -29,6 +29,14 @@
  *      read them as documents missing from a return that carries them. The
  *      server decides which group a gap is in (`PayloadGap.withheld`); this
  *      component holds no list of kinds.
+ *
+ *      AND THE TWO GROUPS NOW WEAR DIFFERENT TONES, WHICH IS THE POINT.
+ *      "Not declared" used to render RED and "filed as recorded" AMBER — the
+ *      same two colours as the errors and the warnings below, so four
+ *      different things read as two. `Callout`'s `withheld` tone is slate: it
+ *      is a statement about what this product could not SEE, not about the
+ *      client's tax position, and giving it a warning colour made a CA read
+ *      a product limitation as a defect in their own return.
  *   3. ERRORS next, and separately from warnings. These are what the portal
  *      REJECTS: folding them in with the warnings would make a rejection look
  *      like a judgement call.
@@ -41,7 +49,7 @@
  */
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { Callout, GapList } from "@/components/ui/callout";
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";
 
 export interface Gstr1FindingsProps {
@@ -65,73 +73,45 @@ export function Gstr1Findings({ errors, warnings, gaps, compact = false }: Gstr1
   const reported = gaps.filter((g) => g.withheld === false);
   return (
     <>
-      {withheld.length > 0 && (
-        <div className={block}>
-          <h4 className="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Not declared in this return
-          </h4>
-          <ul className="space-y-1.5">
-            {withheld.map((g, i) => (
-              <li key={i} className="text-xs text-red-700">
-                <span className="font-mono mr-1">[{g.reference_no}]</span>
-                <span className="font-medium mr-1">{g.kind}</span>
-                {g.reason}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {reported.length > 0 && (
-        <div className={block}>
-          <h4 className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Filed as recorded — check before submitting
-          </h4>
-          <ul className="space-y-1.5">
-            {reported.map((g, i) => (
-              <li key={i} className="text-xs text-amber-700">
-                {g.reference_no && (
-                  <span className="font-mono mr-1">[{g.reference_no}]</span>
-                )}
-                <span className="font-medium mr-1">{g.kind}</span>
-                {g.reason}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <GapList
+        className={block}
+        gaps={withheld}
+        tone="withheld"
+        title="Not declared in this return"
+      />
+      <GapList
+        className={block}
+        gaps={reported}
+        tone="attention"
+        title="Filed as recorded — check before submitting"
+      />
       {errors.length > 0 && (
-        <div className={block}>
-          <h4 className="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Errors — the portal will reject these
-          </h4>
+        <Callout
+          className={block}
+          tone="problem"
+          title="Errors — the portal will reject these"
+        >
           <ul className="space-y-1.5">
             {errors.map((e, i) => (
-              <li key={i} className="text-xs text-red-700">
-                {e.invoice_ref && <span className="font-mono mr-1">[{e.invoice_ref}]</span>}
+              <li key={i}>
+                {e.invoice_ref && <span className="mr-1 font-mono">[{e.invoice_ref}]</span>}
                 {e.message}
               </li>
             ))}
           </ul>
-        </div>
+        </Callout>
       )}
       {warnings.length > 0 && (
-        <div className={block}>
-          <h4 className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Warnings
-          </h4>
+        <Callout className={block} tone="attention" title="Warnings">
           <ul className="space-y-1.5">
             {warnings.map((w, i) => (
-              <li key={i} className="text-xs text-amber-700">
-                {w.invoice_ref && <span className="font-mono mr-1">[{w.invoice_ref}]</span>}
+              <li key={i}>
+                {w.invoice_ref && <span className="mr-1 font-mono">[{w.invoice_ref}]</span>}
                 {w.message}
               </li>
             ))}
           </ul>
-        </div>
+        </Callout>
       )}
     </>
   );
