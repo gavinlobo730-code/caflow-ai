@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **254** | re-read against the code. The defect is gone. |
-| partial | **15** | part of the finding is answered, part is not. Each says which. |
+| closed | **255** | re-read against the code. The defect is gone. |
+| partial | **14** | part of the finding is answered, part is not. Each says which. |
 | open | **4** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 19 items — 4 open and 15 partial — not 254.**
+**The work left is 18 items — 4 open and 14 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -50,7 +50,6 @@ is left as "unknown".
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
 | medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
-| medium | **GST-19** | Rule 36(4) is applied as an aggregate per-head cap, not invoice-level 2B matching, and the cappe |
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
 | medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
@@ -226,6 +225,7 @@ is left as "unknown".
 | medium | **GST-15** | GSTR-1 Table 11 advance tax is computed into the filed payload while the advances report tells t |
 | medium | **GST-17** | The HSN digit requirement is computed and then never applied or warned about, and the thresholds |
 | medium | **GST-18** | GSTR-1 Table 13 (documents issued) is missing the serial-number range the form requires |
+| medium | **GST-19** | Rule 36(4) is applied as an aggregate per-head cap, not invoice-level 2B matching, and the cappe |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-22** | The GSTR-3B screen prints taxable VALUES in the IGST column and shows none of tables 3.1(d), 3.1 |
 | medium | **GST-24** | Table 4(A) rows for import IGST and ISD are permanently zero, and ISD is now compulsory |

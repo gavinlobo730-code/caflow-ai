@@ -735,6 +735,96 @@ export default function GSTR3BPage() {
                   )}
                 </tbody>
               </table>
+
+              {/* WHICH DOCUMENTS (GST-19). The table above is a per-head total,
+                  and s.16(2)(aa) is a condition on EACH invoice — so a month
+                  with one unfiled bill and one over-claimed bill used to net to
+                  zero and show nothing here at all. Rendering the list is the
+                  half of the finding a CA actually acts on: without it they
+                  cross-reference the GSTR-2B Recon tab by hand.
+
+                  The reason sentence is SERVED, never composed here. Which of
+                  the five answers applies is a statutory judgement and a second
+                  copy of the wording in the browser is how the two come to say
+                  different things about one invoice. */}
+              {w.rule_36_4.per_document?.applied &&
+                w.rule_36_4.per_document.withheld.length > 0 && (
+                <div className="border-t border-ps-border">
+                  <div className="px-5 py-3 bg-state-problem-surface border-b border-state-problem-border">
+                    <p className="text-sm font-medium text-state-problem">
+                      {w.rule_36_4.per_document.withheld.length} document
+                      {w.rule_36_4.per_document.withheld.length === 1 ? "" : "s"} withheld
+                      — {r(w.rule_36_4.per_document.withheld_total_paise)}
+                    </p>
+                    <p className="text-xs text-ps-body mt-1">
+                      s.16(2)(aa) allows the credit only where the supplier has
+                      furnished THIS invoice and it has reached you. Each row below
+                      says which condition failed, because what to do about it
+                      differs: a document GSTR-2B does not carry is a supplier to
+                      chase, and one GSTR-2B carries and refuses is a document to
+                      check.
+                    </p>
+                  </div>
+                  <ul className="divide-y divide-ps-muted">
+                    {w.rule_36_4.per_document.withheld.map((d, i) => (
+                      <li key={d.document_id ?? `${d.label}-${i}`} className="px-5 py-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="text-sm text-ps-ink font-medium truncate">
+                              {d.label || "(unnumbered)"}
+                              {d.supplier ? (
+                                <span className="text-ps-label font-normal"> · {d.supplier}</span>
+                              ) : null}
+                            </p>
+                            <p className="text-xs text-ps-label mt-0.5">{d.reason}</p>
+                          </div>
+                          <span className="font-mono text-sm text-state-problem whitespace-nowrap">
+                            {r(d.withheld_total_paise)}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* NOT WITHHELD, AND NOT SILENT. A bill recorded after the
+                  period's GSTR-2B was reconciled was never examined by it, so
+                  its absence from the match is not evidence the supplier failed
+                  to file — withholding it would cost the client credit they are
+                  entitled to, invisibly. The credit stands and the action is to
+                  re-reconcile. */}
+              {(w.rule_36_4.per_document?.not_assessed?.length ?? 0) > 0 && (
+                <div className="px-5 py-3 border-t border-ps-border bg-state-attention-surface">
+                  <p className="text-sm font-medium text-state-attention">
+                    {w.rule_36_4.per_document.not_assessed.length} bill
+                    {w.rule_36_4.per_document.not_assessed.length === 1 ? " was" : "s were"} recorded
+                    after this period&apos;s GSTR-2B was reconciled
+                  </p>
+                  <p className="text-xs text-ps-body mt-1">
+                    That reconciliation never looked at{" "}
+                    {w.rule_36_4.per_document.not_assessed.length === 1 ? "it" : "them"}, so its
+                    silence says nothing about whether the supplier filed. The credit is
+                    not withheld. Re-run the GSTR-2B reconciliation for this period to have
+                    s.16(2)(aa) asked of{" "}
+                    {w.rule_36_4.per_document.not_assessed.length === 1 ? "it" : "them"}.
+                  </p>
+                  <p className="text-xs text-ps-label mt-1.5">
+                    {w.rule_36_4.per_document.not_assessed
+                      .map(d => d.label || "(unnumbered)")
+                      .join(", ")}
+                  </p>
+                </div>
+              )}
+
+              {/* What the pass could not reach, in the engine's own words. */}
+              {(w.rule_36_4.per_document?.notes?.length ?? 0) > 0 && (
+                <div className="px-5 py-3 border-t border-ps-border bg-ps-bg">
+                  {w.rule_36_4.per_document.notes.map((n, i) => (
+                    <p key={i} className="text-xs text-ps-label">{n}</p>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
