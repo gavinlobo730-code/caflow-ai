@@ -105,7 +105,8 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     # the sales/purchase pre-document tables (392, 393),
     # public.purchase_bill_landed_costs (396),
     # public.capital_work_in_progress and public.cwip_additions (397),
-    # and public.godowns and public.inventory_batches (398)
+    # and public.godowns and public.inventory_batches (398),
+    # and public.self_assessment_challans (407)
     # are WHOLE new tables
     # and need no entry: a table the snapshot predates is skipped.
 }

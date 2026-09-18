@@ -19,7 +19,7 @@
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, Save, AlertTriangle, CheckCircle, Clock } from "lucide-react";
+import { ChevronLeft, Save, AlertTriangle, CheckCircle, Clock, Plus, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -31,6 +31,8 @@ import {
   listAdvanceTaxPayments, saveAdvanceTaxPayments,
   type AdvanceTaxComputeResult, type AdvanceTaxInstallmentInput,
   type Section234ABResult, type SectionInterestResult,
+  getSelfAssessmentPosition, createSelfAssessmentChallan, deleteSelfAssessmentChallan,
+  type SelfAssessmentPosition,
 } from "@/lib/data/income-tax";
 import type { Client } from "@/lib/types";
 import { todayLocalISO } from "@/lib/dateMath";
@@ -104,6 +106,18 @@ export default function AdvanceTaxPage() {
   const [hasTP, setHasTP] = useState(false);
   const [lateResult, setLateResult] = useState<Section234ABResult | null>(null);
   const [lateError, setLateError] = useState<string | null>(null);
+
+  // §140A — the Challan 280 the return has to be accompanied by (IT-13).
+  // Migration 407 gave it a table; before that a CA keyed Schedule IT off a
+  // bank receipt and the ITR keying sheet printed §140A as a structural nil.
+  const [saPosition, setSaPosition] = useState<SelfAssessmentPosition | null>(null);
+  const [saError, setSaError] = useState<string | null>(null);
+  const [saBusy, setSaBusy] = useState(false);
+  const [saForm, setSaForm] = useState({
+    bsr_code: "", deposit_date: "", challan_serial_no: "", bank_name: "",
+    tax_rs: "", surcharge_rs: "", cess_rs: "", interest_rs: "", fee_rs: "",
+    total_rs: "", major_head: "0021", minor_head: "300",
+  });
 
   useEffect(() => {
     getClients().then(c => { setClients(c); if (c.length > 0) setClientId(c[0].id); }).catch(() => {});
@@ -216,6 +230,107 @@ export default function AdvanceTaxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fy, estimatedTaxPaise, editPaidRs, tdsTcsRs, reliefRs, furnishedOn, entityType, hasAudit, hasTP]);
 
+  const totalPaid = [1, 2, 3, 4].reduce((s, n) => s + (paidPaiseOf(n) ?? 0), 0);
+  const totalInterest = result?.total_interest_paise ?? 0;
+
+  // ── §140A. The DUES ARE THE SERVER'S, ALL THREE OF THEM ──────────────────
+  //
+  // `section_140a_tax_due_paise` is computed by the API from the four figures
+  // the section names, so nothing here subtracts TDS or advance tax; the
+  // interest is the same §234A+§234B+§234C total this screen already renders
+  // above; and the §234F fee is DELIBERATELY NOT SENT, because nothing in this
+  // product computes one and a zero would appropriate a payment against a fee
+  // that may be due. The server names each absence rather than defaulting it.
+  const section140aTaxDuePaise = lateResult?.section_140a_tax_due_paise ?? null;
+  const totalInterestDuePaise = lateResult
+    ? totalInterest + lateResult.total_interest_paise : null;
+
+  const loadSelfAssessment = useCallback(async () => {
+    if (!clientId) { setSaPosition(null); return; }
+    try {
+      const dues = section140aTaxDuePaise === null ? undefined : {
+        taxDuePaise: section140aTaxDuePaise,
+        interestDuePaise: totalInterestDuePaise ?? undefined,
+      };
+      setSaPosition(await getSelfAssessmentPosition(clientId, fy, dues));
+      setSaError(null);
+    } catch (e) {
+      setSaPosition(null);
+      setSaError(e instanceof Error ? e.message : "Failed to load the challans");
+    }
+  }, [clientId, fy, section140aTaxDuePaise, totalInterestDuePaise]);
+
+  useEffect(() => { loadSelfAssessment(); }, [loadSelfAssessment]);
+
+  async function handleAddChallan() {
+    if (!clientId) { setSaError("Select a client first."); return; }
+    // Every amount through the one parser. A blank box is nil, and anything
+    // that is not an amount stops the save rather than being coerced — a
+    // coerced zero on `total_paise` records a challan for nothing and claims
+    // the credit on the return anyway.
+    const amounts: Record<string, number | null> = {
+      tax_paise: paiseFromRupeeInput(saForm.tax_rs || "0"),
+      surcharge_paise: paiseFromRupeeInput(saForm.surcharge_rs || "0"),
+      cess_paise: paiseFromRupeeInput(saForm.cess_rs || "0"),
+      interest_paise: paiseFromRupeeInput(saForm.interest_rs || "0"),
+      fee_paise: paiseFromRupeeInput(saForm.fee_rs || "0"),
+      total_paise: paiseFromRupeeInput(saForm.total_rs || "0"),
+    };
+    const bad = Object.entries(amounts).find(([, v]) => v === null);
+    if (bad) {
+      setSaError(`${bad[0].replace("_paise", "").replace("_", " ")}: enter the amount in `
+                 + "rupees, e.g. 50000 — without commas.");
+      return;
+    }
+    setSaBusy(true);
+    setSaError(null);
+    try {
+      await createSelfAssessmentChallan({
+        client_id: clientId,
+        financial_year: fy,
+        bsr_code: saForm.bsr_code.trim(),
+        deposit_date: saForm.deposit_date,
+        challan_serial_no: saForm.challan_serial_no.trim(),
+        tax_paise: amounts.tax_paise as number,
+        surcharge_paise: amounts.surcharge_paise as number,
+        cess_paise: amounts.cess_paise as number,
+        interest_paise: amounts.interest_paise as number,
+        fee_paise: amounts.fee_paise as number,
+        total_paise: amounts.total_paise as number,
+        major_head: saForm.major_head,
+        minor_head: saForm.minor_head,
+        bank_name: saForm.bank_name.trim() || null,
+      });
+      setSaForm({
+        bsr_code: "", deposit_date: "", challan_serial_no: "", bank_name: "",
+        tax_rs: "", surcharge_rs: "", cess_rs: "", interest_rs: "", fee_rs: "",
+        total_rs: "", major_head: "0021", minor_head: "300",
+      });
+      await loadSelfAssessment();
+    } catch (e) {
+      setSaError(e instanceof Error ? e.message : "Failed to record the challan");
+    } finally {
+      setSaBusy(false);
+    }
+  }
+
+  async function handleRemoveChallan(id: string, serial: string) {
+    if (!window.confirm(
+      `Remove challan ${serial}? A challan the client actually paid should be `
+      + "corrected rather than removed — the return has to be accompanied by "
+      + "proof of every payment.")) return;
+    setSaBusy(true);
+    setSaError(null);
+    try {
+      await deleteSelfAssessmentChallan(id);
+      await loadSelfAssessment();
+    } catch (e) {
+      setSaError(e instanceof Error ? e.message : "Failed to remove the challan");
+    } finally {
+      setSaBusy(false);
+    }
+  }
+
   async function handleSave() {
     if (!clientId || estimatedTaxPaise <= 0) {
       setError("Enter estimated annual tax first");
@@ -243,9 +358,6 @@ export default function AdvanceTaxPage() {
       setSaving(false);
     }
   }
-
-  const totalPaid = [1, 2, 3, 4].reduce((s, n) => s + (paidPaiseOf(n) ?? 0), 0);
-  const totalInterest = result?.total_interest_paise ?? 0;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -506,11 +618,188 @@ export default function AdvanceTaxPage() {
         </CardContent>
       </Card>
 
+      {/* §140A — the Challan 280 the return is accompanied by (IT-13). */}
+      <Card>
+        <CardContent className="pt-4 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="text-sm font-semibold text-ps-ink">
+              Self-assessment tax — §140A, Challan 280
+            </h2>
+            <span className="text-[11px] text-ps-hint">
+              Payable before the return is furnished; the return is accompanied by proof.
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <SaFigure label="Recorded challans"
+                      value={saPosition ? String(saPosition.challans.length) : "—"} />
+            <SaFigure label="Total paid"
+                      value={saPosition ? formatPaise(saPosition.total_paid_paise) : "—"} />
+            <SaFigure label="§140A tax due"
+                      value={section140aTaxDuePaise === null ? "—" : formatPaise(section140aTaxDuePaise)} />
+            <SaFigure label="Tax still outstanding"
+                      value={saPosition?.appropriation
+                        ? formatPaise(saPosition.appropriation.tax_outstanding_paise) : "—"}
+                      red={(saPosition?.appropriation?.tax_outstanding_paise ?? 0) > 0} />
+          </div>
+
+          {/* The appropriation. NOT pro rata — §140A(1)'s Explanation settles
+              the fee first, then the interest, and only the balance reduces
+              the tax, which is the figure §234A and §234B keep charging on. */}
+          {saPosition?.appropriation && (
+            <div className="rounded-lg bg-ps-bg border border-ps-border px-3 py-2">
+              <p className="text-[11px] text-ps-body mb-1">
+                §140A(1) appropriates a short payment in its own order — fee, then
+                interest, then tax. It is not split proportionally.
+              </p>
+              <div className="grid grid-cols-3 gap-2 text-[11px] text-ps-body">
+                <span>Towards fee <span className="font-medium tabular-nums">
+                  {formatPaise(saPosition.appropriation.towards_fee_paise)}</span></span>
+                <span>Towards interest <span className="font-medium tabular-nums">
+                  {formatPaise(saPosition.appropriation.towards_interest_paise)}</span></span>
+                <span>Towards tax <span className="font-medium tabular-nums">
+                  {formatPaise(saPosition.appropriation.towards_tax_paise)}</span></span>
+              </div>
+            </div>
+          )}
+
+          {/* Add a challan. BSR code, date and serial number are Schedule IT's
+              own three identifying particulars; the split is what the bank's
+              counterfoil carries. */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <label className="text-xs text-ps-label">BSR code
+              <input type="text" inputMode="numeric" value={saForm.bsr_code}
+                onChange={e => setSaForm({ ...saForm, bsr_code: e.target.value })}
+                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                placeholder="7 digits" />
+            </label>
+            <label className="text-xs text-ps-label">Deposited on
+              <input type="date" value={saForm.deposit_date}
+                onChange={e => setSaForm({ ...saForm, deposit_date: e.target.value })}
+                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+            </label>
+            <label className="text-xs text-ps-label">Challan serial no.
+              <input type="text" value={saForm.challan_serial_no}
+                onChange={e => setSaForm({ ...saForm, challan_serial_no: e.target.value })}
+                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                placeholder="e.g. 00123" />
+            </label>
+            <label className="text-xs text-ps-label">Bank
+              <input type="text" value={saForm.bank_name}
+                onChange={e => setSaForm({ ...saForm, bank_name: e.target.value })}
+                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                placeholder="Optional" />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+            {([
+              ["tax_rs", "Tax (₹)"], ["surcharge_rs", "Surcharge (₹)"],
+              ["cess_rs", "Cess (₹)"], ["interest_rs", "Interest (₹)"],
+              ["fee_rs", "Fee §234F (₹)"], ["total_rs", "Total paid (₹)"],
+            ] as const).map(([key, label]) => (
+              <label key={key} className="text-xs text-ps-label">{label}
+                <input type="text" inputMode="decimal" value={saForm[key]}
+                  onChange={e => setSaForm({ ...saForm, [key]: e.target.value })}
+                  className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  placeholder="0.00" />
+              </label>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs text-ps-label">Major head
+              <select value={saForm.major_head}
+                onChange={e => setSaForm({ ...saForm, major_head: e.target.value })}
+                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+                <option value="0021">0021 — other than companies</option>
+                <option value="0020">0020 — companies</option>
+              </select>
+            </label>
+            <label className="text-xs text-ps-label">Minor head
+              <select value={saForm.minor_head}
+                onChange={e => setSaForm({ ...saForm, minor_head: e.target.value })}
+                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+                <option value="300">300 — self-assessment tax</option>
+                <option value="100">100 — advance tax</option>
+                <option value="400">400 — tax on regular assessment</option>
+              </select>
+            </label>
+            <Button onClick={handleAddChallan} disabled={saBusy || !clientId}>
+              <Plus size={14} className="mr-1" /> {saBusy ? "Saving…" : "Record challan"}
+            </Button>
+          </div>
+
+          {saError && <p className="text-xs text-state-problem">{saError}</p>}
+
+          {saPosition && saPosition.challans.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-ps-label">
+                    <th className="py-1.5 pr-3 font-medium">BSR</th>
+                    <th className="py-1.5 pr-3 font-medium">Deposited</th>
+                    <th className="py-1.5 pr-3 font-medium">Serial</th>
+                    <th className="py-1.5 pr-3 font-medium">Head</th>
+                    <th className="py-1.5 pr-3 font-medium text-right">Total</th>
+                    <th className="py-1.5 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {saPosition.challans.map(c => (
+                    <tr key={c.id} className="border-t border-ps-muted">
+                      <td className="py-1.5 pr-3 font-mono">{c.bsr_code}</td>
+                      <td className="py-1.5 pr-3 tabular-nums">{c.deposit_date}</td>
+                      <td className="py-1.5 pr-3 font-mono">{c.challan_serial_no}</td>
+                      <td className="py-1.5 pr-3">{c.major_head}/{c.minor_head}</td>
+                      <td className="py-1.5 pr-3 text-right tabular-nums">{formatPaise(c.total_paise)}</td>
+                      <td className="py-1.5 text-right">
+                        <button type="button" disabled={saBusy}
+                          onClick={() => handleRemoveChallan(c.id, c.challan_serial_no)}
+                          className="text-ps-hint hover:text-state-problem"
+                          aria-label={`Remove challan ${c.challan_serial_no}`}>
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* GAPS ARE ACTIONABLE AND CAVEATS ARE NOT, and they are rendered
+              differently for that reason — a mis-headed challan or an unpaid
+              §140A balance needs doing something about; the statement that
+              the interest came from the panel above needs reading once. */}
+          {saPosition?.gaps.map((g, i) => (
+            <p key={`g${i}`} className="text-[11px] text-state-attention flex items-start gap-1">
+              <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />{g}
+            </p>
+          ))}
+          {saPosition?.caveats.map((c, i) => (
+            <p key={`c${i}`} className="text-[11px] text-ps-hint">{c}</p>
+          ))}
+        </CardContent>
+      </Card>
+
       <p className="text-xs text-[#94A3B8] text-center">
         Interest computed under IT Act Section 234C: a fixed 3-month period on the
         shortfall for instalments 1–3, 1 month for instalment 4 — not based on how
         late the payment actually was. CA Review Required before filing.
       </p>
+    </div>
+  );
+}
+
+/** One figure on the §140A panel. A dash is not a zero: "—" means nothing has
+ *  been computed or recorded yet, and rendering it as ₹0 would tell a CA the
+ *  self-assessment tax is nil when nobody has worked it out. */
+function SaFigure({ label, value, red }: { label: string; value: string; red?: boolean }) {
+  return (
+    <div className="rounded-lg bg-ps-bg border border-ps-border px-3 py-2">
+      <p className={`text-sm font-semibold tabular-nums ${red ? "text-state-problem" : "text-ps-ink"}`}>{value}</p>
+      <p className="text-[11px] text-ps-label mt-0.5">{label}</p>
     </div>
   );
 }
