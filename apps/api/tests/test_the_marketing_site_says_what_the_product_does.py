@@ -1313,47 +1313,75 @@ def test_the_transparent_header_is_not_bare_over_the_hero_artwork():
     (Flushing the bar to the hero's gutter moved the nav a further 145px into
     the glare, which is what made this urgent rather than what caused it.)
 
-    THE BACKDROP BELONGS TO THE HERO, NOT THE HEADER, and this guard looks
-    there on purpose. It was on the header first, as a pseudo-element under
-    the bar — and the header is shared by seven pages, six of which open on a
-    flat navy panel with no artwork. Measured, it darkened the top of every
-    one of them by 12 levels: a vignette nobody asked for, to fix a problem
-    only the homepage has. So the rule is held against the hero's own scrim,
-    which is the layer that exists because of the artwork."""
-    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
-    live = "\n".join(line for _no, line in _live_lines(hero))
-
-    # The desktop scrim is the one that leaves the right of the frame bare —
-    # the phone's is a flat veil over the whole section and needs nothing.
-    assert re.search(r"linear-gradient\(\s*to bottom[^)]*rgba\(2,8,22", live), (
-        "the hero's scrim has no top-edge band, so the nav floating over this "
-        "section is white text on raw photograph from 58% of the viewport "
-        "rightwards, where the artwork is brightest — measured 1.04:1 at "
-        "1920, against a 4.5:1 floor. If the backdrop has been re-done "
-        "another way, move this guard to it rather than deleting it."
-    )
-
-    # It protects a bar of a FIXED height, so it is measured in pixels: a
-    # percentage band is a fraction of a `min-h-screen` section and is a
-    # different size on every window.
-    band = re.search(r"linear-gradient\(\s*to bottom(.*?)\)\",", live, flags=re.S)
-    assert band and "px" in band.group(1) and "%" not in band.group(1), (
-        "the hero's top-edge band is not measured in pixels. It exists to "
-        "cover a 68px header, and the section is `min-h-screen` — as a "
-        "percentage it is a different size on every window, and on a short "
-        "one it reaches down over the headline."
-    )
-
-    # And the header must NOT have grown one of its own again.
+    THREE PROPERTIES, AND TWO OF THEM COST A BROKEN ATTEMPT EACH. The scrim
+    must be FIXED, because the bar is: put in the hero's own scrim — the
+    obvious home, since the hero owns the artwork — it scrolled with the hero
+    and slid out from under the nav during the 24px the bar is still
+    transparent, measured 5.55:1 at rest but 3.98 after 12px and 3.41 after
+    24px at 1920. And it must be GATED ON THE ROUTE, because applied to every
+    page it darkened the top of the six that open on a flat navy panel by a
+    measured 12 levels — this colour is darker than `bg-brand-dark` — a
+    vignette nobody asked for on pages with no artwork at all."""
     header = "\n".join(
         line
         for _no, line in _live_lines(
             (MARKETING / "components" / "SiteHeader.tsx").read_text(encoding="utf-8")
         )
     )
-    assert "linear-gradient" not in header, (
-        "the header carries a gradient again. It is shared by seven pages and "
-        "six of them open on a flat navy panel with no artwork, where this "
-        "darkened the top by a measured 12 levels. The backdrop belongs to "
-        "the hero, which is what owns the picture."
+
+    assert re.search(r"before:bg-\[linear-gradient\(", header), (
+        "the unscrolled header carries no scrim. Its links are white text on "
+        "the hero photograph from 58% of the viewport rightwards, where the "
+        "artwork is brightest — measured 1.04:1 at 1920, against a 4.5:1 "
+        "floor. If the backdrop has been re-done another way, move this guard "
+        "to it rather than deleting it."
+    )
+
+    # It must be OFF once the bar is opaque: invisible under the navy bar, and
+    # a seam across the open mobile sheet.
+    assert "before:opacity-0" in header and "before:opacity-100" in header, (
+        "the header's scrim is not toggled between its two states. It belongs "
+        "to the transparent state only — `before:opacity-100` there and "
+        "`before:opacity-0` once `filled` (scrolled, or the mobile menu open)."
+    )
+
+    # The bar's contents must out-paint it, or the scrim greys the whole row.
+    assert re.search(r'className="container-ps relative\b', header), (
+        "the header's content row is not `relative`. The scrim is an "
+        "absolutely positioned pseudo-element, so without a positioned row it "
+        "paints OVER the logo and every link and dims them by 80%."
+    )
+
+    # It is for the one route with a photograph behind the bar, and the RULE is
+    # that whatever gates it is DERIVED FROM THE ROUTE — not that `usePathname`
+    # appears somewhere in the file. The first draft of this assertion tested
+    # exactly that, and a control replacing the whole condition with `true`
+    # passed it, because the import was still at the top. That is the spelling
+    # -not-the-rule failure this module's own history keeps recording.
+    gate = re.search(r"(\w+)\s*\?\s*\"before:pointer-events-none", header)
+    assert gate, (
+        "cannot find what gates the header's scrim. It is expected as "
+        "`{flag} ? \"before:pointer-events-none …\" : \"\"` so this guard can "
+        "follow the flag back to its definition."
+    )
+    assert re.search(rf"const\s+{gate.group(1)}\s*=[^;]*usePathname", header), (
+        f"the header's scrim is gated on `{gate.group(1)}`, which is not "
+        f"derived from the route. It is darker than `bg-brand-dark`, so on "
+        f"the six pages that open on a flat navy panel it darkens the top by "
+        f"a measured 12 levels to fix a problem only the homepage has."
+    )
+
+    # And it may NOT go back into the hero, which scrolls out from under it.
+    hero = "\n".join(
+        line
+        for _no, line in _live_lines(
+            (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+        )
+    )
+    assert not re.search(r"linear-gradient\(\s*to bottom", hero), (
+        "the hero's scrim has grown a top-edge band again. That layer SCROLLS "
+        "and the header does not, so the band slides out from under the nav "
+        "during the 24px the bar is still transparent — measured 3.41:1 at "
+        "1920 after 24px of scroll, against a 4.5:1 floor. A backdrop for a "
+        "fixed bar has to be fixed too."
     )
