@@ -334,3 +334,68 @@ def test_a_period_over_forty_five_is_STORED_and_capped_only_in_the_engine():
         classify(None, FIRM, CLIENT, "vendor", "v1", {"msmed_agreement_days": 60})
     assert e.value.status_code == 503
     assert limit_days(60)[0] == 45
+
+
+# ── MSMED §16 rides on the same working (PUR-15's remaining half) ─────────────
+#
+# §43B(h) defers a DEDUCTION; §16 makes the buyer liable to the SUPPLIER for
+# compound interest with monthly rests at three times the RBI Bank Rate, which
+# §23 then disallows outright. A working that reports only the add-back reports
+# the smaller of the two numbers, so the service carries both.
+
+def test_the_working_carries_the_section_16_debt_as_well_as_the_deferral():
+    out = svc.for_financial_year(_store(), FIRM, CLIENT, FY)
+    assert "msmed_interest" in out, (
+        "§16 is a different number from §43B(h) and has to be one of them")
+    interest = out["msmed_interest"]
+    assert interest["amounts"], "the unpaid bill missed §15, so §16 reaches it"
+    assert interest["amounts"][0]["from_date"] == "2025-05-17", (
+        "§16 runs 'from the date immediately following' the appointed day, "
+        "which §43B(h) already computed as 2025-05-16")
+
+
+def test_without_a_bank_rate_the_charge_is_refused_and_the_working_survives():
+    """A screen showing nothing until a rate is typed reads as broken, and a
+    nil charge would read as 'nothing is owed'. Neither is true."""
+    out = svc.for_financial_year(_store(), FIRM, CLIENT, FY)
+    interest = out["msmed_interest"]
+    assert interest["interest_paise"] is None
+    assert interest["charged_rate_bps"] is None
+    assert interest["gaps"], "the refusal names what to go and look up"
+    assert interest["amounts"][0]["months"] >= 0, "the working is intact"
+
+
+def test_a_supplied_bank_rate_is_tripled_and_charged():
+    out = svc.for_financial_year(_store(), FIRM, CLIENT, FY, bank_rate_bps=675)
+    interest = out["msmed_interest"]
+    assert interest["bank_rate_bps"] == 675
+    assert interest["charged_rate_bps"] == 2025, "§16 charges THREE times"
+    assert interest["interest_paise"] is not None
+
+
+def test_the_endpoint_passes_the_rate_through(_wired):
+    out = it.msme_section_43bh(client_id=CLIENT, fy=FY, bank_rate_bps=675,
+                               current_user=USER)
+    assert out["data"]["msmed_interest"]["charged_rate_bps"] == 2025
+
+
+def test_the_endpoint_answers_section_16_in_mock_mode_too(monkeypatch):
+    """A screen reading `msmed_interest` must not have to branch on which
+    backend answered — the `capital_wip` shape, where a key present on one
+    path and absent on the other is a null nobody can tell from a nil."""
+    monkeypatch.setattr(it, "assert_client_access", lambda *a, **k: None)
+    monkeypatch.setattr(it, "_db", lambda: None)
+    out = it.msme_section_43bh(client_id=CLIENT, fy=FY, current_user=USER)
+    assert "msmed_interest" in out["data"]
+    assert out["data"]["msmed_interest"]["interest_paise"] is None
+
+
+def test_the_bank_rate_is_the_callers_and_is_never_defaulted():
+    """It moves by RBI notification partway through a year, and a delay
+    spanning a change is governed by more than one. A default would be a figure
+    nobody read off a notification — and §16 triples it."""
+    import inspect
+    sig = inspect.signature(it.msme_section_43bh)
+    assert sig.parameters["bank_rate_bps"].default is None
+    assert inspect.signature(svc.for_financial_year).parameters[
+        "bank_rate_bps"].default is None

@@ -35,6 +35,7 @@ from typing import Optional
 
 from core.db_paging import fetch_all
 from domain.accounting import opening_documents as _opening
+from domain.income_tax import msmed_interest as _msmed
 from domain.income_tax import section_43b_h as rule
 
 _logger = logging.getLogger("caflow.tax.msme_43bh")
@@ -190,12 +191,18 @@ def _carried_over_bills(db, firm_id: str, client_id: str) -> list[dict]:
 
 
 def for_financial_year(db, firm_id: str, client_id: str,
-                       financial_year: str) -> dict:
-    """The §43B(h) working for one previous year.
+                       financial_year: str,
+                       bank_rate_bps: Optional[int] = None) -> dict:
+    """The §43B(h) working for one previous year, and what §16 charges on it.
 
     Every live bill is read, not only the year's own: an EARLIER year's bill
     paid late during this year comes back as a deduction now, and a bill of
     this year paid next year is disallowed now. Both need the whole ledger.
+
+    `bank_rate_bps` is the RBI Bank Rate over the delay, which nothing here
+    holds — it moves by notification partway through a year. Omitting it still
+    produces the §16 working (which bills are accruing, from when, over how
+    many monthly rests) with the charge itself refused and NAMED.
     """
     rows = _bills(db, firm_id, client_id)
     carried_over = _carried_over_bills(db, firm_id, client_id)
@@ -246,9 +253,32 @@ def for_financial_year(db, firm_id: str, client_id: str,
     # Postgres sorted it happily.
     bills.sort(key=lambda b: (b.bill_date or date.min, b.bill_no or ""))
 
-    out = rule.compute(bills, financial_year=financial_year).to_dict()
+    result = rule.compute(bills, financial_year=financial_year)
+    out = result.to_dict()
     out["source"] = ("derived from purchase_bills, purchase_payment_allocations, "
                      "vendors.msme_status and goods_receipt_notes.received_on")
+
+    # MSMED §16 — THE DEBT, WHICH IS A DIFFERENT NUMBER FROM THE DISALLOWANCE
+    # (PUR-15's remaining half). §43B(h) defers a deduction; §16 makes the buyer
+    # liable to the SUPPLIER for compound interest with monthly rests at three
+    # times the RBI Bank Rate, and §23 then disallows that interest outright.
+    # A working that reports only the add-back reports the smaller figure.
+    #
+    # It rides on the SAME `result` rather than re-reading anything: §16's
+    # clock starts at the appointed day, which is exactly `outcome.due_by`, so
+    # `late_amounts` reads the §43B(h) outcome instead of restating §15.
+    #
+    # THE RATE IS NOT HELD and the module refuses rather than guessing, so this
+    # always answers — with the working and a named gap where no rate is
+    # recorded. See domain/income_tax/msmed_interest.py.
+    by_id = {b.bill_id: b for b in bills}
+    late: list = []
+    for outcome in result.bills:
+        bill = by_id.get(outcome.bill_id)
+        if bill is not None:
+            late.extend(_msmed.late_amounts(bill, outcome))
+    out["msmed_interest"] = _msmed.compute(
+        late, financial_year=financial_year, bank_rate_bps=bank_rate_bps).to_dict()
     # THE OPENING BILLS ARE NAMED, NOT COUNTED (ACC-14, migration 391). They are
     # out of the computation because their expense was claimed in a year whose
     # return was prepared elsewhere — but s.43B(h)'s other direction is that an

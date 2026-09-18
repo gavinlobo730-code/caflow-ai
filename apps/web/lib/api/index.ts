@@ -225,6 +225,47 @@ export interface MSME43BHBill {
   included: boolean;
 }
 
+/** One principal that missed MSMED §15, with §16's own clock on it.
+ *  `interest_paise` is null where no Bank Rate was supplied — the working
+ *  (which bills, from when, how many rests) survives the refusal. */
+export interface MSMEDInterestAmount {
+  bill_id: string;
+  bill_no: string | null;
+  vendor_name: string;
+  principal_paise: number;
+  /** The day AFTER the appointed day — §16 runs "from the date immediately
+   *  following", so the day it fell due is not itself a day of delay. */
+  from_date: string | null;
+  to_date: string | null;
+  /** Whole monthly rests that have FALLEN DUE. A part month is not charged. */
+  months: number;
+  part_days: number;
+  annual_rate_bps: number | null;
+  interest_paise: number | null;
+  still_running: boolean;
+  reason: string;
+}
+
+/** MSMED §16 — compound interest with monthly rests at THREE TIMES the RBI
+ *  Bank Rate, which the buyer owes the SUPPLIER. A different number from
+ *  §43B(h)'s add-back: that defers a deduction, §23 denies this one outright,
+ *  so paying it never releases it and the two are independent.
+ *
+ *  `bank_rate_bps` is null unless the CA supplied one. Nothing in the product
+ *  holds the Bank Rate — it moves by RBI notification partway through a year
+ *  and a delay spanning a change is governed by more than one — so a null
+ *  `interest_paise` is a REFUSAL naming what to look up, never a nil charge. */
+export interface MSMEDInterest {
+  financial_year: string;
+  as_at: string | null;
+  bank_rate_bps: number | null;
+  charged_rate_bps: number | null;
+  interest_paise: number | null;
+  amounts: MSMEDInterestAmount[];
+  gaps: string[];
+  caveats: string[];
+}
+
 export interface MSME43BHWorking {
   financial_year: string;
   applicable: boolean;
@@ -236,6 +277,8 @@ export interface MSME43BHWorking {
   caveats: string[];
   source: string;
   ca_review_required: true;
+  /** MSMED §16, the debt to the supplier. Always present. */
+  msmed_interest: MSMEDInterest;
 }
 
 /** GET /api/compliance/payroll-deposit-due-dates — what one payroll month owes.
@@ -2287,10 +2330,15 @@ export const api = {
      *  vendors.msme_status — the screen renders it and computes nothing. The
      *  browser used to hold the whole rule and read a hand-keyed side table
      *  (PUR-15). */
-    msme43bh: (client_id: string, fy: string) =>
+    /** `bankRateBps` is the RBI Bank Rate over the delay, which MSMED §16
+     *  charges THREE TIMES. It is the CA's own figure — nothing here holds it —
+     *  and omitting it still returns the §16 working with the charge refused
+     *  and named, rather than a nil that reads as "nothing is owed". */
+    msme43bh: (client_id: string, fy: string, bankRateBps?: number) =>
       request<ApiResp<MSME43BHWorking>>(
         `/api/income-tax/msme-43bh?client_id=${encodeURIComponent(client_id)}` +
-        `&fy=${encodeURIComponent(fy)}`),
+        `&fy=${encodeURIComponent(fy)}` +
+        (bankRateBps === undefined ? "" : `&bank_rate_bps=${bankRateBps}`)),
   },
   documents: {
     list: (client_id?: string) => request(`/api/documents${client_id ? `?client_id=${client_id}` : ""}`),
