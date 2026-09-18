@@ -527,19 +527,80 @@ def test_the_purchases_tab_can_ask_a_bill_whether_it_was_filed():
 def test_a_document_2B_blocks_does_not_raise_the_ceiling():
     """`itcavl = "N"` means the portal has already refused the credit. Counting
     it towards the Rule 36(4) cap would raise the ceiling by exactly the credit
-    §16(2)(aa) exists to withhold."""
-    import inspect
+    §16(2)(aa) exists to withhold.
 
-    from services import gst_return_service
+    STATED AS THE RULE, NOT AS A SPELLING OF IT. This guard used to assert that
+    `_gstr2a_for_periods` contained the literal `neq("itc_available", "N")`,
+    and it failed on GST-19 — a change that does not break the rule. The
+    per-document pass has to tell a blocked document from an absent one, so the
+    blocked rows now come back from the query and
+    `_2a_counting_towards_the_cap` applies the same predicate a step later. The
+    ceiling is unchanged and the old assertion could not see that, because it
+    was looking for a string rather than for the behaviour.
 
-    src = inspect.getsource(gst_return_service._gstr2a_for_periods)
-    assert 'neq("itc_available", "N")' in src, (
-        "the Rule 36(4) ceiling must be built from documents 2B says are "
-        "available, not from every document in the file")
-    # `neq`, not `eq("Y")`: an import carries no itcavl at all and a row written
-    # before migration 340 has an empty string, and excluding those would
-    # silently SHRINK the cap.
-    assert 'eq("itc_available", "Y")' not in src
+    That is the sixth time in this codebase a guard has named a location or a
+    spelling and tripped on a move that kept its rule. Write the rule.
+    """
+    from services.gst_return_service import _2a_counting_towards_the_cap
+
+    rows = [
+        {"id": "1", "itc_available": "Y", "cgst_paise": 9000},
+        {"id": "2", "itc_available": "N", "cgst_paise": 50_000},   # refused
+        {"id": "3", "itc_available": "n", "cgst_paise": 50_000},   # and lower
+        # An IMPORT carries no itcavl at all, and a row written before
+        # migration 340 has an empty string. Excluding those would silently
+        # SHRINK the cap, which is why the predicate is `!= "N"` and not
+        # `== "Y"`.
+        {"id": "4", "itc_available": "", "cgst_paise": 1000},
+        {"id": "5", "cgst_paise": 500},
+    ]
+    kept = {r["id"] for r in _2a_counting_towards_the_cap(rows)}
+    assert kept == {"1", "4", "5"}
+    assert sum(r["cgst_paise"] for r in _2a_counting_towards_the_cap(rows)) == 10_500
+
+
+def test_a_blocked_document_still_reaches_the_per_document_pass():
+    """The other half of the same rule, and the reason the query changed.
+
+    A bill GSTR-2B carries and REFUSES and a bill GSTR-2B does not carry at all
+    both withhold the credit, and the CA's action is opposite: one is a
+    document to check, the other is a supplier to phone. Dropping the refused
+    rows in the query makes the two indistinguishable by the time anything can
+    look — so the fetch keeps them and the map records the refusal.
+    """
+    from services.gst_return_service import _two_b_by_document
+
+    got = _two_b_by_document([
+        {"id": "r1", "purchase_bill_id": "b1", "itc_available": "N",
+         "itc_unavailable_reason_code": "P", "cgst_paise": 9000},
+        {"id": "r2", "purchase_bill_id": "b2", "itc_available": "Y",
+         "cgst_paise": 9000},
+        # No bill matched: it belongs to no bill and keys nothing.
+        {"id": "r3", "purchase_bill_id": None, "itc_available": "Y"},
+    ])
+    assert set(got) == {"b1", "b2"}
+    assert got["b1"].matched and got["b1"].itc_available == "N"
+    assert got["b1"].reason_code == "P"
+    assert got["b2"].itc_available == "Y"
+
+
+def test_two_2b_rows_naming_one_bill_are_summed_and_a_refusal_wins():
+    """A supplier may file the same invoice twice across a QRMP quarter, and an
+    amendment (`b2ba`) is a second row for one document. Their tax is summed,
+    and ONE refusal refuses the credit however many rows carry it — the portal
+    refusing a document is not outvoted by an earlier row that allowed it."""
+    from services.gst_return_service import _two_b_by_document
+
+    got = _two_b_by_document([
+        {"id": "r1", "purchase_bill_id": "b1", "itc_available": "Y",
+         "cgst_paise": 4000, "sgst_paise": 4000},
+        {"id": "r2", "purchase_bill_id": "b1", "itc_available": "N",
+         "itc_unavailable_reason_code": "C", "cgst_paise": 5000,
+         "sgst_paise": 5000},
+    ])
+    assert got["b1"].cgst_paise == 9000 and got["b1"].sgst_paise == 9000
+    assert got["b1"].itc_available == "N"
+    assert got["b1"].reason_code == "C"
 
 
 def test_an_uploaded_2B_with_no_eligible_credit_caps_at_nil():

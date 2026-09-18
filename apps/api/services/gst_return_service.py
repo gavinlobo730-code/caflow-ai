@@ -17,7 +17,7 @@ Integer paise throughout. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from core.ist_clock import ist_fy_label
@@ -35,6 +35,7 @@ from domain.gst.gstr3b_computer import (
 from core.observability import capture_soft_failure
 import domain.gst.bank_charge_gst as bank_charge_gst
 import domain.gst.section_18_6 as section_18_6
+import domain.gst.rule_36_4 as rule_36_4
 from domain.gst.gstr1_builder import CancelledDocument, InvoiceForGSTR1, build_gstr1
 import domain.gst.return_period as return_period
 from domain.gst.classifier import classify_transaction, TransactionForClassification
@@ -570,21 +571,157 @@ def _gstr2a_for_periods(db, firm_id, client_id, periods) -> list[dict]:
     # client with a busy month, which is the one whose return most needs the
     # rows this function is fetching.
     #
-    # ITC-UNAVAILABLE DOCUMENTS ARE EXCLUDED. GSTR-2B marks each document
-    # `itcavl` Y or N — "N" with reason "P" (the place of supply and the
-    # supplier's State are the same and the recipient is elsewhere) or "C" (the
-    # supplier filed after the §16(4) cut-off). §16(2)(aa) makes the credit turn
-    # on what 2B says, so counting a blocked document towards the Rule 36(4)
-    # ceiling would raise the cap by credit the portal has already refused.
+    # ITC-UNAVAILABLE DOCUMENTS COME BACK AND ARE FILTERED BY THE CALLER
+    # (GST-19). GSTR-2B marks each document `itcavl` Y or N — "N" with reason
+    # "P" (the place of supply and the supplier's State are the same and the
+    # recipient is elsewhere) or "C" (the supplier filed after the §16(4)
+    # cut-off). §16(2)(aa) makes the credit turn on what 2B says, so counting a
+    # blocked document towards the Rule 36(4) CEILING would raise the cap by
+    # credit the portal has already refused, and `_2a_counting_towards_the_cap`
+    # still drops them before the aggregate figure is built.
     #
-    # `neq` rather than `eq("Y")`: a row written before migration 340, and an
-    # import (which carries no itcavl at all), have an empty string here, and
-    # excluding those would silently shrink the cap instead.
+    # They may NOT be dropped here, because the PER-DOCUMENT pass has to tell
+    # a blocked document from an absent one. Both withhold the credit and the
+    # CA's action is opposite: a document 2B does not carry means phoning the
+    # supplier, and one 2B carries and refuses means reading the document —
+    # phoning a supplier who has done nothing wrong is the failure this split
+    # exists to prevent. A `.neq` in the query makes the two indistinguishable
+    # by the time anything can look.
+    #
+    # `purchase_bill_id` is what `domain/gst/itc_matching` wrote (migration
+    # 340) and is the key the per-document pass joins on; `match_status`,
+    # `itc_available` and `itc_unavailable_reason_code` are the answer it
+    # recorded. All four have been stored since 340 and nothing read them.
     keys = [str(p) for p in (periods or []) if p]
     return _paginate_all(lambda: db.table("gstr2a_records")
-            .select("id, taxable_value_paise, igst_paise, cgst_paise, sgst_paise")
+            .select("id, taxable_value_paise, igst_paise, cgst_paise, "
+                    "sgst_paise, cess_paise, purchase_bill_id, match_status, "
+                    "itc_available, itc_unavailable_reason_code")
             .eq("firm_id", firm_id).eq("client_id", client_id)
-            .in_("return_period", keys).neq("itc_available", "N"))
+            .in_("return_period", keys))
+
+
+def _2a_counting_towards_the_cap(rows) -> list[dict]:
+    """The rows the AGGREGATE Rule 36(4) ceiling is measured on.
+
+    Exactly the predicate `_gstr2a_for_periods` used to apply in the query, so
+    the aggregate figure, `gstr2a_record_count` and `compared` are unchanged by
+    GST-19 having to fetch the blocked rows too.
+
+    `!= "N"` rather than `== "Y"`: a row written before migration 340, and an
+    import (which carries no `itcavl` at all), have an empty string here, and
+    excluding those would silently shrink the cap instead.
+    """
+    return [r for r in rows
+            if (r.get("itc_available") or "").strip().upper() != "N"]
+
+
+def _documents_the_recon_never_saw(bills, reconciled_at_by_period) -> set:
+    """The bill ids recorded AFTER their own period's 2B was reconciled.
+
+    `gst_2b_reconciliation_service.read_book_bills` matches against exactly the
+    bills whose `bill_date` falls in the period it is reconciling, at the moment
+    it runs. So a bill's examiner is its own month's reconciliation and no
+    other, and a bill entered after that ran was never looked at — its absence
+    from the match map is silence, not evidence. See
+    `domain/gst/rule_36_4.NOT_ASSESSED_REASON`.
+
+    `created_at` and NOT `updated_at`: a payment allocation, a TDS correction
+    and a status change all move `updated_at` without touching anything
+    §16(2)(aa) matches on, so using it would report most of a busy client's
+    register as unexamined and make the whole pass inert.
+
+    A bill with NO `created_at` is treated as unexamined — the safe direction,
+    and the direction an in-memory double that does not stamp one produces.
+
+    THE TWO INSTANTS ARE PARSED, NOT COMPARED AS STRINGS. Both come out of
+    PostgREST in the same shape today, so `>` on the text happens to work — but
+    `...T10:00:00+00:00` and `...T10:00:00Z` are the same instant and `+` sorts
+    before `Z`, so one day a timestamp written the other way round would read
+    as EARLIER than an instant it is equal to, and a bill would silently change
+    verdict. An unparseable value is read as unexamined, which is the direction
+    that cannot cost the client credit.
+    """
+    out = set()
+    for b in bills:
+        bid = str(b.get("id") or "")
+        if not bid:
+            continue
+        bill_date = str(b.get("bill_date") or "")
+        # MMYYYY, the key every period-scoped table here uses.
+        period = f"{bill_date[5:7]}{bill_date[0:4]}" if len(bill_date) >= 7 else ""
+        when = _as_instant(reconciled_at_by_period.get(period))
+        created = _as_instant(b.get("created_at"))
+        # A period with no reconciliation cannot reach here with the pass on —
+        # `have_2b` is false for the whole window and `assess` withholds
+        # nothing — so an absent timestamp means a header written without one.
+        if created is None or when is None or created > when:
+            out.add(bid)
+    return out
+
+
+def _as_instant(value) -> Optional[datetime]:
+    """An ISO-8601 timestamp as a tz-aware instant, or None.
+
+    A naive value is read as UTC: every timestamp in this schema is
+    `timestamptz` and PostgREST renders one with its offset, so a naive one can
+    only come from a double, and comparing an aware instant with a naive one
+    raises rather than answering.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        got = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return got if got.tzinfo else got.replace(tzinfo=timezone.utc)
+
+
+def _two_b_by_document(rows) -> dict:
+    """`{purchase_bill_id: TwoBDocument}` for the per-document §16(2)(aa) pass.
+
+    A row with no `purchase_bill_id` matched no bill and is simply absent from
+    the map — `rule_36_4.assess` reads an absent key as "2B does not carry
+    this document", which is what it means. The other direction is the one that
+    needs care and is handled in the module: a bill with no 2B row at all is
+    `not_in_2b`, and a bill whose row says `itcavl` N is `blocked_by_2b`.
+
+    Several 2B rows may name one bill — a supplier who filed the same invoice
+    in two periods of a QRMP quarter, or an amendment (`b2ba`). Their tax is
+    SUMMED and the document counts as blocked if ANY row blocks it, because a
+    single refusal is the portal refusing that credit however many rows carry
+    it.
+    """
+    out: dict = {}
+    for r in rows:
+        bill = r.get("purchase_bill_id")
+        if not bill:
+            continue
+        key = str(bill)
+        blocked = (r.get("itc_available") or "").strip().upper() == "N"
+        prev = out.get(key)
+        if prev is None:
+            out[key] = rule_36_4.TwoBDocument(
+                matched=True,
+                itc_available="N" if blocked else "Y",
+                reason_code=str(r.get("itc_unavailable_reason_code") or ""),
+                igst_paise=int(r.get("igst_paise") or 0),
+                cgst_paise=int(r.get("cgst_paise") or 0),
+                sgst_paise=int(r.get("sgst_paise") or 0),
+                cess_paise=int(r.get("cess_paise") or 0))
+            continue
+        was_blocked = prev.itc_available == "N"
+        out[key] = rule_36_4.TwoBDocument(
+            matched=True,
+            itc_available="N" if (was_blocked or blocked) else "Y",
+            reason_code=(prev.reason_code
+                         or str(r.get("itc_unavailable_reason_code") or "")),
+            igst_paise=prev.igst_paise + int(r.get("igst_paise") or 0),
+            cgst_paise=prev.cgst_paise + int(r.get("cgst_paise") or 0),
+            sgst_paise=prev.sgst_paise + int(r.get("sgst_paise") or 0),
+            cess_paise=prev.cess_paise + int(r.get("cess_paise") or 0))
+    return out
 
 
 def _customers_for_3b(db, firm_id, rows) -> dict:
@@ -1350,8 +1487,32 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     imps_vendors = _import_of_services_vendors(db, firm_id, client_id)
 
     purchases: list[PurchaseTransaction] = []
-    for b in _posted_bills(db, firm_id, client_id, start, end):
+    # ONE fetch for the bills, because the per-document §16(2)(aa) pass needs
+    # to NAME each one it withholds (GST-19) and a list of ids a CA cannot read
+    # is not an answer. `_vendor_names` is the resolver every other document
+    # list here already uses, so the supplier reads the same on the Rule 36(4)
+    # panel as it does on the Table 4(A) drill-down.
+    bills = _posted_bills(db, firm_id, client_id, start, end)
+    bill_vendor_names = _vendor_names(db, firm_id, bills)
+    # WHICH BILLS THE STORED MATCH ACTUALLY LOOKED AT (GST-19). One read of the
+    # reconciliation headers — one row per period, not per document — because
+    # `purchase_bill_id` is a point-in-time artefact and a bill entered after it
+    # was written carries none for a reason that is not the supplier's.
+    unexamined = _documents_the_recon_never_saw(
+        bills,
+        gst_2b_reconciliation_service.reconciled_at_by_period(
+            db, firm_id=firm_id, client_id=client_id))
+    for b in bills:
         purchases.append(PurchaseTransaction(
+            # WHICH DOCUMENT THIS IS. Carried so `rule_36_4.assess` can ask
+            # §16(2)(aa) of it rather than of a per-head sum — and only on this
+            # builder, because the reconciliation keys `purchase_bill_id` on a
+            # purchase BILL and nothing else. A note, a bank charge and an
+            # import each carry None and are named as outside the pass.
+            document_id=str(b.get("id") or "") or None,
+            document_label=str(b.get("bill_no") or b.get("our_reference") or ""),
+            supplier_name=bill_vendor_names.get(b.get("vendor_id"), ""),
+            was_examined=str(b.get("id") or "") not in unexamined,
             taxable_amount_paise=int(b.get("taxable_amount_paise") or 0),
             cgst_paise=int(b.get("cgst_paise") or 0),
             sgst_paise=int(b.get("sgst_paise") or 0),
@@ -1508,7 +1669,13 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     # Rule 36(4): ITC is capped at the credit suppliers have actually filed.
     # This used to pass [], so the cap could never fire on the return a CA
     # files.
-    two_a_rows = _gstr2a_for_periods(db, firm_id, client_id, window.months)
+    #
+    # ONE read, split two ways (GST-19). The AGGREGATE ceiling is measured on
+    # the rows the portal allows; the PER-DOCUMENT pass needs the refused ones
+    # too, so it can tell a document 2B blocked from one 2B never carried.
+    two_a_all = _gstr2a_for_periods(db, firm_id, client_id, window.months)
+    two_a_rows = _2a_counting_towards_the_cap(two_a_all)
+    two_b_by_document = _two_b_by_document(two_a_all)
     gstr2a = [
         GSTR2ARecord(
             cgst_paise=int(x.get("cgst_paise") or 0),
@@ -1581,7 +1748,8 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
 
     result = compute_gstr3b(sales, purchases, gstr2a, reversals, reclaims,
                             have_2b=have_2b, advances=advances,
-                            imports_of_goods=imports_of_goods)
+                            imports_of_goods=imports_of_goods,
+                            two_b_by_document=two_b_by_document)
 
     # ── Reconcile the return to the posted General Ledger ─────────────────────
     gl = _gl_gst_movements(db, firm_id, client_id, start, end)
@@ -1866,6 +2034,11 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                 "self_assessed_cgst_paise": result.itc_self_assessed_cgst,
                 "self_assessed_sgst_paise": result.itc_self_assessed_sgst,
                 "self_assessed_igst_paise": result.itc_self_assessed_igst,
+                # WHICH DOCUMENTS (GST-19). The four figures above say how much
+                # was trimmed; §16(2)(aa) is a condition on each invoice, so
+                # the answer a CA can act on is the list. Only the WITHHELD
+                # documents travel — see `Rule364Assessment.to_dict`.
+                "per_document": result.rule_36_4.to_dict(),
             },
             # Table 6. Computed HERE, not in the browser: the Section 49(5)
             # cross-utilisation order is a statutory rule, and CLAUDE.md keeps

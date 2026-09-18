@@ -376,8 +376,22 @@ def status_for_bills(db, *, firm_id: str, client_id: str,
 
 def _header_row(parsed: GSTR2BFile, document_count: int,
                 book_bill_count: int, problems: list[str]) -> dict:
-    """The one header fact, built once so both write paths write the same row."""
+    """The one header fact, built once so both write paths write the same row.
+
+    `reconciled_at` IS STAMPED HERE rather than left to migration 341's
+    `DEFAULT now()` (GST-19). The default fires against a real Postgres and
+    against nothing else, so mock mode wrote a header with no timestamp — and
+    the per-document §16(2)(aa) pass reads that timestamp to tell a bill the
+    reconciliation examined from one recorded after it ran. Without it, mock
+    mode treats every bill as unexamined and the pass is inert there while it
+    fires in production, which is a statutory figure differing between the two.
+
+    Migration 366's SQL path writes its own `now()` for this column and ignores
+    what is sent, which is the same instant and not a second rule: the value is
+    a clock reading, not a decision.
+    """
     return {
+        "reconciled_at": datetime.now(timezone.utc).isoformat(),
         "gstin": parsed.gstin or None,
         "file_return_period": parsed.return_period or None,
         "generated_on": parsed.generated_on or None,
@@ -529,7 +543,40 @@ def reconciled_periods(db, *, firm_id: str, client_id: str) -> list[str]:
     different sentences to a CA: one is their own job, the other is a phone call
     to the supplier.
     """
+    return sorted(reconciled_at_by_period(db, firm_id=firm_id,
+                                          client_id=client_id))
+
+
+def reconciled_at_by_period(db, *, firm_id: str, client_id: str) -> dict[str, str]:
+    """{period: when its reconciliation last ran}.
+
+    WHEN is a different question from WHETHER, and GST-19 needs both. The
+    per-document §16(2)(aa) pass reads a match that was written at upload time
+    against the bills that existed THEN, so a bill recorded afterwards was
+    never examined and its absence from the map says nothing. Only this
+    timestamp can tell the two apart.
+
+    It comes off the HEADER and not off `gstr2a_records.reconciled_at`,
+    because a period reconciled against a 2B carrying no documents has a header
+    and no rows — and that is exactly a period whose every bill would otherwise
+    read as unexamined.
+
+    Both write paths stamp it: `_header_row` sets it explicitly so mock mode
+    carries one, and migration 366's SQL path writes its own `now()`. A
+    re-upload replaces the header, so the value always names the LAST
+    reconciliation of that period, which is the one whose match is stored.
+    """
     rows = _paginate_all(lambda: db.table("gstr2b_reconciliations")
-                         .select("id, return_period")
+                         .select("id, return_period, reconciled_at")
                          .eq("firm_id", firm_id).eq("client_id", client_id))
-    return sorted({str(r.get("return_period") or "") for r in rows if r.get("return_period")})
+    out: dict[str, str] = {}
+    for r in rows:
+        period = str(r.get("return_period") or "")
+        if not period:
+            continue
+        # A header written before 341's column existed, or by a mock double
+        # that does not stamp it, reads as the EPOCH — every bill then looks
+        # recorded afterwards and is named rather than withheld, which is the
+        # safe direction and is the one this whole verdict exists for.
+        out[period] = str(r.get("reconciled_at") or "")
+    return out

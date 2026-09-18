@@ -85,6 +85,29 @@ export interface GSTR2ARecord {
  *  to the screen must be added to the endpoint, and
  *  apps/api/tests/test_gstr3b_screen_contract.py reads this screen's bindings
  *  and checks every one against a real response. */
+/** One inward document as CGST Rule 36(4) with s.16(2)(aa) leaves it.
+ *
+ *  `reason` is a whole sentence from apps/api and is RENDERED rather than
+ *  re-derived: which of the five answers applies is a statutory judgement, and
+ *  a second copy of the wording in the browser is how the two come to say
+ *  different things about one invoice. */
+export interface Rule364Document {
+  document_id: string | null;
+  label: string;
+  supplier: string;
+  verdict: string;
+  reason: string;
+  allowed_igst_paise: number;
+  allowed_cgst_paise: number;
+  allowed_sgst_paise: number;
+  allowed_cess_paise: number;
+  withheld_igst_paise: number;
+  withheld_cgst_paise: number;
+  withheld_sgst_paise: number;
+  withheld_cess_paise: number;
+  withheld_total_paise: number;
+}
+
 export interface GSTR3BWorking {
   outward: {
     taxable_value_paise: number;
@@ -206,6 +229,33 @@ export interface GSTR3BWorking {
     self_assessed_igst_paise: number;
     self_assessed_cgst_paise: number;
     self_assessed_sgst_paise: number;
+    /** WHICH DOCUMENTS (GST-19). s.16(2)(aa) conditions the credit on EACH
+     *  invoice having been furnished and communicated, so the four figures
+     *  above are a total and this is the answer a CA can act on. The whole
+     *  register does not travel — only the rows that need something done. */
+    per_document: {
+      /** False where no GSTR-2B was reconciled for the period, so no document
+       *  could be checked. The figures are then the books' own. */
+      applied: boolean;
+      allowed_igst_paise: number;
+      allowed_cgst_paise: number;
+      allowed_sgst_paise: number;
+      allowed_cess_paise: number;
+      withheld_igst_paise: number;
+      withheld_cgst_paise: number;
+      withheld_sgst_paise: number;
+      withheld_cess_paise: number;
+      withheld_total_paise: number;
+      /** Largest first. `verdict` is one of `not_in_2b`, `blocked_by_2b`,
+       *  `more_than_2b` — and the CA's action differs per verdict, which is
+       *  why they are not one flag. */
+      withheld: Rule364Document[];
+      /** Bills recorded AFTER their period's 2B was reconciled, so it never
+       *  examined them. Their credit is NOT withheld — the action is to
+       *  re-reconcile, not to phone a supplier. */
+      not_assessed: Rule364Document[];
+      notes: string[];
+    };
   };
   /** The other side of Table 6, which the form itself never states: credit
    *  available, credit spent, credit left. Net tax of zero is true both when

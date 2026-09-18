@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional, Sequence
 
+from domain.gst import rule_36_4
+
 # GSTR-3B is declared and paid in WHOLE rupees (CGST Act §170) — not the 2-decimal
 # rupees GSTR-1 uses. Conversion lives in the shared GST money module.
 from domain.gst.money import paise_to_rupees_whole
@@ -70,6 +72,25 @@ class PurchaseTransaction:
     # so it is not a reverse-charge purchase bill at all. That is 4(A)(1), and
     # it needs a document type this product does not have.
     is_import_of_services: bool = False
+    # WHICH `purchase_bills` ROW THIS IS, so §16(2)(aa) can be asked per
+    # document (GST-19). The 2B reconciliation stores its match as
+    # `gstr2a_records.purchase_bill_id` (migration 340) and nothing read it
+    # into the return, so Rule 36(4) was compared on per-head SUMS — and a
+    # month with one unfiled bill and one over-claimed bill netted out and the
+    # cap never fired.
+    #
+    # None is the honest answer for everything that is not a supplier's own
+    # invoice: a note this product issued, a bank charge carrying GST
+    # (BANK-24, which has no supplier document at all), an import. Those are
+    # passed through the per-document pass untouched and named — see
+    # `domain/gst/rule_36_4.py`.
+    document_id: Optional[str] = None
+    document_label: str = ""
+    supplier_name: str = ""
+    #: Did the stored 2B match actually examine this document? See
+    #: `rule_36_4.BookDocument.was_examined` — the default is the withholding
+    #: direction and the caller supplies the exception.
+    was_examined: bool = True
 
 
 @dataclass(frozen=True)
@@ -405,6 +426,13 @@ class GSTR3BResult:
     itc_self_assessed_cgst: int = 0
     itc_self_assessed_sgst: int = 0
     itc_capped_by_2a: bool = False   # True if Rule 36(4) cap was applied
+    #: The §16(2)(aa) working, DOCUMENT BY DOCUMENT (GST-19). `applied` is
+    #: false where no GSTR-2B was reconciled for the period, and the answer
+    #: says so rather than reading as "every document is fine". Its `withheld`
+    #: list is what a CA acts on — the aggregate cap could only ever say that
+    #: credit had been trimmed, never which bills.
+    rule_36_4: "rule_36_4.Rule364Assessment" = field(
+        default_factory=lambda: rule_36_4.Rule364Assessment())
 
     # ── Table 4 derived views ────────────────────────────────────────────
     # Kept as properties rather than stored fields so they can never drift from
@@ -985,6 +1013,7 @@ def compute_gstr3b(
     have_2b: Optional[bool] = None,
     advances: Optional[AdvanceTaxOnReceipts] = None,
     imports_of_goods: Sequence[ImportOfGoods] = (),
+    two_b_by_document: Optional[dict] = None,
 ) -> GSTR3BResult:
     """Compute GSTR-3B figures from transaction data.
 
@@ -1215,6 +1244,54 @@ def compute_gstr3b(
     itc_cgst += rcm_book_cgst
     itc_sgst += rcm_book_sgst
 
+    # §16(2)(aa) IS ASKED PER DOCUMENT, AND BOTH TESTS ARE CONDITIONS (GST-19).
+    #
+    # The cap above compares per-head SUMS, which is not what the section says:
+    # the credit is available only where "the details of THE INVOICE or debit
+    # note ... have been furnished by the supplier ... and such details have
+    # been COMMUNICATED to the recipient of such invoice". So a month with one
+    # ₹18,000 bill the supplier never filed and another where 2B carries
+    # ₹18,000 more than the books nets to nil, the cap never fires, and the
+    # return claims credit on an invoice nobody furnished.
+    #
+    # BOTH ARE APPLIED AND THE LOWER SURVIVES, which is the whole composition
+    # and is not a fudge: §16(2)(aa) and Rule 36(4) are two conditions, and a
+    # credit has to satisfy both. It also makes this change strictly
+    # one-directional — the per-document pass can only ever withhold MORE than
+    # the aggregate cap did, never less — so nothing that was capped stops
+    # being capped and no figure moves in the generous direction.
+    #
+    # WHAT THE PASS DOES NOT REACH keeps exactly the treatment it had: an
+    # import of goods, a note this product issued and a bank charge carrying
+    # GST have no supplier invoice to key a 2B row on, so they are passed
+    # through and named. Their credit is still inside the aggregate cap above,
+    # as it was.
+    result.rule_36_4 = rule_36_4.assess(
+        [rule_36_4.BookDocument(
+            document_id=p.document_id,
+            label=p.document_label or "(unlabelled)",
+            supplier=p.supplier_name or "",
+            igst_paise=p.igst_paise - p.ineligible_igst_paise,
+            cgst_paise=p.cgst_paise - p.ineligible_cgst_paise,
+            sgst_paise=p.sgst_paise - p.ineligible_sgst_paise,
+            cess_paise=p.cess_paise - p.ineligible_cess_paise,
+            is_reverse_charge=p.is_reverse_charge,
+            was_examined=p.was_examined,
+         ) for p in purchases],
+        two_b_by_document, bool(have_2b))
+    if result.rule_36_4.applied:
+        # The import figure is OUTSIDE the pass and has to be added back before
+        # the comparison, or the per-document answer would always be the lower
+        # of the two simply by being short of it.
+        per_doc_igst = result.rule_36_4.allowed_igst_paise + result.impg_igst
+        per_doc_cess = result.rule_36_4.allowed_cess_paise + result.impg_cess
+        itc_igst = min(itc_igst, per_doc_igst)
+        itc_cgst = min(itc_cgst, result.rule_36_4.allowed_cgst_paise)
+        itc_sgst = min(itc_sgst, result.rule_36_4.allowed_sgst_paise)
+        book_cess_after = min(book_cess, per_doc_cess)
+    else:
+        book_cess_after = book_cess
+
     result.itc_book_igst = book_igst
     result.itc_book_cgst = book_cgst
     result.itc_book_sgst = book_sgst
@@ -1227,8 +1304,10 @@ def compute_gstr3b(
     result.itc_igst = itc_igst
     result.itc_cgst = itc_cgst
     result.itc_sgst = itc_sgst
-    result.itc_cess = book_cess
-    result.itc_capped_by_2a = capped_i or capped_c or capped_s
+    result.itc_cess = book_cess_after
+    result.itc_capped_by_2a = (
+        capped_i or capped_c or capped_s
+        or bool(result.rule_36_4.withheld_total_paise))
 
     # ── Table 4(B): credit given back this period ────────────────────────────
     # Split by whether it can ever come back, which is the only question the

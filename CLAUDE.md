@@ -3196,9 +3196,70 @@ communicated to the recipient, and **GSTR-2B is that communication**.
   `apps/web/scripts/the-2b-reconciliation-reads-the-books.test.ts` now asserts
   the file is absent and that nothing links to the route, so a second
   implementation cannot reappear quietly.
-- **Not built:** invoice-wise Rule 36(4). The reconciliation now knows per
-  document whether 2B allows the credit; `gstr3b_computer` still caps in
-  aggregate.
+- **§16(2)(aa) IS ASKED OF EACH DOCUMENT, AND RULE 36(4) WAS APPLIED TO A
+  PER-HEAD SUM** (GST-19). `_apply_rule_36_4_cap` compared book IGST against 2B
+  IGST and trimmed one to the other, so a month with one ₹18,000 bill the
+  supplier never filed and another where 2B carried ₹18,000 MORE than the books
+  **netted to zero, the cap never fired, and the return claimed credit on an
+  invoice nobody furnished**. `domain/gst/rule_36_4.py` is the rule.
+  **BOTH TESTS APPLY AND THE LOWER SURVIVES** — they are two conditions, not
+  one rule with two implementations — so the pass can only ever withhold MORE,
+  never release credit the aggregate cap held back. **It matches nothing**: the
+  2B reconciliation (migration 340) has written `purchase_bill_id`,
+  `match_status`, `itc_available` and `itc_unavailable_reason_code` on every
+  row it matched since it was built and the return read none of them, and a
+  second matcher would disagree with the reconciliation the CA is looking at.
+  Rule 36(4)'s provisional buffer (20%, then 10%, then 5%) was withdrawn by
+  Notification 40/2021-Central Tax w.e.f. 01-01-2022, when §16(2)(aa) came in —
+  so there is no grace and the question stopped being "how much more than 2B"
+  and became "which documents are in it".
+  **SIX VERDICTS, AND NONE COLLAPSES INTO ANOTHER, because what the CA does
+  next differs per verdict.** `not_in_2b` means chase the SUPPLIER;
+  `blocked_by_2b` means the portal has ALREADY refused it (2B's `rsn` "P" is
+  the place of supply, "C" a return furnished after §16(4)'s cut-off) so the
+  action is to read the DOCUMENT — reading the second as the first sends a CA
+  to phone somebody who has done nothing wrong, which is why the blocked rows
+  had to stop being dropped in the query and are filtered a step later by
+  `_2a_counting_towards_the_cap` instead. `self_assessed` is reverse charge,
+  allowed in full and NAMED — §16(2)(aa) conditions the credit on a SUPPLIER's
+  furnished invoice, and this tax is self-assessed and paid in cash, so 2B
+  structurally cannot carry it and withholding it takes back credit already
+  paid over; it is asked FIRST, before the key, because a §9(4) supply from an
+  unregistered supplier has no 2B row by construction. `more_than_2b` caps PER
+  HEAD and never on the total (a bill booked as IGST that the supplier filed as
+  CGST+SGST is not a matching total, it is two wrong heads) and never caps a
+  negative note UP: the rule withholds, it never grants.
+  **`not_assessed` IS THE VERDICT THAT KEEPS THE OTHERS HONEST.**
+  `purchase_bill_id` is written ONCE, at upload, against the bills that existed
+  THEN — `read_book_bills` reads exactly that period's — so a bill entered on
+  the 20th, after the month's 2B was reconciled on the 14th, carries no keyed
+  row and is indistinguishable by the map alone from one the supplier never
+  filed. The DIRECTION of the error decides it: withholding wrongly costs the
+  client real money on a return they are about to file and is invisible, while
+  allowing wrongly leaves the aggregate cap doing what it did before with a
+  sentence saying to re-reconcile. The test is the bill's **`created_at`** against
+  its period's own `reconciled_at` — `created_at` deliberately, because a
+  payment allocation, a TDS correction and a status change all move
+  `updated_at` without touching anything §16(2)(aa) matches on and would report
+  most of a busy register as unexamined. `_header_row` **stamps
+  `reconciled_at` itself** rather than leaving it to migration 341's `DEFAULT
+  now()`, which fires against a real Postgres and against nothing else: without
+  that, mock mode treats every bill as unexamined and the pass is inert there
+  while it fires in production, which is a statutory figure differing between
+  the two.
+  **A DOCUMENT WITH NO CREDIT LEFT IS NOT A RULE 36(4) QUESTION**: §17(5)
+  blocked tax is subtracted before a document reaches the module, so a bill
+  whose whole tax is blocked has nothing to withhold and must not appear in the
+  withheld list with ₹0 against it — the one screen whose value is that every
+  row needs an action. An **import of goods** and a **bank charge carrying GST**
+  keep the aggregate treatment and are NAMED: neither has a supplier invoice to
+  key a 2B row on (2B communicates an import in its own `impg` section), and the
+  import figure is added back before the two answers are compared or the
+  per-document total would be lower every time simply by being short of it.
+  **Only the WITHHELD documents travel** on the payload — a month's whole
+  purchase register for an answer that is a handful of rows would be a read
+  proportional to transaction volume — and the GSTR-3B screen renders them with
+  the served sentence rather than composing its own.
 - **RULE 43 IS BUILT AND RULE 42 IS NOT, and the missing input was never the
   arithmetic** (FA-19). A client making both taxable and exempt supplies
   reverses one-sixtieth of the credit on each COMMON capital good every month

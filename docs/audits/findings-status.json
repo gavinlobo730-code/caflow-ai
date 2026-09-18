@@ -1358,16 +1358,17 @@
       "user_visible_impact": "A CA working inside the per-client GST workspace computes GSTR-1 from books and saves it as a draft without ever being shown the duplicate invoice number, bad place of supply, CGST\u2260SGST or invalid counterparty GSTIN the server found \u2014 the same errors are visible only if they use the firm-level /gst/gstr1 screen."
     },
     "GST-19": {
-      "status": "partial",
-      "verified_on": "2026-09-16",
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters. \u2014 RE-READ 16-09-2026 against main 171ef0e3: STILL AGGREGATE: apps/api/domain/gst/gstr3b_computer.py:918 `_apply_rule_36_4_cap(book, gstr2a, have_2b)` compares per-head SUMS (`cap = (gstr2a * _RULE_36_4_NUMERATOR)//_RULE_36_4_DENOMINATOR`), called at :1208-1213 on head totals; the only output is the boolean `result.itc_capped_by_2a` (:1231) surfaced as `\"cap_applied\"` (services/gst_return_service.py:1686). FIXED PART: :1167-1216 carves the self-assessed reverse-charge credit out before the cap and adds it back whole, and `self_assessed_*_paise` is reported (:1677-1679) and rendered (apps/web/app/gst/gstr3b/page.tsx:719); imports are deliberately kept inside the cap with a stated reason (2B carries impg).",
+      "status": "closed",
+      "verified_on": "2026-09-18",
+      "why": "CLOSED 18-09-2026. `domain/gst/rule_36_4.py` asks \u00a716(2)(aa) of EACH document and `gstr3b_computer.compute_gstr3b` takes the LOWER of the per-document answer and the aggregate cap, so the change can only ever withhold more. The netting case the finding names is pinned exactly: two \u20b918,000 IGST bills, one unfiled and one filed for \u20b936,000, used to claim the whole \u20b936,000 and now claims \u20b918,000 (`test_a_month_that_nets_to_zero_still_withholds_the_unfiled_bill`, and end-to-end through `gstr3b_from_books`). The per-document map is built from what the 2B reconciliation already stored (migration 340's `purchase_bill_id`, `match_status`, `itc_available`, `itc_unavailable_reason_code`) rather than by a second matcher. SIX verdicts, told apart because the CA's action differs: allowed, self_assessed (reverse charge \u2014 no supplier furnishes it, so 2B cannot carry it), not_in_2b (chase the supplier), blocked_by_2b (read the document \u2014 the portal has already refused it), more_than_2b (per head, never on the total), and not_assessed. The last is new and was found building this: `purchase_bill_id` is written ONCE at upload against the bills existing then, so a bill entered afterwards carries no keyed row and is indistinguishable from one nobody filed \u2014 withholding it would lose the client credit invisibly, so it is allowed and named, with the action to re-reconcile. The withheld list and the unexamined list are rendered on the GSTR-3B screen's own Rule 36(4) panel.",
       "commits": [
         "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
-        "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
+        "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
+        "GST-19 \u2014 a credit is asked of each document"
       ],
-      "reread_on": "2026-09-16",
-      "what_is_left": "Per-invoice eligibility (matched in 2B with itcavl == 'Y') driving the 4(A) figure, and the disallowed-invoice list in the return's own Rule 36(4) working. CLAUDE.md itself still records \"Not built: invoice-wise Rule 36(4)\".",
-      "user_visible_impact": "When the cap fires the CA is told only \"Credit was trimmed to the GSTR-2B figure\" (apps/web/app/gst/gstr3b/page.tsx:660-670) with no list of the documents disallowed \u2014 they must cross-reference the GSTR-2B Recon tab by hand. Credit is compared in aggregate rather than invoice-by-invoice as \u00a716(2)(aa) requires, so a month where one bill is missing from 2B and another is over-claimed can net out and the cap never fires."
+      "reread_on": "2026-09-18",
+      "what_is_left": "None.",
+      "user_visible_impact": "Closed. The return now withholds credit per document and the panel lists which documents and why, instead of one sentence with no list."
     },
     "GST-21": {
       "status": "closed",
