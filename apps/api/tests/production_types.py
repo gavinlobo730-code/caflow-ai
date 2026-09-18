@@ -97,6 +97,8 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("inventory_stock_ledger", "batch_id"): "migration 398",
     ("capital_gains", "is_listed_security"): "migration 402",
     ("capital_gains", "fmv_31_01_2018_paise"): "migration 402",
+    ("clients", "section_32_1_iia_business"): "migration 406",
+    ("fixed_assets", "additional_depreciation_eligible"): "migration 406",
     # public.capital_gain_reinvestments (385), public.stock_count_sessions and
     # public.stock_count_lines (387), public.rcm_documents (388),
     # public.bills_of_entry (389), public.client_gst_registrations (390) and

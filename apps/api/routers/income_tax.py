@@ -1925,6 +1925,13 @@ def section_32_depreciation(
                                    "short_term_capital_gain_paise": 0,
                                    "unclassified_assets": [],
                                    "blocks_without_opening_wdv": [],
+                                   # The §32(1)(iia) working is present in mock
+                                   # mode too, so a screen reading it does not
+                                   # have to branch on which backend answered.
+                                   "additional_depreciation": {
+                                       "reaches_the_assessee": False,
+                                       "gaps": [], "caveats": [],
+                                       "verified": False},
                                    "statutory_gaps": [], "is_complete": True})
     from services.section_32_service import section_32_service
     return api_response(True, section_32_service.assemble(
@@ -1964,6 +1971,76 @@ def upsert_section_32_block(
     return api_response(True, (out.data or [row])[0])
 
 
+class Section32BusinessIn(BaseModel):
+    """Whether §32(1)(iia) reaches this assessee at all (IT-09).
+
+    A BARE BOOLEAN AND NOT A TRI-STATE ON THE WIRE. The column is nullable and
+    NULL means nobody has said, but that state is what the client ARRIVES in —
+    there is nothing to send to reach it, and offering a "don't know" on a
+    screen would invite somebody to answer the question with a shrug and make
+    the gap look settled.
+    """
+    client_id: str
+    #: §32(1)(iia)'s own opening words: engaged in the business of manufacture
+    #: or production of any article or thing, or in the generation,
+    #: transmission or distribution of power.
+    section_32_1_iia_business: bool
+
+
+@router.put("/section-32/business")
+def set_section_32_1_iia_business(
+    req: Section32BusinessIn,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Record whether the client is within §32(1)(iia) (IT-09).
+
+    THE WHO HALF. Until migration 406 this fact did not exist anywhere and
+    `section_32_service` passed a hardcoded `False` for every addition, so the
+    screen's "Additional u/s 32(1)(iia)" row was a structural ₹0 for every
+    client — a nil meaning "we cannot see it" rendered as a nil meaning "there
+    was none".
+
+    It is recorded on the CLIENT rather than on each asset because it is true
+    of every asset they own or of none, and one column asserting both halves
+    would give a trading company's new forklift the same answer as a factory's.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    assert_client_access(current_user, req.client_id)
+    db = _db()
+    answer = {"client_id": req.client_id,
+              "section_32_1_iia_business": req.section_32_1_iia_business}
+    if not db:
+        return api_response(True, answer)
+    # The payload is written out HERE rather than built above and passed by
+    # name. It has one literal key and nothing dynamic about it, and
+    # `test_backend_columns_exist_pg` can only check a column it can read: a
+    # `.update(patch)` is invisible to it, which on a single-column write is
+    # the one place a typo would have nothing else to catch it. That file's
+    # own budget comments record the same trade made five times before.
+    out = (db.table("clients")
+           .update({"section_32_1_iia_business": req.section_32_1_iia_business})
+           .eq("id", req.client_id).eq("firm_id", current_user["firm_id"])
+           .execute())
+    if not (out.data or []):
+        raise HTTPException(status_code=404, detail="Client not found")
+    return api_response(True, answer)
+
+
+# NO SECOND DOOR FOR THE ASSET HALF, AND THAT IS A DECISION (IT-09).
+#
+# A dedicated `PUT /section-32/asset-eligibility` was written and deleted. The
+# ordinary asset PATCH already carries `additional_depreciation_eligible` —
+# Tier A on `routers/fixed_assets`, so it runs the same rbac(), the same tier
+# rules and the same period checks as every other classification on the row —
+# and a second endpoint writing one column of `fixed_assets` is a second write
+# path for one fact. That is the `public.suppliers` shape: one screen writing a
+# column no other path reads, found months later when a CA's answer had been
+# going nowhere.
+#
+# It costs a CA a navigation from the §32 screen to the asset register, and the
+# panel there says so. Saving that click by building a rival door is the trade
+# this repository has recorded as wrong more than once.
 class BookToTaxBridgeRequest(BaseModel):
     """The bridge's inputs, and THREE OF THEM ARE NOW OPTIONAL.
 

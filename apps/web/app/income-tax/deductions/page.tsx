@@ -363,6 +363,31 @@ export default function DeductionsPage() {
 
   const recommended = newRegimeTax <= oldRegimeTax ? "new" : "old";
 
+  /** IT-20. WHAT THE SERVER SAID, on the second screen that computes.
+   *
+   *  `itr_engine` raises a sentence wherever an unverified conservative
+   *  choice actually costs the client something — §80CCD(2)'s 10% cap for a
+   *  non-government employee on the new regime is the one IT-20 names, raised
+   *  only where the employer's contribution exceeds it, because anywhere else
+   *  the two percentages agree and a warning would be noise.
+   *
+   *  The computation tab has rendered these since IT-05. This planner read
+   *  `deductions.*` and dropped `warnings` on the floor, so a CA planning a
+   *  salary package here saw the smaller deduction and no reason for it. It is
+   *  the whole list rather than that one sentence: a screen filtering the
+   *  server's warnings decides which of them a CA may see, which is a second
+   *  copy of the engine's judgement.
+   *
+   *  BOTH regimes are computed here and several warnings are common to the
+   *  two, so they are deduplicated — and the ORDER is the engine's, new regime
+   *  first, because a regime-specific sentence reads oddly ahead of a general
+   *  one. */
+  const serverWarnings = useMemo(() => {
+    const seen = new Set<string>();
+    return [...(newResult?.warnings ?? []), ...(oldResult?.warnings ?? [])]
+      .filter(w => (seen.has(w) ? false : (seen.add(w), true)));
+  }, [newResult, oldResult]);
+
   const selfLimit = state.s80d.selfFamilySenior ? LIMIT_80D_SELF_SENIOR : LIMIT_80D_SELF;
   const parentsLimit = state.s80d.parentsSenior ? LIMIT_80D_PARENTS_SENIOR : LIMIT_80D_PARENTS;
   const ttaLimit = state.isSeniorCitizen ? LIMIT_80TTB : LIMIT_80TTA;
@@ -421,6 +446,18 @@ export default function DeductionsPage() {
           FY {fy} statutory rates are carried forward from the last verified year, pending confirmation
           against the official Finance Act / CBDT circulars for {fy}. Do not rely on these figures for
           filing until verified.
+        </div>
+      )}
+
+      {/* IT-20 — the engine's own sentences, which this screen used to drop.
+          Beside the rates banner rather than at the bottom: a §80CCD(2) cap
+          that costs money changes what a CA plans, so it belongs where they
+          make the decision, not under the result. */}
+      {serverWarnings.length > 0 && (
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 space-y-1.5">
+          {serverWarnings.map((w, i) => (
+            <p key={i} className="text-xs text-state-attention-ink">⚠ {w}</p>
+          ))}
         </div>
       )}
 
