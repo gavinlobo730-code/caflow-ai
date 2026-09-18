@@ -41,7 +41,7 @@ function crore(paise: number) {
 type MCATab = "companies" | "directors" | "annual" | "events" | "history";
 
 const FILING_STATUS_COLORS: Record<string, string> = {
-  not_started: "bg-[#F1F5F9] text-[#334155]",
+  not_started: "bg-ps-muted text-ps-body",
   in_progress: "bg-blue-100 text-blue-700",
   filed: "bg-emerald-100 text-emerald-800",
   overdue: "bg-red-100 text-red-700",
@@ -136,7 +136,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">Register Company</p>
           <div className="grid grid-cols-2 gap-3">
             {(([
@@ -173,7 +173,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
       {loading ? <ListSkeleton rows={3} /> : loadError ? (
         <div className="text-center py-6 space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
-          <button onClick={load} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button onClick={load} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : (
         <div className="space-y-3">
@@ -183,16 +183,16 @@ function CompaniesTab({ clientId }: { clientId: string }) {
                 <p className="font-medium">{c.company_name as string}</p>
                 <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{c.company_category as string}</span>
               </div>
-              <p className="text-xs text-[#64748B] font-mono">{c.cin as string}</p>
-              {!!c.incorp_date && <p className="text-xs text-[#64748B]">Incorporated: {c.incorp_date as string}</p>}
-              <div className="flex gap-6 text-xs text-[#475569] mt-2">
+              <p className="text-xs text-ps-label font-mono">{c.cin as string}</p>
+              {!!c.incorp_date && <p className="text-xs text-ps-label">Incorporated: {c.incorp_date as string}</p>}
+              <div className="flex gap-6 text-xs text-ps-label mt-2">
                 <span>Auth. Capital: {crore((c.authorized_capital_paise as number) ?? 0)}</span>
                 <span>Paid-up: {crore((c.paid_up_capital_paise as number) ?? 0)}</span>
               </div>
-              {!!c.registered_office && <p className="text-xs text-[#64748B] mt-1">{c.registered_office as string}</p>}
+              {!!c.registered_office && <p className="text-xs text-ps-label mt-1">{c.registered_office as string}</p>}
             </div>
           ))}
-          {rows.length === 0 && <p className="text-center text-[#94A3B8] text-sm py-4">No companies registered.</p>}
+          {rows.length === 0 && <p className="text-center text-ps-hint text-sm py-4">No companies registered.</p>}
         </div>
       )}
     </div>
@@ -258,7 +258,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">Add Director</p>
           <div className="grid grid-cols-2 gap-3">
             {(([
@@ -289,7 +289,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
       {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#F8FAFC] text-left">
+            <tr className="bg-ps-bg text-left">
               <th className="px-3 py-2 border-b">DIN</th>
               <th className="px-3 py-2 border-b">Name</th>
               <th className="px-3 py-2 border-b">Designation</th>
@@ -300,7 +300,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
+              <tr key={r.id as string} className="border-b hover:bg-ps-bg">
                 <td className="px-3 py-2 font-mono text-xs">{r.din as string}</td>
                 <td className="px-3 py-2">{r.director_name as string}</td>
                 <td className="px-3 py-2 text-xs">{r.designation as string}</td>
@@ -323,10 +323,10 @@ function DirectorsTab({ clientId }: { clientId: string }) {
             {loadError ? (
               <tr><td colSpan={6} className="px-3 py-6 text-center">
                 <p className="text-sm text-red-600 font-medium">{loadError}</p>
-                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No directors added.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No directors added.</td></tr>
             )}
           </tbody>
         </table>
@@ -462,7 +462,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">Create Filing</p>
           <div className="grid grid-cols-2 gap-3">
             <select value={form.form_type} onChange={(e) => setForm((f) => ({ ...f, form_type: e.target.value }))}
@@ -491,7 +491,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       {loading ? <TableSkeleton cols={5} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#F8FAFC] text-left">
+            <tr className="bg-ps-bg text-left">
               <th className="px-3 py-2 border-b">Form</th>
               <th className="px-3 py-2 border-b">FY</th>
               <th className="px-3 py-2 border-b">Due Date</th>
@@ -501,7 +501,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
+              <tr key={r.id as string} className="border-b hover:bg-ps-bg">
                 <td className="px-3 py-2 font-medium">{r.form_type as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string ?? "—"}</td>
                 <td className="px-3 py-2 text-xs">{r.due_date as string ?? "—"}</td>
@@ -513,7 +513,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "not_started" && (
                     <button onClick={() => updateStatus(r.id as string, "in_progress")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9]">Start</button>
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Start</button>
                   )}
                   {r.status === "in_progress" && (
                     <button onClick={() => openConfirmFiling(r)}
@@ -536,10 +536,10 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
             {loadError ? (
               <tr><td colSpan={5} className="px-3 py-6 text-center">
                 <p className="text-sm text-red-600 font-medium">{loadError}</p>
-                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={5} className="px-3 py-4 text-center text-[#94A3B8]">No {category} filings.</td></tr>
+              <tr><td colSpan={5} className="px-3 py-4 text-center text-ps-hint">No {category} filings.</td></tr>
             )}
           </tbody>
         </table>
@@ -603,7 +603,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
       {loading ? <TableSkeleton cols={5} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#F8FAFC] text-left">
+            <tr className="bg-ps-bg text-left">
               <th className="px-3 py-2 border-b">Form</th>
               <th className="px-3 py-2 border-b">FY</th>
               <th className="px-3 py-2 border-b">SRN</th>
@@ -613,7 +613,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
+              <tr key={r.id as string} className="border-b hover:bg-ps-bg">
                 <td className="px-3 py-2 font-medium">{r.form_type as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string ?? "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.srn as string ?? "—"}</td>
@@ -628,10 +628,10 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
             {loadError ? (
               <tr><td colSpan={5} className="px-3 py-6 text-center">
                 <p className="text-sm text-red-600 font-medium">{loadError}</p>
-                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={5} className="px-3 py-4 text-center text-[#94A3B8]">No filed records.</td></tr>
+              <tr><td colSpan={5} className="px-3 py-4 text-center text-ps-hint">No filed records.</td></tr>
             )}
           </tbody>
         </table>
@@ -665,15 +665,15 @@ function McaOutOfScope({ clientId, entityType }: { clientId: string; entityType:
   return (
     <div className="p-6 space-y-6">
       <h2 className="text-xl font-semibold">MCA / ROC Compliance</h2>
-      <div className="max-w-2xl space-y-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-5">
-        <p className="text-sm font-medium text-[#0F172A]">
+      <div className="max-w-2xl space-y-3 rounded-lg border border-ps-border bg-ps-bg p-5">
+        <p className="text-sm font-medium text-ps-ink">
           {regime === "llp-act"
             ? "An LLP does not file the Companies Act annual forms."
             : "This client has no filings with the Ministry of Corporate Affairs."}
         </p>
-        <p className="text-xs leading-relaxed text-[#475569]">{note}</p>
+        <p className="text-xs leading-relaxed text-ps-label">{note}</p>
         {regime === "llp-act" && (
-          <p className="text-xs leading-relaxed text-[#475569]">
+          <p className="text-xs leading-relaxed text-ps-label">
             PracticeSync does not prepare Form 11 or Form 8 yet. Until it does, file them on
             the MCA portal and record the SRN against the client here.
           </p>
@@ -699,7 +699,7 @@ export default function MCAWorkspacePage() {
   const [tab, setTab] = useState<MCATab>("companies");
 
   if (!clientId || clientId === "_placeholder") {
-    return <p className="text-sm text-[#64748B] p-6">Select a client to view MCA workspace.</p>;
+    return <p className="text-sm text-ps-label p-6">Select a client to view MCA workspace.</p>;
   }
 
   // Never flash the company workspace at a client that will not keep it: wait
@@ -728,7 +728,7 @@ export default function MCAWorkspacePage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
                 ? "border-blue-600 text-blue-700"
-                : "border-transparent text-[#64748B] hover:text-[#334155]"
+                : "border-transparent text-ps-label hover:text-ps-body"
             }`}>
             {t.label}
           </button>

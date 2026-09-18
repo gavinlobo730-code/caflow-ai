@@ -264,7 +264,7 @@ export interface CurrencyOption {
 }
 
 export const STATUS_BADGE: Record<string, string> = {
-  draft: "bg-[#F1F5F9] text-[#64748B]",
+  draft: "bg-ps-muted text-ps-label",
   issued: "bg-blue-100 text-blue-700",
   partially_paid: "bg-amber-100 text-amber-700",
   paid: "bg-green-100 text-green-700",

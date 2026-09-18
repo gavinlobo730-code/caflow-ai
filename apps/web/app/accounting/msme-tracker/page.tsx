@@ -112,10 +112,10 @@ export default function MSME43BHPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]"><ChevronLeft size={18} /></Link>
+        <Link href="/accounting" className="text-ps-hint hover:text-ps-label"><ChevronLeft size={18} /></Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-[#0F172A]">MSME §43B(h)</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">MSME §43B(h)</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             Sums payable to micro and small enterprises beyond the MSMED §15 limit,
             read from the purchase ledger
           </p>
@@ -137,7 +137,7 @@ export default function MSME43BHPage() {
         </div>
         <select
           aria-label="Financial year"
-          className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
           value={fy}
           onChange={e => setFy(e.target.value)}
         >
@@ -163,13 +163,13 @@ export default function MSME43BHPage() {
       {error && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>}
 
       {!clientId && (
-        <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-5 py-4 text-sm text-[#64748B]">
+        <div className="bg-ps-bg border border-ps-border rounded-xl px-5 py-4 text-sm text-ps-label">
           §43B(h) is a figure in one client&apos;s tax computation. Pick a client.
         </div>
       )}
 
       {working && !working.applicable && (
-        <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-5 py-4 text-sm text-[#64748B]">
+        <div className="bg-ps-bg border border-ps-border rounded-xl px-5 py-4 text-sm text-ps-label">
           {working.caveats[0]}
         </div>
       )}
@@ -178,22 +178,22 @@ export default function MSME43BHPage() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className={`rounded-xl px-5 py-4 border ${working.disallowed_paise > 0
-              ? "bg-red-50 border-red-200" : "bg-[#F8FAFC] border-[#E2E8F0]"}`}>
-              <p className="text-xs text-[#64748B]">Added back to taxable income, FY {working.financial_year}</p>
+              ? "bg-red-50 border-red-200" : "bg-ps-bg border-ps-border"}`}>
+              <p className="text-xs text-ps-label">Added back to taxable income, FY {working.financial_year}</p>
               <p className={`text-2xl font-bold tabular-nums mt-1 ${working.disallowed_paise > 0
-                ? "text-red-700" : "text-[#0F172A]"}`}>
+                ? "text-red-700" : "text-ps-ink"}`}>
                 {formatPaise(working.disallowed_paise)}
               </p>
-              <p className="text-xs text-[#64748B] mt-1">
+              <p className="text-xs text-ps-label mt-1">
                 Bills that accrued this year and were not paid within their own MSMED §15 limit.
               </p>
             </div>
-            <div className="rounded-xl px-5 py-4 border bg-[#F8FAFC] border-[#E2E8F0]">
-              <p className="text-xs text-[#64748B]">Allowed back this year, on payment</p>
-              <p className="text-2xl font-bold tabular-nums mt-1 text-[#0F172A]">
+            <div className="rounded-xl px-5 py-4 border bg-ps-bg border-ps-border">
+              <p className="text-xs text-ps-label">Allowed back this year, on payment</p>
+              <p className="text-2xl font-bold tabular-nums mt-1 text-ps-ink">
                 {formatPaise(working.allowed_on_payment_paise)}
               </p>
-              <p className="text-xs text-[#64748B] mt-1">
+              <p className="text-xs text-ps-label mt-1">
                 Earlier years&apos; bills that were disallowed then and were actually paid during
                 this year.
               </p>
@@ -227,14 +227,14 @@ export default function MSME43BHPage() {
             </div>
           )}
 
-          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-5 py-4 space-y-1.5">
+          <div className="bg-ps-bg border border-ps-border rounded-xl px-5 py-4 space-y-1.5">
             <div className="flex items-start gap-2">
-              <Info size={15} className="text-[#94A3B8] shrink-0 mt-0.5" />
+              <Info size={15} className="text-ps-hint shrink-0 mt-0.5" />
               <div className="space-y-1.5">
                 {working.caveats.map((c, i) => (
-                  <p key={i} className="text-xs text-[#64748B]">{c}</p>
+                  <p key={i} className="text-xs text-ps-label">{c}</p>
                 ))}
-                <p className="text-[11px] text-[#94A3B8]">{working.source}</p>
+                <p className="text-[11px] text-ps-hint">{working.source}</p>
               </div>
             </div>
           </div>
@@ -246,7 +246,7 @@ export default function MSME43BHPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[980px]">
                   <thead>
-                    <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
+                    <tr className="border-b border-ps-muted text-xs text-ps-hint">
                       <th className="px-5 py-3 text-left">Supplier</th>
                       <th className="px-3 py-3 text-left">Bill</th>
                       <th className="px-3 py-3 text-left">Bill date</th>
@@ -257,27 +257,27 @@ export default function MSME43BHPage() {
                       <th className="px-5 py-3 text-right">Disallowed</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#F8FAFC]">
+                  <tbody className="divide-y divide-ps-bg">
                     {rows.length === 0 && (
-                      <tr><td colSpan={8} className="text-center text-[#94A3B8] py-8 text-sm">
+                      <tr><td colSpan={8} className="text-center text-ps-hint py-8 text-sm">
                         No purchase bills for this client.
                       </td></tr>
                     )}
                     {rows.map(b => (
                       <tr key={b.bill_id} className={b.disallowed_paise > 0 ? "bg-red-50/40" : ""}>
-                        <td className="px-5 py-3 text-sm font-medium text-[#0F172A]">{b.vendor_name}</td>
-                        <td className="px-3 py-3 text-xs font-mono text-[#64748B]">{b.bill_no ?? "—"}</td>
-                        <td className="px-3 py-3 text-xs text-[#475569]">{b.bill_date ?? "—"}</td>
-                        <td className="px-3 py-3 text-xs text-[#475569]" title={b.limit_source}>
+                        <td className="px-5 py-3 text-sm font-medium text-ps-ink">{b.vendor_name}</td>
+                        <td className="px-3 py-3 text-xs font-mono text-ps-label">{b.bill_no ?? "—"}</td>
+                        <td className="px-3 py-3 text-xs text-ps-label">{b.bill_date ?? "—"}</td>
+                        <td className="px-3 py-3 text-xs text-ps-label" title={b.limit_source}>
                           {b.limit_days == null ? "—" : `${b.limit_days} days`}
                         </td>
-                        <td className="px-3 py-3 text-xs text-[#475569]">{b.due_by ?? "—"}</td>
+                        <td className="px-3 py-3 text-xs text-ps-label">{b.due_by ?? "—"}</td>
                         <td className="px-3 py-3 text-sm tabular-nums text-right">{formatPaise(b.deductible_paise)}</td>
                         <td className="px-3 py-3 text-sm tabular-nums text-right">{formatPaise(b.unpaid_paise)}</td>
                         <td className="px-5 py-3 text-sm tabular-nums text-right font-medium">
                           {b.disallowed_paise > 0
                             ? <span className="text-red-700">{formatPaise(b.disallowed_paise)}</span>
-                            : <span className="inline-flex items-center gap-1 text-[#94A3B8]" title={b.reason}>
+                            : <span className="inline-flex items-center gap-1 text-ps-hint" title={b.reason}>
                                 <CheckCircle size={12} /> —
                               </span>}
                         </td>

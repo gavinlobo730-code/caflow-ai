@@ -181,10 +181,10 @@ export function CompliancePanel({
 
   return (
     <section className="space-y-3">
-      <h4 className="text-xs font-semibold text-[#334155] flex items-center gap-1.5"><ShieldCheck size={13} /> Compliance</h4>
+      <h4 className="text-xs font-semibold text-ps-body flex items-center gap-1.5"><ShieldCheck size={13} /> Compliance</h4>
 
       {/* GST treatment + place of supply */}
-      <div className="rounded-lg border border-[#F1F5F9] p-3 space-y-2">
+      <div className="rounded-lg border border-ps-muted p-3 space-y-2">
         <Row label="GST treatment" value={treatment.label} />
         <Row label="Recipient GSTIN" value={recipientGstin || "Unregistered (B2C)"} mono={!!recipientGstin} />
         <Row label="Place of supply" value={invoice.supply_state_code || "—"} />
@@ -206,18 +206,18 @@ export function CompliancePanel({
             <Row label="IRN" value={irn.irn ?? "—"} mono />
             {irn.record?.ack_number && <Row label="Ack no." value={irn.record.ack_number} mono />}
             {irn.qrData && (
-              <div className="rounded bg-[#F8FAFC] border border-[#EEF2F7] p-2">
-                <p className="text-[10px] text-[#94A3B8] flex items-center gap-1 mb-1"><QrCode size={11} /> Signed QR payload</p>
-                <p className="text-[10px] font-mono text-[#475569] break-all max-h-16 overflow-y-auto">{irn.qrData}</p>
+              <div className="rounded bg-ps-bg border border-[#EEF2F7] p-2">
+                <p className="text-[10px] text-ps-hint flex items-center gap-1 mb-1"><QrCode size={11} /> Signed QR payload</p>
+                <p className="text-[10px] font-mono text-ps-label break-all max-h-16 overflow-y-auto">{irn.qrData}</p>
               </div>
             )}
             <button onClick={() => setModal("cancelIrn")} className="text-[11px] text-red-600 hover:underline inline-flex items-center gap-1"><XCircle size={11} /> Cancel IRN</button>
           </div>
         ) : irn.state === "cancelled" ? (
-          <p className="text-[11px] text-[#94A3B8]">IRN cancelled{irn.record?.cancellation_reason ? ` — ${irn.record.cancellation_reason}` : ""}.</p>
+          <p className="text-[11px] text-ps-hint">IRN cancelled{irn.record?.cancellation_reason ? ` — ${irn.record.cancellation_reason}` : ""}.</p>
         ) : irn.state === "draft" ? (
           <div className="space-y-2">
-            <p className="text-[11px] text-[#64748B]">Record prepared ({irn.record?.gst_treatment ? treatmentLabel(irn.record.gst_treatment) : "regular"}). Generate the IRN on the IRP portal, then record it.</p>
+            <p className="text-[11px] text-ps-label">Record prepared ({irn.record?.gst_treatment ? treatmentLabel(irn.record.gst_treatment) : "regular"}). Generate the IRN on the IRP portal, then record it.</p>
             {/* A record stored BEFORE the write door started reconciling the two
                 can still contradict its own invoice (SALES-19), and the two
                 labels then sat on this screen side by side with nothing saying
@@ -256,10 +256,10 @@ export function CompliancePanel({
             <button onClick={() => setModal("cancelEway")} className="text-[11px] text-red-600 hover:underline inline-flex items-center gap-1"><XCircle size={11} /> Cancel E-Way Bill</button>
           </div>
         ) : eway.state === "cancelled" ? (
-          <p className="text-[11px] text-[#94A3B8]">E-Way Bill cancelled{eway.record?.cancellation_reason ? ` — ${eway.record.cancellation_reason}` : ""}.</p>
+          <p className="text-[11px] text-ps-hint">E-Way Bill cancelled{eway.record?.cancellation_reason ? ` — ${eway.record.cancellation_reason}` : ""}.</p>
         ) : eway.state === "draft" ? (
           <div className="space-y-2">
-            <p className="text-[11px] text-[#64748B]">Record prepared. Generate the E-Way Bill on the NIC portal, then record it.</p>
+            <p className="text-[11px] text-ps-label">Record prepared. Generate the E-Way Bill on the NIC portal, then record it.</p>
             <PrimaryBtn onClick={() => setModal("recordEway")}>Record E-Way Bill</PrimaryBtn>
           </div>
         ) : (
@@ -295,14 +295,14 @@ export function CompliancePanel({
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <span className="text-[11px] text-[#94A3B8] flex-shrink-0">{label}</span>
-      <span className={`text-[11px] text-[#334155] text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
+      <span className="text-[11px] text-ps-hint flex-shrink-0">{label}</span>
+      <span className={`text-[11px] text-ps-body text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
 }
 
 const STATE_BADGE: Record<string, string> = {
-  none: "bg-[#F1F5F9] text-[#64748B]",
+  none: "bg-ps-muted text-ps-label",
   draft: "bg-amber-100 text-amber-700",
   generated: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-600",
@@ -310,9 +310,9 @@ const STATE_BADGE: Record<string, string> = {
 
 function ComplianceCard({ icon, title, state, children }: { icon: React.ReactNode; title: string; state: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-[#F1F5F9] p-3 space-y-2">
+    <div className="rounded-lg border border-ps-muted p-3 space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold text-[#334155] flex items-center gap-1.5">{icon} {title}</span>
+        <span className="text-[11px] font-semibold text-ps-body flex items-center gap-1.5">{icon} {title}</span>
         <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATE_BADGE[state] ?? STATE_BADGE.none}`}>
           {state === "none" ? "Not started" : state}
         </span>
@@ -346,12 +346,12 @@ function PrimaryBtn({ children, onClick, disabled }: { children: React.ReactNode
 }
 
 // ── Modals ────────────────────────────────────────────────────────────────────
-const inputCls = "w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
+const inputCls = "w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
 
 function Actions({ onClose, onSubmit, busy, label, disabled }: { onClose: () => void; onSubmit: () => void; busy: boolean; label: string; disabled?: boolean }) {
   return (
     <div className="flex justify-end gap-2 pt-1">
-      <button onClick={onClose} disabled={busy} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
+      <button onClick={onClose} disabled={busy} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
       <button onClick={onSubmit} disabled={busy || disabled} className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
         {busy && <Loader2 size={12} className="animate-spin" />} {label}
       </button>
@@ -359,7 +359,7 @@ function Actions({ onClose, onSubmit, busy, label, disabled }: { onClose: () => 
   );
 }
 function L({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block space-y-1"><span className="block text-xs font-medium text-[#475569]">{label}</span>{children}</label>;
+  return <label className="block space-y-1"><span className="block text-xs font-medium text-ps-label">{label}</span>{children}</label>;
 }
 
 function PrepareIrnModal({ busy, derived, onClose, onSubmit }: { busy: boolean; derived: GstTreatment | null; onClose: () => void; onSubmit: (t: GstTreatment, lut: string) => void }) {
@@ -370,8 +370,8 @@ function PrepareIrnModal({ busy, derived, onClose, onSubmit }: { busy: boolean; 
       <L label="GST treatment">
         {derived ? (
           <>
-            <p className="px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg bg-[#F8FAFC] text-[#334155]">{treatmentLabel(derived)}</p>
-            <p className="text-[10px] text-[#94A3B8]">
+            <p className="px-3 py-1.5 text-xs border border-ps-border rounded-lg bg-ps-bg text-ps-body">{treatmentLabel(derived)}</p>
+            <p className="text-[10px] text-ps-hint">
               Read from this invoice&apos;s own supply type and invoice type — the fields the
               GSTR-1 is built from. To change it, correct the invoice.
             </p>
@@ -446,7 +446,7 @@ function PrepareEwayModal({ busy, invoice, onClose, onSubmit }: { busy: boolean;
           </select>
         </L>
       </div>
-      <p className="text-[10px] text-[#94A3B8]">
+      <p className="text-[10px] text-ps-hint">
         Distance decides how long the bill is valid — one day per 200 km, or per 20 km
         for Over Dimensional Cargo (CGST Rule 138(10)). Leave it blank and the expiry
         has to be read off the portal.
@@ -502,7 +502,7 @@ function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean;
       </div>
       {computed?.gap && <p className="text-[10px] text-amber-700">{computed.gap}</p>}
       {computed?.valid_upto && (
-        <p className="text-[10px] text-[#94A3B8]">
+        <p className="text-[10px] text-ps-hint">
           {computed.days} day{computed.days === 1 ? "" : "s"} at one per {computed.slab_km} km — {computed.source}.
           The portal&apos;s own date is what counts; correct this if it differs.
         </p>

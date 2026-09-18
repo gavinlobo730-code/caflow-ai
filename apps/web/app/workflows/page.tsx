@@ -106,10 +106,10 @@ function fmtDuration(ms?: number): string {
 
 function StatCard({ label, value, sub, color = "#182350" }: { label: string; value: string | number; sub?: string; color?: string }) {
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 flex flex-col gap-1">
-      <span className="text-xs text-[#64748B] font-medium uppercase tracking-wide">{label}</span>
+    <div className="bg-white border border-ps-border rounded-xl p-4 flex flex-col gap-1">
+      <span className="text-xs text-ps-label font-medium uppercase tracking-wide">{label}</span>
       <span className="text-2xl font-bold" style={{ color }}>{value}</span>
-      {sub && <span className="text-xs text-[#94A3B8]">{sub}</span>}
+      {sub && <span className="text-xs text-ps-hint">{sub}</span>}
     </div>
   );
 }
@@ -174,18 +174,18 @@ export default function WorkflowsPage() {
   const summary = analytics?.summary;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
+    <div className="min-h-screen bg-ps-bg">
       {/* Header */}
-      <div className="bg-white border-b border-[#E2E8F0] px-6 py-4">
+      <div className="bg-white border-b border-ps-border px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-[#182350]">Workflow Automation</h1>
-            <p className="text-sm text-[#64748B] mt-0.5">Automate firm operations across compliance, onboarding, and more</p>
+            <h1 className="text-xl font-semibold text-brand">Workflow Automation</h1>
+            <p className="text-sm text-ps-label mt-0.5">Automate firm operations across compliance, onboarding, and more</p>
           </div>
           <div className="flex items-center gap-2">
             <Link
               href="/workflows/approvals"
-              className="flex items-center gap-1.5 px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg bg-white hover:bg-[#F8FAFC] text-[#475569]"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm border border-ps-border rounded-lg bg-white hover:bg-ps-bg text-ps-label"
             >
               <CheckCircle2 size={14} />
               Approvals
@@ -197,7 +197,7 @@ export default function WorkflowsPage() {
             </Link>
             <button
               onClick={load}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg bg-white hover:bg-[#F8FAFC] text-[#475569]"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm border border-ps-border rounded-lg bg-white hover:bg-ps-bg text-ps-label"
             >
               <RefreshCw size={14} />
               Refresh
@@ -220,15 +220,15 @@ export default function WorkflowsPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-[#E2E8F0]">
+        <div className="flex gap-1 border-b border-ps-border">
           {(["templates", "instances", "analytics"] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
                 tab === t
-                  ? "border-[#182350] text-[#182350]"
-                  : "border-transparent text-[#64748B] hover:text-[#334155]"
+                  ? "border-brand text-brand"
+                  : "border-transparent text-ps-label hover:text-ps-body"
               }`}
             >
               {t}
@@ -240,19 +240,19 @@ export default function WorkflowsPage() {
         {tab === "templates" && (
           <div className="flex items-center gap-3">
             <div className="relative flex-1 max-w-sm">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ps-hint" />
               <input
                 type="text"
                 placeholder="Search workflows..."
                 value={search}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#182350]/20"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-ps-border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand/20"
               />
             </div>
             <select
               value={category}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCategory(e.target.value)}
-              className="px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg bg-white focus:outline-none"
+              className="px-3 py-2 text-sm border border-ps-border rounded-lg bg-white focus:outline-none"
             >
               <option value="all">All Categories</option>
               {["gst","tds","onboarding","compliance","health","relationship","lifecycle","income_tax","payroll","mca","accounting"].map(c => (
@@ -271,24 +271,24 @@ export default function WorkflowsPage() {
         )}
         {tab === "templates" && (
           loading ? (
-            <div className="text-center py-16 text-[#94A3B8]">Loading workflows...</div>
+            <div className="text-center py-16 text-ps-hint">Loading workflows...</div>
           ) : loadError ? (
             <div className="text-center py-16">
               <p className="text-sm text-red-600 font-medium">{loadError}</p>
-              <button onClick={() => load()} className="mt-3 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Retry</button>
+              <button onClick={() => load()} className="mt-3 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">Retry</button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-16">
-              <Zap size={40} className="mx-auto text-[#CBD5E1] mb-3" />
-              <p className="text-[#64748B]">No workflows found</p>
-              <p className="text-sm text-[#94A3B8] mt-1">Create a workflow to start automating</p>
+              <Zap size={40} className="mx-auto text-ps-disabled mb-3" />
+              <p className="text-ps-label">No workflows found</p>
+              <p className="text-sm text-ps-hint mt-1">Create a workflow to start automating</p>
             </div>
           ) : (
             <div className="grid gap-4">
               {filtered.map((template: WorkflowTemplate) => {
                 const analyticsRow = analytics?.by_template?.find((a: WorkflowAnalytics["by_template"][number]) => a.template_id === template.id);
                 return (
-                  <div key={template.id} className="bg-white border border-[#E2E8F0] rounded-xl p-5 hover:shadow-sm transition-shadow">
+                  <div key={template.id} className="bg-white border border-ps-border rounded-xl p-5 hover:shadow-sm transition-shadow">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-3 flex-1 min-w-0">
                         <div className="mt-0.5 w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -297,21 +297,21 @@ export default function WorkflowsPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-[#182350] text-sm">{template.name}</span>
+                            <span className="font-semibold text-brand text-sm">{template.name}</span>
                             {template.is_system && (
-                              <span className="text-[10px] bg-[#EFF6FF] text-[#182350] px-2 py-0.5 rounded-full font-medium">SYSTEM</span>
+                              <span className="text-[10px] bg-[#EFF6FF] text-brand px-2 py-0.5 rounded-full font-medium">SYSTEM</span>
                             )}
                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[template.category] || CATEGORY_COLORS.general}`}>
                               {template.category.toUpperCase().replace("_", " ")}
                             </span>
                           </div>
                           {template.description && (
-                            <p className="text-xs text-[#64748B] mt-1 line-clamp-1">{template.description}</p>
+                            <p className="text-xs text-ps-label mt-1 line-clamp-1">{template.description}</p>
                           )}
-                          <div className="flex items-center gap-4 mt-2 text-xs text-[#94A3B8]">
+                          <div className="flex items-center gap-4 mt-2 text-xs text-ps-hint">
                             <span className="flex items-center gap-1">
                               <Activity size={11} />
-                              Trigger: <strong className="text-[#475569]">{TRIGGER_LABELS[template.trigger_type] || template.trigger_type}</strong>
+                              Trigger: <strong className="text-ps-label">{TRIGGER_LABELS[template.trigger_type] || template.trigger_type}</strong>
                             </span>
                             <span>{analyticsRow?.total_executions ?? template.execution_count} executions</span>
                             {analyticsRow && analyticsRow.total_executions > 0 && (
@@ -337,7 +337,7 @@ export default function WorkflowsPage() {
                           className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
                             template.is_active
                               ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                              : "bg-[#F1F5F9] text-[#64748B] border-[#E2E8F0] hover:bg-[#E2E8F0]"
+                              : "bg-ps-muted text-ps-label border-ps-border hover:bg-ps-border"
                           } ${template.is_system ? "opacity-50 cursor-not-allowed" : ""}`}
                           title={template.is_system ? "System workflows cannot be toggled" : undefined}
                         >
@@ -355,20 +355,20 @@ export default function WorkflowsPage() {
         {/* Analytics Tab */}
         {tab === "analytics" && analytics && (
           <div className="space-y-4">
-            <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
+            <div className="overflow-hidden rounded-xl border border-ps-border bg-white">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                  <tr className="border-b border-ps-border bg-ps-bg">
                     {["Workflow", "Total Runs", "Successful", "Failed", "Success Rate", "Avg Duration", "Last 7 Days"].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[#64748B] uppercase tracking-wide">{h}</th>
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ps-label uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {analytics.by_template.map((row: WorkflowAnalytics["by_template"][number], i: number) => (
-                    <tr key={row.template_id} className={`border-b border-[#F1F5F9] hover:bg-[#FAFBFD] ${i % 2 === 0 ? "" : "bg-[#FAFBFD]"}`}>
-                      <td className="px-4 py-3 font-medium text-[#182350]">{row.template_name}</td>
-                      <td className="px-4 py-3 text-[#334155]">{row.total_executions}</td>
+                    <tr key={row.template_id} className={`border-b border-ps-muted hover:bg-[#FAFBFD] ${i % 2 === 0 ? "" : "bg-[#FAFBFD]"}`}>
+                      <td className="px-4 py-3 font-medium text-brand">{row.template_name}</td>
+                      <td className="px-4 py-3 text-ps-body">{row.total_executions}</td>
                       <td className="px-4 py-3 text-green-600 font-medium">{row.successful}</td>
                       <td className="px-4 py-3 text-red-600 font-medium">{row.failed}</td>
                       <td className="px-4 py-3">
@@ -376,10 +376,10 @@ export default function WorkflowsPage() {
                           {row.success_rate}%
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-[#64748B]">
+                      <td className="px-4 py-3 text-ps-label">
                         {fmtDuration(templates.find((t: WorkflowTemplate) => t.id === row.template_id)?.avg_duration_ms)}
                       </td>
-                      <td className="px-4 py-3 text-[#334155]">{row.executions_last_7_days}</td>
+                      <td className="px-4 py-3 text-ps-body">{row.executions_last_7_days}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -437,7 +437,7 @@ function WorkflowInstancesTab() {
         <select
           value={status}
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value)}
-          className="px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg bg-white"
+          className="px-3 py-2 text-sm border border-ps-border rounded-lg bg-white"
         >
           <option value="all">All Statuses</option>
           {["pending","running","completed","failed","cancelled","waiting_approval"].map(s => (
@@ -446,36 +446,36 @@ function WorkflowInstancesTab() {
         </select>
       </div>
       {loading ? (
-        <div className="text-center py-12 text-[#94A3B8]">Loading...</div>
+        <div className="text-center py-12 text-ps-hint">Loading...</div>
       ) : loadError ? (
         <div className="text-center py-12">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
-          <button onClick={() => load()} className="mt-3 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Retry</button>
+          <button onClick={() => load()} className="mt-3 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">Retry</button>
         </div>
       ) : instances.length === 0 ? (
-        <div className="text-center py-12 text-[#94A3B8]">No workflow runs found</div>
+        <div className="text-center py-12 text-ps-hint">No workflow runs found</div>
       ) : (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
+        <div className="bg-white border border-ps-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+              <tr className="border-b border-ps-border bg-ps-bg">
                 {["Instance ID", "Trigger", "Status", "Started", "Duration"].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[#64748B] uppercase tracking-wide">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ps-label uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {instances.map((inst: WorkflowInstance) => (
-                <tr key={inst.id} className="border-b border-[#F1F5F9] hover:bg-[#FAFBFD]">
-                  <td className="px-4 py-3 font-mono text-xs text-[#475569]">{inst.id.slice(0,12)}...</td>
-                  <td className="px-4 py-3 text-[#334155]">{TRIGGER_LABELS[inst.trigger_event] || inst.trigger_event}</td>
+                <tr key={inst.id} className="border-b border-ps-muted hover:bg-[#FAFBFD]">
+                  <td className="px-4 py-3 font-mono text-xs text-ps-label">{inst.id.slice(0,12)}...</td>
+                  <td className="px-4 py-3 text-ps-body">{TRIGGER_LABELS[inst.trigger_event] || inst.trigger_event}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_STYLES[inst.status] || "bg-gray-100 text-gray-600"}`}>
                       {inst.status.replace("_"," ")}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-[#64748B] text-xs">{formatDateTime(inst.started_at)}</td>
-                  <td className="px-4 py-3 text-[#64748B] text-xs">
+                  <td className="px-4 py-3 text-ps-label text-xs">{formatDateTime(inst.started_at)}</td>
+                  <td className="px-4 py-3 text-ps-label text-xs">
                     {inst.completed_at && inst.started_at
                       ? fmtDuration(new Date(inst.completed_at).getTime() - new Date(inst.started_at).getTime())
                       : "—"}

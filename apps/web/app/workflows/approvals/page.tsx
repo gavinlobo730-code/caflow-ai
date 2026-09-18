@@ -93,16 +93,16 @@ export default function ApprovalsPage() {
   const overdueCount = approvals.filter((a: Approval) => a.status === "pending" && isOverdue(a.due_at)).length;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
+    <div className="min-h-screen bg-ps-bg">
       {/* Header */}
-      <div className="bg-white border-b border-[#E2E8F0] px-6 py-4">
+      <div className="bg-white border-b border-ps-border px-6 py-4">
         <div className="flex items-center gap-3">
-          <Link href="/workflows" className="text-[#64748B] hover:text-[#182350] transition-colors">
+          <Link href="/workflows" className="text-ps-label hover:text-brand transition-colors">
             <ChevronLeft size={18} />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold text-[#182350]">Workflow Approvals</h1>
-            <p className="text-sm text-[#64748B] mt-0.5">Review and respond to pending workflow approval requests</p>
+            <h1 className="text-xl font-semibold text-brand">Workflow Approvals</h1>
+            <p className="text-sm text-ps-label mt-0.5">Review and respond to pending workflow approval requests</p>
           </div>
           {pendingCount > 0 && (
             <span className="ml-2 bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
@@ -116,17 +116,17 @@ export default function ApprovalsPage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-3 gap-4">
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-4">
-            <p className="text-xs text-[#64748B] uppercase tracking-wide font-medium">Pending</p>
+          <div className="bg-white border border-ps-border rounded-xl p-4">
+            <p className="text-xs text-ps-label uppercase tracking-wide font-medium">Pending</p>
             <p className="text-2xl font-bold text-orange-600 mt-1">{pendingCount}</p>
           </div>
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-4">
-            <p className="text-xs text-[#64748B] uppercase tracking-wide font-medium">Overdue</p>
+          <div className="bg-white border border-ps-border rounded-xl p-4">
+            <p className="text-xs text-ps-label uppercase tracking-wide font-medium">Overdue</p>
             <p className="text-2xl font-bold text-red-600 mt-1">{overdueCount}</p>
           </div>
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-4">
-            <p className="text-xs text-[#64748B] uppercase tracking-wide font-medium">All Today</p>
-            <p className="text-2xl font-bold text-[#182350] mt-1">{approvals.length}{approvalsCapped ? "+" : ""}</p>
+          <div className="bg-white border border-ps-border rounded-xl p-4">
+            <p className="text-xs text-ps-label uppercase tracking-wide font-medium">All Today</p>
+            <p className="text-2xl font-bold text-brand mt-1">{approvals.length}{approvalsCapped ? "+" : ""}</p>
           </div>
         </div>
 
@@ -135,7 +135,7 @@ export default function ApprovalsPage() {
           <select
             value={status}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value)}
-            className="px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg bg-white"
+            className="px-3 py-2 text-sm border border-ps-border rounded-lg bg-white"
           >
             <option value="pending">Pending</option>
             <option value="approved">Approved</option>
@@ -143,7 +143,7 @@ export default function ApprovalsPage() {
             <option value="escalated">Escalated</option>
             <option value="all">All</option>
           </select>
-          <button onClick={load} className="flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#182350]">
+          <button onClick={load} className="flex items-center gap-1.5 text-sm text-ps-label hover:text-brand">
             <RefreshCw size={14} /> Refresh
           </button>
         </div>
@@ -157,17 +157,17 @@ export default function ApprovalsPage() {
 
         {/* Approvals list */}
         {loading ? (
-          <div className="text-center py-16 text-[#94A3B8]">Loading approvals...</div>
+          <div className="text-center py-16 text-ps-hint">Loading approvals...</div>
         ) : loadError ? (
           <div className="text-center py-16">
             <AlertTriangle size={40} className="mx-auto text-red-300 mb-3" />
             <p className="text-sm text-red-600 font-medium">{loadError}</p>
-            <button onClick={() => load()} className="mt-3 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Retry</button>
+            <button onClick={() => load()} className="mt-3 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">Retry</button>
           </div>
         ) : approvals.length === 0 ? (
           <div className="text-center py-16">
             <CheckCircle2 size={40} className="mx-auto text-green-300 mb-3" />
-            <p className="text-[#64748B]">No {status === "all" ? "" : status} approvals</p>
+            <p className="text-ps-label">No {status === "all" ? "" : status} approvals</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -177,7 +177,7 @@ export default function ApprovalsPage() {
                 <div
                   key={approval.id}
                   className={`bg-white border rounded-xl p-5 ${
-                    overdue ? "border-red-200 bg-red-50/30" : "border-[#E2E8F0]"
+                    overdue ? "border-red-200 bg-red-50/30" : "border-ps-border"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -188,30 +188,30 @@ export default function ApprovalsPage() {
                             <AlertTriangle size={10} /> Overdue
                           </span>
                         )}
-                        <span className="text-xs bg-[#EFF6FF] text-[#182350] px-2 py-0.5 rounded-full font-medium">
+                        <span className="text-xs bg-[#EFF6FF] text-brand px-2 py-0.5 rounded-full font-medium">
                           {approval.approver_role}
                         </span>
                         {approval.template_name && (
-                          <span className="text-xs text-[#94A3B8]">via {approval.template_name}</span>
+                          <span className="text-xs text-ps-hint">via {approval.template_name}</span>
                         )}
                       </div>
 
-                      <h3 className="font-semibold text-[#182350] text-sm">{approval.title}</h3>
+                      <h3 className="font-semibold text-brand text-sm">{approval.title}</h3>
                       {approval.description && (
-                        <p className="text-xs text-[#64748B] mt-1">{approval.description}</p>
+                        <p className="text-xs text-ps-label mt-1">{approval.description}</p>
                       )}
 
                       {typeof approval.context_data?.client_name === "string" && (
-                        <div className="flex items-center gap-1 mt-2 text-xs text-[#475569]">
+                        <div className="flex items-center gap-1 mt-2 text-xs text-ps-label">
                           <Building2 size={11} />
                           <span>{approval.context_data.client_name}</span>
                         </div>
                       )}
 
-                      <div className="flex items-center gap-4 mt-2 text-xs text-[#94A3B8]">
+                      <div className="flex items-center gap-4 mt-2 text-xs text-ps-hint">
                         <span className="flex items-center gap-1">
                           <Clock size={10} />
-                          Due: <strong className={overdue ? "text-red-600" : "text-[#475569]"}>{fmtDate(approval.due_at)}</strong>
+                          Due: <strong className={overdue ? "text-red-600" : "text-ps-label"}>{fmtDate(approval.due_at)}</strong>
                         </span>
                         <span>Created: {fmtDate(approval.created_at)}</span>
                       </div>
@@ -239,13 +239,13 @@ export default function ApprovalsPage() {
 
                   {/* Response section for pending */}
                   {approval.status === "pending" && (
-                    <div className="mt-4 pt-4 border-t border-[#F1F5F9]">
+                    <div className="mt-4 pt-4 border-t border-ps-muted">
                       <textarea
                         placeholder="Optional notes..."
                         value={notes[approval.id] || ""}
                         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes((prev: Record<string, string>) => ({ ...prev, [approval.id]: e.target.value }))}
                         rows={2}
-                        className="w-full px-3 py-2 text-xs border border-[#E2E8F0] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#182350]/20 mb-3"
+                        className="w-full px-3 py-2 text-xs border border-ps-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-brand/20 mb-3"
                       />
                       <div className="flex items-center gap-2">
                         <button
@@ -270,7 +270,7 @@ export default function ApprovalsPage() {
 
                   {/* Show response for completed */}
                   {approval.status !== "pending" && approval.response_notes && (
-                    <div className="mt-3 pt-3 border-t border-[#F1F5F9] text-xs text-[#64748B]">
+                    <div className="mt-3 pt-3 border-t border-ps-muted text-xs text-ps-label">
                       <strong>Notes:</strong> {approval.response_notes}
                     </div>
                   )}

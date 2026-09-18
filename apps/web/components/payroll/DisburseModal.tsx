@@ -75,18 +75,18 @@ export function DisburseModal({ run, onClose, onDone }: {
   const inputCls = "w-full border rounded-lg px-3 py-2 text-sm";
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Mark Payroll Paid — {run.month}</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">Mark Payroll Paid — {run.month}</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
-        <div className="bg-[#F8FAFC] rounded-lg px-3 py-2 text-xs text-[#475569]">
+        <div className="bg-ps-bg rounded-lg px-3 py-2 text-xs text-ps-label">
           Posts <span className="font-medium">Dr Net Salary Payable / Cr Bank</span> for the net pay
           <span className="font-mono"> {netStr}</span>, clearing the payable raised at finalization.
         </div>
         {loadingAccts ? (
-          <p className="text-sm text-[#64748B]">Loading bank accounts…</p>
+          <p className="text-sm text-ps-label">Loading bank accounts…</p>
         ) : accounts.length === 0 ? (
           <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
             No bank account is linked to a ledger account for this client. Add one under
@@ -95,18 +95,18 @@ export function DisburseModal({ run, onClose, onDone }: {
         ) : (
           <>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Pay from bank account *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Pay from bank account *</label>
               <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={inputCls}>
                 {accounts.map((a) => <option key={a.id} value={a.id}>{a.bank_name} · ····{a.account_no.slice(-4)}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Payment date</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Payment date</label>
                 <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={inputCls} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Reference</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>
                 <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="NEFT / UTR no." className={inputCls} />
               </div>
             </div>
@@ -114,7 +114,7 @@ export function DisburseModal({ run, onClose, onDone }: {
         )}
         {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={save} disabled={saving || loadingAccts || accounts.length === 0} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
             {saving ? "Recording…" : "Confirm Payment"}
           </button>

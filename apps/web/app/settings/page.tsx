@@ -164,7 +164,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="text-xs font-medium text-[#64748B] block mb-1">
+      <label className="text-xs font-medium text-ps-label block mb-1">
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
@@ -174,12 +174,12 @@ function Field({
         onChange={(e) => onChange(field, e.target.value)}
         placeholder={placeholder}
         maxLength={maxLength}
-        className={`w-full text-sm text-[#0F172A] border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] ${
-          errors[field] ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"
+        className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${
+          errors[field] ? "border-red-400 bg-red-50" : "border-ps-border"
         }`}
       />
       {hint && !errors[field] && (
-        <p className="text-xs text-[#94A3B8] mt-1">{hint}</p>
+        <p className="text-xs text-ps-hint mt-1">{hint}</p>
       )}
       {errors[field] && (
         <p className="text-xs text-red-500 mt-1">{errors[field]}</p>
@@ -391,24 +391,24 @@ export default function SettingsPage() {
       <div>
         <Link
           href="/"
-          className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] transition-colors mb-1"
+          className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1"
         >
           <ChevronLeft size={13} />
           Dashboard
         </Link>
-        <h1 className="text-xl font-semibold text-[#0F172A]">Settings</h1>
-        <p className="text-sm text-[#64748B] mt-0.5">Firm configuration and preferences</p>
+        <h1 className="text-xl font-semibold text-ps-ink">Settings</h1>
+        <p className="text-sm text-ps-label mt-0.5">Firm configuration and preferences</p>
       </div>
 
       {/* ── Personal Profile — all users ──────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-          <User size={15} className="text-[#64748B]" />
-          <h2 className="text-sm font-semibold text-[#0F172A]">Personal Profile</h2>
+          <User size={15} className="text-ps-label" />
+          <h2 className="text-sm font-semibold text-ps-ink">Personal Profile</h2>
         </div>
         <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="text-xs font-medium text-[#64748B] block mb-1">
+            <label className="text-xs font-medium text-ps-label block mb-1">
               Full Name<span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
@@ -416,18 +416,18 @@ export default function SettingsPage() {
               value={personalName}
               onChange={(e) => setPersonalName(e.target.value)}
               placeholder="e.g. CA Gavin Lobo"
-              className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+              className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#64748B] block mb-1">Email</label>
+            <label className="text-xs font-medium text-ps-label block mb-1">Email</label>
             <input
               type="email"
               value={user?.email ?? ""}
               disabled
-              className="w-full text-sm text-[#94A3B8] border border-[#E2E8F0] rounded-lg px-3 py-2 bg-[#F8FAFC] cursor-not-allowed"
+              className="w-full text-sm text-ps-hint border border-ps-border rounded-lg px-3 py-2 bg-ps-bg cursor-not-allowed"
             />
-            <p className="text-xs text-[#94A3B8] mt-1">Email cannot be changed here</p>
+            <p className="text-xs text-ps-hint mt-1">Email cannot be changed here</p>
           </div>
         </div>
         <div className="px-5 py-3 border-t border-gray-50 flex justify-end">
@@ -444,10 +444,10 @@ export default function SettingsPage() {
       {/* ── Firm Profile — Partner only (firm financials) ────────────────── */}
       <RoleGuard allowed={["Partner"]} redirect={false}>
       {/* ── Firm Profile ─────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-          <Building2 size={15} className="text-[#64748B]" />
-          <h2 className="text-sm font-semibold text-[#0F172A]">Firm Profile</h2>
+          <Building2 size={15} className="text-ps-label" />
+          <h2 className="text-sm font-semibold text-ps-ink">Firm Profile</h2>
         </div>
 
         {loadError && !loading && (
@@ -517,11 +517,11 @@ export default function SettingsPage() {
               <Field label="City" field="city" form={form} onChange={handleChange} errors={errors} placeholder="e.g. Mumbai" />
 
               <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">State</label>
+                <label className="text-xs font-medium text-ps-label block mb-1">State</label>
                 <select
                   value={form.state}
                   onChange={(e) => handleChange("state", e.target.value)}
-                  className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                 >
                   <option value="">Select state…</option>
                   {INDIAN_STATES.map((s) => (
@@ -551,32 +551,32 @@ export default function SettingsPage() {
       </RoleGuard>
 
       {/* ── Financial Year (display only) ────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-          <Calendar size={15} className="text-[#64748B]" />
-          <h2 className="text-sm font-semibold text-[#0F172A]">Financial Year</h2>
+          <Calendar size={15} className="text-ps-label" />
+          <h2 className="text-sm font-semibold text-ps-ink">Financial Year</h2>
         </div>
         <div className="px-5 py-4 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-[#475569]">Current Financial Year</span>
-            <span className="text-sm font-semibold text-[#0F172A]">{fy.label}</span>
+            <span className="text-sm text-ps-label">Current Financial Year</span>
+            <span className="text-sm font-semibold text-ps-ink">{fy.label}</span>
           </div>
-          <p className="text-xs text-[#94A3B8]">
+          <p className="text-xs text-ps-hint">
             Indian financial year runs April 1 to March 31. This is computed automatically from the current date.
           </p>
         </div>
       </div>
 
       {/* ── Security / MFA — all users ───────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
           <ShieldCheck size={15} className="text-blue-600" />
-          <h2 className="text-sm font-semibold text-[#0F172A]">Security</h2>
+          <h2 className="text-sm font-semibold text-ps-ink">Security</h2>
         </div>
         <div className="px-5 py-4 flex items-center justify-between">
           <div>
-            <p className="text-sm text-[#334155]">Enable two-factor authentication (authenticator app) for your account.</p>
-            <p className="text-xs text-[#94A3B8] mt-0.5">Required for Partner accounts.</p>
+            <p className="text-sm text-ps-body">Enable two-factor authentication (authenticator app) for your account.</p>
+            <p className="text-xs text-ps-hint mt-0.5">Required for Partner accounts.</p>
           </div>
           <Link
             href="/settings/security"
@@ -589,15 +589,15 @@ export default function SettingsPage() {
 
       {/* ── Audit Log — Partner only ─────────────────────────────────────── */}
       <RoleGuard allowed={["Partner"]} redirect={false}>
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
             <ShieldCheck size={15} className="text-blue-600" />
-            <h2 className="text-sm font-semibold text-[#0F172A]">Audit Log</h2>
+            <h2 className="text-sm font-semibold text-ps-ink">Audit Log</h2>
           </div>
           <div className="px-5 py-4 flex items-center justify-between">
             <div>
-              <p className="text-sm text-[#334155]">View a timeline of all changes made across clients, journals, compliance and accounts.</p>
-              <p className="text-xs text-[#94A3B8] mt-0.5">Partner access only.</p>
+              <p className="text-sm text-ps-body">View a timeline of all changes made across clients, journals, compliance and accounts.</p>
+              <p className="text-xs text-ps-hint mt-0.5">Partner access only.</p>
             </div>
             <Link
               href="/settings/audit-log"
@@ -610,15 +610,15 @@ export default function SettingsPage() {
       </RoleGuard>
 
       {/* ── Scheduled Reports ───────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
           <Calendar size={15} className="text-blue-600" />
-          <h2 className="text-sm font-semibold text-[#0F172A]">Scheduled Reports</h2>
+          <h2 className="text-sm font-semibold text-ps-ink">Scheduled Reports</h2>
         </div>
         <div className="px-5 py-4 flex items-center justify-between">
           <div>
-            <p className="text-sm text-[#334155]">Automatically email P&L, GST, TDS, and payroll reports to clients on a schedule.</p>
-            <p className="text-xs text-[#94A3B8] mt-0.5">Configure frequency, recipients, and delivery day.</p>
+            <p className="text-sm text-ps-body">Automatically email P&L, GST, TDS, and payroll reports to clients on a schedule.</p>
+            <p className="text-xs text-ps-hint mt-0.5">Configure frequency, recipients, and delivery day.</p>
           </div>
           <Link
             href="/settings/scheduled-reports"
@@ -631,19 +631,19 @@ export default function SettingsPage() {
 
       {/* ── Firm Branding & Document Customization — Partner only ────────── */}
       <RoleGuard allowed={["Partner"]} redirect={false}>
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
             <Palette size={15} className="text-violet-600" />
-            <h2 className="text-sm font-semibold text-[#0F172A]">Branding &amp; Document Customization</h2>
+            <h2 className="text-sm font-semibold text-ps-ink">Branding &amp; Document Customization</h2>
           </div>
 
-          <div className="divide-y divide-[#F8FAFC]">
+          <div className="divide-y divide-ps-bg">
             <div className="px-5 py-4 flex items-center justify-between">
               <div className="flex items-start gap-3">
                 <Palette size={15} className="text-violet-500 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-[#0F172A]">Firm Branding</p>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">Logo, colors, fonts and social links applied to all client documents.</p>
+                  <p className="text-sm font-medium text-ps-ink">Firm Branding</p>
+                  <p className="text-xs text-ps-hint mt-0.5">Logo, colors, fonts and social links applied to all client documents.</p>
                 </div>
               </div>
               <Link
@@ -658,8 +658,8 @@ export default function SettingsPage() {
               <div className="flex items-start gap-3">
                 <Hash size={15} className="text-blue-500 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-[#0F172A]">Invoice Settings</p>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">Invoice numbering format, bank details, UPI, and footer text.</p>
+                  <p className="text-sm font-medium text-ps-ink">Invoice Settings</p>
+                  <p className="text-xs text-ps-hint mt-0.5">Invoice numbering format, bank details, UPI, and footer text.</p>
                 </div>
               </div>
               <Link
@@ -674,8 +674,8 @@ export default function SettingsPage() {
               <div className="flex items-start gap-3">
                 <FileText size={15} className="text-indigo-500 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-[#0F172A]">Invoice Templates</p>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">Layout styles: Classic, Modern, Professional CA, Corporate, Minimal.</p>
+                  <p className="text-sm font-medium text-ps-ink">Invoice Templates</p>
+                  <p className="text-xs text-ps-hint mt-0.5">Layout styles: Classic, Modern, Professional CA, Corporate, Minimal.</p>
                 </div>
               </div>
               <Link
@@ -690,8 +690,8 @@ export default function SettingsPage() {
               <div className="flex items-start gap-3">
                 <Hash size={15} className="text-violet-500 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-[#0F172A]">Firm HSN/SAC Library</p>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">The HSN/SAC codes your firm bills against. You own and curate this list — Caflow does not ship or suggest classifications.</p>
+                  <p className="text-sm font-medium text-ps-ink">Firm HSN/SAC Library</p>
+                  <p className="text-xs text-ps-hint mt-0.5">The HSN/SAC codes your firm bills against. You own and curate this list — Caflow does not ship or suggest classifications.</p>
                 </div>
               </div>
               <Link
@@ -706,8 +706,8 @@ export default function SettingsPage() {
               <div className="flex items-start gap-3">
                 <Scale size={15} className="text-indigo-500 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-[#0F172A]">Statutory Values</p>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">Your firm&apos;s reading of the state professional-tax notifications. Twenty-two states levy it and four are built in; the rest deduct nothing until you record them here, once, for every client.</p>
+                  <p className="text-sm font-medium text-ps-ink">Statutory Values</p>
+                  <p className="text-xs text-ps-hint mt-0.5">Your firm&apos;s reading of the state professional-tax notifications. Twenty-two states levy it and four are built in; the rest deduct nothing until you record them here, once, for every client.</p>
                 </div>
               </div>
               <Link
@@ -722,8 +722,8 @@ export default function SettingsPage() {
               <div className="flex items-start gap-3">
                 <Globe2 size={15} className="text-sky-500 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-[#0F172A]">DTAA Treaty Rates</p>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">Your firm&apos;s reading of the treaty rates it withholds under, per country and nature of income. Ships empty and is never seeded — India has agreements with over ninety countries.</p>
+                  <p className="text-sm font-medium text-ps-ink">DTAA Treaty Rates</p>
+                  <p className="text-xs text-ps-hint mt-0.5">Your firm&apos;s reading of the treaty rates it withholds under, per country and nature of income. Ships empty and is never seeded — India has agreements with over ninety countries.</p>
                 </div>
               </div>
               <Link
@@ -738,8 +738,8 @@ export default function SettingsPage() {
               <div className="flex items-start gap-3">
                 <Coins size={15} className="text-amber-500 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-[#0F172A]">Multi-Currency</p>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">Whether this firm records foreign-currency documents at all, and which clients may. Off by default — a client whose books are not kept in rupees is not supported.</p>
+                  <p className="text-sm font-medium text-ps-ink">Multi-Currency</p>
+                  <p className="text-xs text-ps-hint mt-0.5">Whether this firm records foreign-currency documents at all, and which clients may. Off by default — a client whose books are not kept in rupees is not supported.</p>
                 </div>
               </div>
               <Link
@@ -754,8 +754,8 @@ export default function SettingsPage() {
               <div className="flex items-start gap-3">
                 <Mail size={15} className="text-teal-500 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-[#0F172A]">Email Templates</p>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">Customize emails sent for invoices, engagements, documents, and reminders.</p>
+                  <p className="text-sm font-medium text-ps-ink">Email Templates</p>
+                  <p className="text-xs text-ps-hint mt-0.5">Customize emails sent for invoices, engagements, documents, and reminders.</p>
                 </div>
               </div>
               <Link
@@ -777,8 +777,8 @@ export default function SettingsPage() {
         </div>
         <div className="px-5 py-4 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-[#0F172A]">Sign Out</p>
-            <p className="text-xs text-[#94A3B8] mt-0.5">
+            <p className="text-sm font-medium text-ps-ink">Sign Out</p>
+            <p className="text-xs text-ps-hint mt-0.5">
               You will be redirected to the login page.
             </p>
           </div>

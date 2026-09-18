@@ -676,22 +676,22 @@ export default function AttendancePage() {
   ];
 
   if (loading) {
-    return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading...</p></div>;
+    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><p className="text-ps-label">Loading...</p></div>;
   }
 
   if (loadFailed) {
     return (
-      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+      <div className="min-h-screen bg-ps-bg flex items-center justify-center">
         <div className="text-center">
           <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load attendance data — the request failed or timed out.</p>
-          <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-8">
+    <div className="min-h-screen bg-ps-bg p-8">
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 flex items-center gap-3">
           <Link href="/payroll">
@@ -700,8 +700,8 @@ export default function AttendancePage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-[#0F172A]">Attendance &amp; Leave</h1>
-            <p className="text-sm text-[#64748B] mt-0.5">Track monthly attendance and leave balances</p>
+            <h1 className="text-2xl font-bold text-ps-ink">Attendance &amp; Leave</h1>
+            <p className="text-sm text-ps-label mt-0.5">Track monthly attendance and leave balances</p>
           </div>
         </div>
 
@@ -719,7 +719,7 @@ export default function AttendancePage() {
                 <div className="flex flex-wrap gap-4 items-end justify-between">
                   <div className="flex gap-4 items-end">
                     <div>
-                      <label className="block text-xs font-medium text-[#334155] mb-1">Month</label>
+                      <label className="block text-xs font-medium text-ps-body mb-1">Month</label>
                       <select
                         className="border rounded-lg px-3 py-2 text-sm"
                         value={attMonth}
@@ -729,7 +729,7 @@ export default function AttendancePage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-[#334155] mb-1">Year</label>
+                      <label className="block text-xs font-medium text-ps-body mb-1">Year</label>
                       <input
                         type="number"
                         className="border rounded-lg px-3 py-2 text-sm w-24"
@@ -740,7 +740,7 @@ export default function AttendancePage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
+                      <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
                       <select
                         className="border rounded-lg px-3 py-2 text-sm"
                         value={attClient}
@@ -809,7 +809,7 @@ export default function AttendancePage() {
             </Card>
 
             {rosterOnScreen.length === 0 ? (
-              <Card><CardContent className="py-12 text-center text-[#94A3B8]">
+              <Card><CardContent className="py-12 text-center text-ps-hint">
                 {employees.length === 0
                   ? "No employees found. Add employees in Payroll first."
                   : `No employees on ${clientNames[attClient] ?? "this client"}'s roster. Add them in Payroll first, or choose another client.`}
@@ -820,7 +820,7 @@ export default function AttendancePage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
+                        <tr className="border-b text-xs font-medium text-ps-label uppercase tracking-wide">
                           <th className="text-left py-3 px-4">Employee</th>
                           <th className="text-center py-3 px-3">Working Days</th>
                           <th className="text-center py-3 px-3">Days Present</th>
@@ -844,10 +844,10 @@ export default function AttendancePage() {
                           const isEntered = entered.has(emp.id);
                           const isTouched = touched.has(emp.id);
                           return (
-                            <tr key={emp.id} className={`border-b hover:bg-[#F8FAFC] ${remainder < 0 ? "bg-red-50" : ""}`}>
+                            <tr key={emp.id} className={`border-b hover:bg-ps-bg ${remainder < 0 ? "bg-red-50" : ""}`}>
                               <td className="py-3 px-4">
-                                <div className="font-medium text-[#0F172A]">{emp.name}</div>
-                                {emp.designation && <div className="text-xs text-[#64748B]">{emp.designation}</div>}
+                                <div className="font-medium text-ps-ink">{emp.name}</div>
+                                {emp.designation && <div className="text-xs text-ps-label">{emp.designation}</div>}
                                 {/* The whole point of the fix, on the row. A seeded
                                     26/26 and a saved 26/26 used to look identical,
                                     and the old Save turned every one of the first
@@ -885,12 +885,12 @@ export default function AttendancePage() {
                                     entered vs {row.working_days} working
                                   </span>
                                 ) : (
-                                  <span className={`font-semibold ${lop > 0 ? "text-red-600" : "text-[#94A3B8]"}`}>{lop}</span>
+                                  <span className={`font-semibold ${lop > 0 ? "text-red-600" : "text-ps-hint"}`}>{lop}</span>
                                 )}
                               </td>
                               <td className="py-3 px-3 text-center">
                                 {remainder < 0
-                                  ? <span className="text-[#94A3B8]">—</span>
+                                  ? <span className="text-ps-hint">—</span>
                                   : <span className="font-semibold text-green-700">{netDays}</span>}
                               </td>
                             </tr>
@@ -910,7 +910,7 @@ export default function AttendancePage() {
               <CardContent className="pt-5">
                 <div className="flex gap-4 items-end">
                   <div>
-                    <label className="block text-xs font-medium text-[#334155] mb-1">Year</label>
+                    <label className="block text-xs font-medium text-ps-body mb-1">Year</label>
                     <input
                       type="number"
                       className="border rounded-lg px-3 py-2 text-sm w-24"
@@ -927,7 +927,7 @@ export default function AttendancePage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Leave Balances — {leaveYear}</CardTitle>
-                <p className="text-xs text-[#64748B] mt-0.5">
+                <p className="text-xs text-ps-label mt-0.5">
                   Used leave is aggregated from attendance records. Edit the annual allocation per employee.
                 </p>
                 {/* PAY-24. The screen used to fill an unrecorded entitlement
@@ -947,20 +947,20 @@ export default function AttendancePage() {
                 {leaveLoadFailed ? (
                   <div className="p-8 text-center">
                     <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load leave balances — the request failed or timed out.</p>
-                    <button onClick={() => loadLeaveBalances()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                    <button onClick={() => loadLeaveBalances()} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
                   </div>
                 ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
+                      <tr className="border-b text-xs font-medium text-ps-label uppercase tracking-wide">
                         <th className="text-left py-3 px-4">Employee</th>
                         <th className="text-center py-3 px-3" colSpan={3}>Casual Leave</th>
                         <th className="text-center py-3 px-3" colSpan={3}>Sick Leave</th>
                         <th className="text-center py-3 px-3" colSpan={3}>Earned Leave</th>
                         <th className="py-3 px-4"></th>
                       </tr>
-                      <tr className="border-b text-xs text-[#94A3B8]">
+                      <tr className="border-b text-xs text-ps-hint">
                         <th className="py-2 px-4"></th>
                         <th className="py-2 px-2 text-center font-normal">Allotted</th>
                         <th className="py-2 px-2 text-center font-normal">Used</th>
@@ -989,7 +989,7 @@ export default function AttendancePage() {
                         const slRem = rem(form.sick_leave_balance ?? lb.sick_leave_balance, lb.sick_used);
                         const elRem = rem(form.earned_leave_balance ?? lb.earned_leave_balance, lb.earned_used);
                         return (
-                          <tr key={lb.employee_id} className="border-b hover:bg-[#F8FAFC]">
+                          <tr key={lb.employee_id} className="border-b hover:bg-ps-bg">
                             <td className="py-3 px-4 font-medium">{emp?.name ?? lb.employee_id}</td>
                             {/* CL */}
                             <td className="py-2 px-2 text-center">
@@ -1002,13 +1002,13 @@ export default function AttendancePage() {
                                   className="w-14 border rounded px-2 py-1 text-center text-xs"
                                 />
                               ) : lb.casual_leave_balance == null
-                                  ? <span className="text-[#94A3B8]" title="No entitlement recorded for this year">—</span>
+                                  ? <span className="text-ps-hint" title="No entitlement recorded for this year">—</span>
                                   : <span>{lb.casual_leave_balance}</span>}
                             </td>
-                            <td className="py-2 px-2 text-center text-[#64748B]">{lb.casual_used ?? 0}</td>
+                            <td className="py-2 px-2 text-center text-ps-label">{lb.casual_used ?? 0}</td>
                             <td className="py-2 px-2 text-center">
                               {clRem == null
-                                ? <span className="text-[#94A3B8]">—</span>
+                                ? <span className="text-ps-hint">—</span>
                                 : <span className={clRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{clRem}</span>}
                             </td>
                             {/* SL */}
@@ -1022,13 +1022,13 @@ export default function AttendancePage() {
                                   className="w-14 border rounded px-2 py-1 text-center text-xs"
                                 />
                               ) : lb.sick_leave_balance == null
-                                  ? <span className="text-[#94A3B8]" title="No entitlement recorded for this year">—</span>
+                                  ? <span className="text-ps-hint" title="No entitlement recorded for this year">—</span>
                                   : <span>{lb.sick_leave_balance}</span>}
                             </td>
-                            <td className="py-2 px-2 text-center text-[#64748B]">{lb.sick_used ?? 0}</td>
+                            <td className="py-2 px-2 text-center text-ps-label">{lb.sick_used ?? 0}</td>
                             <td className="py-2 px-2 text-center">
                               {slRem == null
-                                ? <span className="text-[#94A3B8]">—</span>
+                                ? <span className="text-ps-hint">—</span>
                                 : <span className={slRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{slRem}</span>}
                             </td>
                             {/* EL */}
@@ -1042,13 +1042,13 @@ export default function AttendancePage() {
                                   className="w-14 border rounded px-2 py-1 text-center text-xs"
                                 />
                               ) : lb.earned_leave_balance == null
-                                  ? <span className="text-[#94A3B8]" title="No entitlement recorded for this year">—</span>
+                                  ? <span className="text-ps-hint" title="No entitlement recorded for this year">—</span>
                                   : <span>{lb.earned_leave_balance}</span>}
                             </td>
-                            <td className="py-2 px-2 text-center text-[#64748B]">{lb.earned_used ?? 0}</td>
+                            <td className="py-2 px-2 text-center text-ps-label">{lb.earned_used ?? 0}</td>
                             <td className="py-2 px-2 text-center">
                               {elRem == null
-                                ? <span className="text-[#94A3B8]">—</span>
+                                ? <span className="text-ps-hint">—</span>
                                 : <span className={elRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{elRem}</span>}
                             </td>
                             <td className="py-2 px-4">
@@ -1097,7 +1097,7 @@ export default function AttendancePage() {
                 <CardTitle className="text-base">
                   One-time &amp; variable earnings — {MONTHS[attMonth - 1]} {attYear}
                 </CardTitle>
-                <p className="text-xs text-[#64748B] mt-1">
+                <p className="text-xs text-ps-label mt-1">
                   Incentive, bonus, ex-gratia, arrears. These are <strong>not</strong> prorated by
                   loss of pay — a decided amount is not a monthly rate. Each row states whether it
                   is PF wages (EPF Act s.2(b)), ESI wages (ESI Act s.2(22)) and salary
@@ -1107,7 +1107,7 @@ export default function AttendancePage() {
               <CardContent>
                 <div className="flex flex-wrap gap-4 items-end mb-4">
                   <div>
-                    <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
+                    <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
                     <select
                       className="border rounded-lg px-3 py-2 text-sm min-w-[220px]"
                       value={earnClient}
@@ -1132,7 +1132,7 @@ export default function AttendancePage() {
                           className="flex items-center gap-1.5">
                     <Save size={14} />{earnSaving ? "Saving…" : "Save"}
                   </Button>
-                  {earnMsg && <span className="text-sm text-[#334155]">{earnMsg}</span>}
+                  {earnMsg && <span className="text-sm text-ps-body">{earnMsg}</span>}
                 </div>
 
                 {/* THE COST BRAKE (migration 332). Payroll is switched on per
@@ -1144,8 +1144,8 @@ export default function AttendancePage() {
                   <div className={`mb-4 rounded-lg border px-3 py-2 text-sm flex
                                    items-start justify-between gap-3 ${
                     payrollOn[earnClient]
-                      ? "border-[#E2E8F0] bg-white text-[#334155]"
-                      : "border-slate-300 bg-slate-50 text-[#334155]"}`}>
+                      ? "border-ps-border bg-white text-ps-body"
+                      : "border-slate-300 bg-slate-50 text-ps-body"}`}>
                     <span>
                       {payrollOn[earnClient] ? (
                         <>This firm runs payroll for{" "}
@@ -1181,11 +1181,11 @@ export default function AttendancePage() {
                 )}
 
                 {!earnClient ? (
-                  <p className="text-sm text-[#64748B]">Select a client to record earnings.</p>
+                  <p className="text-sm text-ps-label">Select a client to record earnings.</p>
                 ) : earnLoading ? (
-                  <p className="text-sm text-[#64748B]">Loading…</p>
+                  <p className="text-sm text-ps-label">Loading…</p>
                 ) : earnings.length === 0 ? (
-                  <p className="text-sm text-[#64748B]">
+                  <p className="text-sm text-ps-label">
                     Nothing recorded for this month. That is a real answer, not a blank —
                     most months have none.
                   </p>
@@ -1193,7 +1193,7 @@ export default function AttendancePage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b text-left text-xs text-[#64748B]">
+                        <tr className="border-b text-left text-xs text-ps-label">
                           <th className="py-2 pr-3">Employee</th>
                           <th className="py-2 pr-3">Kind</th>
                           <th className="py-2 pr-3">Description</th>
@@ -1260,7 +1260,7 @@ export default function AttendancePage() {
                                   amount simply shows nothing instead of a number
                                   that is not what was typed. */}
                               {paiseFromRupeeInput(r.amount_rs) !== null && (
-                                <div className="text-[11px] text-[#64748B] text-right mt-0.5">
+                                <div className="text-[11px] text-ps-label text-right mt-0.5">
                                   {formatPaise(paiseFromRupeeInput(r.amount_rs) as number)}
                                 </div>
                               )}
@@ -1291,7 +1291,7 @@ export default function AttendancePage() {
                             ))}
                             <td className="py-2">
                               <button
-                                className="text-[#64748B] hover:text-red-600 disabled:opacity-40"
+                                className="text-ps-label hover:text-red-600 disabled:opacity-40"
                                 disabled={earnLocked}
                                 aria-label="Remove earning"
                                 onClick={() => setEarnings(prev =>

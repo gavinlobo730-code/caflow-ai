@@ -120,40 +120,40 @@ function SetRetainerModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">
+          <h3 className="text-sm font-semibold text-ps-ink">
             {existing ? "Edit" : "Set"} Retainer — {client.client_name}
           </h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]" aria-label="Close">
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div>
-          <label htmlFor="retainer-fee" className="text-xs font-medium text-[#334155] block mb-1">Fee per period (₹)</label>
+          <label htmlFor="retainer-fee" className="text-xs font-medium text-ps-body block mb-1">Fee per period (₹)</label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8] text-sm">₹</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ps-hint text-sm">₹</span>
             <input
               id="retainer-fee"
               type="text"
               inputMode="decimal"
-              className="w-full border border-[#E2E8F0] rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="15000"
               value={feeRupees}
               onChange={e => { setFeeRupees(e.target.value); setError(null); }}
             />
           </div>
-          <p className="text-[10px] text-[#94A3B8] mt-1">Stored as integer paise</p>
+          <p className="text-[10px] text-ps-hint mt-1">Stored as integer paise</p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label htmlFor="retainer-cadence" className="text-xs font-medium text-[#334155] block mb-1">Billing cycle</label>
+            <label htmlFor="retainer-cadence" className="text-xs font-medium text-ps-body block mb-1">Billing cycle</label>
             <select
               id="retainer-cadence"
-              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={cadence}
               onChange={e => setCadence(e.target.value)}
             >
@@ -161,12 +161,12 @@ function SetRetainerModal({
             </select>
           </div>
           <div>
-            <label htmlFor="retainer-gst" className="text-xs font-medium text-[#334155] block mb-1">GST rate (%)</label>
+            <label htmlFor="retainer-gst" className="text-xs font-medium text-ps-body block mb-1">GST rate (%)</label>
             <input
               id="retainer-gst"
               type="text"
               inputMode="decimal"
-              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={gstPercent}
               onChange={e => { setGstPercent(e.target.value); setError(null); }}
             />
@@ -174,28 +174,28 @@ function SetRetainerModal({
         </div>
 
         <div>
-          <label htmlFor="retainer-service" className="text-xs font-medium text-[#334155] block mb-1">Product / Service</label>
+          <label htmlFor="retainer-service" className="text-xs font-medium text-ps-body block mb-1">Product / Service</label>
           <select
             id="retainer-service"
-            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={serviceId}
             onChange={e => { setServiceId(e.target.value); setError(null); }}
           >
             <option value="">Select…</option>
             {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <p className="text-[10px] text-[#94A3B8] mt-1">
+          <p className="text-[10px] text-ps-hint mt-1">
             The invoice line comes from the practice&apos;s own service catalogue, so
             the SAC and rate are the ones already recorded.
           </p>
         </div>
 
         <div>
-          <label htmlFor="retainer-next" className="text-xs font-medium text-[#334155] block mb-1">Next invoice due</label>
+          <label htmlFor="retainer-next" className="text-xs font-medium text-ps-body block mb-1">Next invoice due</label>
           <input
             id="retainer-next"
             type="date"
-            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={nextRun}
             onChange={e => setNextRun(e.target.value)}
           />
@@ -204,7 +204,7 @@ function SetRetainerModal({
         {error && <p className="text-[11px] text-red-600">{error}</p>}
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]">
+          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
             Cancel
           </button>
           <button
@@ -314,19 +314,19 @@ export default function RetainerPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-[#0F172A]">Monthly Retainer Tracker</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">Monthly Retainer Tracker</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             Fixed-fee arrangements, saved for the firm. Generating raises a real draft
             invoice in the practice&apos;s books.
           </p>
         </div>
         <Link
           href="/billing"
-          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md hover:bg-[#F8FAFC]"
+          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg"
         >
           Billing <ExternalLink size={13} />
         </Link>
@@ -368,86 +368,86 @@ export default function RetainerPage() {
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
               <Users className="w-4 h-4 text-blue-600" />
             </div>
-            <span className="text-xs text-[#64748B]">Active retainers</span>
+            <span className="text-xs text-ps-label">Active retainers</span>
           </div>
-          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : active.length}</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">of {clients.length} clients</p>
+          <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : active.length}</p>
+          <p className="text-xs text-ps-hint mt-0.5">of {clients.length} clients</p>
         </div>
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
               <IndianRupee className="w-4 h-4 text-green-600" />
             </div>
-            <span className="text-xs text-[#64748B]">Fees per period</span>
+            <span className="text-xs text-ps-label">Fees per period</span>
           </div>
-          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : formatPaise(totalPerPeriod)}</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">Sum of active retainers, before GST</p>
+          <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : formatPaise(totalPerPeriod)}</p>
+          <p className="text-xs text-ps-hint mt-0.5">Sum of active retainers, before GST</p>
         </div>
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
               <FileText className="w-4 h-4 text-amber-600" />
             </div>
-            <span className="text-xs text-[#64748B]">Due to invoice</span>
+            <span className="text-xs text-ps-label">Due to invoice</span>
           </div>
-          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : dueNow.length}</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">Next run date reached</p>
+          <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : dueNow.length}</p>
+          <p className="text-xs text-ps-hint mt-0.5">Next run date reached</p>
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-[#0F172A]">Retainer clients</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">
+          <h2 className="text-sm font-semibold text-ps-ink">Retainer clients</h2>
+          <p className="text-xs text-ps-hint mt-0.5">
             Generating creates a DRAFT — review and issue it from Billing. Nothing is
             posted to the ledger or sent to the client until you do.
           </p>
         </div>
 
         {loading ? (
-          <div className="px-5 py-8 text-center text-sm text-[#94A3B8]">Loading…</div>
+          <div className="px-5 py-8 text-center text-sm text-ps-hint">Loading…</div>
         ) : clients.length === 0 ? (
-          <div className="px-5 py-8 text-center text-sm text-[#94A3B8]">No clients found — add clients first</div>
+          <div className="px-5 py-8 text-center text-sm text-ps-hint">No clients found — add clients first</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-50">
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-5 py-3">Client</th>
-                  <th className="text-right text-xs font-medium text-[#94A3B8] px-3 py-3">Fee</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Cycle</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Next due</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Compliance</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-5 py-3">Actions</th>
+                  <th className="text-left text-xs font-medium text-ps-hint px-5 py-3">Client</th>
+                  <th className="text-right text-xs font-medium text-ps-hint px-3 py-3">Fee</th>
+                  <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Cycle</th>
+                  <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Next due</th>
+                  <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Compliance</th>
+                  <th className="text-left text-xs font-medium text-ps-hint px-5 py-3">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {clients.map(client => {
                   const sched = byClient.get(client.id);
                   const busy = sched ? busyId === sched.id : false;
                   return (
-                    <tr key={client.id} className="hover:bg-[#F8FAFC]/50">
+                    <tr key={client.id} className="hover:bg-ps-bg/50">
                       <td className="px-5 py-3">
-                        <p className="text-sm font-medium text-[#0F172A]">{client.client_name}</p>
-                        {client.gstin && <p className="text-[10px] font-mono text-[#94A3B8]">{client.gstin}</p>}
+                        <p className="text-sm font-medium text-ps-ink">{client.client_name}</p>
+                        {client.gstin && <p className="text-[10px] font-mono text-ps-hint">{client.gstin}</p>}
                       </td>
                       <td className="px-3 py-3 text-right">
                         {sched
-                          ? <span className={`text-sm font-semibold ${sched.is_active ? "text-[#0F172A]" : "text-[#94A3B8] line-through"}`}>
+                          ? <span className={`text-sm font-semibold ${sched.is_active ? "text-ps-ink" : "text-ps-hint line-through"}`}>
                               {formatPaise(sched.amount_paise)}
                             </span>
-                          : <span className="text-xs text-[#CBD5E1]">Not set</span>}
+                          : <span className="text-xs text-ps-disabled">Not set</span>}
                       </td>
-                      <td className="px-3 py-3 text-xs text-[#475569]">
+                      <td className="px-3 py-3 text-xs text-ps-label">
                         {sched ? (CADENCES.find(c => c.value === sched.cadence)?.label ?? sched.cadence) : "—"}
                       </td>
-                      <td className="px-3 py-3 text-xs text-[#475569]">
+                      <td className="px-3 py-3 text-xs text-ps-label">
                         {sched?.next_run_date ?? "—"}
                       </td>
                       <td className="px-3 py-3">
@@ -484,7 +484,7 @@ export default function RetainerPage() {
                             <button
                               disabled={busy}
                               onClick={() => toggleActive(sched)}
-                              className="text-xs text-[#94A3B8] hover:text-[#475569] whitespace-nowrap flex items-center gap-1 disabled:opacity-40"
+                              className="text-xs text-ps-hint hover:text-ps-label whitespace-nowrap flex items-center gap-1 disabled:opacity-40"
                             >
                               <Power className="w-3 h-3" />
                               {sched.is_active ? "Pause" : "Resume"}

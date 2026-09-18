@@ -151,8 +151,8 @@ export default function EmployeeActivatePage() {
   }
 
   const shell = (children: React.ReactNode) => (
-    <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-xl border border-[#F1F5F9] p-6 shadow-sm">
+    <div className="min-h-screen bg-ps-bg flex items-center justify-center p-6">
+      <div className="w-full max-w-md bg-white rounded-xl border border-ps-muted p-6 shadow-sm">
         {children}
       </div>
     </div>
@@ -160,7 +160,7 @@ export default function EmployeeActivatePage() {
 
   if (stage === "verifying") {
     return shell(
-      <div className="flex items-center gap-3 text-[#64748B]">
+      <div className="flex items-center gap-3 text-ps-label">
         <Loader2 className="w-5 h-5 animate-spin" />
         <span className="text-sm">Checking your invitation…</span>
       </div>
@@ -173,14 +173,14 @@ export default function EmployeeActivatePage() {
         <div className="flex items-start gap-2 mb-3">
           <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
           <div>
-            <h1 className="text-base font-semibold text-[#0F172A]">
+            <h1 className="text-base font-semibold text-ps-ink">
               This invitation cannot be used
             </h1>
             {/* Deliberately one message for every cause. The backend returns an
                 identical 404 whether the token is unknown, expired, already
                 used, or issued to a different address — saying which would let
                 someone probe for valid links. */}
-            <p className="text-sm text-[#64748B] mt-1">
+            <p className="text-sm text-ps-label mt-1">
               It may have expired, already been used, or been sent to a
               different email address. Ask your employer to send a new one.
             </p>
@@ -199,15 +199,15 @@ export default function EmployeeActivatePage() {
         <div className="flex items-start gap-2 mb-4">
           <ShieldCheck className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
           <div>
-            <h1 className="text-base font-semibold text-[#0F172A]">You&apos;re all set</h1>
-            <p className="text-sm text-[#64748B] mt-1">
+            <h1 className="text-base font-semibold text-ps-ink">You&apos;re all set</h1>
+            <p className="text-sm text-ps-label mt-1">
               You can now view your payslips and leave balance any time.
             </p>
           </div>
         </div>
         <button
           onClick={() => router.replace("/portal/employee")}
-          className="w-full bg-[#0F172A] text-white rounded-lg py-2.5 text-sm font-medium hover:bg-[#1E293B]"
+          className="w-full bg-brand-dark text-white rounded-lg py-2.5 text-sm font-medium hover:bg-brand-dark"
         >
           View my payslips
         </button>
@@ -218,22 +218,22 @@ export default function EmployeeActivatePage() {
   if (stage === "reauth") {
     return shell(
       <form onSubmit={verifyReauth}>
-        <h1 className="text-base font-semibold text-[#0F172A]">Confirm it&apos;s you</h1>
-        <p className="text-sm text-[#64748B] mt-1 mb-4">
+        <h1 className="text-base font-semibold text-ps-ink">Confirm it&apos;s you</h1>
+        <p className="text-sm text-ps-label mt-1 mb-4">
           We emailed you a short code. Enter it to finish setting your password.
         </p>
         <input
           value={reauthOtp}
           onChange={(e) => setReauthOtp(e.target.value)}
           placeholder="6-digit code"
-          className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm mb-3"
+          className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm mb-3"
           autoComplete="one-time-code"
         />
         {reauthError && <p className="text-sm text-red-600 mb-3">{reauthError}</p>}
         <button
           type="submit"
           disabled={saving || !reauthOtp.trim()}
-          className="w-full bg-[#0F172A] text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
+          className="w-full bg-brand-dark text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
         >
           {saving ? "Confirming…" : "Confirm"}
         </button>
@@ -243,8 +243,8 @@ export default function EmployeeActivatePage() {
 
   return shell(
     <form onSubmit={handleSetPassword}>
-      <h1 className="text-base font-semibold text-[#0F172A]">Choose a password</h1>
-      <p className="text-sm text-[#64748B] mt-1 mb-4">
+      <h1 className="text-base font-semibold text-ps-ink">Choose a password</h1>
+      <p className="text-sm text-ps-label mt-1 mb-4">
         Your access is active. Set a password so you can sign in whenever you
         like, without waiting for another email.
       </p>
@@ -255,13 +255,13 @@ export default function EmployeeActivatePage() {
           value={pw}
           onChange={(e) => setPw(e.target.value)}
           placeholder={`At least ${MIN_LENGTH} characters`}
-          className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 pr-10 text-sm"
+          className="w-full border border-ps-border rounded-lg px-3 py-2 pr-10 text-sm"
           autoComplete="new-password"
         />
         <button
           type="button"
           onClick={() => setShowPw((v) => !v)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8]"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-ps-hint"
           aria-label={showPw ? "Hide password" : "Show password"}
         >
           {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -273,7 +273,7 @@ export default function EmployeeActivatePage() {
         value={pw2}
         onChange={(e) => setPw2(e.target.value)}
         placeholder="Repeat password"
-        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm mb-3"
+        className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm mb-3"
         autoComplete="new-password"
       />
 
@@ -282,7 +282,7 @@ export default function EmployeeActivatePage() {
       <button
         type="submit"
         disabled={saving}
-        className="w-full bg-[#0F172A] text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
+        className="w-full bg-brand-dark text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
       >
         {saving ? "Saving…" : "Set password"}
       </button>

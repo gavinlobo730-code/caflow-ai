@@ -52,11 +52,11 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-[#F8FAFC]">
+    <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-ps-bg">
       <div className="w-full max-w-[380px]">
         <div className="flex items-center gap-2.5 justify-center mb-8">
           <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-[13px] font-bold text-white">P</div>
-          <span className="text-[16px] font-bold text-[#0F172A]">PracticeSync AI</span>
+          <span className="text-[16px] font-bold text-ps-ink">PracticeSync AI</span>
         </div>
 
         {sent ? (
@@ -64,9 +64,9 @@ export default function ForgotPasswordPage() {
             <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
               <MailCheck size={22} className="text-blue-600" />
             </div>
-            <h2 className="text-[22px] font-bold text-[#0F172A] tracking-tight">Check your email</h2>
-            <p className="text-[14px] text-[#64748B] mt-2 leading-relaxed">
-              If an account exists for <span className="font-medium text-[#334155]">{email.trim()}</span>,
+            <h2 className="text-[22px] font-bold text-ps-ink tracking-tight">Check your email</h2>
+            <p className="text-[14px] text-ps-label mt-2 leading-relaxed">
+              If an account exists for <span className="font-medium text-ps-body">{email.trim()}</span>,
               we&apos;ve sent a link to reset your password. It expires shortly, so use it soon.
             </p>
             <Link
@@ -79,19 +79,19 @@ export default function ForgotPasswordPage() {
         ) : (
           <>
             <div className="mb-8">
-              <h2 className="text-[26px] font-bold text-[#0F172A] tracking-tight">Forgot your password?</h2>
-              <p className="text-[14px] text-[#64748B] mt-1">
+              <h2 className="text-[26px] font-bold text-ps-ink tracking-tight">Forgot your password?</h2>
+              <p className="text-[14px] text-ps-label mt-1">
                 Enter the email on your account and we&apos;ll send you a link to reset it.
               </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-1.5">
-                <label className="block text-[13px] font-semibold text-[#0F172A]">Email address</label>
+                <label className="block text-[13px] font-semibold text-ps-ink">Email address</label>
                 <input
                   autoFocus type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                   placeholder={isPortal ? "you@company.com" : "ca@yourfirm.com"}
-                  className="w-full bg-white border border-[#E2E8F0] rounded-lg px-4 py-3 text-[14px] text-[#0F172A] placeholder:text-[#CBD5E1] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-[14px] text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
                 />
               </div>
 
@@ -116,7 +116,7 @@ export default function ForgotPasswordPage() {
               </button>
             </form>
 
-            <p className="text-center text-[13px] text-[#94A3B8] mt-6">
+            <p className="text-center text-[13px] text-ps-hint mt-6">
               <Link href={backHref} className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-medium transition-colors">
                 <ArrowLeft size={14} /> Back to sign in
               </Link>

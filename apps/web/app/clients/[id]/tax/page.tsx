@@ -43,8 +43,8 @@ export default function TaxPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       <div>
-        <h2 className="text-sm font-semibold text-[#1E293B]">Income Tax</h2>
-        <p className="text-xs text-[#94A3B8] mt-0.5">
+        <h2 className="text-sm font-semibold text-ps-ink">Income Tax</h2>
+        <p className="text-xs text-ps-hint mt-0.5">
           Computation workspace, ITR preparation, and 26AS reconciliation
         </p>
       </div>
@@ -64,29 +64,29 @@ export default function TaxPage() {
             <button
               key={mod.id}
               onClick={() => router.push(`/clients/${clientId}/${mod.href}`)}
-              className="w-full bg-white rounded-xl border border-[#F1F5F9] px-5 py-4 flex items-center gap-4 hover:bg-[#F8FAFC] hover:border-[#E2E8F0] text-left transition-colors group"
+              className="w-full bg-white rounded-xl border border-ps-muted px-5 py-4 flex items-center gap-4 hover:bg-ps-bg hover:border-ps-border text-left transition-colors group"
             >
               <div className="w-10 h-10 rounded-lg border border-blue-100 bg-blue-50 flex items-center justify-center flex-shrink-0">
                 <Icon size={18} className="text-blue-600" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-xs font-semibold text-[#1E293B]">{mod.title}</p>
-                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B]">
+                  <p className="text-xs font-semibold text-ps-ink">{mod.title}</p>
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-ps-muted text-ps-label">
                     {mod.badge}
                   </span>
                 </div>
-                <p className="text-[11px] text-[#64748B] mt-0.5">{mod.desc}</p>
+                <p className="text-[11px] text-ps-label mt-0.5">{mod.desc}</p>
               </div>
-              <ArrowRight size={14} className="text-[#CBD5E1] flex-shrink-0 group-hover:text-[#94A3B8]" />
+              <ArrowRight size={14} className="text-ps-disabled flex-shrink-0 group-hover:text-ps-hint" />
             </button>
           );
         })}
       </div>
 
-      <div className="bg-[#F8FAFC] border border-[#F1F5F9] rounded-xl p-4 space-y-2">
-        <p className="text-xs font-semibold text-[#334155]">Tax Filing Rules</p>
-        <ul className="text-[11px] text-[#64748B] space-y-1">
+      <div className="bg-ps-bg border border-ps-muted rounded-xl p-4 space-y-2">
+        <p className="text-xs font-semibold text-ps-body">Tax Filing Rules</p>
+        <ul className="text-[11px] text-ps-label space-y-1">
           <li>• Advance tax: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)</li>
           <li>• ITR due date: 31st July (individuals), 31st October (audited entities)</li>
           <li>• All monetary values computed in integer paise — never floating point</li>

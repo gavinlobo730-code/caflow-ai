@@ -108,7 +108,7 @@ export default function OverviewPage() {
       </div>
     </div>
   );
-  if (!client) return <div className="p-6 text-[#94A3B8] text-sm">Client not found.</div>;
+  if (!client) return <div className="p-6 text-ps-hint text-sm">Client not found.</div>;
 
   const today = todayLocalISO();
   const openTasks = tasks.filter((t) => t.status !== "completed");
@@ -148,9 +148,9 @@ export default function OverviewPage() {
         </div>
 
         {/* Timeline */}
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-[#94A3B8]">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-ps-hint">
               Activity
             </p>
             <FinancialYearPicker value={financialYear} onChange={setFinancialYear} ariaLabel="Activity financial year" />
@@ -160,7 +160,7 @@ export default function OverviewPage() {
       </div>
 
       {/* ── Right sidebar ───────────────────────────────────── */}
-      <div className="w-[240px] shrink-0 border-l border-[#F1F5F9] overflow-y-auto p-4 space-y-4 hidden lg:block">
+      <div className="w-[240px] shrink-0 border-l border-ps-muted overflow-y-auto p-4 space-y-4 hidden lg:block">
         {/* Health Alerts */}
         {alerts.length > 0 && (
           <div className="space-y-1">
@@ -187,8 +187,8 @@ export default function OverviewPage() {
 
         {/* Health score */}
         {health && (
-          <div className="bg-white rounded-xl border border-[#E2E8F0] p-3 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">
+          <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-ps-hint">
               Health Score
             </p>
             <div className="flex items-center gap-2">
@@ -204,15 +204,15 @@ export default function OverviewPage() {
         )}
 
         {/* Client info */}
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-3 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">
+        <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-ps-hint">
             Client
           </p>
-          <p className="text-[13px] font-semibold text-[#1E293B] leading-snug">{client.client_name}</p>
-          <p className="text-[10px] text-[#94A3B8]">
+          <p className="text-[13px] font-semibold text-ps-ink leading-snug">{client.client_name}</p>
+          <p className="text-[10px] text-ps-hint">
             {ENTITY_TYPE_LABELS[client.entity_type] ?? client.entity_type}
           </p>
-          <div className="space-y-1.5 pt-1 border-t border-[#E2E8F0]">
+          <div className="space-y-1.5 pt-1 border-t border-ps-border">
             {client.pan && (
               <InfoRow label="PAN" value={client.pan} mono />
             )}
@@ -220,25 +220,25 @@ export default function OverviewPage() {
               <InfoRow label="GSTIN" value={client.gstin} mono />
             )}
             {client.email && (
-              <div className="flex items-center gap-1.5 text-[11px] text-[#64748B]">
+              <div className="flex items-center gap-1.5 text-[11px] text-ps-label">
                 <Mail size={11} className="shrink-0" />
                 <span className="truncate">{client.email}</span>
               </div>
             )}
             {client.mobile && (
-              <div className="flex items-center gap-1.5 text-[11px] text-[#64748B]">
+              <div className="flex items-center gap-1.5 text-[11px] text-ps-label">
                 <Phone size={11} className="shrink-0" />
                 <span>{client.mobile}</span>
               </div>
             )}
             {client.city && (
-              <div className="flex items-center gap-1.5 text-[11px] text-[#64748B]">
+              <div className="flex items-center gap-1.5 text-[11px] text-ps-label">
                 <MapPin size={11} className="shrink-0" />
                 <span>{client.city}{client.state ? `, ${client.state}` : ""}</span>
               </div>
             )}
             {client.gst_filing_frequency && (
-              <div className="flex items-center gap-1.5 text-[11px] text-[#64748B]">
+              <div className="flex items-center gap-1.5 text-[11px] text-ps-label">
                 <Calendar size={11} className="shrink-0" />
                 <span>GST: {client.gst_filing_frequency}</span>
               </div>
@@ -248,8 +248,8 @@ export default function OverviewPage() {
 
         {/* Upcoming deadlines */}
         {compliance.filter((c) => c.filing_status !== "filed" && c.due_date >= today).length > 0 && (
-          <div className="bg-white rounded-xl border border-[#E2E8F0] p-3 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">
+          <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-ps-hint">
               Upcoming
             </p>
             <div className="space-y-2">
@@ -258,9 +258,9 @@ export default function OverviewPage() {
                 .slice(0, 4)
                 .map((c) => (
                   <div key={c.id} className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] text-[#475569] truncate">{c.compliance_type}</p>
+                    <p className="text-[11px] text-ps-label truncate">{c.compliance_type}</p>
                     <p className={`text-[10px] font-mono shrink-0 ${
-                      daysUntil(c.due_date) <= 7 ? "text-amber-600" : "text-[#64748B]"
+                      daysUntil(c.due_date) <= 7 ? "text-amber-600" : "text-ps-label"
                     }`}>
                       {formatDate(c.due_date)}
                     </p>
@@ -292,14 +292,14 @@ function StatCard({
 }) {
   const bg = accent === "indigo" && value > 0 ? "bg-blue-50 border-blue-500/20/15"
     : accent === "amber" && value > 0 ? "bg-amber-50 border-amber-500/15"
-    : "bg-[#F8FAFC] border-[#F1F5F9]";
+    : "bg-ps-bg border-ps-muted";
   return (
     <div className={`rounded-xl border p-3 space-y-1 ${bg}`}>
       <div className="flex items-center gap-1.5">
         {icon}
-        <p className="text-[10px] text-[#94A3B8]">{label}</p>
+        <p className="text-[10px] text-ps-hint">{label}</p>
       </div>
-      <p className="text-2xl font-bold text-[#1E293B] tabular-nums">{value}</p>
+      <p className="text-2xl font-bold text-ps-ink tabular-nums">{value}</p>
     </div>
   );
 }
@@ -310,12 +310,12 @@ function ScoreRow({ label, value }: { label: string; value: number }) {
   return (
     <div className="space-y-0.5">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-[#64748B]">{label}</span>
-        <span className="text-[10px] font-semibold tabular-nums text-[#1E293B]">
+        <span className="text-[10px] text-ps-label">{label}</span>
+        <span className="text-[10px] font-semibold tabular-nums text-ps-ink">
           {value}
         </span>
       </div>
-      <div className="h-1 rounded-full bg-[#E2E8F0] overflow-hidden">
+      <div className="h-1 rounded-full bg-ps-border overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ${color}`}
           style={{ width: `${pct}%` }}
@@ -328,8 +328,8 @@ function ScoreRow({ label, value }: { label: string; value: number }) {
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start gap-1.5">
-      <span className="text-[9px] text-[#94A3B8] mt-0.5 shrink-0 w-10">{label}</span>
-      <span className={`text-[11px] text-[#475569] break-all ${mono ? "font-mono" : ""}`}>{value}</span>
+      <span className="text-[9px] text-ps-hint mt-0.5 shrink-0 w-10">{label}</span>
+      <span className={`text-[11px] text-ps-label break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
 }
@@ -343,13 +343,13 @@ function OverviewSkeleton() {
             <MetricCardSkeleton key={i} />
           ))}
         </div>
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <Skeleton className="h-3 w-32 mb-3" />
           <TimelineSkeleton rows={4} />
         </div>
       </div>
       <div className="w-[240px] p-4 space-y-4 hidden lg:block">
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-3 space-y-2">
+        <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
           <Skeleton className="h-2.5 w-24" />
           <Skeleton className="h-5 w-14" />
           <div className="space-y-1.5 mt-1">
@@ -358,7 +358,7 @@ function OverviewSkeleton() {
             ))}
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-3 space-y-2">
+        <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
           <Skeleton className="h-2.5 w-16" />
           <SkeletonText lines={4} />
         </div>

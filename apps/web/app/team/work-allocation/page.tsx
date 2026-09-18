@@ -30,14 +30,14 @@ const ROLE_COLORS: Record<Role, string> = {
   Partner: "bg-purple-100 text-purple-700",
   Manager: "bg-blue-100 text-blue-700",
   Executive: "bg-amber-100 text-amber-700",
-  Reviewer: "bg-[#F1F5F9] text-[#475569]",
+  Reviewer: "bg-ps-muted text-ps-label",
 };
 
 const PRIORITY_BADGE: Record<string, string> = {
   critical: "bg-red-100 text-red-700",
   high: "bg-orange-100 text-orange-700",
   medium: "bg-amber-100 text-amber-700",
-  low: "bg-[#F1F5F9] text-[#475569]",
+  low: "bg-ps-muted text-ps-label",
 };
 
 interface Member {
@@ -79,10 +79,10 @@ function WorkloadBar({ pct }: { pct: number }) {
   const color = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-green-500";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 bg-[#F1F5F9] rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-ps-muted rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
-      <span className="text-xs text-[#64748B] w-8 text-right">{pct}%</span>
+      <span className="text-xs text-ps-label w-8 text-right">{pct}%</span>
     </div>
   );
 }
@@ -114,18 +114,18 @@ function ReassignModal({ task, members, onClose, onReassigned }: ReassignModalPr
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Reassign Task</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">Reassign Task</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
-        <p className="text-sm text-[#475569]">{task.title}</p>
+        <p className="text-sm text-ps-label">{task.title}</p>
         {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
         <div>
-          <label className="text-xs font-medium text-[#334155] block mb-1">Reassign to:</label>
+          <label className="text-xs font-medium text-ps-body block mb-1">Reassign to:</label>
           <select value={targetId} onChange={e => setTargetId(e.target.value)}
-            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
             {members.map(m => (
               <option key={m.id} value={m.id}>{m.full_name} ({m.role})</option>
             ))}
@@ -133,7 +133,7 @@ function ReassignModal({ task, members, onClose, onReassigned }: ReassignModalPr
         </div>
         <div className="flex gap-2">
           <button onClick={onClose}
-            className="flex-1 border border-[#E2E8F0] text-[#334155] rounded-lg py-2 text-sm hover:bg-[#F8FAFC]">
+            className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
             Cancel
           </button>
           <button onClick={handleConfirm} disabled={saving}
@@ -222,15 +222,15 @@ export default function WorkAllocationPage() {
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/team" className="p-2 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
+          <Link href="/team" className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
             <ArrowLeft size={15} />
           </Link>
           <div>
-            <h1 className="text-lg md:text-xl font-semibold text-[#0F172A]">Work Allocation</h1>
-            <p className="text-sm text-[#64748B] mt-0.5">Team capacity and task distribution</p>
+            <h1 className="text-lg md:text-xl font-semibold text-ps-ink">Work Allocation</h1>
+            <p className="text-sm text-ps-label mt-0.5">Team capacity and task distribution</p>
           </div>
         </div>
-        <button onClick={load} className="p-2 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
+        <button onClick={load} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
           <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
@@ -247,23 +247,23 @@ export default function WorkAllocationPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value as Role | "all")}
-          className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
           <option value="all">All Roles</option>
           {(["Partner","Manager","Executive","Reviewer"] as Role[]).map(r => (
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
-        <label className="flex items-center gap-2 text-sm text-[#334155] cursor-pointer">
+        <label className="flex items-center gap-2 text-sm text-ps-body cursor-pointer">
           <input type="checkbox" checked={overdueOnly} onChange={e => setOverdueOnly(e.target.checked)} />
           Overdue only
         </label>
-        <span className="text-xs text-[#94A3B8] ml-auto">{filtered.length} member{filtered.length !== 1 ? "s" : ""}</span>
+        <span className="text-xs text-ps-hint ml-auto">{filtered.length} member{filtered.length !== 1 ? "s" : ""}</span>
       </div>
 
       {loading && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-3">
+            <div key={i} className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
               <div className="flex items-start justify-between">
                 <div className="space-y-1.5">
                   <Skeleton className="h-3 w-28" />
@@ -283,17 +283,17 @@ export default function WorkAllocationPage() {
       )}
 
       {!loading && filtered.length === 0 && (
-        <div className="text-center py-12 text-[#94A3B8]">No team members match the filter</div>
+        <div className="text-center py-12 text-ps-hint">No team members match the filter</div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {!loading && filtered.map(({ member, tasks, total, inProgress, overdue, capacity, pct }) => (
-          <div key={member.id} className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-3">
+          <div key={member.id} className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
             {/* Header */}
             <div className="flex items-start justify-between">
               <div>
-                <p className="font-semibold text-[#0F172A] text-sm">{member.full_name}</p>
-                <p className="text-xs text-[#94A3B8]">{member.email}</p>
+                <p className="font-semibold text-ps-ink text-sm">{member.full_name}</p>
+                <p className="text-xs text-ps-hint">{member.email}</p>
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[member.role]}`}>
                 {member.role}
@@ -302,14 +302,14 @@ export default function WorkAllocationPage() {
 
             {/* Stats */}
             <div className="flex gap-3 text-xs">
-              <span className="text-[#475569]">{total} tasks</span>
+              <span className="text-ps-label">{total} tasks</span>
               <span className="text-blue-600">{inProgress} active</span>
               {overdue > 0 && (
                 <span className="text-red-600 flex items-center gap-1">
                   <AlertTriangle size={11} /> {overdue} overdue
                 </span>
               )}
-              <span className="text-[#94A3B8] ml-auto">cap: {capacity}</span>
+              <span className="text-ps-hint ml-auto">cap: {capacity}</span>
             </div>
 
             {/* Workload bar */}
@@ -321,16 +321,16 @@ export default function WorkAllocationPage() {
                 const isOverdue = t.due_date && t.due_date < today;
                 return (
                   <button key={t.id} onClick={() => setReassignTask(t)}
-                    className="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-[#F8FAFC] group">
+                    className="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-ps-bg group">
                     <div className="min-w-0">
                       <p className="text-xs text-gray-800 truncate">{t.title}</p>
-                      {t.client_name && <p className="text-xs text-[#94A3B8] truncate">{t.client_name}</p>}
+                      {t.client_name && <p className="text-xs text-ps-hint truncate">{t.client_name}</p>}
                     </div>
                     <div className="shrink-0 flex items-center gap-1">
-                      <span className={`text-xs ${isOverdue ? "text-red-500" : "text-[#94A3B8]"}`}>
+                      <span className={`text-xs ${isOverdue ? "text-red-500" : "text-ps-hint"}`}>
                         {fmtDate(t.due_date)}
                       </span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${PRIORITY_BADGE[t.priority] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${PRIORITY_BADGE[t.priority] ?? "bg-ps-muted text-ps-label"}`}>
                         {t.priority?.[0]?.toUpperCase()}
                       </span>
                     </div>
@@ -338,10 +338,10 @@ export default function WorkAllocationPage() {
                 );
               })}
               {tasks.length > 8 && (
-                <p className="text-xs text-[#94A3B8] text-center py-1">+{tasks.length - 8} more</p>
+                <p className="text-xs text-ps-hint text-center py-1">+{tasks.length - 8} more</p>
               )}
               {tasks.length === 0 && (
-                <p className="text-xs text-[#94A3B8] text-center py-2">No active tasks</p>
+                <p className="text-xs text-ps-hint text-center py-2">No active tasks</p>
               )}
             </div>
           </div>

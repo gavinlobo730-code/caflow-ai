@@ -56,10 +56,10 @@ interface ApiResponse<T> {
 // ─── Step status config ─────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<StepStatus, { label: string; color: string; icon: React.ReactNode }> = {
-  pending:     { label: "Pending",     color: "text-[#94A3B8]", icon: <Circle size={18} className="text-[#CBD5E1]" /> },
+  pending:     { label: "Pending",     color: "text-ps-hint", icon: <Circle size={18} className="text-ps-disabled" /> },
   in_progress: { label: "In Progress", color: "text-blue-600",  icon: <Clock size={18} className="text-blue-500" /> },
   done:        { label: "Done",        color: "text-green-700", icon: <CheckCircle2 size={18} className="text-green-600" /> },
-  skipped:     { label: "Skipped",     color: "text-[#94A3B8]", icon: <SkipForward size={18} className="text-[#94A3B8]" /> },
+  skipped:     { label: "Skipped",     color: "text-ps-hint", icon: <SkipForward size={18} className="text-ps-hint" /> },
 };
 
 // ─── Progress bar ───────────────────────────────────────────────────────────
@@ -68,14 +68,14 @@ function ProgressBar({ pct, stalled }: { pct: number; stalled: boolean }) {
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-1">
-        <span className="text-xs font-medium text-[#64748B]">Progress</span>
-        <span className={`text-xs font-bold ${stalled ? "text-orange-600" : "text-[#182350]"}`}>
+        <span className="text-xs font-medium text-ps-label">Progress</span>
+        <span className={`text-xs font-bold ${stalled ? "text-orange-600" : "text-brand"}`}>
           {pct}%
         </span>
       </div>
-      <div className="h-2 rounded-full bg-[#E2E8F0] overflow-hidden">
+      <div className="h-2 rounded-full bg-ps-border overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${stalled ? "bg-orange-400" : "bg-[#182350]"}`}
+          className={`h-full rounded-full transition-all duration-500 ${stalled ? "bg-orange-400" : "bg-brand"}`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -97,14 +97,14 @@ function WorkflowCard({
   return (
     <button
       onClick={() => onSelect(wf)}
-      className="w-full text-left bg-white rounded-xl border border-[#E2E8F0] p-4 hover:border-[#AFD2FA] hover:shadow-sm transition-all space-y-3"
+      className="w-full text-left bg-white rounded-xl border border-ps-border p-4 hover:border-brand-light hover:shadow-sm transition-all space-y-3"
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-[#0F172A]">
-            Client: <span className="font-mono text-[#182350]">{wf.client_id.slice(0, 8)}…</span>
+          <p className="text-sm font-semibold text-ps-ink">
+            Client: <span className="font-mono text-brand">{wf.client_id.slice(0, 8)}…</span>
           </p>
-          <p className="text-xs text-[#64748B] mt-0.5">
+          <p className="text-xs text-ps-label mt-0.5">
             {wf.entity_type} · Started {formatDate(wf.started_at)}
           </p>
         </div>
@@ -121,11 +121,11 @@ function WorkflowCard({
           }`}>
             {wf.status === "completed" ? "Completed" : "In Progress"}
           </span>
-          <ChevronRight size={14} className="text-[#94A3B8]" />
+          <ChevronRight size={14} className="text-ps-hint" />
         </div>
       </div>
       <ProgressBar pct={wf.progress_pct} stalled={stalled} />
-      <p className="text-xs text-[#94A3B8]">
+      <p className="text-xs text-ps-hint">
         Day {wf.days_in_progress} of ~{wf.avg_days_for_entity_type} avg
       </p>
     </button>
@@ -158,13 +158,13 @@ function StepRow({
           : step.status === "in_progress"
           ? "bg-blue-50 border-blue-200"
           : step.status === "skipped"
-          ? "bg-[#F8FAFC] border-[#E2E8F0] opacity-60"
-          : "bg-white border-[#E2E8F0]"
+          ? "bg-ps-bg border-ps-border opacity-60"
+          : "bg-white border-ps-border"
       }`}
     >
       {/* Step number + icon */}
       <div className="flex flex-col items-center gap-1 pt-0.5 shrink-0">
-        <div className="w-6 h-6 rounded-full bg-[#F1F5F9] flex items-center justify-center text-[10px] font-bold text-[#64748B]">
+        <div className="w-6 h-6 rounded-full bg-ps-muted flex items-center justify-center text-[10px] font-bold text-ps-label">
           {step.step_number}
         </div>
       </div>
@@ -173,12 +173,12 @@ function StepRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className={`text-sm font-semibold ${step.status === "done" ? "text-green-800 line-through" : "text-[#0F172A]"}`}>
+            <p className={`text-sm font-semibold ${step.status === "done" ? "text-green-800 line-through" : "text-ps-ink"}`}>
               {step.title}
             </p>
-            <p className="text-xs text-[#64748B] mt-0.5 leading-relaxed">{step.description}</p>
+            <p className="text-xs text-ps-label mt-0.5 leading-relaxed">{step.description}</p>
             {step.notes && (
-              <p className="text-xs italic text-[#94A3B8] mt-1">{step.notes}</p>
+              <p className="text-xs italic text-ps-hint mt-1">{step.notes}</p>
             )}
             {step.completed_at && (
               <p className="text-xs text-green-600 mt-1">
@@ -211,7 +211,7 @@ function StepRow({
             <button
               onClick={() => onSkip(step.step_number)}
               disabled={isSaving}
-              className="text-xs text-[#94A3B8] hover:text-[#64748B] transition-colors"
+              className="text-xs text-ps-hint hover:text-ps-label transition-colors"
             >
               Skip
             </button>
@@ -310,19 +310,19 @@ export default function OnboardingChecklistPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-[#94A3B8] mb-1">
-            <Link href="/clients" className="hover:text-[#475569]">Clients</Link>
+          <div className="flex items-center gap-2 text-xs text-ps-hint mb-1">
+            <Link href="/clients" className="hover:text-ps-label">Clients</Link>
             <ChevronRight size={12} />
             <span>Onboarding</span>
           </div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Client Onboarding</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">Client Onboarding</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             10-step checklist to onboard new clients into your CA firm
           </p>
         </div>
         <button
           onClick={fetchWorkflows}
-          className="flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] rounded-lg px-3 py-1.5 hover:bg-[#F8FAFC] transition-colors"
+          className="flex items-center gap-1.5 text-sm text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-3 py-1.5 hover:bg-ps-bg transition-colors"
         >
           <RefreshCw size={13} />
           Refresh
@@ -336,17 +336,17 @@ export default function OnboardingChecklistPage() {
           <div className="flex items-start justify-between gap-3">
             <button
               onClick={() => { setSelected(null); setGoLiveError(null); }}
-              className="text-sm text-[#64748B] hover:text-[#334155] transition-colors"
+              className="text-sm text-ps-label hover:text-ps-body transition-colors"
             >
               ← All Onboardings
             </button>
-            <div className="text-right text-xs text-[#94A3B8]">
+            <div className="text-right text-xs text-ps-hint">
               Day {selected.days_in_progress} / ~{selected.avg_days_for_entity_type} avg days ({selected.entity_type})
             </div>
           </div>
 
           {/* Progress */}
-          <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-2">
+          <div className="bg-white rounded-xl border border-ps-border p-4 space-y-2">
             <ProgressBar pct={selected.progress_pct} stalled={stalled} />
             {stalled && (
               <div className="flex items-center gap-2 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
@@ -378,10 +378,10 @@ export default function OnboardingChecklistPage() {
 
           {/* Go-Live button */}
           {selected.status !== "completed" && (
-            <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-3">
+            <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
               <div>
-                <h3 className="text-sm font-semibold text-[#0F172A]">Go-Live Verification</h3>
-                <p className="text-xs text-[#64748B] mt-0.5">
+                <h3 className="text-sm font-semibold text-ps-ink">Go-Live Verification</h3>
+                <p className="text-xs text-ps-label mt-0.5">
                   Mandatory steps: 1, 2, 3, 4, 5, 8, 9, 10. Optional: 6 (Accounting Setup), 7 (Relationship Intelligence).
                 </p>
               </div>
@@ -394,7 +394,7 @@ export default function OnboardingChecklistPage() {
               <button
                 onClick={handleGoLive}
                 disabled={goLiveLoading || !allMandatoryDone}
-                className="flex items-center gap-2 rounded-lg bg-[#182350] text-white px-5 py-2.5 text-sm font-semibold hover:bg-[#0f1a3d] disabled:opacity-40 transition-colors"
+                className="flex items-center gap-2 rounded-lg bg-brand text-white px-5 py-2.5 text-sm font-semibold hover:bg-[#0f1a3d] disabled:opacity-40 transition-colors"
               >
                 {goLiveLoading ? (
                   <Loader2 size={15} className="animate-spin" />
@@ -404,7 +404,7 @@ export default function OnboardingChecklistPage() {
                 {goLiveLoading ? "Verifying…" : "Activate Client (Go Live)"}
               </button>
               {!allMandatoryDone && (
-                <p className="text-xs text-[#94A3B8]">
+                <p className="text-xs text-ps-hint">
                   Complete all mandatory steps to activate.
                 </p>
               )}
@@ -415,7 +415,7 @@ export default function OnboardingChecklistPage() {
         /* ── List View ────────────────────────────────────────────────── */
         <div className="space-y-3">
           {loading && (
-            <div className="flex items-center justify-center py-16 text-[#94A3B8]">
+            <div className="flex items-center justify-center py-16 text-ps-hint">
               <Loader2 size={24} className="animate-spin mr-2" />
               Loading onboardings…
             </div>
@@ -427,12 +427,12 @@ export default function OnboardingChecklistPage() {
             </div>
           )}
           {!loading && !error && workflows.length === 0 && (
-            <div className="text-center py-16 text-[#94A3B8]">
+            <div className="text-center py-16 text-ps-hint">
               <p className="text-sm font-medium">No active onboardings</p>
               <p className="text-xs mt-1">Convert a lead from the Pipeline to start an onboarding workflow.</p>
               <Link
                 href="/pipeline"
-                className="inline-flex items-center gap-1 mt-4 text-sm text-[#182350] font-medium hover:underline"
+                className="inline-flex items-center gap-1 mt-4 text-sm text-brand font-medium hover:underline"
               >
                 Go to Pipeline <ChevronRight size={14} />
               </Link>

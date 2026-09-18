@@ -141,7 +141,7 @@ export default function ScheduleIIIMappingPage() {
         ? acc.schedule_iii_mapping : UNMAPPED}
       disabled={saving === acc.id}
       onChange={e => setMapping(acc, e.target.value)}
-      className="text-[11px] border border-[#E2E8F0] rounded-md px-2 py-1 bg-white max-w-[210px] disabled:opacity-50"
+      className="text-[11px] border border-ps-border rounded-md px-2 py-1 bg-white max-w-[210px] disabled:opacity-50"
     >
       <option value={UNMAPPED}>— not mapped —</option>
       {sections.map(s => (
@@ -153,27 +153,27 @@ export default function ScheduleIIIMappingPage() {
   );
 
   const row = (acc: CoaRow) => (
-    <tr key={acc.id} className="hover:bg-[#F8FAFC]">
-      <td className="px-4 py-2 font-mono text-[10px] text-[#94A3B8] w-16">{acc.account_code}</td>
-      <td className="px-3 py-2 font-medium text-[#0F172A]">{acc.account_name}</td>
-      <td className="px-3 py-2 text-[#64748B]">{acc.account_type}</td>
-      <td className="px-3 py-2 text-[#64748B]">{acc.tax_category ?? "—"}</td>
+    <tr key={acc.id} className="hover:bg-ps-bg">
+      <td className="px-4 py-2 font-mono text-[10px] text-ps-hint w-16">{acc.account_code}</td>
+      <td className="px-3 py-2 font-medium text-ps-ink">{acc.account_name}</td>
+      <td className="px-3 py-2 text-ps-label">{acc.account_type}</td>
+      <td className="px-3 py-2 text-ps-label">{acc.tax_category ?? "—"}</td>
       <td className="px-4 py-2 text-right">{picker(acc)}</td>
     </tr>
   );
 
   const group = (heading: string, rows: CoaRow[], note?: string) => (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-[#F8FAFC] flex items-center justify-between">
-        <span className="text-xs font-semibold text-[#334155]">{heading}</span>
-        <span className="text-[10px] text-[#94A3B8]">{rows.length} account{rows.length !== 1 ? "s" : ""}</span>
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-ps-bg flex items-center justify-between">
+        <span className="text-xs font-semibold text-ps-body">{heading}</span>
+        <span className="text-[10px] text-ps-hint">{rows.length} account{rows.length !== 1 ? "s" : ""}</span>
       </div>
-      {note && <div className="px-4 py-1.5 text-[10px] text-[#94A3B8] border-b border-[#F8FAFC]">{note}</div>}
+      {note && <div className="px-4 py-1.5 text-[10px] text-ps-hint border-b border-ps-bg">{note}</div>}
       {rows.length === 0 ? (
-        <div className="px-4 py-2 text-[10px] text-[#94A3B8] italic">No accounts mapped</div>
+        <div className="px-4 py-2 text-[10px] text-ps-hint italic">No accounts mapped</div>
       ) : (
         <table className="w-full text-xs">
-          <tbody className="divide-y divide-[#F8FAFC]">{rows.map(row)}</tbody>
+          <tbody className="divide-y divide-ps-bg">{rows.map(row)}</tbody>
         </table>
       )}
     </div>
@@ -182,14 +182,14 @@ export default function ScheduleIIIMappingPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-ps-ink flex items-center gap-2">
             <GitBranch size={18} className="text-blue-600" /> Schedule III Mapping
           </h1>
-          <p className="text-xs text-[#64748B] mt-0.5">
+          <p className="text-xs text-ps-label mt-0.5">
             {active.length - unmapped.length} of {active.length} active accounts mapped
             {" · "}a mapping here decides where the balance presents on the statutory statements
           </p>
@@ -227,7 +227,7 @@ export default function ScheduleIIIMappingPage() {
 
         {sections.map(({ heading, items }) => (
           <div key={heading} className="space-y-2">
-            <h2 className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-1 mt-4">{heading}</h2>
+            <h2 className="text-xs font-semibold text-ps-label uppercase tracking-wider mb-1 mt-4">{heading}</h2>
             {items.map(caption => group(
               caption,
               active.filter(a => a.schedule_iii_mapping === caption),

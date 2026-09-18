@@ -55,10 +55,10 @@ function Toast({ message, type, onClose }: { message: string; type: "success" | 
 function ColorInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div>
-      <label className="text-xs font-medium text-[#64748B] block mb-1">{label}</label>
+      <label className="text-xs font-medium text-ps-label block mb-1">{label}</label>
       <div className="flex items-center gap-2">
         <div className="relative">
-          <div className="w-8 h-8 rounded-lg border border-[#E2E8F0] overflow-hidden cursor-pointer">
+          <div className="w-8 h-8 rounded-lg border border-ps-border overflow-hidden cursor-pointer">
             <input
               type="color"
               value={value}
@@ -77,7 +77,7 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
           }}
           maxLength={7}
           placeholder="#000000"
-          className="w-28 text-sm font-mono text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+          className="w-28 text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
         />
       </div>
     </div>
@@ -87,7 +87,7 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
 // ── Live Preview ───────────────────────────────────────────────────────────
 function BrandingPreview({ branding, firmName }: { branding: Branding; firmName: string }) {
   return (
-    <div className="rounded-xl border border-[#E2E8F0] overflow-hidden shadow-sm">
+    <div className="rounded-xl border border-ps-border overflow-hidden shadow-sm">
       {/* Header bar */}
       <div className="px-5 py-3 flex items-center justify-between" style={{ backgroundColor: branding.primary_color }}>
         {branding.logo_url ? (
@@ -111,29 +111,29 @@ function BrandingPreview({ branding, firmName }: { branding: Branding; firmName:
       <div className="bg-white px-5 py-4 space-y-3">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs text-[#94A3B8] uppercase tracking-wide mb-0.5">Invoice To</p>
-            <p className="text-sm font-medium text-[#0F172A]" style={{ fontFamily: branding.font_family }}>Sample Client Pvt. Ltd.</p>
-            <p className="text-xs text-[#64748B]">123 Business Park, Mumbai</p>
+            <p className="text-xs text-ps-hint uppercase tracking-wide mb-0.5">Invoice To</p>
+            <p className="text-sm font-medium text-ps-ink" style={{ fontFamily: branding.font_family }}>Sample Client Pvt. Ltd.</p>
+            <p className="text-xs text-ps-label">123 Business Park, Mumbai</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-[#94A3B8] mb-0.5">Invoice #</p>
+            <p className="text-xs text-ps-hint mb-0.5">Invoice #</p>
             <p className="text-sm font-bold" style={{ color: branding.primary_color, fontFamily: branding.font_family }}>INV-2025-001</p>
           </div>
         </div>
 
-        <div className="border-t border-[#E2E8F0] pt-3">
-          <div className="flex justify-between text-xs text-[#64748B] mb-2">
+        <div className="border-t border-ps-border pt-3">
+          <div className="flex justify-between text-xs text-ps-label mb-2">
             <span>Professional Services — FY 2025-26</span>
-            <span className="font-medium text-[#0F172A]">₹50,000.00</span>
+            <span className="font-medium text-ps-ink">₹50,000.00</span>
           </div>
-          <div className="flex justify-between text-xs text-[#64748B]">
+          <div className="flex justify-between text-xs text-ps-label">
             <span>GST @ 18%</span>
-            <span className="font-medium text-[#0F172A]">₹9,000.00</span>
+            <span className="font-medium text-ps-ink">₹9,000.00</span>
           </div>
         </div>
 
-        <div className="flex justify-between items-center border-t border-[#E2E8F0] pt-3">
-          <span className="text-sm font-semibold text-[#0F172A]">Total Due</span>
+        <div className="flex justify-between items-center border-t border-ps-border pt-3">
+          <span className="text-sm font-semibold text-ps-ink">Total Due</span>
           <span className="text-base font-bold" style={{ color: branding.accent_color, fontFamily: branding.font_family }}>₹59,000.00</span>
         </div>
 
@@ -229,11 +229,11 @@ export default function BrandingPage() {
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
         <div>
-          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] transition-colors mb-1">
+          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1">
             <ChevronLeft size={13} /> Settings
           </Link>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Firm Branding</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Customize your firm&apos;s visual identity across all documents and client communications.</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Firm Branding</h1>
+          <p className="text-sm text-ps-label mt-0.5">Customize your firm&apos;s visual identity across all documents and client communications.</p>
         </div>
 
         {loadError && !loading && (
@@ -252,14 +252,14 @@ export default function BrandingPage() {
           <div className="space-y-4">
 
             {/* Logo */}
-            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
               <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-                <ImageIcon size={15} className="text-[#64748B]" />
-                <h2 className="text-sm font-semibold text-[#0F172A]">Logo</h2>
+                <ImageIcon size={15} className="text-ps-label" />
+                <h2 className="text-sm font-semibold text-ps-ink">Logo</h2>
               </div>
               <div className="px-5 py-4 space-y-3">
                 {branding.logo_url && (
-                  <div className="flex items-center gap-3 p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0]">
+                  <div className="flex items-center gap-3 p-3 bg-ps-bg rounded-lg border border-ps-border">
                     <img src={branding.logo_url} alt="Logo" className="h-10 object-contain" />
                     <button
                       onClick={() => update("logo_url", null)}
@@ -273,7 +273,7 @@ export default function BrandingPage() {
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 border border-[#E2E8F0] text-[#475569] text-xs font-medium rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-ps-border text-ps-label text-xs font-medium rounded-lg hover:bg-ps-bg disabled:opacity-50"
                   >
                     <Upload size={13} />
                     {uploading ? "Uploading…" : "Upload Logo"}
@@ -281,33 +281,33 @@ export default function BrandingPage() {
                   <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-[#64748B] block mb-1">Or paste a URL</label>
+                  <label className="text-xs font-medium text-ps-label block mb-1">Or paste a URL</label>
                   <input
                     type="url"
                     value={branding.logo_url ?? ""}
                     onChange={(e) => update("logo_url", e.target.value || null)}
                     placeholder="https://example.com/logo.png"
-                    className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                    className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-[#64748B] block mb-1">Tagline</label>
+                  <label className="text-xs font-medium text-ps-label block mb-1">Tagline</label>
                   <input
                     type="text"
                     value={branding.tagline ?? ""}
                     onChange={(e) => update("tagline", e.target.value)}
                     placeholder="e.g. Chartered Accountants & Advisors"
-                    className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                    className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                   />
                 </div>
               </div>
             </div>
 
             {/* Colors */}
-            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
               <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-                <Palette size={15} className="text-[#64748B]" />
-                <h2 className="text-sm font-semibold text-[#0F172A]">Brand Colors</h2>
+                <Palette size={15} className="text-ps-label" />
+                <h2 className="text-sm font-semibold text-ps-ink">Brand Colors</h2>
               </div>
               <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <ColorInput label="Primary Color" value={branding.primary_color} onChange={(v) => update("primary_color", v)} />
@@ -315,11 +315,11 @@ export default function BrandingPage() {
                 <ColorInput label="Accent Color" value={branding.accent_color} onChange={(v) => update("accent_color", v)} />
               </div>
               <div className="px-5 pb-4">
-                <label className="text-xs font-medium text-[#64748B] block mb-1">Font Family</label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Font Family</label>
                 <select
                   value={branding.font_family}
                   onChange={(e) => update("font_family", e.target.value)}
-                  className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                 >
                   {FONTS.map((f) => (
                     <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
@@ -329,15 +329,15 @@ export default function BrandingPage() {
             </div>
 
             {/* Social Links */}
-            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
               <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-                <Globe size={15} className="text-[#64748B]" />
-                <h2 className="text-sm font-semibold text-[#0F172A]">Social Links</h2>
+                <Globe size={15} className="text-ps-label" />
+                <h2 className="text-sm font-semibold text-ps-ink">Social Links</h2>
               </div>
               <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {(["linkedin", "twitter", "facebook", "instagram"] as const).map((platform) => (
                   <div key={platform}>
-                    <label className="text-xs font-medium text-[#64748B] block mb-1 capitalize">{platform}</label>
+                    <label className="text-xs font-medium text-ps-label block mb-1 capitalize">{platform}</label>
                     <input
                       type="url"
                       value={(branding.social_links ?? {})[platform] ?? ""}
@@ -345,7 +345,7 @@ export default function BrandingPage() {
                         update("social_links", { ...(branding.social_links ?? {}), [platform]: e.target.value || undefined })
                       }
                       placeholder={`https://${platform}.com/yourfirm`}
-                      className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                      className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                     />
                   </div>
                 ))}
@@ -366,12 +366,12 @@ export default function BrandingPage() {
 
           {/* ── Right: Live Preview ─────────────────────────────────────── */}
           <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-medium text-[#475569]">
+            <div className="flex items-center gap-2 text-sm font-medium text-ps-label">
               <Eye size={14} />
               Live Preview
             </div>
             <BrandingPreview branding={branding} firmName={firmName || "Your Firm"} />
-            <p className="text-xs text-[#94A3B8] text-center">Preview of how your branding appears on invoices and client documents.</p>
+            <p className="text-xs text-ps-hint text-center">Preview of how your branding appears on invoices and client documents.</p>
           </div>
         </div>
       </div>

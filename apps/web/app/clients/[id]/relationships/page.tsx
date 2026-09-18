@@ -170,7 +170,7 @@ export default function ClientRelationshipsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-base font-semibold text-[#182350]">Relationships</h1>
+          <h1 className="text-base font-semibold text-brand">Relationships</h1>
           <p className="text-xs text-gray-500 mt-0.5">Directors, shareholders, and related parties</p>
         </div>
         <div className="flex gap-2">
@@ -183,7 +183,7 @@ export default function ClientRelationshipsPage() {
           </button>
           <button
             onClick={() => setAddRoleModal(true)}
-            className="flex items-center gap-1 text-xs bg-[#182350] text-white px-3 py-1.5 rounded-md hover:bg-[#0D1635]"
+            className="flex items-center gap-1 text-xs bg-brand text-white px-3 py-1.5 rounded-md hover:bg-brand-dark"
           >
             <Plus size={12} /> Add Role
           </button>
@@ -196,7 +196,7 @@ export default function ClientRelationshipsPage() {
 
       {/* Entity Roles */}
       <div>
-        <h2 className="text-sm font-semibold text-[#182350] mb-3">
+        <h2 className="text-sm font-semibold text-brand mb-3">
           Associated Entities
           <span className="ml-2 text-xs text-gray-500 font-normal">({roles.length})</span>
         </h2>
@@ -205,7 +205,7 @@ export default function ClientRelationshipsPage() {
             {roles.length === 0 ? (
               <div className="py-10 text-center">
                 <p className="text-sm text-gray-500">No entities linked to this client</p>
-                <Link href="/relationships" className="mt-2 block text-xs text-[#182350] hover:text-[#0D1635]">
+                <Link href="/relationships" className="mt-2 block text-xs text-brand hover:text-ps-ink">
                   Go to Entity Registry →
                 </Link>
               </div>
@@ -293,12 +293,12 @@ export default function ClientRelationshipsPage() {
         <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
           <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-[#182350]">Link Entity to Client</h2>
+              <h2 className="text-sm font-semibold text-brand">Link Entity to Client</h2>
               <button onClick={() => setAddRoleModal(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
             </div>
             <p className="text-xs text-gray-600 mb-4">
               Enter the Entity ID from the{" "}
-              <Link href="/relationships" className="text-[#182350] hover:underline">Entity Registry</Link>.
+              <Link href="/relationships" className="text-brand hover:underline">Entity Registry</Link>.
             </p>
             <div className="space-y-3">
               <div>
@@ -306,7 +306,7 @@ export default function ClientRelationshipsPage() {
                 <input
                   value={roleForm.entity_id}
                   onChange={(e) => setRoleForm({ ...roleForm, entity_id: e.target.value.trim() })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 font-mono focus:outline-none focus:ring-2 focus:ring-brand"
                   placeholder="UUID from entity registry"
                 />
               </div>
@@ -315,7 +315,7 @@ export default function ClientRelationshipsPage() {
                 <select
                   value={roleForm.role_type}
                   onChange={(e) => setRoleForm({ ...roleForm, role_type: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   {["Director", "Shareholder", "Partner", "Trustee", "Proprietor", "Guarantor", "Authorized Signatory", "Karta (HUF)", "Beneficiary", "Manager", "Other"].map((r) => (
                     <option key={r} value={r}>{r}</option>
@@ -329,7 +329,7 @@ export default function ClientRelationshipsPage() {
                   min="0" max="100"
                   value={roleForm.ownership_percent}
                   onChange={(e) => setRoleForm({ ...roleForm, ownership_percent: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                   placeholder="e.g. 51"
                 />
               </div>
@@ -339,7 +339,7 @@ export default function ClientRelationshipsPage() {
               <button
                 onClick={handleAddRole}
                 disabled={actionInFlight || !roleForm.entity_id}
-                className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
+                className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
                 {savingRole ? "Linking…" : "Link Entity"}
               </button>

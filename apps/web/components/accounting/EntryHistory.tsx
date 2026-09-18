@@ -106,16 +106,16 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
   }, [open, loaded, loading, load]);
 
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full px-5 py-3 flex items-center gap-2 text-left hover:bg-[#F8FAFC] transition-colors"
+        className="w-full px-5 py-3 flex items-center gap-2 text-left hover:bg-ps-bg transition-colors"
       >
-        {open ? <ChevronDown className="w-4 h-4 text-[#94A3B8]" />
-              : <ChevronRight className="w-4 h-4 text-[#94A3B8]" />}
-        <History className="w-4 h-4 text-[#64748B]" />
-        <span className="text-sm font-semibold text-[#0F172A]">History</span>
-        <span className="text-xs text-[#94A3B8]">
+        {open ? <ChevronDown className="w-4 h-4 text-ps-hint" />
+              : <ChevronRight className="w-4 h-4 text-ps-hint" />}
+        <History className="w-4 h-4 text-ps-label" />
+        <span className="text-sm font-semibold text-ps-ink">History</span>
+        <span className="text-xs text-ps-hint">
           every change to this entry and its lines — Partner only
         </span>
       </button>
@@ -123,20 +123,20 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
       {open && (
         <div className="border-t border-gray-50">
           {loading && entries.length === 0 && (
-            <p className="px-5 py-6 text-xs text-[#94A3B8]">Reading the log…</p>
+            <p className="px-5 py-6 text-xs text-ps-hint">Reading the log…</p>
           )}
           {error && (
             <p className="px-5 py-6 text-xs text-red-600">{error}</p>
           )}
           {!loading && !error && loaded && entries.length === 0 && (
-            <p className="px-5 py-6 text-xs text-[#94A3B8]">
+            <p className="px-5 py-6 text-xs text-ps-hint">
               Nothing has changed since this entry was posted. A posted entry is
               immutable in this system — a correction is an append-only reversal,
               which appears as its own entry rather than as a change to this one.
             </p>
           )}
           {entries.length > 0 && (
-            <ul className="divide-y divide-[#F8FAFC]">
+            <ul className="divide-y divide-ps-bg">
               {entries.map((e) => {
                 const moved = changedFields(e);
                 return (
@@ -145,18 +145,18 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
                       <span className={`px-2 py-0.5 rounded-full font-medium ${actionClass(e.action)}`}>
                         {actionLabel(e.action)}
                       </span>
-                      <span className="text-[#475569]">
+                      <span className="text-ps-label">
                         {e.entity_type === "journal_line" ? "line" : "entry"}
                       </span>
-                      <span className="text-[#94A3B8]">·</span>
-                      <span className="text-[#334155]">{e.actor_email || "System"}</span>
-                      <span className="text-[#94A3B8]">·</span>
-                      <span className="text-[#64748B] tabular-nums">
+                      <span className="text-ps-hint">·</span>
+                      <span className="text-ps-body">{e.actor_email || "System"}</span>
+                      <span className="text-ps-hint">·</span>
+                      <span className="text-ps-label tabular-nums">
                         {istStamp(e.created_at)} IST
                       </span>
                     </div>
                     {moved.length > 0 && (
-                      <p className="mt-1 text-[#64748B]">
+                      <p className="mt-1 text-ps-label">
                         Changed: <span className="font-mono text-[11px]">{moved.join(", ")}</span>
                       </p>
                     )}
@@ -170,7 +170,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
               <button
                 onClick={() => { void load(cursor); }}
                 disabled={loading}
-                className="text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-md hover:bg-[#F8FAFC] disabled:opacity-40"
+                className="text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-md hover:bg-ps-bg disabled:opacity-40"
               >
                 {loading ? "Loading…" : "Load more"}
               </button>

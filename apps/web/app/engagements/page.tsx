@@ -170,8 +170,8 @@ const SERVICE_TYPES = [
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="bg-white rounded-lg border border-[#E2E8F0] px-4 py-3">
-      <p className="text-xs text-[#64748B]">{label}</p>
+    <div className="bg-white rounded-lg border border-ps-border px-4 py-3">
+      <p className="text-xs text-ps-label">{label}</p>
       <p className={`text-2xl font-bold mt-0.5 ${color}`}>{value}</p>
     </div>
   );
@@ -248,11 +248,11 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#182350]/60 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
-          <h2 className="text-base font-semibold text-[#0F172A]">New Engagement Letter</h2>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+          <h2 className="text-base font-semibold text-ps-ink">New Engagement Letter</h2>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
             <X size={18} />
           </button>
         </div>
@@ -265,84 +265,84 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
           )}
 
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Title *</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Title *</label>
             <input
               required
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               placeholder="e.g. GST Compliance — FY 2025-26"
-              className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Template</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Template</label>
             <div className="relative">
               <select
                 value={form.template_id}
                 onChange={(e) => setForm({ ...form, template_id: e.target.value })}
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 appearance-none"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 appearance-none"
               >
                 <option value="">— No template —</option>
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>{t.name} ({t.service_type})</option>
                 ))}
               </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-ps-hint pointer-events-none" />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Lead / Client Name</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Lead / Client Name</label>
             <input
               value={form.recipient_name}
               onChange={(e) => setForm({ ...form, recipient_name: e.target.value })}
               placeholder="Recipient name"
-              className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">Fee Amount (₹)</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Fee Amount (₹)</label>
               <input
                 type="number"
                 min="0"
                 value={form.fee_rupees}
                 onChange={(e) => setForm({ ...form, fee_rupees: e.target.value })}
                 placeholder="e.g. 12000"
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">Recipient Email</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Recipient Email</label>
               <input
                 type="email"
                 value={form.recipient_email}
                 onChange={(e) => setForm({ ...form, recipient_email: e.target.value })}
                 placeholder="client@example.com"
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">Start Date</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Start Date</label>
               <input
                 type="date"
                 value={form.start_date}
                 onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">Expiry Date</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Expiry Date</label>
               <input
                 type="date"
                 value={form.expiry_date}
                 onChange={(e) => setForm({ ...form, expiry_date: e.target.value })}
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
           </div>
@@ -351,7 +351,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors"
+              className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
             >
               Cancel
             </button>
@@ -428,13 +428,13 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#182350]/60 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
-          <h2 className="text-base font-semibold text-[#0F172A]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+          <h2 className="text-base font-semibold text-ps-ink">
             {initial ? "Edit Template" : "New Template"}
           </h2>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]">
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
             <X size={18} />
           </button>
         </div>
@@ -447,45 +447,45 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
           )}
 
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Template Name *</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Template Name *</label>
             <input
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="e.g. Standard GST Compliance Letter"
-              className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Service Type *</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Service Type *</label>
             <div className="relative">
               <select
                 value={form.service_type}
                 onChange={(e) => setForm({ ...form, service_type: e.target.value })}
-                className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 appearance-none"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 appearance-none"
               >
                 {SERVICE_TYPES.map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-ps-hint pointer-events-none" />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Template Content *</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Template Content *</label>
             <textarea
               required
               value={form.content}
               onChange={(e) => setForm({ ...form, content: e.target.value })}
               rows={10}
               placeholder="Write your template content here…"
-              className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-y font-mono"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-y font-mono"
             />
-            <p className="mt-1.5 text-xs text-[#94A3B8]">
+            <p className="mt-1.5 text-xs text-ps-hint">
               Available merge fields:{" "}
-              <code className="bg-[#F1F5F9] px-1 rounded text-[#475569]">
+              <code className="bg-ps-muted px-1 rounded text-ps-label">
                 {"{{client_name}} {{client_pan}} {{client_gstin}} {{firm_name}} {{partner_name}} {{engagement_fee}} {{engagement_date}}"}
               </code>
             </p>
@@ -495,7 +495,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors"
+              className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
             >
               Cancel
             </button>
@@ -749,16 +749,16 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
   if (!letter) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#182350]/60 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
           <div>
-            <p className="text-[10px] font-mono text-[#94A3B8]">{letter.engagement_number}</p>
-            <h2 className="text-base font-semibold text-[#0F172A]">{letter.title}</h2>
+            <p className="text-[10px] font-mono text-ps-hint">{letter.engagement_number}</p>
+            <h2 className="text-base font-semibold text-ps-ink">{letter.title}</h2>
           </div>
           <div className="flex items-center gap-3">
             <StatusBadge status={letter.status} />
-            <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]">
+            <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
               <X size={18} />
             </button>
           </div>
@@ -768,28 +768,28 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
           {/* Meta row */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm">
             <div>
-              <p className="text-xs text-[#94A3B8]">Recipient</p>
-              <p className="text-[#334155] font-medium">{letter.recipient_name ?? "—"}</p>
+              <p className="text-xs text-ps-hint">Recipient</p>
+              <p className="text-ps-body font-medium">{letter.recipient_name ?? "—"}</p>
             </div>
             <div>
-              <p className="text-xs text-[#94A3B8]">Fee</p>
-              <p className="text-[#334155] font-medium">{formatPaise(letter.fee_amount_paise)}</p>
+              <p className="text-xs text-ps-hint">Fee</p>
+              <p className="text-ps-body font-medium">{formatPaise(letter.fee_amount_paise)}</p>
             </div>
             <div>
-              <p className="text-xs text-[#94A3B8]">Start Date</p>
-              <p className="text-[#334155]">{formatDate(letter.start_date)}</p>
+              <p className="text-xs text-ps-hint">Start Date</p>
+              <p className="text-ps-body">{formatDate(letter.start_date)}</p>
             </div>
             <div>
-              <p className="text-xs text-[#94A3B8]">Expiry</p>
-              <p className="text-[#334155]">{formatDate(letter.expiry_date)}</p>
+              <p className="text-xs text-ps-hint">Expiry</p>
+              <p className="text-ps-body">{formatDate(letter.expiry_date)}</p>
             </div>
           </div>
 
           {/* Status timeline */}
           <div className="space-y-1">
-            <p className="text-xs font-medium text-[#94A3B8] uppercase tracking-wider">Timeline</p>
+            <p className="text-xs font-medium text-ps-hint uppercase tracking-wider">Timeline</p>
             <div className="space-y-1">
-              <p className="text-xs text-[#64748B]">Created: {formatDate(letter.created_at)}</p>
+              <p className="text-xs text-ps-label">Created: {formatDate(letter.created_at)}</p>
               {letter.sent_at && <p className="text-xs text-indigo-600">Sent: {formatDate(letter.sent_at)}</p>}
               {letter.signed_at && <p className="text-xs text-green-600">Signed: {formatDate(letter.signed_at)}</p>}
               {letter.rejected_at && (
@@ -804,23 +804,23 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
           {/* Send history — Created / First Sent / Last Sent / Sent Count */}
           {letter.sent_at && (
             <div>
-              <p className="text-xs font-medium text-[#94A3B8] uppercase tracking-wider mb-1.5">Send History</p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-4 py-3">
+              <p className="text-xs font-medium text-ps-hint uppercase tracking-wider mb-1.5">Send History</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm bg-ps-bg border border-ps-border rounded-lg px-4 py-3">
                 <div>
-                  <p className="text-xs text-[#94A3B8]">Created</p>
-                  <p className="text-[#334155]">{formatDate(letter.created_at)}</p>
+                  <p className="text-xs text-ps-hint">Created</p>
+                  <p className="text-ps-body">{formatDate(letter.created_at)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[#94A3B8]">First Sent</p>
-                  <p className="text-[#334155]">{formatDateTime(letter.sent_at)}</p>
+                  <p className="text-xs text-ps-hint">First Sent</p>
+                  <p className="text-ps-body">{formatDateTime(letter.sent_at)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[#94A3B8]">Last Sent</p>
-                  <p className="text-[#334155]">{formatDateTime(letter.last_sent_at ?? letter.sent_at)}</p>
+                  <p className="text-xs text-ps-hint">Last Sent</p>
+                  <p className="text-ps-body">{formatDateTime(letter.last_sent_at ?? letter.sent_at)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[#94A3B8]">Sent Count</p>
-                  <p className="text-[#334155] font-medium">{(letter.resend_count ?? 0) + 1}</p>
+                  <p className="text-xs text-ps-hint">Sent Count</p>
+                  <p className="text-ps-body font-medium">{(letter.resend_count ?? 0) + 1}</p>
                 </div>
               </div>
             </div>
@@ -829,8 +829,8 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
           {/* Content preview */}
           {letter.content && (
             <div>
-              <p className="text-xs font-medium text-[#94A3B8] uppercase tracking-wider mb-1.5">Content Preview</p>
-              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-4 py-3 text-sm text-[#334155] whitespace-pre-wrap max-h-48 overflow-y-auto font-mono text-xs">
+              <p className="text-xs font-medium text-ps-hint uppercase tracking-wider mb-1.5">Content Preview</p>
+              <div className="bg-ps-bg border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-body whitespace-pre-wrap max-h-48 overflow-y-auto font-mono text-xs">
                 {letter.content}
               </div>
             </div>
@@ -839,21 +839,21 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
           {/* Client signing link — shareable for self-serve e-sign (also sent in the email) */}
           {(letter.status === "Sent" || letter.status === "Viewed") && letter.sign_token && (
             <div>
-              <p className="text-xs font-medium text-[#94A3B8] uppercase tracking-wider mb-1.5">Client Signing Link</p>
+              <p className="text-xs font-medium text-ps-hint uppercase tracking-wider mb-1.5">Client Signing Link</p>
               <div className="flex items-center gap-2">
                 <input
                   readOnly
                   value={`${typeof window !== "undefined" ? window.location.origin : ""}/sign/?t=${letter.sign_token}`}
-                  className="flex-1 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-xs text-[#475569] outline-none"
+                  className="flex-1 rounded-lg border border-ps-border bg-ps-bg px-3 py-2 text-xs text-ps-label outline-none"
                 />
                 <button
                   onClick={doCopyLink}
-                  className="shrink-0 rounded-lg border border-[#E2E8F0] px-3 py-2 text-xs font-medium text-[#475569] hover:bg-[#F8FAFC]"
+                  className="shrink-0 rounded-lg border border-ps-border px-3 py-2 text-xs font-medium text-ps-label hover:bg-ps-bg"
                 >
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
-              <p className="mt-1 text-xs text-[#94A3B8]">The client can review and e-sign here — no login needed. This link is in the email; share it via WhatsApp too if you like.</p>
+              <p className="mt-1 text-xs text-ps-hint">The client can review and e-sign here — no login needed. This link is in the email; share it via WhatsApp too if you like.</p>
             </div>
           )}
 
@@ -890,15 +890,15 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                 </button>
               ) : (
                 <div className="w-full space-y-2">
-                  <label className="text-xs font-medium text-[#334155]">Client email</label>
+                  <label className="text-xs font-medium text-ps-body">Client email</label>
                   <input
                     type="email"
                     value={sendEmail}
                     onChange={(e) => setSendEmail(e.target.value)}
                     placeholder="client@example.com"
-                    className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                   />
-                  <p className="text-xs text-[#64748B]">
+                  <p className="text-xs text-ps-label">
                     The letter will be emailed to this address with a PDF copy attached, then marked as Sent.
                   </p>
                   <div className="flex gap-2">
@@ -910,7 +910,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                       Send Now
                     </button>
-                    <button onClick={() => setShowSendInput(false)} className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]">
+                    <button onClick={() => setShowSendInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                       Cancel
                     </button>
                   </div>
@@ -933,7 +933,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                     <button
                       disabled={actionLoading}
                       onClick={doCopyLink}
-                      className="flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg disabled:opacity-50 transition-colors"
                     >
                       <Copy size={13} />
                       Copy Signing Link
@@ -941,7 +941,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                     <button
                       disabled={actionLoading}
                       onClick={() => { setShowRecipientInput(true); setRecipientEmail(letter.recipient_email ?? ""); }}
-                      className="flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg disabled:opacity-50 transition-colors"
                     >
                       <Mail size={13} />
                       Change Recipient
@@ -949,7 +949,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                     <button
                       disabled={actionLoading}
                       onClick={doDownloadPdf}
-                      className="flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg disabled:opacity-50 transition-colors"
                     >
                       <Download size={13} />
                       Download PDF
@@ -981,22 +981,22 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
 
                 {showRecipientInput && (
                   <div className="w-full space-y-2">
-                    <label className="text-xs font-medium text-[#334155]">New recipient email</label>
+                    <label className="text-xs font-medium text-ps-body">New recipient email</label>
                     <input
                       type="email"
                       value={recipientEmail}
                       onChange={(e) => setRecipientEmail(e.target.value)}
                       placeholder="client@example.com"
-                      className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                     />
-                    <p className="text-xs text-[#64748B]">
+                    <p className="text-xs text-ps-label">
                       Updates the recipient on this same engagement — the signing link and token stay the same.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <button
                         disabled={actionLoading || !recipientEmail.trim()}
                         onClick={() => doChangeRecipient(false)}
-                        className="flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50 transition-colors"
+                        className="flex items-center gap-1.5 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg disabled:opacity-50 transition-colors"
                       >
                         {actionLoading && <Loader2 size={13} className="animate-spin" />}
                         Save
@@ -1009,7 +1009,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                         Save &amp; Resend
                       </button>
-                      <button onClick={() => setShowRecipientInput(false)} className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]">
+                      <button onClick={() => setShowRecipientInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>
@@ -1040,7 +1040,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                         Generate &amp; Email
                       </button>
-                      <button onClick={() => setShowRegenConfirm(false)} className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]">
+                      <button onClick={() => setShowRegenConfirm(false)} className="rounded-lg border border-ps-border bg-white px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>
@@ -1049,12 +1049,12 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
 
                 {showSignInput && (
                   <div className="w-full space-y-2">
-                    <label className="text-xs font-medium text-[#334155]">Signed PDF URL (optional)</label>
+                    <label className="text-xs font-medium text-ps-body">Signed PDF URL (optional)</label>
                     <input
                       value={signedPdfUrl}
                       onChange={(e) => setSignedPdfUrl(e.target.value)}
                       placeholder="https://… (leave blank if none)"
-                      className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100"
+                      className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100"
                     />
                     <div className="flex gap-2">
                       <button
@@ -1065,7 +1065,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
                         Confirm Signed
                       </button>
-                      <button onClick={() => setShowSignInput(false)} className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]">
+                      <button onClick={() => setShowSignInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>
@@ -1074,12 +1074,12 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
 
                 {showRejectInput && (
                   <div className="w-full space-y-2">
-                    <label className="text-xs font-medium text-[#334155]">Rejection Notes (optional)</label>
+                    <label className="text-xs font-medium text-ps-body">Rejection Notes (optional)</label>
                     <input
                       value={rejectionNotes}
                       onChange={(e) => setRejectionNotes(e.target.value)}
                       placeholder="Reason for rejection…"
-                      className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                      className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100"
                     />
                     <div className="flex gap-2">
                       <button
@@ -1090,7 +1090,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
                         Confirm Reject
                       </button>
-                      <button onClick={() => setShowRejectInput(false)} className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]">
+                      <button onClick={() => setShowRejectInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>
@@ -1103,7 +1103,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
           {/* Delete / discard — available for any letter except a signed one.
               Returns the linked lead to the pipeline so it can be re-engaged. */}
           {letter.status !== "Signed" && (
-            <div className="border-t border-[#F1F5F9] pt-3">
+            <div className="border-t border-ps-muted pt-3">
               <button
                 disabled={actionLoading}
                 onClick={doDelete}
@@ -1112,7 +1112,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                 <Trash2 size={13} />
                 Delete engagement
               </button>
-              <p className="mt-1 text-xs text-[#94A3B8]">
+              <p className="mt-1 text-xs text-ps-hint">
                 Discards this letter and returns the linked lead to the pipeline so you can draft a new one.
               </p>
             </div>
@@ -1262,14 +1262,14 @@ function EngagementsPageInner() {
     {
       key: "recipient_name", header: "Client / Lead", accessor: (l) => l.recipient_name ?? "",
       searchable: true, sortable: true,
-      render: (l) => l.recipient_name ?? <span className="text-[#94A3B8]">—</span>,
+      render: (l) => l.recipient_name ?? <span className="text-ps-hint">—</span>,
     },
     {
       key: "title", header: "Title", accessor: (l) => l.title, searchable: true, sortable: true,
       render: (l) => (
         <button
           onClick={() => setDetailLetter(l)}
-          className="text-[#0F172A] font-medium hover:text-blue-600 text-left max-w-[200px] truncate block"
+          className="text-ps-ink font-medium hover:text-blue-600 text-left max-w-[200px] truncate block"
         >
           {l.title}
         </button>
@@ -1283,15 +1283,15 @@ function EngagementsPageInner() {
       key: "fee", header: "Fee", accessor: (l) => l.fee_amount_paise, sortable: true, align: "right",
       exportValue: (l) => l.fee_amount_paise / 100,
       render: (l) =>
-        l.fee_amount_paise > 0 ? formatPaiseINR(l.fee_amount_paise) : <span className="text-[#94A3B8]">—</span>,
+        l.fee_amount_paise > 0 ? formatPaiseINR(l.fee_amount_paise) : <span className="text-ps-hint">—</span>,
     },
     {
       key: "created_at", header: "Created", accessor: (l) => l.created_at, sortable: true,
-      render: (l) => <span className="text-[#64748B] text-xs">{formatDate(l.created_at)}</span>,
+      render: (l) => <span className="text-ps-label text-xs">{formatDate(l.created_at)}</span>,
     },
     {
       key: "expiry_date", header: "Expiry", accessor: (l) => l.expiry_date ?? "", sortable: true, defaultHidden: true,
-      render: (l) => <span className="text-[#64748B] text-xs">{formatDate(l.expiry_date)}</span>,
+      render: (l) => <span className="text-ps-label text-xs">{formatDate(l.expiry_date)}</span>,
     },
   ], []);
 
@@ -1308,7 +1308,7 @@ function EngagementsPageInner() {
     <div className="flex items-center justify-end gap-1.5">
       <button
         onClick={() => setDetailLetter(letter)}
-        className="flex items-center gap-1 rounded-md bg-[#F1F5F9] px-2 py-1 text-xs font-medium text-[#475569] hover:bg-[#E2E8F0] transition-colors"
+        className="flex items-center gap-1 rounded-md bg-ps-muted px-2 py-1 text-xs font-medium text-ps-label hover:bg-ps-border transition-colors"
       >
         <Eye size={11} />
         View
@@ -1440,8 +1440,8 @@ function EngagementsPageInner() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Engagement Letters</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">Engagement Letters</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             Create, send and track engagement letters for clients and prospects
           </p>
         </div>
@@ -1466,7 +1466,7 @@ function EngagementsPageInner() {
 
       {/* Summary bar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Draft" value={draftCount} color="text-[#0F172A]" />
+        <StatCard label="Draft" value={draftCount} color="text-ps-ink" />
         <StatCard label="Awaiting Signature" value={awaitingCount} color="text-indigo-700" />
         <StatCard label="Signed This Month" value={signedThisMonth} color="text-green-700" />
         <StatCard label="Expiring (7 days)" value={expiringCount} color="text-orange-600" />
@@ -1486,7 +1486,7 @@ function EngagementsPageInner() {
       )}
 
       {/* Tabs */}
-      <div className="border-b border-[#E2E8F0]">
+      <div className="border-b border-ps-border">
         <div className="flex gap-6">
           {tabs.map((tab) => (
             <button
@@ -1495,15 +1495,15 @@ function EngagementsPageInner() {
               className={`pb-3 text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.id
                   ? "border-b-2 border-blue-600 text-blue-600"
-                  : "text-[#64748B] hover:text-[#334155]"
+                  : "text-ps-label hover:text-ps-body"
               }`}
             >
               {tab.label}
               {tab.id === "all" && letters.length > 0 && (
-                <span className="ml-1.5 text-xs bg-[#F1F5F9] text-[#475569] rounded-full px-1.5 py-0.5">{letters.length}</span>
+                <span className="ml-1.5 text-xs bg-ps-muted text-ps-label rounded-full px-1.5 py-0.5">{letters.length}</span>
               )}
               {tab.id === "templates" && templates.length > 0 && (
-                <span className="ml-1.5 text-xs bg-[#F1F5F9] text-[#475569] rounded-full px-1.5 py-0.5">{templates.length}</span>
+                <span className="ml-1.5 text-xs bg-ps-muted text-ps-label rounded-full px-1.5 py-0.5">{templates.length}</span>
               )}
             </button>
           ))}
@@ -1512,7 +1512,7 @@ function EngagementsPageInner() {
 
       {/* Loading (templates tab only — the letters DataTable manages its own loading state) */}
       {loading && activeTab === "templates" && (
-        <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8] gap-2">
+        <div className="flex items-center justify-center py-12 text-sm text-ps-hint gap-2">
           <Loader2 size={16} className="animate-spin" />
           Loading…
         </div>
@@ -1522,7 +1522,7 @@ function EngagementsPageInner() {
       {!loading && activeTab === "templates" && (
         <div>
           {templates.length === 0 ? (
-            <div className="text-center py-16 text-[#94A3B8]">
+            <div className="text-center py-16 text-ps-hint">
               <FileText size={32} className="mx-auto mb-3 opacity-30" />
               <p className="text-sm font-medium">No templates yet</p>
               <p className="text-xs mt-1">Create a template to quickly generate engagement letters</p>
@@ -1532,11 +1532,11 @@ function EngagementsPageInner() {
               {templates.map((t) => (
                 <div
                   key={t.id}
-                  className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-3 hover:shadow-sm transition-shadow"
+                  className="bg-white rounded-xl border border-ps-border p-4 space-y-3 hover:shadow-sm transition-shadow"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[#0F172A] leading-tight">{t.name}</p>
+                      <p className="text-sm font-semibold text-ps-ink leading-tight">{t.name}</p>
                       <span className="inline-block mt-1 text-xs bg-blue-50 text-blue-700 rounded-full px-2 py-0.5 font-medium">
                         {t.service_type}
                       </span>
@@ -1547,11 +1547,11 @@ function EngagementsPageInner() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-[#64748B] line-clamp-2">{t.content.slice(0, 120)}…</p>
+                  <p className="text-xs text-ps-label line-clamp-2">{t.content.slice(0, 120)}…</p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => { setEditTemplate(t); setShowCreateTemplate(true); }}
-                      className="flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] px-3 py-1.5 text-xs font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg border border-ps-border px-3 py-1.5 text-xs font-medium text-ps-label hover:bg-ps-bg transition-colors"
                     >
                       <Edit3 size={11} />
                       Edit
@@ -1654,7 +1654,7 @@ export default function EngagementsPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8] gap-2">
+        <div className="flex items-center justify-center py-12 text-sm text-ps-hint gap-2">
           <Loader2 size={16} className="animate-spin" />
           Loading…
         </div>

@@ -117,15 +117,15 @@ export default function MultiCurrencyPage() {
   return (
     <RoleGuard allowed={["Partner"]}>
       <div className="max-w-4xl mx-auto space-y-4 p-6">
-        <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-[#64748B] hover:text-[#334155]">
+        <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-label hover:text-ps-body">
           <ChevronLeft size={13} /> Settings
         </Link>
 
         <div className="flex items-center gap-2.5">
           <Globe size={17} className="text-blue-600" />
-          <h1 className="text-lg font-semibold text-[#0F172A]">Multi-currency</h1>
+          <h1 className="text-lg font-semibold text-ps-ink">Multi-currency</h1>
         </div>
-        <p className="text-xs text-[#64748B] max-w-2xl">
+        <p className="text-xs text-ps-label max-w-2xl">
           Lets a client raise invoices, receive payments and hold bank accounts in a
           foreign currency, with the realized and unrealized exchange difference
           computed and posted. The books stay in rupees.
@@ -151,14 +151,14 @@ export default function MultiCurrencyPage() {
             )}
 
             {/* L2 — the firm. */}
-            <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4 flex items-center justify-between">
+            <div className="bg-white rounded-xl border border-ps-muted px-5 py-4 flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-[#0F172A]">This firm</p>
-                <p className="text-xs text-[#94A3B8] mt-0.5">
+                <p className="text-sm font-medium text-ps-ink">This firm</p>
+                <p className="text-xs text-ps-hint mt-0.5">
                   Turn it off here and no client of the firm can transact in a foreign currency.
                 </p>
               </div>
-              <label className="flex items-center gap-2 text-xs text-[#334155]">
+              <label className="flex items-center gap-2 text-xs text-ps-body">
                 <input type="checkbox" checked={firmOn} disabled={saving === "firm"}
                        onChange={e => setFirm(e.target.checked)} />
                 {firmOn ? "On" : "Off"}
@@ -166,34 +166,34 @@ export default function MultiCurrencyPage() {
             </div>
 
             {/* L3 — per client. */}
-            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-50">
-                <p className="text-sm font-semibold text-[#0F172A]">Clients</p>
+                <p className="text-sm font-semibold text-ps-ink">Clients</p>
               </div>
               {rows.length === 0 ? (
-                <p className="px-5 py-8 text-center text-sm text-[#64748B]">No clients yet.</p>
+                <p className="px-5 py-8 text-center text-sm text-ps-label">No clients yet.</p>
               ) : (
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                    <tr className="border-b border-ps-muted text-ps-hint">
                       <th className="px-5 py-2.5 text-left font-semibold">Client</th>
                       <th className="px-3 py-2.5 text-left font-semibold">Books kept in</th>
                       <th className="px-3 py-2.5 text-left font-semibold">Foreign currency</th>
                       <th className="px-3 py-2.5 text-left font-semibold">Effect</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#F8FAFC]">
+                  <tbody className="divide-y divide-ps-bg">
                     {rows.map(({ client, policy }) => {
                       const on = policy?.gates?.client?.on ?? false;
                       const supported = policy?.gates.functional_currency_supported ?? true;
                       return (
-                        <tr key={client.id} className="hover:bg-[#F8FAFC]">
-                          <td className="px-5 py-2.5 font-medium text-[#1E293B]">{label(client)}</td>
-                          <td className="px-3 py-2.5 font-mono text-[#64748B]">
+                        <tr key={client.id} className="hover:bg-ps-bg">
+                          <td className="px-5 py-2.5 font-medium text-ps-ink">{label(client)}</td>
+                          <td className="px-3 py-2.5 font-mono text-ps-label">
                             {policy?.gates.functional_currency ?? "—"}
                           </td>
                           <td className="px-3 py-2.5">
-                            <label className="flex items-center gap-2 text-[#334155]">
+                            <label className="flex items-center gap-2 text-ps-body">
                               <input type="checkbox" checked={on}
                                      disabled={saving === client.id || (!on && !supported)}
                                      onChange={e => setClient(client.id, e.target.checked)} />
@@ -213,7 +213,7 @@ export default function MultiCurrencyPage() {
                                 Books kept in {policy?.gates.functional_currency} — not supported
                               </span>
                             ) : (
-                              <span className="text-[#94A3B8]">
+                              <span className="text-ps-hint">
                                 {!platformOn ? "Off for this deployment"
                                   : !firmOn ? "Off for the firm"
                                   : "Off for this client"}

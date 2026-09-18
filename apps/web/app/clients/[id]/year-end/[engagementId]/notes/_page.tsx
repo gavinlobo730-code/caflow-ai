@@ -9,7 +9,7 @@ import { useEngagementId } from "../_engagementId";
 
 const TYPE_BADGE: Record<string, string> = {
   auto: "bg-blue-100 text-blue-700",
-  manual: "bg-[#F1F5F9] text-[#475569]",
+  manual: "bg-ps-muted text-ps-label",
 };
 
 function noteType(note: NoteToAccount): "auto" | "manual" {
@@ -129,7 +129,7 @@ export default function NotesPage() {
     return (
       <div className="p-6 space-y-2 max-w-3xl mx-auto">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-white rounded-xl border border-[#F1F5F9] px-4 py-3 flex items-center gap-3">
+          <div key={i} className="bg-white rounded-xl border border-ps-muted px-4 py-3 flex items-center gap-3">
             <Skeleton className="h-3.5 w-3.5 rounded-sm shrink-0" />
             <Skeleton className="h-3 w-16 shrink-0" />
             <Skeleton className="h-4 w-20 rounded-full shrink-0" />
@@ -161,7 +161,7 @@ export default function NotesPage() {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">
+        <p className="text-xs font-semibold text-ps-body">
           {notes.length} note{notes.length !== 1 ? "s" : ""}
         </p>
         <button
@@ -175,10 +175,10 @@ export default function NotesPage() {
       </div>
 
       {notes.length === 0 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-14">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-14">
           <Sparkles size={28} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-[#64748B]">No notes yet</p>
-          <p className="text-xs text-[#94A3B8] mt-1">Click &quot;Auto-Generate All Notes&quot; to create standard notes.</p>
+          <p className="text-sm text-ps-label">No notes yet</p>
+          <p className="text-xs text-ps-hint mt-1">Click &quot;Auto-Generate All Notes&quot; to create standard notes.</p>
         </div>
       )}
 
@@ -190,32 +190,32 @@ export default function NotesPage() {
           const contentValue = isEditing ? editContent[note.id] : (note.content ?? "");
 
           return (
-            <div key={note.id} className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <div key={note.id} className="bg-white rounded-xl border border-ps-muted overflow-hidden">
               {/* Header row */}
               <div
-                className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-[#F8FAFC]"
+                className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-ps-bg"
                 onClick={() => setExpandedId(isExpanded ? null : note.id)}
               >
                 {isExpanded ? (
-                  <ChevronDown size={14} className="text-[#94A3B8] flex-shrink-0" />
+                  <ChevronDown size={14} className="text-ps-hint flex-shrink-0" />
                 ) : (
-                  <ChevronRight size={14} className="text-[#94A3B8] flex-shrink-0" />
+                  <ChevronRight size={14} className="text-ps-hint flex-shrink-0" />
                 )}
-                <span className="text-xs font-semibold text-[#334155] min-w-[56px]">
+                <span className="text-xs font-semibold text-ps-body min-w-[56px]">
                   Note {noteNumber(note)}
                 </span>
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${TYPE_BADGE[noteType(note)] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${TYPE_BADGE[noteType(note)] ?? "bg-ps-muted text-ps-label"}`}>
                   {noteType(note) === "auto" ? "Auto-generated" : "Manual"}
                 </span>
-                <p className="text-xs text-[#475569] flex-1 truncate">{note.title}</p>
+                <p className="text-xs text-ps-label flex-1 truncate">{note.title}</p>
                 {note.is_locked && (
-                  <span title="Locked"><Lock size={12} className="text-[#94A3B8] flex-shrink-0" /></span>
+                  <span title="Locked"><Lock size={12} className="text-ps-hint flex-shrink-0" /></span>
                 )}
               </div>
 
               {/* Expanded content */}
               {isExpanded && (
-                <div className="border-t border-[#F8FAFC] px-4 py-3 space-y-3">
+                <div className="border-t border-ps-bg px-4 py-3 space-y-3">
                   {noteType(note) === "auto" ? (
                     // Auto-generated notes: display as formatted read-only view
                     <>
@@ -232,7 +232,7 @@ export default function NotesPage() {
                     // Manual notes: editable textarea
                     <div className="space-y-2">
                       {note.is_locked ? (
-                        <p className="text-xs text-[#475569] whitespace-pre-wrap bg-[#F8FAFC] rounded-lg p-3">
+                        <p className="text-xs text-ps-label whitespace-pre-wrap bg-ps-bg rounded-lg p-3">
                           {note.content || "(empty)"}
                         </p>
                       ) : (
@@ -241,14 +241,14 @@ export default function NotesPage() {
                             value={contentValue}
                             onChange={(e) => setEditContent((prev) => ({ ...prev, [note.id]: e.target.value }))}
                             rows={5}
-                            className="w-full text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y font-mono"
+                            className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y font-mono"
                             placeholder="Enter note content…"
                           />
                           {isEditing && (
                             <div className="flex gap-2 justify-end">
                               <button
                                 onClick={() => setEditContent((prev) => { const n = { ...prev }; delete n[note.id]; return n; })}
-                                className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC]"
+                                className="text-xs px-3 py-1.5 border border-ps-border rounded hover:bg-ps-bg"
                               >
                                 Discard
                               </button>
@@ -281,7 +281,7 @@ export default function NotesPage() {
                       <button
                         onClick={() => handleLock(note)}
                         disabled={lockingId === note.id}
-                        className="flex items-center gap-1.5 text-xs text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]"
+                        className="flex items-center gap-1.5 text-xs text-ps-label hover:text-ps-body border border-ps-border px-3 py-1.5 rounded-lg hover:bg-ps-bg"
                       >
                         {lockingId === note.id ? (
                           <Loader2 size={11} className="animate-spin" />
@@ -293,12 +293,12 @@ export default function NotesPage() {
                     </div>
                   )}
                   {note.is_locked && (
-                    <div className="flex items-center gap-1.5 text-[10px] text-[#94A3B8]">
+                    <div className="flex items-center gap-1.5 text-[10px] text-ps-hint">
                       <Unlock size={10} /> Note is locked — contact an admin to unlock.
                     </div>
                   )}
 
-                  <p className="text-[10px] text-[#CBD5E1]">
+                  <p className="text-[10px] text-ps-disabled">
                     Updated {new Date(note.updated_at).toLocaleDateString("en-IN")}
                   </p>
                 </div>
@@ -331,10 +331,10 @@ function FixedAssetMovement({ data }: { data?: NoteData | null }) {
 
   return (
     <div className="space-y-2">
-      <div className="overflow-x-auto rounded-lg border border-[#E2E8F0]">
+      <div className="overflow-x-auto rounded-lg border border-ps-border">
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="bg-[#F8FAFC] text-[#64748B]">
+            <tr className="bg-ps-bg text-ps-label">
               <th className="px-3 py-2 text-left font-semibold">Class</th>
               <th className="px-2 py-2 text-right font-semibold">Opening</th>
               <th className="px-2 py-2 text-right font-semibold">Additions</th>
@@ -345,20 +345,20 @@ function FixedAssetMovement({ data }: { data?: NoteData | null }) {
               <th className="px-3 py-2 text-right font-semibold">Net block</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F1F5F9]">
+          <tbody className="divide-y divide-ps-muted">
             {classes.map((c) => (
               <tr key={c.asset_class}>
-                <td className="px-3 py-1.5 text-[#1E293B] whitespace-nowrap">{c.asset_class}</td>
-                <td className="px-2 py-1.5 text-right font-mono text-[#64748B]">{rs(c.opening_gross_paise)}</td>
-                <td className="px-2 py-1.5 text-right font-mono text-[#64748B]">{rs(c.additions_paise)}</td>
-                <td className="px-2 py-1.5 text-right font-mono text-[#64748B]">{rs(c.deductions_paise)}</td>
-                <td className="px-2 py-1.5 text-right font-mono text-[#1E293B]">{rs(c.closing_gross_paise)}</td>
-                <td className="px-2 py-1.5 text-right font-mono text-[#64748B]">{rs(c.charge_paise)}</td>
-                <td className="px-2 py-1.5 text-right font-mono text-[#64748B]">{rs(c.closing_accum_paise)}</td>
-                <td className="px-3 py-1.5 text-right font-mono font-semibold text-[#1E293B]">{rs(c.closing_net_paise)}</td>
+                <td className="px-3 py-1.5 text-ps-ink whitespace-nowrap">{c.asset_class}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-ps-label">{rs(c.opening_gross_paise)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-ps-label">{rs(c.additions_paise)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-ps-label">{rs(c.deductions_paise)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-ps-ink">{rs(c.closing_gross_paise)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-ps-label">{rs(c.charge_paise)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-ps-label">{rs(c.closing_accum_paise)}</td>
+                <td className="px-3 py-1.5 text-right font-mono font-semibold text-ps-ink">{rs(c.closing_net_paise)}</td>
               </tr>
             ))}
-            <tr className="bg-[#F8FAFC] font-semibold text-[#1E293B]">
+            <tr className="bg-ps-bg font-semibold text-ps-ink">
               <td className="px-3 py-1.5">Total</td>
               <td className="px-2 py-1.5 text-right font-mono">{rs(totals.opening_gross_paise)}</td>
               <td className="px-2 py-1.5 text-right font-mono">{rs(totals.additions_paise)}</td>
@@ -384,7 +384,7 @@ function FixedAssetMovement({ data }: { data?: NoteData | null }) {
 
 function AutoNoteContent({ content, locked }: { content: string | null; locked: boolean }) {
   if (!content) {
-    return <p className="text-xs text-[#94A3B8]">No content generated yet.</p>;
+    return <p className="text-xs text-ps-hint">No content generated yet.</p>;
   }
 
   // Try to parse as JSON table structure; fall back to raw text
@@ -399,22 +399,22 @@ function AutoNoteContent({ content, locked }: { content: string | null; locked: 
       return (
         <div className="space-y-2">
           {parsed.summary && (
-            <p className="text-xs text-[#475569]">{parsed.summary}</p>
+            <p className="text-xs text-ps-label">{parsed.summary}</p>
           )}
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="border-b border-[#E2E8F0] text-[#94A3B8]">
+                <tr className="border-b border-ps-border text-ps-hint">
                   {parsed.headers.map((h, i) => (
                     <th key={i} className="py-2 px-3 text-left font-semibold text-[10px]">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {parsed.rows.map((row, ri) => (
-                  <tr key={ri} className="hover:bg-[#F8FAFC]">
+                  <tr key={ri} className="hover:bg-ps-bg">
                     {row.map((cell, ci) => (
-                      <td key={ci} className="py-1.5 px-3 text-[#334155]">
+                      <td key={ci} className="py-1.5 px-3 text-ps-body">
                         {typeof cell === "number"
                           ? new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2 }).format(cell / 100)
                           : cell}
@@ -425,7 +425,7 @@ function AutoNoteContent({ content, locked }: { content: string | null; locked: 
               </tbody>
             </table>
           </div>
-          {locked && <p className="text-[10px] text-[#94A3B8]">🔒 Locked</p>}
+          {locked && <p className="text-[10px] text-ps-hint">🔒 Locked</p>}
         </div>
       );
     }
@@ -434,7 +434,7 @@ function AutoNoteContent({ content, locked }: { content: string | null; locked: 
   }
 
   return (
-    <p className={`text-xs text-[#475569] whitespace-pre-wrap bg-[#F8FAFC] rounded-lg p-3 ${locked ? "opacity-75" : ""}`}>
+    <p className={`text-xs text-ps-label whitespace-pre-wrap bg-ps-bg rounded-lg p-3 ${locked ? "opacity-75" : ""}`}>
       {content}
     </p>
   );

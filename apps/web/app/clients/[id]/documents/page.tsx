@@ -218,7 +218,7 @@ export default function DocumentsPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-[#334155]">
+        <h2 className="text-sm font-semibold text-ps-body">
           Documents ({loading ? "…" : documents.length})
         </h2>
         <button
@@ -234,20 +234,20 @@ export default function DocumentsPage() {
       ) : loadError ? (
         <div className="bg-white rounded-xl border border-red-200 px-5 py-12 text-center space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
-          <button disabled={actionInFlight} onClick={loadDocuments} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button disabled={actionInFlight} onClick={loadDocuments} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : documents.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-12 text-center space-y-2">
+        <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center space-y-2">
           <FolderOpen className="w-8 h-8 text-gray-200 mx-auto" />
-          <p className="text-sm text-[#94A3B8]">No documents uploaded yet</p>
-          <p className="text-xs text-[#CBD5E1]">Upload returns, notices, Form 16, and other files for this client</p>
+          <p className="text-sm text-ps-hint">No documents uploaded yet</p>
+          <p className="text-xs text-ps-disabled">Upload returns, notices, Form 16, and other files for this client</p>
         </div>
       ) : (
         <Card>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-xs text-ps-hint">
                   <th className="px-5 py-3 text-left font-semibold">Label</th>
                   <th className="px-3 py-3 text-left font-semibold">File Name</th>
                   <th className="px-3 py-3 text-left font-semibold">Size</th>
@@ -255,14 +255,14 @@ export default function DocumentsPage() {
                   <th className="px-5 py-3 text-left font-semibold">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {documents.map((doc) => {
                   const versionCount = documents.filter(
                     (d) => docLabel(d).toLowerCase() === docLabel(doc).toLowerCase()
                   ).length;
                   return (
-                    <tr key={doc.id} className="hover:bg-[#F8FAFC]">
-                      <td className="px-5 py-3 text-sm font-medium text-[#0F172A]">
+                    <tr key={doc.id} className="hover:bg-ps-bg">
+                      <td className="px-5 py-3 text-sm font-medium text-ps-ink">
                         <div className="flex items-center gap-2">
                           {docLabel(doc)}
                           {(doc.version ?? 1) > 1 && (
@@ -272,11 +272,11 @@ export default function DocumentsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-xs text-[#64748B] font-mono max-w-[200px] truncate">
+                      <td className="px-3 py-3 text-xs text-ps-label font-mono max-w-[200px] truncate">
                         {doc.file_name}
                       </td>
-                      <td className="px-3 py-3 text-xs text-[#64748B]">{formatFileSize(doc.file_size)}</td>
-                      <td className="px-3 py-3 text-xs text-[#64748B] whitespace-nowrap">
+                      <td className="px-3 py-3 text-xs text-ps-label">{formatFileSize(doc.file_size)}</td>
+                      <td className="px-3 py-3 text-xs text-ps-label whitespace-nowrap">
                         {new Date(doc.created_at).toLocaleDateString("en-IN", {
                           day: "numeric", month: "short", year: "numeric",
                         })}
@@ -317,39 +317,39 @@ export default function DocumentsPage() {
 
       {/* Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[#0F172A]">Upload Document</h3>
+              <h3 className="text-sm font-semibold text-ps-ink">Upload Document</h3>
               <button
                 onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }}
-                className="text-[#94A3B8] hover:text-[#475569]"
+                className="text-ps-hint hover:text-ps-label"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1">Label *</label>
+                <label className="block text-xs font-medium text-ps-body mb-1">Label *</label>
                 <input
                   type="text"
                   value={uploadLabel}
                   onChange={(e) => setUploadLabel(e.target.value)}
                   placeholder="e.g. GSTR-9 FY 2024-25, ITR AY 2024-25"
-                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1">File * (max 50 MB)</label>
+                <label className="block text-xs font-medium text-ps-body mb-1">File * (max 50 MB)</label>
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip"
                   onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                  className="w-full text-sm text-[#475569] file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  className="w-full text-sm text-ps-label file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />
                 {uploadFile && (
-                  <p className="text-xs text-[#94A3B8] mt-1">{uploadFile.name} — {formatFileSize(uploadFile.size)}</p>
+                  <p className="text-xs text-ps-hint mt-1">{uploadFile.name} — {formatFileSize(uploadFile.size)}</p>
                 )}
               </div>
               {uploadError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{uploadError}</p>}
@@ -357,7 +357,7 @@ export default function DocumentsPage() {
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }}
-                className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+                className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
               >
                 Cancel
               </button>
@@ -375,20 +375,20 @@ export default function DocumentsPage() {
 
       {/* Version Prompt Modal */}
       {versionPromptDoc && (
-        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h3 className="text-sm font-semibold text-[#0F172A]">Document already exists</h3>
-            <p className="text-xs text-[#475569]">
+            <h3 className="text-sm font-semibold text-ps-ink">Document already exists</h3>
+            <p className="text-xs text-ps-label">
               A document with the label <strong>{docLabel(versionPromptDoc)}</strong> already exists (v{versionPromptDoc.version ?? 1}).
               Upload as a new version?
             </p>
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setVersionPromptDoc(null)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">
+              <button onClick={() => setVersionPromptDoc(null)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
                 Cancel
               </button>
               <button
                 onClick={() => { setVersionPromptDoc(null); handleUploadDocument(false, null); }}
-                className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+                className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
               >
                 Upload as New
               </button>
@@ -405,11 +405,11 @@ export default function DocumentsPage() {
 
       {/* Version History Modal */}
       {showVersionHistory && (
-        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[#0F172A]">Version History — {showVersionHistory}</h3>
-              <button onClick={() => setShowVersionHistory(null)} className="text-[#94A3B8] hover:text-[#475569]">
+              <h3 className="text-sm font-semibold text-ps-ink">Version History — {showVersionHistory}</h3>
+              <button onClick={() => setShowVersionHistory(null)} className="text-ps-hint hover:text-ps-label">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -418,9 +418,9 @@ export default function DocumentsPage() {
                 <div key={v.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                   <div>
                     <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-mono mr-2">v{v.version ?? 1}</span>
-                    <span className="text-xs text-[#64748B]">{v.file_name}</span>
+                    <span className="text-xs text-ps-label">{v.file_name}</span>
                   </div>
-                  <span className="text-xs text-[#94A3B8]">
+                  <span className="text-xs text-ps-hint">
                     {new Date(v.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                   </span>
                 </div>

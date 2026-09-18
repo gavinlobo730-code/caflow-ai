@@ -190,19 +190,19 @@ export default function RelationshipsPage() {
 
   const columns: Column<Entity>[] = useMemo(() => [
     { key: "full_name", header: "Name", accessor: (e) => e.full_name, searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (e) => <span className="font-medium text-[#1E293B]">{e.full_name}</span> },
+      render: (e) => <span className="font-medium text-ps-ink">{e.full_name}</span> },
     { key: "entity_type", header: "Type", accessor: (e) => e.entity_type, sortable: true,
       render: (e) => <Badge className={`text-[11px] ${ENTITY_TYPE_COLORS[e.entity_type]}`}>{e.entity_type}</Badge> },
     { key: "pan", header: "PAN", accessor: (e) => e.pan ?? "", searchable: true,
-      render: (e) => <span className="font-mono text-xs text-[#64748B]">{e.pan || "—"}</span> },
+      render: (e) => <span className="font-mono text-xs text-ps-label">{e.pan || "—"}</span> },
     { key: "gstin", header: "GSTIN", accessor: (e) => e.gstin ?? "", searchable: true, defaultHidden: true,
-      render: (e) => <span className="font-mono text-xs text-[#64748B]">{e.gstin || "—"}</span> },
+      render: (e) => <span className="font-mono text-xs text-ps-label">{e.gstin || "—"}</span> },
     { key: "email", header: "Email", accessor: (e) => e.email ?? "", searchable: true,
-      render: (e) => <span className="text-xs text-[#64748B]">{e.email || "—"}</span> },
+      render: (e) => <span className="text-xs text-ps-label">{e.email || "—"}</span> },
     { key: "roles_count", header: "Roles", accessor: (e) => e.roles_count, sortable: true, align: "right" },
     { key: "linked_clients_count", header: "Linked Clients", accessor: (e) => e.linked_clients_count, sortable: true, align: "right" },
     { key: "created_at", header: "Created", accessor: (e) => e.created_at, sortable: true, defaultHidden: true,
-      render: (e) => <span className="text-xs text-[#64748B]">{formatDate(e.created_at)}</span> },
+      render: (e) => <span className="text-xs text-ps-label">{formatDate(e.created_at)}</span> },
   ], []);
 
   const filters: FilterDef<Entity>[] = useMemo(() => [
@@ -211,7 +211,7 @@ export default function RelationshipsPage() {
   ], []);
 
   return (
-    <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
+    <div className="p-6 space-y-5 bg-ps-bg min-h-full">
       {/* Toast */}
       {detectToast && (
         <div className="fixed top-4 right-4 z-50 bg-white border border-gray-200 text-gray-800 text-sm px-4 py-3 rounded-lg shadow-xl max-w-sm">
@@ -222,7 +222,7 @@ export default function RelationshipsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#182350]">Entity Registry</h1>
+          <h1 className="text-2xl font-bold text-brand">Entity Registry</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {entities.length}{entitiesCapped ? "+" : ""} entities across all clients
             {entitiesCapped && " — refine your search to see more"}
@@ -232,7 +232,7 @@ export default function RelationshipsPage() {
           <button
             onClick={handleDetectMatches}
             disabled={actionInFlight}
-            className="text-sm text-[#182350] border border-[#182350]/30 px-3 py-1.5 rounded-md hover:bg-[#AFD2FA]/20 disabled:opacity-50"
+            className="text-sm text-brand border border-brand/30 px-3 py-1.5 rounded-md hover:bg-brand-light/20 disabled:opacity-50"
           >
             {detectLoading ? "Detecting…" : "Detect Matches"}
           </button>
@@ -242,7 +242,7 @@ export default function RelationshipsPage() {
               setSaveError(null);
               setModalOpen(true);
             }}
-            className="flex items-center gap-1.5 text-sm bg-[#182350] text-white px-3 py-1.5 rounded-md hover:bg-[#0D1635]"
+            className="flex items-center gap-1.5 text-sm bg-brand text-white px-3 py-1.5 rounded-md hover:bg-brand-dark"
           >
             <Plus size={14} /> Add Entity
           </button>
@@ -266,7 +266,7 @@ export default function RelationshipsPage() {
         emptyTitle="No entities found"
         emptyDescription="Add an entity or run match detection to populate the registry."
         rowActions={(e) => (
-          <a href={`/relationships/${e.id}`} className="text-xs font-medium text-[#182350] hover:underline">
+          <a href={`/relationships/${e.id}`} className="text-xs font-medium text-brand hover:underline">
             View →
           </a>
         )}
@@ -274,10 +274,10 @@ export default function RelationshipsPage() {
 
       {/* Add Entity Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-[#182350]/60 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-brand/60 flex items-center justify-center z-50 px-4">
           <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-[#182350]">Add Entity</h2>
+              <h2 className="text-sm font-semibold text-brand">Add Entity</h2>
               <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-700">
                 <X size={16} />
               </button>
@@ -288,7 +288,7 @@ export default function RelationshipsPage() {
                 <input
                   value={form.full_name}
                   onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                   placeholder="Individual or entity name"
                 />
               </div>
@@ -297,7 +297,7 @@ export default function RelationshipsPage() {
                 <select
                   value={form.entity_type}
                   onChange={(e) => setForm({ ...form, entity_type: e.target.value as EntityType })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                 >
                   {ENTITY_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -312,7 +312,7 @@ export default function RelationshipsPage() {
                   <input
                     value={form.pan}
                     onChange={(e) => setForm({ ...form, pan: e.target.value.toUpperCase() })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
+                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                     placeholder="AAAAA9999A"
                     maxLength={10}
                   />
@@ -322,7 +322,7 @@ export default function RelationshipsPage() {
                   <input
                     value={form.gstin}
                     onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
+                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                     placeholder="22AAAAA0000A1Z5"
                     maxLength={15}
                   />
@@ -335,7 +335,7 @@ export default function RelationshipsPage() {
                     type="email"
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
+                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                     placeholder="contact@example.com"
                   />
                 </div>
@@ -345,7 +345,7 @@ export default function RelationshipsPage() {
                     type="tel"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]/20 focus:border-[#182350]"
+                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                     placeholder="+91 98765 43210"
                   />
                 </div>
@@ -366,7 +366,7 @@ export default function RelationshipsPage() {
               <button
                 onClick={handleAddEntity}
                 disabled={actionInFlight || !form.full_name.trim()}
-                className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
+                className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
                 {saving ? "Adding…" : "Add Entity"}
               </button>

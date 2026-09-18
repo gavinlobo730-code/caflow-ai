@@ -144,16 +144,16 @@ export default function TreatyRatesPage() {
   return (
     <RoleGuard allowed={["Partner", "Manager"]}>
       <div className="p-6 max-w-5xl mx-auto space-y-5">
-        <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-[#64748B] hover:text-[#0F172A]">
+        <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-label hover:text-ps-ink">
           <ChevronLeft size={14} /> Settings
         </Link>
 
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-lg font-semibold text-[#0F172A] flex items-center gap-2">
+            <h1 className="text-lg font-semibold text-ps-ink flex items-center gap-2">
               <Globe2 size={18} className="text-sky-500" /> DTAA Treaty Rates
             </h1>
-            <p className="text-xs text-[#64748B] mt-1 max-w-2xl">
+            <p className="text-xs text-ps-label mt-1 max-w-2xl">
               Your firm&apos;s reading of the agreements it withholds under, one row per country
               and nature of income. Nothing is shipped or suggested here: India has agreements
               with over ninety countries, MFN clauses need their own §90(1) notification, and a
@@ -178,32 +178,32 @@ export default function TreatyRatesPage() {
         )}
 
         {showForm && (
-          <div className="border border-[#E2E8F0] rounded-xl p-4 space-y-3 bg-white">
+          <div className="border border-ps-border rounded-xl p-4 space-y-3 bg-white">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-[#0F172A]">Record a reading</p>
-              <button onClick={() => setShowForm(false)} className="text-[#94A3B8] hover:text-[#0F172A]"><X size={16} /></button>
+              <p className="text-sm font-medium text-ps-ink">Record a reading</p>
+              <button onClick={() => setShowForm(false)} className="text-ps-hint hover:text-ps-ink"><X size={16} /></button>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label htmlFor="tr-country" className="block text-xs font-medium text-[#475569] mb-1">Country (ISO code)</label>
+                <label htmlFor="tr-country" className="block text-xs font-medium text-ps-label mb-1">Country (ISO code)</label>
                 <input id="tr-country" value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} maxLength={2} placeholder="AE"
-                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-sky-500" />
               </div>
               <div>
-                <label htmlFor="tr-nature" className="block text-xs font-medium text-[#475569] mb-1">Nature of income</label>
+                <label htmlFor="tr-nature" className="block text-xs font-medium text-ps-label mb-1">Nature of income</label>
                 <select id="tr-nature" value={nature} onChange={(e) => setNature(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500">
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500">
                   <option value="">Select…</option>
                   {natures.map((n) => <option key={n} value={n}>{NATURE_LABELS[n] ?? n}</option>)}
                 </select>
               </div>
               <div>
-                <label htmlFor="tr-rate" className="block text-xs font-medium text-[#475569] mb-1">Rate (%)</label>
+                <label htmlFor="tr-rate" className="block text-xs font-medium text-ps-label mb-1">Rate (%)</label>
                 <input id="tr-rate" value={rate} onChange={(e) => setRate(e.target.value)} disabled={noArticle} placeholder="10"
-                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:bg-ps-bg disabled:text-ps-hint" />
               </div>
             </div>
-            <label className="flex items-start gap-2 text-xs text-[#475569]">
+            <label className="flex items-start gap-2 text-xs text-ps-label">
               <input type="checkbox" checked={noArticle} onChange={(e) => setNoArticle(e.target.checked)} className="rounded mt-0.5" />
               <span>
                 The agreement has <strong>no article</strong> for this nature. Several — the UAE and
@@ -214,18 +214,18 @@ export default function TreatyRatesPage() {
             </label>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="tr-article" className="block text-xs font-medium text-[#475569] mb-1">Article relied on</label>
+                <label htmlFor="tr-article" className="block text-xs font-medium text-ps-label mb-1">Article relied on</label>
                 <input id="tr-article" value={articleRef} onChange={(e) => setArticleRef(e.target.value)} placeholder="Article 12(2)"
-                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" />
               </div>
               <div>
-                <label htmlFor="tr-notes" className="block text-xs font-medium text-[#475569] mb-1">Notes</label>
+                <label htmlFor="tr-notes" className="block text-xs font-medium text-ps-label mb-1">Notes</label>
                 <input id="tr-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="MFN position, protocol date, conditions…"
-                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" />
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+              <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
               <button onClick={save} disabled={actionInFlight || !country || !nature} className="text-xs px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 disabled:opacity-40">
                 {saving ? "Saving…" : "Save reading"}
               </button>
@@ -234,18 +234,18 @@ export default function TreatyRatesPage() {
         )}
 
         {loading ? <TableSkeleton /> : rows.length === 0 ? (
-          <div className="border border-dashed border-[#E2E8F0] rounded-xl p-8 text-center">
-            <p className="text-sm text-[#475569]">No treaty readings recorded.</p>
-            <p className="text-xs text-[#94A3B8] mt-1 max-w-md mx-auto">
+          <div className="border border-dashed border-ps-border rounded-xl p-8 text-center">
+            <p className="text-sm text-ps-label">No treaty readings recorded.</p>
+            <p className="text-xs text-ps-hint mt-1 max-w-md mx-auto">
               Until a country and nature are recorded here, a bill for a non-resident vendor
               holding a Tax Residency Certificate is refused rather than withheld at the Act
               rate — which would over-deduct on a payment a treaty already covers.
             </p>
           </div>
         ) : (
-          <div className="border border-[#E2E8F0] rounded-xl overflow-hidden bg-white">
+          <div className="border border-ps-border rounded-xl overflow-hidden bg-white">
             <table className="w-full text-sm">
-              <thead className="bg-[#F8FAFC] text-xs text-[#64748B]">
+              <thead className="bg-ps-bg text-xs text-ps-label">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Country</th>
                   <th className="text-left px-4 py-2 font-medium">Nature of income</th>
@@ -257,19 +257,19 @@ export default function TreatyRatesPage() {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-t border-[#F1F5F9]">
-                    <td className="px-4 py-2 font-mono text-[#0F172A]">{r.country_code}</td>
-                    <td className="px-4 py-2 text-[#475569]">{NATURE_LABELS[r.nature] ?? r.nature}</td>
+                  <tr key={r.id} className="border-t border-ps-muted">
+                    <td className="px-4 py-2 font-mono text-ps-ink">{r.country_code}</td>
+                    <td className="px-4 py-2 text-ps-label">{NATURE_LABELS[r.nature] ?? r.nature}</td>
                     <td className="px-4 py-2 text-right">
                       {r.no_article
                         ? <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">No article</span>
-                        : <span className="font-medium text-[#0F172A]">{((r.rate_bps ?? 0) / 100).toFixed(2)}%</span>}
+                        : <span className="font-medium text-ps-ink">{((r.rate_bps ?? 0) / 100).toFixed(2)}%</span>}
                     </td>
-                    <td className="px-4 py-2 text-xs text-[#64748B]">{r.article_ref ?? "—"}</td>
-                    <td className="px-4 py-2 text-xs text-[#94A3B8]">{r.verified_on ?? "—"}</td>
+                    <td className="px-4 py-2 text-xs text-ps-label">{r.article_ref ?? "—"}</td>
+                    <td className="px-4 py-2 text-xs text-ps-hint">{r.verified_on ?? "—"}</td>
                     <td className="px-4 py-2 text-right">
                       <button disabled={actionInFlight} onClick={() => remove(r)} aria-label={`Remove ${r.country_code} ${r.nature}`}
-                        className="text-[#94A3B8] hover:text-red-600"><Trash2 size={14} /></button>
+                        className="text-ps-hint hover:text-red-600"><Trash2 size={14} /></button>
                     </td>
                   </tr>
                 ))}

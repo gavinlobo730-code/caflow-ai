@@ -108,19 +108,19 @@ function PinModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-brand-dark/60 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <KeyRound className="w-5 h-5 text-blue-600" />
-            <h2 className="text-base font-semibold text-[#0F172A]">
+            <h2 className="text-base font-semibold text-ps-ink">
               {isSettingPin ? "Set Lock PIN" : d.isLocked ? "Unlock Year" : "Lock Year"}
             </h2>
           </div>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
 
-        <p className="text-sm text-[#64748B]">
+        <p className="text-sm text-ps-label">
           {isSettingPin
             ? "No PIN is set yet. Create a PIN that Partners will use to lock or unlock financial years."
             : `Enter the firm PIN to ${d.isLocked ? "unlock" : "lock"} FY ${d.fy}.`}
@@ -129,7 +129,7 @@ function PinModal({
         {isSettingPin ? (
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">New PIN</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">New PIN</label>
               <div className="relative">
                 <input
                   type={showPin ? "text" : "password"}
@@ -139,13 +139,13 @@ function PinModal({
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm pr-9 outline-none focus:border-blue-500"
                 />
                 <button type="button" onClick={() => setShowPin(v => !v)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]">
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ps-hint">
                   {showPin ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">Confirm PIN</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Confirm PIN</label>
               <input
                 type={showPin ? "text" : "password"}
                 value={confirmPin}
@@ -168,7 +168,7 @@ function PinModal({
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm pr-9 outline-none focus:border-blue-500"
             />
             <button type="button" onClick={() => setShowPin(v => !v)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]">
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ps-hint">
               {showPin ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
@@ -178,7 +178,7 @@ function PinModal({
 
         <div className="flex gap-2 pt-1">
           <button onClick={onClose}
-            className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC]">
+            className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg">
             Cancel
           </button>
           <button onClick={submit}
@@ -244,12 +244,12 @@ function LockYearContent() {
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft className="w-4 h-4" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-[#0F172A]">Lock Financial Year</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Partner-only — lock closed years to prevent accidental edits</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Lock Financial Year</h1>
+          <p className="text-sm text-ps-label mt-0.5">Partner-only — lock closed years to prevent accidental edits</p>
         </div>
         <Shield className="w-5 h-5 text-blue-600" />
       </div>
@@ -268,14 +268,14 @@ function LockYearContent() {
       )}
 
       {/* FY list */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-50 bg-[#F8FAFC]">
-          <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Financial Years</p>
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-50 bg-ps-bg">
+          <p className="text-xs font-semibold text-ps-label uppercase tracking-wide">Financial Years</p>
         </div>
         {loading ? (
           <TableSkeleton bare rows={4} cols={3} />
         ) : (
-          <div className="divide-y divide-[#F8FAFC]">
+          <div className="divide-y divide-ps-bg">
             {fyRows(lockedYears).map((fy) => {
               const isLocked = lockedYears.includes(fy.label);
               const isSaving = saving === fy.label;
@@ -284,11 +284,11 @@ function LockYearContent() {
                   <div className="flex items-center gap-3">
                     {isLocked
                       ? <Lock className="w-4 h-4 text-red-500" />
-                      : <Unlock className="w-4 h-4 text-[#CBD5E1]" />
+                      : <Unlock className="w-4 h-4 text-ps-disabled" />
                     }
                     <div>
-                      <p className="text-sm font-medium text-[#0F172A]">{fy.display}</p>
-                      <p className={`text-xs mt-0.5 ${isLocked ? "text-red-600 font-medium" : "text-[#94A3B8]"}`}>
+                      <p className="text-sm font-medium text-ps-ink">{fy.display}</p>
+                      <p className={`text-xs mt-0.5 ${isLocked ? "text-red-600 font-medium" : "text-ps-hint"}`}>
                         {isLocked ? "Locked — no edits permitted" : "Open — edits allowed"}
                       </p>
                       {/* A year shown ONLY because it is locked. Before ACC-18
@@ -308,7 +308,7 @@ function LockYearContent() {
                     disabled={isSaving}
                     className={`text-xs px-4 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50 ${
                       isLocked
-                        ? "bg-[#F1F5F9] text-[#334155] hover:bg-white/[0.08]"
+                        ? "bg-ps-muted text-ps-body hover:bg-white/[0.08]"
                         : "bg-red-600 text-white hover:bg-red-700"
                     }`}
                   >
@@ -322,9 +322,9 @@ function LockYearContent() {
       </div>
 
       {/* PIN status */}
-      <div className="flex items-center justify-between bg-[#F8FAFC] rounded-xl px-4 py-3">
-        <div className="flex items-center gap-2 text-sm text-[#475569]">
-          <KeyRound size={14} className="text-[#94A3B8]" />
+      <div className="flex items-center justify-between bg-ps-bg rounded-xl px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-ps-label">
+          <KeyRound size={14} className="text-ps-hint" />
           <span>Lock PIN: </span>
           <span className={`font-medium ${pinSet ? "text-green-700" : "text-amber-600"}`}>
             {pinSet ? "Set" : "Not set — will be created on first lock"}
@@ -332,7 +332,7 @@ function LockYearContent() {
         </div>
       </div>
 
-      <p className="text-xs text-[#94A3B8] text-center">
+      <p className="text-xs text-ps-hint text-center">
         Locking follows AS-1 (Accounting Standard on Disclosure of Accounting Policies) — once books are closed, entries should not be changed without proper rectification journals in the next open period.
       </p>
 

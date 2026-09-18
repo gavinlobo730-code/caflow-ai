@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile hamburger */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-white text-[#64748B] hover:text-[#1E293B] border border-[#E2E8F0] shadow-sm"
+        className="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-white text-ps-label hover:text-ps-ink border border-ps-border shadow-sm"
         aria-label="Open menu"
       >
         <Menu size={18} />
@@ -88,7 +88,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-[#182350]/70 backdrop-blur-sm"
+          className="md:hidden fixed inset-0 z-40 bg-brand/70 backdrop-blur-sm"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -102,7 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <button
           onClick={() => setMobileOpen(false)}
-          className="absolute top-3 right-[-40px] z-10 p-1.5 rounded-md bg-white text-[#94A3B8] hover:text-[#475569]"
+          className="absolute top-3 right-[-40px] z-10 p-1.5 rounded-md bg-white text-ps-hint hover:text-ps-label"
           aria-label="Close menu"
         >
           <X size={15} />
@@ -112,7 +112,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Main layout */}
-      <div className="flex h-screen overflow-hidden bg-[#F8FAFC]">
+      <div className="flex h-screen overflow-hidden bg-ps-bg">
         {/* Desktop: ActivityRail + ContextPanel — hidden when inside client workspace */}
         {!isClientWorkspace && (
           <div className="hidden md:flex h-full">

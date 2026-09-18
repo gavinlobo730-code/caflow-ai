@@ -251,29 +251,29 @@ export function ProductServiceManagerPanel({
     { key: "name", header: "Name", accessor: (s) => s.name, searchable: true, sortable: true, sticky: true, hideable: false,
       render: (s) => (
         <div>
-          <p className="font-medium text-[#1E293B]">
+          <p className="font-medium text-ps-ink">
             {s.name}
-            <span className="ml-2 text-[9px] uppercase tracking-wide text-[#94A3B8]">{formatServiceKind(s.kind)}</span>
-            {!s.is_active && <span className="ml-2 text-[10px] uppercase tracking-wide text-[#94A3B8]">archived</span>}
+            <span className="ml-2 text-[9px] uppercase tracking-wide text-ps-hint">{formatServiceKind(s.kind)}</span>
+            {!s.is_active && <span className="ml-2 text-[10px] uppercase tracking-wide text-ps-hint">archived</span>}
           </p>
-          {s.description && <p className="text-[11px] text-[#94A3B8] truncate max-w-[280px]">{s.description}</p>}
+          {s.description && <p className="text-[11px] text-ps-hint truncate max-w-[280px]">{s.description}</p>}
         </div>
       ) },
     { key: "hsn_sac", header: "SAC/HSN", accessor: (s) => s.hsn_sac ?? "", searchable: true,
-      render: (s) => <span className="font-mono text-[#64748B]">{s.hsn_sac || "—"}</span> },
+      render: (s) => <span className="font-mono text-ps-label">{s.hsn_sac || "—"}</span> },
     // Stock on hand — kind='good' only (migration 188). A service row shows
     // "—", never 0, since a service was never stock-tracked to begin with.
     { key: "stock_qty_units", header: "Stock", accessor: (s) => (s.kind === "good" ? s.stock_qty_units ?? 0 : 0), sortable: true, align: "right",
       render: (s) => {
-        if (s.kind !== "good") return <span className="text-[#CBD5E1]">—</span>;
+        if (s.kind !== "good") return <span className="text-ps-disabled">—</span>;
         const qty = s.stock_qty_units ?? 0;
         const label = Number.isInteger(qty) ? String(qty) : qty.toFixed(3).replace(/\.?0+$/, "");
-        return <span className={`font-mono ${qty < 0 ? "text-red-600" : "text-[#334155]"}`}>{label}</span>;
+        return <span className={`font-mono ${qty < 0 ? "text-red-600" : "text-ps-body"}`}>{label}</span>;
       } },
     { key: "gst_rate_bps", header: "GST", accessor: (s) => s.gst_rate_bps ?? 0, sortable: true, align: "right",
-      render: (s) => <span className="text-[#334155]">{formatServiceRate(s.gst_rate_bps) || "—"}</span> },
+      render: (s) => <span className="text-ps-body">{formatServiceRate(s.gst_rate_bps) || "—"}</span> },
     { key: "default_rate_paise", header: "Selling price", accessor: (s) => s.default_rate_paise ?? 0, sortable: true, align: "right",
-      render: (s) => <span className="font-mono text-[#334155]">{formatServicePrice(s.default_rate_paise) || "—"}</span> },
+      render: (s) => <span className="font-mono text-ps-body">{formatServicePrice(s.default_rate_paise) || "—"}</span> },
   ], []);
 
   const filters: FilterDef<ServiceCatalogueItem>[] = useMemo(() => [
@@ -293,8 +293,8 @@ export function ProductServiceManagerPanel({
 
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2"><BookMarked size={18} className="text-emerald-600" /> Products &amp; Services</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink flex items-center gap-2"><BookMarked size={18} className="text-emerald-600" /> Products &amp; Services</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             {onPick
               ? "Search, pick, or manage this client's billing presets without leaving the invoice."
               : "Reusable billing presets for this client. Products (kind='good') also track stock and moving-average cost — see the Inventory tab for full ledger detail."}
@@ -303,7 +303,7 @@ export function ProductServiceManagerPanel({
         <div className="flex items-center gap-2">
           <button
             onClick={() => { setOpeningBalanceDate(""); setImportStep("date"); }}
-            className="flex items-center gap-1.5 text-sm border border-[#E2E8F0] text-[#475569] px-3.5 py-2 rounded-lg hover:bg-[#F8FAFC] whitespace-nowrap"
+            className="flex items-center gap-1.5 text-sm border border-ps-border text-ps-label px-3.5 py-2 rounded-lg hover:bg-ps-bg whitespace-nowrap"
           >
             <Upload size={15} /> Import
           </button>
@@ -378,13 +378,13 @@ export function ProductServiceManagerPanel({
                 Select
               </button>
             )}
-            <button onClick={() => setEditing(s)} className="p-1.5 text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
+            <button onClick={() => setEditing(s)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
             {s.is_active ? (
-              <button disabled={rowBusy} onClick={() => setActive(s, false)} className="p-1.5 text-[#64748B] hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Archive"><Archive size={14} /></button>
+              <button disabled={rowBusy} onClick={() => setActive(s, false)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Archive"><Archive size={14} /></button>
             ) : (
-              <button disabled={rowBusy} onClick={() => setActive(s, true)} className="p-1.5 text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
+              <button disabled={rowBusy} onClick={() => setActive(s, true)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
             )}
-            <button disabled={rowBusy} onClick={() => deleteItem(s)} className="p-1.5 text-[#64748B] hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete"><Trash2 size={14} /></button>
+            <button disabled={rowBusy} onClick={() => deleteItem(s)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete"><Trash2 size={14} /></button>
           </div>
         )}
       />
@@ -408,23 +408,23 @@ export function ProductServiceManagerPanel({
 
       {importStep === "date" && (
         <Modal title="Opening stock date" onClose={() => setImportStep("closed")} maxWidthClass="max-w-md">
-          <p className="text-sm text-[#64748B]">
+          <p className="text-sm text-ps-label">
             If your file sets opening stock (quantity/value) for any products, what date is that stock <strong>as of</strong>?
             This is when the stock existed — not today, or whenever you happen to be importing. Leave blank to default to your client&apos;s financial-year start.
           </p>
           <label className="block space-y-1">
-            <span className="block text-xs font-medium text-[#475569]">Opening balance as of (optional)</span>
+            <span className="block text-xs font-medium text-ps-label">Opening balance as of (optional)</span>
             <input
               type="date"
               autoFocus
               value={openingBalanceDate}
               onChange={(e) => setOpeningBalanceDate(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </label>
-          <p className="text-xs text-[#94A3B8]">No opening stock in this file? Leave this blank and continue — it&apos;s ignored for rows with no opening quantity/value.</p>
+          <p className="text-xs text-ps-hint">No opening stock in this file? Leave this blank and continue — it&apos;s ignored for rows with no opening quantity/value.</p>
           <div className="flex justify-end gap-2 pt-1">
-            <button onClick={() => setImportStep("closed")} className="text-sm px-3.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+            <button onClick={() => setImportStep("closed")} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <button onClick={() => setImportStep("csv")} className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Continue</button>
           </div>
         </Modal>
@@ -446,15 +446,15 @@ export function ProductServiceManagerPanel({
   // layering convention (fixed inset-0 backdrop + z-index) as every other
   // modal in the app (ProductServiceFormModal, CsvImportModal, …).
   return (
-    <div className="fixed inset-0 z-[80] flex justify-end bg-[#0F172A]/50" onClick={onClose}>
+    <div className="fixed inset-0 z-[80] flex justify-end bg-brand-dark/50" onClick={onClose}>
       <div
-        className="relative h-full w-full max-w-3xl overflow-y-auto bg-[#F8FAFC] p-6 pt-14 shadow-2xl"
+        className="relative h-full w-full max-w-3xl overflow-y-auto bg-ps-bg p-6 pt-14 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-4 top-4 rounded-lg p-1.5 text-[#94A3B8] hover:bg-white hover:text-[#334155]"
+          className="absolute right-4 top-4 rounded-lg p-1.5 text-ps-hint hover:bg-white hover:text-ps-body"
         >
           <X size={18} />
         </button>

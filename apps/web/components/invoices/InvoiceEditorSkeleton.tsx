@@ -13,7 +13,7 @@
  */
 import { Skeleton } from "@/components/ui/skeleton";
 
-const CARD = "bg-white rounded-xl border border-[#F1F5F9] p-4";
+const CARD = "bg-white rounded-xl border border-ps-muted p-4";
 
 function FieldSkeleton({ wide }: { wide?: boolean }) {
   return (
@@ -59,7 +59,7 @@ export function InvoiceEditorSkeleton() {
           <Skeleton className="h-3 w-24" />
           <Skeleton className="h-7 w-40 rounded-lg" />
         </div>
-        <div className="flex items-center gap-2 pb-2 border-b border-[#F1F5F9]">
+        <div className="flex items-center gap-2 pb-2 border-b border-ps-muted">
           <Skeleton className="h-2.5 flex-[2]" />
           <Skeleton className="h-2.5 w-24" />
           <Skeleton className="h-2.5 w-12" />
@@ -68,7 +68,7 @@ export function InvoiceEditorSkeleton() {
           <Skeleton className="h-2.5 w-14" />
           <Skeleton className="h-2.5 w-16" />
         </div>
-        <div className="divide-y divide-[#F8FAFC]">
+        <div className="divide-y divide-ps-bg">
           <LineRowSkeleton />
           <LineRowSkeleton />
           <LineRowSkeleton />
@@ -97,11 +97,11 @@ export function SummaryPanelSkeleton() {
           </div>
         ))}
       </div>
-      <div className="border-t border-[#E2E8F0] pt-2 flex justify-between">
+      <div className="border-t border-ps-border pt-2 flex justify-between">
         <Skeleton className="h-3.5 w-16" />
         <Skeleton className="h-3.5 w-20" />
       </div>
-      <div className="border-t border-[#F1F5F9] pt-2 space-y-2">
+      <div className="border-t border-ps-muted pt-2 space-y-2">
         <div className="flex justify-between">
           <Skeleton className="h-2.5 w-14" />
           <Skeleton className="h-2.5 w-16" />

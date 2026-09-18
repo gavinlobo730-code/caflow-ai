@@ -23,17 +23,17 @@ const STATUS_LABEL: Record<ChecklistItemStatus, string> = {
 };
 
 const STATUS_BADGE: Record<ChecklistItemStatus, string> = {
-  pending: "bg-[#F1F5F9] text-[#94A3B8]",
+  pending: "bg-ps-muted text-ps-hint",
   in_progress: "bg-amber-100 text-amber-700",
   complete: "bg-green-100 text-green-700",
-  not_applicable: "bg-[#F1F5F9] text-[#64748B] line-through",
+  not_applicable: "bg-ps-muted text-ps-label line-through",
 };
 
 function StatusIcon({ status }: { status: ChecklistItemStatus }) {
   if (status === "complete") return <CheckCircle2 size={16} className="text-green-600 flex-shrink-0" />;
   if (status === "in_progress") return <Clock size={16} className="text-amber-500 flex-shrink-0" />;
-  if (status === "not_applicable") return <Ban size={16} className="text-[#94A3B8] flex-shrink-0" />;
-  return <Circle size={16} className="text-[#CBD5E1] flex-shrink-0" />;
+  if (status === "not_applicable") return <Ban size={16} className="text-ps-hint flex-shrink-0" />;
+  return <Circle size={16} className="text-ps-disabled flex-shrink-0" />;
 }
 
 export default function ChecklistPage() {
@@ -164,14 +164,14 @@ export default function ChecklistPage() {
   if (loading) {
     return (
       <div className="p-6 space-y-4 max-w-3xl mx-auto">
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="flex items-center justify-between mb-2">
             <Skeleton className="h-2.5 w-32" />
             <Skeleton className="h-2.5 w-8" />
           </div>
           <Skeleton className="h-2 w-full rounded-full" />
         </div>
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+        <div className="bg-white rounded-xl border border-ps-muted p-4">
           <TimelineSkeleton rows={4} />
         </div>
       </div>
@@ -198,14 +198,14 @@ export default function ChecklistPage() {
         </div>
       )}
       {/* Progress bar */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+      <div className="bg-white rounded-xl border border-ps-muted p-4">
         <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-semibold text-[#334155]">
+          <p className="text-xs font-semibold text-ps-body">
             {complete} of {total} complete
           </p>
-          <p className="text-xs text-[#94A3B8]">{pct}%</p>
+          <p className="text-xs text-ps-hint">{pct}%</p>
         </div>
-        <div className="w-full h-2 bg-[#F1F5F9] rounded-full overflow-hidden">
+        <div className="w-full h-2 bg-ps-muted rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${allDone ? "bg-green-500" : "bg-blue-500"}`}
             style={{ width: `${pct}%` }}
@@ -215,11 +215,11 @@ export default function ChecklistPage() {
 
       {/* Grouped items */}
       {Object.entries(grouped).map(([category, catItems]) => (
-        <div key={category} className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-[#F8FAFC] bg-[#F8FAFC]">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#64748B]">{category}</p>
+        <div key={category} className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-ps-bg bg-ps-bg">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-ps-label">{category}</p>
           </div>
-          <div className="divide-y divide-[#F8FAFC]">
+          <div className="divide-y divide-ps-bg">
             {catItems.map((item) => {
               const isEditing = item.id in editingNotes;
               const noteValue = isEditing ? editingNotes[item.id] : (item.notes ?? "");
@@ -235,7 +235,7 @@ export default function ChecklistPage() {
                       title={`Click to advance status (currently: ${STATUS_LABEL[item.status]})`}
                     >
                       {updatingId === item.id ? (
-                        <Loader2 size={16} className="animate-spin text-[#94A3B8]" />
+                        <Loader2 size={16} className="animate-spin text-ps-hint" />
                       ) : (
                         <StatusIcon status={item.status} />
                       )}
@@ -243,7 +243,7 @@ export default function ChecklistPage() {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className={`text-xs font-medium text-[#1E293B] ${item.status === "not_applicable" ? "opacity-50" : ""}`}>
+                        <p className={`text-xs font-medium text-ps-ink ${item.status === "not_applicable" ? "opacity-50" : ""}`}>
                           {item.item_label}
                         </p>
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_BADGE[item.status]}`}>
@@ -258,7 +258,7 @@ export default function ChecklistPage() {
                             value={editingNotes[item.id]}
                             onChange={(e) => setEditingNotes((prev) => ({ ...prev, [item.id]: e.target.value }))}
                             onKeyDown={(e) => { if (e.key === "Enter") saveNotes(item); if (e.key === "Escape") setEditingNotes((prev) => { const n = { ...prev }; delete n[item.id]; return n; }); }}
-                            className="flex-1 text-xs px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="flex-1 text-xs px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             placeholder="Add notes…"
                             autoFocus
                           />
@@ -266,7 +266,7 @@ export default function ChecklistPage() {
                         </div>
                       ) : noteValue ? (
                         <p
-                          className="text-[10px] text-[#64748B] mt-1 cursor-pointer hover:text-[#334155]"
+                          className="text-[10px] text-ps-label mt-1 cursor-pointer hover:text-ps-body"
                           onClick={() => setEditingNotes((prev) => ({ ...prev, [item.id]: noteValue }))}
                         >
                           {noteValue}
@@ -274,7 +274,7 @@ export default function ChecklistPage() {
                       ) : (
                         <button
                           onClick={() => setEditingNotes((prev) => ({ ...prev, [item.id]: "" }))}
-                          className="text-[10px] text-[#CBD5E1] hover:text-[#94A3B8] mt-1"
+                          className="text-[10px] text-ps-disabled hover:text-ps-hint mt-1"
                         >
                           + Add note
                         </button>
@@ -282,7 +282,7 @@ export default function ChecklistPage() {
 
                       {/* Completed by/at */}
                       {item.completed_by && (
-                        <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                        <p className="text-[10px] text-ps-hint mt-0.5">
                           Completed by {item.completed_by}
                           {item.completed_at && ` · ${new Date(item.completed_at).toLocaleDateString("en-IN")}`}
                         </p>
@@ -294,7 +294,7 @@ export default function ChecklistPage() {
                       <button
                         onClick={() => markNA(item)}
                         disabled={!!updatingId}
-                        className="text-[10px] text-[#CBD5E1] hover:text-[#94A3B8] flex-shrink-0 disabled:opacity-50"
+                        className="text-[10px] text-ps-disabled hover:text-ps-hint flex-shrink-0 disabled:opacity-50"
                         title="Mark N/A"
                       >
                         N/A
@@ -326,7 +326,7 @@ export default function ChecklistPage() {
         </button>
       </div>
       {!allDone && (
-        <p className="text-[10px] text-[#94A3B8] text-right">
+        <p className="text-[10px] text-ps-hint text-right">
           Complete or mark N/A all {total - complete} remaining items to enable submission.
         </p>
       )}

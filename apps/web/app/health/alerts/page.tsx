@@ -73,11 +73,11 @@ export default function HealthAlertsPage() {
   }
 
   return (
-    <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
+    <div className="p-6 space-y-5 bg-ps-bg min-h-full">
       <div className="flex items-center gap-3">
         <Bell size={20} className="text-amber-500" />
         <div>
-          <h1 className="text-2xl font-bold text-[#182350]">Health Alerts</h1>
+          <h1 className="text-2xl font-bold text-brand">Health Alerts</h1>
           <p className="text-sm text-gray-500">Active unresolved alerts across all clients</p>
         </div>
       </div>

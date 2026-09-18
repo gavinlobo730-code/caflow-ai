@@ -213,23 +213,23 @@ export default function PayrollPeoplePage() {
 
   const employeeColumns: Column<Employee>[] = useMemo(() => [
     { key: "name", header: "Name", accessor: (e) => e.name, searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (e) => <span className="font-medium text-[#0F172A]">{e.name}</span> },
+      render: (e) => <span className="font-medium text-ps-ink">{e.name}</span> },
     { key: "pan", header: "PAN", accessor: (e) => e.pan ?? "", searchable: true,
       render: (e) => <span className="font-mono text-xs">{e.pan || "—"}</span> },
     { key: "designation", header: "Designation", accessor: (e) => e.designation ?? "", searchable: true, sortable: true,
-      render: (e) => <span className="text-[#475569]">{e.designation || "—"}</span> },
+      render: (e) => <span className="text-ps-label">{e.designation || "—"}</span> },
     // Money column — accessor returns integer paise, right-aligned, rendered via formatPaise.
     { key: "gross", header: "Monthly CTC", accessor: (e) => employeeGrossPaise(e), sortable: true, align: "right",
       render: (e) => <span className="font-mono">{formatPaise(employeeGrossPaise(e))}</span> },
     { key: "pf_applicable", header: "PF", accessor: (e) => e.pf_applicable, sortable: true, align: "center",
       render: (e) => (
-        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${e.pf_applicable ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${e.pf_applicable ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>
           {e.pf_applicable ? "Yes" : "No"}
         </span>
       ) },
     { key: "esi_applicable", header: "ESI", accessor: (e) => e.esi_applicable, sortable: true, align: "center",
       render: (e) => (
-        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${e.esi_applicable ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${e.esi_applicable ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>
           {e.esi_applicable ? "Yes" : "No"}
         </span>
       ) },
@@ -242,7 +242,7 @@ export default function PayrollPeoplePage() {
         <button
           onClick={() => setPortalEmployee(e)}
           className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium hover:ring-1 hover:ring-blue-300 ${
-            e.portal_enabled ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}
+            e.portal_enabled ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}
           title={e.portal_enabled ? "Portal access is on — click to manage" : "Give this employee portal access"}
         >
           {e.portal_enabled ? "Active" : "Give access"}
@@ -251,7 +251,7 @@ export default function PayrollPeoplePage() {
     { key: "status", header: "Status", accessor: (e) => e.status ?? "active", sortable: true, align: "center",
       render: (e) => {
         const s = e.status ?? "active";
-        const cls = s === "active" ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]";
+        const cls = s === "active" ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label";
         return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium capitalize ${cls}`}>{s}</span>;
       } },
   ], []);
@@ -279,12 +279,12 @@ export default function PayrollPeoplePage() {
   // ── Payslips table (shared DataTable) ──────────────────────────────────────
 
   if (loading) {
-    return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading the roster…</p></div>;
+    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><p className="text-ps-label">Loading the roster…</p></div>;
   }
 
   if (loadError) {
     return (
-      <div className="min-h-screen bg-[#F8FAFC] p-8">
+      <div className="min-h-screen bg-ps-bg p-8">
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -292,7 +292,7 @@ export default function PayrollPeoplePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-[#475569]">{loadError}</p>
+            <p className="text-sm text-ps-label">{loadError}</p>
             <Button size="sm" variant="outline" onClick={load}>Retry</Button>
           </CardContent>
         </Card>
@@ -301,18 +301,18 @@ export default function PayrollPeoplePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-8">
+    <div className="min-h-screen bg-ps-bg p-8">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <Link href="/payroll">
-            <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-[#64748B] hover:text-[#0F172A] -ml-2">
+            <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-ps-label hover:text-ps-ink -ml-2">
               <ArrowLeft size={14} />Payroll
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold text-[#0F172A] flex items-center gap-2 mt-1">
+          <h1 className="text-2xl font-bold text-ps-ink flex items-center gap-2 mt-1">
             <Users size={22} className="text-blue-600" />People
           </h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <p className="text-sm text-ps-label mt-0.5">
             Every employee across every client, and what the statutory outputs
             still need from them.
           </p>
@@ -362,16 +362,16 @@ export default function PayrollPeoplePage() {
                     return (
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => { setEditEmployee(e); setShowAdd(true); }} title="Edit"
-                          className="p-1.5 rounded-lg text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#334155]"><Pencil size={14} /></button>
+                          className="p-1.5 rounded-lg text-ps-label hover:bg-ps-muted hover:text-ps-body"><Pencil size={14} /></button>
                         {active ? (
                           <button onClick={() => setEmployeeStatus(e, "resigned")} title="Deactivate"
-                            className="p-1.5 rounded-lg text-[#64748B] hover:bg-amber-50 hover:text-amber-700"><Ban size={14} /></button>
+                            className="p-1.5 rounded-lg text-ps-label hover:bg-amber-50 hover:text-amber-700"><Ban size={14} /></button>
                         ) : (
                           <button onClick={() => setEmployeeStatus(e, "active")} title="Reactivate"
-                            className="p-1.5 rounded-lg text-[#64748B] hover:bg-green-50 hover:text-green-700"><RotateCcw size={14} /></button>
+                            className="p-1.5 rounded-lg text-ps-label hover:bg-green-50 hover:text-green-700"><RotateCcw size={14} /></button>
                         )}
                         <button onClick={() => deleteEmployeeAction(e)} title="Delete (only if no payroll history)"
-                          className="p-1.5 rounded-lg text-[#64748B] hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
+                          className="p-1.5 rounded-lg text-ps-label hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
                       </div>
                     );
                   }}

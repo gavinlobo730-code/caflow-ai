@@ -51,8 +51,8 @@ export default function AccountingHubPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-[#0F172A]">Accounting — Administration</h1>
-        <p className="text-sm text-[#64748B] mt-0.5">Firm-level setup & registers. Day-to-day accounting happens in each client&apos;s workspace.</p>
+        <h1 className="text-xl font-semibold text-ps-ink">Accounting — Administration</h1>
+        <p className="text-sm text-ps-label mt-0.5">Firm-level setup & registers. Day-to-day accounting happens in each client&apos;s workspace.</p>
       </div>
 
       {/* Gateway: accounting flows through clients; the practice is just another client */}
@@ -62,14 +62,14 @@ export default function AccountingHubPage() {
             <Building2 className="w-5 h-5 text-blue-600" />
           </div>
           <div className="flex-1">
-            <p className="text-sm font-semibold text-[#0F172A]">Accounting runs through clients</p>
-            <p className="text-xs text-[#64748B] mt-0.5">
+            <p className="text-sm font-semibold text-ps-ink">Accounting runs through clients</p>
+            <p className="text-xs text-ps-label mt-0.5">
               Journals, ledger, trial balance, financial statements, banking and reconciliation are all in the client workspace — backend-driven. The firm&apos;s own books are the practice client.
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {practiceId && (
-              <Link href={`/clients/${practiceId}/accounting`} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]">
+              <Link href={`/clients/${practiceId}/accounting`} className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
                 Practice books
               </Link>
             )}
@@ -90,8 +90,8 @@ export default function AccountingHubPage() {
                   <card.icon size={18} className="text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-[#0F172A]">{card.label}</p>
-                  <p className="text-xs text-[#64748B] mt-0.5 leading-tight">{card.description}</p>
+                  <p className="text-sm font-semibold text-ps-ink">{card.label}</p>
+                  <p className="text-xs text-ps-label mt-0.5 leading-tight">{card.description}</p>
                   {card.notShared && (
                     <p className="text-[11px] text-amber-700 mt-1 leading-tight">
                       Saved in this browser only — not shared with the firm, and not

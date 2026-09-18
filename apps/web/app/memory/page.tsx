@@ -145,7 +145,7 @@ function TriggersTab() {
 
   if (loading) return (
     <div className="flex items-center justify-center py-20">
-      <Loader2 size={24} className="animate-spin text-[#182350]" />
+      <Loader2 size={24} className="animate-spin text-brand" />
     </div>
   );
 
@@ -172,7 +172,7 @@ function TriggersTab() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#AFD2FA]/30 text-[#182350]">
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-brand-light/30 text-brand">
                   {TRIGGER_TYPE_LABELS[t.trigger_type] ?? t.trigger_type}
                 </span>
                 <SeverityBadge severity={t.severity} />
@@ -212,7 +212,7 @@ function TriggersTab() {
             <button
               onClick={() => acknowledge(t.id)}
               disabled={acting === t.id}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#182350] text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-50"
             >
               {acting === t.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
               Acknowledge
@@ -266,7 +266,7 @@ function ProfilesTab() {
 
   if (loading) return (
     <div className="flex items-center justify-center py-20">
-      <Loader2 size={24} className="animate-spin text-[#182350]" />
+      <Loader2 size={24} className="animate-spin text-brand" />
     </div>
   );
 
@@ -300,8 +300,8 @@ function ProfilesTab() {
         return (
           <div key={p.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-9 h-9 rounded-full bg-[#AFD2FA]/30 flex items-center justify-center">
-                <User size={16} className="text-[#182350]" />
+              <div className="w-9 h-9 rounded-full bg-brand-light/30 flex items-center justify-center">
+                <User size={16} className="text-brand" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-slate-800 truncate">{p.client_id}</p>
@@ -318,7 +318,7 @@ function ProfilesTab() {
               </div>
               <div className="bg-slate-50 rounded-lg p-3">
                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Engagement</p>
-                <p className="text-xl font-bold mt-0.5 text-[#182350]">{p.portal_engagement.toFixed(0)}%</p>
+                <p className="text-xl font-bold mt-0.5 text-brand">{p.portal_engagement.toFixed(0)}%</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-3">
                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Doc Reliability</p>
@@ -402,7 +402,7 @@ function AnomaliesTab() {
 
   if (loading) return (
     <div className="flex items-center justify-center py-20">
-      <Loader2 size={24} className="animate-spin text-[#182350]" />
+      <Loader2 size={24} className="animate-spin text-brand" />
     </div>
   );
 
@@ -484,7 +484,7 @@ function AnomaliesTab() {
               <button
                 onClick={() => markReviewed(a.id)}
                 disabled={acting === a.id}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#182350] text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-50"
               >
                 {acting === a.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
                 Mark Reviewed
@@ -527,15 +527,15 @@ export default function MemoryPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-6">
+    <div className="min-h-screen bg-ps-bg p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#182350] flex items-center justify-center shadow">
-            <Brain size={20} className="text-[#AFD2FA]" />
+          <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center shadow">
+            <Brain size={20} className="text-brand-light" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-[#182350]">AI Memory Intelligence</h1>
+            <h1 className="text-xl font-bold text-brand">AI Memory Intelligence</h1>
             <p className="text-sm text-slate-500">Semantic memory, pattern triggers, and anomaly detection</p>
           </div>
         </div>
@@ -548,7 +548,7 @@ export default function MemoryPage() {
           <button
             onClick={runPipeline}
             disabled={running}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#182350] text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-60"
           >
             {running ? (
               <Loader2 size={15} className="animate-spin" />
@@ -568,7 +568,7 @@ export default function MemoryPage() {
             onClick={() => setActiveTab(id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               activeTab === id
-                ? "bg-[#182350] text-white shadow"
+                ? "bg-brand text-white shadow"
                 : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
             }`}
           >

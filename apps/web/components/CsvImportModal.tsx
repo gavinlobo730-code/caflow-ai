@@ -303,12 +303,12 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
   const errorCount = rows.filter(r => r.errors.length > 0).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#F8FAFC]/60 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ps-bg/60 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#F1F5F9]">
-          <h2 className="text-base font-semibold text-[#0F172A]">{title}</h2>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-ps-muted">
+          <h2 className="text-base font-semibold text-ps-ink">{title}</h2>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -342,28 +342,28 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
               </div>
 
               {/* Template column reference */}
-              <div className="bg-[#F8FAFC] rounded-xl border border-[#F1F5F9] overflow-hidden">
-                <div className="px-4 py-2 border-b border-[#F1F5F9]">
-                  <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">Template Columns</p>
+              <div className="bg-ps-bg rounded-xl border border-ps-muted overflow-hidden">
+                <div className="px-4 py-2 border-b border-ps-muted">
+                  <p className="text-xs font-semibold text-ps-label uppercase tracking-wide">Template Columns</p>
                 </div>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-[#F1F5F9]">
-                      <th className="px-4 py-2 text-left font-medium text-[#64748B]">Column</th>
-                      <th className="px-4 py-2 text-left font-medium text-[#64748B]">Required</th>
-                      <th className="px-4 py-2 text-left font-medium text-[#64748B]">Notes</th>
+                    <tr className="border-b border-ps-muted">
+                      <th className="px-4 py-2 text-left font-medium text-ps-label">Column</th>
+                      <th className="px-4 py-2 text-left font-medium text-ps-label">Required</th>
+                      <th className="px-4 py-2 text-left font-medium text-ps-label">Notes</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#E2E8F0]">
+                  <tbody className="divide-y divide-ps-border">
                     {columns.map(col => (
                       <tr key={col.key}>
-                        <td className="px-4 py-2 font-mono text-[#0F172A]">{col.key}</td>
+                        <td className="px-4 py-2 font-mono text-ps-ink">{col.key}</td>
                         <td className="px-4 py-2">
                           {col.required
                             ? <span className="text-red-600 font-medium">Required</span>
-                            : <span className="text-[#94A3B8]">Optional</span>}
+                            : <span className="text-ps-hint">Optional</span>}
                         </td>
-                        <td className="px-4 py-2 text-[#64748B]">{col.hint ?? col.label}</td>
+                        <td className="px-4 py-2 text-ps-label">{col.hint ?? col.label}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -372,16 +372,16 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
 
               {/* Upload area */}
               <div>
-                <p className="text-sm font-medium text-[#334155] mb-2">Step 2 — Upload your filled file</p>
+                <p className="text-sm font-medium text-ps-body mb-2">Step 2 — Upload your filled file</p>
                 <div
                   onClick={() => fileRef.current?.click()}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-                  className="border-2 border-dashed border-[#E2E8F0] rounded-xl p-8 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
+                  className="border-2 border-dashed border-ps-border rounded-xl p-8 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
                 >
-                  <Upload className="w-8 h-8 text-[#CBD5E1] mx-auto mb-2" />
-                  <p className="text-sm text-[#475569]">Click to browse or drag & drop your file</p>
-                  <p className="text-xs text-[#94A3B8] mt-1">CSV (.csv) and Excel (.xlsx, .xls) files are supported</p>
+                  <Upload className="w-8 h-8 text-ps-disabled mx-auto mb-2" />
+                  <p className="text-sm text-ps-label">Click to browse or drag & drop your file</p>
+                  <p className="text-xs text-ps-hint mt-1">CSV (.csv) and Excel (.xlsx, .xls) files are supported</p>
                 </div>
                 <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
@@ -406,16 +406,16 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                   </p>
                 </div>
                 {groups.map(({ resolver, missing }) => (
-                  <div key={resolver.label} className="rounded-xl border border-[#F1F5F9] overflow-hidden">
-                    <div className="px-4 py-2 border-b border-[#F1F5F9] bg-[#F8FAFC]">
-                      <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">
+                  <div key={resolver.label} className="rounded-xl border border-ps-muted overflow-hidden">
+                    <div className="px-4 py-2 border-b border-ps-muted bg-ps-bg">
+                      <p className="text-xs font-semibold text-ps-label uppercase tracking-wide">
                         {resolver.label} ({missing.length} missing)
                       </p>
                     </div>
-                    <ul className="divide-y divide-[#F1F5F9]">
+                    <ul className="divide-y divide-ps-muted">
                       {missing.map((name) => (
                         <li key={name} className="flex items-center justify-between gap-3 px-4 py-2">
-                          <span className="text-xs text-[#334155] truncate">{name}</span>
+                          <span className="text-xs text-ps-body truncate">{name}</span>
                           <button
                             onClick={() => setResolveTarget({ resolver, name })}
                             className="flex-shrink-0 flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
@@ -435,7 +435,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           {step === "preview" && (
             <div className="space-y-4">
               {/* Summary bar */}
-              <div className="flex items-center gap-4 bg-[#F8FAFC] rounded-xl px-4 py-3">
+              <div className="flex items-center gap-4 bg-ps-bg rounded-xl px-4 py-3">
                 <div className="flex items-center gap-1.5 text-sm text-green-700">
                   <CheckCircle className="w-4 h-4" />
                   <span><strong>{validCount}</strong> valid rows</span>
@@ -449,24 +449,24 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
               </div>
 
               {/* Preview table */}
-              <div className="overflow-x-auto rounded-xl border border-[#F1F5F9]">
+              <div className="overflow-x-auto rounded-xl border border-ps-muted">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="bg-[#F8FAFC] border-b border-[#F1F5F9]">
-                      <th className="px-3 py-2 text-left text-[#64748B]">#</th>
+                    <tr className="bg-ps-bg border-b border-ps-muted">
+                      <th className="px-3 py-2 text-left text-ps-label">#</th>
                       {columns.map(c => (
-                        <th key={c.key} className="px-3 py-2 text-left text-[#64748B]">{c.label}</th>
+                        <th key={c.key} className="px-3 py-2 text-left text-ps-label">{c.label}</th>
                       ))}
-                      <th className="px-3 py-2 text-left text-[#64748B]">Status</th>
+                      <th className="px-3 py-2 text-left text-ps-label">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#E2E8F0]">
+                  <tbody className="divide-y divide-ps-border">
                     {rows.map(row => (
                       <tr key={row.index} className={row.errors.length > 0 ? "bg-red-50" : ""}>
-                        <td className="px-3 py-2 text-[#94A3B8] tabular-nums">{row.index}</td>
+                        <td className="px-3 py-2 text-ps-hint tabular-nums">{row.index}</td>
                         {columns.map(c => (
-                          <td key={c.key} className="px-3 py-2 text-[#334155] max-w-[120px] truncate" title={row.data[c.key.toLowerCase()]}>
-                            {row.data[c.key.toLowerCase()] || <span className="text-[#CBD5E1]">—</span>}
+                          <td key={c.key} className="px-3 py-2 text-ps-body max-w-[120px] truncate" title={row.data[c.key.toLowerCase()]}>
+                            {row.data[c.key.toLowerCase()] || <span className="text-ps-disabled">—</span>}
                           </td>
                         ))}
                         <td className="px-3 py-2">
@@ -483,7 +483,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
 
               <button
                 onClick={() => { setRows([]); setStep("upload"); }}
-                className="text-xs text-[#64748B] hover:text-[#334155] underline"
+                className="text-xs text-ps-label hover:text-ps-body underline"
               >
                 ← Upload a different file
               </button>
@@ -496,7 +496,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
               <div className="mx-auto w-fit">
                 <LogoIcon size="lg" spin />
               </div>
-              <p className="text-sm text-[#475569]">Importing {validCount} rows…</p>
+              <p className="text-sm text-ps-label">Importing {validCount} rows…</p>
             </div>
           )}
 
@@ -505,10 +505,10 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
             <div className="py-8 space-y-4">
               <div className="text-center">
                 <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                <p className="text-lg font-semibold text-[#0F172A]">
+                <p className="text-lg font-semibold text-ps-ink">
                   {result.imported} new {result.imported === 1 ? "record" : "records"} imported
                 </p>
-                <p className="text-xs text-[#94A3B8] mt-1">Import complete</p>
+                <p className="text-xs text-ps-hint mt-1">Import complete</p>
               </div>
 
               {/* Summary breakdown — New / Existing (skipped) / Failed */}
@@ -550,8 +550,8 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-[#F1F5F9] flex justify-between items-center">
-          <button onClick={onClose} className="text-sm text-[#64748B] hover:text-[#334155]">
+        <div className="px-6 py-4 border-t border-ps-muted flex justify-between items-center">
+          <button onClick={onClose} className="text-sm text-ps-label hover:text-ps-body">
             {step === "done" ? "Close" : "Cancel"}
           </button>
           {step === "resolve" && (

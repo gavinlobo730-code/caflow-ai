@@ -28,9 +28,9 @@ export function EmptyState({
 }) {
   return (
     <div className={cn("flex flex-col items-center justify-center px-6 py-14 text-center", className)}>
-      <div className="mb-3 text-[#CBD5E1]">{icon ?? <Inbox size={32} />}</div>
-      <p className="text-sm font-semibold text-[#334155]">{title}</p>
-      {description && <p className="mt-1 max-w-sm text-xs text-[#94A3B8]">{description}</p>}
+      <div className="mb-3 text-ps-disabled">{icon ?? <Inbox size={32} />}</div>
+      <p className="text-sm font-semibold text-ps-body">{title}</p>
+      {description && <p className="mt-1 max-w-sm text-xs text-ps-hint">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
@@ -108,7 +108,7 @@ export function AsyncBoundary({
     return (
       <>
         {skeleton ?? (
-          <div className="flex min-h-[30vh] items-center justify-center text-[#94A3B8]">
+          <div className="flex min-h-[30vh] items-center justify-center text-ps-hint">
             <Spinner className="h-5 w-5" />
           </div>
         )}

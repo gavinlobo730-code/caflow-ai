@@ -54,7 +54,7 @@ const STATUS_LABEL: Record<EngagementStatus, string> = {
 };
 
 const STATUS_COLOR: Record<EngagementStatus, string> = {
-  draft: "text-[#64748B] bg-[#F1F5F9]",
+  draft: "text-ps-label bg-ps-muted",
   in_review: "text-amber-700 bg-amber-50",
   approved: "text-green-700 bg-green-50",
   locked: "text-blue-700 bg-blue-50",
@@ -303,80 +303,80 @@ export default function YearEndDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Checklist progress */}
         <div
-          className="bg-white rounded-xl border border-[#F1F5F9] p-4 cursor-pointer hover:shadow-sm transition-shadow"
+          className="bg-white rounded-xl border border-ps-muted p-4 cursor-pointer hover:shadow-sm transition-shadow"
           onClick={() => router.push(`${base}/?tab=checklist`)}
         >
           <div className="flex items-center gap-2 mb-3">
-            <CheckSquare2 size={15} className="text-[#64748B]" />
-            <p className="text-xs font-semibold text-[#334155]">Checklist</p>
+            <CheckSquare2 size={15} className="text-ps-label" />
+            <p className="text-xs font-semibold text-ps-body">Checklist</p>
           </div>
-          <p className="text-lg font-bold text-[#0F172A] tabular-nums">
-            {checklist_complete} <span className="text-[#94A3B8] text-sm font-normal">of {checklist_total}</span>
+          <p className="text-lg font-bold text-ps-ink tabular-nums">
+            {checklist_complete} <span className="text-ps-hint text-sm font-normal">of {checklist_total}</span>
           </p>
-          <p className="text-[10px] text-[#94A3B8] mb-2">items complete</p>
+          <p className="text-[10px] text-ps-hint mb-2">items complete</p>
           {/* Progress bar */}
-          <div className="w-full h-1.5 bg-[#F1F5F9] rounded-full overflow-hidden">
+          <div className="w-full h-1.5 bg-ps-muted rounded-full overflow-hidden">
             <div
               className="h-full bg-blue-500 rounded-full transition-all"
               style={{ width: `${checklistPct}%` }}
             />
           </div>
-          <p className="text-[10px] text-[#94A3B8] mt-1">{checklistPct}%</p>
+          <p className="text-[10px] text-ps-hint mt-1">{checklistPct}%</p>
         </div>
 
         {/* Adjustments */}
         <div
-          className="bg-white rounded-xl border border-[#F1F5F9] p-4 cursor-pointer hover:shadow-sm transition-shadow"
+          className="bg-white rounded-xl border border-ps-muted p-4 cursor-pointer hover:shadow-sm transition-shadow"
           onClick={() => router.push(`${base}/?tab=adjustments`)}
         >
           <div className="flex items-center gap-2 mb-3">
-            <SlidersHorizontal size={15} className="text-[#64748B]" />
-            <p className="text-xs font-semibold text-[#334155]">Adjustments</p>
+            <SlidersHorizontal size={15} className="text-ps-label" />
+            <p className="text-xs font-semibold text-ps-body">Adjustments</p>
           </div>
-          <p className="text-lg font-bold text-[#0F172A] tabular-nums">{adjustments_count}</p>
-          <p className="text-[10px] text-[#94A3B8] mb-1">adjustments</p>
-          <p className="text-xs font-semibold text-[#334155]">{fmt(adjustments_total_paise)}</p>
-          <p className="text-[10px] text-[#94A3B8]">total value</p>
+          <p className="text-lg font-bold text-ps-ink tabular-nums">{adjustments_count}</p>
+          <p className="text-[10px] text-ps-hint mb-1">adjustments</p>
+          <p className="text-xs font-semibold text-ps-body">{fmt(adjustments_total_paise)}</p>
+          <p className="text-[10px] text-ps-hint">total value</p>
         </div>
 
         {/* Financial Statements */}
         <div
-          className="bg-white rounded-xl border border-[#F1F5F9] p-4 cursor-pointer hover:shadow-sm transition-shadow"
+          className="bg-white rounded-xl border border-ps-muted p-4 cursor-pointer hover:shadow-sm transition-shadow"
           onClick={() => router.push(`${base}/?tab=financial-statements`)}
         >
           <div className="flex items-center gap-2 mb-3">
-            <BarChart3 size={15} className="text-[#64748B]" />
-            <p className="text-xs font-semibold text-[#334155]">Financial Statements</p>
+            <BarChart3 size={15} className="text-ps-label" />
+            <p className="text-xs font-semibold text-ps-body">Financial Statements</p>
           </div>
           {current_version ? (
             <>
-              <p className="text-lg font-bold text-[#0F172A]">Version {current_version}</p>
-              <p className="text-[10px] text-[#94A3B8]">
+              <p className="text-lg font-bold text-ps-ink">Version {current_version}</p>
+              <p className="text-[10px] text-ps-hint">
                 Generated {statementsGeneratedDate ?? "—"}
               </p>
             </>
           ) : (
             <>
-              <p className="text-sm text-[#94A3B8]">Not generated yet</p>
-              <p className="text-[10px] text-[#94A3B8] mt-1">Click to generate</p>
+              <p className="text-sm text-ps-hint">Not generated yet</p>
+              <p className="text-[10px] text-ps-hint mt-1">Click to generate</p>
             </>
           )}
         </div>
       </div>
 
       {/* Quick actions */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-        <p className="text-xs font-semibold text-[#334155] mb-3">Quick Actions</p>
+      <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <p className="text-xs font-semibold text-ps-body mb-3">Quick Actions</p>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => router.push(`${base}/?tab=checklist`)}
-            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#475569]"
+            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label"
           >
             <CheckSquare2 size={12} /> Go to Checklist <ArrowRight size={10} />
           </button>
           <button
             onClick={() => router.push(`${base}/?tab=adjustments`)}
-            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#475569]"
+            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label"
           >
             <SlidersHorizontal size={12} /> Pass Adjustment <ArrowRight size={10} />
           </button>
@@ -391,23 +391,23 @@ export default function YearEndDashboardPage() {
 
       {/* Recent activity */}
       {recent_events.length > 0 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#F8FAFC]">
-            <p className="text-xs font-semibold text-[#334155]">Recent Activity</p>
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div className="px-4 py-3 border-b border-ps-bg">
+            <p className="text-xs font-semibold text-ps-body">Recent Activity</p>
           </div>
-          <div className="divide-y divide-[#F8FAFC]">
+          <div className="divide-y divide-ps-bg">
             {recent_events.map((event) => (
               <div key={event.id} className="px-4 py-2.5 flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-[#F1F5F9] flex items-center justify-center flex-shrink-0 mt-0.5">
+                <div className="w-6 h-6 rounded-full bg-ps-muted flex items-center justify-center flex-shrink-0 mt-0.5">
                   {event.actor ? (
-                    <User size={10} className="text-[#64748B]" />
+                    <User size={10} className="text-ps-label" />
                   ) : (
-                    <Clock size={10} className="text-[#64748B]" />
+                    <Clock size={10} className="text-ps-label" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-[#334155]">{event.description}</p>
-                  <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                  <p className="text-xs text-ps-body">{event.description}</p>
+                  <p className="text-[10px] text-ps-hint mt-0.5">
                     {event.actor && <span>{event.actor} · </span>}
                     {timeAgo(event.created_at)}
                   </p>

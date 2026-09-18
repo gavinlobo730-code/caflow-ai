@@ -50,10 +50,10 @@ function Revenue() {
     <div className="p-6 max-w-4xl">
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
-          <IndianRupee size={18} className="text-[#182350]" />
-          <h1 className="text-lg font-semibold text-[#182350]">Revenue Dashboard</h1>
+          <IndianRupee size={18} className="text-brand" />
+          <h1 className="text-lg font-semibold text-brand">Revenue Dashboard</h1>
         </div>
-        <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-[#182350]">
+        <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-brand">
           <RefreshCw size={13} /> Refresh
         </button>
       </div>
@@ -61,13 +61,13 @@ function Revenue() {
         {cards.map((c) => (
           <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-[11px] text-gray-500 uppercase tracking-wide">{c.label}</p>
-            <p className="text-base font-semibold text-[#182350] tabular-nums mt-1.5">{c.value}</p>
+            <p className="text-base font-semibold text-brand tabular-nums mt-1.5">{c.value}</p>
           </div>
         ))}
       </div>
       <div className="flex gap-3">
         {links.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm text-[#182350] hover:bg-[#F8FAFC]">
+          <Link key={href} href={href} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm text-brand hover:bg-ps-bg">
             <Icon size={14} /> {label}
           </Link>
         ))}

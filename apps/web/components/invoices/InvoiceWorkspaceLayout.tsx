@@ -46,14 +46,14 @@ export function InvoiceWorkspaceLayout({
   return (
     <div className="max-w-screen-2xl mx-auto px-6 pt-4 pb-24 lg:pt-5 lg:pb-6">
       {/* Breadcrumbs */}
-      <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-xs text-[#94A3B8] mb-2 flex-wrap">
+      <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-xs text-ps-hint mb-2 flex-wrap">
         {breadcrumbs.map((c, i) => (
           <span key={i} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight size={12} className="text-[#CBD5E1]" />}
+            {i > 0 && <ChevronRight size={12} className="text-ps-disabled" />}
             {c.href ? (
-              <Link href={c.href} className="hover:text-[#334155]">{c.label}</Link>
+              <Link href={c.href} className="hover:text-ps-body">{c.label}</Link>
             ) : (
-              <span className="text-[#475569]">{c.label}</span>
+              <span className="text-ps-label">{c.label}</span>
             )}
           </span>
         ))}
@@ -62,15 +62,15 @@ export function InvoiceWorkspaceLayout({
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <h1 className="text-lg font-semibold text-[#0F172A] truncate">{title}</h1>
+          <h1 className="text-lg font-semibold text-ps-ink truncate">{title}</h1>
           {statusPill}
         </div>
-        {dirtyHint && <div className="text-xs text-[#94A3B8] flex-shrink-0">{dirtyHint}</div>}
+        {dirtyHint && <div className="text-xs text-ps-hint flex-shrink-0">{dirtyHint}</div>}
       </div>
 
       {/* Sticky toolbar (actions). On mobile it pins to the bottom of the viewport. */}
       {toolbar && (
-        <div className="sticky top-0 z-20 hidden lg:flex items-center justify-end gap-2 bg-[#F8FAFC]/90 backdrop-blur border-b border-[#F1F5F9] py-2 mb-4">
+        <div className="sticky top-0 z-20 hidden lg:flex items-center justify-end gap-2 bg-ps-bg/90 backdrop-blur border-b border-ps-muted py-2 mb-4">
           {toolbar}
         </div>
       )}
@@ -87,7 +87,7 @@ export function InvoiceWorkspaceLayout({
 
       {/* Mobile sticky action bar */}
       {toolbar && (
-        <div className="fixed bottom-0 inset-x-0 z-30 flex lg:hidden items-center justify-end gap-2 bg-white border-t border-[#E2E8F0] px-4 py-2.5 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
+        <div className="fixed bottom-0 inset-x-0 z-30 flex lg:hidden items-center justify-end gap-2 bg-white border-t border-ps-border px-4 py-2.5 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
           {toolbar}
         </div>
       )}

@@ -142,7 +142,7 @@ function YearEndWorkspaceInner() {
   const ActiveStage = (STAGES.find((s) => s.id === stage) ?? STAGES[0]).Component;
 
   return (
-    <div className="flex h-full min-h-screen bg-[#F8FAFC]">
+    <div className="flex h-full min-h-screen bg-ps-bg">
       {/* Left nav rail */}
       <aside className="w-[72px] bg-white border-r border-slate-100 flex flex-col items-center py-4 gap-1 shrink-0">
         {STAGES.map(({ id, label, icon: Icon }) => {
@@ -187,7 +187,7 @@ function YearEndWorkspaceInner() {
           ) : headerResolved ? (
             // Resolved, but there is no engagement to describe. Say nothing
             // rather than animating a row that will never fill.
-            <span className="text-xs text-[#94A3B8]">Year End</span>
+            <span className="text-xs text-ps-hint">Year End</span>
           ) : (
             <div className="flex items-center gap-3">
               <Skeleton className="h-3.5 w-16" />

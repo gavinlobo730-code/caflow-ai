@@ -38,7 +38,7 @@ const FILING_STATUS_COLORS: Record<string, string> = {
   in_progress: "bg-blue-100 text-blue-700",
   filed: "bg-green-100 text-green-700",
   overdue: "bg-red-100 text-red-700",
-  na: "bg-[#F1F5F9] text-[#64748B]",
+  na: "bg-ps-muted text-ps-label",
 };
 
 interface DocumentRequest {
@@ -430,8 +430,8 @@ export default function ClientPortalPage() {
       {/* Page Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#0F172A]">Client Portal Preview</h1>
-          <p className="text-sm text-[#64748B] mt-1">
+          <h1 className="text-2xl font-bold text-ps-ink">Client Portal Preview</h1>
+          <p className="text-sm text-ps-label mt-1">
             Manage document requests and shared files for your clients
           </p>
         </div>
@@ -459,9 +459,9 @@ export default function ClientPortalPage() {
       <Card>
         <CardContent className="pt-5 pb-4">
           <div className="flex items-center gap-3">
-            <ExternalLink size={16} className="text-[#94A3B8] shrink-0" />
+            <ExternalLink size={16} className="text-ps-hint shrink-0" />
             <div className="flex-1">
-              <label htmlFor="client-select" className="block text-xs font-medium text-[#64748B] mb-1">
+              <label htmlFor="client-select" className="block text-xs font-medium text-ps-label mb-1">
                 Select a client to manage their portal
               </label>
               <div className="w-full max-w-sm">
@@ -487,7 +487,7 @@ export default function ClientPortalPage() {
 
       {/* Empty state */}
       {!selectedClient && !loading && (
-        <div className="flex flex-col items-center justify-center py-20 text-[#94A3B8]">
+        <div className="flex flex-col items-center justify-center py-20 text-ps-hint">
           <ExternalLink size={40} className="mb-3 opacity-30" />
           <p className="text-base font-medium">Select a client to manage their portal</p>
           <p className="text-sm mt-1 opacity-70">
@@ -505,24 +505,24 @@ export default function ClientPortalPage() {
               <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-1">
                 Portal Management
               </p>
-              <h2 className="text-xl font-bold text-[#0F172A]">{selectedClient.client_name}</h2>
-              <p className="text-sm text-[#64748B] mt-1">Manage documents and requests for this client</p>
+              <h2 className="text-xl font-bold text-ps-ink">{selectedClient.client_name}</h2>
+              <p className="text-sm text-ps-label mt-1">Manage documents and requests for this client</p>
             </div>
             <div className="mt-4 flex flex-wrap gap-4 text-sm">
               {selectedClient.gstin && (
                 <div>
-                  <span className="text-xs text-[#94A3B8] block">GSTIN</span>
-                  <span className="font-mono font-semibold text-[#1E293B]">{selectedClient.gstin}</span>
+                  <span className="text-xs text-ps-hint block">GSTIN</span>
+                  <span className="font-mono font-semibold text-ps-ink">{selectedClient.gstin}</span>
                 </div>
               )}
               <div>
-                <span className="text-xs text-[#94A3B8] block">PAN</span>
-                <span className="font-mono font-semibold text-[#1E293B]">{selectedClient.pan}</span>
+                <span className="text-xs text-ps-hint block">PAN</span>
+                <span className="font-mono font-semibold text-ps-ink">{selectedClient.pan}</span>
               </div>
               {selectedClient.entity_type && (
                 <div>
-                  <span className="text-xs text-[#94A3B8] block">Entity Type</span>
-                  <span className="font-semibold text-[#1E293B] capitalize">
+                  <span className="text-xs text-ps-hint block">Entity Type</span>
+                  <span className="font-semibold text-ps-ink capitalize">
                     {selectedClient.entity_type.replace(/_/g, " ")}
                   </span>
                 </div>
@@ -531,7 +531,7 @@ export default function ClientPortalPage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 border-b border-[#F1F5F9] overflow-x-auto">
+          <div className="flex gap-1 border-b border-ps-muted overflow-x-auto">
             {PORTAL_TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -539,7 +539,7 @@ export default function ClientPortalPage() {
                 className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === tab.id
                     ? "border-blue-600 text-blue-700"
-                    : "border-transparent text-[#64748B] hover:text-[#334155]"
+                    : "border-transparent text-ps-label hover:text-ps-body"
                 }`}
               >
                 <tab.icon size={14} />
@@ -549,7 +549,7 @@ export default function ClientPortalPage() {
           </div>
 
           {loading && (
-            <div className="text-center py-8 text-sm text-[#94A3B8] animate-pulse">
+            <div className="text-center py-8 text-sm text-ps-hint animate-pulse">
               Loading client data…
             </div>
           )}
@@ -576,12 +576,12 @@ export default function ClientPortalPage() {
                     ) : requestsFailed ? (
                       <div className="text-center py-10 space-y-2">
                         <p className="text-sm text-red-600 font-medium">Couldn&apos;t load document requests.</p>
-                        <button onClick={() => loadDocRequests(selectedClientId)} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                        <button onClick={() => loadDocRequests(selectedClientId)} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
                       </div>
                     ) : docRequests.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
                         <FileText size={32} className="text-gray-200 mx-auto" />
-                        <p className="text-sm text-[#94A3B8]">
+                        <p className="text-sm text-ps-hint">
                           No document requests yet — click New Request to ask your client for files
                         </p>
                       </div>
@@ -590,17 +590,17 @@ export default function ClientPortalPage() {
                         {docRequests.map((req) => (
                           <div
                             key={req.id}
-                            className="flex items-start gap-3 p-3 rounded-lg border border-[#F1F5F9] hover:bg-[#F8FAFC]"
+                            className="flex items-start gap-3 p-3 rounded-lg border border-ps-muted hover:bg-ps-bg"
                           >
                             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
                               <FileText size={14} />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-[#0F172A]">{req.title}</p>
+                              <p className="text-sm font-medium text-ps-ink">{req.title}</p>
                               {req.description && (
-                                <p className="text-xs text-[#64748B] mt-0.5">{req.description}</p>
+                                <p className="text-xs text-ps-label mt-0.5">{req.description}</p>
                               )}
-                              <p className="text-xs text-[#94A3B8] mt-1">{formatDate(req.created_at)}</p>
+                              <p className="text-xs text-ps-hint mt-1">{formatDate(req.created_at)}</p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               {req.is_urgent && (
@@ -612,14 +612,14 @@ export default function ClientPortalPage() {
                                 className={`text-xs ${
                                   req.status === "fulfilled"
                                     ? "bg-green-100 text-green-700"
-                                    : "bg-[#F1F5F9] text-[#475569]"
+                                    : "bg-ps-muted text-ps-label"
                                 }`}
                               >
                                 {req.status === "fulfilled" ? "Fulfilled" : "Pending"}
                               </Badge>
                               <button
                                 onClick={() => handleDeleteRequest(req.id)}
-                                className="p-1.5 text-[#94A3B8] hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                className="p-1.5 text-ps-hint hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                                 title="Delete request"
                               >
                                 <Trash2 size={13} />
@@ -639,7 +639,7 @@ export default function ClientPortalPage() {
                   <CardHeader className="pb-3 flex flex-row items-center justify-between">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <FolderOpen size={15} /> Shared Documents
-                      <span className="text-xs text-[#94A3B8] font-normal ml-1">(CA → Client)</span>
+                      <span className="text-xs text-ps-hint font-normal ml-1">(CA → Client)</span>
                     </CardTitle>
                     <div className="flex items-center gap-2">
                       <input
@@ -647,7 +647,7 @@ export default function ClientPortalPage() {
                         placeholder="Label (optional)"
                         value={uploadLabel}
                         onChange={(e) => setUploadLabel(e.target.value)}
-                        className="text-xs px-2 py-1.5 border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                        className="text-xs px-2 py-1.5 border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
                       />
                       <input
                         type="file"
@@ -675,12 +675,12 @@ export default function ClientPortalPage() {
                     ) : sharedFailed ? (
                       <div className="text-center py-10 space-y-2">
                         <p className="text-sm text-red-600 font-medium">Couldn&apos;t load shared documents.</p>
-                        <button onClick={() => loadSharedDocs(selectedClientId)} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                        <button onClick={() => loadSharedDocs(selectedClientId)} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
                       </div>
                     ) : sharedDocs.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
                         <FolderOpen size={32} className="text-gray-200 mx-auto" />
-                        <p className="text-sm text-[#94A3B8]">
+                        <p className="text-sm text-ps-hint">
                           No documents shared yet — upload returns, notices, and certificates for this client
                         </p>
                       </div>
@@ -689,7 +689,7 @@ export default function ClientPortalPage() {
                         {sharedDocs.map((doc) => (
                           <div
                             key={doc.id}
-                            className="flex items-center gap-3 p-3 rounded-lg border border-[#F1F5F9] hover:bg-[#F8FAFC]"
+                            className="flex items-center gap-3 p-3 rounded-lg border border-ps-muted hover:bg-ps-bg"
                           >
                             <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                               <FolderOpen size={14} />
@@ -697,8 +697,8 @@ export default function ClientPortalPage() {
                             <div className="flex-1 min-w-0">
                               {/* description is the user-supplied label and is nullable; the file name
                                   is the only always-present identifier. */}
-                              <p className="text-sm font-medium text-[#0F172A] truncate">{doc.description ?? doc.file_name}</p>
-                              <p className="text-xs text-[#94A3B8] mt-0.5">
+                              <p className="text-sm font-medium text-ps-ink truncate">{doc.description ?? doc.file_name}</p>
+                              <p className="text-xs text-ps-hint mt-0.5">
                                 {doc.file_name}
                                 {doc.file_size ? ` · ${formatFileSize(doc.file_size)}` : ""}
                                 {" · "}{formatDate(doc.created_at)}
@@ -707,14 +707,14 @@ export default function ClientPortalPage() {
                             <div className="flex items-center gap-1.5 shrink-0">
                               <button
                                 onClick={() => handleDownloadSharedDoc(doc)}
-                                className="p-1.5 text-[#94A3B8] hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                className="p-1.5 text-ps-hint hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                                 title="Download"
                               >
                                 <Download size={13} />
                               </button>
                               <button
                                 onClick={() => handleDeleteSharedDoc(doc)}
-                                className="p-1.5 text-[#94A3B8] hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                className="p-1.5 text-ps-hint hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                                 title="Delete"
                               >
                                 <Trash2 size={13} />
@@ -739,18 +739,18 @@ export default function ClientPortalPage() {
                   </CardHeader>
                   <CardContent className="p-0">
                     {sharedReports.length === 0 ? (
-                      <div className="px-6 py-10 text-center text-sm text-[#94A3B8]">
+                      <div className="px-6 py-10 text-center text-sm text-ps-hint">
                         <BarChart3 size={28} className="mx-auto mb-2 opacity-20" />
                         <p>No reports shared yet.</p>
-                        <p className="text-xs mt-1 text-[#CBD5E1]">Go to Reports → Financial Statements → Generate → Share with Client</p>
+                        <p className="text-xs mt-1 text-ps-disabled">Go to Reports → Financial Statements → Generate → Share with Client</p>
                       </div>
                     ) : (
-                      <div className="divide-y divide-[#F8FAFC]">
+                      <div className="divide-y divide-ps-bg">
                         {sharedReports.map((r) => (
                           <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-4">
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-[#0F172A] truncate">{r.report_label}</p>
-                              <p className="text-xs text-[#94A3B8] mt-0.5">
+                              <p className="text-sm font-medium text-ps-ink truncate">{r.report_label}</p>
+                              <p className="text-xs text-ps-hint mt-0.5">
                                 FY {r.financial_year}
                                 {r.file_size_bytes ? ` · ${formatFileSize(r.file_size_bytes)}` : ""}
                                 {" · "}{formatDate(r.created_at)}
@@ -798,7 +798,7 @@ export default function ClientPortalPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
+                        <tr className="border-b border-ps-muted text-xs text-ps-hint">
                           <th className="px-5 py-3 text-left font-semibold">Form</th>
                           <th className="px-3 py-3 text-left font-semibold">Period</th>
                           <th className="px-3 py-3 text-left font-semibold">Status</th>
@@ -806,32 +806,32 @@ export default function ClientPortalPage() {
                           <th className="px-5 py-3 text-left font-semibold">ARN</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[#F8FAFC]">
+                      <tbody className="divide-y divide-ps-bg">
                         {recentFilings.length > 0
                           ? recentFilings.map((c) => (
-                              <tr key={c.id} className="hover:bg-[#F8FAFC]">
-                                <td className="px-5 py-3 text-sm font-medium text-[#0F172A]">
+                              <tr key={c.id} className="hover:bg-ps-bg">
+                                <td className="px-5 py-3 text-sm font-medium text-ps-ink">
                                   {c.compliance_type}
                                 </td>
-                                <td className="px-3 py-3 text-xs text-[#64748B] whitespace-nowrap">
+                                <td className="px-3 py-3 text-xs text-ps-label whitespace-nowrap">
                                   {formatDate(c.period_start)} – {formatDate(c.period_end)}
                                 </td>
                                 <td className="px-3 py-3">
-                                  <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+                                  <Badge className={`text-xs ${FILING_STATUS_COLORS[c.filing_status] ?? "bg-ps-muted text-ps-label"}`}>
                                     {c.filing_status}
                                   </Badge>
                                 </td>
-                                <td className="px-3 py-3 text-xs text-[#64748B] whitespace-nowrap">
+                                <td className="px-3 py-3 text-xs text-ps-label whitespace-nowrap">
                                   {c.filed_date ? formatDate(c.filed_date) : "—"}
                                 </td>
-                                <td className="px-5 py-3 text-xs font-mono text-[#94A3B8]">
+                                <td className="px-5 py-3 text-xs font-mono text-ps-hint">
                                   {c.arn_number ?? "—"}
                                 </td>
                               </tr>
                             ))
                           : (
                             <tr>
-                              <td colSpan={5} className="text-center text-xs text-[#94A3B8] py-8">
+                              <td colSpan={5} className="text-center text-xs text-ps-hint py-8">
                                 No filed entries in compliance calendar for this client
                               </td>
                             </tr>
@@ -862,7 +862,7 @@ export default function ClientPortalPage() {
                               <p className="text-sm text-red-600 font-medium">Couldn&apos;t load outstanding dues — the request failed or timed out.</p>
                               <button disabled={duesLoading}
                                 onClick={() => loadDues(selectedClientId)}
-                                className="disabled:opacity-40 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]"
+                                className="disabled:opacity-40 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body"
                               >
                                 Retry
                               </button>
@@ -872,7 +872,7 @@ export default function ClientPortalPage() {
                         return (
                           <div className="text-center py-10 space-y-2">
                             <Receipt size={32} className="text-gray-200 mx-auto" />
-                            <p className="text-sm text-[#94A3B8]">No outstanding dues for this client</p>
+                            <p className="text-sm text-ps-hint">No outstanding dues for this client</p>
                           </div>
                         );
                       }
@@ -880,16 +880,16 @@ export default function ClientPortalPage() {
                         return apiDues.map((due) => (
                           <div
                             key={due.id}
-                            className="flex items-center gap-4 p-3 rounded-lg border border-[#F1F5F9] hover:bg-[#F8FAFC]"
+                            className="flex items-center gap-4 p-3 rounded-lg border border-ps-muted hover:bg-ps-bg"
                           >
                             <div className="flex-1">
-                              <p className="text-sm font-medium text-[#0F172A]">{due.party_name}</p>
-                              <p className="text-xs text-[#64748B] mt-0.5">
+                              <p className="text-sm font-medium text-ps-ink">{due.party_name}</p>
+                              <p className="text-xs text-ps-label mt-0.5">
                                 {formatDate(due.transaction_date)}
                                 {due.reference_no ? ` · Ref: ${due.reference_no}` : ""}
                               </p>
                             </div>
-                            <span className="text-sm font-semibold text-[#1E293B]">
+                            <span className="text-sm font-semibold text-ps-ink">
                               {formatPaise(due.total_paise)}
                             </span>
                             <Badge
@@ -903,16 +903,16 @@ export default function ClientPortalPage() {
                       return unpaidInvoices.map((t) => (
                         <div
                           key={t.id}
-                          className="flex items-center gap-4 p-3 rounded-lg border border-[#F1F5F9] hover:bg-[#F8FAFC]"
+                          className="flex items-center gap-4 p-3 rounded-lg border border-ps-muted hover:bg-ps-bg"
                         >
                           <div className="flex-1">
-                            <p className="text-sm font-medium text-[#0F172A]">{t.party_name}</p>
-                            <p className="text-xs text-[#64748B] mt-0.5">
+                            <p className="text-sm font-medium text-ps-ink">{t.party_name}</p>
+                            <p className="text-xs text-ps-label mt-0.5">
                               {formatDate(t.transaction_date)}
                               {t.reference_no ? ` · Ref: ${t.reference_no}` : ""}
                             </p>
                           </div>
-                          <span className="text-sm font-semibold text-[#1E293B]">
+                          <span className="text-sm font-semibold text-ps-ink">
                             {formatPaise(t.total_paise)}
                           </span>
                           <Badge className="text-xs bg-amber-100 text-amber-700">{t.status}</Badge>
@@ -937,12 +937,12 @@ export default function ClientPortalPage() {
                     ) : messagesFailed ? (
                       <div className="text-center py-10 space-y-2">
                         <p className="text-sm text-red-600 font-medium">Couldn&apos;t load messages.</p>
-                        <button disabled={messagesLoading} onClick={() => loadPortalMessages(selectedClientId)} className="disabled:opacity-40 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                        <button disabled={messagesLoading} onClick={() => loadPortalMessages(selectedClientId)} className="disabled:opacity-40 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
                       </div>
                     ) : portalMessages.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
                         <MessageSquare size={32} className="text-gray-200 mx-auto" />
-                        <p className="text-sm text-[#94A3B8]">No messages yet — send a message to your client below</p>
+                        <p className="text-sm text-ps-hint">No messages yet — send a message to your client below</p>
                       </div>
                     ) : (
                       portalMessages.map((msg) => (
@@ -950,20 +950,20 @@ export default function ClientPortalPage() {
                           <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
                             {msg.from_ca ? "CA" : "C"}
                           </div>
-                          <div className="flex-1 bg-[#F8FAFC] rounded-lg px-4 py-3">
-                            <p className="text-sm text-[#1E293B]">{msg.text}</p>
-                            <p className="text-xs text-[#94A3B8] mt-1">{formatDate(msg.created_at)}</p>
+                          <div className="flex-1 bg-ps-bg rounded-lg px-4 py-3">
+                            <p className="text-sm text-ps-ink">{msg.text}</p>
+                            <p className="text-xs text-ps-hint mt-1">{formatDate(msg.created_at)}</p>
                           </div>
                         </div>
                       ))
                     )}
-                    <div className="pt-2 border-t border-[#F1F5F9] space-y-2">
+                    <div className="pt-2 border-t border-ps-muted space-y-2">
                       <textarea
                         rows={2}
                         placeholder="Type a message to send to this client…"
                         value={newMessageText}
                         onChange={(e) => setNewMessageText(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                       />
                       <div className="flex justify-end">
                         <button
@@ -986,28 +986,28 @@ export default function ClientPortalPage() {
 
       {/* New Request Modal */}
       {showNewRequestModal && (
-        <div className="fixed inset-0 bg-[#0F172A]/60 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-brand-dark/60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <h3 className="text-base font-semibold text-[#0F172A]">New Document Request</h3>
+            <h3 className="text-base font-semibold text-ps-ink">New Document Request</h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Title *</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Title *</label>
                 <input
                   type="text"
                   placeholder="e.g. Upload Q4 Bank Statement"
                   value={newRequest.title}
                   onChange={(e) => setNewRequest((p) => ({ ...p, title: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   autoFocus
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Description</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Description</label>
                 <textarea
                   placeholder="e.g. For the period Jan–Mar 2026"
                   value={newRequest.description}
                   onChange={(e) => setNewRequest((p) => ({ ...p, description: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   rows={3}
                 />
               </div>
@@ -1018,7 +1018,7 @@ export default function ClientPortalPage() {
                   onChange={(e) => setNewRequest((p) => ({ ...p, is_urgent: e.target.checked }))}
                   className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm text-[#334155]">Mark as Urgent</span>
+                <span className="text-sm text-ps-body">Mark as Urgent</span>
                 <AlertTriangle size={14} className="text-amber-500" />
               </label>
             </div>
@@ -1028,7 +1028,7 @@ export default function ClientPortalPage() {
                   setShowNewRequestModal(false);
                   setNewRequest({ title: "", description: "", is_urgent: false });
                 }}
-                className="px-4 py-2 text-sm text-[#475569] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+                className="px-4 py-2 text-sm text-ps-label border border-ps-border rounded-lg hover:bg-ps-bg"
               >
                 Cancel
               </button>

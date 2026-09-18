@@ -108,23 +108,23 @@ function ComplianceDashboard() {
     <div className="p-6 max-w-6xl">
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
-          <ShieldCheck size={18} className="text-[#182350]" />
-          <h1 className="text-lg font-semibold text-[#182350]">Compliance</h1>
+          <ShieldCheck size={18} className="text-brand" />
+          <h1 className="text-lg font-semibold text-brand">Compliance</h1>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => act(() => api.complianceOps.generate(), (r) => {
             const d = (r as ApiResp<{ generated: number }>).data; return `${d?.generated ?? 0} obligation(s) generated.`;
           })} disabled={busy}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 text-[#182350] hover:bg-[#F8FAFC] disabled:opacity-50">
+            className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 text-brand hover:bg-ps-bg disabled:opacity-50">
             <PlayCircle size={13} /> Generate obligations
           </button>
           <button onClick={() => act(() => api.complianceOps.runEscalations(), (r) => {
             const d = (r as ApiResp<{ escalated: number }>).data; return `${d?.escalated ?? 0} escalation(s) sent (internal).`;
           })} disabled={busy}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-[#182350] text-white disabled:opacity-50">
+            className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-brand text-white disabled:opacity-50">
             <Bell size={13} /> Run escalations
           </button>
-          <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-[#182350]">
+          <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-brand">
             <RefreshCw size={13} /> Refresh
           </button>
         </div>
@@ -135,8 +135,8 @@ function ComplianceDashboard() {
       {/* Summary */}
       <div className="grid grid-cols-5 gap-3 mb-6">
         {[
-          { label: "Total", value: s?.total_obligations ?? 0, cls: "text-[#182350]" },
-          { label: "Open", value: s?.open_obligations ?? 0, cls: "text-[#182350]" },
+          { label: "Total", value: s?.total_obligations ?? 0, cls: "text-brand" },
+          { label: "Open", value: s?.open_obligations ?? 0, cls: "text-brand" },
           { label: "Due this week", value: s?.due_this_week ?? 0, cls: "text-amber-600" },
           { label: "Due this month", value: s?.due_this_month ?? 0, cls: "text-blue-600" },
           { label: "Overdue", value: s?.overdue ?? 0, cls: "text-red-600" },
@@ -158,8 +158,8 @@ function ComplianceDashboard() {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <CalendarClock size={15} className="text-[#182350]" />
-            <h2 className="text-sm font-semibold text-[#182350]">Compliance queue</h2>
+            <CalendarClock size={15} className="text-brand" />
+            <h2 className="text-sm font-semibold text-brand">Compliance queue</h2>
             <span className="text-[11px] text-gray-400">{queue.length} of {dash?.queue?.length ?? 0}</span>
           </div>
           <div className="flex gap-2">
@@ -175,7 +175,7 @@ function ComplianceDashboard() {
             </select>
             <button onClick={() => downloadCsv("compliance-queue.csv", toCsv(queue, QUEUE_EXPORT_COLUMNS))}
               disabled={queue.length === 0}
-              className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 text-[#182350] hover:bg-[#F8FAFC] disabled:opacity-50">
+              className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 text-brand hover:bg-ps-bg disabled:opacity-50">
               <Download size={13} /> Export
             </button>
           </div>
@@ -185,7 +185,7 @@ function ComplianceDashboard() {
         ) : (
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-[#94A3B8] border-b border-gray-100">
+              <tr className="text-ps-hint border-b border-gray-100">
                 <th className="px-4 py-2.5 text-left font-semibold">Obligation</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Type</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Due</th>
@@ -198,8 +198,8 @@ function ComplianceDashboard() {
               {queue.map((o) => {
                 const overdue = o.status !== "Filed" && o.status !== "Completed" && o.due_date < today;
                 return (
-                  <tr key={o.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-2.5 font-medium text-[#1E293B]">{o.period_label ?? o.obligation_type ?? "—"}</td>
+                  <tr key={o.id} className="hover:bg-ps-bg">
+                    <td className="px-4 py-2.5 font-medium text-ps-ink">{o.period_label ?? o.obligation_type ?? "—"}</td>
                     <td className="px-3 py-2.5 text-gray-500">{o.compliance_type}</td>
                     <td className={`px-3 py-2.5 whitespace-nowrap ${overdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
                       {overdue && <AlertTriangle size={11} className="inline mr-1 -mt-0.5" />}{o.due_date}
@@ -214,7 +214,7 @@ function ComplianceDashboard() {
                       ) : (
                         <select disabled={busy} defaultValue=""
                           onChange={(e) => { if (e.target.value) transition(o, e.target.value); }}
-                          className="text-[11px] border border-gray-200 rounded px-1.5 py-1 text-[#182350]">
+                          className="text-[11px] border border-gray-200 rounded px-1.5 py-1 text-brand">
                           <option value="">→ move to…</option>
                           {(NEXT_STATUS[o.status] ?? []).map((st) => <option key={st} value={st}>{st}</option>)}
                         </select>
@@ -240,7 +240,7 @@ function WorkloadCard({ title, rows, emptyLabel }: { title: string; rows: Worklo
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100">
-        <h2 className="text-sm font-semibold text-[#182350]">{title}</h2>
+        <h2 className="text-sm font-semibold text-brand">{title}</h2>
       </div>
       {rows.length === 0 ? (
         <p className="text-[12px] text-gray-400 text-center py-8">{emptyLabel}</p>
@@ -248,8 +248,8 @@ function WorkloadCard({ title, rows, emptyLabel }: { title: string; rows: Worklo
         <table className="w-full text-xs">
           <tbody className="divide-y divide-gray-50">
             {rows.slice(0, 8).map((r) => (
-              <tr key={r.key} className="hover:bg-[#F8FAFC]">
-                <td className="px-4 py-2.5 text-[#334155] font-mono truncate max-w-[260px]">{r.key}</td>
+              <tr key={r.key} className="hover:bg-ps-bg">
+                <td className="px-4 py-2.5 text-ps-body font-mono truncate max-w-[260px]">{r.key}</td>
                 <td className="px-3 py-2.5 text-right text-gray-500">{r.obligations} open</td>
                 <td className="px-4 py-2.5 text-right">
                   {r.overdue > 0

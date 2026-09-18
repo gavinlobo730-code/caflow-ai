@@ -77,12 +77,12 @@ export function ClientInstructions({
       {!pinnedOnly && (
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <StickyNote size={16} className="text-[#182350]" />
-            <h2 className="text-sm font-semibold text-[#182350]">Client Instructions</h2>
+            <StickyNote size={16} className="text-brand" />
+            <h2 className="text-sm font-semibold text-brand">Client Instructions</h2>
           </div>
           <div className="flex items-center gap-3">
-            {canWrite && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-lg bg-[#182350] text-white"><Plus size={12} /> Add</button>}
-            <button onClick={load} className="text-gray-400 hover:text-[#182350]"><RefreshCw size={13} /></button>
+            {canWrite && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-lg bg-brand text-white"><Plus size={12} /> Add</button>}
+            <button onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={13} /></button>
           </div>
         </div>
       )}
@@ -92,7 +92,7 @@ export function ClientInstructions({
           <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
           <textarea placeholder="Standing instruction…" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" rows={2} />
           <label className="flex items-center gap-2 text-[12px] text-gray-600"><input type="checkbox" checked={form.is_pinned} onChange={(e) => setForm({ ...form, is_pinned: e.target.checked })} /> Pin to top</label>
-          <button type="submit" className="px-3 py-1.5 rounded-lg bg-[#182350] text-white text-[12px]">Save</button>
+          <button type="submit" className="px-3 py-1.5 rounded-lg bg-brand text-white text-[12px]">Save</button>
         </form>
       )}
       <div className="space-y-2">
@@ -100,7 +100,7 @@ export function ClientInstructions({
           <div key={i.id} className="bg-white border border-gray-200 rounded-lg p-3">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-[13px] font-medium text-[#182350] flex items-center gap-1.5">
+                <p className="text-[13px] font-medium text-brand flex items-center gap-1.5">
                   {i.is_pinned && <Pin size={11} className="text-amber-500" />}{i.title}
                 </p>
                 {i.body && <p className="text-[12px] text-gray-600 mt-0.5 whitespace-pre-wrap">{i.body}</p>}

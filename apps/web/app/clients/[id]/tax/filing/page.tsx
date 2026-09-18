@@ -34,7 +34,7 @@ const STATUS_LABEL: Record<string, string> = {
   filed: "Filed",
 };
 const STATUS_COLOR: Record<string, string> = {
-  draft: "bg-[#F1F5F9] text-[#64748B]",
+  draft: "bg-ps-muted text-ps-label",
   review: "bg-amber-100 text-amber-700",
   partner_review: "bg-blue-100 text-blue-700",
   ready_for_filing: "bg-purple-100 text-purple-700",
@@ -370,8 +370,8 @@ export default function ITRFilingPage() {
       )}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-[#1E293B]">ITR Preparation</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">IT Act §139 — Return of Income</p>
+          <h2 className="text-sm font-semibold text-ps-ink">ITR Preparation</h2>
+          <p className="text-xs text-ps-hint mt-0.5">IT Act §139 — Return of Income</p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
@@ -396,42 +396,42 @@ export default function ITRFilingPage() {
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[s]}`}>
               {STATUS_LABEL[s]}
             </span>
-            {i < STATUS_ORDER.length - 1 && <ChevronRight size={10} className="text-[#CBD5E1]" />}
+            {i < STATUS_ORDER.length - 1 && <ChevronRight size={10} className="text-ps-disabled" />}
           </div>
         ))}
       </div>
 
       {/* Create Form */}
       {showCreate && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3">
-          <p className="text-xs font-semibold text-[#334155]">New ITR Filing</p>
+        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
+          <p className="text-xs font-semibold text-ps-body">New ITR Filing</p>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-[10px] text-[#64748B] mb-1 block">Form</label>
+              <label className="text-[10px] text-ps-label mb-1 block">Form</label>
               <select value={form} onChange={e => setForm(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
+                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                 {forms.map(f => <option key={f}>{f}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-[#64748B] mb-1 block">Financial Year</label>
+              <label className="text-[10px] text-ps-label mb-1 block">Financial Year</label>
               <select value={fy} onChange={e => setFy(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
+                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                 {FY_OPTIONS.map(f => <option key={f}>{f}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-[#64748B] mb-1 block">Assessment Year</label>
+              <label className="text-[10px] text-ps-label mb-1 block">Assessment Year</label>
               <select value={ay} onChange={e => setAy(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
+                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                 {AY_OPTIONS.map(a => <option key={a}>{a}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label className="text-[10px] text-[#64748B] mb-1 block">Kind of return</label>
+            <label className="text-[10px] text-ps-label mb-1 block">Kind of return</label>
             <select value={kind} onChange={e => setKind(e.target.value)}
-              className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
+              className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
               {kinds.map(k => (
                 <option key={k.return_type} value={k.return_type}>
                   {KIND_LABEL[k.return_type] ?? k.return_type} — {k.section}
@@ -450,9 +450,9 @@ export default function ITRFilingPage() {
                 ? "bg-red-50 border-red-200"
                 : selectedKind.window.is_open === null
                   ? "bg-amber-50 border-amber-200"
-                  : "bg-[#F8FAFC] border-[#E2E8F0]"
+                  : "bg-ps-bg border-ps-border"
             }`}>
-              <p className="text-[11px] font-medium text-[#334155]">
+              <p className="text-[11px] font-medium text-ps-body">
                 {selectedKind.window.is_open === false
                   ? "This window has closed"
                   : selectedKind.window.is_open === null
@@ -463,7 +463,7 @@ export default function ITRFilingPage() {
                   && ` (the other reading: ${selectedKind.window.alternative_closes_on})`}
               </p>
               {[...selectedKind.window.caveats, ...selectedKind.window.gaps].map((c, i) => (
-                <p key={i} className="text-[10px] text-[#64748B]">{c}</p>
+                <p key={i} className="text-[10px] text-ps-label">{c}</p>
               ))}
             </div>
           )}
@@ -471,22 +471,22 @@ export default function ITRFilingPage() {
           {selectedKind?.needs_the_earlier_receipt && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] text-[#64748B] mb-1 block">
+                <label className="text-[10px] text-ps-label mb-1 block">
                   Earlier return&apos;s acknowledgement number
                 </label>
                 <input value={originalAck} onChange={e => setOriginalAck(e.target.value)}
-                  className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg font-mono"
+                  className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg font-mono"
                   placeholder="e.g. 123456789012345" />
               </div>
               <div>
-                <label className="text-[10px] text-[#64748B] mb-1 block">
+                <label className="text-[10px] text-ps-label mb-1 block">
                   Earlier return&apos;s filing date
                 </label>
                 <input type="date" value={originalAckDate}
                   onChange={e => setOriginalAckDate(e.target.value)}
-                  className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                  className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
               </div>
-              <p className="col-span-2 text-[10px] text-[#94A3B8]">
+              <p className="col-span-2 text-[10px] text-ps-hint">
                 Both are fields on the form itself, not bookkeeping: a revised
                 or updated return re-declares a year already declared and quotes
                 the earlier return&apos;s receipt.
@@ -495,7 +495,7 @@ export default function ITRFilingPage() {
           )}
           {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
+            <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
             <button onClick={handleCreate} disabled={actionInFlight}
               className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
@@ -510,13 +510,13 @@ export default function ITRFilingPage() {
       ) : loadError ? (
         <div className="bg-white rounded-xl border border-red-200 text-center py-16 space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
-          <button onClick={() => load()} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button onClick={() => load()} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : filings.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-2">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-2">
           <FileText size={28} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-[#64748B]">No ITR filings yet</p>
-          <p className="text-xs text-[#94A3B8]">Click &quot;New Filing&quot; to start the ITR preparation workflow.</p>
+          <p className="text-sm text-ps-label">No ITR filings yet</p>
+          <p className="text-xs text-ps-hint">Click &quot;New Filing&quot; to start the ITR preparation workflow.</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -524,13 +524,13 @@ export default function ITRFilingPage() {
             <button
               key={f.id}
               onClick={() => { setSelectedFiling(f); setSheet(null); setSheetError(null); }}
-              className={`w-full bg-white rounded-xl border px-4 py-3 flex items-center gap-3 hover:bg-[#F8FAFC] text-left ${
-                selectedFiling?.id === f.id ? "border-blue-200 bg-blue-50/30" : "border-[#F1F5F9]"
+              className={`w-full bg-white rounded-xl border px-4 py-3 flex items-center gap-3 hover:bg-ps-bg text-left ${
+                selectedFiling?.id === f.id ? "border-blue-200 bg-blue-50/30" : "border-ps-muted"
               }`}
             >
               <FileText size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-[#1E293B] flex items-center gap-1.5">
+                <p className="text-xs font-semibold text-ps-ink flex items-center gap-1.5">
                   {f.itr_form} — FY {f.financial_year}
                   {/* Only where it is NOT the original: a badge on every row
                       says nothing, and the original is what a row without one
@@ -541,7 +541,7 @@ export default function ITRFilingPage() {
                     </span>
                   )}
                 </p>
-                <p className="text-[10px] text-[#94A3B8]">
+                <p className="text-[10px] text-ps-hint">
                   AY {f.assessment_year} · {new Date(f.created_at).toLocaleDateString("en-IN")}
                   {f.acknowledgement_number && ` · Ack: ${f.acknowledgement_number}`}
                   {f.original_acknowledgement_number
@@ -558,12 +558,12 @@ export default function ITRFilingPage() {
 
       {/* Filing Detail Panel */}
       {selectedFiling && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-4">
+        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-[#334155]">
+            <p className="text-xs font-semibold text-ps-body">
               {selectedFiling.itr_form} — FY {selectedFiling.financial_year}
             </p>
-            <button onClick={() => { setSelectedFiling(null); setSheet(null); setSheetError(null); }} className="text-[10px] text-[#94A3B8] hover:text-[#64748B]">Close</button>
+            <button onClick={() => { setSelectedFiling(null); setSheet(null); setSheetError(null); }} className="text-[10px] text-ps-hint hover:text-ps-label">Close</button>
           </div>
 
           {/* Workflow Progress */}
@@ -571,14 +571,14 @@ export default function ITRFilingPage() {
             {STATUS_ORDER.map((s, i) => (
               <div key={s} className="flex items-center gap-1 flex-1">
                 <div className={`h-1.5 flex-1 rounded-full ${
-                  STATUS_ORDER.indexOf(selectedFiling.status) >= i ? "bg-blue-500" : "bg-[#E2E8F0]"
+                  STATUS_ORDER.indexOf(selectedFiling.status) >= i ? "bg-blue-500" : "bg-ps-border"
                 }`} />
               </div>
             ))}
           </div>
           <div className="flex justify-between">
             {STATUS_ORDER.map(s => (
-              <span key={s} className="text-[9px] text-[#94A3B8]">{STATUS_LABEL[s]}</span>
+              <span key={s} className="text-[9px] text-ps-hint">{STATUS_LABEL[s]}</span>
             ))}
           </div>
 
@@ -618,7 +618,7 @@ export default function ITRFilingPage() {
             {selectedFiling.status === "ready_for_filing" && !showAck && (
               <button
                 onClick={() => setShowAck(true)}
-                className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]"
+                className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
               >
                 Record Acknowledgement
               </button>
@@ -646,25 +646,25 @@ export default function ITRFilingPage() {
           {sheet && <KeyingSheetPanel sheet={sheet} filing={selectedFiling} />}
 
           {showAck && (
-            <div className="border border-[#E2E8F0] rounded-xl p-4 space-y-3">
-              <p className="text-xs font-medium text-[#334155]">Record Filing Acknowledgement</p>
+            <div className="border border-ps-border rounded-xl p-4 space-y-3">
+              <p className="text-xs font-medium text-ps-body">Record Filing Acknowledgement</p>
               <p className="text-[10px] text-amber-700 bg-amber-50 p-2 rounded">
                 CA REVIEW REQUIRED — Only record after manually filing on Income Tax Portal
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-[#64748B] mb-1 block">Acknowledgement Number</label>
+                  <label className="text-[10px] text-ps-label mb-1 block">Acknowledgement Number</label>
                   <input value={ackNumber} onChange={e => setAckNumber(e.target.value)}
-                    className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-[#64748B] mb-1 block">Filing Date</label>
+                  <label className="text-[10px] text-ps-label mb-1 block">Filing Date</label>
                   <input type="date" value={ackDate} onChange={e => setAckDate(e.target.value)}
-                    className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setShowAck(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
+                <button onClick={() => setShowAck(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
                 <button
                   onClick={() => handleRecordAck(selectedFiling)}
                   disabled={actionInFlight || !ackNumber || !ackDate}

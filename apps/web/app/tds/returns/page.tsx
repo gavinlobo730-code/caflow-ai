@@ -33,7 +33,7 @@ function r(paise: number) {
 }
 
 const STATUS_CONFIG: Record<TDSReturnStatus, { label: string; color: string }> = {
-  pending:     { label: "Pending",     color: "bg-[#F1F5F9] text-[#334155]" },
+  pending:     { label: "Pending",     color: "bg-ps-muted text-ps-body" },
   prepared:    { label: "Prepared",    color: "bg-blue-100 text-blue-700" },
   ca_approved: { label: "CA Approved", color: "bg-green-100 text-green-700" },
   filed:       { label: "Filed",       color: "bg-emerald-100 text-emerald-700" },
@@ -180,8 +180,8 @@ export default function TDSReturnsPage() {
       )}
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/tds" className="text-[#94A3B8] hover:text-[#475569] text-sm">← TDS</Link>
-        <h1 className="text-xl font-bold text-[#0F172A]">TDS Returns — 24Q / 26Q / 27Q</h1>
+        <Link href="/tds" className="text-ps-hint hover:text-ps-label text-sm">← TDS</Link>
+        <h1 className="text-xl font-bold text-ps-ink">TDS Returns — 24Q / 26Q / 27Q</h1>
       </div>
 
       {/* CA Review Banner */}
@@ -193,10 +193,10 @@ export default function TDSReturnsPage() {
       </div>
 
       {/* Selector */}
-      <div className="bg-white border border-[#E2E8F0] rounded-xl p-4">
+      <div className="bg-white border border-ps-border rounded-xl p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Client *</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Client *</label>
             <div className="w-full">
               <ClientLookup
                 clients={clients}
@@ -208,7 +208,7 @@ export default function TDSReturnsPage() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Return Type</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Return Type</label>
             {/* 27Q IS OFFERED BECAUSE IT IS BUILT (TDS-09). Rule 31A(4) routes
                 a deduction by the PAYEE's residency, and the non-resident
                 statement has had a from-books builder since Phase 4 —
@@ -225,7 +225,7 @@ export default function TDSReturnsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Financial Year</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Financial Year</label>
             <select value={financialYear} onChange={e => setFinancialYear(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
               {/* DERIVED FROM THE CLOCK, NOT LISTED (TDS-18).
@@ -244,7 +244,7 @@ export default function TDSReturnsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Quarter</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Quarter</label>
             <select value={quarter} onChange={e => setQuarter(e.target.value as TDSQuarter)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
               {QUARTERS.map(q => <option key={q} value={q}>{QUARTER_LABELS[q]}</option>)}
@@ -298,12 +298,12 @@ export default function TDSReturnsPage() {
           )}
 
           {/* Tabs */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-            <div className="flex border-b border-[#E2E8F0]">
+          <div className="bg-white border border-ps-border rounded-xl overflow-hidden">
+            <div className="flex border-b border-ps-border">
               {(["summary", "deductees", "challans", "json"] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`px-4 py-3 text-sm font-medium capitalize transition-colors ${
-                    tab === t ? "border-b-2 border-blue-600 text-blue-600" : "text-[#64748B] hover:text-[#334155]"
+                    tab === t ? "border-b-2 border-blue-600 text-blue-600" : "text-ps-label hover:text-ps-body"
                   }`}>
                   {t}
                 </button>
@@ -314,9 +314,9 @@ export default function TDSReturnsPage() {
               {tab === "summary" && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-[#F8FAFC] rounded-xl p-4 text-center">
-                      <p className="text-xs text-[#64748B] mb-1">Total Payment</p>
-                      <p className="text-lg font-bold text-[#0F172A]">
+                    <div className="bg-ps-bg rounded-xl p-4 text-center">
+                      <p className="text-xs text-ps-label mb-1">Total Payment</p>
+                      <p className="text-lg font-bold text-ps-ink">
                         {r(result.total_payment_paise ?? result.total_salary_paise ?? 0)}
                       </p>
                     </div>
@@ -328,9 +328,9 @@ export default function TDSReturnsPage() {
                       <p className="text-xs text-green-600 mb-1">TDS Deposited</p>
                       <p className="text-lg font-bold text-green-900">{r(result.total_tds_deposited_paise)}</p>
                     </div>
-                    <div className="bg-[#F8FAFC] rounded-xl p-4 text-center">
-                      <p className="text-xs text-[#64748B] mb-1">Deductees</p>
-                      <p className="text-lg font-bold text-[#0F172A]">{result.deductee_count}</p>
+                    <div className="bg-ps-bg rounded-xl p-4 text-center">
+                      <p className="text-xs text-ps-label mb-1">Deductees</p>
+                      <p className="text-lg font-bold text-ps-ink">{result.deductee_count}</p>
                     </div>
                   </div>
                   {/* §201(1A) — THE SHORTFALL THAT COULD NOT APPEAR BEFORE.
@@ -385,7 +385,7 @@ export default function TDSReturnsPage() {
                     </div>
                   )}
 
-                  <div className="text-xs text-[#64748B] space-y-1">
+                  <div className="text-xs text-ps-label space-y-1">
                     <p>Form: <strong>{result.form}</strong>{result.act ? ` (${result.act})` : ""}</p>
                     <p>TAN: <strong className="font-mono">{result.tan}</strong></p>
                     <p>Period: <strong>{result.financial_year} — {result.quarter} (ends {result.quarter_end_date})</strong></p>
@@ -406,7 +406,7 @@ export default function TDSReturnsPage() {
                   </div>
 
                   {(result.statutory_gaps?.length ?? 0) > 0 && (
-                    <div className="text-xs text-[#64748B] space-y-1 border-t border-[#F1F5F9] pt-3">
+                    <div className="text-xs text-ps-label space-y-1 border-t border-ps-muted pt-3">
                       {result.statutory_gaps!.map((g, i) => <p key={i}>• {g}</p>)}
                     </div>
                   )}
@@ -416,20 +416,20 @@ export default function TDSReturnsPage() {
               {tab === "deductees" && (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
-                    <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                    <thead className="bg-ps-bg border-b border-ps-border">
                       <tr>
-                        <th className="text-left px-3 py-2 text-[#475569]">Name</th>
-                        <th className="text-left px-3 py-2 text-[#475569] font-mono">PAN</th>
-                        <th className="text-left px-3 py-2 text-[#475569]">Section</th>
-                        <th className="text-right px-3 py-2 text-[#475569]">Payment</th>
-                        <th className="text-right px-3 py-2 text-[#475569]">Rate</th>
-                        <th className="text-right px-3 py-2 text-[#475569]">TDS Deducted</th>
-                        <th className="text-right px-3 py-2 text-[#475569]">TDS Deposited</th>
+                        <th className="text-left px-3 py-2 text-ps-label">Name</th>
+                        <th className="text-left px-3 py-2 text-ps-label font-mono">PAN</th>
+                        <th className="text-left px-3 py-2 text-ps-label">Section</th>
+                        <th className="text-right px-3 py-2 text-ps-label">Payment</th>
+                        <th className="text-right px-3 py-2 text-ps-label">Rate</th>
+                        <th className="text-right px-3 py-2 text-ps-label">TDS Deducted</th>
+                        <th className="text-right px-3 py-2 text-ps-label">TDS Deposited</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#F1F5F9]">
+                    <tbody className="divide-y divide-ps-muted">
                       {result.deductees.map((d, i) => (
-                        <tr key={i} className="bg-white hover:bg-[#F8FAFC]">
+                        <tr key={i} className="bg-white hover:bg-ps-bg">
                           <td className="px-3 py-2">{d.deductee_name}</td>
                           <td className="px-3 py-2 font-mono">{d.deductee_pan}</td>
                           <td className="px-3 py-2">
@@ -442,7 +442,7 @@ export default function TDSReturnsPage() {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-[#F8FAFC] border-t border-[#E2E8F0] font-semibold">
+                    <tfoot className="bg-ps-bg border-t border-ps-border font-semibold">
                       <tr>
                         <td colSpan={3} className="px-3 py-2">Total</td>
                         <td className="px-3 py-2 text-right">{r(result.total_payment_paise ?? result.total_salary_paise ?? 0)}</td>
@@ -459,17 +459,17 @@ export default function TDSReturnsPage() {
                 result.challans.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
-                      <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                      <thead className="bg-ps-bg border-b border-ps-border">
                         <tr>
-                          <th className="text-left px-3 py-2 text-[#475569]">Challan No</th>
-                          <th className="text-left px-3 py-2 text-[#475569]">BSR Code</th>
-                          <th className="text-left px-3 py-2 text-[#475569]">Date</th>
-                          <th className="text-right px-3 py-2 text-[#475569]">TDS</th>
-                          <th className="text-right px-3 py-2 text-[#475569]">Interest</th>
-                          <th className="text-right px-3 py-2 text-[#475569]">Total</th>
+                          <th className="text-left px-3 py-2 text-ps-label">Challan No</th>
+                          <th className="text-left px-3 py-2 text-ps-label">BSR Code</th>
+                          <th className="text-left px-3 py-2 text-ps-label">Date</th>
+                          <th className="text-right px-3 py-2 text-ps-label">TDS</th>
+                          <th className="text-right px-3 py-2 text-ps-label">Interest</th>
+                          <th className="text-right px-3 py-2 text-ps-label">Total</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[#F1F5F9]">
+                      <tbody className="divide-y divide-ps-muted">
                         {result.challans.map((c, i) => (
                           <tr key={i} className="bg-white">
                             <td className="px-3 py-2 font-mono">{c.challan_no}</td>
@@ -484,7 +484,7 @@ export default function TDSReturnsPage() {
                     </table>
                   </div>
                 ) : (
-                  <p className="text-sm text-[#64748B] text-center py-8">No challans linked to this period.</p>
+                  <p className="text-sm text-ps-label text-center py-8">No challans linked to this period.</p>
                 )
               )}
 
@@ -507,7 +507,7 @@ export default function TDSReturnsPage() {
             )}
             {(filingStatus === "ca_approved" || filingStatus === "filed") && (
               <button onClick={() => result && downloadTDSJSON(result)}
-                className="flex items-center gap-2 bg-white border border-gray-300 text-[#334155] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#F8FAFC]">
+                className="flex items-center gap-2 bg-white border border-gray-300 text-ps-body px-4 py-2 rounded-lg text-sm font-medium hover:bg-ps-bg">
                 <Download size={15} />
                 Download JSON (for e-filing upload)
               </button>
@@ -534,25 +534,25 @@ export default function TDSReturnsPage() {
       {/* Mark as Filed Modal */}
       {showFiledModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-[#0F172A]/60" onClick={() => setShowFiledModal(false)} />
+          <div className="absolute inset-0 bg-brand-dark/60" onClick={() => setShowFiledModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
-            <h3 className="font-semibold text-[#0F172A]">Mark {returnType} as Filed</h3>
-            <p className="text-sm text-[#64748B]">Enter the details from the e-filing portal acknowledgement after successful upload on incometax.gov.in.</p>
+            <h3 className="font-semibold text-ps-ink">Mark {returnType} as Filed</h3>
+            <p className="text-sm text-ps-label">Enter the details from the e-filing portal acknowledgement after successful upload on incometax.gov.in.</p>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">PRN (Provisional Receipt Number) *</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">PRN (Provisional Receipt Number) *</label>
               <input value={prn} onChange={e => setPrn(e.target.value.toUpperCase())}
                 placeholder="Token / PRN from the e-filing portal"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#334155] mb-1">Acknowledgement Number</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Acknowledgement Number</label>
               <input value={ackNumber} onChange={e => setAckNumber(e.target.value)}
                 placeholder="Optional acknowledgement number"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500" />
             </div>
             <div className="flex gap-3 pt-1">
               <button onClick={() => setShowFiledModal(false)}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-[#334155] hover:bg-[#F8FAFC]">
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg">
                 Cancel
               </button>
               <button onClick={handleMarkFiled} disabled={!prn}

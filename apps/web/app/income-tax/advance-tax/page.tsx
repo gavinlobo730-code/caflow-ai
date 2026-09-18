@@ -362,10 +362,10 @@ export default function AdvanceTaxPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-[#94A3B8] hover:text-[#475569]"><ChevronLeft size={18} /></Link>
+        <Link href="/income-tax" className="text-ps-hint hover:text-ps-label"><ChevronLeft size={18} /></Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-[#0F172A]">Advance Tax Tracker</h1>
-          <p className="text-sm text-[#64748B] mt-0.5" title={result?.basis ?? undefined}>
+          <h1 className="text-xl font-semibold text-ps-ink">Advance Tax Tracker</h1>
+          <p className="text-sm text-ps-label mt-0.5" title={result?.basis ?? undefined}>
             {presumptive
               ? "IT Act Section 211(1) proviso — one instalment, the whole amount by 15 March"
               : "IT Act Section 207/208 — 4 installments per FY"}
@@ -376,7 +376,7 @@ export default function AdvanceTaxPage() {
       {/* Controls */}
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="text-xs text-[#64748B]">Client</label>
+          <label className="text-xs text-ps-label">Client</label>
           <div className="mt-1 min-w-[200px]">
             <ClientLookup
               clients={clients}
@@ -388,20 +388,20 @@ export default function AdvanceTaxPage() {
           </div>
         </div>
         <div>
-          <label className="text-xs text-[#64748B]">Financial Year</label>
+          <label className="text-xs text-ps-label">Financial Year</label>
           <select value={fy} onChange={e => setFy(e.target.value)}
-            className="block mt-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+            className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
             {FY_OPTIONS.map(f => <option key={f} value={f}>FY {f}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs text-[#64748B]">Estimated Annual Tax (₹)</label>
+          <label className="text-xs text-ps-label">Estimated Annual Tax (₹)</label>
           <input type="number" min="0" step="0.01" value={estimatedTaxRs}
             onChange={e => setEstimatedTaxRs(e.target.value)}
-            className="block mt-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-48"
+            className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-48"
             placeholder="Enter tax amount" />
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-[#475569] pb-2"
+        <label className="flex items-center gap-1.5 text-xs text-ps-label pb-2"
                title="IT Act §211(1) proviso — the whole advance tax by 15 March, and §234C(1)(b) charges only on that.">
           <input type="checkbox" checked={presumptive}
                  onChange={e => setPresumptive(e.target.checked)} />
@@ -438,8 +438,8 @@ export default function AdvanceTaxPage() {
         ].map(s => (
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">
-              <p className={`text-lg font-bold tabular-nums ${s.red ? "text-red-600" : "text-[#0F172A]"}`}>{s.value}</p>
-              <p className="text-xs text-[#64748B] mt-0.5">{s.label}</p>
+              <p className={`text-lg font-bold tabular-nums ${s.red ? "text-red-600" : "text-ps-ink"}`}>{s.value}</p>
+              <p className="text-xs text-ps-label mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -453,7 +453,7 @@ export default function AdvanceTaxPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-xs text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-xs text-ps-hint">
                   <th className="px-5 py-3 text-left">Installment</th>
                   <th className="px-3 py-3 text-left">Due Date</th>
                   <th className="px-3 py-3 text-right">Required %</th>
@@ -465,7 +465,7 @@ export default function AdvanceTaxPage() {
                   <th className="px-5 py-3 text-left">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {(presumptive ? [4] : [1, 2, 3, 4]).map(n => {
                   const inst = result?.installments?.find(i => i.installment_number === n);
                   const dueDate = inst?.due_date ?? "";
@@ -484,12 +484,12 @@ export default function AdvanceTaxPage() {
                     ? <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full"><CheckCircle size={11} /> Paid</span>
                     : status === "overdue"
                     ? <span className="inline-flex items-center gap-1 text-xs text-red-700 bg-red-50 px-2 py-0.5 rounded-full"><AlertTriangle size={11} /> Overdue</span>
-                    : <span className="inline-flex items-center gap-1 text-xs text-[#475569] bg-[#F1F5F9] px-2 py-0.5 rounded-full"><Clock size={11} /> Upcoming</span>;
+                    : <span className="inline-flex items-center gap-1 text-xs text-ps-label bg-ps-muted px-2 py-0.5 rounded-full"><Clock size={11} /> Upcoming</span>;
 
                   return (
-                    <tr key={n} className="hover:bg-[#F8FAFC]">
+                    <tr key={n} className="hover:bg-ps-bg">
                       <td className="px-5 py-3 text-sm font-medium">{INSTALLMENT_LABELS[n]}</td>
-                      <td className="px-3 py-3 text-xs text-[#475569]">{dueDate || "—"}</td>
+                      <td className="px-3 py-3 text-xs text-ps-label">{dueDate || "—"}</td>
                       <td className="px-3 py-3 text-sm text-right tabular-nums">
                         {requiredPercent === null ? "—" : `${requiredPercent}%`}
                       </td>
@@ -498,22 +498,22 @@ export default function AdvanceTaxPage() {
                         <input type="number" min="0" step="0.01"
                           value={editPaidRs[n] ?? ""}
                           onChange={e => setEditPaidRs(prev => ({ ...prev, [n]: e.target.value }))}
-                          className="w-28 border border-[#E2E8F0] rounded px-2 py-1 text-sm text-right outline-none focus:border-blue-500" />
+                          className="w-28 border border-ps-border rounded px-2 py-1 text-sm text-right outline-none focus:border-blue-500" />
                       </td>
                       <td className="px-3 py-3">
                         <input type="date"
                           value={editPaidDate[n] ?? ""}
                           onChange={e => setEditPaidDate(prev => ({ ...prev, [n]: e.target.value }))}
-                          className="border border-[#E2E8F0] rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
+                          className="border border-ps-border rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
                       </td>
                       <td className="px-3 py-3">
                         <input type="text"
                           value={editChallan[n] ?? ""}
                           onChange={e => setEditChallan(prev => ({ ...prev, [n]: e.target.value }))}
                           placeholder="BSR/challan"
-                          className="w-32 border border-[#E2E8F0] rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
+                          className="w-32 border border-ps-border rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
                       </td>
-                      <td className={`px-3 py-3 text-sm text-right tabular-nums ${interest > 0 ? "text-red-600 font-semibold" : "text-[#94A3B8]"}`}>
+                      <td className={`px-3 py-3 text-sm text-right tabular-nums ${interest > 0 ? "text-red-600 font-semibold" : "text-ps-hint"}`}>
                         {interest > 0 ? formatPaise(interest) : "—"}
                       </td>
                       <td className="px-5 py-3">{statusEl}</td>
@@ -530,45 +530,45 @@ export default function AdvanceTaxPage() {
       <Card>
         <CardContent className="pt-4 space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <h2 className="text-sm font-semibold text-[#0F172A]">
+            <h2 className="text-sm font-semibold text-ps-ink">
               Late filing and short payment — §234A, §234B
             </h2>
-            <span className="text-[11px] text-[#94A3B8]">
+            <span className="text-[11px] text-ps-hint">
               Computed from the estimated tax and the instalments above.
             </span>
           </div>
 
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <label className="text-xs text-[#64748B]">TDS / TCS credit (₹)</label>
+              <label className="text-xs text-ps-label">TDS / TCS credit (₹)</label>
               <input type="text" inputMode="decimal" value={tdsTcsRs}
                 onChange={e => setTdsTcsRs(e.target.value)}
-                className="block mt-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-40"
+                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-40"
                 placeholder="0.00" />
             </div>
             <div>
-              <label className="text-xs text-[#64748B]">Relief u/s 89 / 90 / 91 (₹)</label>
+              <label className="text-xs text-ps-label">Relief u/s 89 / 90 / 91 (₹)</label>
               <input type="text" inputMode="decimal" value={reliefRs}
                 onChange={e => setReliefRs(e.target.value)}
-                className="block mt-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-40"
+                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-40"
                 placeholder="0.00" />
             </div>
             <div>
-              <label className="text-xs text-[#64748B]">Return furnished on</label>
+              <label className="text-xs text-ps-label">Return furnished on</label>
               <input type="date" value={furnishedOn}
                 onChange={e => setFurnishedOn(e.target.value)}
-                className="block mt-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
-              <p className="text-[10px] text-[#94A3B8] mt-1 max-w-[16rem]">
+                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              <p className="text-[10px] text-ps-hint mt-1 max-w-[16rem]">
                 Leave blank if it has not been filed — the §234A period then runs to today
                 and keeps running.
               </p>
             </div>
-            <label className="flex items-center gap-1.5 text-xs text-[#475569] pb-2"
+            <label className="flex items-center gap-1.5 text-xs text-ps-label pb-2"
                    title="IT Act §139(1), Explanation 2(a)(ii) — accounts required to be audited.">
               <input type="checkbox" checked={hasAudit} onChange={e => setHasAudit(e.target.checked)} />
               Tax audit applies
             </label>
-            <label className="flex items-center gap-1.5 text-xs text-[#475569] pb-2"
+            <label className="flex items-center gap-1.5 text-xs text-ps-label pb-2"
                    title="IT Act §139(1), Explanation 2(aa) — a report under §92E is required.">
               <input type="checkbox" checked={hasTP} onChange={e => setHasTP(e.target.checked)} />
               §92E report required
@@ -578,7 +578,7 @@ export default function AdvanceTaxPage() {
           {lateError && <p className="text-xs text-red-600">{lateError}</p>}
 
           {!lateResult ? (
-            <p className="text-xs text-[#94A3B8]">
+            <p className="text-xs text-ps-hint">
               Enter the estimated annual tax above to see what filing late or paying
               short would cost.
             </p>
@@ -588,8 +588,8 @@ export default function AdvanceTaxPage() {
                 <InterestBlock r={lateResult.section_234a} />
                 <InterestBlock r={lateResult.section_234b} />
               </div>
-              <div className="rounded-lg bg-[#F8FAFC] border border-[#EEF2F7] px-3 py-2 space-y-1">
-                <p className="text-[11px] text-[#475569]">
+              <div className="rounded-lg bg-ps-bg border border-[#EEF2F7] px-3 py-2 space-y-1">
+                <p className="text-[11px] text-ps-label">
                   §139(1) due date <span className="font-medium tabular-nums">{lateResult.itr_due_date.due_date}</span>
                   {" — "}{lateResult.itr_due_date.basis}
                 </p>
@@ -607,7 +607,7 @@ export default function AdvanceTaxPage() {
                   </p>
                 )}
                 {!lateResult.return_furnished_on && (
-                  <p className="text-[11px] text-[#64748B]">
+                  <p className="text-[11px] text-ps-label">
                     Not yet furnished — §234A is charged to {lateResult.assessment_date} and
                     grows by a further month, or part of one, until it is.
                   </p>
@@ -783,7 +783,7 @@ export default function AdvanceTaxPage() {
         </CardContent>
       </Card>
 
-      <p className="text-xs text-[#94A3B8] text-center">
+      <p className="text-xs text-ps-hint text-center">
         Interest computed under IT Act Section 234C: a fixed 3-month period on the
         shortfall for instalments 1–3, 1 month for instalment 4 — not based on how
         late the payment actually was. CA Review Required before filing.
@@ -809,21 +809,21 @@ function SaFigure({ label, value, red }: { label: string; value: string; red?: b
  *  which is what a CA checks against the portal's computation sheet. */
 function InterestBlock({ r }: { r: SectionInterestResult }) {
   return (
-    <div className="rounded-lg border border-[#F1F5F9] p-3 space-y-1.5">
+    <div className="rounded-lg border border-ps-muted p-3 space-y-1.5">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-semibold text-[#334155]">{r.section}</span>
-        <span className={`text-base font-bold tabular-nums ${r.interest_paise > 0 ? "text-red-600" : "text-[#0F172A]"}`}>
+        <span className="text-xs font-semibold text-ps-body">{r.section}</span>
+        <span className={`text-base font-bold tabular-nums ${r.interest_paise > 0 ? "text-red-600" : "text-ps-ink"}`}>
           {formatPaise(r.interest_paise)}
         </span>
       </div>
       {r.applies && (
-        <p className="text-[11px] text-[#64748B] tabular-nums">
+        <p className="text-[11px] text-ps-label tabular-nums">
           {formatPaise(r.base_paise)} × 1% × {r.months} month{r.months === 1 ? "" : "s"}
           {r.from_date && r.to_date ? ` · ${r.from_date} to ${r.to_date}` : ""}
         </p>
       )}
       {r.reasons.map((x, i) => (
-        <p key={i} className="text-[10px] text-[#94A3B8]">{x}</p>
+        <p key={i} className="text-[10px] text-ps-hint">{x}</p>
       ))}
     </div>
   );

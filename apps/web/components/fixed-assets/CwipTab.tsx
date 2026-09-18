@@ -58,14 +58,14 @@ interface Schedules {
   does_not_depreciate: string;
 }
 
-const INPUT = "w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg text-xs";
+const INPUT = "w-full px-2.5 py-1.5 border border-ps-border rounded-lg text-xs";
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block text-xs">
-      <span className="block text-[#94A3B8] mb-1">{label}</span>
+      <span className="block text-ps-hint mb-1">{label}</span>
       {children}
-      {hint && <span className="block text-[10px] text-[#94A3B8] mt-1">{hint}</span>}
+      {hint && <span className="block text-[10px] text-ps-hint mt-1">{hint}</span>}
     </label>
   );
 }
@@ -77,8 +77,8 @@ function Shell({ title, children, onClose, onSave, saving, error, cta }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-        <div className="px-5 py-4 border-b border-[#F1F5F9]">
-          <h3 className="text-sm font-semibold text-[#0F172A]">{title}</h3>
+        <div className="px-5 py-4 border-b border-ps-muted">
+          <h3 className="text-sm font-semibold text-ps-ink">{title}</h3>
         </div>
         <div className="px-5 py-4 space-y-3">
           {error && (
@@ -86,8 +86,8 @@ function Shell({ title, children, onClose, onSave, saving, error, cta }: {
           )}
           {children}
         </div>
-        <div className="px-5 py-3 border-t border-[#F1F5F9] flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] text-xs text-[#475569]">
+        <div className="px-5 py-3 border-t border-ps-muted flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
             Cancel
           </button>
           <button onClick={onSave} disabled={saving}
@@ -169,9 +169,9 @@ export function CwipTab({ clientId, asOf, openDoc }:
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <HardHat size={15} className="text-amber-600" /> Projects under construction
           </h3>
           <button onClick={() => setAdding(true)}
@@ -180,12 +180,12 @@ export function CwipTab({ clientId, asOf, openDoc }:
           </button>
         </div>
         {register && register.projects.length === 0 ? (
-          <p className="px-5 py-6 text-xs text-[#94A3B8]">No projects under construction.</p>
+          <p className="px-5 py-6 text-xs text-ps-hint">No projects under construction.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-ps-hint">
                   <th className="px-5 py-2 text-left font-semibold">Project</th>
                   <th className="px-5 py-2 text-left font-semibold">Started</th>
                   <th className="px-5 py-2 text-right font-semibold">Spent</th>
@@ -194,24 +194,24 @@ export function CwipTab({ clientId, asOf, openDoc }:
                   <th className="px-5 py-2 text-right font-semibold"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {register?.projects?.map((p) => (
                   <tr key={p.id} className={openDoc && p.id === openDoc
                       ? "bg-amber-50 ring-2 ring-inset ring-amber-300" : undefined}>
-                    <td className="px-5 py-2 text-[#1E293B]">
+                    <td className="px-5 py-2 text-ps-ink">
                       {p.project_name}
                       {p.project_code && (
-                        <span className="ml-1.5 font-mono text-[10px] text-[#94A3B8]">{p.project_code}</span>
+                        <span className="ml-1.5 font-mono text-[10px] text-ps-hint">{p.project_code}</span>
                       )}
                     </td>
-                    <td className="px-5 py-2 text-[#64748B]">{p.started_on}</td>
+                    <td className="px-5 py-2 text-ps-label">{p.started_on}</td>
                     <td className="px-5 py-2 text-right tabular-nums">{formatPaise(p.incurred_paise)}</td>
                     <td className="px-5 py-2 text-right tabular-nums">
                       {/* "Not recorded" and a figure are different facts: the
                           completion schedule cannot call a project over budget
                           without an original approval, and the server says so. */}
                       {p.approved_cost_paise === null
-                        ? <span className="text-[#94A3B8]">Not recorded</span>
+                        ? <span className="text-ps-hint">Not recorded</span>
                         : <span className={p.over_approved_cost ? "text-red-600 font-medium" : ""}>
                             {formatPaise(p.approved_cost_paise)}
                           </span>}
@@ -220,7 +220,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
                       <span className={`text-[11px] px-1.5 py-0.5 rounded ${
                         p.status === "capitalised" ? "bg-emerald-50 text-emerald-700"
                         : p.status === "suspended" ? "bg-amber-50 text-amber-700"
-                        : p.status === "abandoned" ? "bg-[#F1F5F9] text-[#64748B]"
+                        : p.status === "abandoned" ? "bg-ps-muted text-ps-label"
                         : "bg-blue-50 text-blue-700"}`}>
                         {p.status.replace("_", " ")}
                       </span>
@@ -229,20 +229,20 @@ export function CwipTab({ clientId, asOf, openDoc }:
                       {(p.status === "in_progress" || p.status === "suspended") && (
                         <>
                           <button onClick={() => setCostFor(p)}
-                            className="text-[11px] px-2 py-1 rounded border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] mr-1">
+                            className="text-[11px] px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
                             Add cost
                           </button>
                           {p.status === "in_progress" ? (
                             <button onClick={() => setStatus(p, "suspended")}
                               title="Suspend — the balance stays in capital work-in-progress"
                               aria-label="Suspend project"
-                              className="text-[11px] px-2 py-1 rounded border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] mr-1">
+                              className="text-[11px] px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
                               <PauseCircle size={11} className="inline" />
                             </button>
                           ) : (
                             <button onClick={() => setStatus(p, "in_progress")}
                               aria-label="Resume project"
-                              className="text-[11px] px-2 py-1 rounded border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] mr-1">
+                              className="text-[11px] px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
                               <PlayCircle size={11} className="inline" />
                             </button>
                           )}
@@ -262,15 +262,15 @@ export function CwipTab({ clientId, asOf, openDoc }:
       </div>
 
       {ag && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-50">
-            <h3 className="text-sm font-semibold text-[#0F172A]">CWIP ageing schedule</h3>
-            <p className="text-[11px] text-[#94A3B8] mt-0.5">Schedule III, as at {ag.as_of}</p>
+            <h3 className="text-sm font-semibold text-ps-ink">CWIP ageing schedule</h3>
+            <p className="text-[11px] text-ps-hint mt-0.5">Schedule III, as at {ag.as_of}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-ps-hint">
                   <th className="px-5 py-2 text-left font-semibold">Amount in CWIP for a period of</th>
                   {ag.bucket_order.map((b) => (
                     <th key={b} className="px-5 py-2 text-right font-semibold">{ag.bucket_labels[b]}</th>
@@ -278,10 +278,10 @@ export function CwipTab({ clientId, asOf, openDoc }:
                   <th className="px-5 py-2 text-right font-semibold">Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {ag.row_order.map((r) => (
                   <tr key={r}>
-                    <td className="px-5 py-2 text-[#1E293B]">{ag.row_labels[r]}</td>
+                    <td className="px-5 py-2 text-ps-ink">{ag.row_labels[r]}</td>
                     {ag.bucket_order.map((b) => (
                       <td key={b} className="px-5 py-2 text-right tabular-nums">
                         {formatPaise(ag.rows[r]?.[b] ?? 0)}
@@ -294,8 +294,8 @@ export function CwipTab({ clientId, asOf, openDoc }:
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t border-[#E2E8F0]">
-                  <td className="px-5 py-2 font-semibold text-[#0F172A]">Total</td>
+                <tr className="border-t border-ps-border">
+                  <td className="px-5 py-2 font-semibold text-ps-ink">Total</td>
                   {ag.bucket_order.map((b) => (
                     <td key={b} className="px-5 py-2 text-right tabular-nums font-semibold">
                       {formatPaise(ag.row_order.reduce((t, r) => t + (ag.rows[r]?.[b] ?? 0), 0))}
@@ -312,40 +312,40 @@ export function CwipTab({ clientId, asOf, openDoc }:
             </table>
           </div>
           {ag.notes.length > 0 && (
-            <div className="px-5 py-3 border-t border-[#F1F5F9] space-y-1">
-              {ag.notes.map((n, i) => <p key={i} className="text-[11px] text-[#64748B]">{n}</p>)}
+            <div className="px-5 py-3 border-t border-ps-muted space-y-1">
+              {ag.notes.map((n, i) => <p key={i} className="text-[11px] text-ps-label">{n}</p>)}
             </div>
           )}
         </div>
       )}
 
       {cs && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-50">
-            <h3 className="text-sm font-semibold text-[#0F172A]">
+            <h3 className="text-sm font-semibold text-ps-ink">
               Completion schedule — overdue or over budget
             </h3>
           </div>
           {cs.rows.length === 0 ? (
-            <p className="px-5 py-4 text-xs text-[#94A3B8]">
+            <p className="px-5 py-4 text-xs text-ps-hint">
               No project is overdue against its approved completion date or over its approved cost.
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                  <tr className="border-b border-ps-muted text-ps-hint">
                     <th className="px-5 py-2 text-left font-semibold">Project</th>
                     <th className="px-5 py-2 text-left font-semibold">Why it is reported</th>
                     <th className="px-5 py-2 text-right font-semibold">Amount</th>
                     <th className="px-5 py-2 text-left font-semibold">To be completed in</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
+                <tbody className="divide-y divide-ps-bg">
                   {cs.rows.map((r, i) => (
                     <tr key={i}>
-                      <td className="px-5 py-2 text-[#1E293B]">{r.project_name}</td>
-                      <td className="px-5 py-2 text-[#64748B]">{r.reason}</td>
+                      <td className="px-5 py-2 text-ps-ink">{r.project_name}</td>
+                      <td className="px-5 py-2 text-ps-label">{r.reason}</td>
                       <td className="px-5 py-2 text-right tabular-nums">{formatPaise(r.incurred_paise)}</td>
                       <td className="px-5 py-2">
                         {/* A band nobody stated renders as a gap, never as the
@@ -362,7 +362,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
           {/* Gaps are ACTIONABLE — nobody can yet tell — and render differently
               from the settled notes above, the same split the RCM panel makes. */}
           {cs.gaps.length > 0 && (
-            <div className="px-5 py-3 border-t border-[#F1F5F9] bg-amber-50 space-y-1">
+            <div className="px-5 py-3 border-t border-ps-muted bg-amber-50 space-y-1">
               {cs.gaps.map((g, i) => <p key={i} className="text-[11px] text-amber-900">{g}</p>)}
             </div>
           )}
@@ -525,7 +525,7 @@ function CapitaliseModal({ clientId, project, onClose, onSaved }: {
   return (
     <Shell title={`Capitalise ${project.project_name}`} onClose={onClose} onSave={save}
       saving={saving} error={error} cta="Capitalise">
-      <p className="text-xs text-[#64748B]">
+      <p className="text-xs text-ps-label">
         {formatPaise(project.incurred_paise)} accumulated on this project becomes a
         fixed asset. Depreciation starts from the date it became ready for use.
       </p>

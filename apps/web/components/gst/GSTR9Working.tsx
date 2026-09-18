@@ -57,13 +57,13 @@ export default function GSTR9Working({
   }, [clientId, financialYear]);
 
   return (
-    <div className="space-y-4 border-t border-[#F1F5F9] pt-4">
+    <div className="space-y-4 border-t border-ps-muted pt-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h4 className="text-sm font-semibold text-[#0F172A]">
+          <h4 className="text-sm font-semibold text-ps-ink">
             Consolidate FY {financialYear} from the year&apos;s returns
           </h4>
-          <p className="text-[11px] text-[#64748B] mt-1 max-w-2xl">
+          <p className="text-[11px] text-ps-label mt-1 max-w-2xl">
             CGST Act s.44 with Rule 80(1): the annual return consolidates this
             year&apos;s GSTR-1 and GSTR-3B. This adds them up and says which rows
             it could not derive. Nothing is saved and nothing is filed.
@@ -107,7 +107,7 @@ export default function GSTR9Working({
               a positive declaration that nothing was owed, so a row the server
               could not derive must never read as one. */}
           {working.gaps.length > 0 && (
-            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#334155] space-y-1.5">
+            <div className="bg-ps-bg border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-body space-y-1.5">
               <p className="font-semibold flex items-center gap-1.5">
                 <Info size={12} /> What this working does not answer
               </p>
@@ -120,11 +120,11 @@ export default function GSTR9Working({
             if (rows.length === 0) return null;
             return (
               <div key={key} className="space-y-1">
-                <p className="text-xs font-semibold text-[#334155]">{title}</p>
+                <p className="text-xs font-semibold text-ps-body">{title}</p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-left">
+                      <tr className="border-b border-ps-muted text-ps-hint text-left">
                         <th className="py-1.5 font-semibold w-16">Row</th>
                         <th className="py-1.5 font-semibold">Particulars</th>
                         <th className="py-1.5 font-semibold text-right">Taxable value</th>
@@ -134,11 +134,11 @@ export default function GSTR9Working({
                         <th className="py-1.5 font-semibold text-right">Cess</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#F8FAFC]">
+                    <tbody className="divide-y divide-ps-bg">
                       {rows.map((r) => (
                         <tr key={r.code} className="align-top">
-                          <td className="py-1.5 font-mono text-[#64748B]">{r.code}</td>
-                          <td className="py-1.5 text-[#1E293B]">
+                          <td className="py-1.5 font-mono text-ps-label">{r.code}</td>
+                          <td className="py-1.5 text-ps-ink">
                             {r.label}
                             {/* A row the server could not derive says so HERE,
                                 beside its own figure — a note in a list at the
@@ -152,7 +152,7 @@ export default function GSTR9Working({
                           {([r.txval_paise, r.igst_paise, r.cgst_paise, r.sgst_paise,
                              r.cess_paise]).map((v, i) => (
                             <td key={i} className={`py-1.5 text-right tabular-nums ${
-                              r.note ? "text-[#94A3B8]" : ""}`}>
+                              r.note ? "text-ps-hint" : ""}`}>
                               {r.note && v === 0 ? "—" : money(v)}
                             </td>
                           ))}
@@ -167,13 +167,13 @@ export default function GSTR9Working({
 
           {working.hsn.length > 0 && (
             <div className="space-y-1">
-              <p className="text-xs font-semibold text-[#334155]">
+              <p className="text-xs font-semibold text-ps-body">
                 Table 17 — HSN summary of outward supplies
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-[#F1F5F9] text-[#94A3B8] text-left">
+                    <tr className="border-b border-ps-muted text-ps-hint text-left">
                       <th className="py-1.5 font-semibold">HSN / SAC</th>
                       <th className="py-1.5 font-semibold">Description</th>
                       <th className="py-1.5 font-semibold">UQC</th>
@@ -184,12 +184,12 @@ export default function GSTR9Working({
                       <th className="py-1.5 font-semibold text-right">SGST</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#F8FAFC]">
+                  <tbody className="divide-y divide-ps-bg">
                     {working.hsn.map((h) => (
                       <tr key={h.hsn_sc}>
-                        <td className="py-1.5 font-mono text-[#1E293B]">{h.hsn_sc}</td>
-                        <td className="py-1.5 text-[#334155]">{h.desc ?? "—"}</td>
-                        <td className="py-1.5 text-[#64748B]">{h.uqc ?? "—"}</td>
+                        <td className="py-1.5 font-mono text-ps-ink">{h.hsn_sc}</td>
+                        <td className="py-1.5 text-ps-body">{h.desc ?? "—"}</td>
+                        <td className="py-1.5 text-ps-label">{h.uqc ?? "—"}</td>
                         <td className="py-1.5 text-right tabular-nums">{h.qty}</td>
                         <td className="py-1.5 text-right tabular-nums">{money(h.txval_paise)}</td>
                         <td className="py-1.5 text-right tabular-nums">{money(h.igst_paise)}</td>
@@ -208,13 +208,13 @@ export default function GSTR9Working({
               the whole return. */}
           {working.not_built && Object.keys(working.not_built).length > 0 && (
             <div className="space-y-1">
-              <p className="text-xs font-semibold text-[#334155]">
+              <p className="text-xs font-semibold text-ps-body">
                 Still to be completed on the portal
               </p>
-              <dl className="text-[11px] text-[#64748B] space-y-1">
+              <dl className="text-[11px] text-ps-label space-y-1">
                 {Object.entries(working.not_built).map(([table, why]) => (
                   <div key={table} className="flex gap-2">
-                    <dt className="font-mono text-[#94A3B8] shrink-0">Table {table}</dt>
+                    <dt className="font-mono text-ps-hint shrink-0">Table {table}</dt>
                     <dd className="max-w-2xl">{why}</dd>
                   </div>
                 ))}
@@ -222,7 +222,7 @@ export default function GSTR9Working({
             </div>
           )}
 
-          <p className="text-[10px] text-[#94A3B8]">{working.source}</p>
+          <p className="text-[10px] text-ps-hint">{working.source}</p>
         </>
       )}
     </div>

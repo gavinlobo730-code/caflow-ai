@@ -141,26 +141,26 @@ export default function AIAssistantPage() {
   return (
     <div className="flex flex-col h-screen max-h-screen bg-white">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-[#F1F5F9] shrink-0">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-ps-muted shrink-0">
         <Link
           href="/"
-          className="text-xs text-[#94A3B8] hover:text-[#475569] transition-colors mr-1"
+          className="text-xs text-ps-hint hover:text-ps-label transition-colors mr-1"
         >
           &larr; Dashboard
         </Link>
         <div className="h-4 w-px bg-white/[0.08]" />
         <div className="flex items-center gap-2">
           <Sparkles size={15} className="text-blue-500" />
-          <h1 className="text-sm font-semibold text-[#0F172A]">AI Assistant</h1>
+          <h1 className="text-sm font-semibold text-ps-ink">AI Assistant</h1>
         </div>
-        <span className="text-xs text-[#94A3B8] hidden sm:block">
+        <span className="text-xs text-ps-hint hidden sm:block">
           Ask about GST, Income Tax, TDS, and practice management
         </span>
         {messages.length > 0 && (
           <button
             onClick={startNewChat}
             title="Start a new chat (clears this conversation)"
-            className="ml-auto flex items-center gap-1.5 text-xs font-medium text-[#64748B] hover:text-[#0F172A] border border-[#E2E8F0] hover:border-[#CBD5E1] rounded-lg px-2.5 py-1.5 transition-colors shrink-0"
+            className="ml-auto flex items-center gap-1.5 text-xs font-medium text-ps-label hover:text-ps-ink border border-ps-border hover:border-ps-border-strong rounded-lg px-2.5 py-1.5 transition-colors shrink-0"
           >
             <Plus size={13} />
             New chat
@@ -176,10 +176,10 @@ export default function AIAssistantPage() {
               <Bot size={28} className="text-blue-500" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-[#1E293B] mb-1">
+              <p className="text-sm font-semibold text-ps-ink mb-1">
                 Ask me anything about Indian tax &amp; compliance
               </p>
-              <p className="text-xs text-[#94A3B8]">
+              <p className="text-xs text-ps-hint">
                 I cite relevant sections of CGST Act and IT Act in every answer.
               </p>
             </div>
@@ -188,7 +188,7 @@ export default function AIAssistantPage() {
                 <button disabled={loading}
                   key={prompt}
                   onClick={() => sendMessage(prompt)}
-                  className="disabled:opacity-40 text-left text-xs text-[#475569] bg-[#F8FAFC] hover:bg-blue-50 hover:text-blue-700 border border-[#E2E8F0] hover:border-blue-200 rounded-lg px-4 py-3 transition-colors"
+                  className="disabled:opacity-40 text-left text-xs text-ps-label bg-ps-bg hover:bg-blue-50 hover:text-blue-700 border border-ps-border hover:border-blue-200 rounded-lg px-4 py-3 transition-colors"
                 >
                   {prompt}
                 </button>
@@ -207,7 +207,7 @@ export default function AIAssistantPage() {
               className={`shrink-0 flex items-center justify-center w-7 h-7 rounded-full mt-0.5 ${
                 msg.role === "user"
                   ? "bg-blue-600 text-white"
-                  : "bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]"
+                  : "bg-ps-muted text-ps-label border border-ps-border"
               }`}
             >
               {msg.role === "user" ? <User size={13} /> : <Bot size={13} />}
@@ -218,7 +218,7 @@ export default function AIAssistantPage() {
               className={`max-w-[75%] text-sm rounded-xl px-4 py-3 whitespace-pre-wrap leading-relaxed ${
                 msg.role === "user"
                   ? "bg-blue-600 text-white rounded-tr-sm"
-                  : "bg-[#F8FAFC] text-[#1E293B] border border-[#F1F5F9] rounded-tl-sm"
+                  : "bg-ps-bg text-ps-ink border border-ps-muted rounded-tl-sm"
               }`}
             >
               {msg.content}
@@ -228,10 +228,10 @@ export default function AIAssistantPage() {
 
         {loading && (
           <div className="flex gap-3">
-            <div className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-[#F1F5F9] border border-[#E2E8F0]">
-              <Bot size={13} className="text-[#64748B]" />
+            <div className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-ps-muted border border-ps-border">
+              <Bot size={13} className="text-ps-label" />
             </div>
-            <div className="bg-[#F8FAFC] border border-[#F1F5F9] rounded-xl rounded-tl-sm px-4 py-3">
+            <div className="bg-ps-bg border border-ps-muted rounded-xl rounded-tl-sm px-4 py-3">
               <div className="flex gap-1 items-center h-4">
                 <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
                 <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
@@ -253,7 +253,7 @@ export default function AIAssistantPage() {
       </div>
 
       {/* ── Input bar ───────────────────────────────────────────────────────── */}
-      <div className="shrink-0 px-6 py-4 border-t border-[#F1F5F9] bg-white">
+      <div className="shrink-0 px-6 py-4 border-t border-ps-muted bg-white">
         <div className="flex gap-2 items-end max-w-4xl mx-auto">
           <textarea
             ref={textareaRef}
@@ -263,7 +263,7 @@ export default function AIAssistantPage() {
             placeholder="Ask about GST, Income Tax, TDS, MCA filings..."
             rows={1}
             disabled={loading}
-            className="flex-1 text-sm text-[#0F172A] border border-[#E2E8F0] rounded-xl px-4 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] disabled:opacity-60 placeholder:text-[#94A3B8] max-h-32 overflow-y-auto"
+            className="flex-1 text-sm text-ps-ink border border-ps-border rounded-xl px-4 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg disabled:opacity-60 placeholder:text-ps-hint max-h-32 overflow-y-auto"
           />
           <button
             onClick={() => sendMessage(input)}
@@ -273,7 +273,7 @@ export default function AIAssistantPage() {
             <Send size={15} />
           </button>
         </div>
-        <p className="text-center text-xs text-[#CBD5E1] mt-2">
+        <p className="text-center text-xs text-ps-disabled mt-2">
           AI responses are for guidance only &mdash; always apply CA professional judgement before filing.
         </p>
       </div>

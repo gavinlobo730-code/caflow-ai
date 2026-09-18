@@ -7,11 +7,11 @@ export default function OverrideControlsPage() {
 
   // Overrides are per-client — this page shows a brief explanation and links to health dashboard
   return (
-    <div className="p-6 space-y-5 bg-[#F8FAFC] min-h-full">
+    <div className="p-6 space-y-5 bg-ps-bg min-h-full">
       <div className="flex items-center gap-3">
-        <SlidersHorizontal size={20} className="text-[#182350]" />
+        <SlidersHorizontal size={20} className="text-brand" />
         <div>
-          <h1 className="text-2xl font-bold text-[#182350]">Override Controls</h1>
+          <h1 className="text-2xl font-bold text-brand">Override Controls</h1>
           <p className="text-sm text-gray-500">Manage health score overrides per client</p>
         </div>
       </div>
@@ -23,15 +23,15 @@ export default function OverrideControlsPage() {
           </p>
           <ul className="space-y-2 text-sm text-gray-600">
             <li className="flex items-start gap-2">
-              <span className="text-[#182350] mt-0.5">→</span>
+              <span className="text-brand mt-0.5">→</span>
               Go to <strong className="text-gray-800">Clients</strong> and select a client
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-[#182350] mt-0.5">→</span>
+              <span className="text-brand mt-0.5">→</span>
               Navigate to the <strong className="text-gray-800">Health</strong> tab
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-[#182350] mt-0.5">→</span>
+              <span className="text-brand mt-0.5">→</span>
               Click <strong className="text-gray-800">Add Override</strong> to set a dimension-level override with a reason and expiry
             </li>
           </ul>

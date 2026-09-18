@@ -458,8 +458,8 @@ export default function CalendarPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Compliance Calendar</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">Compliance Calendar</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             Indian tax & regulatory deadlines across all clients
           </p>
         </div>
@@ -468,23 +468,23 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={goToday}
-            className="px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC]"
+            className="px-3 py-1.5 text-sm border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg"
           >
             Today
           </button>
           <button
             onClick={prevMonth}
-            className="p-1.5 border border-[#E2E8F0] rounded-lg text-[#64748B] hover:bg-[#F8FAFC]"
+            className="p-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg"
             aria-label="Previous month"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-sm font-semibold text-[#0F172A] w-36 text-center">
+          <span className="text-sm font-semibold text-ps-ink w-36 text-center">
             {MONTH_NAMES[viewMonth]} {viewYear}
           </span>
           <button
             onClick={nextMonth}
-            className="p-1.5 border border-[#E2E8F0] rounded-lg text-[#64748B] hover:bg-[#F8FAFC]"
+            className="p-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg"
             aria-label="Next month"
           >
             <ChevronRight className="w-4 h-4" />
@@ -497,21 +497,21 @@ export default function CalendarPage() {
         {(Object.keys(CATEGORY_STYLES) as DeadlineCategory[]).map(cat => (
           <div key={cat} className="flex items-center gap-1.5">
             <span className={`w-2.5 h-2.5 rounded-full ${CATEGORY_STYLES[cat].badge}`} />
-            <span className="text-xs text-[#64748B]">{CATEGORY_LABELS[cat]}</span>
+            <span className="text-xs text-ps-label">{CATEGORY_LABELS[cat]}</span>
           </div>
         ))}
-        {loading && <span className="text-xs text-[#94A3B8] ml-2">Loading clients…</span>}
+        {loading && <span className="text-xs text-ps-hint ml-2">Loading clients…</span>}
       </div>
 
       {/* Main layout: Calendar + Side panel */}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-6">
 
         {/* Calendar grid */}
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           {/* Day headers */}
-          <div className="grid grid-cols-7 border-b border-[#F1F5F9]">
+          <div className="grid grid-cols-7 border-b border-ps-muted">
             {DAY_LABELS.map(d => (
-              <div key={d} className="py-2 text-center text-xs font-medium text-[#94A3B8]">
+              <div key={d} className="py-2 text-center text-xs font-medium text-ps-hint">
                 {d}
               </div>
             ))}
@@ -521,7 +521,7 @@ export default function CalendarPage() {
           <div className="grid grid-cols-7">
             {gridCells.map((cell, idx) => {
               if (cell.day === null) {
-                return <div key={`empty-${idx}`} className="min-h-[90px] border-b border-r border-gray-50 bg-[#F8FAFC]/30" />;
+                return <div key={`empty-${idx}`} className="min-h-[90px] border-b border-r border-gray-50 bg-ps-bg/30" />;
               }
 
               const cellDate = new Date(viewYear, viewMonth, cell.day);
@@ -533,12 +533,12 @@ export default function CalendarPage() {
                 <div
                   key={cell.day}
                   onClick={() => setSelectedDay(isSelected ? null : cellDate)}
-                  className={`min-h-[90px] border-b border-r border-[#F1F5F9] p-1.5 cursor-pointer transition-colors
-                    ${isSelected ? "bg-blue-50" : "hover:bg-[#F8FAFC]/60"}`}
+                  className={`min-h-[90px] border-b border-r border-ps-muted p-1.5 cursor-pointer transition-colors
+                    ${isSelected ? "bg-blue-50" : "hover:bg-ps-bg/60"}`}
                 >
                   {/* Day number */}
                   <div className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium mb-1
-                    ${isToday ? "bg-blue-600 text-white" : "text-[#334155]"}`}>
+                    ${isToday ? "bg-blue-600 text-white" : "text-ps-body"}`}>
                     {cell.day}
                   </div>
 
@@ -554,7 +554,7 @@ export default function CalendarPage() {
                       />
                     ))}
                     {chips.length > 3 && (
-                      <div className="text-[10px] text-[#94A3B8] pl-1">+{chips.length - 3} more</div>
+                      <div className="text-[10px] text-ps-hint pl-1">+{chips.length - 3} more</div>
                     )}
                   </div>
                 </div>
@@ -568,17 +568,17 @@ export default function CalendarPage() {
 
           {/* Selected day panel */}
           {selectedDay && (
-            <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-blue-600" />
-                <h2 className="text-sm font-semibold text-[#0F172A]">
+                <h2 className="text-sm font-semibold text-ps-ink">
                   {selectedDay.getDate()} {MONTH_NAMES[selectedDay.getMonth()]} {selectedDay.getFullYear()}
                 </h2>
               </div>
               {selectedDayDeadlines.length === 0 ? (
-                <p className="px-4 py-6 text-xs text-[#94A3B8] text-center">No deadlines this day</p>
+                <p className="px-4 py-6 text-xs text-ps-hint text-center">No deadlines this day</p>
               ) : (
-                <div className="divide-y divide-[#F8FAFC]">
+                <div className="divide-y divide-ps-bg">
                   {selectedDayDeadlines.map(dl => {
                     const style = CATEGORY_STYLES[dl.category];
                     const clientCount = dl.clientIds.length;
@@ -590,7 +590,7 @@ export default function CalendarPage() {
                       <div key={dl.id} className="px-4 py-3 flex items-start gap-3">
                         <button
                           onClick={() => toggleDone(dl.id)}
-                          className={`mt-0.5 shrink-0 ${dl.done ? "text-green-500" : "text-[#CBD5E1] hover:text-[#64748B]"}`}
+                          className={`mt-0.5 shrink-0 ${dl.done ? "text-green-500" : "text-ps-disabled hover:text-ps-label"}`}
                           aria-label={dl.done ? "Mark pending" : "Mark done"}
                         >
                           {dl.done
@@ -603,13 +603,13 @@ export default function CalendarPage() {
                             <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${style.chip}`}>
                               {CATEGORY_LABELS[dl.category]}
                             </span>
-                            <span className={`text-sm font-medium ${dl.done ? "line-through text-[#94A3B8]" : "text-[#0F172A]"}`}>
+                            <span className={`text-sm font-medium ${dl.done ? "line-through text-ps-hint" : "text-ps-ink"}`}>
                               {dl.label}
                             </span>
                           </div>
-                          <p className="text-xs text-[#64748B] mt-0.5">{dl.description}</p>
+                          <p className="text-xs text-ps-label mt-0.5">{dl.description}</p>
                           {clientLabel && (
-                            <p className="text-[10px] text-[#94A3B8] mt-0.5">{clientLabel}</p>
+                            <p className="text-[10px] text-ps-hint mt-0.5">{clientLabel}</p>
                           )}
                         </div>
                       </div>
@@ -621,26 +621,26 @@ export default function CalendarPage() {
           )}
 
           {/* Upcoming deadlines */}
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-[#0F172A]">Upcoming Deadlines</h2>
-              <p className="text-xs text-[#94A3B8] mt-0.5">Next 10 pending</p>
+              <h2 className="text-sm font-semibold text-ps-ink">Upcoming Deadlines</h2>
+              <p className="text-xs text-ps-hint mt-0.5">Next 10 pending</p>
             </div>
             {upcomingDeadlines.length === 0 ? (
-              <p className="px-4 py-6 text-xs text-[#94A3B8] text-center">All caught up!</p>
+              <p className="px-4 py-6 text-xs text-ps-hint text-center">All caught up!</p>
             ) : (
-              <div className="divide-y divide-[#F8FAFC]">
+              <div className="divide-y divide-ps-bg">
                 {upcomingDeadlines.map(dl => {
                   const style = CATEGORY_STYLES[dl.category];
                   const daysAway = daysBetweenLocalISO(toLocalISO(today), toLocalISO(dl.date)) ?? 0;
-                  const urgentClass = daysAway <= 3 ? "text-red-600 font-semibold" : daysAway <= 7 ? "text-amber-600" : "text-[#94A3B8]";
+                  const urgentClass = daysAway <= 3 ? "text-red-600 font-semibold" : daysAway <= 7 ? "text-amber-600" : "text-ps-hint";
 
                   return (
                     <div key={dl.id} className="px-4 py-3 flex items-center gap-3">
                       <span className={`w-2 h-2 rounded-full shrink-0 ${style.badge}`} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-[#0F172A] truncate">{dl.label}</p>
-                        <p className="text-[10px] text-[#94A3B8]">
+                        <p className="text-xs font-medium text-ps-ink truncate">{dl.label}</p>
+                        <p className="text-[10px] text-ps-hint">
                           {dl.date.getDate()} {MONTH_NAMES[dl.date.getMonth()]}
                         </p>
                       </div>
@@ -649,7 +649,7 @@ export default function CalendarPage() {
                       </span>
                       <button
                         onClick={() => toggleDone(dl.id)}
-                        className="text-[#CBD5E1] hover:text-[#64748B] shrink-0"
+                        className="text-ps-disabled hover:text-ps-label shrink-0"
                         aria-label="Mark done"
                       >
                         <Circle className="w-3.5 h-3.5" />

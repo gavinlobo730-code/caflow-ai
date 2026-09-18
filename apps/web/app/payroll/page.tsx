@@ -246,7 +246,7 @@ function monthState(c: ClientMonthState): {
 } {
   if (!c.payroll_enabled) {
     return {
-      label: "Not run", className: "bg-[#F1F5F9] text-[#64748B]",
+      label: "Not run", className: "bg-ps-muted text-ps-label",
       note: "Payroll is switched off for this client. A Partner turns it on in the client's payroll setup.",
       needsWork: false,
     };
@@ -305,18 +305,18 @@ function MonthQueueTab({ month, onMonthChange }: {
         <div className="flex flex-row items-start justify-between flex-wrap gap-3">
           <div>
             <CardTitle className="text-base">The payroll month</CardTitle>
-            <p className="text-xs text-[#64748B] mt-0.5">
+            <p className="text-xs text-ps-label mt-0.5">
               Every client you run payroll for, and what each still needs. Open a
               client to do the work.
             </p>
           </div>
           <input
             type="month" value={month} onChange={e => onMonthChange(e.target.value)}
-            className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400"
+            className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400"
           />
         </div>
         {!loading && !error && rows.length > 0 && (
-          <p className="text-xs text-[#475569] mt-3">
+          <p className="text-xs text-ps-label mt-3">
             {outstanding === 0
               ? `All ${running} payroll client(s) are done for this month.`
               : `${outstanding} of ${running} payroll client(s) still need work.`}
@@ -325,14 +325,14 @@ function MonthQueueTab({ month, onMonthChange }: {
       </CardHeader>
       <CardContent className="p-0">
         {loading ? (
-          <p className="text-center text-[#94A3B8] py-12 text-sm">Loading the month…</p>
+          <p className="text-center text-ps-hint py-12 text-sm">Loading the month…</p>
         ) : error ? (
           <div className="p-8 text-center">
             <p className="text-sm text-red-600 font-medium mb-2">{error}</p>
             <Button size="sm" variant="outline" onClick={load}>Retry</Button>
           </div>
         ) : rows.length === 0 ? (
-          <p className="text-center text-[#94A3B8] py-12 text-sm">
+          <p className="text-center text-ps-hint py-12 text-sm">
             No client has payroll switched on. A Partner turns it on from a
             client&apos;s payroll setup.
           </p>
@@ -340,7 +340,7 @@ function MonthQueueTab({ month, onMonthChange }: {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide bg-[#F8FAFC]">
+                <tr className="border-b text-xs font-medium text-ps-label uppercase tracking-wide bg-ps-bg">
                   <th className="text-left py-3 px-4">Client</th>
                   <th className="text-left py-3 px-4">State</th>
                   <th className="text-right py-3 px-4">Employees</th>
@@ -353,22 +353,22 @@ function MonthQueueTab({ month, onMonthChange }: {
                 {rows.map(c => {
                   const st = monthState(c);
                   return (
-                    <tr key={c.client_id} className="border-b hover:bg-[#F8FAFC]">
-                      <td className="py-3 px-4 font-medium text-[#0F172A]">{c.client_name}</td>
+                    <tr key={c.client_id} className="border-b hover:bg-ps-bg">
+                      <td className="py-3 px-4 font-medium text-ps-ink">{c.client_name}</td>
                       <td className="py-3 px-4">
                         <span className={`inline-block px-2 py-0.5 rounded text-xs ${st.className}`} title={st.note}>
                           {st.label}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right font-mono text-[#475569]">
-                        {c.headcount ?? <span className="text-[#CBD5E1]">—</span>}
+                      <td className="py-3 px-4 text-right font-mono text-ps-label">
+                        {c.headcount ?? <span className="text-ps-disabled">—</span>}
                       </td>
                       <td className="py-3 px-4 text-right font-mono">
                         {c.total_net_paise != null
                           ? fmtRs(c.total_net_paise)
-                          : <span className="text-[#CBD5E1]">—</span>}
+                          : <span className="text-ps-disabled">—</span>}
                       </td>
-                      <td className="py-3 px-4 text-[#64748B] text-xs">
+                      <td className="py-3 px-4 text-ps-label text-xs">
                         {c.inputs_due_day ? `Day ${c.inputs_due_day}` : "—"}
                       </td>
                       <td className="py-3 px-4 text-right">
@@ -409,7 +409,7 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
   const emp = slip.employee!;
   const run = slip.run!;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="font-semibold">Payslip</h2>
@@ -419,14 +419,14 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
           </div>
         </div>
         <div className="border-b pb-3 mb-3">
-          <h3 className="font-bold text-lg text-[#0F172A]">{emp.name}</h3>
-          <p className="text-sm text-[#475569]">{emp.designation} {emp.pan ? `• ${emp.pan}` : ""}</p>
-          <p className="text-sm text-[#475569]">Month: {run.month}</p>
+          <h3 className="font-bold text-lg text-ps-ink">{emp.name}</h3>
+          <p className="text-sm text-ps-label">{emp.designation} {emp.pan ? `• ${emp.pan}` : ""}</p>
+          <p className="text-sm text-ps-label">Month: {run.month}</p>
         </div>
         <table className="w-full text-sm">
           <tbody>
             <tr className="border-b">
-              <td className="py-1 text-[#475569]">Gross Salary</td>
+              <td className="py-1 text-ps-label">Gross Salary</td>
               <td className="py-1 text-right font-medium">{fmtRs(slip.gross_paise)}</td>
             </tr>
             <tr>
@@ -438,28 +438,28 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
                   ₹14,000 and the deduction is ₹1,680, not ₹1,200. A label
                   naming a base the number is not computed on is the thing a CA
                   would reconcile against and fail. */}
-              <td className="py-1 text-[#475569]">PF Deduction (12% of PF wages)</td>
+              <td className="py-1 text-ps-label">PF Deduction (12% of PF wages)</td>
               <td className="py-1 text-right text-red-600">- {fmtRs(slip.pf_employee_paise)}</td>
             </tr>
             <tr>
-              <td className="py-1 text-[#475569]">ESI Deduction (0.75%)</td>
+              <td className="py-1 text-ps-label">ESI Deduction (0.75%)</td>
               <td className="py-1 text-right text-red-600">- {fmtRs(slip.esi_employee_paise)}</td>
             </tr>
             <tr>
-              <td className="py-1 text-[#475569]">Professional Tax</td>
+              <td className="py-1 text-ps-label">Professional Tax</td>
               <td className="py-1 text-right text-red-600">- {fmtRs(slip.pt_paise)}</td>
             </tr>
             <tr className="border-b">
-              <td className="py-1 text-[#475569]">TDS on Salary (IT Act Sec 192)</td>
+              <td className="py-1 text-ps-label">TDS on Salary (IT Act Sec 192)</td>
               <td className="py-1 text-right text-red-600">- {fmtRs(slip.tds_paise)}</td>
             </tr>
             <tr className="font-bold">
-              <td className="py-2 text-[#0F172A]">Net Pay</td>
+              <td className="py-2 text-ps-ink">Net Pay</td>
               <td className="py-2 text-right text-green-700">{fmtRs(slip.net_paise)}</td>
             </tr>
           </tbody>
         </table>
-        <p className="text-[10px] text-[#94A3B8] mt-4 text-center">Generated by PracticeSync AI</p>
+        <p className="text-[10px] text-ps-hint mt-4 text-center">Generated by PracticeSync AI</p>
       </div>
     </div>
   );
@@ -490,7 +490,7 @@ function StatusBadge({ status }: { status: "overdue" | "due-soon" | "upcoming" |
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#F1F5F9] text-[#475569]">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-ps-muted text-ps-label">
       <Clock size={11} />Upcoming
     </span>
   );
@@ -720,7 +720,7 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Statutory Return Deadlines</CardTitle>
-          <p className="text-xs text-[#64748B] mt-0.5">
+          <p className="text-xs text-ps-label mt-0.5">
             Based on today&apos;s date. Mark as filed in your records after submission.
           </p>
           {/* WHAT IS DELIBERATELY NOT DATED (PAY-19). This list used to carry an
@@ -743,13 +743,13 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
                     ? "border-red-200 bg-red-50"
                     : d.status === "due-soon"
                     ? "border-amber-200 bg-amber-50"
-                    : "border-[#E2E8F0] bg-white"
+                    : "border-ps-border bg-white"
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[#0F172A]">{d.label}</p>
-                  <p className="text-xs text-[#64748B] mt-0.5">{d.description}</p>
-                  <p className="text-xs text-[#64748B] mt-0.5">
+                  <p className="text-sm font-medium text-ps-ink">{d.label}</p>
+                  <p className="text-xs text-ps-label mt-0.5">{d.description}</p>
+                  <p className="text-xs text-ps-label mt-0.5">
                     Portal: {d.portal} &middot; Due:{" "}
                     {d.dueDate.toLocaleDateString("en-IN", {
                       day: "numeric",
@@ -764,7 +764,7 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
               </div>
             ))}
           </div>
-          <p className="text-xs text-[#94A3B8] mt-4 border-t pt-3">
+          <p className="text-xs text-ps-hint mt-4 border-t pt-3">
             Note: Status is computed from today&apos;s date. This checklist does not auto-track filed
             returns — update your firm records after each submission.
           </p>
@@ -775,14 +775,14 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Generate Statutory Return Files</CardTitle>
-          <p className="text-xs text-[#64748B] mt-0.5">
+          <p className="text-xs text-ps-label mt-0.5">
             Download files in the correct format for each portal. Review before uploading.
           </p>
         </CardHeader>
         <CardContent>
           {clients.length > 1 && (
             <div className="mb-4">
-              <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
+              <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
               <ClientLookup
                 clients={clients}
                 value={selectedClientId}
@@ -794,7 +794,7 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
           )}
 
           {clientRuns.length === 0 ? (
-            <p className="text-sm text-[#94A3B8] py-6 text-center">
+            <p className="text-sm text-ps-hint py-6 text-center">
               {summariesLoading ? "Loading this client's runs…"
                 : summaryError
                   ? summaryError
@@ -815,7 +815,7 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide">
+                    <tr className="border-b text-xs font-medium text-ps-label uppercase tracking-wide">
                       <th className="text-left py-3 px-3">Month</th>
                       <th className="text-center py-3 px-3">Employees</th>
                       <th className="text-right py-3 px-3">Total Gross</th>
@@ -840,9 +840,9 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
                       const pfCount = run.pf_count;
                       const esiCount = run.esi_count;
                       return (
-                        <tr key={run.id} className="border-b hover:bg-[#F8FAFC]">
+                        <tr key={run.id} className="border-b hover:bg-ps-bg">
                           <td className="py-3 px-3 font-medium">{run.month}</td>
-                          <td className="py-3 px-3 text-center text-[#475569]">{slipCount}</td>
+                          <td className="py-3 px-3 text-center text-ps-label">{slipCount}</td>
                           <td className="py-3 px-3 text-right font-mono">{fmtRs(totalGross)}</td>
                           <td className="py-3 px-3 text-right font-mono text-red-600">{fmtRs(totalTds)}</td>
                           <td className="py-3 px-3">
@@ -894,17 +894,17 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
               </div>
 
               {/* Format notes */}
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-[#64748B]">
-                <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
-                  <p className="font-medium text-[#334155] mb-1">PF ECR (.txt)</p>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-ps-label">
+                <div className="p-3 bg-ps-bg rounded-lg border border-ps-muted">
+                  <p className="font-medium text-ps-body mb-1">PF ECR (.txt)</p>
                   <p>Tilde-separated format for EPFO Unified Portal. Upload via &quot;ECR Upload&quot; on epfindia.gov.in. Due by 15th each month.</p>
                 </div>
-                <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
-                  <p className="font-medium text-[#334155] mb-1">ESI Statement (.csv)</p>
+                <div className="p-3 bg-ps-bg rounded-lg border border-ps-muted">
+                  <p className="font-medium text-ps-body mb-1">ESI Statement (.csv)</p>
                   <p>Employee-wise ESI contribution data for ESIC portal. Half-yearly filing — Apr-Sep by Nov 11, Oct-Mar by May 11.</p>
                 </div>
-                <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
-                  <p className="font-medium text-[#334155] mb-1">TDS 24Q (.csv)</p>
+                <div className="p-3 bg-ps-bg rounded-lg border border-ps-muted">
+                  <p className="font-medium text-ps-body mb-1">TDS 24Q (.csv)</p>
                   <p>Quarterly TDS data per IT Act Section 192. Must be filed on the e-filing portal (incometax.gov.in) under the deductor’s TAN. CA review mandatory before submission.</p>
                 </div>
               </div>
@@ -960,12 +960,12 @@ export default function PayrollPage() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) {
-    return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading payroll...</p></div>;
+    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><p className="text-ps-label">Loading payroll...</p></div>;
   }
 
   if (loadError) {
     return (
-      <div className="min-h-screen bg-[#F8FAFC] p-8">
+      <div className="min-h-screen bg-ps-bg p-8">
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -974,7 +974,7 @@ export default function PayrollPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-[#475569] mb-4">{loadError}</p>
+            <p className="text-sm text-ps-label mb-4">{loadError}</p>
             <Button onClick={load}>Retry</Button>
           </CardContent>
         </Card>
@@ -983,14 +983,14 @@ export default function PayrollPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-8">
+    <div className="min-h-screen bg-ps-bg p-8">
       {viewSlip && <PayslipModal slip={viewSlip} onClose={() => setViewSlip(null)} />}
 
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-[#0F172A]">Payroll</h1>
-            <p className="text-sm text-[#64748B] mt-0.5">IT Act Section 192 &middot; EPF Act &middot; ESI Act</p>
+            <h1 className="text-2xl font-bold text-ps-ink">Payroll</h1>
+            <p className="text-sm text-ps-label mt-0.5">IT Act Section 192 &middot; EPF Act &middot; ESI Act</p>
           </div>
           <div className="flex items-center gap-2">
             {/* IT Act §192 / Rule 26C — what each employee declared, and what

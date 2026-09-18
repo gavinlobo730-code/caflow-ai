@@ -94,7 +94,7 @@ const MSME_OPTIONS: { value: "" | MsmeStatus; label: string }[] = [
 
 function Amount({ paise }: { paise: number }) {
   return (
-    <span className={paise ? "tabular-nums text-[#1E293B]" : "tabular-nums text-[#CBD5E1]"}>
+    <span className={paise ? "tabular-nums text-ps-ink" : "tabular-nums text-ps-disabled"}>
       {paise ? formatPaise(paise) : "—"}
     </span>
   );
@@ -106,33 +106,33 @@ function ScheduleTable({ table }: { table: AgeingTable }) {
     <div className="overflow-x-auto">
       <table className="w-full text-[11px] border-collapse">
         <thead>
-          <tr className="border-b border-[#E2E8F0]">
-            <th className="text-left font-medium text-[#64748B] px-4 py-2.5 min-w-[280px]">
+          <tr className="border-b border-ps-border">
+            <th className="text-left font-medium text-ps-label px-4 py-2.5 min-w-[280px]">
               Particulars
             </th>
             {table.buckets.map((b) => (
               <th
                 key={b.key}
                 className={`text-right font-medium px-3 py-2.5 whitespace-nowrap ${
-                  b.prescribed ? "text-[#64748B]" : "text-[#94A3B8] italic border-r border-dashed border-[#E2E8F0]"
+                  b.prescribed ? "text-ps-label" : "text-ps-hint italic border-r border-dashed border-ps-border"
                 }`}
               >
                 {b.label}
                 {!b.prescribed && <sup className="ml-0.5">†</sup>}
               </th>
             ))}
-            <th className="text-right font-semibold text-[#334155] px-4 py-2.5">Total</th>
+            <th className="text-right font-semibold text-ps-body px-4 py-2.5">Total</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50">
           {table.rows.map((r) => (
-            <tr key={r.key} className="hover:bg-[#F8FAFC]">
-              <td className="px-4 py-2.5 text-[#334155]">{r.label}</td>
+            <tr key={r.key} className="hover:bg-ps-bg">
+              <td className="px-4 py-2.5 text-ps-body">{r.label}</td>
               {table.buckets.map((b) => (
                 <td
                   key={b.key}
                   className={`text-right px-3 py-2.5 ${
-                    b.prescribed ? "" : "border-r border-dashed border-[#E2E8F0] bg-[#FAFBFC]"
+                    b.prescribed ? "" : "border-r border-dashed border-ps-border bg-[#FAFBFC]"
                   }`}
                 >
                   <Amount paise={r.amounts[b.key] ?? 0} />
@@ -145,8 +145,8 @@ function ScheduleTable({ table }: { table: AgeingTable }) {
           ))}
         </tbody>
         <tfoot>
-          <tr className="border-t-2 border-[#E2E8F0] bg-[#F8FAFC]">
-            <td className="px-4 py-2.5 font-semibold text-[#1E293B]">Total</td>
+          <tr className="border-t-2 border-ps-border bg-ps-bg">
+            <td className="px-4 py-2.5 font-semibold text-ps-ink">Total</td>
             {table.buckets.map((b) => (
               <td key={b.key} className="text-right px-3 py-2.5 font-semibold">
                 <Amount paise={table.column_totals[b.key] ?? 0} />
@@ -332,34 +332,34 @@ export default function ClientAgeingSchedulePage() {
         <div className="min-w-0">
           <button
             onClick={() => router.push(`/clients/${clientId}/reports`)}
-            className="flex items-center gap-1 text-[11px] text-[#94A3B8] hover:text-[#64748B] mb-1.5"
+            className="flex items-center gap-1 text-[11px] text-ps-hint hover:text-ps-label mb-1.5"
           >
             <ArrowLeft size={12} /> Reports
           </button>
-          <h2 className="text-sm font-semibold text-[#1E293B]">Ageing schedules</h2>
-          <p className="text-[11px] text-[#94A3B8] mt-0.5">
+          <h2 className="text-sm font-semibold text-ps-ink">Ageing schedules</h2>
+          <p className="text-[11px] text-ps-hint mt-0.5">
             {schedule?.statute ??
               "Schedule III to the Companies Act 2013, as amended by MCA Notification G.S.R. 207(E) dated 24 March 2021"}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <label className="text-[11px] text-[#64748B]">As at</label>
+          <label className="text-[11px] text-ps-label">As at</label>
           <input
             type="date"
             value={asOf}
             onChange={(e) => { setAsOf(e.target.value); setInvoices(null); setBills(null); setArAdvances(null); setApAdvances(null); }}
-            className="text-[11px] border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[#334155]"
+            className="text-[11px] border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body"
           />
           <button
             onClick={() => { setInvoices(null); setBills(null); setArAdvances(null); setApAdvances(null); load(); }}
-            className="flex items-center gap-1.5 text-[11px] text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] rounded-lg px-2.5 py-1.5"
+            className="flex items-center gap-1.5 text-[11px] text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-2.5 py-1.5"
           >
             <RefreshCw size={12} /> Refresh
           </button>
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-[#F1F5F9]">
+      <div className="flex gap-1 border-b border-ps-muted">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -368,7 +368,7 @@ export default function ClientAgeingSchedulePage() {
             className={`text-[11px] px-3 py-2 border-b-2 -mb-px transition-colors ${
               tab === t.id
                 ? "border-blue-600 text-blue-700 font-medium"
-                : "border-transparent text-[#94A3B8] hover:text-[#64748B]"
+                : "border-transparent text-ps-hint hover:text-ps-label"
             }`}
           >
             {t.label}
@@ -377,7 +377,7 @@ export default function ClientAgeingSchedulePage() {
       </div>
 
       {loading && (
-        <div className="flex items-center gap-2 text-[11px] text-[#94A3B8] py-8">
+        <div className="flex items-center gap-2 text-[11px] text-ps-hint py-8">
           <Loader2 size={14} className="animate-spin" /> Building the schedule…
         </div>
       )}
@@ -412,12 +412,12 @@ export default function ClientAgeingSchedulePage() {
 
           {tab === "note" && (
             <div className="space-y-5">
-              <section className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+              <section className="bg-white rounded-xl border border-ps-muted overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-50">
-                  <p className="text-xs font-semibold text-[#334155]">
+                  <p className="text-xs font-semibold text-ps-body">
                     {schedule.receivables.title}
                   </p>
-                  <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                  <p className="text-[10px] text-ps-hint mt-0.5">
                     Outstanding for the following periods from {schedule.ageing_from}.
                   </p>
                 </div>
@@ -430,10 +430,10 @@ export default function ClientAgeingSchedulePage() {
               {unclassified.length > 0 && (
                 <section className="bg-white rounded-xl border border-amber-200 overflow-hidden">
                   <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50">
-                    <p className="text-xs font-semibold text-[#334155]">
+                    <p className="text-xs font-semibold text-ps-body">
                       Classify these vendors before signing the payables note
                     </p>
-                    <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                    <p className="text-[10px] text-ps-hint mt-0.5">
                       {formatPaise(schedule.payables.unclassified_paise)} across{" "}
                       {unclassified.length} vendor{unclassified.length === 1 ? "" : "s"} is in
                       neither row. Micro and small are row (i); medium and unregistered are
@@ -444,10 +444,10 @@ export default function ClientAgeingSchedulePage() {
                     {unclassified.map((v) => (
                       <div key={v.vendor_id ?? v.vendor_name}
                            className="px-4 py-2.5 flex items-center gap-4">
-                        <p className="text-[11px] text-[#334155] flex-1 min-w-0 truncate">
+                        <p className="text-[11px] text-ps-body flex-1 min-w-0 truncate">
                           {v.vendor_name}
                         </p>
-                        <p className="text-[11px] tabular-nums text-[#64748B]">
+                        <p className="text-[11px] tabular-nums text-ps-label">
                           {formatPaise(v.outstanding_paise)}
                         </p>
                         <MsmeSelect
@@ -465,12 +465,12 @@ export default function ClientAgeingSchedulePage() {
                 </section>
               )}
 
-              <section className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+              <section className="bg-white rounded-xl border border-ps-muted overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-50">
-                  <p className="text-xs font-semibold text-[#334155]">
+                  <p className="text-xs font-semibold text-ps-body">
                     {schedule.payables.title}
                   </p>
-                  <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                  <p className="text-[10px] text-ps-hint mt-0.5">
                     Four prescribed columns, from one year — deliberately not the receivables&apos;
                     five. Row (i) is micro and small enterprises only.
                   </p>
@@ -481,9 +481,9 @@ export default function ClientAgeingSchedulePage() {
                               onReview={() => setTab("unbilled")} />
               </section>
 
-              <div className="flex items-start gap-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3">
-                <Info size={13} className="text-[#94A3B8] flex-shrink-0 mt-0.5" />
-                <p className="text-[10px] text-[#64748B]">
+              <div className="flex items-start gap-2.5 bg-ps-bg border border-ps-border rounded-xl px-4 py-3">
+                <Info size={13} className="text-ps-hint flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] text-ps-label">
                   <span className="font-medium">†</span> &ldquo;Not due&rdquo; is not one of the
                   prescribed columns. It is shown separately because folding not-yet-due balances
                   into the first bucket overstates the ageing of a current book. To present the
@@ -537,8 +537,8 @@ function UnbilledLine({ table, reviewedOn, onReview }: {
   return (
     <div className="px-4 py-2.5 border-t border-gray-50">
       <div className="flex items-center gap-2">
-        <p className="text-[10px] text-[#64748B] flex-1">
-          Unbilled dues <span className="text-[#94A3B8]">(disclosed separately)</span>
+        <p className="text-[10px] text-ps-label flex-1">
+          Unbilled dues <span className="text-ps-hint">(disclosed separately)</span>
         </p>
         {paise === null ? (
           <button onClick={onReview}
@@ -546,7 +546,7 @@ function UnbilledLine({ table, reviewedOn, onReview }: {
             Not reviewed — review the accounts
           </button>
         ) : (
-          <p className="text-[10px] tabular-nums text-[#1E293B] font-medium">
+          <p className="text-[10px] tabular-nums text-ps-ink font-medium">
             {formatPaise(paise)}
           </p>
         )}
@@ -557,10 +557,10 @@ function UnbilledLine({ table, reviewedOn, onReview }: {
         <div className="mt-1.5 space-y-0.5">
           {table.unbilled_accounts.map((a) => (
             <div key={a.account_id} className="flex items-center gap-2 pl-3">
-              <span className="text-[10px] text-[#94A3B8] tabular-nums">{a.account_code}</span>
-              <span className="text-[10px] text-[#94A3B8] flex-1 truncate">{a.account_name}</span>
+              <span className="text-[10px] text-ps-hint tabular-nums">{a.account_code}</span>
+              <span className="text-[10px] text-ps-hint flex-1 truncate">{a.account_name}</span>
               <span className={`text-[10px] tabular-nums ${
-                a.balance_paise < 0 ? "text-red-600" : "text-[#94A3B8]"}`}>
+                a.balance_paise < 0 ? "text-red-600" : "text-ps-hint"}`}>
                 {formatPaise(a.balance_paise)}
               </span>
             </div>
@@ -568,7 +568,7 @@ function UnbilledLine({ table, reviewedOn, onReview }: {
         </div>
       )}
       {paise !== null && reviewedOn && (
-        <p className="text-[9px] text-[#CBD5E1] mt-1">
+        <p className="text-[9px] text-ps-disabled mt-1">
           Chart of accounts reviewed {reviewedOn}
           {table.unbilled_accounts.length === 0 && " — no account holds unbilled dues"}
         </p>
@@ -586,15 +586,15 @@ function MsmeSelect({ value, busy, onChange }: {
         value={value}
         disabled={busy}
         onChange={(e) => onChange(e.target.value as "" | MsmeStatus)}
-        className="text-[11px] border border-[#E2E8F0] rounded-lg pl-2.5 pr-7 py-1.5 text-[#334155] appearance-none bg-white disabled:opacity-50"
+        className="text-[11px] border border-ps-border rounded-lg pl-2.5 pr-7 py-1.5 text-ps-body appearance-none bg-white disabled:opacity-50"
       >
         {MSME_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
       {busy
-        ? <Loader2 size={11} className="animate-spin absolute right-2 text-[#94A3B8]" />
-        : <ChevronDown size={11} className="absolute right-2 text-[#94A3B8] pointer-events-none" />}
+        ? <Loader2 size={11} className="animate-spin absolute right-2 text-ps-hint" />
+        : <ChevronDown size={11} className="absolute right-2 text-ps-hint pointer-events-none" />}
     </div>
   );
 }
@@ -636,12 +636,12 @@ function AdvancesPanel({ kind, section }: {
   const noun = isAr ? "customer advance" : "supplier advance";
 
   return (
-    <section className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden mb-5">
+    <section className="bg-white rounded-xl border border-ps-muted overflow-hidden mb-5">
       <div className="px-4 py-3 border-b border-gray-50">
-        <p className="text-xs font-semibold text-[#334155]">
+        <p className="text-xs font-semibold text-ps-body">
           {isAr ? "Advances received" : "Advances paid"} — on account
         </p>
-        <p className="text-[10px] text-[#94A3B8] mt-0.5">
+        <p className="text-[10px] text-ps-hint mt-0.5">
           {section.advances.length === 0
             ? `No ${noun} is outstanding, so the documents below are the whole of ${control}.`
             : `A ${noun} has no document to age against. It is listed here, outside the `
@@ -665,7 +665,7 @@ function AdvancesPanel({ kind, section }: {
         <div className="overflow-x-auto">
           <table className="w-full text-[11px]">
             <thead>
-              <tr className="border-b border-[#E2E8F0] text-left text-[#64748B]">
+              <tr className="border-b border-ps-border text-left text-ps-label">
                 <th className="font-medium px-4 py-2">{isAr ? "Receipt" : "Payment"}</th>
                 <th className="font-medium px-3 py-2">{isAr ? "Customer" : "Vendor"}</th>
                 <th className="font-medium px-3 py-2">Date</th>
@@ -676,22 +676,22 @@ function AdvancesPanel({ kind, section }: {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {section.advances.map((a) => (
-                <tr key={a.document_id} className="hover:bg-[#F8FAFC]">
-                  <td className="px-4 py-2 text-[#334155]">
+                <tr key={a.document_id} className="hover:bg-ps-bg">
+                  <td className="px-4 py-2 text-ps-body">
                     {a.document_no || "—"}
                     {a.txn_currency && (
-                      <span className="ml-1.5 text-[9px] text-[#94A3B8]">{a.txn_currency}</span>
+                      <span className="ml-1.5 text-[9px] text-ps-hint">{a.txn_currency}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-[#64748B] truncate max-w-[180px]">
+                  <td className="px-3 py-2 text-ps-label truncate max-w-[180px]">
                     {a.party_name || "—"}
                   </td>
-                  <td className="px-3 py-2 text-[#64748B]">{a.document_date || "—"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-[#1E293B]">
+                  <td className="px-3 py-2 text-ps-label">{a.document_date || "—"}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-ps-ink">
                     {formatPaise(a.unapplied_paise)}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-[#64748B]">{a.days_old}</td>
-                  <td className="px-4 py-2 text-[#94A3B8]">{a.aging_bucket}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-ps-label">{a.days_old}</td>
+                  <td className="px-4 py-2 text-ps-hint">{a.aging_bucket}</td>
                 </tr>
               ))}
             </tbody>
@@ -700,16 +700,16 @@ function AdvancesPanel({ kind, section }: {
       )}
 
       {/* THE TIE-UP. Three lines, in the order a CA checks them. */}
-      <div className="px-4 py-3 border-t border-[#F1F5F9] bg-[#F8FAFC] space-y-1">
-        <div className="flex justify-between text-[11px] text-[#64748B]">
+      <div className="px-4 py-3 border-t border-ps-muted bg-ps-bg space-y-1">
+        <div className="flex justify-between text-[11px] text-ps-label">
           <span>{isAr ? "Open invoices" : "Open bills"}</span>
           <span className="tabular-nums">{formatPaise(section.total_outstanding_paise)}</span>
         </div>
-        <div className="flex justify-between text-[11px] text-[#64748B]">
+        <div className="flex justify-between text-[11px] text-ps-label">
           <span>Less advances on account</span>
           <span className="tabular-nums">({formatPaise(section.total_advances_paise)})</span>
         </div>
-        <div className="flex justify-between text-[11px] font-semibold text-[#1E293B] pt-1 border-t border-[#E2E8F0]">
+        <div className="flex justify-between text-[11px] font-semibold text-ps-ink pt-1 border-t border-ps-border">
           <span>{control}</span>
           <span className="tabular-nums">{formatPaise(section.net_paise)}</span>
         </div>
@@ -734,25 +734,25 @@ function DocumentList({ kind, rows, saving, onClassify, clientId }: {
   const isAr = kind === "receivables";
   if (rows === null) {
     return (
-      <div className="flex items-center gap-2 text-[11px] text-[#94A3B8] py-8">
+      <div className="flex items-center gap-2 text-[11px] text-ps-hint py-8">
         <Loader2 size={14} className="animate-spin" /> Loading open documents…
       </div>
     );
   }
   if (rows.length === 0) {
     return (
-      <div className="text-[11px] text-[#94A3B8] py-8 text-center bg-white rounded-xl border border-[#F1F5F9]">
+      <div className="text-[11px] text-ps-hint py-8 text-center bg-white rounded-xl border border-ps-muted">
         Nothing outstanding.
       </div>
     );
   }
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-50">
-        <p className="text-xs font-semibold text-[#334155]">
+        <p className="text-xs font-semibold text-ps-body">
           {isAr ? "Open invoices" : "Open bills"}
         </p>
-        <p className="text-[10px] text-[#94A3B8] mt-0.5">
+        <p className="text-[10px] text-ps-hint mt-0.5">
           Marking a document disputed{isAr ? " or doubtful" : ""} moves it between the rows of
           the Schedule III note. Nothing is marked until somebody marks it.
         </p>
@@ -760,7 +760,7 @@ function DocumentList({ kind, rows, saving, onClassify, clientId }: {
       <div className="overflow-x-auto">
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="border-b border-[#E2E8F0] text-left text-[#64748B]">
+            <tr className="border-b border-ps-border text-left text-ps-label">
               <th className="font-medium px-4 py-2">{isAr ? "Invoice" : "Bill"}</th>
               <th className="font-medium px-3 py-2">{isAr ? "Customer" : "Vendor"}</th>
               <th className="font-medium px-3 py-2">Date</th>
@@ -776,17 +776,17 @@ function DocumentList({ kind, rows, saving, onClassify, clientId }: {
               const id = (isAr ? d.invoice_id : d.bill_id) ?? "";
               const key = `${isAr ? "invoice" : "bill"}:${id}`;
               return (
-                <tr key={id} className="hover:bg-[#F8FAFC]">
-                  <td className="px-4 py-2 text-[#334155]">{(isAr ? d.invoice_no : d.bill_no) || "—"}</td>
-                  <td className="px-3 py-2 text-[#64748B] truncate max-w-[180px]">
+                <tr key={id} className="hover:bg-ps-bg">
+                  <td className="px-4 py-2 text-ps-body">{(isAr ? d.invoice_no : d.bill_no) || "—"}</td>
+                  <td className="px-3 py-2 text-ps-label truncate max-w-[180px]">
                     {(isAr ? d.customer_name : d.vendor_name) || "—"}
                   </td>
-                  <td className="px-3 py-2 text-[#64748B]">{(isAr ? d.invoice_date : d.bill_date) || "—"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-[#1E293B]">
+                  <td className="px-3 py-2 text-ps-label">{(isAr ? d.invoice_date : d.bill_date) || "—"}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-ps-ink">
                     {formatPaise(d.outstanding_paise)}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-[#64748B]">{d.days_overdue}</td>
-                  <td className="px-3 py-2 text-[#94A3B8]">{d.aging_bucket}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-ps-label">{d.days_overdue}</td>
+                  <td className="px-3 py-2 text-ps-hint">{d.aging_bucket}</td>
                   <td className="px-3 py-2">
                     <MarkToggle
                       on={!!d.is_disputed}
@@ -832,7 +832,7 @@ function MarkToggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClick
       className={`text-[10px] border rounded-md px-2 py-0.5 disabled:opacity-50 transition-colors ${
         on
           ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
-          : "border-[#E2E8F0] text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#64748B]"
+          : "border-ps-border text-ps-hint hover:bg-ps-muted hover:text-ps-label"
       }`}
     >
       {busy ? "…" : on ? "Yes" : "No"}
@@ -863,7 +863,7 @@ function UnbilledPanel({
 }) {
   if (accounts === null) {
     return (
-      <div className="flex items-center gap-2 text-[11px] text-[#94A3B8] py-8">
+      <div className="flex items-center gap-2 text-[11px] text-ps-hint py-8">
         <Loader2 size={14} className="animate-spin" /> Loading the chart of accounts…
       </div>
     );
@@ -873,12 +873,12 @@ function UnbilledPanel({
   return (
     <div className="space-y-5">
       <section className={`rounded-xl border overflow-hidden ${
-        reviewedOn ? "bg-white border-[#F1F5F9]" : "bg-amber-50/50 border-amber-200"}`}>
+        reviewedOn ? "bg-white border-ps-muted" : "bg-amber-50/50 border-amber-200"}`}>
         <div className="px-4 py-3">
-          <p className="text-xs font-semibold text-[#334155]">
+          <p className="text-xs font-semibold text-ps-body">
             {reviewedOn ? `Reviewed ${reviewedOn}` : "Not yet reviewed"}
           </p>
-          <p className="text-[10px] text-[#64748B] mt-1">
+          <p className="text-[10px] text-ps-label mt-1">
             {reviewedOn
               ? `The note discloses ${marked.length === 0
                   ? "nil unbilled dues, affirmed by somebody rather than assumed"
@@ -893,7 +893,7 @@ function UnbilledPanel({
                 value={note}
                 onChange={(e) => onNote(e.target.value)}
                 placeholder="Optional note — what you checked"
-                className="flex-1 text-[11px] border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[#334155] bg-white"
+                className="flex-1 text-[11px] border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"
               />
             )}
             <button
@@ -901,7 +901,7 @@ function UnbilledPanel({
               disabled={saving === "review"}
               className={`flex items-center gap-1.5 text-[11px] rounded-lg px-3 py-1.5 disabled:opacity-50 ${
                 reviewedOn
-                  ? "border border-[#E2E8F0] text-[#64748B] hover:bg-[#F1F5F9]"
+                  ? "border border-ps-border text-ps-label hover:bg-ps-muted"
                   : "border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"}`}
             >
               {saving === "review" ? <Loader2 size={12} className="animate-spin" />
@@ -910,7 +910,7 @@ function UnbilledPanel({
             </button>
           </div>
           {reviewedOn && (
-            <p className="text-[10px] text-[#94A3B8] mt-2">
+            <p className="text-[10px] text-ps-hint mt-2">
               Withdrawing puts the disclosure back into its gap — for when the chart of
               accounts has moved on and the review no longer stands.
             </p>
@@ -918,12 +918,12 @@ function UnbilledPanel({
         </div>
       </section>
 
-      <section className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <section className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50">
-          <p className="text-xs font-semibold text-[#334155]">
+          <p className="text-xs font-semibold text-ps-body">
             Which accounts hold unbilled dues
           </p>
-          <p className="text-[10px] text-[#94A3B8] mt-0.5">
+          <p className="text-[10px] text-ps-hint mt-0.5">
             Accrued income is an ASSET and goes under receivables; accrued expenses and
             goods received not invoiced are a LIABILITY and go under payables. Only assets
             and liabilities are listed — the P&amp;L leg of an accrual is not the due, and
@@ -931,24 +931,24 @@ function UnbilledPanel({
           </p>
         </div>
         {accounts.length === 0 ? (
-          <p className="px-4 py-6 text-[11px] text-[#94A3B8] text-center">
+          <p className="px-4 py-6 text-[11px] text-ps-hint text-center">
             This client has no active asset or liability accounts.
           </p>
         ) : (
           <div className="divide-y divide-gray-50">
             {accounts.map((a) => (
               <div key={a.id} className="px-4 py-2 flex items-center gap-3">
-                <span className="text-[10px] text-[#94A3B8] tabular-nums w-14 flex-shrink-0">
+                <span className="text-[10px] text-ps-hint tabular-nums w-14 flex-shrink-0">
                   {a.account_code}
                 </span>
-                <span className="text-[11px] text-[#334155] flex-1 truncate">{a.account_name}</span>
-                <span className="text-[10px] text-[#CBD5E1] w-16 flex-shrink-0">{a.account_type}</span>
+                <span className="text-[11px] text-ps-body flex-1 truncate">{a.account_name}</span>
+                <span className="text-[10px] text-ps-disabled w-16 flex-shrink-0">{a.account_type}</span>
                 <select
                   value={a.unbilled_dues_side ?? ""}
                   disabled={saving === a.id}
                   onChange={(e) => onMark(
                     a, (e.target.value || null) as "receivable" | "payable" | null)}
-                  className="text-[10px] border border-[#E2E8F0] rounded-md px-2 py-1 text-[#334155] bg-white disabled:opacity-50"
+                  className="text-[10px] border border-ps-border rounded-md px-2 py-1 text-ps-body bg-white disabled:opacity-50"
                 >
                   <option value="">Not unbilled dues</option>
                   {/* Offered per type, because the database refuses the other

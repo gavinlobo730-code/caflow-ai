@@ -203,21 +203,21 @@ export function JournalEditor({
     : isPosted ? `Journal Entry ${existing?.reference_no ?? ""}`.trim()
     : `Draft Journal Entry ${existing?.reference_no ?? ""}`.trim();
 
-  const field = "w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#64748B]";
+  const field = "w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-label";
 
   return (
     <div className="space-y-5 max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-[#0F172A]">{title}</h2>
+          <h2 className="text-sm font-semibold text-ps-ink">{title}</h2>
           {!isNew && (
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-              isPosted ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+              isPosted ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>
               {isPosted ? "Posted" : "Draft"}
             </span>
           )}
         </div>
-        <button onClick={onCancel} className="text-xs text-[#64748B] hover:text-[#334155]">
+        <button onClick={onCancel} className="text-xs text-ps-label hover:text-ps-body">
           Back to Journal
         </button>
       </div>
@@ -244,22 +244,22 @@ export function JournalEditor({
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
+      <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label htmlFor="je-date" className="block text-xs font-medium text-[#475569] mb-1">Date *</label>
+            <label htmlFor="je-date" className="block text-xs font-medium text-ps-label mb-1">Date *</label>
             <input id="je-date" type="date" value={entryDate} disabled={readOnly}
                    onChange={(e) => setEntryDate(e.target.value)} className={field} />
           </div>
           <div>
-            <label htmlFor="je-type" className="block text-xs font-medium text-[#475569] mb-1">Type</label>
+            <label htmlFor="je-type" className="block text-xs font-medium text-ps-label mb-1">Type</label>
             <select id="je-type" value={entryType} disabled={readOnly}
                     onChange={(e) => setEntryType(e.target.value)} className={field}>
               {ENTRY_TYPES.map((t) => <option key={t}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label htmlFor="je-ref" className="block text-xs font-medium text-[#475569] mb-1">Reference No.</label>
+            <label htmlFor="je-ref" className="block text-xs font-medium text-ps-label mb-1">Reference No.</label>
             {/* JNL-, not INV-: this is the journal editor, and an invoice
                 number here invites a CA to type one, which then collides with
                 the real invoice's reference in the kernel's dedup key
@@ -269,7 +269,7 @@ export function JournalEditor({
           </div>
         </div>
         <div>
-          <label htmlFor="je-narration" className="block text-xs font-medium text-[#475569] mb-1">Narration *</label>
+          <label htmlFor="je-narration" className="block text-xs font-medium text-ps-label mb-1">Narration *</label>
           <input id="je-narration" value={narration} disabled={readOnly}
                  placeholder="Being goods sold to ABC Ltd…"
                  onChange={(e) => setNarration(e.target.value)} className={field} />
@@ -282,9 +282,9 @@ export function JournalEditor({
             it for. The column has existed since migration 138; nothing on this
             screen ever sent one. */}
         <div>
-          <p className="block text-xs font-medium text-[#475569] mb-1">Supporting documents</p>
+          <p className="block text-xs font-medium text-ps-label mb-1">Supporting documents</p>
           {attachmentsReadOnly && attachments.length === 0 && (
-            <p className="text-[11px] text-[#94A3B8] mb-1">
+            <p className="text-[11px] text-ps-hint mb-1">
               None were attached when this entry was posted.
             </p>
           )}
@@ -292,16 +292,16 @@ export function JournalEditor({
             <ul className="mb-2 space-y-1">
               {attachments.map((a, i) => (
                 <li key={`${a.url}-${i}`}
-                    className="flex items-center gap-2 text-xs text-[#334155] bg-[#F8FAFC] rounded-lg px-2.5 py-1.5">
+                    className="flex items-center gap-2 text-xs text-ps-body bg-ps-bg rounded-lg px-2.5 py-1.5">
                   {/* rel="noreferrer" because the link is somebody else's host
                       and window.opener would hand it this app's tab. */}
                   <a href={a.url} target="_blank" rel="noreferrer"
                      className="text-blue-700 hover:underline truncate">{a.name}</a>
-                  <span className="text-[#94A3B8] truncate flex-1">{a.url}</span>
+                  <span className="text-ps-hint truncate flex-1">{a.url}</span>
                   {!attachmentsReadOnly && (
                     <button type="button" aria-label={`Remove ${a.name}`}
                             onClick={() => setAttachments(attachments.filter((_, j) => j !== i))}
-                            className="text-[#94A3B8] hover:text-red-600">×</button>
+                            className="text-ps-hint hover:text-red-600">×</button>
                   )}
                 </li>
               ))}
@@ -325,13 +325,13 @@ export function JournalEditor({
                     { name: attachName.trim(), url: attachUrl.trim() }]);
                   setAttachName(""); setAttachUrl("");
                 }}
-                className="px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F1F5F9] disabled:opacity-40"
+                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-label hover:bg-ps-muted disabled:opacity-40"
               >
                 Attach
               </button>
             </div>
           )}
-          <p className="text-[10px] text-[#94A3B8] mt-1">
+          <p className="text-[10px] text-ps-hint mt-1">
             {attachmentsReadOnly
               ? "A posted entry's documents cannot be changed — the ledger lets a "
                 + "posted entry be corrected only through the edit path, which "
@@ -346,7 +346,7 @@ export function JournalEditor({
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+              <tr className="border-b border-ps-muted text-ps-hint">
                 <th className="pb-2 text-left font-semibold">Account</th>
                 <th className="pb-2 text-right font-semibold w-28">Debit (₹)</th>
                 <th className="pb-2 text-right font-semibold w-28">Credit (₹)</th>
@@ -354,12 +354,12 @@ export function JournalEditor({
                 <th className="pb-2 w-6" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {lines.map((line, idx) => {
                 const bad = (side: "debit" | "credit") => parsed[idx][side] === null;
                 const amountCls = (side: "debit" | "credit") =>
-                  `w-full px-2 py-1 border rounded focus:outline-none focus:ring-1 text-right text-xs disabled:bg-[#F8FAFC] ${
-                    bad(side) ? "border-red-400 focus:ring-red-500 bg-red-50" : "border-[#E2E8F0] focus:ring-blue-500"}`;
+                  `w-full px-2 py-1 border rounded focus:outline-none focus:ring-1 text-right text-xs disabled:bg-ps-bg ${
+                    bad(side) ? "border-red-400 focus:ring-red-500 bg-red-50" : "border-ps-border focus:ring-blue-500"}`;
                 return (
                   <tr key={line.key}>
                     <td className="py-1.5 pr-2">
@@ -389,13 +389,13 @@ export function JournalEditor({
                       <input value={line.narration} disabled={readOnly} placeholder="optional"
                              aria-label="Line narration"
                              onChange={(e) => setLine(idx, { narration: e.target.value })}
-                             className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs disabled:bg-[#F8FAFC]" />
+                             className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs disabled:bg-ps-bg" />
                     </td>
                     <td className="py-1.5 pl-1">
                       {!readOnly && lines.length > 2 && (
                         <button onClick={() => setLines((p) => p.filter((_, i) => i !== idx))}
                                 aria-label="Remove line"
-                                className="text-[#CBD5E1] hover:text-red-600 font-bold">×</button>
+                                className="text-ps-disabled hover:text-red-600 font-bold">×</button>
                       )}
                     </td>
                   </tr>
@@ -403,12 +403,12 @@ export function JournalEditor({
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t border-[#F1F5F9] text-xs font-semibold">
-                <td className="pt-2 text-[#64748B]">Total</td>
-                <td className="pt-2 text-right text-[#334155] px-2">
+              <tr className="border-t border-ps-muted text-xs font-semibold">
+                <td className="pt-2 text-ps-label">Total</td>
+                <td className="pt-2 text-right text-ps-body px-2">
                   {totalDebit > 0 ? `₹${rupeeInputFromPaise(totalDebit)}` : "—"}
                 </td>
-                <td className="pt-2 text-right text-[#334155] px-2">
+                <td className="pt-2 text-right text-ps-body px-2">
                   {totalCredit > 0 ? `₹${rupeeInputFromPaise(totalCredit)}` : "—"}
                 </td>
                 <td colSpan={2} className="pt-2 pl-3">
@@ -441,7 +441,7 @@ export function JournalEditor({
         {!readOnly && (
           <div className="flex gap-3 justify-end pt-1">
             <button onClick={onCancel}
-                    className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">
+                    className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
               Cancel
             </button>
             {isPosted ? (
@@ -452,7 +452,7 @@ export function JournalEditor({
             ) : (
               <>
                 <button onClick={() => handleSave("draft")} disabled={saving || !isBalanced}
-                        className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-40">
+                        className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
                   Save Draft
                 </button>
                 <button onClick={() => handleSave("post")} disabled={saving || !isBalanced}

@@ -46,10 +46,10 @@ function ARDashboard() {
     <div className="p-6 max-w-3xl">
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
-          <ClipboardList size={18} className="text-[#182350]" />
-          <h1 className="text-lg font-semibold text-[#182350]">AR Aging</h1>
+          <ClipboardList size={18} className="text-brand" />
+          <h1 className="text-lg font-semibold text-brand">AR Aging</h1>
         </div>
-        <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-[#182350]">
+        <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-brand">
           <RefreshCw size={13} /> Refresh
         </button>
       </div>
@@ -65,15 +65,15 @@ function ARDashboard() {
           <tbody>
             {ORDER.map(({ key, label }) => (
               <tr key={key} className="border-b border-gray-100 last:border-0">
-                <td className="px-4 py-2.5 text-[#182350]">{label}</td>
+                <td className="px-4 py-2.5 text-brand">{label}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(buckets[key]?.paise ?? 0)}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums text-gray-500">{buckets[key]?.count ?? 0}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
-            <tr className="bg-[#F8FAFC] font-semibold">
-              <td className="px-4 py-2.5 text-[#182350]">Total outstanding</td>
+            <tr className="bg-ps-bg font-semibold">
+              <td className="px-4 py-2.5 text-brand">Total outstanding</td>
               <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(aging?.total_outstanding_paise ?? 0)}</td>
               <td className="px-4 py-2.5"></td>
             </tr>

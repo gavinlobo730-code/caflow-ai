@@ -39,7 +39,7 @@ const TALLY_TONES = {
   green: "bg-green-50 text-green-700 text-green-600",
   red: "bg-red-50 text-red-700 text-red-600",
   amber: "bg-amber-50 text-amber-700 text-amber-600",
-  neutral: "bg-[#F8FAFC] text-[#334155] text-[#64748B]",
+  neutral: "bg-ps-bg text-ps-body text-ps-label",
 } as const;
 
 function Tally({ value, label, tone }: { value: number; label: string; tone: keyof typeof TALLY_TONES }) {
@@ -259,13 +259,13 @@ export default function Form26ASPage() {
     <div className="p-6 max-w-3xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-[#1E293B]">Form 26AS Reconciliation</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">IT Act §285BB — Annual Information Statement</p>
+          <h2 className="text-sm font-semibold text-ps-ink">Form 26AS Reconciliation</h2>
+          <p className="text-xs text-ps-hint mt-0.5">IT Act §285BB — Annual Information Statement</p>
         </div>
         <select
           value={fy}
           onChange={e => setFy(e.target.value)}
-          className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg"
+          className="text-xs px-3 py-1.5 border border-ps-border rounded-lg"
         >
           {FY_OPTIONS.map(f => <option key={f}>{f}</option>)}
         </select>
@@ -287,9 +287,9 @@ export default function Form26ASPage() {
 
       {/* Reconciliation Summary */}
       {recon && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-4">
+        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-[#334155]">Reconciliation Summary</p>
+            <p className="text-xs font-semibold text-ps-body">Reconciliation Summary</p>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
               recon.status === "completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
             }`}>{recon.status}</span>
@@ -343,15 +343,15 @@ export default function Form26ASPage() {
           )}
 
           {(recon.not_a_tds_credit?.length ?? 0) > 0 && (
-            <div className="text-[11px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2 space-y-1">
-              <p className="text-[#334155]">
+            <div className="text-[11px] bg-ps-bg border border-ps-border rounded-lg px-3 py-2 space-y-1">
+              <p className="text-ps-body">
                 <span className="font-semibold">{paise(recon.not_a_tds_credit_paise ?? 0)}</span>{" "}
                 on this 26AS is <span className="font-semibold">not a TDS credit</span> and is
                 left out of the comparison above — advance or self-assessment tax the client paid
                 themselves (Part C), a refund already received (Part D), or s.194-IA tax the
                 client deducted as BUYER of property (Part F).
               </p>
-              <ul className="text-[#64748B]">
+              <ul className="text-ps-label">
                 {recon.not_a_tds_credit!.map((r, i) => (
                   <li key={i}>
                     Part {r.part ?? "?"} · {r.deductor_name || "—"} · {paise(r.amount_paise)}
@@ -361,9 +361,9 @@ export default function Form26ASPage() {
             </div>
           )}
           {recon.needs_confirmation_count > 0 && (
-            <div className="flex items-start gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-3">
-              <AlertTriangle size={14} className="text-[#64748B] mt-px shrink-0" />
-              <p className="text-xs text-[#475569]">
+            <div className="flex items-start gap-2 bg-ps-bg border border-ps-border rounded-lg p-3">
+              <AlertTriangle size={14} className="text-ps-label mt-px shrink-0" />
+              <p className="text-xs text-ps-label">
                 {recon.needs_confirmation_count} row{recon.needs_confirmation_count === 1 ? "" : "s"}{" "}
                 matched on the deductor&apos;s name alone, because no TAN is recorded against
                 the customer. Confirm the identity, or add the TAN on the customer record.
@@ -373,15 +373,15 @@ export default function Form26ASPage() {
 
           <div className="grid grid-cols-3 gap-4 text-xs">
             <div>
-              <p className="text-[#94A3B8]">26AS TDS Total</p>
-              <p className="font-semibold text-[#1E293B]">{paise(recon.total_tds_26as_paise)}</p>
+              <p className="text-ps-hint">26AS TDS Total</p>
+              <p className="font-semibold text-ps-ink">{paise(recon.total_tds_26as_paise)}</p>
             </div>
             <div>
-              <p className="text-[#94A3B8]">Books TDS Total</p>
-              <p className="font-semibold text-[#1E293B]">{paise(recon.total_tds_books_paise)}</p>
+              <p className="text-ps-hint">Books TDS Total</p>
+              <p className="font-semibold text-ps-ink">{paise(recon.total_tds_books_paise)}</p>
             </div>
             <div>
-              <p className="text-[#94A3B8]">Variance</p>
+              <p className="text-ps-hint">Variance</p>
               <p className={`font-semibold ${recon.variance_paise > 0 ? "text-red-600" : "text-green-600"}`}>
                 {paise(recon.variance_paise)}
               </p>
@@ -420,7 +420,7 @@ export default function Form26ASPage() {
       <div className="flex gap-3">
         <button
           onClick={() => setShowUpload(true)}
-          className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] bg-white px-3 py-2 rounded-lg hover:bg-[#F8FAFC]"
+          className="flex items-center gap-1.5 text-xs border border-ps-border bg-white px-3 py-2 rounded-lg hover:bg-ps-bg"
         >
           <Upload size={12} /> Upload 26AS Text
         </button>
@@ -440,16 +440,16 @@ export default function Form26ASPage() {
 
       {/* Upload Form */}
       {showUpload && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3">
-          <p className="text-xs font-semibold text-[#334155]">Upload 26AS Text</p>
-          <p className="text-[11px] text-[#64748B]">
+        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
+          <p className="text-xs font-semibold text-ps-body">Upload 26AS Text</p>
+          <p className="text-[11px] text-ps-label">
             Download Form 26AS from the TRACES portal (tdscpc.gov.in) or via the e-filing portal login, convert PDF to text, and paste below.
           </p>
           <textarea
             value={rawText}
             onChange={e => setRawText(e.target.value)}
             rows={10}
-            className="w-full text-xs px-3 py-2 border border-[#E2E8F0] rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Paste Form 26AS text here..."
           />
           {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
@@ -483,7 +483,7 @@ export default function Form26ASPage() {
           )}
           <div className="flex gap-2 justify-end">
             <button onClick={() => { setShowUpload(false); setRawText(""); }}
-              className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
+              className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
             <button
               onClick={handleUploadAndParse}
               disabled={actionInFlight || !rawText.trim()}
@@ -498,14 +498,14 @@ export default function Form26ASPage() {
 
       {/* Upload History */}
       {uploads.length > 0 && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3">
-          <p className="text-xs font-semibold text-[#334155]">Upload History</p>
+        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
+          <p className="text-xs font-semibold text-ps-body">Upload History</p>
           <div className="space-y-2">
             {uploads.map(u => (
-              <div key={u.id} className="flex items-center justify-between p-3 bg-[#F8FAFC] rounded-lg">
+              <div key={u.id} className="flex items-center justify-between p-3 bg-ps-bg rounded-lg">
                 <div>
-                  <p className="text-xs font-medium text-[#1E293B]">FY {u.financial_year}</p>
-                  <p className="text-[10px] text-[#94A3B8]">
+                  <p className="text-xs font-medium text-ps-ink">FY {u.financial_year}</p>
+                  <p className="text-[10px] text-ps-hint">
                     {new Date(u.uploaded_at).toLocaleDateString("en-IN")} · {u.total_records} records
                   </p>
                 </div>

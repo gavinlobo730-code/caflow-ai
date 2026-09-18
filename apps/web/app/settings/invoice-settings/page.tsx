@@ -62,9 +62,9 @@ function InvoiceNumberPreview({ settings, seq = 1 }: { settings: InvoiceSettings
   const fyPart = settings.include_financial_year ? `-${fy}` : "";
   const seqStr = String(seq).padStart(settings.sequence_length, "0");
   return (
-    <div className="bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] px-4 py-3 text-center">
-      <p className="text-xs text-[#94A3B8] mb-1">Next invoice number</p>
-      <p className="text-xl font-mono font-bold text-[#0F172A]">
+    <div className="bg-ps-bg rounded-lg border border-ps-border px-4 py-3 text-center">
+      <p className="text-xs text-ps-hint mb-1">Next invoice number</p>
+      <p className="text-xl font-mono font-bold text-ps-ink">
         {settings.prefix || "INV"}{fyPart}-{seqStr}
       </p>
     </div>
@@ -151,11 +151,11 @@ export default function InvoiceSettingsPage() {
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
         <div>
-          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] transition-colors mb-1">
+          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1">
             <ChevronLeft size={13} /> Settings
           </Link>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Invoice Settings</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Configure invoice numbering, payment details, and footer text.</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Invoice Settings</h1>
+          <p className="text-sm text-ps-label mt-0.5">Configure invoice numbering, payment details, and footer text.</p>
         </div>
 
         {loadError && !loading && (
@@ -170,37 +170,37 @@ export default function InvoiceSettingsPage() {
         )}
 
         {/* ── Invoice Numbering ────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-            <Hash size={15} className="text-[#64748B]" />
-            <h2 className="text-sm font-semibold text-[#0F172A]">Invoice Numbering</h2>
+            <Hash size={15} className="text-ps-label" />
+            <h2 className="text-sm font-semibold text-ps-ink">Invoice Numbering</h2>
           </div>
           <div className="px-5 py-4 space-y-4">
             {loading ? (
-              <div className="py-6 text-center text-sm text-[#94A3B8]">Loading…</div>
+              <div className="py-6 text-center text-sm text-ps-hint">Loading…</div>
             ) : (
               <>
                 <InvoiceNumberPreview settings={form} seq={form.starting_number} />
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-medium text-[#64748B] block mb-1">Prefix <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-medium text-ps-label block mb-1">Prefix <span className="text-red-500">*</span></label>
                     <input
                       type="text"
                       value={form.prefix}
                       onChange={(e) => update("prefix", e.target.value.toUpperCase().slice(0, 10))}
                       placeholder="INV"
-                      className="w-full text-sm font-mono text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                      className="w-full text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                     />
-                    <p className="text-xs text-[#94A3B8] mt-1">Up to 10 uppercase characters (e.g. INV, CF, GST)</p>
+                    <p className="text-xs text-ps-hint mt-1">Up to 10 uppercase characters (e.g. INV, CF, GST)</p>
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-[#64748B] block mb-1">Sequence Digits</label>
+                    <label className="text-xs font-medium text-ps-label block mb-1">Sequence Digits</label>
                     <select
                       value={form.sequence_length}
                       onChange={(e) => update("sequence_length", Number(e.target.value))}
-                      className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                      className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                     >
                       {[3, 4, 5, 6].map((n) => (
                         <option key={n} value={n}>{n} digits ({String(1).padStart(n, "0")} to {String(10 ** n - 1).padStart(n, "0")})</option>
@@ -209,27 +209,27 @@ export default function InvoiceSettingsPage() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-[#64748B] block mb-1">Starting Number</label>
+                    <label className="text-xs font-medium text-ps-label block mb-1">Starting Number</label>
                     <input
                       type="number"
                       min={1}
                       value={form.starting_number}
                       onChange={(e) => update("starting_number", Math.max(1, Number(e.target.value)))}
-                      className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                      className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                     />
-                    <p className="text-xs text-[#94A3B8] mt-1">Use this to continue from a previous system&apos;s sequence</p>
+                    <p className="text-xs text-ps-hint mt-1">Use this to continue from a previous system&apos;s sequence</p>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between py-2 border-t border-[#F1F5F9]">
+                <div className="flex items-center justify-between py-2 border-t border-ps-muted">
                   <div>
-                    <p className="text-sm text-[#334155]">Include Financial Year</p>
-                    <p className="text-xs text-[#94A3B8]">Adds the Indian financial year (e.g. 2025) to the number</p>
+                    <p className="text-sm text-ps-body">Include Financial Year</p>
+                    <p className="text-xs text-ps-hint">Adds the Indian financial year (e.g. 2025) to the number</p>
                   </div>
                   <button
                     onClick={() => update("include_financial_year", !form.include_financial_year)}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      form.include_financial_year ? "bg-blue-600" : "bg-[#CBD5E1]"
+                      form.include_financial_year ? "bg-blue-600" : "bg-ps-border-strong"
                     }`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
@@ -238,15 +238,15 @@ export default function InvoiceSettingsPage() {
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between py-2 border-t border-[#F1F5F9]">
+                <div className="flex items-center justify-between py-2 border-t border-ps-muted">
                   <div>
-                    <p className="text-sm text-[#334155]">Allow Manual Override</p>
-                    <p className="text-xs text-[#94A3B8]">Let managers manually set an invoice number on creation</p>
+                    <p className="text-sm text-ps-body">Allow Manual Override</p>
+                    <p className="text-xs text-ps-hint">Let managers manually set an invoice number on creation</p>
                   </div>
                   <button
                     onClick={() => update("manual_override_allowed", !form.manual_override_allowed)}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      form.manual_override_allowed ? "bg-blue-600" : "bg-[#CBD5E1]"
+                      form.manual_override_allowed ? "bg-blue-600" : "bg-ps-border-strong"
                     }`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
@@ -260,85 +260,85 @@ export default function InvoiceSettingsPage() {
         </div>
 
         {/* ── Payment Details ──────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-            <CreditCard size={15} className="text-[#64748B]" />
-            <h2 className="text-sm font-semibold text-[#0F172A]">Payment Details</h2>
+            <CreditCard size={15} className="text-ps-label" />
+            <h2 className="text-sm font-semibold text-ps-ink">Payment Details</h2>
           </div>
           <div className="px-5 py-4 space-y-4">
-            <p className="text-xs text-[#94A3B8]">These details appear on every invoice so clients can pay you directly.</p>
+            <p className="text-xs text-ps-hint">These details appear on every invoice so clients can pay you directly.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">Bank Name</label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Bank Name</label>
                 <input
                   type="text"
                   value={form.bank_name}
                   onChange={(e) => update("bank_name", e.target.value)}
                   placeholder="e.g. HDFC Bank"
-                  className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">Account Holder</label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Account Holder</label>
                 <input
                   type="text"
                   value={form.account_holder}
                   onChange={(e) => update("account_holder", e.target.value)}
                   placeholder="e.g. Gavin Lobo & Associates"
-                  className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">Account Number</label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Account Number</label>
                 <input
                   type="text"
                   value={form.account_number}
                   onChange={(e) => update("account_number", e.target.value)}
                   placeholder="e.g. 50100123456789"
-                  className="w-full text-sm font-mono text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                  className="w-full text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">IFSC Code</label>
+                <label className="text-xs font-medium text-ps-label block mb-1">IFSC Code</label>
                 <input
                   type="text"
                   value={form.ifsc_code}
                   onChange={(e) => update("ifsc_code", e.target.value.toUpperCase())}
                   placeholder="e.g. HDFC0001234"
                   maxLength={11}
-                  className="w-full text-sm font-mono text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                  className="w-full text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">UPI ID</label>
+                <label className="text-xs font-medium text-ps-label block mb-1">UPI ID</label>
                 <input
                   type="text"
                   value={form.upi_id}
                   onChange={(e) => update("upi_id", e.target.value)}
                   placeholder="e.g. firm@okaxis"
-                  className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-[#64748B] block mb-1">UPI QR Code URL</label>
+                <label className="text-xs font-medium text-ps-label block mb-1">UPI QR Code URL</label>
                 <input
                   type="url"
                   value={form.upi_qr_url}
                   onChange={(e) => update("upi_qr_url", e.target.value)}
                   placeholder="https://example.com/qr.png"
-                  className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC]"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
                 />
               </div>
             </div>
 
             <div>
-              <label className="text-xs font-medium text-[#64748B] block mb-1">Invoice Footer Text</label>
+              <label className="text-xs font-medium text-ps-label block mb-1">Invoice Footer Text</label>
               <textarea
                 value={form.footer_text}
                 onChange={(e) => update("footer_text", e.target.value)}
                 rows={2}
                 placeholder="e.g. Thank you for your business. Payment is due within 15 days. CGST registered under GSTIN 27AAAAA9999A1Z1."
-                className="w-full text-sm text-[#0F172A] border border-[#E2E8F0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#F8FAFC] resize-none"
+                className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg resize-none"
               />
             </div>
           </div>

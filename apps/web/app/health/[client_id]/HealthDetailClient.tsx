@@ -289,7 +289,7 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
                 <p className="text-xs text-red-600">Couldn&apos;t load factors — the request failed or timed out.</p>
                 <button
                   onClick={loadFactors}
-                  className="text-[10px] text-[#182350] border border-[#182350]/30 px-2 py-0.5 rounded hover:bg-[#AFD2FA]/20 whitespace-nowrap"
+                  className="text-[10px] text-brand border border-brand/30 px-2 py-0.5 rounded hover:bg-brand-light/20 whitespace-nowrap"
                 >
                   Retry
                 </button>
@@ -306,7 +306,7 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
                     </div>
                     <a
                       href={f.action_url}
-                      className="text-[10px] text-[#182350] border border-[#182350]/30 px-2 py-0.5 rounded hover:bg-[#AFD2FA]/20 whitespace-nowrap"
+                      className="text-[10px] text-brand border border-brand/30 px-2 py-0.5 rounded hover:bg-brand-light/20 whitespace-nowrap"
                     >
                       {f.action_label}
                     </a>
@@ -517,7 +517,7 @@ export default function ClientHealthDetailPage() {
   if (error || !health) {
     return (
       <div className="p-6">
-        <Link href="/health" className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#182350] mb-4">
+        <Link href="/health" className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand mb-4">
           <ChevronLeft size={14} /> Back
         </Link>
         <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm border border-red-200">
@@ -530,7 +530,7 @@ export default function ClientHealthDetailPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Back nav */}
-      <Link href="/health" className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#182350]">
+      <Link href="/health" className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand">
         <ChevronLeft size={14} /> Health Monitor
       </Link>
 
@@ -571,7 +571,7 @@ export default function ClientHealthDetailPage() {
             </div>
             <div className="w-px h-16 bg-gray-200" />
             <div>
-              <h2 className="text-lg font-semibold text-[#182350]">{health.client_name}</h2>
+              <h2 className="text-lg font-semibold text-brand">{health.client_name}</h2>
               <p className="text-xs text-gray-500 mt-1">
                 Last calculated: {formatDate(health.last_calculated_at)}
               </p>
@@ -589,7 +589,7 @@ export default function ClientHealthDetailPage() {
       {/* 7 dimension cards — Product Bible Chapter 16 */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-[#182350]">Health Dimensions</h3>
+          <h3 className="text-sm font-semibold text-brand">Health Dimensions</h3>
           <p className="text-xs text-gray-400">Click a dimension to see dragging factors</p>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -609,7 +609,7 @@ export default function ClientHealthDetailPage() {
 
       {/* Score history */}
       <div>
-        <h3 className="text-sm font-semibold text-[#182350] mb-3">Score History</h3>
+        <h3 className="text-sm font-semibold text-brand mb-3">Score History</h3>
         <Card className="bg-white border border-gray-200">
           <CardContent className="p-0">
             {history.length === 0 ? (
@@ -651,7 +651,7 @@ export default function ClientHealthDetailPage() {
 
       {/* Active alerts */}
       <div>
-        <h3 className="text-sm font-semibold text-[#182350] mb-3">
+        <h3 className="text-sm font-semibold text-brand mb-3">
           Active Alerts{" "}
           {alerts.length > 0 && (
             <span className="text-xs text-red-600 font-normal">({alerts.length})</span>
@@ -688,14 +688,14 @@ export default function ClientHealthDetailPage() {
       {/* Active overrides */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-[#182350]">Active Overrides</h3>
+          <h3 className="text-sm font-semibold text-brand">Active Overrides</h3>
           <button
             onClick={() => {
               setOverrideForm(EMPTY_OVERRIDE_FORM);
               setOverrideSaveError(null);
               setOverrideModalOpen(true);
             }}
-            className="flex items-center gap-1 text-xs text-[#182350] border border-[#182350] px-2.5 py-1 rounded hover:bg-[#AFD2FA]/20"
+            className="flex items-center gap-1 text-xs text-brand border border-brand px-2.5 py-1 rounded hover:bg-brand-light/20"
           >
             <Plus size={12} /> Add Override
           </button>
@@ -749,7 +749,7 @@ export default function ClientHealthDetailPage() {
         <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
           <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-[#182350]">Add Score Override</h2>
+              <h2 className="text-sm font-semibold text-brand">Add Score Override</h2>
               <button
                 onClick={() => setOverrideModalOpen(false)}
                 className="text-gray-400 hover:text-gray-700"
@@ -763,7 +763,7 @@ export default function ClientHealthDetailPage() {
                 <select
                   value={overrideForm.dimension}
                   onChange={(e) => setOverrideForm({ ...overrideForm, dimension: e.target.value as DimensionKey })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   {OVERRIDE_DIMENSION_OPTIONS.map((key) => (
                     <option key={key} value={key}>
@@ -780,7 +780,7 @@ export default function ClientHealthDetailPage() {
                   max="100"
                   value={overrideForm.override_score}
                   onChange={(e) => setOverrideForm({ ...overrideForm, override_score: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand"
                   placeholder="e.g. 75"
                 />
               </div>
@@ -790,7 +790,7 @@ export default function ClientHealthDetailPage() {
                   rows={3}
                   value={overrideForm.reason}
                   onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#182350] resize-none"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand resize-none"
                   placeholder="Explain why this score is being overridden…"
                 />
               </div>
@@ -800,7 +800,7 @@ export default function ClientHealthDetailPage() {
                   type="date"
                   value={overrideForm.expires_at}
                   onChange={(e) => setOverrideForm({ ...overrideForm, expires_at: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
             </div>
@@ -824,7 +824,7 @@ export default function ClientHealthDetailPage() {
                   !overrideForm.reason.trim() ||
                   !overrideForm.override_score
                 }
-                className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
+                className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
                 {savingOverride ? "Saving…" : "Add Override"}
               </button>

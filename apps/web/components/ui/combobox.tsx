@@ -420,7 +420,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
             className,
           )}
         >
-          <Search size={13} className="flex-shrink-0 text-[#94A3B8]" />
+          <Search size={13} className="flex-shrink-0 text-ps-hint" />
           <input
             ref={inputRef}
             id={baseId}
@@ -435,9 +435,9 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
             onKeyDown={onKeyDown}
             placeholder={searchPlaceholder}
             autoComplete="off"
-            className="w-full min-w-0 bg-transparent text-xs text-[#334155] placeholder:text-[#94A3B8] focus:outline-none"
+            className="w-full min-w-0 bg-transparent text-xs text-ps-body placeholder:text-ps-hint focus:outline-none"
           />
-          {busy && <Loader2 size={13} className="flex-shrink-0 animate-spin text-[#94A3B8]" />}
+          {busy && <Loader2 size={13} className="flex-shrink-0 animate-spin text-ps-hint" />}
         </div>
       ) : (
         <button
@@ -456,17 +456,17 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
             }
           }}
           className={cn(
-            "items-center gap-2 text-left text-[#334155] transition-colors focus:outline-none disabled:cursor-not-allowed disabled:text-[#94A3B8]",
+            "items-center gap-2 text-left text-ps-body transition-colors focus:outline-none disabled:cursor-not-allowed disabled:text-ps-hint",
             plain
               ? "inline-flex rounded focus:ring-1 focus:ring-blue-500"
-              : cn("flex w-full justify-between rounded-lg border border-[#E2E8F0] bg-white focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC]", SIZE[size]),
+              : cn("flex w-full justify-between rounded-lg border border-ps-border bg-white focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg", SIZE[size]),
             className,
           )}
         >
           <span
             className={cn(
               "truncate",
-              !triggerLabel && (plain ? "text-[10px] font-medium text-blue-600" : "text-[#94A3B8]"),
+              !triggerLabel && (plain ? "text-[10px] font-medium text-blue-600" : "text-ps-hint"),
             )}
           >
             {!multiple && selectedArr[0] && renderTrigger
@@ -481,12 +481,12 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                   tabIndex={-1}
                   aria-label="Clear"
                   onClick={clear}
-                  className="rounded p-0.5 text-[#CBD5E1] hover:text-red-500"
+                  className="rounded p-0.5 text-ps-disabled hover:text-red-500"
                 >
                   <X size={13} />
                 </span>
               )}
-              <ChevronsUpDown size={13} className="text-[#94A3B8]" />
+              <ChevronsUpDown size={13} className="text-ps-hint" />
             </span>
           )}
         </button>
@@ -495,14 +495,14 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
       {open && coords && (
         <div
           style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width }}
-          className="z-40 overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-lg"
+          className="z-40 overflow-hidden rounded-lg border border-ps-border bg-white shadow-lg"
         >
           {/* Search box — only for chrome="plain", whose trigger stays a
               static button/chip even while open (see above), so its search
               box still lives here, inside the panel, exactly as before. */}
           {plain && (
-            <div className="flex items-center gap-2 border-b border-[#F1F5F9] px-2.5 py-2">
-              <Search size={13} className="flex-shrink-0 text-[#94A3B8]" />
+            <div className="flex items-center gap-2 border-b border-ps-muted px-2.5 py-2">
+              <Search size={13} className="flex-shrink-0 text-ps-hint" />
               <input
                 ref={inputRef}
                 id={inputId}
@@ -516,9 +516,9 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                 onKeyDown={onKeyDown}
                 placeholder={searchPlaceholder}
                 autoComplete="off"
-                className="w-full bg-transparent text-xs text-[#334155] placeholder:text-[#94A3B8] focus:outline-none"
+                className="w-full bg-transparent text-xs text-ps-body placeholder:text-ps-hint focus:outline-none"
               />
-              {busy && <Loader2 size={13} className="flex-shrink-0 animate-spin text-[#94A3B8]" />}
+              {busy && <Loader2 size={13} className="flex-shrink-0 animate-spin text-ps-hint" />}
             </div>
           )}
 
@@ -544,8 +544,8 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                 onMouseEnter={() => setHighlighted(createIdx)}
                 onClick={() => void doCreate()}
                 className={cn(
-                  "flex cursor-pointer items-center gap-1.5 border-b border-[#F1F5F9] px-3 py-1.5 text-xs text-blue-600",
-                  highlighted === createIdx ? "bg-[#EFF6FF]" : "hover:bg-[#F8FAFC]",
+                  "flex cursor-pointer items-center gap-1.5 border-b border-ps-muted px-3 py-1.5 text-xs text-blue-600",
+                  highlighted === createIdx ? "bg-[#EFF6FF]" : "hover:bg-ps-bg",
                 )}
               >
                 <Plus size={13} className="flex-shrink-0" />
@@ -561,7 +561,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                 </button>
               </div>
             ) : results.length === 0 && (busy || !bottomCreateVisible) ? (
-              <div className="px-3 py-3 text-center text-[11px] text-[#94A3B8]">
+              <div className="px-3 py-3 text-center text-[11px] text-ps-hint">
                 <p>{busy ? "Loading…" : emptyText}</p>
                 {/* Offered before typing when emptyCreateLabel is set (an
                     entirely empty list, e.g. a new client's catalogue), or
@@ -610,16 +610,16 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                       className={cn(
                         "flex cursor-pointer items-center justify-between gap-2",
                         panelDensity === "spacious" ? "px-3.5 py-2.5" : "px-3 py-1.5",
-                        active ? "bg-[#EFF6FF]" : "hover:bg-[#F8FAFC]",
+                        active ? "bg-[#EFF6FF]" : "hover:bg-ps-bg",
                       )}
                     >
                       {renderOption ? (
                         renderOption(o, { selected })
                       ) : (
                         <span className="min-w-0">
-                          <span className="block truncate text-xs text-[#1E293B]">{getLabel(o)}</span>
+                          <span className="block truncate text-xs text-ps-ink">{getLabel(o)}</span>
                           {getSecondary?.(o) && (
-                            <span className="block truncate text-[10px] text-[#94A3B8]">
+                            <span className="block truncate text-[10px] text-ps-hint">
                               {getSecondary(o)}
                             </span>
                           )}
@@ -640,8 +640,8 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                     onMouseEnter={() => setHighlighted(createIdx)}
                     onClick={() => void doCreate()}
                     className={cn(
-                      "flex cursor-pointer items-center gap-1.5 border-t border-[#F1F5F9] px-3 py-1.5 text-xs text-blue-600",
-                      highlighted === createIdx ? "bg-[#EFF6FF]" : "hover:bg-[#F8FAFC]",
+                      "flex cursor-pointer items-center gap-1.5 border-t border-ps-muted px-3 py-1.5 text-xs text-blue-600",
+                      highlighted === createIdx ? "bg-[#EFF6FF]" : "hover:bg-ps-bg",
                     )}
                   >
                     <Plus size={13} className="flex-shrink-0" />

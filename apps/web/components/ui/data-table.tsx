@@ -216,7 +216,7 @@ export function exportSelectedAction<T>(filename: string, columns: Column<T>[]):
 }
 
 const btn =
-  "inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1.5 text-xs font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC] disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-lg border border-ps-border bg-white px-2.5 py-1.5 text-xs font-medium text-ps-label transition-colors hover:bg-ps-bg disabled:opacity-50";
 
 export function DataTable<T>({
   data,
@@ -308,16 +308,16 @@ export function DataTable<T>({
             buttons crowd the row on a laptop. */}
         {hasSearch && (
           <div className="relative min-w-[14rem] flex-1">
-            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ps-hint" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder={searchPlaceholder}
               aria-label="Search"
-              className="w-full rounded-lg border border-[#E2E8F0] bg-white py-1.5 pl-8 pr-7 text-xs text-[#334155] placeholder:text-[#94A3B8] focus:border-[#94A3B8] focus:outline-none"
+              className="w-full rounded-lg border border-ps-border bg-white py-1.5 pl-8 pr-7 text-xs text-ps-body placeholder:text-ps-hint focus:border-ps-hint focus:outline-none"
             />
             {q && (
-              <button aria-label="Clear search" onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#475569]">
+              <button aria-label="Clear search" onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
                 <X size={13} />
               </button>
             )}
@@ -329,7 +329,7 @@ export function DataTable<T>({
         ))}
 
         {(t.activeFilterCount > 0 || t.prefs.search) && (
-          <button onClick={t.clearFilters} className="text-xs font-medium text-[#64748B] underline-offset-2 hover:underline">
+          <button onClick={t.clearFilters} className="text-xs font-medium text-ps-label underline-offset-2 hover:underline">
             Clear
           </button>
         )}
@@ -459,12 +459,12 @@ export function DataTable<T>({
         isEmpty={page.total === 0}
         onRetry={onRetry}
         skeleton={<TableSkeleton rows={8} cols={Math.min(colSpan || 4, 6)} />}
-        empty={<div className="rounded-xl border border-[#F1F5F9] bg-white"><EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} /></div>}
+        empty={<div className="rounded-xl border border-ps-muted bg-white"><EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} /></div>}
       >
-        <div className="overflow-x-auto rounded-xl border border-[#F1F5F9] bg-white">
+        <div className="overflow-x-auto rounded-xl border border-ps-muted bg-white">
           <table className="w-full text-xs">
-            <thead className={cn(stickyHeader && "sticky top-0 z-10", "bg-[#F8FAFC]")}>
-              <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+            <thead className={cn(stickyHeader && "sticky top-0 z-10", "bg-ps-bg")}>
+              <tr className="border-b border-ps-muted text-ps-hint">
                 {hasBulk && (
                   <th className="w-8 px-3 py-3">
                     <input
@@ -489,8 +489,8 @@ export function DataTable<T>({
                         : (c.width ? { width: c.width } : undefined)}
                       className={cn(
                         "relative px-3 py-3 font-semibold", align(c.align),
-                        c.sticky && "sticky left-0 bg-[#F8FAFC]",
-                        c.sortable && "cursor-pointer select-none hover:text-[#475569]",
+                        c.sticky && "sticky left-0 bg-ps-bg",
+                        c.sortable && "cursor-pointer select-none hover:text-ps-label",
                         c.headerClassName,
                       )}
                       onClick={c.sortable ? () => t.toggleSort(c.key) : undefined}
@@ -499,7 +499,7 @@ export function DataTable<T>({
                         {c.header}
                         {c.sortable && (active
                           ? (t.state.sort!.dir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />)
-                          : <ChevronsUpDown size={11} className="text-[#CBD5E1]" />)}
+                          : <ChevronsUpDown size={11} className="text-ps-disabled" />)}
                       </span>
                       <ColumnResizer
                         columnKey={c.key}
@@ -512,7 +512,7 @@ export function DataTable<T>({
                 {rowActions && <th className="px-3 py-3 text-right font-semibold">Actions</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {page.rows.map((row) => {
                 const id = getRowId(row);
                 const sel = t.isSelected(row);
@@ -524,7 +524,7 @@ export function DataTable<T>({
                   <React.Fragment key={id}>
                   <tr
                     ref={lit ? highlightRef : undefined}
-                    className={cn("hover:bg-[#F8FAFC]", rowClassName?.(row),
+                    className={cn("hover:bg-ps-bg", rowClassName?.(row),
                                   sel && "bg-[#EEF2FF]", clickable && "cursor-pointer",
                                   lit && "bg-amber-50 ring-2 ring-inset ring-amber-300")}
                     onClick={clickable ? () => onRowClick!(row) : undefined}
@@ -543,7 +543,7 @@ export function DataTable<T>({
                     {t.visibleColumns.map((c) => (
                       <td
                         key={c.key}
-                        className={cn("px-3 py-2 text-[#334155]", align(c.align), c.sticky && "sticky left-0 bg-white", c.className)}
+                        className={cn("px-3 py-2 text-ps-body", align(c.align), c.sticky && "sticky left-0 bg-white", c.className)}
                       >
                         {c.render ? c.render(row) : String(c.accessor(row) ?? "")}
                       </td>
@@ -558,7 +558,7 @@ export function DataTable<T>({
                       stopped here: it holds controls of its own, and bubbling
                       into onRowClick would collapse the thing being used. */}
                   {detail != null && (
-                    <tr className={cn("bg-[#F8FAFC]", rowClassName?.(row))}>
+                    <tr className={cn("bg-ps-bg", rowClassName?.(row))}>
                       <td colSpan={colSpan} className="px-3 pb-3 pt-1"
                           onClick={(e) => e.stopPropagation()}>
                         {detail}
@@ -579,7 +579,7 @@ export function DataTable<T>({
           locally would be a control that does nothing. */}
       {serverPaged ? (
         serverPaged.total > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#64748B]">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ps-label">
             <div className="flex items-center gap-2">
               <span>Rows per page</span>
               <select
@@ -590,7 +590,7 @@ export function DataTable<T>({
                   // meaningless once the page size changes under it.
                   offset: 0, pageSize: Number(e.target.value),
                 })}
-                className="rounded-lg border border-[#E2E8F0] bg-white px-2 py-1 text-[#475569] disabled:opacity-50"
+                className="rounded-lg border border-ps-border bg-white px-2 py-1 text-ps-label disabled:opacity-50"
                 aria-label="Rows per page"
               >
                 {pageSizes.map((n) => (
@@ -627,13 +627,13 @@ export function DataTable<T>({
           </div>
         )
       ) : page.total > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#64748B]">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ps-label">
           <div className="flex items-center gap-2">
             <span>Rows per page</span>
             <select
               value={t.prefs.pageSize}
               onChange={(e) => t.setPageSize(Number(e.target.value))}
-              className="rounded-lg border border-[#E2E8F0] bg-white px-2 py-1 text-[#475569]"
+              className="rounded-lg border border-ps-border bg-white px-2 py-1 text-ps-label"
               aria-label="Rows per page"
             >
               {pageSizes.map((n) => (
@@ -665,8 +665,8 @@ function FilterControl<T>({
   value: unknown;
   onChange: (v: import("@/lib/table/types").FilterValue) => void;
 }) {
-  const sel = "rounded-lg border border-[#E2E8F0] bg-white px-2 py-1.5 text-xs text-[#475569] focus:border-[#94A3B8] focus:outline-none";
-  const num = "w-24 rounded-lg border border-[#E2E8F0] bg-white px-2 py-1.5 text-xs text-[#475569] focus:border-[#94A3B8] focus:outline-none";
+  const sel = "rounded-lg border border-ps-border bg-white px-2 py-1.5 text-xs text-ps-label focus:border-ps-hint focus:outline-none";
+  const num = "w-24 rounded-lg border border-ps-border bg-white px-2 py-1.5 text-xs text-ps-label focus:border-ps-hint focus:outline-none";
 
   if (def.type === "select") {
     return (
@@ -693,7 +693,7 @@ function FilterControl<T>({
     return (
       <span className="inline-flex items-center gap-1" title={def.label}>
         <input type="date" aria-label={`${def.label} from`} className={sel} value={v.from ?? ""} onChange={(e) => onChange({ ...v, from: e.target.value })} />
-        <span className="text-[#CBD5E1]">–</span>
+        <span className="text-ps-disabled">–</span>
         <input type="date" aria-label={`${def.label} to`} className={sel} value={v.to ?? ""} onChange={(e) => onChange({ ...v, to: e.target.value })} />
       </span>
     );
@@ -713,7 +713,7 @@ function FilterControl<T>({
   return (
     <span className="inline-flex items-center gap-1" title={`${def.label} (₹)`}>
       <input type="number" inputMode="decimal" placeholder={`${def.label} min ₹`} aria-label={`${def.label} minimum`} className={num} value={toRupees(v.min)} onChange={(e) => onChange({ ...v, min: toPaise(e.target.value) })} />
-      <span className="text-[#CBD5E1]">–</span>
+      <span className="text-ps-disabled">–</span>
       <input type="number" inputMode="decimal" placeholder="max ₹" aria-label={`${def.label} maximum`} className={num} value={toRupees(v.max)} onChange={(e) => onChange({ ...v, max: toPaise(e.target.value) })} />
     </span>
   );
@@ -736,9 +736,9 @@ function ColumnVisibility<T>({
       <summary className={cn(btn, "cursor-pointer list-none")}>
         <Columns3 size={13} /> Columns
       </summary>
-      <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-[#E2E8F0] bg-white p-1.5 shadow-lg">
+      <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-ps-border bg-white p-1.5 shadow-lg">
         {hideable.map((c) => (
-          <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[#475569] hover:bg-[#F8FAFC]">
+          <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-ps-label hover:bg-ps-bg">
             <input type="checkbox" checked={!hidden.includes(c.key)} onChange={() => onToggle(c.key)} className="cursor-pointer accent-[#4338CA]" />
             {c.header}
           </label>

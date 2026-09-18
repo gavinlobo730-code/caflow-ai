@@ -162,8 +162,8 @@ export default function ClientReportsPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       <div>
-        <h2 className="text-sm font-semibold text-[#1E293B]">Reports</h2>
-        <p className="text-xs text-[#94A3B8] mt-0.5">
+        <h2 className="text-sm font-semibold text-ps-ink">Reports</h2>
+        <p className="text-xs text-ps-hint mt-0.5">
           Everything this client&apos;s books can tell you, in one place. Each report opens
           where it is computed, so there is only ever one set of figures.
         </p>
@@ -172,14 +172,14 @@ export default function ClientReportsPage() {
       {GROUPS.map((group) => {
         const GroupIcon = group.icon;
         return (
-          <div key={group.id} className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div key={group.id} className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg border border-blue-100 bg-blue-50 flex items-center justify-center flex-shrink-0">
                 <GroupIcon size={15} className="text-blue-600" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-[#334155]">{group.title}</p>
-                <p className="text-[10px] text-[#94A3B8] mt-0.5">{group.desc}</p>
+                <p className="text-xs font-semibold text-ps-body">{group.title}</p>
+                <p className="text-[10px] text-ps-hint mt-0.5">{group.desc}</p>
               </div>
             </div>
             <div className="divide-y divide-gray-50">
@@ -187,20 +187,20 @@ export default function ClientReportsPage() {
                 <button
                   key={r.id}
                   onClick={() => router.push(`/clients/${clientId}/${r.href}`)}
-                  className="w-full px-5 py-3 flex items-center gap-4 hover:bg-[#F8FAFC] text-left transition-colors group"
+                  className="w-full px-5 py-3 flex items-center gap-4 hover:bg-ps-bg text-left transition-colors group"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-xs font-medium text-[#1E293B]">{r.title}</p>
+                      <p className="text-xs font-medium text-ps-ink">{r.title}</p>
                       {r.statute && (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B]">
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-ps-muted text-ps-label">
                           {r.statute}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-[#64748B] mt-0.5">{r.desc}</p>
+                    <p className="text-[11px] text-ps-label mt-0.5">{r.desc}</p>
                   </div>
-                  <ArrowRight size={14} className="text-[#CBD5E1] group-hover:text-[#64748B] flex-shrink-0" />
+                  <ArrowRight size={14} className="text-ps-disabled group-hover:text-ps-label flex-shrink-0" />
                 </button>
               ))}
             </div>
@@ -209,14 +209,14 @@ export default function ClientReportsPage() {
       })}
 
       {NOT_BUILT.length > 0 && (
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center flex-shrink-0">
-            <Boxes size={15} className="text-[#94A3B8]" />
+          <div className="w-8 h-8 rounded-lg border border-ps-border bg-ps-bg flex items-center justify-center flex-shrink-0">
+            <Boxes size={15} className="text-ps-hint" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-[#334155]">Not built yet</p>
-            <p className="text-[10px] text-[#94A3B8] mt-0.5">
+            <p className="text-xs font-semibold text-ps-body">Not built yet</p>
+            <p className="text-[10px] text-ps-hint mt-0.5">
               Listed so the gap is visible. These are not links.
             </p>
           </div>
@@ -224,17 +224,17 @@ export default function ClientReportsPage() {
         <div className="divide-y divide-gray-50">
           {NOT_BUILT.map((n) => (
             <div key={n.title} className="px-5 py-3">
-              <p className="text-xs font-medium text-[#64748B]">{n.title}</p>
-              <p className="text-[11px] text-[#94A3B8] mt-0.5">{n.why}</p>
+              <p className="text-xs font-medium text-ps-label">{n.title}</p>
+              <p className="text-[11px] text-ps-hint mt-0.5">{n.why}</p>
             </div>
           ))}
         </div>
       </div>
       )}
 
-      <div className="flex items-start gap-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3">
-        <Users size={14} className="text-[#94A3B8] flex-shrink-0 mt-0.5" />
-        <p className="text-[11px] text-[#64748B]">
+      <div className="flex items-start gap-2.5 bg-ps-bg border border-ps-border rounded-xl px-4 py-3">
+        <Users size={14} className="text-ps-hint flex-shrink-0 mt-0.5" />
+        <p className="text-[11px] text-ps-label">
           Sharing a report with the client sends it to their portal — see{" "}
           <button
             onClick={() => router.push(`/clients/${clientId}/accounting?tab=reports`)}

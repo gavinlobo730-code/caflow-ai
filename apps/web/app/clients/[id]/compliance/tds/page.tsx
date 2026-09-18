@@ -64,12 +64,12 @@ interface ChallanGap {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-[#F1F5F9] text-[#334155]",
+  pending: "bg-ps-muted text-ps-body",
   deposited: "bg-blue-100 text-blue-700",
   prepared: "bg-amber-100 text-amber-700",
   ca_approved: "bg-green-100 text-green-700",
   filed: "bg-emerald-100 text-emerald-800",
-  draft: "bg-[#F1F5F9] text-[#334155]",
+  draft: "bg-ps-muted text-ps-body",
 };
 
 const KYC_COLORS: Record<string, string> = {
@@ -138,19 +138,19 @@ function TDSDashboard({ clientId }: { clientId: string }) {
   return (
     <div className="grid grid-cols-2 gap-4">
       <div className="rounded border p-4 bg-blue-50">
-        <p className="text-xs text-[#64748B]">Total Challans</p>
+        <p className="text-xs text-ps-label">Total Challans</p>
         <p className="text-2xl font-bold">{summary.total_challans}</p>
       </div>
       <div className="rounded border p-4 bg-green-50">
-        <p className="text-xs text-[#64748B]">Total Deposited</p>
+        <p className="text-xs text-ps-label">Total Deposited</p>
         <p className="text-2xl font-bold">{rupees(summary.total_deposited_paise)}</p>
       </div>
       <div className="rounded border p-4 bg-amber-50">
-        <p className="text-xs text-[#64748B]">TDS Returns</p>
+        <p className="text-xs text-ps-label">TDS Returns</p>
         <p className="text-2xl font-bold">{summary.total_returns}</p>
       </div>
       <div className="rounded border p-4 bg-purple-50">
-        <p className="text-xs text-[#64748B]">Certificates</p>
+        <p className="text-xs text-ps-label">Certificates</p>
         <p className="text-2xl font-bold">{summary.total_certificates}</p>
       </div>
     </div>
@@ -184,7 +184,7 @@ function DeductionsTab({ clientId }: { clientId: string }) {
       {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#F8FAFC] text-left">
+            <tr className="bg-ps-bg text-left">
               <th className="px-3 py-2 border-b">Date</th>
               <th className="px-3 py-2 border-b">Party</th>
               <th className="px-3 py-2 border-b">Section</th>
@@ -195,7 +195,7 @@ function DeductionsTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={(r.id as string) ?? i} className="border-b hover:bg-[#F8FAFC]">
+              <tr key={(r.id as string) ?? i} className="border-b hover:bg-ps-bg">
                 <td className="px-3 py-2">{r.deduction_date as string ?? "—"}</td>
                 <td className="px-3 py-2">{r.deductee_name as string ?? "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">§{r.section as string}</td>
@@ -207,10 +207,10 @@ function DeductionsTab({ clientId }: { clientId: string }) {
             {loadError ? (
               <tr><td colSpan={6} className="px-3 py-6 text-center">
                 <p className="text-sm text-red-600 font-medium">{loadError}</p>
-                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No deductions recorded.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No deductions recorded.</td></tr>
             )}
           </tbody>
         </table>
@@ -272,7 +272,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">New TDS Challan</p>
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -303,7 +303,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
       {loading ? <TableSkeleton cols={7} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#F8FAFC] text-left">
+            <tr className="bg-ps-bg text-left">
               <th className="px-3 py-2 border-b">Challan No.</th>
               <th className="px-3 py-2 border-b">Date</th>
               <th className="px-3 py-2 border-b">BSR Code</th>
@@ -315,7 +315,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
+              <tr key={r.id as string} className="border-b hover:bg-ps-bg">
                 <td className="px-3 py-2 font-mono text-xs">{r.challan_no as string}</td>
                 <td className="px-3 py-2">{r.payment_date as string}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.bsr_code as string}</td>
@@ -332,10 +332,10 @@ function ChallansTab({ clientId }: { clientId: string }) {
             {loadError ? (
               <tr><td colSpan={7} className="px-3 py-6 text-center">
                 <p className="text-sm text-red-600 font-medium">{loadError}</p>
-                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-4 text-center text-[#94A3B8]">No challans yet.</td></tr>
+              <tr><td colSpan={7} className="px-3 py-4 text-center text-ps-hint">No challans yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -520,9 +520,9 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       </div>
 
       {showCompute && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">Compute TDS Return from Books</p>
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-ps-label">
             26Q derives from posted purchase bills and vendor advances; 27Q from the
             same books, for payments to non-residents (Rule 31A(4)(b)); 24Q from
             finalized payroll runs. All three reconcile the total TDS deducted to the
@@ -556,7 +556,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               className="border rounded px-3 py-1.5 text-sm col-span-2" />
           </div>
           {deductorLoading && (
-            <p className="text-xs text-[#94A3B8]">Reading the deductor details on file…</p>
+            <p className="text-xs text-ps-hint">Reading the deductor details on file…</p>
           )}
           {deductorGaps.length > 0 && (
             <div className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 space-y-1">
@@ -597,9 +597,9 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                   )}
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-sm">
-                  <div><p className="text-xs text-[#64748B]">Deductees</p><p className="font-medium">{computeResult.deductee_count as number}</p></div>
-                  <div><p className="text-xs text-[#64748B]">TDS Deducted</p><p className="font-medium">{rupees(computeResult.total_tds_deducted_paise as number)}</p></div>
-                  <div><p className="text-xs text-[#64748B]">TDS Deposited</p><p className="font-medium">{rupees(computeResult.total_tds_deposited_paise as number)}</p></div>
+                  <div><p className="text-xs text-ps-label">Deductees</p><p className="font-medium">{computeResult.deductee_count as number}</p></div>
+                  <div><p className="text-xs text-ps-label">TDS Deducted</p><p className="font-medium">{rupees(computeResult.total_tds_deducted_paise as number)}</p></div>
+                  <div><p className="text-xs text-ps-label">TDS Deposited</p><p className="font-medium">{rupees(computeResult.total_tds_deposited_paise as number)}</p></div>
                 </div>
                 {/* 27Q reports tax, SURCHARGE and CESS in three columns, because
                     §195 charges at the rates in force under Part II of the First
@@ -608,10 +608,10 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                     exist — 26Q and 24Q have no such columns. */}
                 {computeForm.return_type === "27Q" && (
                   <div className="grid grid-cols-3 gap-3 text-sm">
-                    <div><p className="text-xs text-[#64748B]">Surcharge</p><p className="font-medium">{rupees((computeResult.total_surcharge_paise as number) ?? 0)}</p></div>
-                    <div><p className="text-xs text-[#64748B]">Cess</p><p className="font-medium">{rupees((computeResult.total_cess_paise as number) ?? 0)}</p></div>
+                    <div><p className="text-xs text-ps-label">Surcharge</p><p className="font-medium">{rupees((computeResult.total_surcharge_paise as number) ?? 0)}</p></div>
+                    <div><p className="text-xs text-ps-label">Cess</p><p className="font-medium">{rupees((computeResult.total_cess_paise as number) ?? 0)}</p></div>
                     <div>
-                      <p className="text-xs text-[#64748B]">Nil remittances</p>
+                      <p className="text-xs text-ps-label">Nil remittances</p>
                       <p className="font-medium">{(computeResult.nil_deduction_count as number) ?? 0}</p>
                     </div>
                   </div>
@@ -675,7 +675,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       )}
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">New TDS Return</p>
           <div className="grid grid-cols-3 gap-3">
             <select value={form.return_type} onChange={(e) => setForm((f) => ({ ...f, return_type: e.target.value }))}
@@ -700,7 +700,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#F8FAFC] text-left">
+            <tr className="bg-ps-bg text-left">
               <th className="px-3 py-2 border-b">Type</th>
               <th className="px-3 py-2 border-b">Quarter</th>
               <th className="px-3 py-2 border-b">FY</th>
@@ -711,7 +711,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
+              <tr key={r.id as string} className="border-b hover:bg-ps-bg">
                 <td className="px-3 py-2 font-medium">{r.return_type as string}</td>
                 <td className="px-3 py-2">{r.quarter as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string}</td>
@@ -724,7 +724,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "pending" && (
                     <button onClick={() => updateStatus(r.id as string, "prepared")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-[#F1F5F9]">Prepare</button>
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Prepare</button>
                   )}
                   {r.status === "prepared" && (
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
@@ -736,10 +736,10 @@ function ReturnsTab({ clientId }: { clientId: string }) {
             {loadError ? (
               <tr><td colSpan={6} className="px-3 py-6 text-center">
                 <p className="text-sm text-red-600 font-medium">{loadError}</p>
-                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No TDS returns yet.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No TDS returns yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -793,7 +793,7 @@ function Form26ASTab({ clientId }: { clientId: string }) {
       <div className="space-y-1">
         <p className={`text-xs font-medium ${tone}`}>{title} · {rows.length}</p>
         {rows.map((m, i) => (
-          <div key={i} className="text-xs text-[#334155] border rounded p-2">
+          <div key={i} className="text-xs text-ps-body border rounded p-2">
             <span className="font-mono">
               PAN {(m.key as string[])?.[0] || "—"} §{(m.key as string[])?.[1]}
             </span>
@@ -801,7 +801,7 @@ function Form26ASTab({ clientId }: { clientId: string }) {
             Register: {rupees(m.book_paise as number)}, 26AS: {rupees(m.form26as_paise as number)}
             {(m.diff_paise as number) ? `, Diff: ${rupees(m.diff_paise as number)}` : ""}
             {m.reason ? (
-              <p className="text-[11px] text-[#64748B] mt-0.5">{m.reason as string}</p>
+              <p className="text-[11px] text-ps-label mt-0.5">{m.reason as string}</p>
             ) : null}
           </div>
         ))}
@@ -812,7 +812,7 @@ function Form26ASTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4">
       <h3 className="font-medium">Form 26AS Reconciliation</h3>
-      <p className="text-xs text-[#64748B] max-w-[80ch]">
+      <p className="text-xs text-ps-label max-w-[80ch]">
         The TDS this client withheld from its own vendors, as the portal shows it
         against this firm&apos;s register. Paste the 26AS entries only — the register
         is read from the client&apos;s own TDS deductions for the year, not from what
@@ -850,10 +850,10 @@ function Form26ASTab({ clientId }: { clientId: string }) {
             <span className="text-red-600">✗ Not in the register: {summary.missing_in_books_count ?? 0}</span>
             <span className="text-red-600">✗ Not in 26AS: {summary.missing_count ?? 0}</span>
             {(summary.no_pan_count ?? 0) > 0 && (
-              <span className="text-[#64748B]">No PAN: {summary.no_pan_count}</span>
+              <span className="text-ps-label">No PAN: {summary.no_pan_count}</span>
             )}
           </div>
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-ps-label">
             26AS {rupees(summary.total_26as_paise ?? 0)} against a register of{" "}
             {rupees(summary.total_books_paise ?? 0)}
             {(summary.net_variance_paise ?? 0) !== 0
@@ -866,7 +866,7 @@ function Form26ASTab({ clientId }: { clientId: string }) {
             rows={bucket("missing_in_books")} />
           <Rows title="In the register, not on the portal" tone="text-red-700"
             rows={bucket("missing_in_26as")} />
-          <Rows title="No deductee PAN — cannot be looked up" tone="text-[#64748B]"
+          <Rows title="No deductee PAN — cannot be looked up" tone="text-ps-label"
             rows={bucket("no_pan")} />
         </div>
       )}
@@ -943,7 +943,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
       </div>
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">Generate Certificate Draft</p>
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -980,7 +980,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
       {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-[#F8FAFC] text-left">
+            <tr className="bg-ps-bg text-left">
               <th className="px-3 py-2 border-b">Type</th>
               <th className="px-3 py-2 border-b">Deductee</th>
               <th className="px-3 py-2 border-b">PAN</th>
@@ -991,7 +991,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
+              <tr key={r.id as string} className="border-b hover:bg-ps-bg">
                 {/* The form's name in ITS OWN period. The register holds
                     several years at once and the stored '16A' is Form 16A for
                     2025-26 and Form 131 for 2026-27; the server derives it per
@@ -1017,10 +1017,10 @@ function CertificatesTab({ clientId }: { clientId: string }) {
             {loadError ? (
               <tr><td colSpan={6} className="px-3 py-6 text-center">
                 <p className="text-sm text-red-600 font-medium">{loadError}</p>
-                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-[#94A3B8]">No certificates generated.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No certificates generated.</td></tr>
             )}
           </tbody>
         </table>
@@ -1050,7 +1050,7 @@ export default function TDSWorkspacePage() {
   const [tab, setTab] = useState<TDSTab>("dashboard");
 
   if (!clientId || clientId === "_placeholder") {
-    return <p className="text-sm text-[#64748B] p-6">Select a client to view TDS workspace.</p>;
+    return <p className="text-sm text-ps-label p-6">Select a client to view TDS workspace.</p>;
   }
 
   return (
@@ -1068,7 +1068,7 @@ export default function TDSWorkspacePage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
                 ? "border-blue-600 text-blue-700"
-                : "border-transparent text-[#64748B] hover:text-[#334155]"
+                : "border-transparent text-ps-label hover:text-ps-body"
             }`}>
             {t.label}
           </button>
@@ -1221,7 +1221,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="font-medium">§197 Lower-Deduction Certificates</h3>
-          <p className="text-xs text-[#64748B] mt-0.5">
+          <p className="text-xs text-ps-label mt-0.5">
             What a vendor&apos;s Assessing Officer certified: the rate, the certificate
             number, the period, and the amount it applies up to (Rule 28AA(4)). Bills and
             advances to that vendor withhold at the certified rate until the amount is used up.
@@ -1243,7 +1243,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
           does not combine a certified rate with the §115A / Part II / DTAA
           comparison §195 already requires, and says so on the document. */}
       {notPriced.length > 0 && (
-        <p className="text-xs text-[#64748B] bg-[#F8FAFC] border rounded px-3 py-2">
+        <p className="text-xs text-ps-label bg-ps-bg border rounded px-3 py-2">
           §197 also reaches {notPriced.map((s) => `§${s}`).join(", ")}, which this
           product does not price — a certificate recorded against one could not be
           applied to a bill, so it is not offered here.
@@ -1251,7 +1251,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
       )}
 
       {showNew && (
-        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+        <div className="border rounded p-4 bg-ps-bg space-y-3">
           {saveError && <p className="text-sm text-red-600">{saveError}</p>}
           <div className="grid grid-cols-3 gap-3">
             <select value={form.vendor_id} onChange={(e) => setForm((f) => ({ ...f, vendor_id: e.target.value }))}
@@ -1292,14 +1292,14 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
       )}
 
       {rows.length === 0 && !loadError ? (
-        <p className="text-sm text-[#64748B]">
+        <p className="text-sm text-ps-label">
           No §197 certificates recorded. Without one, every bill withholds at the full
           section rate — which is right unless a vendor has produced a certificate.
         </p>
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs text-[#64748B] border-b">
+            <tr className="text-left text-xs text-ps-label border-b">
               <th className="py-2">Vendor</th><th>Section</th><th>Certificate</th>
               <th className="text-right">Rate</th><th>Valid</th>
               <th className="text-right">Up to</th>

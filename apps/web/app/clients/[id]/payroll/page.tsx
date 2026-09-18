@@ -198,9 +198,9 @@ function DashboardTab({ clientId }: { clientId: string }) {
 
   if (loadFailed) return (
     <div className="p-5">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+      <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
         <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the payroll dashboard — the request failed or timed out.</p>
-        <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
       </div>
     </div>
   );
@@ -217,8 +217,8 @@ function DashboardTab({ clientId }: { clientId: string }) {
       </div>
 
       {latest && (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-3">Latest Run — {fmtMonth(latest.month)}</p>
+        <div className="bg-white rounded-xl border border-ps-border p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-ps-hint mb-3">Latest Run — {fmtMonth(latest.month)}</p>
           <div className="grid grid-cols-3 gap-4">
             <SummaryRow label="Gross Payroll" value={fmt(latest.total_gross_paise)} />
             <SummaryRow label="PF (both sides)" value={fmt(latest.total_pf_paise)} />
@@ -226,25 +226,25 @@ function DashboardTab({ clientId }: { clientId: string }) {
           </div>
           <div className="mt-3 flex items-center gap-2">
             <StatusBadge status={latest.status} />
-            <span className="text-[11px] text-[#94A3B8]">{latest.headcount} employees</span>
+            <span className="text-[11px] text-ps-hint">{latest.headcount} employees</span>
           </div>
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-3">Payroll History</p>
+      <div className="bg-white rounded-xl border border-ps-border p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-ps-hint mb-3">Payroll History</p>
         {runs.length === 0 ? (
-          <p className="text-sm text-[#94A3B8]">No payroll runs yet. Create your first run from the Payroll Runs tab.</p>
+          <p className="text-sm text-ps-hint">No payroll runs yet. Create your first run from the Payroll Runs tab.</p>
         ) : (
           <div className="space-y-2">
             {runs.slice(0, 6).map(r => (
-              <div key={r.id} className="flex items-center justify-between py-2 border-b border-[#F1F5F9] last:border-0">
+              <div key={r.id} className="flex items-center justify-between py-2 border-b border-ps-muted last:border-0">
                 <div>
-                  <p className="text-sm font-medium text-[#1E293B]">{fmtMonth(r.month)}</p>
-                  <p className="text-[11px] text-[#94A3B8]">{r.headcount} employees</p>
+                  <p className="text-sm font-medium text-ps-ink">{fmtMonth(r.month)}</p>
+                  <p className="text-[11px] text-ps-hint">{r.headcount} employees</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-semibold text-[#1E293B]">{fmt(r.total_gross_paise)}</p>
+                  <p className="text-sm font-semibold text-ps-ink">{fmt(r.total_gross_paise)}</p>
                   <StatusBadge status={r.status} />
                 </div>
               </div>
@@ -359,9 +359,9 @@ function EmployeesTab({ clientId }: { clientId: string }) {
 
   if (loadFailed) return (
     <div className="p-6">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+      <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
         <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load employees — the request failed or timed out.</p>
-        <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
       </div>
     </div>
   );
@@ -369,12 +369,12 @@ function EmployeesTab({ clientId }: { clientId: string }) {
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-[#1E293B]">{employees.length} active employees</p>
+        <p className="text-sm font-semibold text-ps-ink">{employees.length} active employees</p>
         <div className="flex gap-2">
-          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-1.5 border border-[#E2E8F0] text-[#475569] text-[12px] font-medium rounded-lg hover:bg-[#F1F5F9] transition-colors">
+          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-1.5 border border-ps-border text-ps-label text-[12px] font-medium rounded-lg hover:bg-ps-muted transition-colors">
             <Upload size={13} /> Import
           </button>
-          <button onClick={() => downloadCsv("employees.csv", toCsv(employees, EMPLOYEE_EXPORT_COLUMNS))} disabled={employees.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 border border-[#E2E8F0] text-[#475569] text-[12px] font-medium rounded-lg hover:bg-[#F1F5F9] transition-colors disabled:opacity-50">
+          <button onClick={() => downloadCsv("employees.csv", toCsv(employees, EMPLOYEE_EXPORT_COLUMNS))} disabled={employees.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 border border-ps-border text-ps-label text-[12px] font-medium rounded-lg hover:bg-ps-muted transition-colors disabled:opacity-50">
             <Download size={13} /> Export
           </button>
           <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-[12px] font-medium rounded-lg hover:bg-blue-700 transition-colors">
@@ -415,30 +415,30 @@ function EmployeesTab({ clientId }: { clientId: string }) {
         />
       )}
 
-      <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC]">
+            <tr className="border-b border-ps-muted bg-ps-bg">
               {["Name", "Designation", "Department", "Basic", "PF", "ESI", "Status", ""].map(h => (
-                <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">{h}</th>
+                <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-ps-hint">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F1F5F9]">
+          <tbody className="divide-y divide-ps-muted">
             {employees.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No employees yet</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-ps-hint text-sm">No employees yet</td></tr>
             ) : employees.map(e => (
-              <tr key={e.id} className="hover:bg-[#F8FAFC] transition-colors">
-                <td className="px-4 py-3 font-medium text-[#1E293B]">{e.name}</td>
-                <td className="px-4 py-3 text-[#64748B]">{e.designation || "—"}</td>
-                <td className="px-4 py-3 text-[#64748B]">{e.department || "—"}</td>
-                <td className="px-4 py-3 font-mono text-[#1E293B]">{fmt(e.basic_paise)}</td>
-                <td className="px-4 py-3">{e.pf_applicable ? <span className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-[10px] text-[#94A3B8]">No</span>}</td>
-                <td className="px-4 py-3">{e.esi_applicable ? <span className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-[10px] text-[#94A3B8]">No</span>}</td>
+              <tr key={e.id} className="hover:bg-ps-bg transition-colors">
+                <td className="px-4 py-3 font-medium text-ps-ink">{e.name}</td>
+                <td className="px-4 py-3 text-ps-label">{e.designation || "—"}</td>
+                <td className="px-4 py-3 text-ps-label">{e.department || "—"}</td>
+                <td className="px-4 py-3 font-mono text-ps-ink">{fmt(e.basic_paise)}</td>
+                <td className="px-4 py-3">{e.pf_applicable ? <span className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-[10px] text-ps-hint">No</span>}</td>
+                <td className="px-4 py-3">{e.esi_applicable ? <span className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-[10px] text-ps-hint">No</span>}</td>
                 <td className="px-4 py-3"><span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", e.status === "active" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600")}>{e.status}</span></td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => setOpenEmployee(e)}
-                    className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded-lg text-[#334155] hover:bg-[#F1F5F9]">
+                    className="text-[11px] px-2 py-1 border border-ps-border rounded-lg text-ps-body hover:bg-ps-muted">
                     Open
                   </button>
                 </td>
@@ -672,7 +672,7 @@ function RunsTab({ clientId, firmId, openDoc }:
 
   if (loading) return (
     <div className="p-5 space-y-4">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+      <div className="bg-white rounded-xl border border-ps-border p-4">
         <Skeleton className="h-2.5 w-24 mb-3" />
         <div className="flex items-end gap-3">
           <Skeleton className="h-9 w-40 rounded-lg" />
@@ -693,13 +693,13 @@ function RunsTab({ clientId, firmId, openDoc }:
           onClose={() => setDemo(null)}
         />
       )}
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
-        <p className="text-[12px] font-semibold text-[#1E293B] mb-3">Create New Run</p>
+      <div className="bg-white rounded-xl border border-ps-border p-4">
+        <p className="text-[12px] font-semibold text-ps-ink mb-3">Create New Run</p>
         <div className="flex items-end gap-3">
           <div>
-            <label className="block text-[11px] text-[#64748B] mb-1">Month</label>
+            <label className="block text-[11px] text-ps-label mb-1">Month</label>
             <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-              className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-[13px] text-[#1E293B] outline-none focus:border-blue-400" />
+              className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px] text-ps-ink outline-none focus:border-blue-400" />
           </div>
           <button onClick={createRun} disabled={creating}
             className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white text-[12px] font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
@@ -766,7 +766,7 @@ function RunsTab({ clientId, firmId, openDoc }:
               onChange={e => setOverrideReason(e.target.value)}
               rows={2}
               placeholder="e.g. Client confirmed by email on the 3rd that nobody was on leave."
-              className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-[12px] text-[#1E293B] outline-none focus:border-amber-500 bg-white"
+              className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-amber-500 bg-white"
             />
             <p className="text-[10px] text-amber-700 mt-0.5">
               {overrideReason.trim().length}/{OVERRIDE_REASON_MIN} characters
@@ -793,25 +793,25 @@ function RunsTab({ clientId, firmId, openDoc }:
 
       <div className="space-y-2">
         {loadFailed ? (
-          <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+          <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
             <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load payroll runs — the request failed or timed out.</p>
-            <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+            <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
           </div>
         ) : (
         <>
         {runs.length === 0 && (
-          <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center text-[#94A3B8] text-sm">No payroll runs yet</div>
+          <div className="bg-white rounded-xl border border-ps-border p-8 text-center text-ps-hint text-sm">No payroll runs yet</div>
         )}
         {runs.map(r => (
           <div key={r.id} className={"bg-white rounded-xl border overflow-hidden " +
               (openDoc && r.id === openDoc
-                ? "border-amber-300 ring-2 ring-amber-300" : "border-[#E2E8F0]")}>
+                ? "border-amber-300 ring-2 ring-amber-300" : "border-ps-border")}>
             <div className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-3">
                 <StatusBadge status={r.status} />
                 <div>
-                  <p className="text-sm font-semibold text-[#1E293B]">{fmtMonth(r.month)}</p>
-                  <p className="text-[11px] text-[#94A3B8]">{r.headcount} employees · Gross {fmt(r.total_gross_paise)}</p>
+                  <p className="text-sm font-semibold text-ps-ink">{fmtMonth(r.month)}</p>
+                  <p className="text-[11px] text-ps-hint">{r.headcount} employees · Gross {fmt(r.total_gross_paise)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -835,7 +835,7 @@ function RunsTab({ clientId, firmId, openDoc }:
                 {r.status !== "finalized" && r.status !== "paid" && (
                   <button onClick={() => recomputeRun(r.id)} disabled={rebuilding === r.id}
                     title="Rebuild this month's slips from the employee master, attendance and salary revisions as they stand now"
-                    className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-50">
+                    className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-50">
                     <RefreshCw size={11} /> {rebuilding === r.id ? "Rebuilding…" : "Recompute"}
                   </button>
                 )}
@@ -847,7 +847,7 @@ function RunsTab({ clientId, firmId, openDoc }:
                         Delete {fmtMonth(r.month)}?
                       </button>
                       <button onClick={() => setConfirmDelete(null)}
-                        className="text-[11px] px-2 py-1.5 text-[#64748B] hover:text-[#334155]">
+                        className="text-[11px] px-2 py-1.5 text-ps-label hover:text-ps-body">
                         Cancel
                       </button>
                     </span>
@@ -879,40 +879,40 @@ function RunsTab({ clientId, firmId, openDoc }:
             </div>
 
             {selectedRun === r.id && (
-              <div className="border-t border-[#F1F5F9] px-4 py-3">
+              <div className="border-t border-ps-muted px-4 py-3">
                 {loadingSlips ? (
                   <TableSkeleton cols={7} rows={3} bare />
                 ) : slipsFailed ? (
                   <div className="text-center py-6">
                     <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load slips — the request failed or timed out.</p>
-                    <button onClick={() => fetchSlips(r.id)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+                    <button onClick={() => fetchSlips(r.id)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
                   </div>
                 ) : (
                   <table className="w-full text-[11px]">
                     <thead>
-                      <tr className="border-b border-[#F1F5F9]">
+                      <tr className="border-b border-ps-muted">
                         {["Employee", "Gross", "PF (Emp)", "ESI (Emp)", "PT", "TDS", "Net"].map(h => (
-                          <th key={h} className="py-1.5 px-2 text-left text-[10px] font-semibold text-[#94A3B8]">{h}</th>
+                          <th key={h} className="py-1.5 px-2 text-left text-[10px] font-semibold text-ps-hint">{h}</th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#F8FAFC]">
+                    <tbody className="divide-y divide-ps-bg">
                       {slips.map(s => (
-                        <tr key={s.id} className="hover:bg-[#F8FAFC]">
-                          <td className="py-1.5 px-2 text-[#1E293B] font-medium">{s.payroll_employees?.name}</td>
-                          <td className="py-1.5 px-2 font-mono text-[#1E293B]">{fmt(s.gross_paise)}</td>
-                          <td className="py-1.5 px-2 font-mono text-[#64748B]">{fmt(s.pf_employee_paise)}</td>
-                          <td className="py-1.5 px-2 font-mono text-[#64748B]">{fmt(s.esi_employee_paise)}</td>
-                          <td className="py-1.5 px-2 font-mono text-[#64748B]">{fmt(s.pt_paise)}</td>
+                        <tr key={s.id} className="hover:bg-ps-bg">
+                          <td className="py-1.5 px-2 text-ps-ink font-medium">{s.payroll_employees?.name}</td>
+                          <td className="py-1.5 px-2 font-mono text-ps-ink">{fmt(s.gross_paise)}</td>
+                          <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.pf_employee_paise)}</td>
+                          <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.esi_employee_paise)}</td>
+                          <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.pt_paise)}</td>
                           <td className="py-1.5 px-2 font-mono text-amber-600">{fmt(s.tds_paise)}</td>
                           <td className="py-1.5 px-2 font-mono font-semibold text-emerald-600">{fmt(s.net_paise)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="border-t-2 border-[#E2E8F0] font-semibold">
-                        <td className="py-1.5 px-2 text-[#1E293B] text-[10px]">TOTAL</td>
-                        <td className="py-1.5 px-2 font-mono text-[#1E293B]">{fmt(r.total_gross_paise)}</td>
+                      <tr className="border-t-2 border-ps-border font-semibold">
+                        <td className="py-1.5 px-2 text-ps-ink text-[10px]">TOTAL</td>
+                        <td className="py-1.5 px-2 font-mono text-ps-ink">{fmt(r.total_gross_paise)}</td>
                         <td colSpan={4} />
                         <td className="py-1.5 px-2 font-mono text-emerald-600">{fmt(r.total_net_paise)}</td>
                       </tr>
@@ -960,7 +960,7 @@ function StatutoryTab({ clientId }: { clientId: string }) {
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3">
         <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-          className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-[13px] outline-none focus:border-blue-400" />
+          className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px] outline-none focus:border-blue-400" />
         <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">
           {loading ? "Loading…" : "Load"}
         </button>
@@ -975,28 +975,36 @@ function StatutoryTab({ clientId }: { clientId: string }) {
             // wages short of what the CA was about to pay — with no line to
             // explain the gap. The two are named underneath so the total can be
             // taken apart again.
+            // THE FIGURE CLASS IS SPELLED OUT, NEVER BUILT. This row used to
+            // carry `color: "blue"` and render `text-${color}-600`, and
+            // Tailwind scans SOURCE TEXT — so `text-blue-600`, `text-green-600`,
+            // `text-amber-600` and `text-red-600` were never emitted and all
+            // four challan figures rendered in the inherited body colour. The
+            // colour coding a CA reads at a glance was absent on every one.
+            // Same rule `components/banking/BankBook.tsx` records for its
+            // alignment classes.
             {
               label: "PF Challan (Employer + Employee)",
               amount: data.pf_challan_total_paise ?? data.pf_total_paise,
-              due: "15th of following month", color: "blue",
+              due: "15th of following month", tone: "text-blue-600",
               detail: `Contributions ${fmt(data.pf_total_paise ?? 0)} · EDLI ${fmt(data.edli_paise ?? 0)} · Admin ${fmt(data.pf_admin_paise ?? 0)}`,
             },
-            { label: "ESI Challan (Employer + Employee)", amount: data.esi_total_paise, due: "15th of following month", color: "green", detail: "" },
-            { label: "PT Challan", amount: data.pt_total_paise, due: "varies by state", color: "amber", detail: "" },
-            { label: "TDS — 24Q", amount: data.tds_24q_paise, due: "7th of following month", color: "red", detail: "" },
-          ].map(({ label, amount, due, color, detail }) => (
-            <div key={label} className="bg-white rounded-xl border border-[#E2E8F0] p-4">
-              <p className="text-[11px] font-semibold text-[#64748B]">{label}</p>
-              <p className={`text-2xl font-bold mt-1 text-${color}-600`}>{fmt(amount ?? 0)}</p>
-              {detail && <p className="text-[10px] text-[#94A3B8] mt-1 font-mono">{detail}</p>}
-              <p className="text-[10px] text-[#94A3B8] mt-1">Due: {due}</p>
+            { label: "ESI Challan (Employer + Employee)", amount: data.esi_total_paise, due: "15th of following month", tone: "text-green-600", detail: "" },
+            { label: "PT Challan", amount: data.pt_total_paise, due: "varies by state", tone: "text-amber-600", detail: "" },
+            { label: "TDS — 24Q", amount: data.tds_24q_paise, due: "7th of following month", tone: "text-red-600", detail: "" },
+          ].map(({ label, amount, due, tone, detail }) => (
+            <div key={label} className="bg-white rounded-xl border border-ps-border p-4">
+              <p className="text-[11px] font-semibold text-ps-label">{label}</p>
+              <p className={`text-2xl font-bold mt-1 ${tone}`}>{fmt(amount ?? 0)}</p>
+              {detail && <p className="text-[10px] text-ps-hint mt-1 font-mono">{detail}</p>}
+              <p className="text-[10px] text-ps-hint mt-1">Due: {due}</p>
             </div>
           ))}
         </div>
       )}
 
       {data && (data.one_time_paise ?? 0) !== 0 && (
-        <p className="text-[11px] text-[#64748B]">
+        <p className="text-[11px] text-ps-label">
           {fmt(data.one_time_paise ?? 0)} of the gross this month was one-time
           earnings — a bonus, arrears or a reimbursement — not the recurring
           salary bill. It is the usual reason a month&apos;s challans jump.
@@ -1005,12 +1013,12 @@ function StatutoryTab({ clientId }: { clientId: string }) {
 
       {!data && !loading && (
         loadFailed ? (
-          <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+          <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
             <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load statutory dues — the request failed or timed out.</p>
-            <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+            <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center text-[#94A3B8] text-sm">
+          <div className="bg-white rounded-xl border border-ps-border p-8 text-center text-ps-hint text-sm">
             Select a month and click Load to view statutory dues
           </div>
         )
@@ -1101,32 +1109,32 @@ function ReleaseTab({ clientId }: { clientId: string }) {
       )}
 
       {loadFailed ? (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+        <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
           <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the runs.</p>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : runs.length === 0 ? (
-        <p className="text-center text-sm text-[#94A3B8] py-10">
+        <p className="text-center text-sm text-ps-hint py-10">
           No payroll runs yet. Compute one under Register first.
         </p>
       ) : (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-[12px]">
             <thead>
-              <tr className="bg-[#F8FAFC] border-b border-[#F1F5F9] text-[10px] font-semibold text-[#94A3B8] uppercase">
+              <tr className="bg-ps-bg border-b border-ps-muted text-[10px] font-semibold text-ps-hint uppercase">
                 <th className="px-3 py-2 text-left">Month</th>
                 <th className="px-3 py-2 text-left">State</th>
                 <th className="px-3 py-2 text-right">Net pay</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {runs.map((r) => {
                 const paid = r.status === "paid";
                 const finalized = r.status === "finalized";
                 return (
                   <tr key={r.id}>
-                    <td className="px-3 py-2 font-medium text-[#1E293B]">{fmtMonth(r.month)}</td>
+                    <td className="px-3 py-2 font-medium text-ps-ink">{fmtMonth(r.month)}</td>
                     <td className="px-3 py-2">
                       <span className={`px-2 py-0.5 rounded text-[11px] ${
                         paid ? "bg-green-100 text-green-700"
@@ -1148,12 +1156,12 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                       {(finalized || paid) && (
                         // Never primary. It is a correction to posted books.
                         <button onClick={() => reverse(r)} disabled={busy === r.id}
-                          className="px-3 py-1 border border-[#E2E8F0] rounded-lg text-[#64748B] hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
+                          className="px-3 py-1 border border-ps-border rounded-lg text-ps-label hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
                           {busy === r.id ? "Reversing…" : "Reverse"}
                         </button>
                       )}
                       {!finalized && !paid && (
-                        <span className="text-[11px] text-[#94A3B8]">Finalise it under Register</span>
+                        <span className="text-[11px] text-ps-hint">Finalise it under Register</span>
                       )}
                     </td>
                   </tr>
@@ -1233,7 +1241,7 @@ function OutputsTab({ clientId }: { clientId: string }) {
 
   if (loading) return <div className="p-5"><TransactionListSkeleton rows={3} /></div>;
   if (runs.length === 0) {
-    return <p className="p-5 text-center text-sm text-[#94A3B8] py-10">
+    return <p className="p-5 text-center text-sm text-ps-hint py-10">
       No payroll runs yet. Compute one under Register first.
     </p>;
   }
@@ -1261,9 +1269,9 @@ function OutputsTab({ clientId }: { clientId: string }) {
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <label className="text-[11px] text-[#64748B]">Month</label>
+        <label className="text-[11px] text-ps-label">Month</label>
         <select value={runId} onChange={(e) => { setRunId(e.target.value); setMsg(null); }}
-          className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-[13px] outline-none focus:border-blue-400">
+          className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px] outline-none focus:border-blue-400">
           {runs.map((r) => <option key={r.id} value={r.id}>{fmtMonth(r.month)} · {r.status}</option>)}
         </select>
       </div>
@@ -1283,11 +1291,11 @@ function OutputsTab({ clientId }: { clientId: string }) {
           business logic this codebase keeps out of the browser. */}
       {ecrSeq?.note && (
         <div className={`rounded-xl border p-3 ${(ecrSeq.outstanding?.length ?? 0)
-          ? "border-amber-200 bg-amber-50" : "border-[#E2E8F0] bg-white"}`}>
-          <p className="text-[11px] font-semibold text-[#1E293B]">EPFO filing order</p>
-          <p className="text-[11px] text-[#475569] mt-1">{ecrSeq.note}</p>
+          ? "border-amber-200 bg-amber-50" : "border-ps-border bg-white"}`}>
+          <p className="text-[11px] font-semibold text-ps-ink">EPFO filing order</p>
+          <p className="text-[11px] text-ps-label mt-1">{ecrSeq.note}</p>
           {!!ecrSeq.filings?.length && (
-            <p className="text-[10px] text-[#94A3B8] mt-2">
+            <p className="text-[10px] text-ps-hint mt-2">
               Recorded: {ecrSeq.filings.map((f) =>
                 `${f.wage_month} ${f.return_type} (${f.status})`).join(" · ")}
             </p>
@@ -1297,11 +1305,11 @@ function OutputsTab({ clientId }: { clientId: string }) {
 
       <div className="grid grid-cols-2 gap-3">
         {items.map((it) => (
-          <div key={it.key} className="bg-white rounded-xl border border-[#E2E8F0] p-4">
-            <p className="text-[12px] font-semibold text-[#1E293B]">{it.label}</p>
-            <p className="text-[10px] text-[#94A3B8] mt-1 min-h-[28px]">{it.hint}</p>
+          <div key={it.key} className="bg-white rounded-xl border border-ps-border p-4">
+            <p className="text-[12px] font-semibold text-ps-ink">{it.label}</p>
+            <p className="text-[10px] text-ps-hint mt-1 min-h-[28px]">{it.hint}</p>
             <button onClick={it.run} disabled={!it.ready || busy !== null}
-              className="mt-2 px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+              className="mt-2 px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
               {busy === it.key ? "Building…" : it.ready ? "Download" : "Not yet"}
             </button>
           </div>
@@ -1319,10 +1327,10 @@ function OutputsTab({ clientId }: { clientId: string }) {
           and the field for the TRRN were on three other screens. Two copies of
           one filing flow would drift, so this points at the one that is left.
           Track F, phase F3. */}
-      <p className="text-[11px] text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0]
+      <p className="text-[11px] text-ps-label bg-ps-bg border border-ps-border
                     rounded-xl px-3 py-2">
         Filing EPF, ESI or professional tax for this month? That is on the{" "}
-        <span className="font-semibold text-[#334155]">File</span> tab — the
+        <span className="font-semibold text-ps-body">File</span> tab — the
         identifiers, the figures the portal will ask you to confirm, the file
         and somewhere to record what came back, in the order the portal asks
         for them.
@@ -1383,13 +1391,13 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
   const totals = data?.totals ?? {};
 
   return (
-    <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+    <div className="bg-white rounded-xl border border-ps-border p-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
-          <p className="text-[12px] font-semibold text-[#1E293B]">
+          <p className="text-[12px] font-semibold text-ps-ink">
             Form 24Q Annexure II — annual salary detail
           </p>
-          <p className="text-[10px] text-[#94A3B8] mt-1 max-w-[60ch]">
+          <p className="text-[10px] text-ps-hint mt-1 max-w-[60ch]">
             Filed with Q4. TRACES builds each employee&apos;s Form 16 Part B from it —
             nothing here issues a certificate, and Part B is downloaded from TRACES
             (CBDT Notification 09/2019).
@@ -1397,11 +1405,11 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <select value={fy} onChange={(e) => setFy(e.target.value)}
-            className="border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400">
+            className="border border-ps-border rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400">
             {financialYearChoicesAround(month).map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
           <button onClick={() => setOpen((v) => !v)}
-            className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+            className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
             {open ? "Hide" : "Show"}
           </button>
           <button
@@ -1412,7 +1420,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
               finally { setBusy(false); }
             }}
             disabled={busy}
-            className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+            className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
             {busy ? "Building…" : "Download CSV"}
           </button>
         </div>
@@ -1452,14 +1460,14 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
           )}
 
           {rows.length === 0 ? (
-            <p className="text-[12px] text-[#94A3B8] py-6 text-center">
+            <p className="text-[12px] text-ps-hint py-6 text-center">
               No finalised payroll in {fy}, so there is no annual salary detail to show.
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-[11px]">
                 <thead>
-                  <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+                  <tr className="text-left text-ps-label border-b border-ps-border">
                     <th className="py-1.5 pr-2">Employee</th>
                     <th className="py-1.5 pr-2">PAN</th>
                     <th className="py-1.5 pr-2">Regime</th>
@@ -1471,8 +1479,8 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.employee_id} className="border-b border-[#F1F5F9]">
-                      <td className="py-1.5 pr-2 text-[#1E293B]">{r.name}</td>
+                    <tr key={r.employee_id} className="border-b border-ps-muted">
+                      <td className="py-1.5 pr-2 text-ps-ink">{r.name}</td>
                       <td className="py-1.5 pr-2 font-mono text-[10px]">{r.pan || "—"}</td>
                       <td className="py-1.5 pr-2">{r.regime === "new" ? "115BAC" : "Old"}</td>
                       <td className="py-1.5 pr-2 text-right">{r.months_paid}</td>
@@ -1481,7 +1489,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
                       <td className="py-1.5 text-right">{fmt(r.tds_deducted_paise)}</td>
                     </tr>
                   ))}
-                  <tr className="font-semibold text-[#1E293B]">
+                  <tr className="font-semibold text-ps-ink">
                     <td className="py-1.5 pr-2" colSpan={4}>
                       TOTAL · {totals.employees ?? rows.length} employee(s)
                     </td>
@@ -1647,14 +1655,14 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
   if (loadFailed) {
     return (
       <div className="p-5">
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+        <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
           <p className="text-sm text-red-600 font-medium mb-2">
             Couldn&apos;t load this client&apos;s registrations — the request failed.
           </p>
-          <p className="text-xs text-[#64748B] mb-3">
+          <p className="text-xs text-ps-label mb-3">
             This is not the same as having none recorded, so nothing is shown either way.
           </p>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       </div>
     );
@@ -1662,9 +1670,9 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
 
   return (
     <div className="p-5 space-y-4">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
-        <h2 className="text-[13px] font-semibold text-[#0F172A]">Statutory registrations</h2>
-        <p className="text-[11px] text-[#64748B] mt-0.5">
+      <div className="bg-white rounded-xl border border-ps-border p-4">
+        <h2 className="text-[13px] font-semibold text-ps-ink">Statutory registrations</h2>
+        <p className="text-[11px] text-ps-label mt-0.5">
           The numbers this client&apos;s own returns are filed under. Form 24Q carries the TAN;
           the EPFO and ESIC portals take the establishment from the login, so those two are
           shown beside the file rather than in it.
@@ -1675,7 +1683,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
         <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-[12px] text-red-700">{saveError}</div>
       )}
 
-      <div className="bg-white rounded-xl border border-[#E2E8F0] divide-y divide-[#F1F5F9]">
+      <div className="bg-white rounded-xl border border-ps-border divide-y divide-ps-muted">
         {fields.map(f => (
           <IdentityRow
             key={f.name}
@@ -1689,10 +1697,10 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
       </div>
 
       {/* ── Professional tax, one registration per state ─────────────────── */}
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-3">
+      <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
         <div>
-          <h2 className="text-[13px] font-semibold text-[#0F172A]">Professional tax registrations</h2>
-          <p className="text-[11px] text-[#64748B] mt-0.5">
+          <h2 className="text-[13px] font-semibold text-ps-ink">Professional tax registrations</h2>
+          <p className="text-[11px] text-ps-label mt-0.5">
             One per state — PT is a state levy under Article 276(2). The PTRC is the
             employer&apos;s authority to <em>deduct</em> from employees and deposit; the PTEC is the
             entity&apos;s own enrolment. A payroll run reports any state it deducts in with no PTRC here.
@@ -1702,16 +1710,16 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
         {pt.length > 0 && (
           <table className="w-full text-[12px]">
             <thead>
-              <tr className="text-left text-[10px] text-[#94A3B8] border-b border-[#F1F5F9]">
+              <tr className="text-left text-[10px] text-ps-hint border-b border-ps-muted">
                 <th className="py-1.5">State</th><th>PTRC</th><th>PTEC</th><th></th>
               </tr>
             </thead>
             <tbody>
               {pt.map(r => (
-                <tr key={r.state} className="border-b border-[#F8FAFC]">
-                  <td className="py-1.5 font-medium text-[#1E293B]">{r.state}</td>
-                  <td className="text-[#334155]">{r.ptrc_number || <span className="text-[#94A3B8]">—</span>}</td>
-                  <td className="text-[#334155]">{r.ptec_number || <span className="text-[#94A3B8]">—</span>}</td>
+                <tr key={r.state} className="border-b border-ps-bg">
+                  <td className="py-1.5 font-medium text-ps-ink">{r.state}</td>
+                  <td className="text-ps-body">{r.ptrc_number || <span className="text-ps-hint">—</span>}</td>
+                  <td className="text-ps-body">{r.ptec_number || <span className="text-ps-hint">—</span>}</td>
                   <td className="text-right">
                     <button onClick={() => removePt(r.state)} disabled={saving === "pt"}
                       className="text-[11px] text-red-600 hover:underline disabled:opacity-50">Remove</button>
@@ -1755,17 +1763,17 @@ function IdentityRow({ field, value, saving, justSaved, onSave }: {
   return (
     <div className="p-3 flex items-end gap-3">
       <div className="flex-1">
-        <label className="block text-[11px] font-medium text-[#334155]">{field.label}</label>
-        <p className="text-[10px] text-[#94A3B8] mb-1">{field.used_for}</p>
+        <label className="block text-[11px] font-medium text-ps-body">{field.label}</label>
+        <p className="text-[10px] text-ps-hint mb-1">{field.used_for}</p>
         <input
           value={draft}
           onChange={e => setDraft(e.target.value)}
           placeholder="Not recorded"
-          className="w-full border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[12px] text-[#1E293B] outline-none focus:border-blue-400"
+          className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-blue-400"
         />
       </div>
       <button onClick={() => onSave(draft)} disabled={saving || !dirty}
-        className="px-3 py-1.5 text-[12px] rounded-lg border border-[#E2E8F0] text-[#334155] hover:bg-[#F8FAFC] disabled:opacity-40 shrink-0">
+        className="px-3 py-1.5 text-[12px] rounded-lg border border-ps-border text-ps-body hover:bg-ps-bg disabled:opacity-40 shrink-0">
         {saving ? "Saving…" : justSaved && !dirty ? "Saved" : "Save"}
       </button>
     </div>
@@ -1776,9 +1784,9 @@ function IdentityRow({ field, value, saving, justSaved, onSave }: {
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
   return (
-    <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
-      <div className="flex items-center gap-1.5 mb-1">{icon}<span className="text-[10px] text-[#94A3B8]">{label}</span></div>
-      <p className="text-2xl font-bold text-[#1E293B]">{value}</p>
+    <div className="bg-white rounded-xl border border-ps-border p-4">
+      <div className="flex items-center gap-1.5 mb-1">{icon}<span className="text-[10px] text-ps-hint">{label}</span></div>
+      <p className="text-2xl font-bold text-ps-ink">{value}</p>
     </div>
   );
 }
@@ -1786,15 +1794,15 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] text-[#94A3B8]">{label}</p>
-      <p className="text-sm font-semibold text-[#1E293B]">{value}</p>
+      <p className="text-[10px] text-ps-hint">{label}</p>
+      <p className="text-sm font-semibold text-ps-ink">{value}</p>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    draft:     "bg-[#F1F5F9] text-[#64748B]",
+    draft:     "bg-ps-muted text-ps-label",
     review:    "bg-amber-50 text-amber-600",
     finalized: "bg-emerald-50 text-emerald-600",
     paid:      "bg-sky-50 text-sky-600",
@@ -1805,9 +1813,9 @@ function StatusBadge({ status }: { status: string }) {
 function Field({ label, value, onChange, placeholder, type = "text" }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
   return (
     <div>
-      <label className="block text-[11px] text-[#64748B] mb-0.5">{label}</label>
+      <label className="block text-[11px] text-ps-label mb-0.5">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[12px] text-[#1E293B] outline-none focus:border-blue-400" />
+        className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-blue-400" />
     </div>
   );
 }
@@ -1853,12 +1861,12 @@ export default function PayrollPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-[#F8FAFC]">
+    <div className="flex flex-col h-full bg-ps-bg">
       {/* Header */}
-      <div className="bg-white border-b border-[#E2E8F0] px-5 py-4 shrink-0">
+      <div className="bg-white border-b border-ps-border px-5 py-4 shrink-0">
         <div className="flex items-center gap-2 mb-3">
           <Users size={16} className="text-blue-600" />
-          <h1 className="text-[15px] font-semibold text-[#0F172A]">Payroll</h1>
+          <h1 className="text-[15px] font-semibold text-ps-ink">Payroll</h1>
         </div>
         <div className="flex items-center gap-0.5">
           {TABS.map(t => (
@@ -1867,7 +1875,7 @@ export default function PayrollPage() {
               onClick={() => setTab(t.id)}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-lg transition-colors",
-                tab === t.id ? "bg-blue-600 text-white" : "text-[#64748B] hover:text-[#1E293B] hover:bg-[#F1F5F9]"
+                tab === t.id ? "bg-blue-600 text-white" : "text-ps-label hover:text-ps-ink hover:bg-ps-muted"
               )}
             >
               <t.icon size={12} />
@@ -1989,9 +1997,9 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
 
   if (loadFailed) return (
     <div className="p-6">
-      <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+      <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
         <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load salary structures — the request failed or timed out.</p>
-        <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
       </div>
     </div>
   );
@@ -1999,13 +2007,13 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-[#1E293B]">Reusable Salary Templates</p>
+        <p className="text-sm font-semibold text-ps-ink">Reusable Salary Templates</p>
         <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700">
           <Plus size={13} /> Add Structure
         </button>
       </div>
       {showAdd && (
-        <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] p-4 space-y-3">
+        <div className="bg-ps-bg rounded-xl border border-ps-border p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Structure Name *" value={form.name} onChange={v => setForm(f => ({...f, name: v}))} placeholder="e.g. Standard Grade A" />
             <Field label="Basic %" value={form.basic_percent} onChange={v => setForm(f => ({...f, basic_percent: v}))} type="number" />
@@ -2013,7 +2021,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
           </div>
           <div className="flex items-center gap-4">
             {(["pf_applicable", "esi_applicable"] as const).map(k => (
-              <label key={k} className="flex items-center gap-1.5 text-[12px] text-[#64748B] cursor-pointer">
+              <label key={k} className="flex items-center gap-1.5 text-[12px] text-ps-label cursor-pointer">
                 <input type="checkbox" checked={form[k]} onChange={e => setForm(f => ({...f, [k]: e.target.checked}))} />
                 {k === "pf_applicable" ? "PF" : "ESI"}
               </label>
@@ -2022,21 +2030,21 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
           {saveError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{saveError}</p>}
           <div className="flex gap-2">
             <button onClick={addStructure} disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 text-[12px] text-[#64748B] border border-[#E2E8F0] rounded-lg">Cancel</button>
+            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 text-[12px] text-ps-label border border-ps-border rounded-lg">Cancel</button>
           </div>
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">
-        {structures.length === 0 && <p className="col-span-2 text-sm text-[#94A3B8] text-center py-8">No structures yet</p>}
+        {structures.length === 0 && <p className="col-span-2 text-sm text-ps-hint text-center py-8">No structures yet</p>}
         {structures.map(s => (
-          <div key={s.id} className="bg-white rounded-xl border border-[#E2E8F0] p-4">
-            <p className="font-semibold text-[13px] text-[#1E293B]">{s.name}</p>
-            <div className="mt-2 space-y-1 text-[11px] text-[#64748B]">
+          <div key={s.id} className="bg-white rounded-xl border border-ps-border p-4">
+            <p className="font-semibold text-[13px] text-ps-ink">{s.name}</p>
+            <div className="mt-2 space-y-1 text-[11px] text-ps-label">
               <p>Basic {s.basic_percent}% · HRA {s.hra_percent}%</p>
               <p>{s.pf_applicable ? "PF ✓" : "PF ✗"} · {s.esi_applicable ? "ESI ✓" : "ESI ✗"}</p>
             </div>
             <button onClick={() => { setApplying(s); setApplied(null); }}
-              className="mt-3 px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+              className="mt-3 px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
               Apply to employees
             </button>
           </div>
@@ -2109,39 +2117,39 @@ function ReportsTab({ clientId }: { clientId: string }) {
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3">
         <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-          className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-[13px] outline-none focus:border-blue-400" />
+          className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px] outline-none focus:border-blue-400" />
         <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">
           {loading ? "Loading…" : "Load Salary Register"}
         </button>
         <button onClick={downloadRegister} disabled={downloading}
-          className="px-4 py-1.5 border border-[#E2E8F0] text-[12px] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-50">
+          className="px-4 py-1.5 border border-ps-border text-[12px] rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-50">
           {downloading ? "Building…" : "Download CSV"}
         </button>
       </div>
       {downloadError && <p className="text-[11px] text-red-600">{downloadError}</p>}
       {(data?.slips?.length ?? 0) > 0 && (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#F1F5F9] flex items-center justify-between">
-            <p className="text-[12px] font-semibold text-[#1E293B]">Salary Register — {fmtMonth(month)}</p>
-            <span className="text-[11px] text-[#94A3B8]">{data!.slips.length} employees</span>
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-ps-muted flex items-center justify-between">
+            <p className="text-[12px] font-semibold text-ps-ink">Salary Register — {fmtMonth(month)}</p>
+            <span className="text-[11px] text-ps-hint">{data!.slips.length} employees</span>
           </div>
           <table className="w-full text-[11px]">
             <thead>
-              <tr className="bg-[#F8FAFC] border-b border-[#F1F5F9]">
+              <tr className="bg-ps-bg border-b border-ps-muted">
                 {["Employee", "PAN", "Gross", "PF", "ESI", "PT", "TDS", "Net"].map(h => (
-                  <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-[#94A3B8]">{h}</th>
+                  <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-ps-hint">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {data!.slips.map((s) => (
                 <tr key={s.id}>
-                  <td className="px-3 py-2 text-[#1E293B] font-medium">{s.payroll_employees?.name}</td>
-                  <td className="px-3 py-2 font-mono text-[#94A3B8]">{s.payroll_employees?.pan || "—"}</td>
+                  <td className="px-3 py-2 text-ps-ink font-medium">{s.payroll_employees?.name}</td>
+                  <td className="px-3 py-2 font-mono text-ps-hint">{s.payroll_employees?.pan || "—"}</td>
                   <td className="px-3 py-2 font-mono">{fmt(s.gross_paise)}</td>
-                  <td className="px-3 py-2 font-mono text-[#64748B]">{fmt(s.pf_employee_paise)}</td>
-                  <td className="px-3 py-2 font-mono text-[#64748B]">{fmt(s.esi_employee_paise)}</td>
-                  <td className="px-3 py-2 font-mono text-[#64748B]">{fmt(s.pt_paise)}</td>
+                  <td className="px-3 py-2 font-mono text-ps-label">{fmt(s.pf_employee_paise)}</td>
+                  <td className="px-3 py-2 font-mono text-ps-label">{fmt(s.esi_employee_paise)}</td>
+                  <td className="px-3 py-2 font-mono text-ps-label">{fmt(s.pt_paise)}</td>
                   <td className="px-3 py-2 font-mono text-amber-600">{fmt(s.tds_paise)}</td>
                   <td className="px-3 py-2 font-mono font-semibold text-emerald-600">{fmt(s.net_paise)}</td>
                 </tr>
@@ -2151,12 +2159,12 @@ function ReportsTab({ clientId }: { clientId: string }) {
         </div>
       )}
       {loadFailed && !loading && (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center">
+        <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
           <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the salary register — the request failed or timed out.</p>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       )}
-      {data && !data.slips?.length && <p className="text-center text-sm text-[#94A3B8] py-8">No salary data for {fmtMonth(month)}</p>}
+      {data && !data.slips?.length && <p className="text-center text-sm text-ps-hint py-8">No salary data for {fmtMonth(month)}</p>}
     </div>
   );
 }

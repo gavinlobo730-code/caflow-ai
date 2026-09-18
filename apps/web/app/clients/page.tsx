@@ -63,7 +63,7 @@ function payrollBadge(p: PayrollState | undefined):
   if (!p.payroll_enabled) {
     return {
       label: "Payroll off",
-      className: "bg-[#F1F5F9] text-[#64748B]",
+      className: "bg-ps-muted text-ps-label",
       title: "This firm does not run payroll for this client. Existing payroll "
            + "records stay readable; nothing new can be created.",
     };
@@ -437,29 +437,29 @@ export default function ClientsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#0F172A]">Clients</h1>
-          <p className="text-[#64748B] text-sm mt-1">
+          <h1 className="text-2xl font-bold text-ps-ink">Clients</h1>
+          <p className="text-ps-label text-sm mt-1">
             {loading ? "Loading…" : `${filtered.length} client${filtered.length !== 1 ? "s" : ""}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={load}
-            className="p-2 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"
+            className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label"
             title="Refresh"
           >
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
           <Link
             href="/pipeline"
-            className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
           >
             <KanbanSquare size={15} />
             Pipeline
           </Link>
           <button
             onClick={() => setImportOpen(true)}
-            className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
           >
             <Upload size={15} />
             Import CSV
@@ -467,7 +467,7 @@ export default function ClientsPage() {
           <button
             onClick={() => downloadCsv("clients.csv", toCsv(filtered, CLIENT_EXPORT_COLUMNS))}
             disabled={filtered.length === 0}
-            className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download size={15} />
             Export
@@ -483,7 +483,7 @@ export default function ClientsPage() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex border-b border-[#E2E8F0]">
+      <div className="flex border-b border-ps-border">
         {FILTER_TABS.map(tab => (
           <button
             key={tab.id}
@@ -491,7 +491,7 @@ export default function ClientsPage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
               filter === tab.id
                 ? "border-blue-600 text-blue-600"
-                : "border-transparent text-[#64748B] hover:text-[#0F172A]"
+                : "border-transparent text-ps-label hover:text-ps-ink"
             }`}
           >
             {tab.label}
@@ -501,12 +501,12 @@ export default function ClientsPage() {
 
       {/* Search */}
       <div className="relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ps-hint" />
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by name, PAN, GSTIN, email, city…"
-          className="w-full rounded-lg border border-[#E2E8F0] pl-9 pr-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="w-full rounded-lg border border-ps-border pl-9 pr-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
       </div>
 
@@ -521,13 +521,13 @@ export default function ClientsPage() {
       {/* Loading skeleton */}
       {loading && (
         <Card>
-          <CardContent className="p-0 divide-y divide-[#F1F5F9]">
+          <CardContent className="p-0 divide-y divide-ps-muted">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="flex items-center gap-4 px-6 py-4">
-                <div className="w-10 h-10 rounded-full bg-[#F1F5F9] animate-pulse shrink-0" />
+                <div className="w-10 h-10 rounded-full bg-ps-muted animate-pulse shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-3 bg-[#F1F5F9] rounded animate-pulse w-48" />
-                  <div className="h-2.5 bg-[#F1F5F9] rounded animate-pulse w-32" />
+                  <div className="h-3 bg-ps-muted rounded animate-pulse w-48" />
+                  <div className="h-2.5 bg-ps-muted rounded animate-pulse w-32" />
                 </div>
               </div>
             ))}
@@ -541,10 +541,10 @@ export default function ClientsPage() {
           <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
             {filter === "archived" ? <Archive size={24} className="text-gray-400" /> : <Plus size={24} className="text-blue-500" />}
           </div>
-          <h3 className="text-base font-semibold text-[#0F172A] mb-1">
+          <h3 className="text-base font-semibold text-ps-ink mb-1">
             {filter === "archived" ? "No archived clients" : "No clients yet"}
           </h3>
-          <p className="text-sm text-[#64748B] mb-4">
+          <p className="text-sm text-ps-label mb-4">
             {filter === "archived" ? "Archived clients will appear here" : "Add your first client to get started"}
           </p>
           {filter === "active" && (
@@ -560,7 +560,7 @@ export default function ClientsPage() {
 
       {/* No search results */}
       {!loading && !error && clients.length > 0 && filtered.length === 0 && (
-        <div className="text-center py-10 text-sm text-[#64748B]">
+        <div className="text-center py-10 text-sm text-ps-label">
           No clients match &ldquo;{search}&rdquo;
         </div>
       )}
@@ -574,9 +574,9 @@ export default function ClientsPage() {
             checked={filtered.length > 0 && selected.size === filtered.length}
             ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < filtered.length; }}
             onChange={toggleSelectAll}
-            className="h-3.5 w-3.5 rounded border-[#CBD5E1]"
+            className="h-3.5 w-3.5 rounded border-ps-border-strong"
           />
-          <span className="text-[10px] text-[#94A3B8]">Select all visible</span>
+          <span className="text-[10px] text-ps-hint">Select all visible</span>
         </div>
       )}
 
@@ -599,18 +599,18 @@ export default function ClientsPage() {
         </div>
       )}
       {!loading && canArchive && bulkError && <p className="text-xs text-red-600 px-1">{bulkError}</p>}
-      {!loading && canArchive && bulkMessage && <p className="text-xs text-[#64748B] px-1">{bulkMessage}</p>}
+      {!loading && canArchive && bulkMessage && <p className="text-xs text-ps-label px-1">{bulkMessage}</p>}
 
       {/* Client list */}
       {!loading && filtered.length > 0 && (
         <Card>
-          <CardContent className="p-0 divide-y divide-[#F1F5F9]">
+          <CardContent className="p-0 divide-y divide-ps-muted">
             {filtered.map((c) => {
               const isArchived = c.status === "archived";
               return (
                 <div
                   key={c.id}
-                  className="relative flex items-center gap-4 px-6 py-4 hover:bg-[#F8FAFC] transition-colors group"
+                  className="relative flex items-center gap-4 px-6 py-4 hover:bg-ps-bg transition-colors group"
                 >
                   {/* Full-row clickable link, behind buttons */}
                   <Link
@@ -626,7 +626,7 @@ export default function ClientsPage() {
                       aria-label={`Select ${c.client_name}`}
                       checked={selected.has(c.id)}
                       onChange={() => toggleRow(c.id)}
-                      className="relative z-10 h-3.5 w-3.5 rounded border-[#CBD5E1] shrink-0"
+                      className="relative z-10 h-3.5 w-3.5 rounded border-ps-border-strong shrink-0"
                     />
                   )}
 
@@ -639,16 +639,16 @@ export default function ClientsPage() {
 
                   {/* Name + identifier */}
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold ${isArchived ? "text-[#94A3B8]" : "text-[#0F172A]"}`}>
+                    <p className={`text-sm font-semibold ${isArchived ? "text-ps-hint" : "text-ps-ink"}`}>
                       {c.client_name}
                     </p>
-                    <p className="text-xs text-[#64748B] font-mono mt-0.5">{c.gstin ?? c.pan}</p>
+                    <p className="text-xs text-ps-label font-mono mt-0.5">{c.gstin ?? c.pan}</p>
                   </div>
 
                   {/* Entity + PAN */}
                   <div className="text-right mr-2">
-                    <p className="text-xs text-[#64748B]">{ENTITY_LABELS[c.entity_type] ?? c.entity_type}</p>
-                    <p className="text-xs font-mono text-[#475569]">{c.pan}</p>
+                    <p className="text-xs text-ps-label">{ENTITY_LABELS[c.entity_type] ?? c.entity_type}</p>
+                    <p className="text-xs font-mono text-ps-label">{c.pan}</p>
                   </div>
 
                   {healthScores[c.id] !== undefined && (
@@ -674,7 +674,7 @@ export default function ClientsPage() {
                   {/* Edit button */}
                   <button
                     onClick={e => openEdit(e, c)}
-                    className="relative z-10 p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-[#F1F5F9] text-[#64748B] transition-all"
+                    className="relative z-10 p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-ps-muted text-ps-label transition-all"
                     title="Edit client"
                   >
                     <Pencil size={13} />
@@ -692,14 +692,14 @@ export default function ClientsPage() {
                           e.stopPropagation();
                           setMenuOpenId(menuOpenId === c.id ? null : c.id);
                         }}
-                        className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-[#F1F5F9] text-[#64748B] transition-all"
+                        className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-ps-muted text-ps-label transition-all"
                         title="More actions"
                       >
                         <MoreVertical size={13} />
                       </button>
 
                       {menuOpenId === c.id && (
-                        <div className="absolute right-0 top-8 bg-white rounded-lg shadow-lg border border-[#E2E8F0] py-1 min-w-40">
+                        <div className="absolute right-0 top-8 bg-white rounded-lg shadow-lg border border-ps-border py-1 min-w-40">
                           {canArchive && !isArchived && (
                             <button
                               onClick={() => {
@@ -707,7 +707,7 @@ export default function ClientsPage() {
                                 setArchiveTarget(c);
                                 setActionError(null);
                               }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]"
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ps-label hover:bg-ps-bg"
                             >
                               <Archive size={13} /> Archive
                             </button>
@@ -719,14 +719,14 @@ export default function ClientsPage() {
                                 setRestoreTarget(c);
                                 setActionError(null);
                               }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#475569] hover:bg-[#F8FAFC]"
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-ps-label hover:bg-ps-bg"
                             >
                               <RotateCcw size={13} /> Restore
                             </button>
                           )}
                           {canDelete && (
                             <>
-                              {canArchive && <div className="my-1 border-t border-[#F1F5F9]" />}
+                              {canArchive && <div className="my-1 border-t border-ps-muted" />}
                               <button
                                 onClick={() => {
                                   setMenuOpenId(null);
@@ -746,7 +746,7 @@ export default function ClientsPage() {
                     </div>
                   )}
 
-                  <ChevronRight size={16} className="relative z-10 text-[#94A3B8] group-hover:text-[#475569] shrink-0" />
+                  <ChevronRight size={16} className="relative z-10 text-ps-hint group-hover:text-ps-label shrink-0" />
                 </div>
               );
             })}
@@ -762,12 +762,12 @@ export default function ClientsPage() {
               <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
                 <Archive size={16} className="text-amber-600" />
               </div>
-              <h2 className="text-base font-semibold text-[#0F172A]">Archive Client</h2>
+              <h2 className="text-base font-semibold text-ps-ink">Archive Client</h2>
             </div>
-            <p className="text-sm text-[#475569] mb-1">
+            <p className="text-sm text-ps-label mb-1">
               Archive <span className="font-semibold">{archiveTarget.client_name}</span>?
             </p>
-            <p className="text-sm text-[#64748B] mb-4">
+            <p className="text-sm text-ps-label mb-4">
               This client will be hidden from the active list. All data and history are preserved and can be restored at any time.
             </p>
             {actionError && <p className="text-sm text-red-600 mb-3">{actionError}</p>}
@@ -775,7 +775,7 @@ export default function ClientsPage() {
               <button
                 onClick={() => { setArchiveTarget(null); setActionError(null); }}
                 disabled={actionBusy}
-                className="px-4 py-2 text-sm rounded-lg border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50"
+                className="px-4 py-2 text-sm rounded-lg border border-ps-border text-ps-label hover:bg-ps-bg disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -799,9 +799,9 @@ export default function ClientsPage() {
               <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
                 <RotateCcw size={16} className="text-green-600" />
               </div>
-              <h2 className="text-base font-semibold text-[#0F172A]">Restore Client</h2>
+              <h2 className="text-base font-semibold text-ps-ink">Restore Client</h2>
             </div>
-            <p className="text-sm text-[#475569] mb-4">
+            <p className="text-sm text-ps-label mb-4">
               Restore <span className="font-semibold">{restoreTarget.client_name}</span> to the active client list?
             </p>
             {actionError && <p className="text-sm text-red-600 mb-3">{actionError}</p>}
@@ -809,7 +809,7 @@ export default function ClientsPage() {
               <button
                 onClick={() => { setRestoreTarget(null); setActionError(null); }}
                 disabled={actionBusy}
-                className="px-4 py-2 text-sm rounded-lg border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50"
+                className="px-4 py-2 text-sm rounded-lg border border-ps-border text-ps-label hover:bg-ps-bg disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -834,24 +834,24 @@ export default function ClientsPage() {
                 <Trash2 size={16} className="text-red-600" />
               </div>
               <div>
-                <h2 className="text-base font-semibold text-[#0F172A]">Permanently Delete</h2>
+                <h2 className="text-base font-semibold text-ps-ink">Permanently Delete</h2>
                 <p className="text-xs font-medium text-red-600">This cannot be undone</p>
               </div>
             </div>
 
             {!deleteBlockers && (
               <>
-                <p className="text-sm text-[#475569] mb-3">
+                <p className="text-sm text-ps-label mb-3">
                   Permanently delete <span className="font-semibold">{deleteTarget.client_name}</span>? Consider archiving to preserve history instead.
                 </p>
-                <label className="block text-xs font-medium text-[#475569] mb-1">
+                <label className="block text-xs font-medium text-ps-label mb-1">
                   Type <span className="font-mono font-bold">{deleteTarget.client_name}</span> to confirm
                 </label>
                 <input
                   value={deleteConfirmName}
                   onChange={e => setDeleteConfirmName(e.target.value)}
                   placeholder={deleteTarget.client_name}
-                  className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 mb-4"
+                  className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 mb-4"
                 />
                 {actionError && <p className="text-sm text-red-600 mb-3">{actionError}</p>}
               </>
@@ -876,7 +876,7 @@ export default function ClientsPage() {
                   setActionError(null);
                 }}
                 disabled={actionBusy}
-                className="px-4 py-2 text-sm rounded-lg border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-50"
+                className="px-4 py-2 text-sm rounded-lg border border-ps-border text-ps-label hover:bg-ps-bg disabled:opacity-50"
               >
                 {deleteBlockers ? "Close" : "Cancel"}
               </button>

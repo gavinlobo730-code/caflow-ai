@@ -130,12 +130,12 @@ export default function DeclarationsPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <Link href="/payroll" className="text-[#64748B] hover:text-[#0F172A]">
+        <Link href="/payroll" className="text-ps-label hover:text-ps-ink">
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Tax declarations</h1>
-          <p className="text-sm text-[#64748B]">
+          <h1 className="text-xl font-semibold text-ps-ink">Tax declarations</h1>
+          <p className="text-sm text-ps-label">
             What each employee declared under §192, and what their proofs support.
           </p>
         </div>
@@ -144,24 +144,24 @@ export default function DeclarationsPage() {
       <Card>
         <CardContent className="pt-5 flex flex-wrap items-end gap-3">
           <div className="min-w-[260px]">
-            <label className="block text-xs text-[#64748B] mb-1">Client</label>
+            <label className="block text-xs text-ps-label mb-1">Client</label>
             <ClientLookup clients={clients} value={clientId} onChange={setClientId} />
           </div>
           <div>
-            <label className="block text-xs text-[#64748B] mb-1">Financial year</label>
+            <label className="block text-xs text-ps-label mb-1">Financial year</label>
             <select
               value={fy}
               onChange={(e) => setFy(e.target.value)}
-              className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+              className="border border-ps-border rounded-lg px-3 py-2 text-sm"
             >
               {financialYears.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
           {rows.length > 0 && (
-            <div className="ml-auto text-sm text-[#64748B]">
+            <div className="ml-auto text-sm text-ps-label">
               {rows.length} declaration{rows.length === 1 ? "" : "s"}
               {outstanding > 0 && (
-                <span className="ml-2 text-[#B45309]">
+                <span className="ml-2 text-state-attention">
                   · {outstanding} awaiting proof
                 </span>
               )}
@@ -173,8 +173,8 @@ export default function DeclarationsPage() {
       {/* The rule that makes the fourth quarter matter. Stated once, here,
           rather than repeated on every unverified row. */}
       {outstanding > 0 && (
-        <div className="flex gap-2.5 text-sm bg-[#FFFBEB] border border-[#FDE68A] rounded-lg p-3.5">
-          <AlertCircle className="w-4 h-4 text-[#B45309] shrink-0 mt-0.5" />
+        <div className="flex gap-2.5 text-sm bg-state-attention-surface border border-state-attention-border rounded-lg p-3.5">
+          <AlertCircle className="w-4 h-4 text-state-attention shrink-0 mt-0.5" />
           <p className="text-[#78350F]">
             <strong>{outstanding}</strong> declaration{outstanding === 1 ? " has" : "s have"} no
             verified proofs. Declared figures stop reducing tax from January, because §192(1)
@@ -185,20 +185,20 @@ export default function DeclarationsPage() {
       )}
 
       {loading && (
-        <div className="flex items-center gap-2 text-sm text-[#64748B] py-8 justify-center">
+        <div className="flex items-center gap-2 text-sm text-ps-label py-8 justify-center">
           <Loader2 className="w-4 h-4 animate-spin" /> Loading declarations…
         </div>
       )}
 
       {!loading && loadFailed && (
-        <Card><CardContent className="py-10 text-center text-sm text-[#B91C1C]">
+        <Card><CardContent className="py-10 text-center text-sm text-state-problem">
           Could not load declarations. This is a load failure, not an empty year —
           <button onClick={() => void load()} className="underline ml-1">try again</button>.
         </CardContent></Card>
       )}
 
       {!loading && !loadFailed && clientId && rows.length === 0 && (
-        <Card><CardContent className="py-10 text-center text-sm text-[#64748B]">
+        <Card><CardContent className="py-10 text-center text-sm text-ps-label">
           No declarations for {fy}. Every employee is withheld on the new regime with only
           the §16(ia) standard deduction — which is the correct default under §115BAC(1A),
           and the wrong answer for anyone who has deductions to claim.
@@ -238,12 +238,12 @@ function DeclarationCard({ row, employeeName, onVerify }: {
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div>
           <CardTitle className="text-base">{employeeName}</CardTitle>
-          <p className="text-xs text-[#64748B] mt-0.5">
+          <p className="text-xs text-ps-label mt-0.5">
             {row.regime === "old" ? "Old regime" : "New regime (§115BAC(1A) default)"}
             {" · "}
             {row.proofs_verified
-              ? <span className="text-[#047857]">proofs verified</span>
-              : <span className="text-[#B45309]">proofs outstanding</span>}
+              ? <span className="text-state-ready">proofs verified</span>
+              : <span className="text-state-attention">proofs outstanding</span>}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={onVerify}>
@@ -270,16 +270,16 @@ function DeclarationCard({ row, employeeName, onVerify }: {
         </div>
 
         {row.items.length > 0 && (
-          <div className="border-t border-[#F1F5F9] pt-3 space-y-1">
+          <div className="border-t border-ps-muted pt-3 space-y-1">
             {row.items.map((i) => (
               <div key={i.id} className="flex items-center justify-between text-sm">
-                <span className="text-[#475569]">
+                <span className="text-ps-label">
                   {SECTION_LABELS[i.section] ?? i.section}
-                  {i.label ? <span className="text-[#94A3B8]"> · {i.label}</span> : null}
+                  {i.label ? <span className="text-ps-hint"> · {i.label}</span> : null}
                 </span>
                 <span className="tabular-nums">
                   {i.status === "rejected"
-                    ? <span className="text-[#B91C1C]">rejected</span>
+                    ? <span className="text-state-problem">rejected</span>
                     : formatPaise(i.status === "verified"
                         ? i.amount_verified_paise : i.amount_declared_paise)}
                 </span>
@@ -289,7 +289,7 @@ function DeclarationCard({ row, employeeName, onVerify }: {
         )}
 
         {row.problems.length > 0 && (
-          <div className="border-t border-[#F1F5F9] pt-3 space-y-2">
+          <div className="border-t border-ps-muted pt-3 space-y-2">
             {row.problems.map((n, idx) => (
               <div key={idx} className="flex gap-2 text-xs text-[#991B1B]">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -300,10 +300,10 @@ function DeclarationCard({ row, employeeName, onVerify }: {
         )}
 
         {row.notices.length > 0 && (
-          <div className="border-t border-[#F1F5F9] pt-3 space-y-2">
+          <div className="border-t border-ps-muted pt-3 space-y-2">
             {row.notices.map((n, idx) => (
-              <div key={idx} className="flex gap-2 text-xs text-[#475569]">
-                <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#64748B]" />
+              <div key={idx} className="flex gap-2 text-xs text-ps-label">
+                <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-ps-label" />
                 <span>{n}</span>
               </div>
             ))}
@@ -323,9 +323,9 @@ function Figure({ label, declared, verified, verifiedKnown }: {
   const short = verifiedKnown && verified < declared;
   return (
     <div>
-      <p className="text-xs text-[#64748B]">{label}</p>
-      <p className="tabular-nums text-[#0F172A]">{formatPaise(declared)}</p>
-      <p className={`text-xs tabular-nums ${short ? "text-[#B45309]" : "text-[#94A3B8]"}`}>
+      <p className="text-xs text-ps-label">{label}</p>
+      <p className="tabular-nums text-ps-ink">{formatPaise(declared)}</p>
+      <p className={`text-xs tabular-nums ${short ? "text-state-attention" : "text-ps-hint"}`}>
         {verifiedKnown ? `proved ${formatPaise(verified)}` : "—"}
       </p>
     </div>
@@ -410,7 +410,7 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
       maxWidthClass="max-w-2xl"
     >
       <div className="space-y-4">
-        <p className="text-xs text-[#64748B]">
+        <p className="text-xs text-ps-label">
           Enter what the proofs actually support. A proof can support less than was
           claimed and never more.
         </p>
@@ -444,13 +444,13 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
           </div>
         ))}
 
-        <label className="flex items-start gap-2.5 text-sm border-t border-[#F1F5F9] pt-4">
+        <label className="flex items-start gap-2.5 text-sm border-t border-ps-muted pt-4">
           <input type="checkbox" checked={markVerified}
                  onChange={(e) => setMarkVerified(e.target.checked)}
                  className="mt-0.5" />
-          <span className="text-[#334155]">
+          <span className="text-ps-body">
             Every proof has been through.
-            <span className="block text-xs text-[#64748B] mt-0.5">
+            <span className="block text-xs text-ps-label mt-0.5">
               Until this is ticked, the declared figures keep reducing tax for the first
               three quarters and stop from January. Ticking it also locks the declaration
               against further edits by the employee.
@@ -459,7 +459,7 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
         </label>
 
         {error && (
-          <p className="text-sm text-[#B91C1C] bg-[#FEF2F2] border border-[#FECACA] rounded-lg p-3">
+          <p className="text-sm text-state-problem bg-state-problem-surface border border-state-problem-border rounded-lg p-3">
             {error}
           </p>
         )}
@@ -556,8 +556,8 @@ function ProofRow({ label, declared, value, onChange }: {
   return (
     <div className="flex items-center gap-3">
       <div className="flex-1">
-        <p className="text-sm text-[#334155]">{label}</p>
-        <p className="text-xs text-[#94A3B8]">declared {formatPaise(declared)}</p>
+        <p className="text-sm text-ps-body">{label}</p>
+        <p className="text-xs text-ps-hint">declared {formatPaise(declared)}</p>
       </div>
       <div className="w-40">
         <input
@@ -566,9 +566,9 @@ function ProofRow({ label, declared, value, onChange }: {
           onChange={(e) => onChange(e.target.value)}
           aria-label={`${label} — amount proved`}
           className={`w-full border rounded-lg px-3 py-2 text-sm text-right tabular-nums ${
-            over ? "border-[#DC2626] bg-[#FEF2F2]" : "border-[#E2E8F0]"}`}
+            over ? "border-[#DC2626] bg-state-problem-surface" : "border-ps-border"}`}
         />
-        {over && <p className="text-[11px] text-[#B91C1C] mt-1">above what was declared</p>}
+        {over && <p className="text-[11px] text-state-problem mt-1">above what was declared</p>}
       </div>
     </div>
   );

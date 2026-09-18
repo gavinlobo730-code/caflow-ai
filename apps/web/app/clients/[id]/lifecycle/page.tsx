@@ -232,13 +232,13 @@ export default function ClientLifecyclePage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-base font-semibold text-[#182350]">Lifecycle</h1>
+          <h1 className="text-base font-semibold text-brand">Lifecycle</h1>
           <p className="text-xs text-gray-500 mt-0.5">Onboarding workflows and renewals</p>
         </div>
         <button
           onClick={handleCreateWorkflow}
           disabled={actionInFlight}
-          className="flex items-center gap-1.5 text-xs bg-[#182350] text-white px-3 py-1.5 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-md hover:bg-brand-dark disabled:opacity-50"
         >
           <Plus size={12} /> New Onboarding
         </button>
@@ -250,7 +250,7 @@ export default function ClientLifecyclePage() {
 
       {/* Onboarding Workflows */}
       <div>
-        <h2 className="text-sm font-semibold text-[#182350] mb-3">
+        <h2 className="text-sm font-semibold text-brand mb-3">
           Onboarding Workflows
           <span className="ml-2 text-xs text-gray-500 font-normal">({workflows.length})</span>
         </h2>
@@ -260,7 +260,7 @@ export default function ClientLifecyclePage() {
               <p className="text-sm text-gray-500">No onboarding workflows yet</p>
               <button disabled={actionInFlight}
                 onClick={handleCreateWorkflow}
-                className="mt-3 text-xs text-[#182350] hover:text-[#0D1635] underline"
+                className="mt-3 text-xs text-brand hover:text-ps-ink underline"
               >
                 Create one now
               </button>
@@ -302,7 +302,7 @@ export default function ClientLifecyclePage() {
                             {task.status !== "done" && task.status !== "skipped" ? (
                               <button
                                 onClick={() => handleUpdateTask(wf.id, task.id, "done")}
-                                className="text-[10px] text-[#182350] hover:text-[#0D1635] ml-2 shrink-0"
+                                className="text-[10px] text-brand hover:text-ps-ink ml-2 shrink-0"
                               >
                                 Mark Done
                               </button>
@@ -326,13 +326,13 @@ export default function ClientLifecyclePage() {
       {/* Renewals */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-[#182350]">
+          <h2 className="text-sm font-semibold text-brand">
             Renewals
             <span className="ml-2 text-xs text-gray-500 font-normal">({renewals.length})</span>
           </h2>
           <button
             onClick={() => setRenewalModal(true)}
-            className="flex items-center gap-1 text-xs text-[#182350] border border-[#182350] px-2.5 py-1 rounded hover:bg-[#AFD2FA]/20"
+            className="flex items-center gap-1 text-xs text-brand border border-brand px-2.5 py-1 rounded hover:bg-brand-light/20"
           >
             <Plus size={12} /> Add Renewal
           </button>
@@ -380,7 +380,7 @@ export default function ClientLifecyclePage() {
         <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
           <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-[#182350]">Add Renewal</h2>
+              <h2 className="text-sm font-semibold text-brand">Add Renewal</h2>
               <button onClick={() => setRenewalModal(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
             </div>
             <div className="space-y-3">
@@ -389,7 +389,7 @@ export default function ClientLifecyclePage() {
                 <input
                   value={renewalForm.service_type}
                   onChange={(e) => setRenewalForm({ ...renewalForm, service_type: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                   placeholder="e.g. GST Filing, ITR, Audit"
                 />
               </div>
@@ -398,7 +398,7 @@ export default function ClientLifecyclePage() {
                 <input
                   value={renewalForm.financial_year}
                   onChange={(e) => setRenewalForm({ ...renewalForm, financial_year: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                   placeholder="e.g. 2025-26"
                 />
               </div>
@@ -408,7 +408,7 @@ export default function ClientLifecyclePage() {
                   type="date"
                   value={renewalForm.renewal_date}
                   onChange={(e) => setRenewalForm({ ...renewalForm, renewal_date: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
               <div>
@@ -418,7 +418,7 @@ export default function ClientLifecyclePage() {
                   inputMode="decimal"
                   value={renewalForm.value_paise}
                   onChange={(e) => setRenewalForm({ ...renewalForm, value_paise: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#182350]"
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                   placeholder="e.g. 15000"
                 />
               </div>
@@ -428,7 +428,7 @@ export default function ClientLifecyclePage() {
               <button
                 onClick={handleSaveRenewal}
                 disabled={actionInFlight || !renewalForm.service_type || !renewalForm.financial_year}
-                className="flex-1 text-sm bg-[#182350] text-white py-2 rounded-md hover:bg-[#0D1635] disabled:opacity-50"
+                className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
                 {savingRenewal ? "Saving…" : "Save"}
               </button>

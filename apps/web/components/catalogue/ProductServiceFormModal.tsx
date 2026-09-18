@@ -34,7 +34,7 @@ const EMPTY_FORM: ServiceFormInput = {
   alternateUnit: "", unitsPerAlternate: "", reorderLevel: "",
 };
 
-const inputCls = "w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500";
+const inputCls = "w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500";
 
 export function ProductServiceFormModal({
   clientId, existing, seedName, onClose, onSaved, onError,
@@ -168,7 +168,7 @@ export function ProductServiceFormModal({
             </Field>
             {stockAlreadyStarted ? (
               <Field label="Current stock">
-                <div className={`${inputCls} bg-[#F8FAFC] text-[#475569]`}>
+                <div className={`${inputCls} bg-ps-bg text-ps-label`}>
                   {existing?.stock_qty_units ?? 0} {form.unit || "units"} · avg ₹{((existing?.avg_cost_paise ?? 0) / 100).toFixed(2)}
                 </div>
               </Field>
@@ -225,7 +225,7 @@ export function ProductServiceFormModal({
         {form.kind === "good" && !stockAlreadyStarted && (form.openingQty || form.openingCost) && (
           <Field label="Opening balance as of (optional)">
             <input type="date" value={form.openingBalanceDate} onChange={(e) => set("openingBalanceDate", e.target.value)} className={inputCls} />
-            <span className="block text-[11px] text-[#94A3B8] mt-1">
+            <span className="block text-[11px] text-ps-hint mt-1">
               The date this stock is on hand as of — not when you&apos;re entering it. Defaults to your client&apos;s financial-year start if left blank.
             </span>
           </Field>
@@ -240,7 +240,7 @@ export function ProductServiceFormModal({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
+          <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
           <button onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-1.5">
             {saving && <Loader2 size={14} className="animate-spin" />} {existing ? "Save changes" : "Create"}
           </button>
@@ -252,7 +252,7 @@ export function ProductServiceFormModal({
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="block text-xs font-medium text-[#475569]">{label}</span>
+      <span className="block text-xs font-medium text-ps-label">{label}</span>
       {children}
       {error && <span className="block text-[11px] text-red-600">{error}</span>}
     </label>

@@ -30,7 +30,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
   );
 
   return (
-    <aside className="relative flex flex-col h-full w-[52px] shrink-0 bg-[#182350] border-r border-white/10 z-10">
+    <aside className="relative flex flex-col h-full w-[52px] shrink-0 bg-brand border-r border-white/10 z-10">
       {/* Logo */}
       <div className="flex items-center justify-center h-14 border-b border-white/10 shrink-0">
         <div className="w-7 h-7 rounded-[8px] bg-blue-600 flex items-center justify-center text-[11px] font-bold text-white shadow-[0_0_16px_rgba(59,130,246,0.35)]">

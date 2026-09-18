@@ -40,7 +40,7 @@ const FREQUENCY_LABEL: Record<Frequency, string> = {
 const STATUS_CHIP: Record<string, string> = {
   active: "bg-green-50 text-green-700",
   paused: "bg-amber-50 text-amber-700",
-  archived: "bg-[#F1F5F9] text-[#64748B]",
+  archived: "bg-ps-muted text-ps-label",
 };
 
 export interface RecurringBillLine {
@@ -237,10 +237,10 @@ export function RecurringBills({ clientId }: { clientId: string }) {
 
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold text-[#334155]">
+          <p className="text-xs font-semibold text-ps-body">
             {templates.length} template{templates.length !== 1 ? "s" : ""}
           </p>
-          <p className="text-[11px] text-[#94A3B8] mt-0.5">
+          <p className="text-[11px] text-ps-hint mt-0.5">
             Rent, retainers, utilities. Each generates a <strong>draft</strong> bill for
             review — never received, never posted. The supplier&apos;s own bill number is
             left blank for you to enter.
@@ -248,12 +248,12 @@ export function RecurringBills({ clientId }: { clientId: string }) {
         </div>
         <div className="flex gap-2 shrink-0">
           <button onClick={load} aria-label="Reload templates"
-            className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
+            className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
           {templates.some((t) => t.status === "active") && (
             <button onClick={runAllDue} disabled={busy === "all"}
-              className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-40">
+              className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
               {busy === "all" ? "Generating…" : "Generate all due"}
             </button>
           )}
@@ -269,23 +269,23 @@ export function RecurringBills({ clientId }: { clientId: string }) {
       ) : loadFailed ? (
         <div className="bg-white rounded-xl border border-red-200 text-center py-12">
           <p className="text-sm text-red-700">Could not load recurring templates.</p>
-          <button onClick={load} className="mt-2 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">
+          <button onClick={load} className="mt-2 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">
             Try again
           </button>
         </div>
       ) : templates.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16">
           <Clock size={32} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-[#64748B]">No recurring bills yet</p>
-          <p className="text-xs text-[#94A3B8] mt-1">
+          <p className="text-sm text-ps-label">No recurring bills yet</p>
+          <p className="text-xs text-ps-hint mt-1">
             Set one up for the rent or a monthly retainer and the draft appears on schedule.
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="bg-[#F8FAFC] text-[10px] uppercase tracking-wide text-[#94A3B8]">
+              <thead className="bg-ps-bg text-[10px] uppercase tracking-wide text-ps-hint">
                 <tr>
                   <th className="text-left font-medium px-3 py-2">Template</th>
                   <th className="text-left font-medium px-3 py-2">Vendor</th>
@@ -298,17 +298,17 @@ export function RecurringBills({ clientId }: { clientId: string }) {
               </thead>
               <tbody>
                 {templates.map((t) => (
-                  <tr key={t.id} className="border-t border-[#F8FAFC]">
+                  <tr key={t.id} className="border-t border-ps-bg">
                     <td className="px-3 py-2">
-                      <p className="font-medium text-[#1E293B]">{t.title}</p>
-                      {t.description && <p className="text-[10px] text-[#94A3B8]">{t.description}</p>}
+                      <p className="font-medium text-ps-ink">{t.title}</p>
+                      {t.description && <p className="text-[10px] text-ps-hint">{t.description}</p>}
                     </td>
-                    <td className="px-3 py-2 text-[#475569]">{vendorName(t.vendor_id)}</td>
-                    <td className="px-3 py-2 text-[#475569]">{FREQUENCY_LABEL[t.frequency] ?? t.frequency}</td>
-                    <td className="px-3 py-2 text-[#475569] tabular-nums">
+                    <td className="px-3 py-2 text-ps-label">{vendorName(t.vendor_id)}</td>
+                    <td className="px-3 py-2 text-ps-label">{FREQUENCY_LABEL[t.frequency] ?? t.frequency}</td>
+                    <td className="px-3 py-2 text-ps-label tabular-nums">
                       {t.status === "active" ? (t.next_run_date ?? "—") : "—"}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-[#1E293B]">
+                    <td className="px-3 py-2 text-right tabular-nums text-ps-ink">
                       {fmt(templateBase(t.lines ?? []))}
                     </td>
                     <td className="px-3 py-2">
@@ -320,29 +320,29 @@ export function RecurringBills({ clientId }: { clientId: string }) {
                       <div className="flex justify-end gap-1.5 flex-wrap">
                         {t.status === "active" && (
                           <button onClick={() => runNow(t)} disabled={busy === t.id}
-                            className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded-md hover:bg-[#F8FAFC] disabled:opacity-40">
+                            className="text-[11px] px-2 py-1 border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40">
                             Generate now
                           </button>
                         )}
                         <button onClick={() => setHistoryFor(t)}
-                          className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded-md hover:bg-[#F8FAFC]">
+                          className="text-[11px] px-2 py-1 border border-ps-border rounded-md hover:bg-ps-bg">
                           History
                         </button>
                         {t.status !== "archived" && (
                           <button onClick={() => setEditor(t)}
-                            className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded-md hover:bg-[#F8FAFC]">
+                            className="text-[11px] px-2 py-1 border border-ps-border rounded-md hover:bg-ps-bg">
                             Edit
                           </button>
                         )}
                         {t.status === "active" && (
                           <button onClick={() => changeStatus(t, "pause")} disabled={busy === t.id}
-                            className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded-md hover:bg-[#F8FAFC] disabled:opacity-40">
+                            className="text-[11px] px-2 py-1 border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40">
                             Pause
                           </button>
                         )}
                         {t.status === "paused" && (
                           <button onClick={() => changeStatus(t, "resume")} disabled={busy === t.id}
-                            className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded-md hover:bg-[#F8FAFC] disabled:opacity-40">
+                            className="text-[11px] px-2 py-1 border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40">
                             Resume
                           </button>
                         )}
@@ -517,11 +517,11 @@ function RecurringBillEditor({
   return (
     <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-center overflow-y-auto p-4">
       <div className="bg-white rounded-xl w-full max-w-4xl my-8 shadow-xl">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[#F1F5F9]">
-          <h3 className="text-sm font-semibold text-[#0F172A]">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-ps-muted">
+          <h3 className="text-sm font-semibold text-ps-ink">
             {existing ? "Edit recurring bill" : "New recurring bill"}
           </h3>
-          <button onClick={onClose} aria-label="Close"><X size={16} className="text-[#94A3B8]" /></button>
+          <button onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
         </div>
 
         <div className="p-5 space-y-4">
@@ -531,58 +531,58 @@ function RecurringBillEditor({
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="col-span-2 lg:col-span-1">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Vendor *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
               <VendorLookup vendors={vendors} value={vendorId} onChange={setVendorId} ariaLabel="Vendor" />
             </div>
             <div className="col-span-2 lg:col-span-2">
-              <label className="block text-xs font-medium text-[#475569] mb-1">Name *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>
               <input value={title} onChange={(e) => setTitle(e.target.value)}
                 placeholder="Office rent — Andheri"
-                className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Every *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Every *</label>
               <select value={frequency} onChange={(e) => setFrequency(e.target.value as Frequency)}
-                className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {FREQUENCIES.map((f) => <option key={f} value={f}>{FREQUENCY_LABEL[f]}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">First bill on *</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">First bill on *</label>
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Stop after (optional)</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Stop after (optional)</label>
               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="col-span-2 lg:col-span-3 flex flex-wrap gap-4 pt-1">
-              <label className="flex items-center gap-2 text-xs text-[#475569]">
+              <label className="flex items-center gap-2 text-xs text-ps-label">
                 <input type="checkbox" checked={interState} onChange={(e) => setInterState(e.target.checked)} />
                 Inter-state supply (IGST)
               </label>
-              <label className="flex items-center gap-2 text-xs text-[#475569]">
+              <label className="flex items-center gap-2 text-xs text-ps-label">
                 <input type="checkbox" checked={reverseCharge} onChange={(e) => setReverseCharge(e.target.checked)} />
                 Reverse charge — CGST §9(3)/(4)
               </label>
             </div>
           </div>
 
-          <div className="border border-[#F1F5F9] rounded-lg">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[#F1F5F9] bg-[#F8FAFC] rounded-t-lg">
-              <p className="text-xs font-semibold text-[#334155]">Lines</p>
+          <div className="border border-ps-muted rounded-lg">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-ps-muted bg-ps-bg rounded-t-lg">
+              <p className="text-xs font-semibold text-ps-body">Lines</p>
               <button type="button" onClick={() => setLines((ls) => [...ls, blankLine()])}
-                className="text-[11px] px-2.5 py-1 border border-[#E2E8F0] bg-white rounded-md hover:bg-[#F1F5F9]">
+                className="text-[11px] px-2.5 py-1 border border-ps-border bg-white rounded-md hover:bg-ps-muted">
                 <Plus size={11} className="inline mr-1" />Add line
               </button>
             </div>
-            <div className="divide-y divide-[#F8FAFC]">
+            <div className="divide-y divide-ps-bg">
               {lines.map((l, i) => (
                 <div key={i} className="p-3 space-y-2">
                   <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
                     <div className="col-span-2">
-                      <label className="block text-[10px] text-[#94A3B8] mb-1">Product / Service *</label>
+                      <label className="block text-[10px] text-ps-hint mb-1">Product / Service *</label>
                       <EntityLookup
                         items={catalogue}
                         value={l.service_catalogue_id}
@@ -595,52 +595,52 @@ function RecurringBillEditor({
                       />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-[10px] text-[#94A3B8] mb-1">Description</label>
+                      <label className="block text-[10px] text-ps-hint mb-1">Description</label>
                       <input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })}
-                        className="w-full px-2 py-1 text-xs border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-[#94A3B8] mb-1">Qty</label>
+                      <label className="block text-[10px] text-ps-hint mb-1">Qty</label>
                       <input value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })}
                         inputMode="decimal"
-                        className="w-full px-2 py-1 text-xs border border-[#E2E8F0] rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-[#94A3B8] mb-1">Rate (₹)</label>
+                      <label className="block text-[10px] text-ps-hint mb-1">Rate (₹)</label>
                       <input value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })}
                         inputMode="decimal" placeholder="0.00"
-                        className="w-full px-2 py-1 text-xs border border-[#E2E8F0] rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-[#94A3B8] mb-1">GST %</label>
+                      <label className="block text-[10px] text-ps-hint mb-1">GST %</label>
                       <input value={l.gst_rate} onChange={(e) => setLine(i, { gst_rate: e.target.value })}
                         inputMode="decimal"
-                        className="w-full px-2 py-1 text-xs border border-[#E2E8F0] rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-[#94A3B8] mb-1">HSN / SAC</label>
+                      <label className="block text-[10px] text-ps-hint mb-1">HSN / SAC</label>
                       <input value={l.hsn_sac} onChange={(e) => setLine(i, { hsn_sac: e.target.value })}
-                        className="w-full px-2 py-1 text-xs border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-[#94A3B8] mb-1">Unit</label>
+                      <label className="block text-[10px] text-ps-hint mb-1">Unit</label>
                       <input value={l.unit} onChange={(e) => setLine(i, { unit: e.target.value })}
                         placeholder="NOS"
-                        className="w-full px-2 py-1 text-xs border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-4">
-                    <label className="flex items-center gap-2 text-[11px] text-[#475569]">
+                    <label className="flex items-center gap-2 text-[11px] text-ps-label">
                       <input type="checkbox" checked={l.is_service}
                         onChange={(e) => setLine(i, { is_service: e.target.checked })} />
                       Service
                     </label>
-                    <label className="flex items-center gap-2 text-[11px] text-[#475569]">
+                    <label className="flex items-center gap-2 text-[11px] text-ps-label">
                       <input type="checkbox" checked={l.tds_applicable}
                         onChange={(e) => setLine(i, { tds_applicable: e.target.checked })} />
                       TDS applies
                     </label>
-                    <label className="flex items-center gap-2 text-[11px] text-[#475569]">
+                    <label className="flex items-center gap-2 text-[11px] text-ps-label">
                       <input type="checkbox" checked={!l.itc_eligible}
                         onChange={(e) => setLine(i, { itc_eligible: !e.target.checked })} />
                       Credit blocked — CGST §17(5)
@@ -649,7 +649,7 @@ function RecurringBillEditor({
                       <input value={l.blocked_credit_reason}
                         onChange={(e) => setLine(i, { blocked_credit_reason: e.target.value })}
                         placeholder="Which clause of §17(5)?"
-                        className="flex-1 min-w-[12rem] px-2 py-1 text-xs border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="flex-1 min-w-[12rem] px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     )}
                     {lines.length > 1 && (
                       <button type="button" aria-label={`Remove line ${i + 1}`}
@@ -665,28 +665,28 @@ function RecurringBillEditor({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Description</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Description</label>
             <input value={description} onChange={(e) => setDescription(e.target.value)}
               placeholder="What this template is for — shown in the list, not on the bill"
-              className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Notes on every generated bill</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Notes on every generated bill</label>
             <input value={notes} onChange={(e) => setNotes(e.target.value)}
               placeholder="Left on each draft — e.g. the lease reference"
-              className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
-          <p className="text-[11px] text-[#94A3B8]">
+          <p className="text-[11px] text-ps-hint">
             Generated bills are <strong>drafts</strong>. The supplier&apos;s own bill number is
             left blank — enter it before you receive the bill, because receiving is what posts
             the journal, withholds the TDS and claims the credit.
           </p>
         </div>
 
-        <div className="flex gap-3 justify-end px-5 py-3 border-t border-[#F1F5F9]">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">
+        <div className="flex gap-3 justify-end px-5 py-3 border-t border-ps-muted">
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
             Cancel
           </button>
           <button onClick={save} disabled={saving}
@@ -741,35 +741,35 @@ function RecurringBillHistory({
   return (
     <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-end">
       <div className="bg-white h-full w-full max-w-lg shadow-xl overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[#F1F5F9] sticky top-0 bg-white">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-ps-muted sticky top-0 bg-white">
           <div>
-            <h3 className="text-sm font-semibold text-[#0F172A]">{template.title}</h3>
-            <p className="text-[11px] text-[#94A3B8]">{vendorName}</p>
+            <h3 className="text-sm font-semibold text-ps-ink">{template.title}</h3>
+            <p className="text-[11px] text-ps-hint">{vendorName}</p>
           </div>
-          <button onClick={onClose} aria-label="Close"><X size={16} className="text-[#94A3B8]" /></button>
+          <button onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
         </div>
 
         <div className="p-5 space-y-5">
           <div>
-            <p className="text-xs font-semibold text-[#334155] mb-2">Next dates</p>
+            <p className="text-xs font-semibold text-ps-body mb-2">Next dates</p>
             {upcoming.length === 0 ? (
-              <p className="text-[11px] text-[#94A3B8]">Nothing further scheduled.</p>
+              <p className="text-[11px] text-ps-hint">Nothing further scheduled.</p>
             ) : (
-              <ul className="text-xs text-[#475569] space-y-1">
+              <ul className="text-xs text-ps-label space-y-1">
                 {upcoming.map((d) => <li key={d} className="tabular-nums">{d}</li>)}
               </ul>
             )}
           </div>
 
           <div>
-            <p className="text-xs font-semibold text-[#334155] mb-2">Generated so far</p>
+            <p className="text-xs font-semibold text-ps-body mb-2">Generated so far</p>
             {loading ? (
               <TableSkeleton cols={3} rows={3} />
             ) : runs.length === 0 ? (
-              <p className="text-[11px] text-[#94A3B8]">Nothing generated yet.</p>
+              <p className="text-[11px] text-ps-hint">Nothing generated yet.</p>
             ) : (
               <table className="w-full text-xs">
-                <thead className="text-[10px] uppercase tracking-wide text-[#94A3B8]">
+                <thead className="text-[10px] uppercase tracking-wide text-ps-hint">
                   <tr>
                     <th className="text-left font-medium py-1">Occurrence</th>
                     <th className="text-left font-medium py-1">Bill</th>
@@ -778,9 +778,9 @@ function RecurringBillHistory({
                 </thead>
                 <tbody>
                   {runs.map((r) => (
-                    <tr key={r.id} className="border-t border-[#F8FAFC]">
-                      <td className="py-1.5 tabular-nums text-[#475569]">{r.occurrence_date}</td>
-                      <td className="py-1.5 text-[#1E293B]">
+                    <tr key={r.id} className="border-t border-ps-bg">
+                      <td className="py-1.5 tabular-nums text-ps-label">{r.occurrence_date}</td>
+                      <td className="py-1.5 text-ps-ink">
                         {r.status === "failed" ? (
                           <span className="text-red-600">
                             Failed{r.detail ? ` — ${String((r.detail as { error?: string })?.error ?? "")}` : ""}
@@ -788,11 +788,11 @@ function RecurringBillHistory({
                         ) : (
                           <>
                             {r.bill?.bill_no || r.bill?.our_reference || "—"}
-                            <span className="ml-1 text-[10px] text-[#94A3B8]">{r.bill?.status ?? ""}</span>
+                            <span className="ml-1 text-[10px] text-ps-hint">{r.bill?.status ?? ""}</span>
                           </>
                         )}
                       </td>
-                      <td className="py-1.5 text-right tabular-nums text-[#475569]">
+                      <td className="py-1.5 text-right tabular-nums text-ps-label">
                         {r.bill?.total_paise ? fmt(Number(r.bill.total_paise)) : "—"}
                       </td>
                     </tr>

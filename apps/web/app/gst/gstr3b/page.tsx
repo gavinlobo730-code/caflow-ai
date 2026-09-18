@@ -76,7 +76,7 @@ function buildPeriodOptions(): { value: string; label: string }[] {
 const PERIOD_OPTIONS = buildPeriodOptions();
 
 const STATUS_CONFIG: Record<GSTReturnStatus, { label: string; color: string }> = {
-  draft:       { label: "Draft",       color: "bg-[#F1F5F9] text-[#334155]" },
+  draft:       { label: "Draft",       color: "bg-ps-muted text-ps-body" },
   validated:   { label: "Validated",   color: "bg-blue-100 text-blue-700" },
   ca_approved: { label: "CA Approved", color: "bg-green-100 text-green-700" },
   submitted:   { label: "Filed",       color: "bg-emerald-100 text-emerald-700" },
@@ -229,12 +229,12 @@ export default function GSTR3BPage() {
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/gst" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/gst" className="text-ps-hint hover:text-ps-label">
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-[#0F172A]">GSTR-3B Review</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-2xl font-bold text-ps-ink">GSTR-3B Review</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             CGST Act Section 39 — Monthly summary return. Due 20th of following month.
           </p>
         </div>
@@ -250,11 +250,11 @@ export default function GSTR3BPage() {
       </div>
 
       {/* Selection */}
-      <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-4">
-        <h2 className="font-semibold text-[#1E293B]">Select Client & Period</h2>
+      <div className="bg-white border border-ps-border rounded-xl p-5 space-y-4">
+        <h2 className="font-semibold text-ps-ink">Select Client & Period</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="sm:col-span-2">
-            <label className="block text-sm font-medium text-[#334155] mb-1">Client</label>
+            <label className="block text-sm font-medium text-ps-body mb-1">Client</label>
             <div className="w-full">
               <ClientLookup
                 clients={clients}
@@ -266,7 +266,7 @@ export default function GSTR3BPage() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-[#334155] mb-1">Period</label>
+            <label className="block text-sm font-medium text-ps-body mb-1">Period</label>
             <select
               value={yearMonth}
               onChange={e => { setYearMonth(e.target.value); setResult(null); setError(null); setRule37(null); setRule43(null); }}
@@ -324,7 +324,7 @@ export default function GSTR3BPage() {
               {filingStatus === "ca_approved" && (
                 <button
                   onClick={() => setShowFiledModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#F1F5F9] hover:bg-[#F8FAFC] text-[#334155] text-sm font-medium rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-ps-muted hover:bg-ps-bg text-ps-body text-sm font-medium rounded-lg transition-colors"
                 >
                   <FileCheck className="w-4 h-4" />
                   Mark as Filed
@@ -344,12 +344,12 @@ export default function GSTR3BPage() {
           </div>
 
           {/* Table 3.1 — Outward Taxable Supplies */}
-          <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-            <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-              <h3 className="font-semibold text-[#1E293B] text-sm">
+          <section className="bg-white border border-ps-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3 bg-ps-bg border-b border-ps-border">
+              <h3 className="font-semibold text-ps-ink text-sm">
                 Table 3.1 — Outward Taxable Supplies
               </h3>
-              <p className="text-xs text-[#64748B] mt-0.5">Net of credit notes. CGST Act Section 37.</p>
+              <p className="text-xs text-ps-label mt-0.5">Net of credit notes. CGST Act Section 37.</p>
             </div>
             {/* THE FORM HAS FIVE COLUMNS AND THIS TABLE HAD FOUR (GST-22).
                 Without a taxable-value column there was nowhere to put the
@@ -360,7 +360,7 @@ export default function GSTR3BPage() {
                 puts it. */}
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-[#64748B] uppercase border-b border-[#F1F5F9]">
+                <tr className="text-xs text-ps-label uppercase border-b border-ps-muted">
                   <th className="text-left px-5 py-2.5 font-medium">Supply Type</th>
                   <th className="text-right px-5 py-2.5 font-medium">Taxable value</th>
                   <th className="text-right px-5 py-2.5 font-medium">IGST</th>
@@ -368,9 +368,9 @@ export default function GSTR3BPage() {
                   <th className="text-right px-5 py-2.5 font-medium">SGST</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#334155]">
+              <tbody className="divide-y divide-ps-bg">
+                <tr className="hover:bg-ps-bg">
+                  <td className="px-5 py-3 text-ps-body">
                     (a) Taxable supplies (B2B + B2C + B2CL)
                     {/* OF ROW (a), the part with no invoice behind it (GST-15):
                         GSTR-1 Table 11A received less 11B adjusted. A note under
@@ -379,7 +379,7 @@ export default function GSTR3BPage() {
                         addition. Shown only when there is one: most clients have
                         no Table 11 at all (Notification 66/2017-Central Tax). */}
                     {adv11 !== 0 && (
-                      <span className="block text-[10px] text-[#64748B] mt-0.5">
+                      <span className="block text-[10px] text-ps-label mt-0.5">
                         Includes {r(w.advances_11?.taxable_value_paise ?? 0)} of advances —
                         GSTR-1 Table 11A less 11B, taxable on receipt under CGST s.13(2).
                         Declared and payable here, but not in the general ledger: a receipt
@@ -387,16 +387,16 @@ export default function GSTR3BPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.outward.taxable_value_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.outward.taxable_igst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.outward.taxable_cgst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.outward.taxable_sgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-body">{r(w.outward.taxable_value_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.outward.taxable_igst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.outward.taxable_cgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.outward.taxable_sgst_paise)}</td>
                 </tr>
-                <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#334155]">
+                <tr className="hover:bg-ps-bg">
+                  <td className="px-5 py-3 text-ps-body">
                     (b) Zero-rated supplies (Exports / SEZ)
                     {w.outward.zero_rated_igst_paise > 0 && (
-                      <span className="block text-[10px] text-[#64748B] mt-0.5">
+                      <span className="block text-[10px] text-ps-label mt-0.5">
                         On payment of tax — CGST s.16(3)(b). Refundable under s.54.
                       </span>
                     )}
@@ -406,30 +406,30 @@ export default function GSTR3BPage() {
                       carries nil, but one made ON PAYMENT OF TAX (s.16(3)(b))
                       carries real IGST that this return owes and s.54 refunds
                       later — and the em dash said otherwise. */}
-                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.outward.zero_rated_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#0F172A]">
+                  <td className="px-5 py-3 text-right font-mono text-ps-body">{r(w.outward.zero_rated_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-ink">
                     {w.outward.zero_rated_igst_paise > 0 ? r(w.outward.zero_rated_igst_paise) : "—"}
                   </td>
-                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-hint">—</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-hint">—</td>
                 </tr>
-                <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#334155]">(c) Nil-rated / Exempt</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.outward.nil_exempt_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
+                <tr className="hover:bg-ps-bg">
+                  <td className="px-5 py-3 text-ps-body">(c) Nil-rated / Exempt</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-body">{r(w.outward.nil_exempt_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-hint">—</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-hint">—</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-hint">—</td>
                 </tr>
                 {/* 3.1(d) — reverse charge. Tax with NO taxable value on this
                     working: §49(4) with §2(82) puts it outside the credit
                     ledger entirely, so it is carried as the cash liability the
                     challan needs rather than as turnover. */}
-                <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#334155]">(d) Inward supplies liable to reverse charge</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.rcm_inward.igst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.rcm_inward.cgst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.rcm_inward.sgst_paise)}</td>
+                <tr className="hover:bg-ps-bg">
+                  <td className="px-5 py-3 text-ps-body">(d) Inward supplies liable to reverse charge</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-hint">—</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-body">{r(w.rcm_inward.igst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-body">{r(w.rcm_inward.cgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-body">{r(w.rcm_inward.sgst_paise)}</td>
                 </tr>
                 {/* 3.1(e) — and it is NOT 3.1(c). Nil-rated and exempt are
                     supplies GST reaches and then charges at nil or relieves
@@ -438,12 +438,12 @@ export default function GSTR3BPage() {
                     consumption, and Schedule III puts a further list outside
                     "supply". The engine had no accumulator for it until
                     GST-06, so this row could not exist. */}
-                <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#334155]">(e) Non-GST outward supplies</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.outward.non_gst_paise ?? 0)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
+                <tr className="hover:bg-ps-bg">
+                  <td className="px-5 py-3 text-ps-body">(e) Non-GST outward supplies</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-body">{r(w.outward.non_gst_paise ?? 0)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-hint">—</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-hint">—</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-hint">—</td>
                 </tr>
                 <tr className="bg-blue-50 font-semibold">
                   <td className="px-5 py-3 text-blue-800">
@@ -464,7 +464,7 @@ export default function GSTR3BPage() {
                   {/* No value total. The portal's 3.1 has none, and summing
                       (a)+(b)+(c)+(e) under a heading that reads "Total Output
                       Tax" would label a turnover as a tax. */}
-                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-hint">—</td>
                   {/* The IGST total INCLUDES the zero-rated IGST in the row
                       above. It used to be taxable_igst_paise alone, so once
                       that row started printing a real figure — a s.16(3)(b)
@@ -514,32 +514,32 @@ export default function GSTR3BPage() {
             }
             if (!rows.length) return null;   // nothing to declare is not a table
             return (
-              <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-                <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-                  <h3 className="font-semibold text-[#1E293B] text-sm">
+              <section className="bg-white border border-ps-border rounded-xl overflow-hidden">
+                <div className="px-5 py-3 bg-ps-bg border-b border-ps-border">
+                  <h3 className="font-semibold text-ps-ink text-sm">
                     Table 3.2 — Inter-state supplies to unregistered persons, composition dealers and UIN holders
                   </h3>
-                  <p className="text-xs text-[#64748B] mt-0.5">
+                  <p className="text-xs text-ps-label mt-0.5">
                     Of the supplies already declared in 3.1(a) — a breakdown, not an addition.
                     The portal checks it against 3.1(a) and against GSTR-1.
                   </p>
                 </div>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-xs text-[#64748B] uppercase border-b border-[#F1F5F9]">
+                    <tr className="text-xs text-ps-label uppercase border-b border-ps-muted">
                       <th className="text-left px-5 py-2.5 font-medium">Recipient</th>
                       <th className="text-left px-5 py-2.5 font-medium">Place of supply (state code)</th>
                       <th className="text-right px-5 py-2.5 font-medium">Taxable value</th>
                       <th className="text-right px-5 py-2.5 font-medium">IGST</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#F8FAFC]">
+                  <tbody className="divide-y divide-ps-bg">
                     {rows.map((row) => (
-                      <tr key={`${row.kind}-${row.pos}`} className="hover:bg-[#F8FAFC]">
-                        <td className="px-5 py-3 text-[#334155]">{row.kind}</td>
-                        <td className="px-5 py-3 font-mono text-[#64748B]">{row.pos}</td>
-                        <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(row.txval)}</td>
-                        <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(row.iamt)}</td>
+                      <tr key={`${row.kind}-${row.pos}`} className="hover:bg-ps-bg">
+                        <td className="px-5 py-3 text-ps-body">{row.kind}</td>
+                        <td className="px-5 py-3 font-mono text-ps-label">{row.pos}</td>
+                        <td className="px-5 py-3 text-right font-mono text-ps-body">{r(row.txval)}</td>
+                        <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(row.iamt)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -549,50 +549,50 @@ export default function GSTR3BPage() {
           })()}
 
           {/* Table 4 — ITC, in the layout the portal has used since 01-09-2022 */}
-          <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-            <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-              <h3 className="font-semibold text-[#1E293B] text-sm">Table 4 — Input Tax Credit</h3>
-              <p className="text-xs text-[#64748B] mt-0.5">
+          <section className="bg-white border border-ps-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3 bg-ps-bg border-b border-ps-border">
+              <h3 className="font-semibold text-ps-ink text-sm">Table 4 — Input Tax Credit</h3>
+              <p className="text-xs text-ps-label mt-0.5">
                 Notification 14/2022 with Circular 170/02/2022-GST. 4(A) is gross — the portal
                 populates it from GSTR-2B — and the reversals are declared separately in 4(B).
               </p>
             </div>
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-[#64748B] uppercase border-b border-[#F1F5F9]">
+                <tr className="text-xs text-ps-label uppercase border-b border-ps-muted">
                   <th className="text-left px-5 py-2.5 font-medium">Row</th>
                   <th className="text-right px-5 py-2.5 font-medium">IGST</th>
                   <th className="text-right px-5 py-2.5 font-medium">CGST</th>
                   <th className="text-right px-5 py-2.5 font-medium">SGST</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#334155]">
+              <tbody className="divide-y divide-ps-bg">
+                <tr className="hover:bg-ps-bg">
+                  <td className="px-5 py-3 text-ps-body">
                     4(A) ITC available
-                    <span className="block text-xs text-[#94A3B8]">All credit availed, including credit reversed below</span>
+                    <span className="block text-xs text-ps-hint">All credit availed, including credit reversed below</span>
                   </td>
-                  <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.avail_igst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.avail_cgst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.avail_sgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.itc.avail_igst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.itc.avail_cgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.itc.avail_sgst_paise)}</td>
                 </tr>
-                <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#475569] text-xs">
+                <tr className="hover:bg-ps-bg">
+                  <td className="px-5 py-3 text-ps-label text-xs">
                     4(B)(1) Reversed — permanent
-                    <span className="block text-[#94A3B8]">Rules 38, 42 and 43, and Section 17(5) blocked credit</span>
+                    <span className="block text-ps-hint">Rules 38, 42 and 43, and Section 17(5) blocked credit</span>
                   </td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.permanent_paise.igst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.permanent_paise.cgst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.permanent_paise.sgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-label text-xs">{r(w.itc_reversal.permanent_paise.igst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-label text-xs">{r(w.itc_reversal.permanent_paise.cgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-label text-xs">{r(w.itc_reversal.permanent_paise.sgst_paise)}</td>
                 </tr>
-                <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#475569] text-xs">
+                <tr className="hover:bg-ps-bg">
+                  <td className="px-5 py-3 text-ps-label text-xs">
                     4(B)(2) Reversed — reclaimable later
-                    <span className="block text-[#94A3B8]">Rule 37 / 37A and Section 16(2)(b), (c). Comes back through 4(A)(5)</span>
+                    <span className="block text-ps-hint">Rule 37 / 37A and Section 16(2)(b), (c). Comes back through 4(A)(5)</span>
                   </td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.reclaimable_paise.igst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.reclaimable_paise.cgst_paise)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.itc_reversal.reclaimable_paise.sgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-label text-xs">{r(w.itc_reversal.reclaimable_paise.igst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-label text-xs">{r(w.itc_reversal.reclaimable_paise.cgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-ps-label text-xs">{r(w.itc_reversal.reclaimable_paise.sgst_paise)}</td>
                 </tr>
                 <tr className="bg-green-50 font-semibold">
                   <td className="px-5 py-3 text-green-800">4(C) Net ITC available</td>
@@ -603,14 +603,14 @@ export default function GSTR3BPage() {
               </tbody>
             </table>
             {w.itc_reversal.reasons.length > 0 && (
-              <div className="px-5 py-3 border-t border-[#F1F5F9] bg-[#FCFCFD]">
-                <p className="text-xs font-medium text-[#475569] mb-1.5">What is in 4(B)</p>
+              <div className="px-5 py-3 border-t border-ps-muted bg-[#FCFCFD]">
+                <p className="text-xs font-medium text-ps-label mb-1.5">What is in 4(B)</p>
                 <ul className="space-y-1">
                   {w.itc_reversal.reasons.map((x, i) => (
-                    <li key={i} className="text-xs text-[#64748B] flex items-baseline justify-between gap-4">
+                    <li key={i} className="text-xs text-ps-label flex items-baseline justify-between gap-4">
                       <span>
                         {x.reason}
-                        <span className="ml-2 text-[#94A3B8]">
+                        <span className="ml-2 text-ps-hint">
                           {x.reclaimable ? "4(B)(2)" : "4(B)(1)"}
                         </span>
                       </span>
@@ -631,12 +631,12 @@ export default function GSTR3BPage() {
               supplier's filing decisive, so this is the difference between a
               credit that is safe and one that is not. */}
           {w.rule_36_4 && (
-            <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-              <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-                <h3 className="font-semibold text-[#1E293B] text-sm">
+            <section className="bg-white border border-ps-border rounded-xl overflow-hidden">
+              <div className="px-5 py-3 bg-ps-bg border-b border-ps-border">
+                <h3 className="font-semibold text-ps-ink text-sm">
                   Rule 36(4) — books against GSTR-2B
                 </h3>
-                <p className="text-xs text-[#64748B] mt-0.5">
+                <p className="text-xs text-ps-label mt-0.5">
                   CGST Rule 36(4) with s.16(2)(aa): credit is available only where the
                   supplier has furnished the invoice and it has reached you in GSTR-2B.
                 </p>
@@ -647,7 +647,7 @@ export default function GSTR3BPage() {
                    nothing was compared — and the figures alone cannot tell a
                    CA which of the two it is. Saying so is the whole point of
                    `compared` being a field of its own. */
-                <div className="px-5 py-4 bg-[#FFFBEB] border-b border-amber-100">
+                <div className="px-5 py-4 bg-state-attention-surface border-b border-amber-100">
                   <p className="text-sm text-amber-900 font-medium">
                     No GSTR-2B on file for this period — nothing was compared.
                   </p>
@@ -659,7 +659,7 @@ export default function GSTR3BPage() {
                   </p>
                 </div>
               ) : w.rule_36_4.cap_applied ? (
-                <div className="px-5 py-4 bg-[#FEF2F2] border-b border-red-100">
+                <div className="px-5 py-4 bg-state-problem-surface border-b border-red-100">
                   <p className="text-sm text-red-900 font-medium">
                     Credit was trimmed to the GSTR-2B figure.
                   </p>
@@ -680,36 +680,36 @@ export default function GSTR3BPage() {
 
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-[#64748B] uppercase border-b border-[#F1F5F9]">
+                  <tr className="text-xs text-ps-label uppercase border-b border-ps-muted">
                     <th className="text-left px-5 py-2.5 font-medium">Measured</th>
                     <th className="text-right px-5 py-2.5 font-medium">IGST</th>
                     <th className="text-right px-5 py-2.5 font-medium">CGST</th>
                     <th className="text-right px-5 py-2.5 font-medium">SGST</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
-                  <tr className="hover:bg-[#F8FAFC]">
-                    <td className="px-5 py-3 text-[#334155]">
+                <tbody className="divide-y divide-ps-bg">
+                  <tr className="hover:bg-ps-bg">
+                    <td className="px-5 py-3 text-ps-body">
                       Per the purchase register
-                      <span className="block text-xs text-[#94A3B8]">
+                      <span className="block text-xs text-ps-hint">
                         Before s.17(5) and before any Table 4(B) reversal
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.igst_paise)}</td>
-                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.cgst_paise)}</td>
-                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.sgst_paise)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.itc.igst_paise)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.itc.cgst_paise)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.itc.sgst_paise)}</td>
                   </tr>
-                  <tr className="hover:bg-[#F8FAFC]">
-                    <td className="px-5 py-3 text-[#334155]">
+                  <tr className="hover:bg-ps-bg">
+                    <td className="px-5 py-3 text-ps-body">
                       Per GSTR-2B
-                      <span className="block text-xs text-[#94A3B8]">
+                      <span className="block text-xs text-ps-hint">
                         {w.rule_36_4.gstr2a_record_count} document
                         {w.rule_36_4.gstr2a_record_count === 1 ? "" : "s"} on file
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.rule_36_4.gstr2a_igst_paise)}</td>
-                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.rule_36_4.gstr2a_cgst_paise)}</td>
-                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.rule_36_4.gstr2a_sgst_paise)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.rule_36_4.gstr2a_igst_paise)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.rule_36_4.gstr2a_cgst_paise)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-ps-ink">{r(w.rule_36_4.gstr2a_sgst_paise)}</td>
                   </tr>
                   {/* OUTSIDE THE CAP, and the row exists because without it the
                       table above reads as an unexplained excess. Rule 36(4)
@@ -720,17 +720,17 @@ export default function GSTR3BPage() {
                   {(w.rule_36_4.self_assessed_igst_paise > 0 ||
                     w.rule_36_4.self_assessed_cgst_paise > 0 ||
                     w.rule_36_4.self_assessed_sgst_paise > 0) && (
-                    <tr className="hover:bg-[#F8FAFC] bg-[#FCFDFE]">
-                      <td className="px-5 py-3 text-[#475569] text-xs">
+                    <tr className="hover:bg-ps-bg bg-[#FCFDFE]">
+                      <td className="px-5 py-3 text-ps-label text-xs">
                         Of which self-assessed — not capped
-                        <span className="block text-[#94A3B8]">
+                        <span className="block text-ps-hint">
                           Reverse charge under s.9(3)/(4). No supplier files it, so
                           GSTR-2B cannot carry it and Rule 36(4) does not reach it.
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.rule_36_4.self_assessed_igst_paise)}</td>
-                      <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.rule_36_4.self_assessed_cgst_paise)}</td>
-                      <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.rule_36_4.self_assessed_sgst_paise)}</td>
+                      <td className="px-5 py-3 text-right font-mono text-ps-label text-xs">{r(w.rule_36_4.self_assessed_igst_paise)}</td>
+                      <td className="px-5 py-3 text-right font-mono text-ps-label text-xs">{r(w.rule_36_4.self_assessed_cgst_paise)}</td>
+                      <td className="px-5 py-3 text-right font-mono text-ps-label text-xs">{r(w.rule_36_4.self_assessed_sgst_paise)}</td>
                     </tr>
                   )}
                 </tbody>
@@ -829,10 +829,10 @@ export default function GSTR3BPage() {
           )}
 
           {/* Table 6 — Net Tax Payable */}
-          <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-            <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-              <h3 className="font-semibold text-[#1E293B] text-sm">Table 6 — Net Tax Payable</h3>
-              <p className="text-xs text-[#64748B] mt-0.5">CGST Act Section 49(5) with Rule 88A: IGST credit is spent first, then CGST and SGST credit may each be set against IGST — but never against each other.</p>
+          <section className="bg-white border border-ps-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3 bg-ps-bg border-b border-ps-border">
+              <h3 className="font-semibold text-ps-ink text-sm">Table 6 — Net Tax Payable</h3>
+              <p className="text-xs text-ps-label mt-0.5">CGST Act Section 49(5) with Rule 88A: IGST credit is spent first, then CGST and SGST credit may each be set against IGST — but never against each other.</p>
             </div>
             {/* The four heads are the SET-OFF result. Reverse-charge tax is not
                 in them and cannot be: s.49(4) lets the electronic credit ledger
@@ -840,33 +840,33 @@ export default function GSTR3BPage() {
                 EXCLUDING "tax payable by him on reverse charge basis". The row
                 below carries it, because "Total" here was being read as the
                 challan amount and was short by the whole of Table 3.1(d). */}
-            <div className="grid grid-cols-4 divide-x divide-[#F1F5F9] text-center">
+            <div className="grid grid-cols-4 divide-x divide-ps-muted text-center">
               {[
                 { label: "IGST", value: w.net_payable.igst_paise, color: "text-blue-700" },
                 { label: "CGST", value: w.net_payable.cgst_paise, color: "text-blue-600" },
                 { label: "SGST", value: w.net_payable.sgst_paise, color: "text-purple-700" },
-                { label: "After set-off", value: w.net_payable.total_paise, color: "text-[#0F172A] font-bold" },
+                { label: "After set-off", value: w.net_payable.total_paise, color: "text-ps-ink font-bold" },
               ].map(item => (
                 <div key={item.label} className="px-4 py-5">
-                  <p className="text-xs text-[#64748B] font-medium mb-1">{item.label}</p>
+                  <p className="text-xs text-ps-label font-medium mb-1">{item.label}</p>
                   <p className={`text-lg font-semibold font-mono ${item.color}`}>{r(item.value)}</p>
                 </div>
               ))}
             </div>
-            <div className="border-t border-[#E2E8F0] divide-y divide-[#F1F5F9]">
+            <div className="border-t border-ps-border divide-y divide-ps-muted">
               <div className="flex items-baseline justify-between px-5 py-3">
                 <div>
-                  <p className="text-sm text-[#334155]">Reverse charge, payable in cash</p>
-                  <p className="text-[10px] text-[#64748B] mt-0.5">
+                  <p className="text-sm text-ps-body">Reverse charge, payable in cash</p>
+                  <p className="text-[10px] text-ps-label mt-0.5">
                     Table 3.1(d). CGST Act s.49(4) with s.2(82) — the credit ledger cannot pay this.
                   </p>
                 </div>
                 <p className="text-lg font-semibold font-mono text-purple-700">{r(w.net_payable.rcm_cash_paise)}</p>
               </div>
-              <div className="flex items-baseline justify-between px-5 py-4 bg-[#FEF2F2]">
+              <div className="flex items-baseline justify-between px-5 py-4 bg-state-problem-surface">
                 <div>
-                  <p className="text-sm font-semibold text-[#0F172A]">Total payable in cash</p>
-                  <p className="text-[10px] text-[#64748B] mt-0.5">
+                  <p className="text-sm font-semibold text-ps-ink">Total payable in cash</p>
+                  <p className="text-[10px] text-ps-label mt-0.5">
                     This is the challan figure — the set-off result plus the reverse-charge tax.
                   </p>
                 </div>
@@ -876,7 +876,7 @@ export default function GSTR3BPage() {
             {/* A total of zero says nothing about whether credit was exhausted
                 or barely touched. Apex, April 2026: nil payable over
                 Rs 36,54,961.65 of unused credit. */}
-            <div className="px-5 py-3 border-t border-[#F1F5F9] bg-[#FCFDFE] grid grid-cols-3 gap-3 text-center">
+            <div className="px-5 py-3 border-t border-ps-muted bg-[#FCFDFE] grid grid-cols-3 gap-3 text-center">
               {[
                 { label: "Credit available (4C)", value: w.itc_utilisation.available_paise },
                 { label: "Set off against tax", value: w.itc_utilisation.consumed_paise },
@@ -884,13 +884,13 @@ export default function GSTR3BPage() {
                   accent: w.itc_utilisation.carried_forward_paise > 0 ? "text-emerald-700" : "" },
               ].map(item => (
                 <div key={item.label}>
-                  <p className="text-[11px] text-[#94A3B8]">{item.label}</p>
+                  <p className="text-[11px] text-ps-hint">{item.label}</p>
                   <p className={`text-sm font-semibold font-mono ${item.accent ?? ""}`}>{r(item.value)}</p>
                 </div>
               ))}
             </div>
             {w.itc_utilisation.carried_forward_paise > 0 && (
-              <p className="px-5 pb-3 text-xs text-[#64748B]">
+              <p className="px-5 pb-3 text-xs text-ps-label">
                 Credit exceeded this period&apos;s liability, so nothing is payable and
                 the balance carries into the next return. It is not a refund.
               </p>
@@ -901,30 +901,30 @@ export default function GSTR3BPage() {
               never folded into it, same as Rule 37 above, and separately from
               it because they are unrelated rules that share one box. */}
           {(rule37a || rule37aError) && (
-            <section className="bg-white border border-[#E2E8F0] rounded-xl">
-              <header className="px-5 py-3 border-b border-[#E2E8F0]">
-                <h3 className="text-sm font-semibold text-[#0F172A]">
+            <section className="bg-white border border-ps-border rounded-xl">
+              <header className="px-5 py-3 border-b border-ps-border">
+                <h3 className="text-sm font-semibold text-ps-ink">
                   Rule 37A — credit resting on a supplier&apos;s GSTR-3B
                 </h3>
                 {rule37a && (
-                  <p className="mt-0.5 text-xs text-[#64748B]">{rule37a.rule}</p>
+                  <p className="mt-0.5 text-xs text-ps-label">{rule37a.rule}</p>
                 )}
               </header>
 
               {rule37aError ? (
-                <p className="px-5 py-4 text-sm text-[#64748B]">
-                  <strong className="text-[#334155]">Rule 37A not checked.</strong>{" "}
+                <p className="px-5 py-4 text-sm text-ps-label">
+                  <strong className="text-ps-body">Rule 37A not checked.</strong>{" "}
                   {rule37aError} The figures above are unaffected.
                 </p>
               ) : rule37a ? (
                 <div className="px-5 py-4 space-y-3 text-sm">
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <p className="text-[#334155]">
+                    <p className="text-ps-body">
                       Supplier files GSTR-3B by{" "}
                       <strong>{rule37a.supplier_deadline}</strong>
                       {rule37a.supplier_deadline_passed && " — passed"}
                     </p>
-                    <p className="text-[#334155]">
+                    <p className="text-ps-body">
                       Client reverses by{" "}
                       <strong>{rule37a.recipient_deadline}</strong>
                       {rule37a.recipient_deadline_passed && " — passed"}
@@ -934,7 +934,7 @@ export default function GSTR3BPage() {
                   {rule37a.suppliers.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="text-left text-xs uppercase text-[#64748B]">
+                        <thead className="text-left text-xs uppercase text-ps-label">
                           <tr>
                             <th className="py-1">Supplier</th>
                             <th className="py-1">GSTIN</th>
@@ -945,7 +945,7 @@ export default function GSTR3BPage() {
                         <tbody>
                           {rule37a.suppliers.map((s) => (
                             <tr key={`${s.vendor_id ?? s.vendor_name}`}
-                                className="border-t border-[#F1F5F9]">
+                                className="border-t border-ps-muted">
                               <td className="py-1">{s.vendor_name}</td>
                               <td className="py-1 font-mono text-xs">
                                 {s.vendor_gstin ?? "—"}
@@ -958,7 +958,7 @@ export default function GSTR3BPage() {
                           ))}
                         </tbody>
                         <tfoot>
-                          <tr className="border-t border-[#E2E8F0] font-medium">
+                          <tr className="border-t border-ps-border font-medium">
                             <td className="py-1" colSpan={3}>
                               {rule37a.totals.supplier_count} supplier(s),{" "}
                               {rule37a.totals.bill_count} document(s)
@@ -976,7 +976,7 @@ export default function GSTR3BPage() {
                     <p key={g} className="text-xs text-[#92400E]">{g}</p>
                   ))}
                   {rule37a.caveats.map((c) => (
-                    <p key={c} className="text-xs text-[#64748B]">{c}</p>
+                    <p key={c} className="text-xs text-ps-label">{c}</p>
                   ))}
                 </div>
               ) : null}
@@ -987,8 +987,8 @@ export default function GSTR3BPage() {
           {(rule37 || rule37Error) && (() => {
             if (rule37Error) {
               return (
-                <section className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 text-sm text-[#64748B]">
-                  <strong className="text-[#334155]">Rule 37 not checked.</strong>{" "}
+                <section className="bg-ps-bg border border-ps-border rounded-xl p-4 text-sm text-ps-label">
+                  <strong className="text-ps-body">Rule 37 not checked.</strong>{" "}
                   {rule37Error} The figures above are unaffected, but this return has not been
                   checked for suppliers unpaid past 180 days.
                 </section>
@@ -1014,10 +1014,10 @@ export default function GSTR3BPage() {
 
             if (due.length === 0 && overdueEarlier.length === 0) {
               return (
-                <section className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-[#94A3B8] mt-0.5 shrink-0" />
-                  <p className="text-sm text-[#64748B]">
-                    <strong className="text-[#334155]">No Rule 37 reversal due.</strong>{" "}
+                <section className="bg-ps-bg border border-ps-border rounded-xl p-4 flex items-start gap-2">
+                  <CheckCircle className="w-4 h-4 text-ps-hint mt-0.5 shrink-0" />
+                  <p className="text-sm text-ps-label">
+                    <strong className="text-ps-body">No Rule 37 reversal due.</strong>{" "}
                     No purchase bill was 180 days unpaid as at {periodEndDate(yearMonth)}.
                   </p>
                 </section>
@@ -1111,8 +1111,8 @@ export default function GSTR3BPage() {
           {(rule43 || rule43Error) && (() => {
             if (rule43Error) {
               return (
-                <section className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 text-sm text-[#64748B]">
-                  <strong className="text-[#334155]">Rule 43 not checked.</strong>{" "}
+                <section className="bg-ps-bg border border-ps-border rounded-xl p-4 text-sm text-ps-label">
+                  <strong className="text-ps-body">Rule 43 not checked.</strong>{" "}
                   {rule43Error} The figures above are unaffected, but the capital-goods
                   apportionment has not been worked for this period.
                 </section>
@@ -1127,13 +1127,13 @@ export default function GSTR3BPage() {
             // different period's figures — never substituted here.
             if (r43.refused) {
               return (
-                <section className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4">
-                  <p className="text-sm text-[#334155] font-semibold mb-1">
+                <section className="bg-ps-bg border border-ps-border rounded-xl p-4">
+                  <p className="text-sm text-ps-body font-semibold mb-1">
                     Rule 43 could not be worked for this period
                   </p>
-                  <p className="text-xs text-[#64748B]">{r43.refusal}</p>
+                  <p className="text-xs text-ps-label">{r43.refusal}</p>
                   {running.length > 0 && (
-                    <p className="text-xs text-[#64748B] mt-2">
+                    <p className="text-xs text-ps-label mt-2">
                       {running.length} common capital good{running.length !== 1 ? "s are" : " is"} still
                       inside the five years, carrying {r(r43.common_credit_paise.igst
                         + r43.common_credit_paise.cgst + r43.common_credit_paise.sgst)} of credit.
@@ -1150,10 +1150,10 @@ export default function GSTR3BPage() {
             const nothingDue = r43.te_total_paise === 0 && unclassified.length === 0;
             if (nothingDue) {
               return (
-                <section className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-[#94A3B8] mt-0.5 shrink-0" />
-                  <p className="text-sm text-[#64748B]">
-                    <strong className="text-[#334155]">No Rule 43 reversal due.</strong>{" "}
+                <section className="bg-ps-bg border border-ps-border rounded-xl p-4 flex items-start gap-2">
+                  <CheckCircle className="w-4 h-4 text-ps-hint mt-0.5 shrink-0" />
+                  <p className="text-sm text-ps-label">
+                    <strong className="text-ps-body">No Rule 43 reversal due.</strong>{" "}
                     {running.length === 0
                       ? "No common capital good is inside its five-year life this period."
                       : "There were no exempt supplies this period, so the exempt share of the instalment is nil."}
@@ -1298,14 +1298,14 @@ export default function GSTR3BPage() {
           )}
 
           {/* JSON preview */}
-          <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-            <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-              <h3 className="font-semibold text-[#1E293B] text-sm">GSTN Payload Preview</h3>
-              <p className="text-xs text-[#64748B] mt-0.5">
+          <section className="bg-white border border-ps-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3 bg-ps-bg border-b border-ps-border">
+              <h3 className="font-semibold text-ps-ink text-sm">GSTN Payload Preview</h3>
+              <p className="text-xs text-ps-label mt-0.5">
                 This is the JSON that will be uploaded to gst.gov.in after CA approval.
               </p>
             </div>
-            <pre className="p-5 text-xs font-mono text-[#475569] overflow-auto max-h-80 bg-[#F8FAFC]">
+            <pre className="p-5 text-xs font-mono text-ps-label overflow-auto max-h-80 bg-ps-bg">
               {JSON.stringify(result.payload, null, 2)}
             </pre>
           </section>
@@ -1314,20 +1314,20 @@ export default function GSTR3BPage() {
 
       {/* Mark as Filed modal */}
       {showFiledModal && (
-        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-[#0F172A]">Mark GSTR-3B as Filed</h3>
+              <h3 className="font-semibold text-ps-ink">Mark GSTR-3B as Filed</h3>
               <button onClick={() => { setShowFiledModal(false); setArn(""); }}>
-                <X className="w-5 h-5 text-[#94A3B8] hover:text-[#475569]" />
+                <X className="w-5 h-5 text-ps-hint hover:text-ps-label" />
               </button>
             </div>
-            <p className="text-sm text-[#475569] mb-4">
+            <p className="text-sm text-ps-label mb-4">
               After uploading the JSON to <strong>gst.gov.in</strong> and receiving the Acknowledgment
               Reference Number (ARN), enter it below to record the filing in PracticeSync.
             </p>
             <div className="mb-4">
-              <label className="block text-sm font-medium text-[#334155] mb-1">
+              <label className="block text-sm font-medium text-ps-body mb-1">
                 ARN (Acknowledgment Reference Number)
               </label>
               <input
@@ -1341,7 +1341,7 @@ export default function GSTR3BPage() {
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => { setShowFiledModal(false); setArn(""); }}
-                className="px-4 py-2 text-sm text-[#475569] hover:text-[#1E293B] border border-gray-300 rounded-lg"
+                className="px-4 py-2 text-sm text-ps-label hover:text-ps-ink border border-gray-300 rounded-lg"
               >
                 Cancel
               </button>

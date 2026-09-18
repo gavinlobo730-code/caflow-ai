@@ -76,12 +76,12 @@ function KPICard({ label, value, sub, icon, trend, color = "#182350" }: {
   icon: React.ReactNode; trend?: "up" | "down" | "neutral"; color?: string;
 }) {
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-xl p-5">
+    <div className="bg-white border border-ps-border rounded-xl p-5">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs text-[#64748B] font-medium uppercase tracking-wide mb-1">{label}</p>
+          <p className="text-xs text-ps-label font-medium uppercase tracking-wide mb-1">{label}</p>
           <p className="text-2xl font-bold" style={{ color }}>{value}</p>
-          {sub && <p className="text-xs text-[#94A3B8] mt-1">{sub}</p>}
+          {sub && <p className="text-xs text-ps-hint mt-1">{sub}</p>}
         </div>
         <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${color}15` }}>
           {icon}
@@ -121,7 +121,7 @@ function HealthRing({ score }: { score: number }) {
       </svg>
       <div className="absolute text-center">
         <p className="text-xl font-bold" style={{ color }}>{score}</p>
-        <p className="text-[10px] text-[#94A3B8]">{healthLabel(score)}</p>
+        <p className="text-[10px] text-ps-hint">{healthLabel(score)}</p>
       </div>
     </div>
   );
@@ -132,10 +132,10 @@ function RiskBar({ label, value, max, color }: { label: string; value: number; m
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
-        <span className="text-[#64748B]">{label}</span>
+        <span className="text-ps-label">{label}</span>
         <span className="font-semibold" style={{ color }}>{value}</span>
       </div>
-      <div className="h-1.5 bg-[#F1F5F9] rounded-full overflow-hidden">
+      <div className="h-1.5 bg-ps-muted rounded-full overflow-hidden">
         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
     </div>
@@ -172,10 +172,10 @@ export default function ExecutiveDashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+      <div className="min-h-screen bg-ps-bg flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 rounded-full border-2 border-[#AFD2FA] border-t-[#182350] animate-spin mx-auto mb-4" />
-          <p className="text-[#64748B] text-sm">Generating executive intelligence...</p>
+          <div className="w-12 h-12 rounded-full border-2 border-brand-light border-t-brand animate-spin mx-auto mb-4" />
+          <p className="text-ps-label text-sm">Generating executive intelligence...</p>
         </div>
       </div>
     );
@@ -183,11 +183,11 @@ export default function ExecutiveDashboardPage() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+      <div className="min-h-screen bg-ps-bg flex items-center justify-center">
         <div className="text-center">
-          <AlertTriangle size={40} className="mx-auto text-[#CBD5E1] mb-3" />
-          <p className="text-[#64748B]">{error || "No data available"}</p>
-          <button disabled={rowBusy} onClick={load} className="mt-4 text-sm text-[#182350] underline">Retry</button>
+          <AlertTriangle size={40} className="mx-auto text-ps-disabled mb-3" />
+          <p className="text-ps-label">{error || "No data available"}</p>
+          <button disabled={rowBusy} onClick={load} className="mt-4 text-sm text-brand underline">Retry</button>
         </div>
       </div>
     );
@@ -199,21 +199,21 @@ export default function ExecutiveDashboardPage() {
   const totalClients = client_risk_insights.critical_clients + client_risk_insights.at_risk_clients + client_risk_insights.healthy_clients;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
+    <div className="min-h-screen bg-ps-bg">
       {/* Header */}
-      <div className="bg-white border-b border-[#E2E8F0] px-6 py-4">
+      <div className="bg-white border-b border-ps-border px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#182350" }}>
               <BarChart2 size={18} className="text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold text-[#182350]">Executive Dashboard</h1>
-              <p className="text-xs text-[#64748B]">AI-powered firm intelligence • {new Date(data.generated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+              <h1 className="text-xl font-semibold text-brand">Executive Dashboard</h1>
+              <p className="text-xs text-ps-label">AI-powered firm intelligence • {new Date(data.generated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
             </div>
           </div>
           <button onClick={load} disabled={loading}
-            className="flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#182350] border border-[#E2E8F0] px-3 py-2 rounded-lg bg-white">
+            className="flex items-center gap-1.5 text-sm text-ps-label hover:text-brand border border-ps-border px-3 py-2 rounded-lg bg-white">
             <RefreshCw size={13} /> Refresh
           </button>
         </div>
@@ -261,8 +261,8 @@ export default function ExecutiveDashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
           {/* Firm Health */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-5">
-            <h3 className="font-semibold text-[#182350] mb-4">Firm Health</h3>
+          <div className="bg-white border border-ps-border rounded-xl p-5">
+            <h3 className="font-semibold text-brand mb-4">Firm Health</h3>
             <div className="flex items-center gap-4 mb-4">
               <HealthRing score={firm_health_summary.overall_score} />
               <div className="flex-1 space-y-3">
@@ -284,8 +284,8 @@ export default function ExecutiveDashboardPage() {
           </div>
 
           {/* Client Risk Breakdown */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-5">
-            <h3 className="font-semibold text-[#182350] mb-4">Client Portfolio Risk</h3>
+          <div className="bg-white border border-ps-border rounded-xl p-5">
+            <h3 className="font-semibold text-brand mb-4">Client Portfolio Risk</h3>
             {totalClients > 0 && (
               <div className="h-3 rounded-full overflow-hidden flex mb-3">
                 {[
@@ -302,16 +302,16 @@ export default function ExecutiveDashboardPage() {
               <RiskBar label={`At Risk (${client_risk_insights.at_risk_clients})`} value={client_risk_insights.at_risk_clients} max={totalClients} color="#D97706" />
               <RiskBar label={`Critical (${client_risk_insights.critical_clients})`} value={client_risk_insights.critical_clients} max={totalClients} color="#DC2626" />
             </div>
-            <div className="mt-4 pt-3 border-t border-[#F1F5F9]">
-              <p className="text-xs text-[#64748B]">
+            <div className="mt-4 pt-3 border-t border-ps-muted">
+              <p className="text-xs text-ps-label">
                 <span className="font-medium text-red-600">{client_risk_insights.compliance_failures}</span> compliance failures require immediate attention
               </p>
             </div>
           </div>
 
           {/* Capacity */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-5">
-            <h3 className="font-semibold text-[#182350] mb-4">Team Capacity</h3>
+          <div className="bg-white border border-ps-border rounded-xl p-5">
+            <h3 className="font-semibold text-brand mb-4">Team Capacity</h3>
             {/* Utilisation gauge */}
             <div className="text-center mb-4">
               <div className="relative w-24 h-24 mx-auto">
@@ -329,23 +329,23 @@ export default function ExecutiveDashboardPage() {
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <p className="text-xl font-bold text-[#182350]">{capacity_insights.team_utilisation_percent}%</p>
-                  <p className="text-[9px] text-[#94A3B8]">utilised</p>
+                  <p className="text-xl font-bold text-brand">{capacity_insights.team_utilisation_percent}%</p>
+                  <p className="text-[9px] text-ps-hint">utilised</p>
                 </div>
               </div>
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-[#64748B] text-xs">Overloaded staff</span>
+                <span className="text-ps-label text-xs">Overloaded staff</span>
                 <span className="font-semibold text-red-600 text-xs">{capacity_insights.overloaded_staff}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#64748B] text-xs">Underutilised staff</span>
+                <span className="text-ps-label text-xs">Underutilised staff</span>
                 <span className="font-semibold text-amber-600 text-xs">{capacity_insights.underutilised_staff}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#64748B] text-xs">Avg tasks per person</span>
-                <span className="font-semibold text-[#182350] text-xs">{capacity_insights.avg_tasks_per_staff}</span>
+                <span className="text-ps-label text-xs">Avg tasks per person</span>
+                <span className="font-semibold text-brand text-xs">{capacity_insights.avg_tasks_per_staff}</span>
               </div>
             </div>
           </div>
@@ -355,22 +355,22 @@ export default function ExecutiveDashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
           {/* Churn Signals */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-5">
+          <div className="bg-white border border-ps-border rounded-xl p-5">
             <div className="flex items-center gap-2 mb-4">
               <TrendingDown size={16} className="text-red-500" />
-              <h3 className="font-semibold text-[#182350]">Churn Signals</h3>
-              <span className="ml-auto text-xs text-[#94A3B8]">{churn_signals.length} detected</span>
+              <h3 className="font-semibold text-brand">Churn Signals</h3>
+              <span className="ml-auto text-xs text-ps-hint">{churn_signals.length} detected</span>
             </div>
             {churn_signals.length === 0 ? (
-              <p className="text-sm text-[#94A3B8] text-center py-6">No churn signals detected</p>
+              <p className="text-sm text-ps-hint text-center py-6">No churn signals detected</p>
             ) : (
               <div className="space-y-3">
                 {churn_signals.map((sig: { client_name: string; signal: string; risk: string }, i: number) => (
                   <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-[#FFF7F7] border border-[#FEE2E2]">
                     <AlertTriangle size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-[#182350]">{sig.client_name}</p>
-                      <p className="text-xs text-[#64748B] mt-0.5">{sig.signal}</p>
+                      <p className="text-sm font-medium text-brand">{sig.client_name}</p>
+                      <p className="text-xs text-ps-label mt-0.5">{sig.signal}</p>
                     </div>
                     <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-semibold ${
                       sig.risk === "high" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
@@ -384,14 +384,14 @@ export default function ExecutiveDashboardPage() {
           </div>
 
           {/* Growth Opportunities */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-5">
+          <div className="bg-white border border-ps-border rounded-xl p-5">
             <div className="flex items-center gap-2 mb-4">
               <TrendingUp size={16} className="text-green-500" />
-              <h3 className="font-semibold text-[#182350]">Growth Opportunities</h3>
-              <span className="ml-auto text-xs text-[#94A3B8]">{growth_opportunities.length} identified</span>
+              <h3 className="font-semibold text-brand">Growth Opportunities</h3>
+              <span className="ml-auto text-xs text-ps-hint">{growth_opportunities.length} identified</span>
             </div>
             {growth_opportunities.length === 0 ? (
-              <p className="text-sm text-[#94A3B8] text-center py-6">No opportunities detected</p>
+              <p className="text-sm text-ps-hint text-center py-6">No opportunities detected</p>
             ) : (
               <div className="space-y-3">
                 {growth_opportunities.map((opp: { type: string; description: string; estimated_value_paise?: number }, i: number) => (
@@ -399,7 +399,7 @@ export default function ExecutiveDashboardPage() {
                     <Star size={14} className="text-green-500 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
                       <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">{opp.type}</p>
-                      <p className="text-sm text-[#182350] mt-0.5">{opp.description}</p>
+                      <p className="text-sm text-brand mt-0.5">{opp.description}</p>
                       {opp.estimated_value_paise && (
                         <p className="text-xs text-green-600 mt-1 font-medium">
                           Estimated: {fmtRupees(opp.estimated_value_paise)}
@@ -415,20 +415,20 @@ export default function ExecutiveDashboardPage() {
 
         {/* AI Summary */}
         {ai_summary && (
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-5">
+          <div className="bg-white border border-ps-border rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles size={16} style={{ color: "#182350" }} />
-              <h3 className="font-semibold text-[#182350]">AI Executive Summary</h3>
-              <span className="ml-auto text-[10px] text-[#94A3B8] flex items-center gap-1">
+              <h3 className="font-semibold text-brand">AI Executive Summary</h3>
+              <span className="ml-auto text-[10px] text-ps-hint flex items-center gap-1">
                 <Clock size={9} /> Generated {new Date(data.generated_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
-            <div className="prose prose-sm max-w-none text-[#334155] text-sm leading-relaxed">
+            <div className="prose prose-sm max-w-none text-ps-body text-sm leading-relaxed">
               {ai_summary.split("\n").filter(Boolean).map((para: string, i: number) => (
                 <p key={i} className="mb-2">{para}</p>
               ))}
             </div>
-            <p className="text-[10px] text-[#CBD5E1] mt-3">
+            <p className="text-[10px] text-ps-disabled mt-3">
               AI analysis is advisory. Verify all figures with source records before decisions.
             </p>
           </div>

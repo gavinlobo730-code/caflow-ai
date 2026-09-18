@@ -89,16 +89,16 @@ export function Modal({
         className={`relative w-full ${maxWidthClass} bg-white rounded-xl shadow-xl p-4 space-y-3 max-h-[90vh] overflow-y-auto outline-none`}
       >
         <div className="flex items-center justify-between gap-3">
-          <h3 id={titleId} className="text-sm font-semibold text-[#0F172A]">{title}</h3>
+          <h3 id={titleId} className="text-sm font-semibold text-ps-ink">{title}</h3>
           <button
             onClick={onClose}
             aria-label="Close dialog"
-            className="text-[#94A3B8] hover:text-[#475569] rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="text-ps-hint hover:text-ps-label rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             <X size={16} />
           </button>
         </div>
-        {note && <p className="text-[11px] text-[#64748B]">{note}</p>}
+        {note && <p className="text-[11px] text-ps-label">{note}</p>}
         {children}
       </div>
     </div>

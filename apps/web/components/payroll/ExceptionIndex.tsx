@@ -68,7 +68,7 @@ export function ExceptionIndexTab() {
         <div className="flex flex-row items-start justify-between flex-wrap gap-3">
           <div>
             <CardTitle className="text-base">Exceptions</CardTitle>
-            <p className="text-xs text-[#64748B] mt-0.5">
+            <p className="text-xs text-ps-label mt-0.5">
               What is missing from the employee master that a statutory output
               will refuse. Nothing here stops a run — these people are still
               paid; what they are missing is the means to be reported.
@@ -79,7 +79,7 @@ export function ExceptionIndexTab() {
           </Button>
         </div>
         {!loading && !error && (
-          <p className="text-xs text-[#475569] mt-3">
+          <p className="text-xs text-ps-label mt-3">
             {/* The denominator: "14 need a UAN" means something different out of
                 20 than out of 400. */}
             {rows.length === 0
@@ -99,21 +99,21 @@ export function ExceptionIndexTab() {
       </CardHeader>
       <CardContent className="p-0">
         {loading ? (
-          <p className="text-center text-[#94A3B8] py-12 text-sm">Checking the roster…</p>
+          <p className="text-center text-ps-hint py-12 text-sm">Checking the roster…</p>
         ) : error ? (
           <div className="p-8 text-center">
             <p className="text-sm text-red-600 font-medium mb-2">{error}</p>
             <Button size="sm" variant="outline" onClick={load}>Retry</Button>
           </div>
         ) : rows.length === 0 ? (
-          <p className="text-center text-[#94A3B8] py-12 text-sm">
+          <p className="text-center text-ps-hint py-12 text-sm">
             Every active employee has what the statutory outputs need.
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-xs font-medium text-[#64748B] uppercase tracking-wide bg-[#F8FAFC]">
+                <tr className="border-b text-xs font-medium text-ps-label uppercase tracking-wide bg-ps-bg">
                   <th className="text-left py-3 px-4">Employee</th>
                   <th className="text-left py-3 px-4">Client</th>
                   <th className="text-left py-3 px-4">Blocks</th>
@@ -122,15 +122,15 @@ export function ExceptionIndexTab() {
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={`${r.employee_id ?? r.employee}-${r.kind}-${i}`} className="border-b hover:bg-[#F8FAFC] align-top">
-                    <td className="py-3 px-4 font-medium text-[#0F172A]">{r.employee}</td>
-                    <td className="py-3 px-4 text-[#475569]">{r.client_name || "—"}</td>
+                  <tr key={`${r.employee_id ?? r.employee}-${r.kind}-${i}`} className="border-b hover:bg-ps-bg align-top">
+                    <td className="py-3 px-4 font-medium text-ps-ink">{r.employee}</td>
+                    <td className="py-3 px-4 text-ps-label">{r.client_name || "—"}</td>
                     <td className="py-3 px-4">
                       <span className="inline-block px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-800">
                         {r.blocks}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-xs text-[#475569] max-w-xl">{r.note}</td>
+                    <td className="py-3 px-4 text-xs text-ps-label max-w-xl">{r.note}</td>
                   </tr>
                 ))}
               </tbody>

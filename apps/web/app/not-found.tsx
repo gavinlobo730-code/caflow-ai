@@ -26,9 +26,9 @@ export default function NotFound() {
 
   if (redirecting) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#F8FAFC]">
+      <div className="flex items-center justify-center h-screen bg-ps-bg">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-6 h-6 border-2 border-[#182350] border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-gray-400">Loading workspace…</p>
         </div>
       </div>
@@ -36,14 +36,14 @@ export default function NotFound() {
   }
 
   return (
-    <div className="flex items-center justify-center h-screen bg-[#F8FAFC]">
+    <div className="flex items-center justify-center h-screen bg-ps-bg">
       <div className="text-center space-y-3">
-        <p className="text-5xl font-bold text-[#182350]/10">404</p>
-        <p className="text-base font-semibold text-[#182350]">Page not found</p>
+        <p className="text-5xl font-bold text-brand/10">404</p>
+        <p className="text-base font-semibold text-brand">Page not found</p>
         <p className="text-sm text-gray-400">The page you&apos;re looking for doesn&apos;t exist.</p>
         <a
           href="/"
-          className="inline-flex items-center text-sm font-medium text-[#182350] hover:text-[#182350]/70 underline underline-offset-4"
+          className="inline-flex items-center text-sm font-medium text-brand hover:text-brand/70 underline underline-offset-4"
         >
           Go to dashboard
         </a>

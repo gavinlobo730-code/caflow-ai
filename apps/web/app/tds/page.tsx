@@ -353,34 +353,34 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Add TDS Deduction</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X className="w-4 h-4" /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">Add TDS Deduction</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X className="w-4 h-4" /></button>
         </div>
         {err && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{err}</p>}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="text-xs font-medium text-[#334155] block mb-1">Party / Vendor Name</label>
-            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" />
+            <label className="text-xs font-medium text-ps-body block mb-1">Party / Vendor Name</label>
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">PAN of Party</label>
-            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500" value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+            <label className="text-xs font-medium text-ps-body block mb-1">PAN of Party</label>
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500" value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">TDS Section</label>
-            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={section} onChange={e => setSection(e.target.value)}>
+            <label className="text-xs font-medium text-ps-body block mb-1">TDS Section</label>
+            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={section} onChange={e => setSection(e.target.value)}>
               {sections.map(k => (
                 <option key={k} value={k}>{k}{SECTION_LABELS[k] ? ` — ${SECTION_LABELS[k]}` : ""}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Gross Payment (₹)</label>
-            <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={grossRupees} onChange={e => setGrossRupees(e.target.value)} placeholder="0.00" />
+            <label className="text-xs font-medium text-ps-body block mb-1">Gross Payment (₹)</label>
+            <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={grossRupees} onChange={e => setGrossRupees(e.target.value)} placeholder="0.00" />
           </div>
           {/* No TDS Rate input. The rate is not the CA's to type: it depends on
               the section, on whether the payee is an individual or a company
@@ -419,17 +419,17 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
             {quoteErr && <p className="text-[11px] text-red-600">{quoteErr}</p>}
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Payment Date</label>
-            <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
+            <label className="text-xs font-medium text-ps-body block mb-1">Payment Date</label>
+            <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Challan No.</label>
-            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={challanNo} onChange={e => setChallanNo(e.target.value)} placeholder="Optional" />
+            <label className="text-xs font-medium text-ps-body block mb-1">Challan No.</label>
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={challanNo} onChange={e => setChallanNo(e.target.value)} placeholder="Optional" />
           </div>
         </div>
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Saving…" : "Add Deduction"}
           </button>
@@ -489,26 +489,26 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
   }, [clientId, month]);
 
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-sm font-semibold text-[#0F172A]">Due for deposit</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">
+          <h2 className="text-sm font-semibold text-ps-ink">Due for deposit</h2>
+          <p className="text-xs text-ps-hint mt-0.5">
             Rule 30(2) — the 7th of the following month, except March, which is 30 April
           </p>
         </div>
-        <label className="text-xs text-[#475569] flex items-center gap-2">
+        <label className="text-xs text-ps-label flex items-center gap-2">
           Deduction month
           <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-            className="border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="border border-ps-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </label>
       </div>
 
       {state.phase === "loading" && (
-        <p className="px-5 py-8 text-center text-xs text-[#94A3B8]">Working it out…</p>
+        <p className="px-5 py-8 text-center text-xs text-ps-hint">Working it out…</p>
       )}
       {state.phase === "idle" && (
-        <p className="px-5 py-8 text-center text-xs text-[#94A3B8]">Pick a client to see what is due.</p>
+        <p className="px-5 py-8 text-center text-xs text-ps-hint">Pick a client to see what is due.</p>
       )}
       {state.phase === "error" && (
         <p className="mx-5 my-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -518,12 +518,12 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
 
       {state.phase === "ok" && (
         <>
-          <div className="px-5 py-3 border-b border-gray-50 flex flex-wrap gap-x-6 gap-y-1 text-xs text-[#475569]">
-            <span>Due <span className="font-medium text-[#0F172A]">{state.sheet.due_date}</span></span>
+          <div className="px-5 py-3 border-b border-gray-50 flex flex-wrap gap-x-6 gap-y-1 text-xs text-ps-label">
+            <span>Due <span className="font-medium text-ps-ink">{state.sheet.due_date}</span></span>
             <span>Computed as at {state.sheet.as_at}</span>
           </div>
           {state.sheet.sections.length === 0 ? (
-            <p className="px-5 py-8 text-center text-xs text-[#94A3B8]">
+            <p className="px-5 py-8 text-center text-xs text-ps-hint">
               No deductions recorded for {state.sheet.month}. {state.sheet.covers}
             </p>
           ) : (
@@ -532,36 +532,36 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
                 <thead>
                   <tr className="border-b border-gray-50">
                     {["Section", "Deductees", "Tax deducted", "Deposited", "Still to deposit", "s.201(1A) interest", "Payable now"].map(h => (
-                      <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
+                      <th key={h} className="text-left text-xs font-medium text-ps-hint px-4 py-3">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
+                <tbody className="divide-y divide-ps-bg">
                   {state.sheet.sections.map(row => (
-                    <tr key={row.section} className="hover:bg-[#F8FAFC]/50">
+                    <tr key={row.section} className="hover:bg-ps-bg/50">
                       <td className="px-4 py-3 text-xs font-mono text-blue-700">{row.section}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{row.deductee_count}</td>
-                      <td className="px-4 py-3 text-xs text-[#0F172A]">{formatPaise(row.tax_paise)}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{formatPaise(row.deposited_paise)}</td>
-                      <td className="px-4 py-3 text-xs font-medium text-[#0F172A]">{formatPaise(row.outstanding_paise)}</td>
+                      <td className="px-4 py-3 text-xs text-ps-label">{row.deductee_count}</td>
+                      <td className="px-4 py-3 text-xs text-ps-ink">{formatPaise(row.tax_paise)}</td>
+                      <td className="px-4 py-3 text-xs text-ps-label">{formatPaise(row.deposited_paise)}</td>
+                      <td className="px-4 py-3 text-xs font-medium text-ps-ink">{formatPaise(row.outstanding_paise)}</td>
                       <td className="px-4 py-3 text-xs">
                         {row.interest_paise > 0
                           ? <span className="text-red-700 font-medium">{formatPaise(row.interest_paise)}</span>
-                          : <span className="text-[#94A3B8]">—</span>}
+                          : <span className="text-ps-hint">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-sm font-semibold text-[#0F172A]">{formatPaise(row.payable_paise)}</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-ps-ink">{formatPaise(row.payable_paise)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t border-[#E2E8F0] bg-[#F8FAFC]">
-                    <td className="px-4 py-3 text-xs font-medium text-[#0F172A]">Total</td>
-                    <td className="px-4 py-3 text-xs text-[#475569]">{state.sheet.totals.deductee_count}</td>
-                    <td className="px-4 py-3 text-xs text-[#0F172A]">{formatPaise(state.sheet.totals.tax_paise)}</td>
-                    <td className="px-4 py-3 text-xs text-[#475569]">{formatPaise(state.sheet.totals.deposited_paise)}</td>
-                    <td className="px-4 py-3 text-xs font-medium text-[#0F172A]">{formatPaise(state.sheet.totals.outstanding_paise)}</td>
+                  <tr className="border-t border-ps-border bg-ps-bg">
+                    <td className="px-4 py-3 text-xs font-medium text-ps-ink">Total</td>
+                    <td className="px-4 py-3 text-xs text-ps-label">{state.sheet.totals.deductee_count}</td>
+                    <td className="px-4 py-3 text-xs text-ps-ink">{formatPaise(state.sheet.totals.tax_paise)}</td>
+                    <td className="px-4 py-3 text-xs text-ps-label">{formatPaise(state.sheet.totals.deposited_paise)}</td>
+                    <td className="px-4 py-3 text-xs font-medium text-ps-ink">{formatPaise(state.sheet.totals.outstanding_paise)}</td>
                     <td className="px-4 py-3 text-xs font-medium text-red-700">{formatPaise(state.sheet.totals.interest_paise)}</td>
-                    <td className="px-4 py-3 text-sm font-semibold text-[#0F172A]">{formatPaise(state.sheet.totals.payable_paise)}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-ps-ink">{formatPaise(state.sheet.totals.payable_paise)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -581,7 +581,7 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
           {/* The scope note is on EVERY worksheet, not only an empty one: a
               total that looks like "the month's TDS" and is only part of it is
               the thing this panel must not be read as. */}
-          <p className="mx-5 mb-4 text-[11px] text-[#94A3B8]">{state.sheet.covers}</p>
+          <p className="mx-5 mb-4 text-[11px] text-ps-hint">{state.sheet.covers}</p>
 
           {state.sheet.statutory_gaps.map(g => (
             <p key={g.kind} className="mx-5 mb-3 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
@@ -680,31 +680,31 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Add Challan 281</h3>
-          <button onClick={onClose}><X className="w-4 h-4 text-[#94A3B8]" /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">Add Challan 281</h3>
+          <button onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>
         </div>
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">BSR Code</label>
-            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={bsrCode} onChange={e => setBsrCode(e.target.value)} placeholder="7-digit BSR code" />
+            <label className="text-xs font-medium text-ps-body block mb-1">BSR Code</label>
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={bsrCode} onChange={e => setBsrCode(e.target.value)} placeholder="7-digit BSR code" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1">Challan Date</label>
-              <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={challanDate} onChange={e => setChallanDate(e.target.value)} />
+              <label className="text-xs font-medium text-ps-body block mb-1">Challan Date</label>
+              <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={challanDate} onChange={e => setChallanDate(e.target.value)} />
             </div>
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1">Serial No.</label>
-              <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="00001" />
+              <label className="text-xs font-medium text-ps-body block mb-1">Serial No.</label>
+              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="00001" />
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Amount (₹)</label>
-            <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={amtRupees} onChange={e => { setAmtRupees(e.target.value); setError(null); }} />
-            <p className="text-[10px] text-[#94A3B8] mt-1">
+            <label className="text-xs font-medium text-ps-body block mb-1">Amount (₹)</label>
+            <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={amtRupees} onChange={e => { setAmtRupees(e.target.value); setError(null); }} />
+            <p className="text-[10px] text-ps-hint mt-1">
               The TOTAL that left the bank. Tax is whatever is left after the three below.
             </p>
           </div>
@@ -714,29 +714,29 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
               as pure tax. */}
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1">Surcharge (₹)</label>
-              <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={surchargeRupees} onChange={e => { setSurchargeRupees(e.target.value); setError(null); }} placeholder="0" />
+              <label className="text-xs font-medium text-ps-body block mb-1">Surcharge (₹)</label>
+              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={surchargeRupees} onChange={e => { setSurchargeRupees(e.target.value); setError(null); }} placeholder="0" />
             </div>
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1" title="IT Act s.201(1A)">Interest (₹)</label>
-              <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={interestRupees} onChange={e => { setInterestRupees(e.target.value); setError(null); }} placeholder="0" />
+              <label className="text-xs font-medium text-ps-body block mb-1" title="IT Act s.201(1A)">Interest (₹)</label>
+              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={interestRupees} onChange={e => { setInterestRupees(e.target.value); setError(null); }} placeholder="0" />
             </div>
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1" title="IT Act s.234E / s.271H">Fee (₹)</label>
-              <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={penaltyRupees} onChange={e => { setPenaltyRupees(e.target.value); setError(null); }} placeholder="0" />
+              <label className="text-xs font-medium text-ps-body block mb-1" title="IT Act s.234E / s.271H">Fee (₹)</label>
+              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={penaltyRupees} onChange={e => { setPenaltyRupees(e.target.value); setError(null); }} placeholder="0" />
             </div>
           </div>
-          <p className="text-[10px] text-[#94A3B8] -mt-1">
+          <p className="text-[10px] text-ps-hint -mt-1">
             Interest is IT Act s.201(1A); fee is the s.234E ₹200-a-day late-filing
             charge. Leave them blank if the deposit is only tax. The Deposit Due
             panel works both out for you.
           </p>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Minor Head</label>
+            <label className="text-xs font-medium text-ps-body block mb-1">Minor Head</label>
             {/* 200 vs 400 is who initiated the payment, NOT company vs
                 non-company — that is the challan's major head (0020/0021) and
                 migration 037's inline comment had it the other way round. */}
-            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={minorHead} onChange={e => setMinorHead(e.target.value === "400" ? "400" : "200")}>
+            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={minorHead} onChange={e => setMinorHead(e.target.value === "400" ? "400" : "200")}>
               <option value="200">200 — TDS payable by the deductor</option>
               <option value="400">400 — TDS regular assessment (against a demand)</option>
             </select>
@@ -747,31 +747,31 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
           {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1">Period</label>
-              <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={period} onChange={e => setPeriod(e.target.value)}>
+              <label className="text-xs font-medium text-ps-body block mb-1">Period</label>
+              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={period} onChange={e => setPeriod(e.target.value)}>
                 {QUARTERS.map(q => <option key={q} value={q}>{QUARTER_LABEL[q]}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-[#334155] block mb-1">FY</label>
-              <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={fy} onChange={e => setFy(e.target.value)}>
+              <label className="text-xs font-medium text-ps-body block mb-1">FY</label>
+              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={fy} onChange={e => setFy(e.target.value)}>
                 {FY_LIST.map(f => <option key={f}>{f}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Section</label>
+            <label className="text-xs font-medium text-ps-body block mb-1">Section</label>
             {/* s.192 IS offered here and only here. A challan is a DEPOSIT, and
                 salary TDS is deposited on an ITNS 281 like any other — Payroll
                 computes it, and the CA records the challan. The deduction form
                 above deliberately excludes it. */}
-            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={section} onChange={e => setSection(e.target.value)}>
+            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={section} onChange={e => setSection(e.target.value)}>
               {Object.entries(SECTION_LABELS).map(([k, v]) => <option key={k} value={k}>{k} — {v}</option>)}
             </select>
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg">Cancel</button>
+          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
           <button onClick={handleAdd} disabled={saving}
             className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Saving…" : "Add"}
@@ -904,42 +904,42 @@ export default function TDSPage() {
     {
       key: "party_name", header: "Party Name", accessor: (d) => d.deductee_name,
       searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (d) => <span className="font-medium text-[#0F172A]">{d.deductee_name}</span>,
+      render: (d) => <span className="font-medium text-ps-ink">{d.deductee_name}</span>,
     },
     {
       key: "party_pan", header: "PAN", accessor: (d) => d.deductee_pan ?? "", searchable: true,
-      render: (d) => <span className="font-mono text-xs text-[#475569]">{d.deductee_pan || "—"}</span>,
+      render: (d) => <span className="font-mono text-xs text-ps-label">{d.deductee_pan || "—"}</span>,
     },
     {
       key: "section", header: "Section", accessor: (d) => d.section, sortable: true,
       render: (d) => (
         <>
           <span className="text-xs font-mono font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{d.section}</span>
-          <p className="text-[10px] text-[#94A3B8] mt-0.5">{SECTION_LABELS[d.section]}</p>
+          <p className="text-[10px] text-ps-hint mt-0.5">{SECTION_LABELS[d.section]}</p>
         </>
       ),
     },
     {
       key: "transaction_date", header: "Payment Date", accessor: (d) => d.transaction_date, sortable: true,
-      render: (d) => <span className="text-xs text-[#475569]">{d.transaction_date ? new Date(d.transaction_date).toLocaleDateString("en-IN") : "—"}</span>,
+      render: (d) => <span className="text-xs text-ps-label">{d.transaction_date ? new Date(d.transaction_date).toLocaleDateString("en-IN") : "—"}</span>,
     },
     {
       key: "gross_amount_paise", header: "Gross Amount", accessor: (d) => d.payment_amount_paise,
       sortable: true, align: "right", exportValue: (d) => d.payment_amount_paise / 100,
-      render: (d) => <span className="text-[#0F172A]">{formatPaise(d.payment_amount_paise)}</span>,
+      render: (d) => <span className="text-ps-ink">{formatPaise(d.payment_amount_paise)}</span>,
     },
     {
       key: "tds_rate", header: "TDS Rate", accessor: (d) => d.tds_rate_pct, sortable: true, align: "right",
-      render: (d) => <span className="text-xs text-[#475569]">{d.tds_rate_pct}%</span>,
+      render: (d) => <span className="text-xs text-ps-label">{d.tds_rate_pct}%</span>,
     },
     {
       key: "tds_amount_paise", header: "TDS Amount", accessor: (d) => d.tds_paise,
       sortable: true, align: "right", exportValue: (d) => d.tds_paise / 100,
-      render: (d) => <span className="font-medium text-[#0F172A]">{formatPaise(d.tds_paise)}</span>,
+      render: (d) => <span className="font-medium text-ps-ink">{formatPaise(d.tds_paise)}</span>,
     },
     {
       key: "challan_no", header: "Challan No", accessor: (d) => d.challan_no ?? "",
-      render: (d) => <span className="font-mono text-xs text-[#475569]">{d.challan_no || "—"}</span>,
+      render: (d) => <span className="font-mono text-xs text-ps-label">{d.challan_no || "—"}</span>,
     },
   ], []);
 
@@ -958,13 +958,13 @@ export default function TDSPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">TDS Module</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Tax Deducted at Source — IT Act Chapter XVII-B</p>
+          <h1 className="text-xl font-semibold text-ps-ink">TDS Module</h1>
+          <p className="text-sm text-ps-label mt-0.5">Tax Deducted at Source — IT Act Chapter XVII-B</p>
         </div>
         {/* Deductions are per client, so the client is chosen before anything
             can be recorded or listed. */}
         <div className="min-w-[240px]">
-          <label className="block text-xs font-medium text-[#475569] mb-1">Client *</label>
+          <label className="block text-xs font-medium text-ps-label mb-1">Client *</label>
           <ClientLookup clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
         </div>
       </div>
@@ -994,22 +994,22 @@ export default function TDSPage() {
           { icon: <Calendar className="w-4 h-4 text-red-600" />, bg: "bg-red-50", label: "Returns Due", value: String(pendingReturns), sub: "24Q/26Q/27Q" },
           { icon: <Award className="w-4 h-4 text-purple-600" />, bg: "bg-purple-50", label: "Certificates Pending", value: String(pendingCerts), sub: "Form 16/16A" },
         ].map(c => (
-          <div key={c.label} className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <div key={c.label} className="bg-white rounded-xl border border-ps-muted p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center`}>{c.icon}</div>
-              <span className="text-xs text-[#64748B]">{c.label}</span>
+              <span className="text-xs text-ps-label">{c.label}</span>
             </div>
-            <p className="text-lg font-semibold text-[#0F172A]">{c.value}</p>
-            <p className="text-xs text-[#94A3B8] mt-0.5">{c.sub}</p>
+            <p className="text-lg font-semibold text-ps-ink">{c.value}</p>
+            <p className="text-xs text-ps-hint mt-0.5">{c.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-[#F1F5F9]">
+      <div className="flex gap-1 border-b border-ps-muted">
         {TABS.map((tab, i) => (
           <button key={tab} onClick={() => setActiveTab(i)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-blue-600 text-blue-700" : "border-transparent text-[#64748B] hover:text-[#334155]"}`}>
+            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-blue-600 text-blue-700" : "border-transparent text-ps-label hover:text-ps-body"}`}>
             {tab}
           </button>
         ))}
@@ -1020,12 +1020,12 @@ export default function TDSPage() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-[#0F172A]">TDS Deductions</h2>
-              <p className="text-xs text-[#94A3B8] mt-0.5">IT Act Section 194 — deductions recorded</p>
+              <h2 className="text-sm font-semibold text-ps-ink">TDS Deductions</h2>
+              <p className="text-xs text-ps-hint mt-0.5">IT Act Section 194 — deductions recorded</p>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => setShowImport(true)}
-                className="flex items-center gap-1.5 border border-[#E2E8F0] text-[#475569] text-xs px-3 py-1.5 rounded-lg hover:bg-[#F8FAFC]">
+                className="flex items-center gap-1.5 border border-ps-border text-ps-label text-xs px-3 py-1.5 rounded-lg hover:bg-ps-bg">
                 <Upload className="w-3.5 h-3.5" /> Import CSV
               </button>
               <button onClick={() => setShowAddDeduction(true)}
@@ -1050,9 +1050,9 @@ export default function TDSPage() {
           />
 
           {deductions.length > 0 && (
-            <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 px-1 text-xs text-[#64748B]">
-              <span>Total Gross: <span className="font-semibold text-[#0F172A]">{formatPaise(deductions.reduce((s, d) => s + d.payment_amount_paise, 0))}</span></span>
-              <span>Total TDS: <span className="font-semibold text-[#0F172A]">{formatPaise(totalTDSPaise)}</span></span>
+            <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 px-1 text-xs text-ps-label">
+              <span>Total Gross: <span className="font-semibold text-ps-ink">{formatPaise(deductions.reduce((s, d) => s + d.payment_amount_paise, 0))}</span></span>
+              <span>Total TDS: <span className="font-semibold text-ps-ink">{formatPaise(totalTDSPaise)}</span></span>
             </div>
           )}
         </div>
@@ -1062,11 +1062,11 @@ export default function TDSPage() {
       {activeTab === 1 && (
         <div className="space-y-4">
         <DepositDuePanel clientId={selectedClientId} />
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-[#0F172A]">Challan 281 Tracker</h2>
-              <p className="text-xs text-[#94A3B8] mt-0.5">IT Act Section 200(1) — TDS deposit challans</p>
+              <h2 className="text-sm font-semibold text-ps-ink">Challan 281 Tracker</h2>
+              <p className="text-xs text-ps-hint mt-0.5">IT Act Section 200(1) — TDS deposit challans</p>
             </div>
             <button onClick={() => setShowAddChallan(true)}
               className="flex items-center gap-1.5 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700">
@@ -1074,29 +1074,29 @@ export default function TDSPage() {
             </button>
           </div>
           {challans.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">No challans added yet. Click &ldquo;Add Challan&rdquo; to record a deposit.</div>
+            <div className="px-5 py-10 text-center text-sm text-ps-hint">No challans added yet. Click &ldquo;Add Challan&rdquo; to record a deposit.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-50">
                     {["BSR Code", "Payment Date", "Challan No.", "Amount", "Period", "FY", "Section", "Status"].map(h => (
-                      <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
+                      <th key={h} className="text-left text-xs font-medium text-ps-hint px-4 py-3">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
+                <tbody className="divide-y divide-ps-bg">
                   {challans.map(c => (
-                    <tr key={c.id} className="hover:bg-[#F8FAFC]/50">
-                      <td className="px-4 py-3 text-xs font-mono text-[#0F172A]">{c.bsr_code || "—"}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{c.payment_date ? new Date(c.payment_date).toLocaleDateString("en-IN") : "—"}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-[#475569]">{c.challan_no || "—"}</td>
+                    <tr key={c.id} className="hover:bg-ps-bg/50">
+                      <td className="px-4 py-3 text-xs font-mono text-ps-ink">{c.bsr_code || "—"}</td>
+                      <td className="px-4 py-3 text-xs text-ps-label">{c.payment_date ? new Date(c.payment_date).toLocaleDateString("en-IN") : "—"}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-ps-label">{c.challan_no || "—"}</td>
                       {/* total_paise, not tds_paise: a challan can carry
                           interest and penalty as well as tax, and the tracker
                           is about what was DEPOSITED. */}
-                      <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{formatPaise(c.total_paise)}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{QUARTER_LABEL[c.quarter] ?? c.quarter}</td>
-                      <td className="px-4 py-3 text-xs text-[#475569]">{c.financial_year}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-ps-ink">{formatPaise(c.total_paise)}</td>
+                      <td className="px-4 py-3 text-xs text-ps-label">{QUARTER_LABEL[c.quarter] ?? c.quarter}</td>
+                      <td className="px-4 py-3 text-xs text-ps-label">{c.financial_year}</td>
                       <td className="px-4 py-3 text-xs font-mono text-blue-700">{c.section ?? "—"}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[c.status] ?? ""}`}>
@@ -1121,11 +1121,11 @@ export default function TDSPage() {
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <p className="text-sm text-amber-700">File 24Q/26Q returns manually on the Income Tax e-filing portal (incometax.gov.in), under the deductor&apos;s TAN login. TRACES is post-filing only (Form 16/16A, defaults, corrections). PracticeSync does not auto-submit to any government portal.</p>
           </div>
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-[#0F172A]">TDS Returns (24Q / 26Q / 27Q)</h2>
-                <p className="text-xs text-[#94A3B8] mt-0.5">IT Act Section 200(3) — quarterly TDS return filing status</p>
+                <h2 className="text-sm font-semibold text-ps-ink">TDS Returns (24Q / 26Q / 27Q)</h2>
+                <p className="text-xs text-ps-hint mt-0.5">IT Act Section 200(3) — quarterly TDS return filing status</p>
               </div>
               <Link
                 href="/tds/returns"
@@ -1141,12 +1141,12 @@ export default function TDSPage() {
             <div className="px-5 py-4 grid grid-cols-3 gap-4 text-center">
               {returnCounts.map(({ label, n }) => (
                 <div key={label}>
-                  <p className="text-2xl font-semibold text-[#0F172A]">{n}</p>
-                  <p className="text-xs text-[#64748B] mt-0.5">{label}</p>
+                  <p className="text-2xl font-semibold text-ps-ink">{n}</p>
+                  <p className="text-xs text-ps-label mt-0.5">{label}</p>
                 </div>
               ))}
             </div>
-            <p className="px-5 pb-4 text-xs text-[#94A3B8]">
+            <p className="px-5 pb-4 text-xs text-ps-hint">
               Generate, review, and mark a specific quarter&apos;s return as filed in{" "}
               <Link href="/tds/returns" className="text-blue-600 hover:underline">Prepare a Return</Link>.
             </p>
@@ -1156,38 +1156,38 @@ export default function TDSPage() {
 
       {/* Tab: Certificates */}
       {activeTab === 3 && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50">
-            <h2 className="text-sm font-semibold text-[#0F172A]">Form 16A Certificates</h2>
-            <p className="text-xs text-[#94A3B8] mt-0.5">TDS certificates issued to deductees — IT Act Section 203</p>
+            <h2 className="text-sm font-semibold text-ps-ink">Form 16A Certificates</h2>
+            <p className="text-xs text-ps-hint mt-0.5">TDS certificates issued to deductees — IT Act Section 203</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-50">
                   {["Form", "Deductee Name", "PAN", "Period", "TDS Amount", "Issue Date", "Status"].map(h => (
-                    <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
+                    <th key={h} className="text-left text-xs font-medium text-ps-hint px-4 py-3">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {certificates.map(c => (
-                  <tr key={c.id} className="hover:bg-[#F8FAFC]/50">
+                  <tr key={c.id} className="hover:bg-ps-bg/50">
                     {/* certificate_form is the FY's own name for it, derived
                         server-side: from 01-04-2026 Form 16 is 130 and 16A is
                         131 (CBDT Notification 22/2026). Falls back to the
                         stored key for a row read straight from PostgREST. */}
-                    <td className="px-4 py-3 text-xs text-[#475569]">Form {c.certificate_form ?? c.certificate_type}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{c.deductee_name}</td>
-                    <td className="px-4 py-3 text-xs font-mono text-[#475569]">{c.deductee_pan}</td>
+                    <td className="px-4 py-3 text-xs text-ps-label">Form {c.certificate_form ?? c.certificate_type}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-ps-ink">{c.deductee_name}</td>
+                    <td className="px-4 py-3 text-xs font-mono text-ps-label">{c.deductee_pan}</td>
                     {/* financial_year + quarter, the two real columns. `period`
                         never existed, so this cell rendered nothing at all. A
                         Form 16 is annual and has no quarter. */}
-                    <td className="px-4 py-3 text-xs text-[#475569]">
+                    <td className="px-4 py-3 text-xs text-ps-label">
                       {c.quarter ? `${QUARTER_LABEL[c.quarter] ?? c.quarter} ` : ""}{c.financial_year}
                     </td>
-                    <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{formatPaise(c.tds_deducted_paise ?? 0)}</td>
-                    <td className="px-4 py-3 text-xs text-[#475569]">{c.issued_at ? new Date(c.issued_at).toLocaleDateString("en-IN") : "—"}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-ps-ink">{formatPaise(c.tds_deducted_paise ?? 0)}</td>
+                    <td className="px-4 py-3 text-xs text-ps-label">{c.issued_at ? new Date(c.issued_at).toLocaleDateString("en-IN") : "—"}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[c.status] ?? ""}`}>
                         {STATUS_LABEL[c.status] ?? c.status}
@@ -1196,7 +1196,7 @@ export default function TDSPage() {
                   </tr>
                 ))}
                 {certificates.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-[#94A3B8]">
+                  <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-ps-hint">
                     No certificates for this client yet. Generate a draft from the client&apos;s Compliance → TDS tab.
                   </td></tr>
                 )}

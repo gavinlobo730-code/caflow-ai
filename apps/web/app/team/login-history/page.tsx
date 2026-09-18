@@ -69,8 +69,8 @@ export default function LoginHistoryPage() {
     <div className="p-6 max-w-4xl">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
-          <History size={18} className="text-[#182350]" />
-          <h1 className="text-lg font-semibold text-[#182350]">Login History</h1>
+          <History size={18} className="text-brand" />
+          <h1 className="text-lg font-semibold text-brand">Login History</h1>
           {!loading && (
             <span className="text-[12px] text-gray-400">
               {events.length}{capped ? "+" : ""} event{events.length === 1 ? "" : "s"}
@@ -106,7 +106,7 @@ export default function LoginHistoryPage() {
           {events.map((e) => (
             <div key={e.id} className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50 text-[12px]">
               <div className="min-w-0">
-                <span className="text-[#182350] font-medium">{e.email || e.user_id || "—"}</span>
+                <span className="text-brand font-medium">{e.email || e.user_id || "—"}</span>
                 {e.ip ? <span className="text-gray-400"> · {e.ip}</span> : null}
               </div>
               <div className="flex items-center gap-3 shrink-0">

@@ -171,7 +171,7 @@ function DeadlineBadge({ daysLeft }: { daysLeft: number }) {
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   completed:       { label: "Done",        color: "text-emerald-600 bg-emerald-50" },
   in_progress:     { label: "In Progress", color: "text-blue-600 bg-blue-50" },
-  todo:            { label: "To Do",       color: "text-[#64748B] bg-[#F1F5F9]" },
+  todo:            { label: "To Do",       color: "text-ps-label bg-ps-muted" },
   review_required: { label: "Review",      color: "text-amber-600 bg-amber-50" },
   waiting_client:  { label: "Waiting",     color: "text-purple-600 bg-purple-50" },
 };
@@ -370,8 +370,8 @@ export default function DashboardContent() {
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-[22px] font-semibold text-[#0F172A] tracking-tight">{greeting}</h1>
-          <p className="text-[13px] text-[#94A3B8] mt-1">{dateLabel}</p>
+          <h1 className="text-[22px] font-semibold text-ps-ink tracking-tight">{greeting}</h1>
+          <p className="text-[13px] text-ps-hint mt-1">{dateLabel}</p>
         </div>
         <Link href="/ai-assistant">
           <div className="hidden sm:flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-[13px] font-medium px-3.5 py-2 rounded-lg shadow-[0_4px_12px_rgba(59,130,246,0.2)] transition-colors">
@@ -382,51 +382,51 @@ export default function DashboardContent() {
       </div>
 
       {/* ── Stats Strip ─────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-6 py-3 px-5 bg-white rounded-xl border border-[#E2E8F0] flex-wrap">
+      <div className="flex items-center gap-6 py-3 px-5 bg-white rounded-xl border border-ps-border flex-wrap">
         <Link href="/clients" className="flex items-center gap-2.5 group">
           <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
             <Users size={13} className="text-blue-600" />
           </div>
           {loading ? <Skeleton className="h-5 w-10" /> : (
             <div>
-              <span className="text-xl font-bold text-[#0F172A] group-hover:text-blue-600 transition-colors">{kpis?.totalClients ?? 0}</span>
-              <span className="text-xs text-[#94A3B8] ml-1.5">Clients</span>
+              <span className="text-xl font-bold text-ps-ink group-hover:text-blue-600 transition-colors">{kpis?.totalClients ?? 0}</span>
+              <span className="text-xs text-ps-hint ml-1.5">Clients</span>
             </div>
           )}
         </Link>
-        <div className="w-px h-8 bg-[#F1F5F9]" />
+        <div className="w-px h-8 bg-ps-muted" />
         <Link href="/work" className="flex items-center gap-2.5 group">
           <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center">
             <Clock size={13} className="text-amber-600" />
           </div>
           {loading ? <Skeleton className="h-5 w-10" /> : (
             <div>
-              <span className="text-xl font-bold text-[#0F172A] group-hover:text-amber-600 transition-colors">{kpis?.pendingTasks ?? 0}</span>
-              <span className="text-xs text-[#94A3B8] ml-1.5">Pending Tasks</span>
+              <span className="text-xl font-bold text-ps-ink group-hover:text-amber-600 transition-colors">{kpis?.pendingTasks ?? 0}</span>
+              <span className="text-xs text-ps-hint ml-1.5">Pending Tasks</span>
             </div>
           )}
         </Link>
-        <div className="w-px h-8 bg-[#F1F5F9]" />
+        <div className="w-px h-8 bg-ps-muted" />
         <Link href="/deadlines" className="flex items-center gap-2.5 group">
           <div className="w-7 h-7 rounded-lg bg-violet-50 flex items-center justify-center">
             <FileCheck size={13} className="text-violet-600" />
           </div>
           {loading ? <Skeleton className="h-5 w-10" /> : (
             <div>
-              <span className="text-xl font-bold text-[#0F172A] group-hover:text-violet-600 transition-colors">{kpis?.filingsDueThisMonth ?? 0}</span>
-              <span className="text-xs text-[#94A3B8] ml-1.5">Filings This Month</span>
+              <span className="text-xl font-bold text-ps-ink group-hover:text-violet-600 transition-colors">{kpis?.filingsDueThisMonth ?? 0}</span>
+              <span className="text-xs text-ps-hint ml-1.5">Filings This Month</span>
             </div>
           )}
         </Link>
-        <div className="w-px h-8 bg-[#F1F5F9]" />
+        <div className="w-px h-8 bg-ps-muted" />
         <Link href="/deadlines" className="flex items-center gap-2.5 group">
-          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", (kpis?.overdueFilings ?? 0) > 0 ? "bg-red-50" : "bg-[#F8FAFC]")}>
-            <AlertTriangle size={13} className={(kpis?.overdueFilings ?? 0) > 0 ? "text-red-600" : "text-[#CBD5E1]"} />
+          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", (kpis?.overdueFilings ?? 0) > 0 ? "bg-red-50" : "bg-ps-bg")}>
+            <AlertTriangle size={13} className={(kpis?.overdueFilings ?? 0) > 0 ? "text-red-600" : "text-ps-disabled"} />
           </div>
           {loading ? <Skeleton className="h-5 w-10" /> : (
             <div>
-              <span className={cn("text-xl font-bold transition-colors", (kpis?.overdueFilings ?? 0) > 0 ? "text-red-600" : "text-[#0F172A]")}>{kpis?.overdueFilings ?? 0}</span>
-              <span className="text-xs text-[#94A3B8] ml-1.5">Overdue</span>
+              <span className={cn("text-xl font-bold transition-colors", (kpis?.overdueFilings ?? 0) > 0 ? "text-red-600" : "text-ps-ink")}>{kpis?.overdueFilings ?? 0}</span>
+              <span className="text-xs text-ps-hint ml-1.5">Overdue</span>
             </div>
           )}
         </Link>
@@ -439,22 +439,22 @@ export default function DashboardContent() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* Column 1: Upcoming Deadlines */}
-        <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center">
                 <Calendar size={14} className="text-amber-600" />
               </div>
-              <h2 className="text-[13px] font-semibold text-[#1E293B]">Upcoming Deadlines</h2>
+              <h2 className="text-[13px] font-semibold text-ps-ink">Upcoming Deadlines</h2>
             </div>
             <Link href="/deadlines" className="text-[12px] text-blue-600 hover:text-blue-500 font-medium flex items-center gap-1 transition-colors">
               View all <ChevronRight size={12} />
             </Link>
           </div>
-          <div className="divide-y divide-[#F1F5F9]">
+          <div className="divide-y divide-ps-muted">
             {upcomingDeadlines.map((d) => (
               <Link key={d.name + d.date} href="/deadlines">
-                <div className="flex items-center justify-between px-5 py-3.5 hover:bg-[#F8FAFC] transition-colors">
+                <div className="flex items-center justify-between px-5 py-3.5 hover:bg-ps-bg transition-colors">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={cn(
                       "w-1.5 h-1.5 rounded-full shrink-0",
@@ -464,8 +464,8 @@ export default function DashboardContent() {
                       "bg-emerald-400"
                     )} />
                     <div className="min-w-0">
-                      <p className="text-[13px] text-[#1E293B] font-medium truncate">{d.name}</p>
-                      <p className="text-[11px] text-[#94A3B8] mt-0.5">
+                      <p className="text-[13px] text-ps-ink font-medium truncate">{d.name}</p>
+                      <p className="text-[11px] text-ps-hint mt-0.5">
                         {new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                       </p>
                     </div>
@@ -478,19 +478,19 @@ export default function DashboardContent() {
         </div>
 
         {/* Column 2: Recent Clients */}
-        <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
                 <Users size={14} className="text-blue-600" />
               </div>
-              <h2 className="text-[13px] font-semibold text-[#1E293B]">Recent Clients</h2>
+              <h2 className="text-[13px] font-semibold text-ps-ink">Recent Clients</h2>
             </div>
             <Link href="/clients" className="text-[12px] text-blue-600 hover:text-blue-500 font-medium flex items-center gap-1 transition-colors">
               View all <ChevronRight size={12} />
             </Link>
           </div>
-          <div className="divide-y divide-[#F1F5F9]">
+          <div className="divide-y divide-ps-muted">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-5 py-3.5">
@@ -504,16 +504,16 @@ export default function DashboardContent() {
             ) : recentClients && recentClients.length > 0 ? (
               recentClients.map((c) => (
                 <Link key={c.id} href={`/clients/${c.id}`}>
-                  <div className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#F8FAFC] transition-colors">
+                  <div className="flex items-center gap-3 px-5 py-3.5 hover:bg-ps-bg transition-colors">
                     <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-500/20 flex items-center justify-center text-blue-600 text-[11px] font-bold shrink-0">
                       {c.client_name.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-semibold text-[#1E293B] truncate">{c.client_name}</p>
-                      {c.gstin && <p className="text-[11px] text-[#94A3B8] font-mono">{c.gstin}</p>}
+                      <p className="text-[13px] font-semibold text-ps-ink truncate">{c.client_name}</p>
+                      {c.gstin && <p className="text-[11px] text-ps-hint font-mono">{c.gstin}</p>}
                     </div>
                     {c.entity_type && (
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] font-medium shrink-0">
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-ps-muted text-ps-label font-medium shrink-0">
                         {c.entity_type}
                       </span>
                     )}
@@ -523,7 +523,7 @@ export default function DashboardContent() {
             ) : (
               <div className="px-5 py-10 text-center">
                 <Users size={24} className="text-gray-300 mx-auto mb-2" />
-                <p className="text-[13px] text-[#94A3B8]">No clients yet</p>
+                <p className="text-[13px] text-ps-hint">No clients yet</p>
                 <Link href="/clients" className="text-[12px] text-blue-600 font-medium mt-1 inline-block">Add your first client →</Link>
               </div>
             )}
@@ -531,19 +531,19 @@ export default function DashboardContent() {
         </div>
 
         {/* Column 3: Pending Tasks */}
-        <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1F5F9]">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center">
                 <Clock size={14} className="text-amber-600" />
               </div>
-              <h2 className="text-[13px] font-semibold text-[#1E293B]">Pending Tasks</h2>
+              <h2 className="text-[13px] font-semibold text-ps-ink">Pending Tasks</h2>
             </div>
             <Link href="/work" className="text-[12px] text-blue-600 hover:text-blue-500 font-medium flex items-center gap-1 transition-colors">
               View all <ChevronRight size={12} />
             </Link>
           </div>
-          <div className="divide-y divide-[#F1F5F9]">
+          <div className="divide-y divide-ps-muted">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-5 py-3.5">
@@ -557,7 +557,7 @@ export default function DashboardContent() {
               ))
             ) : recentTasks && recentTasks.length > 0 ? (
               recentTasks.filter(t => t.status !== "completed").map((t) => (
-                <div key={t.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#F8FAFC] transition-colors">
+                <div key={t.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-ps-bg transition-colors">
                   <div className={cn(
                     "w-1.5 h-1.5 rounded-full shrink-0 mt-0.5",
                     t.status === "in_progress" ? "bg-blue-400" :
@@ -566,11 +566,11 @@ export default function DashboardContent() {
                     "bg-gray-300"
                   )} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium text-[#1E293B] truncate">{t.title}</p>
+                    <p className="text-[13px] font-medium text-ps-ink truncate">{t.title}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      {t.client_name && <span className="text-[11px] text-[#94A3B8] truncate">{t.client_name}</span>}
+                      {t.client_name && <span className="text-[11px] text-ps-hint truncate">{t.client_name}</span>}
                       {t.due_date && (
-                        <span className="text-[11px] text-[#CBD5E1]">
+                        <span className="text-[11px] text-ps-disabled">
                           · {new Date(t.due_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                         </span>
                       )}
@@ -582,7 +582,7 @@ export default function DashboardContent() {
             ) : (
               <div className="px-5 py-10 text-center">
                 <CheckCircle2 size={24} className="text-gray-300 mx-auto mb-2" />
-                <p className="text-[13px] text-[#94A3B8]">All caught up</p>
+                <p className="text-[13px] text-ps-hint">All caught up</p>
                 <Link href="/work" className="text-[12px] text-blue-600 font-medium mt-1 inline-block">View work queue →</Link>
               </div>
             )}

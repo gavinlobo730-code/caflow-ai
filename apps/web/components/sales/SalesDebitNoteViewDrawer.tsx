@@ -17,7 +17,7 @@ import { formatDateTime } from "@/lib/services/formatting";
 import type { SalesDebitNoteDetail } from "@/components/sales/SalesDebitNoteEditor";
 
 const DN_STATUS_BADGE: Record<string, string> = {
-  draft: "bg-[#F1F5F9] text-[#64748B]",
+  draft: "bg-ps-muted text-ps-label",
   issued: "bg-blue-100 text-blue-700",
 };
 
@@ -29,8 +29,8 @@ interface ActivityItem { at: string; title: string; detail?: string }
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <span className="text-xs text-[#94A3B8] flex-shrink-0">{label}</span>
-      <span className={`text-xs text-[#334155] text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
+      <span className="text-xs text-ps-hint flex-shrink-0">{label}</span>
+      <span className={`text-xs text-ps-body text-right break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
 }
@@ -39,8 +39,8 @@ function Action({ children, onClick, icon, primary, danger }: {
   children: React.ReactNode; onClick: () => void; icon: React.ReactNode; primary?: boolean; danger?: boolean;
 }) {
   const cls = primary ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600"
-    : danger ? "border-[#E2E8F0] text-red-600 hover:bg-red-50"
-    : "border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC]";
+    : danger ? "border-ps-border text-red-600 hover:bg-red-50"
+    : "border-ps-border text-ps-label hover:bg-ps-bg";
   return (
     <button onClick={onClick} className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 ${cls}`}>
       {icon} {children}
@@ -139,14 +139,14 @@ export function SalesDebitNoteViewDrawer({
               <Skeleton className="h-2.5 w-24" />
             </div>
           </div>
-          <TableSkeleton cols={6} rows={3} bare className="rounded-lg border border-[#F1F5F9]" />
+          <TableSkeleton cols={6} rows={3} bare className="rounded-lg border border-ps-muted" />
           <TimelineSkeleton rows={3} />
         </div>
       ) : error || !dn ? (
         <div className="p-8 text-center">
           <AlertCircle size={28} className="mx-auto mb-3 text-red-500" />
-          <p className="text-sm font-semibold text-[#334155]">Couldn&apos;t load this debit note</p>
-          <button onClick={load} className="mt-3 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Retry</button>
+          <p className="text-sm font-semibold text-ps-body">Couldn&apos;t load this debit note</p>
+          <button onClick={load} className="mt-3 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">Retry</button>
         </div>
       ) : (
         <div className="p-5 space-y-5">
@@ -154,17 +154,17 @@ export function SalesDebitNoteViewDrawer({
           <section className="space-y-2.5">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-[#0F172A] truncate">{customerName || "—"}</p>
-                <p className="text-[10px] text-[#94A3B8]">{isInterstate ? "Inter-state · IGST" : "Intra-state · CGST+SGST"}</p>
+                <p className="text-sm font-semibold text-ps-ink truncate">{customerName || "—"}</p>
+                <p className="text-[10px] text-ps-hint">{isInterstate ? "Inter-state · IGST" : "Intra-state · CGST+SGST"}</p>
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="text-base font-semibold text-[#0F172A] font-mono">{fmt(dn.total_paise ?? 0)}</p>
-                <p className="text-[10px] text-[#94A3B8]">Debit note total</p>
+                <p className="text-base font-semibold text-ps-ink font-mono">{fmt(dn.total_paise ?? 0)}</p>
+                <p className="text-[10px] text-ps-hint">Debit note total</p>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${DN_STATUS_BADGE[dn.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${DN_STATUS_BADGE[dn.status] ?? "bg-ps-muted text-ps-label"}`}>
                 {dn.status}
               </span>
             </div>
@@ -187,11 +187,11 @@ export function SalesDebitNoteViewDrawer({
 
           {/* ── Line items ──────────────────────────────────────────────── */}
           <section>
-            <h4 className="text-xs font-semibold text-[#334155] mb-2">Line items</h4>
-            <div className="overflow-x-auto border border-[#F1F5F9] rounded-lg">
+            <h4 className="text-xs font-semibold text-ps-body mb-2">Line items</h4>
+            <div className="overflow-x-auto border border-ps-muted rounded-lg">
               <table className="w-full text-[11px]">
                 <thead>
-                  <tr className="text-[#94A3B8] border-b border-[#F1F5F9]">
+                  <tr className="text-ps-hint border-b border-ps-muted">
                     <th className="px-2 py-1.5 text-left font-semibold">Description</th>
                     <th className="px-2 py-1.5 text-left font-semibold">HSN/SAC</th>
                     <th className="px-2 py-1.5 text-right font-semibold">Qty</th>
@@ -200,15 +200,15 @@ export function SalesDebitNoteViewDrawer({
                     <th className="px-2 py-1.5 text-right font-semibold">GST%</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
+                <tbody className="divide-y divide-ps-bg">
                   {dn.lines.map((l, i) => (
                     <tr key={l.id ?? i}>
-                      <td className="px-2 py-1.5 text-[#334155]">{l.description}</td>
-                      <td className="px-2 py-1.5 font-mono text-[#64748B]">{l.hsn_sac || "—"}</td>
-                      <td className="px-2 py-1.5 text-right text-[#334155]">{l.quantity}</td>
-                      <td className="px-2 py-1.5 text-[#64748B]">{l.unit || "NOS"}</td>
-                      <td className="px-2 py-1.5 text-right font-mono text-[#334155]">{fmt(l.rate_paise)}</td>
-                      <td className="px-2 py-1.5 text-right text-[#334155]">{l.gst_rate_bps / 100}%</td>
+                      <td className="px-2 py-1.5 text-ps-body">{l.description}</td>
+                      <td className="px-2 py-1.5 font-mono text-ps-label">{l.hsn_sac || "—"}</td>
+                      <td className="px-2 py-1.5 text-right text-ps-body">{l.quantity}</td>
+                      <td className="px-2 py-1.5 text-ps-label">{l.unit || "NOS"}</td>
+                      <td className="px-2 py-1.5 text-right font-mono text-ps-body">{fmt(l.rate_paise)}</td>
+                      <td className="px-2 py-1.5 text-right text-ps-body">{l.gst_rate_bps / 100}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -218,7 +218,7 @@ export function SalesDebitNoteViewDrawer({
 
           {/* ── GST breakdown ───────────────────────────────────────────── */}
           <section className="space-y-1.5">
-            <h4 className="text-xs font-semibold text-[#334155]">GST</h4>
+            <h4 className="text-xs font-semibold text-ps-body">GST</h4>
             <DetailRow label="Taxable value" value={fmt(dn.taxable_amount_paise ?? 0)} />
             {isInterstate ? (
               <DetailRow label="IGST" value={fmt(dn.igst_paise ?? 0)} />
@@ -233,7 +233,7 @@ export function SalesDebitNoteViewDrawer({
           {/* ── Accounting / View Journal drill-through ─────────────────── */}
           <section className="space-y-2">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-[#334155]">Accounting</h4>
+              <h4 className="text-xs font-semibold text-ps-body">Accounting</h4>
               {posted && (
                 <button onClick={openJournal} className="text-[11px] text-blue-600 hover:underline flex items-center gap-1">
                   <BookOpen size={11} /> View Journal {showJournal ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
@@ -243,16 +243,16 @@ export function SalesDebitNoteViewDrawer({
             <DetailRow label="Posting status" value={posted ? "Posted" : "Not posted"} />
             <DetailRow label="Journal entry" value={dn.journal_entry_id ?? "—"} mono />
             {showJournal && (
-              <div className="border border-[#F1F5F9] rounded-lg p-2 bg-[#F8FAFC]">
+              <div className="border border-ps-muted rounded-lg p-2 bg-ps-bg">
                 {journalLoading ? (
-                  <div className="flex items-center gap-2 text-[11px] text-[#94A3B8] py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
+                  <div className="flex items-center gap-2 text-[11px] text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
                 ) : journal?.lines?.length ? (
                   <table className="w-full text-[11px]">
-                    <thead><tr className="text-[#94A3B8]"><th className="text-left font-semibold py-1">Account</th><th className="text-right font-semibold">Debit</th><th className="text-right font-semibold">Credit</th></tr></thead>
+                    <thead><tr className="text-ps-hint"><th className="text-left font-semibold py-1">Account</th><th className="text-right font-semibold">Debit</th><th className="text-right font-semibold">Credit</th></tr></thead>
                     <tbody>
                       {journal.lines.map((jl, i) => (
                         <tr key={i} className="border-t border-[#EEF2F7]">
-                          <td className="py-1 text-[#334155]">{jl.account_name ?? jl.account_id ?? "—"}</td>
+                          <td className="py-1 text-ps-body">{jl.account_name ?? jl.account_id ?? "—"}</td>
                           <td className="py-1 text-right font-mono">{jl.debit_paise ? fmt(jl.debit_paise) : ""}</td>
                           <td className="py-1 text-right font-mono">{jl.credit_paise ? fmt(jl.credit_paise) : ""}</td>
                         </tr>
@@ -260,7 +260,7 @@ export function SalesDebitNoteViewDrawer({
                     </tbody>
                   </table>
                 ) : (
-                  <p className="text-[11px] text-[#94A3B8] py-1">Journal {dn.journal_entry_id} — line detail unavailable here.</p>
+                  <p className="text-[11px] text-ps-hint py-1">Journal {dn.journal_entry_id} — line detail unavailable here.</p>
                 )}
               </div>
             )}
@@ -268,17 +268,17 @@ export function SalesDebitNoteViewDrawer({
 
           {/* ── Activity timeline ───────────────────────────────────────── */}
           <section className="space-y-2">
-            <h4 className="text-xs font-semibold text-[#334155] flex items-center gap-1"><Clock size={11} /> Activity</h4>
+            <h4 className="text-xs font-semibold text-ps-body flex items-center gap-1"><Clock size={11} /> Activity</h4>
             {activity.length === 0 ? (
-              <p className="text-xs text-[#94A3B8]">No activity recorded yet.</p>
+              <p className="text-xs text-ps-hint">No activity recorded yet.</p>
             ) : (
-              <ol className="space-y-2 border-l border-[#E2E8F0] pl-3">
+              <ol className="space-y-2 border-l border-ps-border pl-3">
                 {activity.map((a, i) => (
                   <li key={i} className="relative">
-                    <span className="absolute -left-[15px] top-1 h-1.5 w-1.5 rounded-full bg-[#CBD5E1]" />
-                    <p className="text-[11px] text-[#334155]">{a.title}</p>
-                    {a.detail && <p className="text-[10px] text-[#94A3B8]">{a.detail}</p>}
-                    <p className="text-[10px] text-[#CBD5E1]">{formatDateTime(a.at)}</p>
+                    <span className="absolute -left-[15px] top-1 h-1.5 w-1.5 rounded-full bg-ps-border-strong" />
+                    <p className="text-[11px] text-ps-body">{a.title}</p>
+                    {a.detail && <p className="text-[10px] text-ps-hint">{a.detail}</p>}
+                    <p className="text-[10px] text-ps-disabled">{formatDateTime(a.at)}</p>
                   </li>
                 ))}
               </ol>

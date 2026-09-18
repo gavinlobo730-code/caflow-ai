@@ -17,7 +17,7 @@ import type { TaskCounts } from "@/lib/data/tasks";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
-  todo: "bg-[#F1F5F9] text-[#475569]",
+  todo: "bg-ps-muted text-ps-label",
   in_progress: "bg-blue-100 text-blue-700",
   waiting_client: "bg-purple-100 text-purple-700",
   review_required: "bg-amber-100 text-amber-700",
@@ -36,7 +36,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   critical: "bg-red-100 text-red-700",
   high: "bg-amber-100 text-amber-700",
   medium: "bg-blue-100 text-blue-700",
-  low: "bg-[#F1F5F9] text-[#64748B]",
+  low: "bg-ps-muted text-ps-label",
 };
 
 function fmt(date?: string) {
@@ -64,14 +64,14 @@ function isOverdue(dateStr?: string) {
 
 function TaskRow({ task }: { task: Task }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#F8FAFC] rounded-lg transition-colors">
+    <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-ps-bg rounded-lg transition-colors">
       <Badge className={`text-[10px] px-1.5 py-0 shrink-0 ${STATUS_COLORS[task.status]}`}>
         {STATUS_LABEL[task.status]}
       </Badge>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-[#1E293B] truncate font-medium">{task.title}</p>
+        <p className="text-sm text-ps-ink truncate font-medium">{task.title}</p>
         {task.client_name && (
-          <p className="text-[11px] text-[#94A3B8] truncate">{task.client_name}</p>
+          <p className="text-[11px] text-ps-hint truncate">{task.client_name}</p>
         )}
       </div>
       <div className="shrink-0 text-right">
@@ -81,7 +81,7 @@ function TaskRow({ task }: { task: Task }) {
           </Badge>
         )}
         {task.due_date && (
-          <p className={`text-[11px] mt-0.5 ${isOverdue(task.due_date) ? "text-red-500 font-medium" : "text-[#94A3B8]"}`}>
+          <p className={`text-[11px] mt-0.5 ${isOverdue(task.due_date) ? "text-red-500 font-medium" : "text-ps-hint"}`}>
             {fmt(task.due_date)}
           </p>
         )}
@@ -152,8 +152,8 @@ export default function WorkPage() {
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">My Work</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Your personal task view</p>
+          <h1 className="text-xl font-semibold text-ps-ink">My Work</h1>
+          <p className="text-sm text-ps-label mt-0.5">Your personal task view</p>
         </div>
         <Link href="/tasks">
           <Button variant="outline" size="sm" className="gap-1.5 text-xs">
@@ -169,17 +169,17 @@ export default function WorkPage() {
       )}
 
       {loadingTasks ? (
-        <div className="flex items-center justify-center py-20 text-[#94A3B8]">
+        <div className="flex items-center justify-center py-20 text-ps-hint">
           <Loader2 className="animate-spin mr-2" size={18} /> Loading your work…
         </div>
       ) : isEmpty ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
-          <div className="w-12 h-12 rounded-full bg-[#F1F5F9] flex items-center justify-center">
-            <InboxIcon size={20} className="text-[#94A3B8]" />
+          <div className="w-12 h-12 rounded-full bg-ps-muted flex items-center justify-center">
+            <InboxIcon size={20} className="text-ps-hint" />
           </div>
           <div>
-            <p className="text-[14px] font-medium text-[#334155]">No tasks assigned to you</p>
-            <p className="text-[12px] text-[#94A3B8] mt-1">Tasks assigned to you will appear here.</p>
+            <p className="text-[14px] font-medium text-ps-body">No tasks assigned to you</p>
+            <p className="text-[12px] text-ps-hint mt-1">Tasks assigned to you will appear here.</p>
           </div>
           <Link href="/tasks">
             <Button variant="outline" size="sm" className="gap-1.5 text-xs mt-1">
@@ -193,42 +193,42 @@ export default function WorkPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="py-4">
-                <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
+                <div className="flex items-center gap-1.5 text-xs text-ps-label mb-1">
                   <CheckSquare size={11} /> My Tasks
                 </div>
-                <p className="text-2xl font-bold text-[#0F172A]">{counts?.active ?? 0}</p>
-                <p className="text-[11px] text-[#94A3B8]">active</p>
+                <p className="text-2xl font-bold text-ps-ink">{counts?.active ?? 0}</p>
+                <p className="text-[11px] text-ps-hint">active</p>
               </CardContent>
             </Card>
             <Card className={(counts?.due_today ?? 0) > 0 ? "border-amber-200 bg-amber-50/30" : ""}>
               <CardContent className="py-4">
-                <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
+                <div className="flex items-center gap-1.5 text-xs text-ps-label mb-1">
                   <Clock size={11} /> Due Today
                 </div>
-                <p className={`text-2xl font-bold ${(counts?.due_today ?? 0) > 0 ? "text-amber-700" : "text-[#0F172A]"}`}>
+                <p className={`text-2xl font-bold ${(counts?.due_today ?? 0) > 0 ? "text-amber-700" : "text-ps-ink"}`}>
                   {counts?.due_today ?? 0}
                 </p>
-                <p className="text-[11px] text-[#94A3B8]">tasks</p>
+                <p className="text-[11px] text-ps-hint">tasks</p>
               </CardContent>
             </Card>
             <Card className={(counts?.overdue ?? 0) > 0 ? "border-red-200 bg-red-50/20" : ""}>
               <CardContent className="py-4">
-                <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
+                <div className="flex items-center gap-1.5 text-xs text-ps-label mb-1">
                   <AlertTriangle size={11} /> Overdue
                 </div>
-                <p className={`text-2xl font-bold ${(counts?.overdue ?? 0) > 0 ? "text-red-600" : "text-[#0F172A]"}`}>
+                <p className={`text-2xl font-bold ${(counts?.overdue ?? 0) > 0 ? "text-red-600" : "text-ps-ink"}`}>
                   {counts?.overdue ?? 0}
                 </p>
-                <p className="text-[11px] text-[#94A3B8]">tasks</p>
+                <p className="text-[11px] text-ps-hint">tasks</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="py-4">
-                <div className="flex items-center gap-1.5 text-xs text-[#64748B] mb-1">
+                <div className="flex items-center gap-1.5 text-xs text-ps-label mb-1">
                   <CheckCircle2 size={11} /> Done
                 </div>
                 <p className="text-2xl font-bold text-green-600">{counts?.completed_recent ?? 0}</p>
-                <p className="text-[11px] text-[#94A3B8]">last 7 days</p>
+                <p className="text-[11px] text-ps-hint">last 7 days</p>
               </CardContent>
             </Card>
           </div>
@@ -246,7 +246,7 @@ export default function WorkPage() {
               </CardHeader>
               <CardContent className="px-2">
                 {todayTasks.length === 0 ? (
-                  <p className="text-sm text-[#94A3B8] text-center py-4">Nothing due today</p>
+                  <p className="text-sm text-ps-hint text-center py-4">Nothing due today</p>
                 ) : (
                   todayTasks.map(t => <TaskRow key={t.id} task={t} />)
                 )}
@@ -265,7 +265,7 @@ export default function WorkPage() {
               </CardHeader>
               <CardContent className="px-2">
                 {overdueTasks.length === 0 ? (
-                  <p className="text-sm text-[#94A3B8] text-center py-4">No overdue tasks</p>
+                  <p className="text-sm text-ps-hint text-center py-4">No overdue tasks</p>
                 ) : (
                   overdueTasks.map(t => <TaskRow key={t.id} task={t} />)
                 )}
@@ -284,7 +284,7 @@ export default function WorkPage() {
               </CardHeader>
               <CardContent className="px-2">
                 {thisWeekTasks.length === 0 ? (
-                  <p className="text-sm text-[#94A3B8] text-center py-4">Nothing else due this week</p>
+                  <p className="text-sm text-ps-hint text-center py-4">Nothing else due this week</p>
                 ) : (
                   thisWeekTasks.slice(0, 8).map(t => <TaskRow key={t.id} task={t} />)
                 )}
@@ -300,7 +300,7 @@ export default function WorkPage() {
               </CardHeader>
               <CardContent className="px-2">
                 {recentDone.length === 0 ? (
-                  <p className="text-sm text-[#94A3B8] text-center py-4">No completed tasks yet</p>
+                  <p className="text-sm text-ps-hint text-center py-4">No completed tasks yet</p>
                 ) : (
                   recentDone.map(t => <TaskRow key={t.id} task={t} />)
                 )}
@@ -312,7 +312,7 @@ export default function WorkPage() {
           {loadingWorkload ? null : isManager && workload ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-[#334155] flex items-center gap-1.5">
+                <h2 className="text-sm font-semibold text-ps-body flex items-center gap-1.5">
                   <Activity size={13} /> Team Overview
                 </h2>
                 <Link href="/team/workload">
@@ -324,28 +324,28 @@ export default function WorkPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Card>
                   <CardContent className="py-3">
-                    <p className="text-xs text-[#64748B]">Team Members</p>
-                    <p className="text-xl font-bold text-[#0F172A] mt-0.5">{workload.members.length}</p>
+                    <p className="text-xs text-ps-label">Team Members</p>
+                    <p className="text-xl font-bold text-ps-ink mt-0.5">{workload.members.length}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="py-3">
-                    <p className="text-xs text-[#64748B]">Active Tasks</p>
-                    <p className="text-xl font-bold text-[#0F172A] mt-0.5">{workload.total_active_tasks}</p>
+                    <p className="text-xs text-ps-label">Active Tasks</p>
+                    <p className="text-xl font-bold text-ps-ink mt-0.5">{workload.total_active_tasks}</p>
                   </CardContent>
                 </Card>
                 <Card className={workload.overloaded_count > 0 ? "border-red-100" : ""}>
                   <CardContent className="py-3">
-                    <p className="text-xs text-[#64748B]">Overloaded</p>
-                    <p className={`text-xl font-bold mt-0.5 ${workload.overloaded_count > 0 ? "text-red-600" : "text-[#0F172A]"}`}>
+                    <p className="text-xs text-ps-label">Overloaded</p>
+                    <p className={`text-xl font-bold mt-0.5 ${workload.overloaded_count > 0 ? "text-red-600" : "text-ps-ink"}`}>
                       {workload.overloaded_count}
                     </p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="py-3">
-                    <p className="text-xs text-[#64748B]">Avg Utilisation</p>
-                    <p className="text-xl font-bold text-[#0F172A] mt-0.5">{workload.avg_utilisation_pct}%</p>
+                    <p className="text-xs text-ps-label">Avg Utilisation</p>
+                    <p className="text-xl font-bold text-ps-ink mt-0.5">{workload.avg_utilisation_pct}%</p>
                   </CardContent>
                 </Card>
               </div>

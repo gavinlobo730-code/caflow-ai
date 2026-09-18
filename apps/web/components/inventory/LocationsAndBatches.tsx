@@ -72,7 +72,7 @@ interface Expiry {
   notes: string[];
 }
 
-const INPUT = "w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg text-xs";
+const INPUT = "w-full px-2.5 py-1.5 border border-ps-border rounded-lg text-xs";
 
 export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf: string }) {
   const [godowns, setGodowns] = useState<Godown[]>([]);
@@ -143,9 +143,9 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
       )}
 
       {/* ── godowns ──────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <Warehouse size={15} className="text-blue-600" /> Godowns
           </h3>
           <button onClick={() => setAdding(true)}
@@ -154,7 +154,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
           </button>
         </div>
         {godowns.length === 0 ? (
-          <p className="px-5 py-6 text-xs text-[#94A3B8]">
+          <p className="px-5 py-6 text-xs text-ps-hint">
             No godowns recorded. Stock is tracked in one undifferentiated pile until
             you add one.
           </p>
@@ -162,7 +162,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-ps-hint">
                   <th className="px-5 py-2 text-left font-semibold">Godown</th>
                   <th className="px-5 py-2 text-left font-semibold">State</th>
                   <th className="px-5 py-2 text-left font-semibold">Registration</th>
@@ -170,10 +170,10 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                   <th className="px-5 py-2 text-right font-semibold"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {godowns.map((g) => (
                   <tr key={g.id} className={g.is_active ? "" : "opacity-50"}>
-                    <td className="px-5 py-2 text-[#1E293B]">
+                    <td className="px-5 py-2 text-ps-ink">
                       {g.name}
                       {g.is_default && (
                         <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
@@ -181,8 +181,8 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-2 text-[#64748B]">{g.state_code ?? "—"}</td>
-                    <td className="px-5 py-2 font-mono text-[11px] text-[#64748B]">
+                    <td className="px-5 py-2 text-ps-label">{g.state_code ?? "—"}</td>
+                    <td className="px-5 py-2 font-mono text-[11px] text-ps-label">
                       {/* Not recorded is its own answer: whether a transfer is a
                           supply cannot be determined without it. */}
                       {g.gstin ?? <span className="font-sans text-amber-700">Not recorded</span>}
@@ -207,26 +207,26 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
           </div>
         )}
         {unallocated.length > 0 && unallocatedMeans && (
-          <div className="px-5 py-3 border-t border-[#F1F5F9] bg-[#F8FAFC] flex gap-2">
-            <Info size={13} className="shrink-0 mt-0.5 text-[#94A3B8]" />
-            <span className="text-[11px] text-[#64748B]">{unallocatedMeans}</span>
+          <div className="px-5 py-3 border-t border-ps-muted bg-ps-bg flex gap-2">
+            <Info size={13} className="shrink-0 mt-0.5 text-ps-hint" />
+            <span className="text-[11px] text-ps-label">{unallocatedMeans}</span>
           </div>
         )}
       </div>
 
       {/* ── the position, per godown per batch ───────────────────────── */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-50">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Stock by godown and lot</h3>
-          <p className="text-[11px] text-[#94A3B8] mt-0.5">As at {asOf}</p>
+          <h3 className="text-sm font-semibold text-ps-ink">Stock by godown and lot</h3>
+          <p className="text-[11px] text-ps-hint mt-0.5">As at {asOf}</p>
         </div>
         {detail.length === 0 ? (
-          <p className="px-5 py-6 text-xs text-[#94A3B8]">No stock movements yet.</p>
+          <p className="px-5 py-6 text-xs text-ps-hint">No stock movements yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-ps-hint">
                   <th className="px-5 py-2 text-left font-semibold">Item</th>
                   <th className="px-5 py-2 text-left font-semibold">Godown</th>
                   <th className="px-5 py-2 text-left font-semibold">Lot</th>
@@ -235,15 +235,15 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                   <th className="px-5 py-2 text-right font-semibold">Value</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {detail.map((r, i) => (
                   <tr key={i}>
-                    <td className="px-5 py-2 text-[#1E293B]">{r.item_name}</td>
-                    <td className="px-5 py-2 text-[#64748B]">
-                      {r.godown_name ?? <span className="text-[#94A3B8]">Unallocated</span>}
+                    <td className="px-5 py-2 text-ps-ink">{r.item_name}</td>
+                    <td className="px-5 py-2 text-ps-label">
+                      {r.godown_name ?? <span className="text-ps-hint">Unallocated</span>}
                     </td>
-                    <td className="px-5 py-2 text-[#64748B]">{r.batch_no ?? "—"}</td>
-                    <td className="px-5 py-2 text-[#64748B]">{r.expiry_date ?? "—"}</td>
+                    <td className="px-5 py-2 text-ps-label">{r.batch_no ?? "—"}</td>
+                    <td className="px-5 py-2 text-ps-label">{r.expiry_date ?? "—"}</td>
                     <td className="px-5 py-2 text-right tabular-nums">{r.qty_units}</td>
                     <td className="px-5 py-2 text-right tabular-nums">{formatPaise(r.value_paise)}</td>
                   </tr>
@@ -255,9 +255,9 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
       </div>
 
       {/* ── lots ─────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <Boxes size={15} className="text-blue-600" /> Lots
           </h3>
           <button onClick={() => setAddingBatch(true)}
@@ -266,29 +266,29 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
           </button>
         </div>
         {batches.length === 0 ? (
-          <p className="px-5 py-6 text-xs text-[#94A3B8]">
+          <p className="px-5 py-6 text-xs text-ps-hint">
             No lots recorded. Add one to track expiry or to trace a recall.
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                <tr className="border-b border-ps-muted text-ps-hint">
                   <th className="px-5 py-2 text-left font-semibold">Lot</th>
                   <th className="px-5 py-2 text-left font-semibold">Item</th>
                   <th className="px-5 py-2 text-left font-semibold">Manufactured</th>
                   <th className="px-5 py-2 text-left font-semibold">Expires</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {batches.map((b) => (
                   <tr key={b.id}>
-                    <td className="px-5 py-2 text-[#1E293B]">{b.batch_no}</td>
-                    <td className="px-5 py-2 text-[#64748B]">
+                    <td className="px-5 py-2 text-ps-ink">{b.batch_no}</td>
+                    <td className="px-5 py-2 text-ps-label">
                       {items.find((i) => i.id === b.service_catalogue_id)?.name ?? "—"}
                     </td>
-                    <td className="px-5 py-2 text-[#64748B]">{b.manufactured_on ?? "—"}</td>
-                    <td className="px-5 py-2 text-[#64748B]">
+                    <td className="px-5 py-2 text-ps-label">{b.manufactured_on ?? "—"}</td>
+                    <td className="px-5 py-2 text-ps-label">
                       {/* Not recorded is its own answer: it is not the same as
                           stock that does not expire, and the server says so on
                           the expiry report below. */}
@@ -304,28 +304,28 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
 
       {/* ── expiry ───────────────────────────────────────────────────── */}
       {expiry && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-50">
-            <h3 className="text-sm font-semibold text-[#0F172A]">Expiry</h3>
+            <h3 className="text-sm font-semibold text-ps-ink">Expiry</h3>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-[#F1F5F9]">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-ps-muted">
             {expiry.bucket_order.map((b) => (
               <div key={b} className="bg-white px-4 py-3">
-                <p className="text-[11px] text-[#94A3B8]">{expiry.bucket_labels[b]}</p>
-                <p className="text-sm font-semibold text-[#0F172A] tabular-nums mt-0.5">
+                <p className="text-[11px] text-ps-hint">{expiry.bucket_labels[b]}</p>
+                <p className="text-sm font-semibold text-ps-ink tabular-nums mt-0.5">
                   {formatPaise(expiry.buckets[b]?.value_paise ?? 0)}
                 </p>
-                <p className="text-[10px] text-[#94A3B8]">
+                <p className="text-[10px] text-ps-hint">
                   {expiry.buckets[b]?.batches ?? 0} lot(s)
                 </p>
               </div>
             ))}
           </div>
           {expiry.rows.length > 0 && (
-            <div className="overflow-x-auto border-t border-[#F1F5F9]">
+            <div className="overflow-x-auto border-t border-ps-muted">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                  <tr className="border-b border-ps-muted text-ps-hint">
                     <th className="px-5 py-2 text-left font-semibold">Lot</th>
                     <th className="px-5 py-2 text-left font-semibold">Item</th>
                     <th className="px-5 py-2 text-left font-semibold">Godown</th>
@@ -334,12 +334,12 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                     <th className="px-5 py-2 text-left font-semibold">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
+                <tbody className="divide-y divide-ps-bg">
                   {expiry.rows.map((r, i) => (
                     <tr key={i}>
-                      <td className="px-5 py-2 text-[#1E293B]">{r.batch_no ?? "—"}</td>
-                      <td className="px-5 py-2 text-[#64748B]">{r.item_name}</td>
-                      <td className="px-5 py-2 text-[#64748B]">{r.godown_name ?? "—"}</td>
+                      <td className="px-5 py-2 text-ps-ink">{r.batch_no ?? "—"}</td>
+                      <td className="px-5 py-2 text-ps-label">{r.item_name}</td>
+                      <td className="px-5 py-2 text-ps-label">{r.godown_name ?? "—"}</td>
                       <td className="px-5 py-2 text-right tabular-nums">{r.quantity}</td>
                       <td className="px-5 py-2 text-right tabular-nums">{formatPaise(r.value_paise)}</td>
                       <td className="px-5 py-2">
@@ -349,12 +349,12 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                         <span className={`text-[11px] px-1.5 py-0.5 rounded ${
                           r.bucket === "expired" ? "bg-red-50 text-red-700"
                           : r.bucket === "within_30_days" ? "bg-amber-50 text-amber-700"
-                          : r.bucket === "no_expiry_recorded" ? "bg-[#F1F5F9] text-[#64748B]"
+                          : r.bucket === "no_expiry_recorded" ? "bg-ps-muted text-ps-label"
                           : "bg-emerald-50 text-emerald-700"}`}>
                           {expiry.bucket_labels[r.bucket]}
                         </span>
                         {r.expiry_date && (
-                          <span className="ml-1.5 text-[10px] text-[#94A3B8]">{r.expiry_date}</span>
+                          <span className="ml-1.5 text-[10px] text-ps-hint">{r.expiry_date}</span>
                         )}
                       </td>
                     </tr>
@@ -364,9 +364,9 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
             </div>
           )}
           {expiry.notes.length > 0 && (
-            <div className="px-5 py-3 border-t border-[#F1F5F9] space-y-1">
+            <div className="px-5 py-3 border-t border-ps-muted space-y-1">
               {expiry.notes.map((n, i) => (
-                <p key={i} className="text-[11px] text-[#64748B]">{n}</p>
+                <p key={i} className="text-[11px] text-ps-label">{n}</p>
               ))}
             </div>
           )}
@@ -445,9 +445,9 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-50">
-        <h3 className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
           <ArrowRightLeft size={15} className="text-blue-600" /> Move stock between godowns
         </h3>
       </div>
@@ -457,31 +457,31 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
         )}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <label className="text-xs">
-            <span className="block text-[#94A3B8] mb-1">From</span>
+            <span className="block text-ps-hint mb-1">From</span>
             <select value={from} onChange={(e) => setFrom(e.target.value)} className={INPUT}>
               {godowns.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </label>
           <label className="text-xs">
-            <span className="block text-[#94A3B8] mb-1">To</span>
+            <span className="block text-ps-hint mb-1">To</span>
             <select value={to} onChange={(e) => setTo(e.target.value)} className={INPUT}>
               {godowns.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </label>
           <label className="text-xs">
-            <span className="block text-[#94A3B8] mb-1">Item</span>
+            <span className="block text-ps-hint mb-1">Item</span>
             <select value={item} onChange={(e) => setItem(e.target.value)} className={INPUT}>
               <option value="">Choose…</option>
               {items.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
             </select>
           </label>
           <label className="text-xs">
-            <span className="block text-[#94A3B8] mb-1">Quantity</span>
+            <span className="block text-ps-hint mb-1">Quantity</span>
             <input value={quantity} inputMode="decimal" onChange={(e) => setQuantity(e.target.value)}
               className={`${INPUT} text-right tabular-nums`} />
           </label>
           <label className="text-xs">
-            <span className="block text-[#94A3B8] mb-1">Date</span>
+            <span className="block text-ps-hint mb-1">Date</span>
             <input type="date" value={when} onChange={(e) => setWhen(e.target.value)} className={INPUT} />
           </label>
         </div>
@@ -490,7 +490,7 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
         {decision && (
           <div className={`rounded-lg px-3 py-2 text-xs flex gap-2 ${
             decision.is_supply === true ? "bg-amber-50 border border-amber-200 text-amber-900"
-            : decision.is_supply === false ? "bg-[#F8FAFC] border border-[#E2E8F0] text-[#334155]"
+            : decision.is_supply === false ? "bg-ps-bg border border-ps-border text-ps-body"
             : "bg-amber-50 border border-amber-200 text-amber-900"}`}>
             <Info size={13} className="shrink-0 mt-0.5" />
             <span>{decision.reason}</span>
@@ -541,53 +541,53 @@ function GodownModal({ clientId, onClose, onSaved }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-        <div className="px-5 py-4 border-b border-[#F1F5F9]">
-          <h3 className="text-sm font-semibold text-[#0F172A]">New godown</h3>
+        <div className="px-5 py-4 border-b border-ps-muted">
+          <h3 className="text-sm font-semibold text-ps-ink">New godown</h3>
         </div>
         <div className="px-5 py-4 space-y-3">
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">{error}</div>
           )}
           <label className="block text-xs">
-            <span className="block text-[#94A3B8] mb-1">Name</span>
+            <span className="block text-ps-hint mb-1">Name</span>
             <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-xs">
-              <span className="block text-[#94A3B8] mb-1">Reference (optional)</span>
+              <span className="block text-ps-hint mb-1">Reference (optional)</span>
               <input value={code} onChange={(e) => setCode(e.target.value)} className={INPUT} />
             </label>
             <label className="block text-xs">
-              <span className="block text-[#94A3B8] mb-1">State code</span>
+              <span className="block text-ps-hint mb-1">State code</span>
               <input value={stateCode} onChange={(e) => setStateCode(e.target.value)}
                 placeholder="27" maxLength={2} className={INPUT} />
             </label>
           </div>
           <label className="block text-xs">
-            <span className="block text-[#94A3B8] mb-1">Address (optional)</span>
+            <span className="block text-ps-hint mb-1">Address (optional)</span>
             <input value={address} onChange={(e) => setAddress(e.target.value)} className={INPUT} />
           </label>
           {/* WHICH REGISTRATION IT OPERATES UNDER. Needed only where the client
               holds several — and it is what decides whether a transfer out of
               this godown is a supply between distinct persons. */}
           <label className="block text-xs">
-            <span className="block text-[#94A3B8] mb-1">GST registration (optional)</span>
+            <span className="block text-ps-hint mb-1">GST registration (optional)</span>
             <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())}
               className={`${INPUT} font-mono`} maxLength={15} />
-            <span className="block text-[10px] text-[#94A3B8] mt-1">
+            <span className="block text-[10px] text-ps-hint mt-1">
               Only needed where this client holds more than one. Whether moving
               stock out of here is a supply depends on it.
             </span>
           </label>
-          <label className="flex items-center gap-2 text-xs text-[#334155]">
+          <label className="flex items-center gap-2 text-xs text-ps-body">
             <input type="checkbox" checked={isDefault}
               onChange={(e) => setIsDefault(e.target.checked)} />
             Stock movements default to this godown
           </label>
         </div>
-        <div className="px-5 py-3 border-t border-[#F1F5F9] flex justify-end gap-2">
+        <div className="px-5 py-3 border-t border-ps-muted flex justify-end gap-2">
           <button onClick={onClose}
-            className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] text-xs text-[#475569]">
+            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
             Cancel
           </button>
           <button onClick={save} disabled={saving || !name.trim()}
@@ -635,42 +635,42 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-        <div className="px-5 py-4 border-b border-[#F1F5F9]">
-          <h3 className="text-sm font-semibold text-[#0F172A]">New lot</h3>
+        <div className="px-5 py-4 border-b border-ps-muted">
+          <h3 className="text-sm font-semibold text-ps-ink">New lot</h3>
         </div>
         <div className="px-5 py-4 space-y-3">
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">{error}</div>
           )}
           <label className="block text-xs">
-            <span className="block text-[#94A3B8] mb-1">Item</span>
+            <span className="block text-ps-hint mb-1">Item</span>
             <select value={item} onChange={(e) => setItem(e.target.value)} className={INPUT}>
               <option value="">Choose…</option>
               {items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
             </select>
           </label>
           <label className="block text-xs">
-            <span className="block text-[#94A3B8] mb-1">Lot number</span>
+            <span className="block text-ps-hint mb-1">Lot number</span>
             <input value={batchNo} onChange={(e) => setBatchNo(e.target.value)}
               placeholder="As printed on the carton" className={INPUT} />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-xs">
-              <span className="block text-[#94A3B8] mb-1">Manufactured (optional)</span>
+              <span className="block text-ps-hint mb-1">Manufactured (optional)</span>
               <input type="date" value={made} onChange={(e) => setMade(e.target.value)} className={INPUT} />
             </label>
             <label className="block text-xs">
-              <span className="block text-[#94A3B8] mb-1">Expires (optional)</span>
+              <span className="block text-ps-hint mb-1">Expires (optional)</span>
               <input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} className={INPUT} />
-              <span className="block text-[10px] text-[#94A3B8] mt-1">
+              <span className="block text-[10px] text-ps-hint mt-1">
                 Leave blank if this item does not expire.
               </span>
             </label>
           </div>
         </div>
-        <div className="px-5 py-3 border-t border-[#F1F5F9] flex justify-end gap-2">
+        <div className="px-5 py-3 border-t border-ps-muted flex justify-end gap-2">
           <button onClick={onClose}
-            className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] text-xs text-[#475569]">
+            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
             Cancel
           </button>
           <button onClick={save} disabled={saving || !item || !batchNo.trim()}

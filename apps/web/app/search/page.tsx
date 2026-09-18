@@ -101,12 +101,12 @@ function SearchContent() {
   }, {});
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-8">
+    <div className="min-h-screen bg-ps-bg p-8">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-2xl font-bold text-[#0F172A] mb-6">Search</h1>
+        <h1 className="text-2xl font-bold text-ps-ink mb-6">Search</h1>
         <form onSubmit={handleSubmit} className="mb-8">
           <div className="relative">
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ps-hint" />
             <input
               autoFocus
               type="text"
@@ -136,7 +136,7 @@ function SearchContent() {
               <p className="text-sm text-red-600 font-medium">{searchError}</p>
               <button
                 onClick={() => search(query)}
-                className="mt-3 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]"
+                className="mt-3 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body"
               >
                 Retry
               </button>
@@ -146,7 +146,7 @@ function SearchContent() {
 
         {!loading && query && !searchError && results.length === 0 && (
           <Card>
-            <CardContent className="py-12 text-center text-[#94A3B8]">
+            <CardContent className="py-12 text-center text-ps-hint">
               <Search size={32} className="mx-auto mb-3 opacity-30" />
               <p>No results for &quot;{query}&quot;</p>
             </CardContent>
@@ -154,22 +154,22 @@ function SearchContent() {
         )}
 
         {!loading && !query && (
-          <p className="text-[#94A3B8] text-center mt-12">Search clients, tasks, filings, journals...</p>
+          <p className="text-ps-hint text-center mt-12">Search clients, tasks, filings, journals...</p>
         )}
 
         {Object.entries(grouped).map(([cat, items]) => {
           const Icon = CATEGORY_ICONS[cat as keyof typeof CATEGORY_ICONS] ?? FileText;
           return (
             <div key={cat} className="mb-6">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-[#64748B] mb-2 flex items-center gap-1.5">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-ps-label mb-2 flex items-center gap-1.5">
                 <Icon size={12} />{CATEGORY_LABELS[cat as keyof typeof CATEGORY_LABELS]}
               </h2>
               <div className="space-y-1.5">
                 {items.map(item => (
                   <Link key={item.id} href={item.href}>
                     <div className="bg-white border rounded-lg px-4 py-3 hover:bg-blue-500/[0.08] hover:border-blue-500/20 transition-colors cursor-pointer">
-                      <p className="font-medium text-[#0F172A] text-sm">{item.title}</p>
-                      <p className="text-xs text-[#64748B] mt-0.5">{item.subtitle}</p>
+                      <p className="font-medium text-ps-ink text-sm">{item.title}</p>
+                      <p className="text-xs text-ps-label mt-0.5">{item.subtitle}</p>
                     </div>
                   </Link>
                 ))}
@@ -184,7 +184,7 @@ function SearchContent() {
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center"><p className="text-[#64748B]">Loading...</p></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-ps-bg flex items-center justify-center"><p className="text-ps-label">Loading...</p></div>}>
       <SearchContent />
     </Suspense>
   );

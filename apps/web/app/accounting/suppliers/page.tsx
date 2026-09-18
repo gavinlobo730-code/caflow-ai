@@ -357,12 +357,12 @@ export default function SuppliersPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft className="w-4 h-4" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-[#0F172A]">Supplier Master</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">TDS section mapping &amp; credit terms</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Supplier Master</h1>
+          <p className="text-sm text-ps-label mt-0.5">TDS section mapping &amp; credit terms</p>
         </div>
         <Button onClick={openAdd} size="sm" className="flex items-center gap-1" disabled={!selectedClientId}>
           <Plus className="w-4 h-4" /> Add Supplier
@@ -378,7 +378,7 @@ export default function SuppliersPage() {
       {/* Client selector */}
       <Card>
         <CardContent className="pt-4 pb-4">
-          <label className="text-xs font-medium text-[#334155] block mb-1">Select Client</label>
+          <label className="text-xs font-medium text-ps-body block mb-1">Select Client</label>
           <div className="w-full max-w-xs">
             <ClientLookup
               clients={clients}
@@ -388,7 +388,7 @@ export default function SuppliersPage() {
               placeholder="Select client…"
             />
           </div>
-          <p className="text-xs text-[#64748B] mt-2">
+          <p className="text-xs text-ps-label mt-2">
             These are the same suppliers the client&apos;s Purchases → Vendors tab shows.
             A TDS section set here is the one every bill for this client withholds on.
           </p>
@@ -409,7 +409,7 @@ export default function SuppliersPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-[#F8FAFC] text-xs text-[#64748B] uppercase tracking-wide">
+                <tr className="bg-ps-bg text-xs text-ps-label uppercase tracking-wide">
                   <th className="px-4 py-3 text-left">Supplier Name</th>
                   <th className="px-4 py-3 text-left">GSTIN</th>
                   <th className="px-4 py-3 text-left">PAN</th>
@@ -420,25 +420,25 @@ export default function SuppliersPage() {
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {vendors.map(v => (
-                  <tr key={v.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-3 font-medium text-[#0F172A]">{v.name}</td>
-                    <td className="px-4 py-3 text-[#475569] font-mono text-xs">{v.gstin ?? "—"}</td>
-                    <td className="px-4 py-3 text-[#475569] font-mono text-xs">{v.pan ?? "—"}</td>
+                  <tr key={v.id} className="hover:bg-ps-bg">
+                    <td className="px-4 py-3 font-medium text-ps-ink">{v.name}</td>
+                    <td className="px-4 py-3 text-ps-label font-mono text-xs">{v.gstin ?? "—"}</td>
+                    <td className="px-4 py-3 text-ps-label font-mono text-xs">{v.pan ?? "—"}</td>
                     <td className="px-4 py-3">
                       {v.tds_section ? (
                         <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">{v.tds_section}</span>
                       ) : (
-                        <span className="text-[#94A3B8] text-xs">No TDS</span>
+                        <span className="text-ps-hint text-xs">No TDS</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-[#334155]">{v.credit_limit_paise ? fmtRs(v.credit_limit_paise) : "—"}</td>
-                    <td className="px-4 py-3 text-right text-[#334155]">
+                    <td className="px-4 py-3 text-right text-ps-body">{v.credit_limit_paise ? fmtRs(v.credit_limit_paise) : "—"}</td>
+                    <td className="px-4 py-3 text-right text-ps-body">
                       {v.credit_days !== null && v.credit_days !== undefined ? `${v.credit_days} days` : "—"}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${v.is_active ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${v.is_active ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>
                         {v.is_active ? "Active" : "Inactive"}
                       </span>
                     </td>
@@ -447,7 +447,7 @@ export default function SuppliersPage() {
                       <button
                         onClick={() => toggleActive(v)}
                         disabled={busyId === v.id}
-                        className="text-xs text-[#94A3B8] hover:underline disabled:opacity-50"
+                        className="text-xs text-ps-hint hover:underline disabled:opacity-50"
                       >
                         {busyId === v.id ? "Saving…" : v.is_active ? "Deactivate" : "Activate"}
                       </button>
@@ -455,7 +455,7 @@ export default function SuppliersPage() {
                   </tr>
                 ))}
                 {vendors.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No suppliers yet. Add your first supplier.</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-ps-hint text-sm">No suppliers yet. Add your first supplier.</td></tr>
                 )}
               </tbody>
             </table>
@@ -465,28 +465,28 @@ export default function SuppliersPage() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h2 className="text-sm font-semibold text-[#0F172A]">{editingId ? "Edit Supplier" : "Add Supplier"}</h2>
-              <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-[#94A3B8]" /></button>
+              <h2 className="text-sm font-semibold text-ps-ink">{editingId ? "Edit Supplier" : "Add Supplier"}</h2>
+              <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
             </div>
             <div className="px-5 py-4 space-y-4">
               {error && <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg">{error}</div>}
 
               <div>
-                <label className="text-xs font-medium text-[#334155] block mb-1">Supplier Name *</label>
-                <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. ABC Contractors Pvt Ltd" />
+                <label className="text-xs font-medium text-ps-body block mb-1">Supplier Name *</label>
+                <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. ABC Contractors Pvt Ltd" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">GSTIN</label>
-                  <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" value={form.gstin} onChange={e => setForm(f => ({ ...f, gstin: e.target.value.toUpperCase() }))} placeholder="27AABCU9603R1ZM" maxLength={15} />
+                  <label className="text-xs font-medium text-ps-body block mb-1">GSTIN</label>
+                  <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" value={form.gstin} onChange={e => setForm(f => ({ ...f, gstin: e.target.value.toUpperCase() }))} placeholder="27AABCU9603R1ZM" maxLength={15} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">PAN</label>
-                  <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value.toUpperCase() }))} placeholder="AAAAA0000A" maxLength={10} />
+                  <label className="text-xs font-medium text-ps-body block mb-1">PAN</label>
+                  <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value.toUpperCase() }))} placeholder="AAAAA0000A" maxLength={10} />
                 </div>
               </div>
 
@@ -496,14 +496,14 @@ export default function SuppliersPage() {
                   makes the RECIPIENT issue a self-invoice on exactly that
                   fact. Leaving it unrecorded is a real answer. */}
               <div>
-                <label htmlFor="supplier-gst-registration" className="text-xs font-medium text-[#334155] block mb-1">
+                <label htmlFor="supplier-gst-registration" className="text-xs font-medium text-ps-body block mb-1">
                   GST registration
                 </label>
                 <select
                   id="supplier-gst-registration"
                   value={form.gst_registration_status}
                   onChange={e => setForm(f => ({ ...f, gst_registration_status: e.target.value }))}
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Not recorded</option>
                   {registrationStates.filter(o => o !== "unrecorded").map(o => (
@@ -512,7 +512,7 @@ export default function SuppliersPage() {
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-[#94A3B8] mt-1 leading-tight">
+                <p className="text-[11px] text-ps-hint mt-1 leading-tight">
                   A reverse-charge bill from an unregistered supplier needs a self-invoice
                   (CGST Act s.31(3)(f)). Left unrecorded, the self-invoice says so rather
                   than guessing.
@@ -520,7 +520,7 @@ export default function SuppliersPage() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-[#334155] block mb-1">TDS Section</label>
+                <label className="text-xs font-medium text-ps-body block mb-1">TDS Section</label>
                 <Combobox
                   options={sectionOptions}
                   value={sectionOptions.find(s => s.value === form.tds_section) ?? null}
@@ -535,7 +535,7 @@ export default function SuppliersPage() {
               </div>
 
               {form.tds_section && (
-                <p className="text-[11px] text-[#94A3B8] leading-tight">
+                <p className="text-[11px] text-ps-hint leading-tight">
                   The rate is the section&rsquo;s own, for the bill&rsquo;s financial year — it is not
                   recorded here. A lower rate under an Assessing Officer&rsquo;s s.197 certificate is
                   recorded against the certificate, on the client&rsquo;s TDS compliance screen.
@@ -544,20 +544,20 @@ export default function SuppliersPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">Credit Limit (₹)</label>
-                  <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.credit_limit_rs} onChange={e => setForm(f => ({ ...f, credit_limit_rs: e.target.value }))} placeholder="Leave blank for none" />
-                  <p className="text-[11px] text-[#94A3B8] mt-1 leading-tight">Recorded only — no bill is blocked or flagged by it.</p>
+                  <label className="text-xs font-medium text-ps-body block mb-1">Credit Limit (₹)</label>
+                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.credit_limit_rs} onChange={e => setForm(f => ({ ...f, credit_limit_rs: e.target.value }))} placeholder="Leave blank for none" />
+                  <p className="text-[11px] text-ps-hint mt-1 leading-tight">Recorded only — no bill is blocked or flagged by it.</p>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">Payment Terms (days)</label>
-                  <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.credit_days} onChange={e => setForm(f => ({ ...f, credit_days: e.target.value }))} placeholder="Leave blank if unconfirmed" />
-                  <p className="text-[11px] text-[#94A3B8] mt-1 leading-tight">Blank and 0 differ: 0 is Due on Receipt.</p>
+                  <label className="text-xs font-medium text-ps-body block mb-1">Payment Terms (days)</label>
+                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.credit_days} onChange={e => setForm(f => ({ ...f, credit_days: e.target.value }))} placeholder="Leave blank if unconfirmed" />
+                  <p className="text-[11px] text-ps-hint mt-1 leading-tight">Blank and 0 differ: 0 is Due on Receipt.</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="is_active" checked={form.is_active} onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))} className="rounded" />
-                <label htmlFor="is_active" className="text-xs text-[#334155]">Active supplier</label>
+                <label htmlFor="is_active" className="text-xs text-ps-body">Active supplier</label>
               </div>
 
               {/* TDS Calculator */}
@@ -569,28 +569,28 @@ export default function SuppliersPage() {
                   </div>
                   <p className="text-xs text-amber-700">IT Act Section {form.tds_section} — deduct at source before payment to supplier</p>
                   <div>
-                    <label className="text-xs font-medium text-[#334155] block mb-1">Bill Amount (₹)</label>
+                    <label className="text-xs font-medium text-ps-body block mb-1">Bill Amount (₹)</label>
                     <input type="number" min="0" className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" value={billRs} onChange={e => setBillRs(e.target.value)} placeholder="0" />
                   </div>
                   {billPaise > 0 && tdsCalcError && (
                     <p className="text-xs text-red-600">{tdsCalcError}</p>
                   )}
                   {billPaise > 0 && tdsCalc && !tdsCalc.tds_applicable && (
-                    <p className="text-xs text-[#475569]">
+                    <p className="text-xs text-ps-label">
                       Below the ₹{(tdsCalc.threshold_paise / 100).toLocaleString("en-IN")} threshold for Section {tdsCalc.section} — no TDS applicable.
                     </p>
                   )}
                   {billPaise > 0 && tdsCalc && tdsCalc.tds_applicable && (
                     <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-[#475569]">
+                      <div className="flex justify-between text-xs text-ps-label">
                         <span>Bill Amount</span>
                         <span className="font-medium">{fmtRs(billPaise)}</span>
                       </div>
-                      <div className="flex justify-between text-xs text-[#475569]">
+                      <div className="flex justify-between text-xs text-ps-label">
                         <span>TDS @ {tdsCalc.applicable_rate_pct}% (Section {tdsCalc.section}, FY {tdsCalc.fy})</span>
                         <span className="font-medium text-red-600">- {fmtRs(tdsCalc.tds_paise)}</span>
                       </div>
-                      <div className="flex justify-between text-xs font-semibold text-[#0F172A] border-t border-amber-200 pt-1">
+                      <div className="flex justify-between text-xs font-semibold text-ps-ink border-t border-amber-200 pt-1">
                         <span>Net Payment to Supplier</span>
                         <span className="text-green-700">{fmtRs(billPaise - tdsCalc.tds_paise)}</span>
                       </div>

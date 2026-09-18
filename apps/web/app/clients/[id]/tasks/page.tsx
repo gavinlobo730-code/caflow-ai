@@ -28,7 +28,7 @@ import { todayLocalISO } from "@/lib/dateMath";
  */
 
 const TASK_STATUS_COLORS: Record<string, string> = {
-  todo: "bg-[#F1F5F9] text-[#475569]",
+  todo: "bg-ps-muted text-ps-label",
   in_progress: "bg-blue-100 text-blue-700",
   waiting_client: "bg-purple-100 text-purple-700",
   review_required: "bg-amber-100 text-amber-700",
@@ -116,23 +116,23 @@ export default function TasksPage() {
               {loadError && (
                 <div className="mb-3 text-center py-3">
                   <p className="text-sm text-red-600 font-medium">{loadError}</p>
-                  <button onClick={load} className="mt-2 text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+                  <button onClick={load} className="mt-2 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
                     Retry
                   </button>
                 </div>
               )}
               {tasks.length === 0 && !loadError ? (
-                <p className="text-sm text-[#94A3B8] text-center py-8">No tasks for this client</p>
+                <p className="text-sm text-ps-hint text-center py-8">No tasks for this client</p>
               ) : (
-                <div className="divide-y divide-[#F8FAFC]">
+                <div className="divide-y divide-ps-bg">
                   {tasks.map((t) => {
                     const next = NEXT_STATUS[t.status];
                     return (
                       <div key={t.id} className="flex items-center gap-4 py-3">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-[#0F172A]">{t.title}</p>
+                          <p className="text-sm font-medium text-ps-ink">{t.title}</p>
                           {t.description && (
-                            <p className="text-xs text-[#64748B] mt-0.5">{t.description}</p>
+                            <p className="text-xs text-ps-label mt-0.5">{t.description}</p>
                           )}
                         </div>
                         {t.due_date && (
@@ -140,14 +140,14 @@ export default function TasksPage() {
                             className={`text-xs shrink-0 ${
                               t.due_date < today && t.status !== "completed"
                                 ? "text-red-600 font-medium"
-                                : "text-[#64748B]"
+                                : "text-ps-label"
                             }`}
                           >
                             {formatDate(t.due_date)}
                           </p>
                         )}
                         <Badge
-                          className={`text-xs shrink-0 ${TASK_STATUS_COLORS[t.status] ?? "bg-[#F1F5F9] text-[#475569]"}`}
+                          className={`text-xs shrink-0 ${TASK_STATUS_COLORS[t.status] ?? "bg-ps-muted text-ps-label"}`}
                         >
                           {t.status.replace(/_/g, " ")}
                         </Badge>
@@ -155,7 +155,7 @@ export default function TasksPage() {
                           <button
                             onClick={() => advance(t)}
                             disabled={busy === t.id}
-                            className="shrink-0 flex items-center gap-1 text-[11px] border border-[#E2E8F0] rounded-md px-2 py-1 text-[#64748B] hover:bg-[#F1F5F9] disabled:opacity-50"
+                            className="shrink-0 flex items-center gap-1 text-[11px] border border-ps-border rounded-md px-2 py-1 text-ps-label hover:bg-ps-muted disabled:opacity-50"
                           >
                             {busy === t.id
                               ? <Loader2 size={11} className="animate-spin" />

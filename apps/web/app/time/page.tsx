@@ -224,8 +224,8 @@ export default function TimeTrackingPage() {
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Time Tracking</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Track billable and non-billable hours</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Time Tracking</h1>
+          <p className="text-sm text-ps-label mt-0.5">Track billable and non-billable hours</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowManual(true)} className="gap-1.5">
@@ -279,25 +279,25 @@ export default function TimeTrackingPage() {
       <div className="grid grid-cols-3 gap-4">
         <Card>
           <CardContent className="py-4">
-            <p className="text-xs text-[#64748B]">Total Hours</p>
-            <p className="text-2xl font-bold text-[#0F172A] mt-1">{formatDuration(totalMinutes)}</p>
-            <p className="text-xs text-[#94A3B8]">{entries.length} entries</p>
+            <p className="text-xs text-ps-label">Total Hours</p>
+            <p className="text-2xl font-bold text-ps-ink mt-1">{formatDuration(totalMinutes)}</p>
+            <p className="text-xs text-ps-hint">{entries.length} entries</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-4">
-            <p className="text-xs text-[#64748B]">Billable Hours</p>
+            <p className="text-xs text-ps-label">Billable Hours</p>
             <p className="text-2xl font-bold text-blue-600 mt-1">{formatDuration(billableMinutes)}</p>
-            <p className="text-xs text-[#94A3B8]">
+            <p className="text-xs text-ps-hint">
               {totalMinutes > 0 ? Math.round((billableMinutes / totalMinutes) * 100) : 0}% of total
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-4">
-            <p className="text-xs text-[#64748B]">Non-Billable</p>
-            <p className="text-2xl font-bold text-[#475569] mt-1">{formatDuration(totalMinutes - billableMinutes)}</p>
-            <p className="text-xs text-[#94A3B8]">
+            <p className="text-xs text-ps-label">Non-Billable</p>
+            <p className="text-2xl font-bold text-ps-label mt-1">{formatDuration(totalMinutes - billableMinutes)}</p>
+            <p className="text-xs text-ps-hint">
               {totalMinutes > 0 ? Math.round(((totalMinutes - billableMinutes) / totalMinutes) * 100) : 0}% of total
             </p>
           </CardContent>
@@ -308,7 +308,7 @@ export default function TimeTrackingPage() {
       <Card>
         <CardContent className="py-3 flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
             <select
               value={exportClientId}
               onChange={e => setExportClientId(e.target.value)}
@@ -319,7 +319,7 @@ export default function TimeTrackingPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">From</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">From</label>
             <input
               type="date"
               value={exportDateFrom}
@@ -328,7 +328,7 @@ export default function TimeTrackingPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#334155] mb-1">To</label>
+            <label className="block text-xs font-medium text-ps-body mb-1">To</label>
             <input
               type="date"
               value={exportDateTo}
@@ -354,18 +354,18 @@ export default function TimeTrackingPage() {
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex items-center justify-center py-10 text-[#94A3B8]">
+            <div className="flex items-center justify-center py-10 text-ps-hint">
               <Loader2 className="animate-spin mr-2" size={16} /> Loading…
             </div>
           ) : entries.length === 0 ? (
-            <div className="py-12 text-center text-[#94A3B8]">
+            <div className="py-12 text-center text-ps-hint">
               <Clock size={28} className="mx-auto mb-2 opacity-30" />
               <p className="text-sm">No time entries yet</p>
             </div>
           ) : (
             <div className="divide-y">
               {entries.map((e) => (
-                <div key={e.id} className="flex items-center gap-4 px-5 py-3 hover:bg-[#F8FAFC]">
+                <div key={e.id} className="flex items-center gap-4 px-5 py-3 hover:bg-ps-bg">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-800 truncate">
@@ -374,13 +374,13 @@ export default function TimeTrackingPage() {
                       {e.is_billable ? (
                         <Badge className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700">Billable</Badge>
                       ) : (
-                        <Badge className="text-[10px] px-1.5 py-0 bg-[#F1F5F9] text-[#64748B]">Non-billable</Badge>
+                        <Badge className="text-[10px] px-1.5 py-0 bg-ps-muted text-ps-label">Non-billable</Badge>
                       )}
                     </div>
                     {e.description && (
-                      <p className="text-xs text-[#64748B] truncate mt-0.5">{e.description}</p>
+                      <p className="text-xs text-ps-label truncate mt-0.5">{e.description}</p>
                     )}
-                    <p className="text-[11px] text-[#94A3B8] mt-0.5">
+                    <p className="text-[11px] text-ps-hint mt-0.5">
                       {fmt(e.started_at)} {fmtTime(e.started_at)}
                       {e.ended_at ? ` → ${fmtTime(e.ended_at)}` : ""}
                     </p>
@@ -391,7 +391,7 @@ export default function TimeTrackingPage() {
                         {e.duration_minutes ? formatDuration(e.duration_minutes) : "—"}
                       </p>
                       {e.is_billable && e.hourly_rate_paise && e.duration_minutes && (
-                        <p className="text-[11px] text-[#64748B] flex items-center justify-end gap-0.5">
+                        <p className="text-[11px] text-ps-label flex items-center justify-end gap-0.5">
                           <IndianRupee size={9} />
                           {Math.round((e.hourly_rate_paise * e.duration_minutes) / 6000).toLocaleString("en-IN")}
                         </p>
@@ -399,7 +399,7 @@ export default function TimeTrackingPage() {
                     </div>
                     <button
                       onClick={() => handleDelete(e.id)}
-                      className="p-1.5 rounded text-[#CBD5E1] hover:text-red-500 hover:bg-red-50 transition-colors"
+                      className="p-1.5 rounded text-ps-disabled hover:text-red-500 hover:bg-red-50 transition-colors"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -413,17 +413,17 @@ export default function TimeTrackingPage() {
 
       {/* Start Timer Dialog */}
       {showStart && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-[#0F172A]">Start Timer</h2>
-              <button onClick={() => setShowStart(false)} className="text-[#94A3B8] hover:text-[#475569]">
+              <h2 className="font-semibold text-ps-ink">Start Timer</h2>
+              <button onClick={() => setShowStart(false)} className="text-ps-hint hover:text-ps-label">
                 <X size={18} />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
+                <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
                 <select
                   value={startClientId}
                   onChange={e => setStartClientId(e.target.value)}
@@ -434,7 +434,7 @@ export default function TimeTrackingPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1">Description</label>
+                <label className="block text-xs font-medium text-ps-body mb-1">Description</label>
                 <input
                   value={startDescription}
                   onChange={e => setStartDescription(e.target.value)}
@@ -450,7 +450,7 @@ export default function TimeTrackingPage() {
                   onChange={e => setStartBillable(e.target.checked)}
                   className="rounded"
                 />
-                <label htmlFor="billable-start" className="text-sm text-[#334155]">Billable</label>
+                <label htmlFor="billable-start" className="text-sm text-ps-body">Billable</label>
               </div>
             </div>
             <div className="flex gap-2 justify-end pt-1">
@@ -471,17 +471,17 @@ export default function TimeTrackingPage() {
 
       {/* Manual Entry Dialog */}
       {showManual && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-[#0F172A]">Manual Time Entry</h2>
-              <button onClick={() => setShowManual(false)} className="text-[#94A3B8] hover:text-[#475569]">
+              <h2 className="font-semibold text-ps-ink">Manual Time Entry</h2>
+              <button onClick={() => setShowManual(false)} className="text-ps-hint hover:text-ps-label">
                 <X size={18} />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
+                <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
                 <select
                   value={manualClientId}
                   onChange={e => setManualClientId(e.target.value)}
@@ -492,7 +492,7 @@ export default function TimeTrackingPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1">Description</label>
+                <label className="block text-xs font-medium text-ps-body mb-1">Description</label>
                 <input
                   value={manualDescription}
                   onChange={e => setManualDescription(e.target.value)}
@@ -502,7 +502,7 @@ export default function TimeTrackingPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-[#334155] mb-1">Start *</label>
+                  <label className="block text-xs font-medium text-ps-body mb-1">Start *</label>
                   <input
                     type="datetime-local"
                     value={manualStarted}
@@ -511,7 +511,7 @@ export default function TimeTrackingPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#334155] mb-1">End *</label>
+                  <label className="block text-xs font-medium text-ps-body mb-1">End *</label>
                   <input
                     type="datetime-local"
                     value={manualEnded}
@@ -529,7 +529,7 @@ export default function TimeTrackingPage() {
                     onChange={e => setManualBillable(e.target.checked)}
                     className="rounded"
                   />
-                  <label htmlFor="billable-manual" className="text-sm text-[#334155]">Billable</label>
+                  <label htmlFor="billable-manual" className="text-sm text-ps-body">Billable</label>
                 </div>
                 {manualBillable && (
                   <div className="flex-1">

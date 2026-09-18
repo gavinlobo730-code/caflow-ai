@@ -22,7 +22,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  draft: "bg-[#F1F5F9] text-[#64748B]",
+  draft: "bg-ps-muted text-ps-label",
   generated: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-700",
 };
@@ -132,8 +132,8 @@ export default function EInvoicePage() {
     <div className="p-6 max-w-4xl space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-[#1E293B]">E-Invoice Integration</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">CGST Act §31B, Rule 48(4) — IRN management</p>
+          <h2 className="text-sm font-semibold text-ps-ink">E-Invoice Integration</h2>
+          <p className="text-xs text-ps-hint mt-0.5">CGST Act §31B, Rule 48(4) — IRN management</p>
         </div>
         <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
@@ -154,32 +154,32 @@ export default function EInvoicePage() {
           value={clientId}
           onChange={e => setClientId(e.target.value)}
           placeholder="Client ID to load records"
-          className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg flex-1 max-w-xs"
+          className="text-xs px-3 py-1.5 border border-ps-border rounded-lg flex-1 max-w-xs"
         />
         <button onClick={() => clientId && load(clientId)} disabled={!clientId || loading}
-          className="text-xs px-3 py-1.5 bg-[#F1F5F9] rounded-lg disabled:opacity-50">
+          className="text-xs px-3 py-1.5 bg-ps-muted rounded-lg disabled:opacity-50">
           Load
         </button>
       </div>
 
       {showCreate && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3">
-          <p className="text-xs font-semibold text-[#334155]">New E-Invoice Record</p>
+        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
+          <p className="text-xs font-semibold text-ps-body">New E-Invoice Record</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] text-[#64748B] mb-1 block">Invoice Number</label>
+              <label className="text-[10px] text-ps-label mb-1 block">Invoice Number</label>
               <input value={invNo} onChange={e => setInvNo(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
             </div>
             <div>
-              <label className="text-[10px] text-[#64748B] mb-1 block">Invoice Date</label>
+              <label className="text-[10px] text-ps-label mb-1 block">Invoice Date</label>
               <input type="date" value={invDate} onChange={e => setInvDate(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
             </div>
           </div>
           {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
+            <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
             <button onClick={handleCreate} disabled={actionInFlight || !invNo || !invDate || !clientId}
               className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
@@ -193,16 +193,16 @@ export default function EInvoicePage() {
       ) : loadError ? (
         <div className="bg-white rounded-xl border border-red-200 text-center py-10 space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
-          <button disabled={actionInFlight} onClick={() => load(clientId)} className="text-xs px-3 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button disabled={actionInFlight} onClick={() => load(clientId)} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : (
         <div className="space-y-2">
           {records.map(r => (
-            <div key={r.id} className="bg-white border border-[#F1F5F9] rounded-xl px-4 py-3 flex items-center gap-3">
-              <Zap size={16} className={r.status === "generated" ? "text-green-500" : r.status === "cancelled" ? "text-red-400" : "text-[#94A3B8]"} />
+            <div key={r.id} className="bg-white border border-ps-muted rounded-xl px-4 py-3 flex items-center gap-3">
+              <Zap size={16} className={r.status === "generated" ? "text-green-500" : r.status === "cancelled" ? "text-red-400" : "text-ps-hint"} />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-[#1E293B]">{r.invoice_number} — {r.invoice_date}</p>
-                <p className="text-[10px] text-[#94A3B8]">
+                <p className="text-xs font-semibold text-ps-ink">{r.invoice_number} — {r.invoice_date}</p>
+                <p className="text-[10px] text-ps-hint">
                   {r.irn ? `IRN: ${r.irn.slice(0, 20)}...` : "No IRN recorded"}
                   {r.ack_number && ` · Ack: ${r.ack_number}`}
                 </p>
@@ -220,31 +220,31 @@ export default function EInvoicePage() {
       )}
 
       {showIRN && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3">
-          <p className="text-xs font-semibold text-[#334155]">Record IRN from IRP Portal</p>
+        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
+          <p className="text-xs font-semibold text-ps-body">Record IRN from IRP Portal</p>
           <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded">
             CA REVIEW REQUIRED — Generate IRN on IRP portal first, then enter details below
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="text-[10px] text-[#64748B] mb-1 block">IRN (64-char hash)</label>
+              <label className="text-[10px] text-ps-label mb-1 block">IRN (64-char hash)</label>
               <input value={irn} onChange={e => setIrn(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg font-mono" />
+                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg font-mono" />
             </div>
             <div>
-              <label className="text-[10px] text-[#64748B] mb-1 block">Ack Number</label>
+              <label className="text-[10px] text-ps-label mb-1 block">Ack Number</label>
               <input value={ackNo} onChange={e => setAckNo(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
             </div>
             <div>
-              <label className="text-[10px] text-[#64748B] mb-1 block">Ack Date</label>
+              <label className="text-[10px] text-ps-label mb-1 block">Ack Date</label>
               <input type="datetime-local" value={ackDate} onChange={e => setAckDate(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
             </div>
           </div>
           {irnError && <p className="text-xs text-red-600">{irnError}</p>}
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowIRN(null)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
+            <button onClick={() => setShowIRN(null)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
             <button onClick={() => handleRecordIRN(showIRN)} disabled={actionInFlight || !irn || !ackNo}
               className="text-xs px-3 py-1.5 bg-green-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
               {savingIRN && <Loader2 size={10} className="animate-spin" />} Record IRN

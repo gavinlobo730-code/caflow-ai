@@ -88,14 +88,14 @@ function Billing() {
     <div className="p-6 max-w-4xl">
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
-          <Receipt size={18} className="text-[#182350]" />
-          <h1 className="text-lg font-semibold text-[#182350]">Billing Schedules</h1>
+          <Receipt size={18} className="text-brand" />
+          <h1 className="text-lg font-semibold text-brand">Billing Schedules</h1>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-[#182350] text-white">
+          <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-brand text-white">
             <Plus size={13} /> New schedule
           </button>
-          <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-[#182350]">
+          <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-brand">
             <RefreshCw size={13} /> Refresh
           </button>
         </div>
@@ -133,7 +133,7 @@ function Billing() {
           )}
           <input required type="number" step="0.01" placeholder="Fee (₹)" value={form.amount_rupees} onChange={(e) => setForm({ ...form, amount_rupees: e.target.value })} className="border rounded-lg px-2 py-1.5" />
           <input type="number" step="0.01" placeholder="GST %" value={form.gst_rate} onChange={(e) => setForm({ ...form, gst_rate: e.target.value })} className="border rounded-lg px-2 py-1.5" />
-          <button type="submit" className="px-3 py-1.5 rounded-lg bg-[#182350] text-white">Create</button>
+          <button type="submit" className="px-3 py-1.5 rounded-lg bg-brand text-white">Create</button>
         </form>
       )}
 
@@ -154,7 +154,7 @@ function Billing() {
             )}
             {schedules.map((s) => (
               <tr key={s.id} className="border-b border-gray-100 last:border-0">
-                <td className="px-4 py-2.5 text-[#182350]">{clientName(s.client_id)}</td>
+                <td className="px-4 py-2.5 text-brand">{clientName(s.client_id)}</td>
                 <td className="px-4 py-2.5 text-gray-600 capitalize">{s.cadence}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(s.amount_paise)}</td>
                 <td className="px-4 py-2.5 text-gray-600">{s.next_run_date ?? "—"}</td>

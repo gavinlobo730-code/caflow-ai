@@ -94,29 +94,29 @@ function LedgerDialog({ account, onClose, onSaved }:
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={onClose}>
       <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
-        <h3 className="text-sm font-semibold text-[#0F172A]">
+        <h3 className="text-sm font-semibold text-ps-ink">
           {account ? `Edit ${account.account_name}` : "Add a ledger"}
         </h3>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="block text-[11px] font-medium text-[#64748B] mb-1">Ledger name</label>
-            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs"
+            <label className="block text-[11px] font-medium text-ps-label mb-1">Ledger name</label>
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                    value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-[#64748B] mb-1">Code</label>
-            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs font-mono"
+            <label className="block text-[11px] font-medium text-ps-label mb-1">Code</label>
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs font-mono"
                    value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-[#64748B] mb-1">Type</label>
+            <label className="block text-[11px] font-medium text-ps-label mb-1">Type</label>
             {account ? (
               // Fixed once anything can have been posted — it decides which side
               // of the trial balance this account falls on.
-              <p className="text-xs text-[#64748B] py-2">{account.account_type}</p>
+              <p className="text-xs text-ps-label py-2">{account.account_type}</p>
             ) : (
-              <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs"
+              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                       value={form.account_type}
                       onChange={e => setForm(f => ({ ...f, account_type: e.target.value }))}>
                 {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -124,15 +124,15 @@ function LedgerDialog({ account, onClose, onSaved }:
             )}
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-[#64748B] mb-1">Parent group</label>
-            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs"
+            <label className="block text-[11px] font-medium text-ps-label mb-1">Parent group</label>
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                    placeholder="Current Assets"
                    value={form.parent_group}
                    onChange={e => setForm(f => ({ ...f, parent_group: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-[#64748B] mb-1">Sub group</label>
-            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs"
+            <label className="block text-[11px] font-medium text-ps-label mb-1">Sub group</label>
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                    placeholder="Sundry Debtors"
                    value={form.sub_group}
                    onChange={e => setForm(f => ({ ...f, sub_group: e.target.value }))} />
@@ -145,10 +145,10 @@ function LedgerDialog({ account, onClose, onSaved }:
             "Bank Account" reaches Cash & Cash Equivalents and a blank reaches
             the coarse fallback for the account's type. */}
         <div>
-          <label className="block text-[11px] font-medium text-[#64748B] mb-1">
+          <label className="block text-[11px] font-medium text-ps-label mb-1">
             Nature (for the Balance Sheet)
           </label>
-          <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs"
+          <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                  placeholder="Bank Account, Trade Receivables, Plant &amp; Machinery…"
                  value={form.account_subtype}
                  onChange={e => setForm(f => ({ ...f, account_subtype: e.target.value }))} />
@@ -170,7 +170,7 @@ function LedgerDialog({ account, onClose, onSaved }:
         )}
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 text-xs border border-[#E2E8F0] rounded-lg py-2 text-[#334155] hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
           <button onClick={save} disabled={saving}
                   className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Saving…" : account ? "Save changes" : "Add ledger"}
@@ -263,14 +263,14 @@ export default function AccountGroupsPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
+        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-ps-ink flex items-center gap-2">
             <Layers size={18} className="text-blue-600" /> Account Groups
           </h1>
-          <p className="text-xs text-[#64748B] mt-0.5">
+          <p className="text-xs text-ps-label mt-0.5">
             {parentGroups.length} parent groups · {accounts.length} active accounts
           </p>
         </div>
@@ -285,33 +285,33 @@ export default function AccountGroupsPage() {
           const subGroups = Object.keys(grouped[pg]).sort();
           const total = subGroups.reduce((n, sg) => n + grouped[pg][sg].length, 0);
           return (
-            <div key={pg} className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-              <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9] flex items-center justify-between">
-                <span className="text-sm font-semibold text-[#334155]">
+            <div key={pg} className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+              <div className="px-5 py-3 bg-ps-bg border-b border-ps-muted flex items-center justify-between">
+                <span className="text-sm font-semibold text-ps-body">
                   {pg}
                   {derived.has(pg) && (
-                    <span className="ml-2 font-normal text-[10px] text-[#94A3B8]"
+                    <span className="ml-2 font-normal text-[10px] text-ps-hint"
                           title="No group recorded for these ledgers, so they are shown under their account type. Edit a ledger to file it where you want it.">
                       by account type
                     </span>
                   )}
                 </span>
-                <span className="text-xs text-[#94A3B8]">{total} accounts</span>
+                <span className="text-xs text-ps-hint">{total} accounts</span>
               </div>
               {subGroups.map(sg => (
                 <div key={sg}>
-                  <div className="px-5 py-2 border-b border-[#F8FAFC] flex items-center justify-between bg-[#FAFAFA]">
-                    <span className="text-xs font-medium text-[#475569]">{sg}</span>
-                    <span className="text-[10px] text-[#94A3B8]">{grouped[pg][sg].length}</span>
+                  <div className="px-5 py-2 border-b border-ps-bg flex items-center justify-between bg-[#FAFAFA]">
+                    <span className="text-xs font-medium text-ps-label">{sg}</span>
+                    <span className="text-[10px] text-ps-hint">{grouped[pg][sg].length}</span>
                   </div>
                   <table className="w-full text-xs">
-                    <tbody className="divide-y divide-[#F8FAFC]">
+                    <tbody className="divide-y divide-ps-bg">
                       {grouped[pg][sg].map(acc => (
-                        <tr key={acc.id} className="hover:bg-[#F8FAFC]">
-                          <td className="px-5 py-2 font-mono text-[10px] text-[#94A3B8] w-16">{acc.account_code}</td>
-                          <td className="px-3 py-2 font-medium text-[#0F172A]">{acc.account_name}</td>
-                          <td className="px-3 py-2 text-[#64748B]">{acc.account_type}</td>
-                          <td className="px-3 py-2 text-[#94A3B8]">{acc.account_subtype ?? "—"}</td>
+                        <tr key={acc.id} className="hover:bg-ps-bg">
+                          <td className="px-5 py-2 font-mono text-[10px] text-ps-hint w-16">{acc.account_code}</td>
+                          <td className="px-3 py-2 font-medium text-ps-ink">{acc.account_name}</td>
+                          <td className="px-3 py-2 text-ps-label">{acc.account_type}</td>
+                          <td className="px-3 py-2 text-ps-hint">{acc.account_subtype ?? "—"}</td>
                           <td className="px-5 py-2 text-right">
                             <button onClick={() => setEditing(acc)} className="text-[11px] text-blue-600 hover:underline">Edit</button>
                           </td>

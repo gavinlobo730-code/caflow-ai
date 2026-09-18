@@ -221,12 +221,12 @@ export default function FixedAssetsPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-[#F8FAFC]">
+    <div className="flex flex-col h-full bg-ps-bg">
       {/* Header */}
-      <div className="bg-white border-b border-[#E2E8F0] px-6 py-4 flex items-center justify-between shrink-0">
+      <div className="bg-white border-b border-ps-border px-6 py-4 flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-base font-semibold text-[#1E293B]">Fixed Assets</h1>
-          <p className="text-[11px] text-[#94A3B8] mt-0.5">
+          <h1 className="text-base font-semibold text-ps-ink">Fixed Assets</h1>
+          <p className="text-[11px] text-ps-hint mt-0.5">
             Companies Act 2013, Schedule II — WDV &amp; SL depreciation
           </p>
         </div>
@@ -234,7 +234,7 @@ export default function FixedAssetsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="bg-white border-b border-[#E2E8F0] px-6 shrink-0">
+      <div className="bg-white border-b border-ps-border px-6 shrink-0">
         <nav className="flex gap-0">
           {TABS.map((t) => (
             <button
@@ -243,7 +243,7 @@ export default function FixedAssetsPage() {
               className={`px-4 py-3 text-xs font-medium border-b-2 transition-colors ${
                 tab === t.id
                   ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-[#64748B] hover:text-[#1E293B]"
+                  : "border-transparent text-ps-label hover:text-ps-ink"
               }`}
             >
               {t.label}
@@ -354,18 +354,18 @@ function RegisterTab({ clientId, openDoc }:
           { label: "Accumulated Depreciation", value: loadFailed ? "—" : fmt(totalAccum), accent: "amber" },
           { label: "Net Block (WDV)", value: loadFailed ? "—" : fmt(totalWDV), accent: "green" },
         ].map((c) => (
-          <div key={c.label} className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4">
-            <p className="text-[11px] text-[#94A3B8] font-medium">{c.label}</p>
-            <p className="text-lg font-bold text-[#1E293B] mt-1 font-mono">{c.value}</p>
+          <div key={c.label} className="bg-white rounded-xl border border-ps-border px-5 py-4">
+            <p className="text-[11px] text-ps-hint font-medium">{c.label}</p>
+            <p className="text-lg font-bold text-ps-ink mt-1 font-mono">{c.value}</p>
           </div>
         ))}
       </div>
 
       {/* Table header */}
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">{assets.length} asset{assets.length !== 1 ? "s" : ""}</p>
+        <p className="text-xs font-semibold text-ps-body">{assets.length} asset{assets.length !== 1 ? "s" : ""}</p>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
+          <button onClick={load} className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
           <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
@@ -377,21 +377,21 @@ function RegisterTab({ clientId, openDoc }:
       {loading ? (
         <TableSkeleton cols={11} rows={4} />
       ) : loadFailed ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load the asset register — the request failed or timed out.</p>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : assets.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-3">
           <TrendingDown size={32} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-[#64748B]">No assets added yet</p>
+          <p className="text-sm text-ps-label">No assets added yet</p>
           <button onClick={() => setShowAdd(true)} className="text-xs text-blue-600 hover:underline">Add your first asset</button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+              <tr className="border-b border-ps-muted text-ps-hint">
                 <th className="px-4 py-3 text-left font-semibold w-5"></th>
                 <th className="px-2 py-3 text-left font-semibold">Code</th>
                 <th className="px-3 py-3 text-left font-semibold">Asset Name</th>
@@ -405,34 +405,34 @@ function RegisterTab({ clientId, openDoc }:
                 <th className="px-3 py-3 text-right font-semibold">Correct</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {assets.map((a) => (
                 <>
                   <tr
                     key={a.id}
-                    className={"hover:bg-[#F8FAFC] cursor-pointer" +
+                    className={"hover:bg-ps-bg cursor-pointer" +
                       (openDoc && a.id === openDoc ? " bg-amber-50 ring-2 ring-inset ring-amber-300" : "")}
                     onClick={() => setExpanded(expanded === a.id ? null : a.id)}
                   >
-                    <td className="px-4 py-2.5 text-[#94A3B8]">
+                    <td className="px-4 py-2.5 text-ps-hint">
                       {expanded === a.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </td>
-                    <td className="px-2 py-2.5 font-mono text-[10px] text-[#94A3B8]">{a.asset_code ?? "—"}</td>
-                    <td className="px-3 py-2.5 font-medium text-[#1E293B]">{a.asset_name}</td>
-                    <td className="px-3 py-2.5 text-[#64748B]">{a.asset_category}</td>
-                    <td className="px-3 py-2.5 text-[#64748B]">{fmtDate(a.purchase_date)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(a.purchase_cost_paise)}</td>
+                    <td className="px-2 py-2.5 font-mono text-[10px] text-ps-hint">{a.asset_code ?? "—"}</td>
+                    <td className="px-3 py-2.5 font-medium text-ps-ink">{a.asset_name}</td>
+                    <td className="px-3 py-2.5 text-ps-label">{a.asset_category}</td>
+                    <td className="px-3 py-2.5 text-ps-label">{fmtDate(a.purchase_date)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(a.purchase_cost_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(a.accumulated_depreciation_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#1E293B]">
+                    <td className="px-3 py-2.5 text-right font-mono font-semibold text-ps-ink">
                       {fmt(a.purchase_cost_paise - a.accumulated_depreciation_paise)}
                     </td>
-                    <td className="px-3 py-2.5 text-[#64748B]">
+                    <td className="px-3 py-2.5 text-ps-label">
                       {a.depreciation_method === "WDV"
                         ? `WDV ${a.wdv_rate_percent}%`
                         : `SL ${a.useful_life_years}yr`}
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${LIFECYCLE_BADGE[a.lifecycle] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${LIFECYCLE_BADGE[a.lifecycle] ?? "bg-ps-muted text-ps-label"}`}>
                         {a.lifecycle.replace("_", " ")}
                       </span>
                     </td>
@@ -459,12 +459,12 @@ function RegisterTab({ clientId, openDoc }:
                     </td>
                   </tr>
                   {expanded === a.id && (
-                    <tr key={`${a.id}-exp`} className="bg-[#F8FAFC]">
+                    <tr key={`${a.id}-exp`} className="bg-ps-bg">
                       <td colSpan={11} className="px-8 py-3">
                         <div className="grid grid-cols-4 gap-4 text-xs">
-                          <div><span className="text-[#94A3B8]">Location:</span> <span className="text-[#1E293B]">{a.location ?? "—"}</span></div>
-                          <div><span className="text-[#94A3B8]">Salvage Value:</span> <span className="text-[#1E293B] font-mono">{fmt(a.salvage_value_paise)}</span></div>
-                          <div><span className="text-[#94A3B8]">Notes:</span> <span className="text-[#1E293B]">{a.notes ?? "—"}</span></div>
+                          <div><span className="text-ps-hint">Location:</span> <span className="text-ps-ink">{a.location ?? "—"}</span></div>
+                          <div><span className="text-ps-hint">Salvage Value:</span> <span className="text-ps-ink font-mono">{fmt(a.salvage_value_paise)}</span></div>
+                          <div><span className="text-ps-hint">Notes:</span> <span className="text-ps-ink">{a.notes ?? "—"}</span></div>
                         </div>
                       </td>
                     </tr>
@@ -543,8 +543,8 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
     <div className="fixed inset-0 bg-black/30 z-50 flex justify-end" onClick={onClose}>
       <div className="bg-white w-full max-w-md h-full overflow-y-auto p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div>
-          <h3 className="text-sm font-semibold text-[#1E293B]">Correct {asset.asset_code ?? asset.asset_name}</h3>
-          <p className="text-[11px] text-[#94A3B8] mt-1">
+          <h3 className="text-sm font-semibold text-ps-ink">Correct {asset.asset_code ?? asset.asset_name}</h3>
+          <p className="text-[11px] text-ps-hint mt-1">
             A change to the cost reverses the acquisition journal and re-posts it. A
             revised rate or life applies from the next financial year, never to a
             month already posted.
@@ -568,9 +568,9 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
           { k: "reason" as const,            label: "Why (recorded on the audit trail)" },
         ].map(f => (
           <div key={f.k}>
-            <label className="block text-[11px] font-medium text-[#64748B] mb-1">{f.label}</label>
+            <label className="block text-[11px] font-medium text-ps-label mb-1">{f.label}</label>
             <input
-              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#1E293B] focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-200"
               value={form[f.k]}
               onChange={e => set(f.k, e.target.value)}
             />
@@ -585,7 +585,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
         )}
 
         <div className="flex gap-2 pt-2">
-          <button onClick={onClose} className="flex-1 text-xs border border-[#E2E8F0] rounded-lg py-2 text-[#334155] hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
           <button onClick={save} disabled={saving} className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Saving…" : "Save correction"}
           </button>
@@ -620,8 +620,8 @@ function DeleteAssetDialog({ asset, onClose, onSaved }: { asset: Asset; onClose:
         <div className="flex gap-2">
           <Trash2 size={15} className="text-red-600 shrink-0 mt-0.5" />
           <div>
-            <h3 className="text-sm font-semibold text-[#1E293B]">Delete {asset.asset_code ?? asset.asset_name}?</h3>
-            <p className="text-[11px] text-[#64748B] mt-1">
+            <h3 className="text-sm font-semibold text-ps-ink">Delete {asset.asset_code ?? asset.asset_name}?</h3>
+            <p className="text-[11px] text-ps-label mt-1">
               For an asset created by mistake. Its acquisition journal is reversed and the
               asset leaves the register — its code is kept so no later asset can take it.
               An asset with depreciation posted against it cannot be deleted; reverse the
@@ -638,7 +638,7 @@ function DeleteAssetDialog({ asset, onClose, onSaved }: { asset: Asset; onClose:
         )}
 
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 text-xs border border-[#E2E8F0] rounded-lg py-2 text-[#334155] hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
           <button onClick={remove} disabled={working} className="flex-1 text-xs bg-red-600 text-white rounded-lg py-2 hover:bg-red-700 disabled:opacity-50">
             {working ? "Deleting…" : "Delete asset"}
           </button>
@@ -873,11 +873,11 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="bg-white w-[440px] h-full overflow-y-auto shadow-2xl flex flex-col">
-        <div className="px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between shrink-0">
-          <h2 className="text-sm font-semibold text-[#1E293B]">Add Fixed Asset</h2>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#1E293B]"><span className="text-lg">×</span></button>
+        <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
+          <h2 className="text-sm font-semibold text-ps-ink">Add Fixed Asset</h2>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
         </div>
 
         <div className="flex-1 px-6 py-5 space-y-4 text-xs">
@@ -949,7 +949,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
               {(["WDV", "SL"] as const).map(m => (
                 <label key={m} className="flex items-center gap-1.5 cursor-pointer">
                   <input type="radio" name="dep_method" value={m} checked={form.depreciation_method === m} onChange={() => setForm(f => ({ ...f, depreciation_method: m }))} />
-                  <span className="text-[#1E293B] font-medium">{m === "WDV" ? "WDV (Written Down Value)" : "SL (Straight Line)"}</span>
+                  <span className="text-ps-ink font-medium">{m === "WDV" ? "WDV (Written Down Value)" : "SL (Straight Line)"}</span>
                 </label>
               ))}
             </div>
@@ -958,12 +958,12 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
           {form.depreciation_method === "WDV" ? (
             <Field label="WDV Rate (% per year)">
               <input type="number" step="0.01" className={INPUT} value={form.wdv_rate_percent} onChange={e => setForm(f => ({ ...f, wdv_rate_percent: e.target.value }))} />
-              <p className="text-[10px] text-[#94A3B8] mt-1">{scheduleIINote(selected, selectedClass, "WDV")}</p>
+              <p className="text-[10px] text-ps-hint mt-1">{scheduleIINote(selected, selectedClass, "WDV")}</p>
             </Field>
           ) : (
             <Field label="Useful Life (years)">
               <input type="number" className={INPUT} value={form.useful_life_years} onChange={e => setForm(f => ({ ...f, useful_life_years: e.target.value }))} />
-              <p className="text-[10px] text-[#94A3B8] mt-1">{scheduleIINote(selected, selectedClass, "SL")}</p>
+              <p className="text-[10px] text-ps-hint mt-1">{scheduleIINote(selected, selectedClass, "SL")}</p>
             </Field>
           )}
 
@@ -980,8 +980,8 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
               Defaulting every asset to `paid` was not a neutral default: a
               machine bought on credit went in as if cash had left the
               building, and one already on a purchase bill went in TWICE. */}
-          <div className="border-t border-[#F1F5F9] pt-4 space-y-3">
-            <p className="text-[11px] font-semibold text-[#334155]">How was it acquired?</p>
+          <div className="border-t border-ps-muted pt-4 space-y-3">
+            <p className="text-[11px] font-semibold text-ps-body">How was it acquired?</p>
             <div className="space-y-1.5">
               {([
                 ["paid",      "Paid for now", "Credits the bank or cash account the money left."],
@@ -995,8 +995,8 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                     onChange={() => setForm(f => ({ ...f, acquisition_mode: mode }))}
                   />
                   <span>
-                    <span className="text-[#1E293B] font-medium">{label}</span>
-                    <span className="block text-[10px] text-[#94A3B8]">{why}</span>
+                    <span className="text-ps-ink font-medium">{label}</span>
+                    <span className="block text-[10px] text-ps-hint">{why}</span>
                   </span>
                 </label>
               ))}
@@ -1049,7 +1049,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-[#94A3B8] mt-1">
+                <p className="text-[10px] text-ps-hint mt-1">
                   A bill can be capitalised once. Its cost moves out of purchases
                   into this asset; the payable is untouched.
                 </p>
@@ -1064,8 +1064,8 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
               than being claimed. That is why the question has to be answered
               rather than defaulted: it changes the balance sheet and every
               depreciation charge the asset will ever take. */}
-          <div className="border-t border-[#F1F5F9] pt-4 space-y-3">
-            <p className="text-[11px] font-semibold text-[#334155]">GST on the purchase</p>
+          <div className="border-t border-ps-muted pt-4 space-y-3">
+            <p className="text-[11px] font-semibold text-ps-body">GST on the purchase</p>
             <div className="grid grid-cols-3 gap-2">
               <Field label="IGST (₹)">
                 <input type="number" className={INPUT} value={form.igst_paise} placeholder="0"
@@ -1094,8 +1094,8 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                                checked={form.itc_eligible === v}
                                onChange={() => setForm(f => ({ ...f, itc_eligible: v }))} />
                         <span>
-                          <span className="text-[#1E293B] font-medium">{label}</span>
-                          <span className="block text-[10px] text-[#94A3B8]">{why}</span>
+                          <span className="text-ps-ink font-medium">{label}</span>
+                          <span className="block text-[10px] text-ps-hint">{why}</span>
                         </span>
                       </label>
                     ))}
@@ -1123,7 +1123,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                     <option value="yes">Yes — new plant or machinery</option>
                     <option value="no">No</option>
                   </select>
-                  <p className="mt-1 text-[10px] text-[#94A3B8]">
+                  <p className="mt-1 text-[10px] text-ps-hint">
                     {form.additional_depreciation_eligible === "yes"
                       ? "This asserts the whole first proviso: not used by anybody before you installed it, not in office premises, residential accommodation or a guest house, not an office appliance or a road transport vehicle, and its whole cost is not allowed as a deduction in one year."
                       : form.additional_depreciation_eligible === "no"
@@ -1146,7 +1146,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                       <option value="common">Both taxable and exempt — 43(1)(c)</option>
                       <option value="exclusively_exempt">Only exempt or non-business — 43(1)(a)</option>
                     </select>
-                    <p className="mt-1 text-[10px] text-[#94A3B8]">
+                    <p className="mt-1 text-[10px] text-ps-hint">
                       {form.rule_43_use === "common"
                         ? "One-sixtieth of this credit is apportioned by exempt turnover every month for five years, and added back to output tax."
                         : form.rule_43_use === "exclusively_exempt"
@@ -1166,8 +1166,8 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
           </Field>
         </div>
 
-        <div className="px-6 py-4 border-t border-[#E2E8F0] flex gap-3 shrink-0">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-[#E2E8F0] text-xs text-[#64748B] hover:bg-[#F8FAFC]">Cancel</button>
+        <div className="px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
+          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
           <button onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50">
             {saving ? "Saving…" : "Add Asset"}
           </button>
@@ -1331,22 +1331,22 @@ function DepreciationTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4 max-w-5xl mx-auto">
       {/* Period + Post All */}
-      <div className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4 flex items-center justify-between">
+      <div className="bg-white rounded-xl border border-ps-border px-5 py-4 flex items-center justify-between">
         <div className="space-y-1">
-          <p className="text-xs font-semibold text-[#1E293B]">Post Depreciation</p>
-          <p className="text-[11px] text-[#94A3B8]">Posts journal entry: Dr Depreciation Expense / Cr Accumulated Depreciation. Idempotent per period.</p>
+          <p className="text-xs font-semibold text-ps-ink">Post Depreciation</p>
+          <p className="text-[11px] text-ps-hint">Posts journal entry: Dr Depreciation Expense / Cr Accumulated Depreciation. Idempotent per period.</p>
         </div>
         <div className="flex items-center gap-3">
           <input
             type="month"
-            className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs text-[#1E293B] focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-200"
             value={period}
             onChange={e => setPeriod(e.target.value)}
           />
-          <span className="text-[11px] text-[#94A3B8]">to</span>
+          <span className="text-[11px] text-ps-hint">to</span>
           <input
             type="month"
-            className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs text-[#1E293B] focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-200"
             value={toPeriod}
             onChange={e => setToPeriod(e.target.value)}
           />
@@ -1367,8 +1367,8 @@ function DepreciationTab({ clientId }: { clientId: string }) {
         /* What the run DID, per asset. The browser loop reported nothing at
            all; a batch that says only "done" is the same defect with a nicer
            face, because the CA cannot tell which asset stopped and why. */
-        <div className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4 space-y-2">
-          <p className="text-xs font-semibold text-[#1E293B]">
+        <div className="bg-white rounded-xl border border-ps-border px-5 py-4 space-y-2">
+          <p className="text-xs font-semibold text-ps-ink">
             {runResult.months_posted === 0
               ? "Nothing left to post in that range."
               : `${runResult.months_posted} month${runResult.months_posted === 1 ? "" : "s"} posted.`}
@@ -1388,13 +1388,13 @@ function DepreciationTab({ clientId }: { clientId: string }) {
 
       {/* Summary */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4">
-          <p className="text-[11px] text-[#94A3B8]">Total Annual Depreciation</p>
-          <p className="text-lg font-bold text-[#1E293B] font-mono mt-1">{loadFailed ? "—" : fmt(totalAnnual)}</p>
+        <div className="bg-white rounded-xl border border-ps-border px-5 py-4">
+          <p className="text-[11px] text-ps-hint">Total Annual Depreciation</p>
+          <p className="text-lg font-bold text-ps-ink font-mono mt-1">{loadFailed ? "—" : fmt(totalAnnual)}</p>
         </div>
-        <div className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4">
-          <p className="text-[11px] text-[#94A3B8]">Monthly Charge</p>
-          <p className="text-lg font-bold text-[#1E293B] font-mono mt-1">{loadFailed ? "—" : fmt(totalMonthly)}</p>
+        <div className="bg-white rounded-xl border border-ps-border px-5 py-4">
+          <p className="text-[11px] text-ps-hint">Monthly Charge</p>
+          <p className="text-lg font-bold text-ps-ink font-mono mt-1">{loadFailed ? "—" : fmt(totalMonthly)}</p>
         </div>
       </div>
 
@@ -1402,15 +1402,15 @@ function DepreciationTab({ clientId }: { clientId: string }) {
       {loading ? (
         <TableSkeleton cols={6} rows={3} />
       ) : loadFailed ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load assets — the request failed or timed out.</p>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+              <tr className="border-b border-ps-muted text-ps-hint">
                 <th className="px-4 py-3 text-left font-semibold">Asset</th>
                 <th className="px-3 py-3 text-left font-semibold">Method</th>
                 <th className="px-3 py-3 text-right font-semibold">Opening WDV</th>
@@ -1419,23 +1419,23 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                 <th className="px-3 py-3 text-left font-semibold">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {rows.map((r) => (
-                <tr key={r.asset_id} className="hover:bg-[#F8FAFC] align-top">
-                  <td className="px-4 py-2.5 font-medium text-[#1E293B]">
+                <tr key={r.asset_id} className="hover:bg-ps-bg align-top">
+                  <td className="px-4 py-2.5 font-medium text-ps-ink">
                     {r.asset_name}
                     {r.depreciation_posted_through && (
-                      <span className="block text-[10px] text-[#94A3B8] font-normal">
+                      <span className="block text-[10px] text-ps-hint font-normal">
                         posted through {r.depreciation_posted_through}
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-[#64748B]">
+                  <td className="px-3 py-2.5 text-ps-label">
                     {r.depreciation_method === "WDV" ? `WDV ${r.wdv_rate_percent ?? "—"}%` : `SL ${r.useful_life_years ?? "—"}yr`}
                   </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(r.current_wdv_paise)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(r.current_wdv_paise)}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(r.annual_depreciation_paise)}</td>
-                  <td className="px-3 py-2.5 text-right font-mono text-[#64748B]">{fmt(r.monthly_depreciation_paise)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-ps-label">{fmt(r.monthly_depreciation_paise)}</td>
                   <td className="px-3 py-2.5">
                     {r.statutory_gap ? (
                       // A zero with a reason beside it is not the same number
@@ -1459,7 +1459,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                         )}
                       </>
                     ) : (
-                      <span className="text-[10px] text-[#94A3B8]">Fully depreciated</span>
+                      <span className="text-[10px] text-ps-hint">Fully depreciated</span>
                     )}
                     {r.depreciation_posted_through && (
                       // FA-10: a month posted on a wrong cost or a wrong rate
@@ -1668,8 +1668,8 @@ function DisposalTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4 max-w-3xl mx-auto">
       {lastDisposal && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl px-4 py-3 space-y-1">
-          <p className="text-xs font-semibold text-[#0F172A]">
+        <div className="bg-white border border-ps-border rounded-xl px-4 py-3 space-y-1">
+          <p className="text-xs font-semibold text-ps-ink">
             {lastDisposal.asset} disposed —{" "}
             {lastDisposal.gainLoss >= 0 ? "gain" : "loss"}{" "}
             {fmt(Math.abs(lastDisposal.gainLoss))}
@@ -1698,19 +1698,19 @@ function DisposalTab({ clientId }: { clientId: string }) {
       {loading ? (
         <TableSkeleton cols={5} rows={3} />
       ) : loadFailed ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-12 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-12 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load assets — the request failed or timed out.</p>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : assets.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-12">
-          <p className="text-sm text-[#64748B]">No active assets available for disposal.</p>
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-12">
+          <p className="text-sm text-ps-label">No active assets available for disposal.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+              <tr className="border-b border-ps-muted text-ps-hint">
                 <th className="px-4 py-3 text-left font-semibold">Asset</th>
                 <th className="px-3 py-3 text-right font-semibold">Cost</th>
                 <th className="px-3 py-3 text-right font-semibold">Accum Depn</th>
@@ -1718,13 +1718,13 @@ function DisposalTab({ clientId }: { clientId: string }) {
                 <th className="px-3 py-3 text-left font-semibold">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {assets.map((a) => (
-                <tr key={a.id} className={`hover:bg-[#F8FAFC] ${selected?.id === a.id ? "bg-red-50" : ""}`}>
-                  <td className="px-4 py-2.5 font-medium text-[#1E293B]">{a.asset_name}</td>
-                  <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(a.purchase_cost_paise)}</td>
+                <tr key={a.id} className={`hover:bg-ps-bg ${selected?.id === a.id ? "bg-red-50" : ""}`}>
+                  <td className="px-4 py-2.5 font-medium text-ps-ink">{a.asset_name}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(a.purchase_cost_paise)}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(a.accumulated_depreciation_paise)}</td>
-                  <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#1E293B]">
+                  <td className="px-3 py-2.5 text-right font-mono font-semibold text-ps-ink">
                     {fmt(a.purchase_cost_paise - a.accumulated_depreciation_paise)}
                   </td>
                   <td className="px-3 py-2.5">
@@ -1744,7 +1744,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
 
       {selected && (
         <div className="bg-white rounded-xl border border-red-200 px-5 py-5 space-y-4">
-          <p className="text-xs font-semibold text-[#1E293B]">Dispose: {selected.asset_name}</p>
+          <p className="text-xs font-semibold text-ps-ink">Dispose: {selected.asset_name}</p>
           {error && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-red-700 text-xs">{error}</div>}
           <div className="grid grid-cols-2 gap-4">
             <Field label="Disposal Date">
@@ -1777,28 +1777,28 @@ function DisposalTab({ clientId }: { clientId: string }) {
               </select>
             </Field>
             <Field label="Head">
-              <label className="flex items-center gap-2 text-xs text-[#334155] h-[38px]">
+              <label className="flex items-center gap-2 text-xs text-ps-body h-[38px]">
                 <input type="checkbox" checked={interstate} disabled={!gstRateBps || gstRateBps === "0"}
                        onChange={e => setInterstate(e.target.checked)} />
                 Inter-state (IGST)
               </label>
             </Field>
           </div>
-          <p className="text-[11px] text-[#94A3B8] -mt-2">
+          <p className="text-[11px] text-ps-hint -mt-2">
             Sale proceeds are the amount the buyer paid, GST included. The tax is
             worked out of it, so the P&amp;L below is measured on the value net of tax.
           </p>
-          <div className="bg-[#F8FAFC] rounded-lg px-4 py-3 text-xs space-y-1">
-            <div className="flex justify-between"><span className="text-[#94A3B8]">WDV at disposal:</span><span className="font-mono text-[#1E293B]">{fmt(selected.purchase_cost_paise - selected.accumulated_depreciation_paise)}</span></div>
-            <div className="flex justify-between"><span className="text-[#94A3B8]">Sale proceeds (incl. GST):</span><span className="font-mono text-[#1E293B]">{proceedsPaise === null ? "—" : fmt(proceedsPaise)}</span></div>
+          <div className="bg-ps-bg rounded-lg px-4 py-3 text-xs space-y-1">
+            <div className="flex justify-between"><span className="text-ps-hint">WDV at disposal:</span><span className="font-mono text-ps-ink">{fmt(selected.purchase_cost_paise - selected.accumulated_depreciation_paise)}</span></div>
+            <div className="flex justify-between"><span className="text-ps-hint">Sale proceeds (incl. GST):</span><span className="font-mono text-ps-ink">{proceedsPaise === null ? "—" : fmt(proceedsPaise)}</span></div>
             {(preview?.tax_charged_paise ?? 0) > 0 && (
               <div className="flex justify-between">
-                <span className="text-[#94A3B8]">Output tax on the transaction value (s.15):</span>
-                <span className="font-mono text-[#1E293B]">−{fmt(preview!.tax_charged_paise)}</span>
+                <span className="text-ps-hint">Output tax on the transaction value (s.15):</span>
+                <span className="font-mono text-ps-ink">−{fmt(preview!.tax_charged_paise)}</span>
               </div>
             )}
-            <div className="flex justify-between border-t border-[#E2E8F0] pt-1 mt-1">
-              <span className="font-medium text-[#1E293B]">P&L on disposal:</span>
+            <div className="flex justify-between border-t border-ps-border pt-1 mt-1">
+              <span className="font-medium text-ps-ink">P&L on disposal:</span>
               {/* The SERVER's figure wherever it has answered — it nets the tax
                   the same way the journal does. The local fallback is the
                   no-GST case, which is the same arithmetic. */}
@@ -1877,7 +1877,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
             <button onClick={() => {
               setSelected(null); setProceeds(""); setGstRateBps("");
               setIsSupply(""); setInterstate(false); setPreview(null);
-            }} className="flex-1 py-2 rounded-lg border border-[#E2E8F0] text-xs text-[#64748B]">Cancel</button>
+            }} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label">Cancel</button>
             <button onClick={dispose} disabled={disposing} className="flex-1 py-2 rounded-lg bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50">
               {disposing ? "Processing…" : "Confirm Disposal"}
             </button>
@@ -1990,9 +1990,9 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
   if (loadFailed) {
     return (
       <div className="space-y-5 max-w-4xl mx-auto">
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load the fixed-asset report — the request failed or timed out.</p>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       </div>
     );
@@ -2008,10 +2008,10 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
           { label: "Accumulated Depn", value: fmt(totals?.closing_accum_paise ?? 0), sub: `at ${fyEnd}` },
           { label: "Net Block",      value: fmt(totals?.closing_net_paise ?? 0), sub: `FY ${financialYear}` },
         ].map(c => (
-          <div key={c.label} className="bg-white rounded-xl border border-[#E2E8F0] px-4 py-4">
-            <p className="text-[11px] text-[#94A3B8]">{c.label}</p>
-            <p className="text-base font-bold text-[#1E293B] mt-1 font-mono">{loading ? "…" : c.value}</p>
-            {c.sub && <p className="text-[10px] text-[#94A3B8] mt-0.5">{c.sub}</p>}
+          <div key={c.label} className="bg-white rounded-xl border border-ps-border px-4 py-4">
+            <p className="text-[11px] text-ps-hint">{c.label}</p>
+            <p className="text-base font-bold text-ps-ink mt-1 font-mono">{loading ? "…" : c.value}</p>
+            {c.sub && <p className="text-[10px] text-ps-hint mt-0.5">{c.sub}</p>}
           </div>
         ))}
       </div>
@@ -2027,25 +2027,25 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
       )}
 
       {/* The Schedule III movement */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-50">
-          <p className="text-xs font-semibold text-[#334155]">
+          <p className="text-xs font-semibold text-ps-body">
             Movement in Fixed Assets — FY {movement?.financial_year ?? financialYear}
           </p>
-          <p className="text-[10px] text-[#94A3B8] mt-0.5">
+          <p className="text-[10px] text-ps-hint mt-0.5">
             Schedule III, Division I — gross block and depreciation, opening to closing.
           </p>
         </div>
         {loading ? (
           <TableSkeleton cols={7} rows={4} bare />
         ) : (movement?.classes?.length ?? 0) === 0 ? (
-          <p className="px-5 py-8 text-xs text-[#94A3B8] text-center">
+          <p className="px-5 py-8 text-xs text-ps-hint text-center">
             No assets in the register for this client.
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+              <thead><tr className="border-b border-ps-muted text-ps-hint">
                 <th className="px-5 py-2.5 text-left font-semibold">Class</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Opening Gross</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Additions</th>
@@ -2055,29 +2055,29 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
                 <th className="px-3 py-2.5 text-right font-semibold">Closing Depn</th>
                 <th className="px-5 py-2.5 text-right font-semibold">Closing Net</th>
               </tr></thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {(movement?.classes ?? []).map(c => (
-                  <tr key={c.asset_class} className="hover:bg-[#F8FAFC]">
-                    <td className="px-5 py-2.5 font-medium text-[#1E293B] whitespace-nowrap">{c.asset_class}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#64748B]">{fmt(c.opening_gross_paise)}</td>
+                  <tr key={c.asset_class} className="hover:bg-ps-bg">
+                    <td className="px-5 py-2.5 font-medium text-ps-ink whitespace-nowrap">{c.asset_class}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-ps-label">{fmt(c.opening_gross_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-green-700">{c.additions_paise ? fmt(c.additions_paise) : "—"}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-red-700">{c.deductions_paise ? fmt(c.deductions_paise) : "—"}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(c.closing_gross_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(c.closing_gross_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-amber-700">{c.charge_paise ? fmt(c.charge_paise) : "—"}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(c.closing_accum_paise)}</td>
-                    <td className="px-5 py-2.5 text-right font-mono font-semibold text-[#1E293B]">{fmt(c.closing_net_paise)}</td>
+                    <td className="px-5 py-2.5 text-right font-mono font-semibold text-ps-ink">{fmt(c.closing_net_paise)}</td>
                   </tr>
                 ))}
                 {totals && (
-                  <tr className="bg-[#F8FAFC] font-semibold">
-                    <td className="px-5 py-2.5 text-[#1E293B]">Total</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.opening_gross_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.additions_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.deductions_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.closing_gross_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.charge_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.closing_accum_paise)}</td>
-                    <td className="px-5 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.closing_net_paise)}</td>
+                  <tr className="bg-ps-bg font-semibold">
+                    <td className="px-5 py-2.5 text-ps-ink">Total</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(totals.opening_gross_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(totals.additions_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(totals.deductions_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(totals.closing_gross_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(totals.charge_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(totals.closing_accum_paise)}</td>
+                    <td className="px-5 py-2.5 text-right font-mono text-ps-ink">{fmt(totals.closing_net_paise)}</td>
                   </tr>
                 )}
               </tbody>
@@ -2085,27 +2085,27 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
           </div>
         )}
         {movement?.posted_depreciation_paise != null && (
-          <div className="px-5 py-2.5 border-t border-[#F1F5F9] flex justify-between text-[11px]">
-            <span className="text-[#94A3B8]">Depreciation posted to the ledger this year</span>
-            <span className="font-mono text-[#1E293B]">{fmt(movement.posted_depreciation_paise)}</span>
+          <div className="px-5 py-2.5 border-t border-ps-muted flex justify-between text-[11px]">
+            <span className="text-ps-hint">Depreciation posted to the ledger this year</span>
+            <span className="font-mono text-ps-ink">{fmt(movement.posted_depreciation_paise)}</span>
           </div>
         )}
       </div>
 
       {/* Disposed in the year + fully depreciated */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4">
-          <p className="text-xs font-semibold text-[#334155] mb-2">Disposed in FY {financialYear} ({disposedThisYear.length})</p>
-          {disposedThisYear.length === 0 ? <p className="text-xs text-[#94A3B8]">No disposals in this financial year.</p> : (
+        <div className="bg-white rounded-xl border border-ps-muted px-5 py-4">
+          <p className="text-xs font-semibold text-ps-body mb-2">Disposed in FY {financialYear} ({disposedThisYear.length})</p>
+          {disposedThisYear.length === 0 ? <p className="text-xs text-ps-hint">No disposals in this financial year.</p> : (
             <ul className="space-y-1">{disposedThisYear.slice(0, 5).map(a => (
-              <li key={a.id} className="text-xs text-[#64748B]">{a.asset_name}<span className="text-[#94A3B8]"> · {a.disposal_date}</span></li>
+              <li key={a.id} className="text-xs text-ps-label">{a.asset_name}<span className="text-ps-hint"> · {a.disposal_date}</span></li>
             ))}</ul>
           )}
         </div>
-        <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4">
-          <p className="text-xs font-semibold text-[#334155] mb-2">Fully Depreciated ({fullyDep.length})</p>
-          {fullyDep.length === 0 ? <p className="text-xs text-[#94A3B8]">None fully depreciated.</p> : (
-            <ul className="space-y-1">{fullyDep.slice(0, 5).map(a => <li key={a.id} className="text-xs text-[#64748B]">{a.asset_name}</li>)}</ul>
+        <div className="bg-white rounded-xl border border-ps-muted px-5 py-4">
+          <p className="text-xs font-semibold text-ps-body mb-2">Fully Depreciated ({fullyDep.length})</p>
+          {fullyDep.length === 0 ? <p className="text-xs text-ps-hint">None fully depreciated.</p> : (
+            <ul className="space-y-1">{fullyDep.slice(0, 5).map(a => <li key={a.id} className="text-xs text-ps-label">{a.asset_name}</li>)}</ul>
           )}
         </div>
       </div>
@@ -2189,22 +2189,22 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4 space-y-3">
+    <div className="bg-white rounded-xl border border-ps-muted px-5 py-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold text-[#334155]">Register integrity</p>
-          <p className="text-[11px] text-[#94A3B8]">
+          <p className="text-xs font-semibold text-ps-body">Register integrity</p>
+          <p className="text-[11px] text-ps-hint">
             Where the register disagrees with the ledger, or with Schedule II Part C
           </p>
         </div>
         <button type="button" onClick={load}
-          className="text-[11px] text-[#64748B] hover:text-[#0F172A] underline underline-offset-2">
+          className="text-[11px] text-ps-label hover:text-ps-ink underline underline-offset-2">
           Re-check
         </button>
       </div>
 
       {state.phase === "loading" && (
-        <p className="text-xs text-[#94A3B8]">Checking…</p>
+        <p className="text-xs text-ps-hint">Checking…</p>
       )}
 
       {state.phase === "error" && (
@@ -2221,7 +2221,7 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
 
       {state.phase === "ok" && state.findings.length > 0 && (
         <>
-          <p className="text-[11px] text-[#64748B]">
+          <p className="text-[11px] text-ps-label">
             {state.findings.length} to look at, of {state.checked} asset
             {state.checked === 1 ? "" : "s"} checked. Nothing here has been changed —
             each one is a judgement only you can make.
@@ -2269,12 +2269,12 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-const INPUT = "w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs text-[#1E293B] focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white";
+const INPUT = "w-full border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] font-medium text-[#64748B]">{label}</label>
+      <label className="text-[11px] font-medium text-ps-label">{label}</label>
       {children}
     </div>
   );

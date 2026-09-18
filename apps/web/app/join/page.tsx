@@ -66,7 +66,7 @@ export default function JoinPage() {
                 <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:150ms]" />
                 <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:300ms]" />
               </div>
-              <p className="text-sm text-[#64748B]">
+              <p className="text-sm text-ps-label">
                 {status === "checking" ? "Verifying your invite…" : "Setting up your account…"}
               </p>
             </>
@@ -79,11 +79,11 @@ export default function JoinPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h2 className="text-lg font-semibold text-[#0F172A]">
+              <h2 className="text-lg font-semibold text-ps-ink">
                 Welcome to the team{result?.full_name ? `, ${result.full_name}` : ""}!
               </h2>
               {result?.role && (
-                <p className="text-sm text-[#64748B]">
+                <p className="text-sm text-ps-label">
                   You&apos;ve been added as <strong>{result.role}</strong>.
                 </p>
               )}
@@ -103,9 +103,9 @@ export default function JoinPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <h2 className="text-lg font-semibold text-[#0F172A]">Something went wrong</h2>
-              <p className="text-sm text-[#64748B]">{errorMsg}</p>
-              <p className="text-xs text-[#94A3B8]">Please contact your CA to resend the invite.</p>
+              <h2 className="text-lg font-semibold text-ps-ink">Something went wrong</h2>
+              <p className="text-sm text-ps-label">{errorMsg}</p>
+              <p className="text-xs text-ps-hint">Please contact your CA to resend the invite.</p>
             </>
           )}
         </div>

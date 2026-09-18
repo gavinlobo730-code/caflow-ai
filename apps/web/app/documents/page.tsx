@@ -115,9 +115,9 @@ function docTypeBadgeColor(value: string): string {
     INVOICE: "bg-orange-100 text-orange-700",
     AUDIT_REPORT: "bg-red-100 text-red-700",
     AGREEMENT: "bg-blue-50 text-blue-600",
-    OTHER: "bg-[#F1F5F9] text-[#475569]",
+    OTHER: "bg-ps-muted text-ps-label",
   };
-  return map[value] ?? "bg-[#F1F5F9] text-[#475569]";
+  return map[value] ?? "bg-ps-muted text-ps-label";
 }
 
 // ─── Upload Modal ─────────────────────────────────────────────────────────────
@@ -197,14 +197,14 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
       <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
         {/* Modal header */}
-        <div className="flex items-center justify-between border-b border-[#F1F5F9] px-6 py-4">
-          <h2 className="text-base font-semibold text-[#0F172A]">Upload Document</h2>
+        <div className="flex items-center justify-between border-b border-ps-muted px-6 py-4">
+          <h2 className="text-base font-semibold text-ps-ink">Upload Document</h2>
           <button
             onClick={onClose}
-            className="rounded p-1 text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#475569]"
+            className="rounded p-1 text-ps-hint hover:bg-ps-muted hover:text-ps-label"
           >
             <X size={18} />
           </button>
@@ -221,7 +221,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
 
           {/* Client */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-[#334155]">
+            <label className="mb-1 block text-sm font-medium text-ps-body">
               Client <span className="text-red-500">*</span>
             </label>
             <div className="w-full">
@@ -238,7 +238,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
 
           {/* Document type */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-[#334155]">
+            <label className="mb-1 block text-sm font-medium text-ps-body">
               Document Type <span className="text-red-500">*</span>
             </label>
             <select
@@ -257,7 +257,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
 
           {/* Financial year */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-[#334155]">
+            <label className="mb-1 block text-sm font-medium text-ps-body">
               Financial Year
             </label>
             <select
@@ -276,7 +276,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
 
           {/* File picker */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-[#334155]">
+            <label className="mb-1 block text-sm font-medium text-ps-body">
               File <span className="text-red-500">*</span>
             </label>
             <div
@@ -284,7 +284,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
               className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 transition-colors ${
                 file
                   ? "border-blue-400 bg-blue-50"
-                  : "border-[#E2E8F0] hover:border-blue-300 hover:bg-[#F8FAFC]"
+                  : "border-ps-border hover:border-blue-300 hover:bg-ps-bg"
               } ${uploading ? "pointer-events-none opacity-60" : ""}`}
             >
               <input
@@ -298,15 +298,15 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
                 <>
                   <FileText className="h-6 w-6 text-blue-500" />
                   <p className="text-sm font-medium text-blue-700">{file.name}</p>
-                  <p className="text-xs text-[#64748B]">{formatBytes(file.size)}</p>
+                  <p className="text-xs text-ps-label">{formatBytes(file.size)}</p>
                 </>
               ) : (
                 <>
-                  <Upload className="h-6 w-6 text-[#94A3B8]" />
-                  <p className="text-sm font-medium text-[#475569]">
+                  <Upload className="h-6 w-6 text-ps-hint" />
+                  <p className="text-sm font-medium text-ps-label">
                     Click to browse or drop a file
                   </p>
-                  <p className="text-xs text-[#94A3B8]">PDF, Excel, Word, Images</p>
+                  <p className="text-xs text-ps-hint">PDF, Excel, Word, Images</p>
                 </>
               )}
             </div>
@@ -314,11 +314,11 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
         </div>
 
         {/* Modal footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-[#F1F5F9] px-6 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-ps-muted px-6 py-4">
           <button
             onClick={onClose}
             disabled={uploading}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-[#334155] hover:bg-[#F8FAFC] disabled:opacity-50"
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50"
           >
             Cancel
           </button>
@@ -459,8 +459,8 @@ export default function DocumentsPage() {
       searchable: true, sortable: true, sticky: true, hideable: false,
       render: (d) => (
         <div className="flex items-center gap-2">
-          <FileText size={15} className="shrink-0 text-[#94A3B8]" />
-          <span className="max-w-[220px] truncate font-medium text-[#1E293B]" title={d.file_name}>
+          <FileText size={15} className="shrink-0 text-ps-hint" />
+          <span className="max-w-[220px] truncate font-medium text-ps-ink" title={d.file_name}>
             {d.file_name}
           </span>
         </div>
@@ -469,7 +469,7 @@ export default function DocumentsPage() {
     {
       key: "client", header: "Client", accessor: (d) => clientName(d),
       searchable: true, sortable: true,
-      render: (d) => <span className="text-[#475569]">{d.client_id ? (clientMap[d.client_id] ?? "Unknown") : "—"}</span>,
+      render: (d) => <span className="text-ps-label">{d.client_id ? (clientMap[d.client_id] ?? "Unknown") : "—"}</span>,
     },
     {
       key: "document_type", header: "Type", accessor: (d) => docTypeLabel(d.document_type),
@@ -483,17 +483,17 @@ export default function DocumentsPage() {
     {
       key: "financial_year", header: "Financial Year", accessor: (d) => d.financial_year ?? "",
       sortable: true,
-      render: (d) => <span className="text-[#475569]">{d.financial_year ?? "—"}</span>,
+      render: (d) => <span className="text-ps-label">{d.financial_year ?? "—"}</span>,
     },
     {
       key: "created_at", header: "Uploaded", accessor: (d) => d.created_at,
       sortable: true,
-      render: (d) => <span className="text-[#64748B]">{formatDate(d.created_at)}</span>,
+      render: (d) => <span className="text-ps-label">{formatDate(d.created_at)}</span>,
     },
     {
       key: "file_size", header: "Size", accessor: (d) => d.file_size ?? 0,
       sortable: true, align: "right", defaultHidden: true,
-      render: (d) => <span className="text-[#64748B]">{formatBytes(d.file_size)}</span>,
+      render: (d) => <span className="text-ps-label">{formatBytes(d.file_size)}</span>,
     },
   ], [clientMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -530,8 +530,8 @@ export default function DocumentsPage() {
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Documents</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-ps-ink">Documents</h1>
+          <p className="text-sm text-ps-label mt-0.5">
             Manage client documents and files
           </p>
         </div>
@@ -579,7 +579,7 @@ export default function DocumentsPage() {
             <button
               onClick={() => handleDownload(doc)}
               title="Download"
-              className="rounded p-1.5 text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-blue-600"
+              className="rounded p-1.5 text-ps-hint hover:bg-ps-muted hover:text-blue-600"
             >
               <Download size={15} />
             </button>
@@ -587,7 +587,7 @@ export default function DocumentsPage() {
               onClick={() => handleDelete(doc)}
               disabled={deleting === doc.id}
               title="Delete"
-              className="rounded p-1.5 text-[#94A3B8] hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+              className="rounded p-1.5 text-ps-hint hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
             >
               {deleting === doc.id ? (
                 <Loader2 size={15} className="animate-spin" />
