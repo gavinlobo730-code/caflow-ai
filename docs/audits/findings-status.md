@@ -8,18 +8,18 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 | state | count | what it means |
 |---|---|---|
 | closed | **256** | re-read against the code. The defect is gone. |
-| partial | **13** | part of the finding is answered, part is not. Each says which. |
-| open | **4** | re-read and still true. |
+| partial | **14** | part of the finding is answered, part is not. Each says which. |
+| open | **3** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 17 items — 4 open and 13 partial — not 254.**
+**The work left is 17 items — 3 open and 14 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**Every one of the 4 open findings is blocked on something outside the code** — a statutory schema, a file layout, a registration. Each blocker is named below.
+**Every one of the 3 open findings is blocked on something outside the code** — a statutory schema, a file layout, a registration. Each blocker is named below.
 
 ## Open
 
@@ -27,7 +27,6 @@ is left as "unknown".
 |---|---|---|
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
 | medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
-| medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
 
 ### What actually blocks each of them
@@ -36,7 +35,6 @@ is left as "unknown".
 |---|---|
 | **GST-25** | schema per return type (CMP-08/GSTR-4, GSTR-8, GSTR-9C) — see docs/audits/what-to-fetch-for-me.md §5 |
 | **GST-32** | the IRP schema, and the 30-day reporting-window rule |
-| **PAY-27** | each bank's own file format |
 | **TDS-16** | the NSDL file layout, and a correction-statement model |
 
 ## Partial
@@ -52,6 +50,7 @@ is left as "unknown".
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
+| medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
 | medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
 | medium | **SALES-28** | E-invoice and e-way bill are record-keeping ledgers only — no JSON is produced, no applicability |

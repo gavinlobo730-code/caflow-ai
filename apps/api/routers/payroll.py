@@ -3482,6 +3482,175 @@ def salary_register_csv(
     )
 
 
+@router.get("/reports/month-on-month")
+def payroll_month_on_month(
+    client_id: str = Query(...),
+    month: str = Query(..., description="YYYY-MM — the month being looked at"),
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """Why is this month's payroll bigger than last month's, and by whom (PAY-27).
+
+    The first question anyone asks on the 3rd, and nothing answered any of it.
+
+    THE TWO MONTHS ARE NOT HELD TO THE SAME STANDARD. The BASELINE must be a
+    RELEASED run — PAY-04's rule that a draft has paid nobody, so a draft
+    baseline compares this month against something that never happened — while
+    the month being looked at may be any status, because catching a ₹2.4 lakh
+    jump on the 2nd is the whole point and refusing until the run is finalised
+    puts the check after the moment it could prevent anything.
+
+    The baseline is the PRECEDING calendar month and is never reached past: a
+    client with no August run is told so, rather than given a silent comparison
+    against July labelled last month.
+    """
+    assert_client_access(current_user, client_id)
+    from domain.payroll import month_on_month as mom
+
+    prior = mom.preceding_month(month)
+    db = _db()
+    if not db:
+        return api_response(True, mom.compare(month, [], prior, [], False).to_dict())
+
+    def _run(m: str):
+        return (db.table("payroll_runs").select("id, status")
+                .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+                .eq("month", m).maybe_single().execute().data)
+
+    def _slips(run):
+        if not run:
+            return []
+        return (db.table("payroll_slips")
+                .select("*, payroll_employees(name, department)")
+                .eq("run_id", run["id"]).execute().data) or []
+
+    this_run, prior_run = _run(month), _run(prior)
+    prior_released = mom.is_released((prior_run or {}).get("status"))
+    out = mom.compare(month, _slips(this_run), prior,
+                      _slips(prior_run) if prior_released else [],
+                      prior_released)
+    if this_run and not mom.is_released(this_run.get("status")):
+        out.notes.insert(0, mom.A_DRAFT_IS_STILL_WORTH_COMPARING)
+    return api_response(True, out.to_dict())
+
+
+@router.get("/reports/department-cost")
+def payroll_department_cost(
+    client_id: str = Query(...),
+    month: str = Query(...),
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """What each department cost this month (PAY-27).
+
+    `department` has been on the employee master since the module was built and
+    nothing ever grouped by it. COST is gross PLUS the employer's own
+    contributions — PAY-25's two debits, Schedule III Division I Part II (a)
+    and (b) — reported apart, because a single blended figure lets a reader
+    take it for either and because the two columns are the two accounts this
+    table has to tie to. Net pay is NOT cost and is absent.
+    """
+    assert_client_access(current_user, client_id)
+    from domain.payroll import department_cost as dept
+
+    db = _db()
+    if not db:
+        return api_response(True, dept.split([], month).to_dict())
+
+    run = (db.table("payroll_runs").select("id")
+           .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+           .eq("month", month).maybe_single().execute().data)
+    if not run:
+        return api_response(True, dept.split([], month).to_dict())
+
+    slips = (db.table("payroll_slips")
+             .select("*, payroll_employees(name, department)")
+             .eq("run_id", run["id"]).execute().data) or []
+    return api_response(True, dept.split(slips, month).to_dict())
+
+
+@router.get("/reports/bank-advice")
+def payroll_bank_advice(
+    client_id: str = Query(...),
+    month: str = Query(...),
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """Who this run pays, how much, and who it cannot pay (PAY-27).
+
+    PREPARE ONLY. Nothing here reaches a bank, holds a credential or schedules
+    anything — the CA downloads the CSV below and uploads it to their own
+    bank's portal, where their own authorised signatory approves it.
+
+    A DRAFT RUN IS REFUSED: a bank advice built from one is an instruction to
+    pay figures nobody has approved, in a file whose whole purpose is that
+    somebody uploads it without re-reading every line.
+    """
+    assert_client_access(current_user, client_id)
+    from domain.payroll import bank_advice as advice
+
+    db = _db()
+    if not db:
+        return api_response(True, advice.build([], month, None).to_dict())
+
+    run = (db.table("payroll_runs").select("id, status")
+           .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+           .eq("month", month).maybe_single().execute().data)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"No payroll run for {month}.")
+
+    slips = (db.table("payroll_slips")
+             .select("*, payroll_employees(name, bank_account_no, bank_ifsc)")
+             .eq("run_id", run["id"]).execute().data) or []
+    return api_response(True, advice.build(slips, month,
+                                           run_status=run.get("status")).to_dict())
+
+
+@router.get("/reports/bank-advice.csv")
+def payroll_bank_advice_csv(
+    client_id: str = Query(...),
+    month: str = Query(...),
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """The payment advice as a file the CA uploads to their own bank.
+
+    ONLY THE PAYABLE ROWS. An employee with no account number, no IFSC or a
+    malformed one is held out and named in the JSON above — never emitted as a
+    row with blanks, because some banks reject the whole upload on a malformed
+    row and some process the rest and drop it SILENTLY, which leaves a CA
+    believing everybody was paid.
+
+    A 409 rather than a file on an unreleased run: a download that succeeds is
+    a download somebody uploads.
+    """
+    assert_client_access(current_user, client_id)
+    from fastapi.responses import Response
+    from domain.payroll import bank_advice as advice
+
+    db = _db()
+    if not db:
+        return Response(content=advice.to_csv(advice.build([], month, None)),
+                        media_type="text/csv")
+
+    run = (db.table("payroll_runs").select("id, status")
+           .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+           .eq("month", month).maybe_single().execute().data)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"No payroll run for {month}.")
+
+    refusal = advice.refusal_for_status(run.get("status"))
+    if refusal:
+        raise HTTPException(status_code=409, detail=refusal)
+
+    slips = (db.table("payroll_slips")
+             .select("*, payroll_employees(name, bank_account_no, bank_ifsc)")
+             .eq("run_id", run["id"]).execute().data) or []
+    built = advice.build(slips, month, run_status=run.get("status"))
+    return Response(
+        content=advice.to_csv(built),
+        media_type="text/csv",
+        headers={"Content-Disposition":
+                 f'attachment; filename="bank-advice-{month}.csv"'},
+    )
+
+
 # ── The firm's own reading of the state PT slabs ─────────────────────────────
 # Migration 327. domain/payroll/professional_tax.py models four of the
 # twenty-two states that levy PT and reports the rest as gaps. That refusal is

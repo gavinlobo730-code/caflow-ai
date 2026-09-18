@@ -199,11 +199,12 @@
       "reread_on": "2026-09-17"
     },
     "PAY-27": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "no bank advice / NEFT file builder anywhere (repo-wide probe, 2026-09-12)",
+      "status": "partial",
+      "verified_on": "2026-09-18",
+      "why": "three of the six halves are built and reachable. month-on-month variance (domain/payroll/month_on_month.py), department-wise cost (domain/payroll/department_cost.py) and a generic bank advice file (domain/payroll/bank_advice.py), served by four endpoints under /api/payroll/reports/ and rendered by the Monthly Review tab on /payroll/reports. the advice moves no money, refuses an unreleased run, and names every employee it left out.",
       "needs": "each bank's own file format",
-      "reread_on": "2026-09-17"
+      "reread_on": "2026-09-18",
+      "what_is_left": "payslip email, deliberately deferred \u2014 the employee portal is already the delivery channel and a mail to an employee is a different consent posture from a mail to a client's customer, so it is an owner decision rather than a build. reimbursements and flexible benefits, and overtime or shift, are both unbuilt and both need a migration (a claim table with its own approval state, and an hours/rate table the slip reads) \u2014 neither is derivable from what payroll_slips holds today. the bank advice is deliberately format-generic: a bank's own upload layout is the document the finding names and this environment cannot fetch one."
     },
     "TDS-16": {
       "status": "open",

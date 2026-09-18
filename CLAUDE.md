@@ -418,6 +418,49 @@ change. The code is the authority; keep this file in step with it.
   raises — and Form C (Rule 4(c)) and Form D (Rule 5) are named rather than
   produced.
 
+- **THE THREE QUESTIONS ASKED ON THE 3RD OF THE MONTH, AND THE ONE THAT MOVES
+  MONEY REFUSES A DRAFT** (PAY-27). A CA closing payroll asks why this month is
+  bigger than last, what each department cost, and how the bank is to be paid —
+  and the product answered none of them although every figure was already in
+  `payroll_slips`. `domain/payroll/month_on_month.py`,
+  `domain/payroll/department_cost.py` and `domain/payroll/bank_advice.py` are
+  the three rules; the endpoints under `/api/payroll/reports/` fetch and the
+  Monthly Review tab decides nothing.
+  **THE VARIANCE BASELINE MUST BE RELEASED AND THE MONTH BEING LOOKED AT NEED
+  NOT BE**, which is PAY-04's rule applied in one direction only: a draft has
+  paid nobody, so comparing against one measures a number that has not happened,
+  while the whole point of opening this screen is to check a draft *before*
+  releasing it. It names EVERY component that moved rather than the biggest —
+  a rise in basic and a fall in HRA net out, and reporting only the larger sends
+  the CA looking in the wrong place — and where gross moved with no component to
+  explain it the employee is listed as `unexplained` rather than dropped.
+  `COMPONENTS` excludes `gross_paise` and `net_paise` deliberately: they are
+  totals of the others, so counting them restates every cause twice.
+  **DEPARTMENT COST IS PAY-25's TWO DEBITS REPORTED APART, AND NET PAY IS NOT
+  COST.** What a department costs is gross (§17(1)) plus the employer's own PF,
+  EDLI, admin charge and ESI — the split Schedule III Division I Part II makes
+  at the moment of posting — reported beside each other rather than summed into
+  one figure, because the second is remitted on a challan and the first is not.
+  Net pay is what the employee BANKS, after their own deductions, and is a
+  different question. **An unrecorded department is its own row**, never folded
+  into another and never dropped: a client who has not filled the column in has
+  one big row that says so, and a client who has filled in half has the half
+  they can act on.
+  **THE ADVICE MOVES NO MONEY** — it is a file the CA uploads to their own
+  bank's portal, the same prepare-only posture as every statutory output here —
+  and it **REFUSES AN UNRELEASED RUN**: `run_status` is a required parameter
+  with no default and `None` refuses, because a default would have made a draft
+  payable by omission. **Every employee it leaves out is NAMED with its own
+  reason**, in a fixed order — no account, no IFSC, a malformed IFSC, a negative
+  net, then a nil net — with the money asked LAST, so a missing bank account is
+  never reported as "nothing to pay". The account number is MASKED on the screen
+  and whole in the file: the screen is read over somebody's shoulder and the
+  file is read by a bank. **The layout is deliberately generic** — each bank's
+  own upload format is a document this environment cannot fetch, and inventing
+  one would produce a file that fails at the bank rather than in front of the
+  CA. **No migration**: `bank_account_no`, `bank_ifsc`, `department` and the
+  four employer-contribution columns all already exist.
+
 - **A DRAFT payroll run has deducted nothing** (PAY-04).
   `_tds_already_deducted_this_fy` and `_members_contributing_earlier_this_period`
   read `payroll_runs` with no status predicate while every other reader has
