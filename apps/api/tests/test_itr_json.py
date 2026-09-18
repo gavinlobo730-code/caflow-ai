@@ -148,7 +148,7 @@ def test_the_missing_software_provider_id_is_refused_by_name(monkeypatch):
 
 def test_a_configured_provider_id_lifts_that_gate_and_reveals_the_next(monkeypatch):
     """With the id set, the refusal must MOVE rather than disappear: the payload
-    is fourteen tax figures, not a whole return."""
+    is a set of figures, not a whole return."""
     monkeypatch.setenv("ITR_SOFTWARE_PROVIDER_ID", "SW12345678")
     with pytest.raises(ReturnIncomplete) as exc:
         generate_itr_json(_payload())

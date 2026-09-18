@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **247** | re-read against the code. The defect is gone. |
-| partial | **22** | part of the finding is answered, part is not. Each says which. |
+| closed | **248** | re-read against the code. The defect is gone. |
+| partial | **21** | part of the finding is answered, part is not. Each says which. |
 | open | **4** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 26 items — 4 open and 22 partial — not 254.**
+**The work left is 25 items — 4 open and 21 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -49,7 +49,6 @@ is left as "unknown".
 | high | **IT-09** | IT Act §32 depreciation (block of assets, WDV, the 180-day half-rate rule, additional depreciati |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **IT-13** | §234A and §234B are implemented and tested but exposed by no endpoint and no screen — only §234C |
-| high | **IT-17** | itr_field_placements() — 'this figure goes in this field' against the Department's own committed |
 | high | **SALES-13** | Firm branding, invoice templates, bank/UPI details and footer text are stored by a full Settings |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
@@ -146,6 +145,7 @@ is left as "unknown".
 | high | **IT-14** | Holding period is counted in whole calendar months rather than days, so a holding one day short  |
 | high | **IT-15** | The ITR deadline tracker conflates assessment year with financial year — the period it stores an |
 | high | **IT-16** | The presumptive engine for §44AD, §44ADA and §44AE is reachable from nothing — no endpoint, no r |
+| high | **IT-17** | itr_field_placements() — 'this figure goes in this field' against the Department's own committed |
 | high | **IT-18** | The AIS screen persists nothing — the whole reconciliation lives in React state and is gone on r |
 | high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
 | high | **IT-22** | The Budget-2024 grandfathered 20%-with-indexation option is offered for property acquired ON OR  |

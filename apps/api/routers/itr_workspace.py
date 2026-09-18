@@ -441,6 +441,66 @@ def list_filings(
     return api_response(True, list_itr_filings(current_user["firm_id"], client_id))
 
 
+@router.get("/filings/{filing_id}/keying-sheet")
+def filing_keying_sheet(
+    filing_id: str,
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """Every computed figure and the box on the form it goes in (IT-17).
+
+    `itr_field_placements` has said where each figure belongs since IT-17's
+    first half, checked against the Department's own committed schemas — and no
+    screen reached it, so a CA transcribing into the offline utility did it
+    from memory. This is the door.
+
+    IT IS BUILT OVER THE FILING'S PINNED SNAPSHOT, not over a request body.
+    That is what makes it a keying sheet rather than a calculator: what the CA
+    keys is the computation that was reviewed, and the form on the sheet is the
+    form the filing is for. A filing pinning no snapshot is REFUSED with the
+    sentence naming what to do, because a sheet of zeros reads as a computed
+    return.
+
+    Reads and writes nothing. It does NOT produce a file — see
+    domain/income_tax/itr_json.generate_itr_json, which refuses for two named
+    reasons and is deliberately not reachable from here.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    from domain.income_tax.keying_sheet import NO_SNAPSHOT_PINNED, keying_sheet
+
+    filing = _assert_filing_scope(current_user, filing_id)
+    snapshot_id = filing.get("computation_snapshot_id")
+    if not snapshot_id:
+        return api_response(False, None, NO_SNAPSHOT_PINNED)
+    # Scoped like every other snapshot read here — a filing_id the caller may
+    # see does not by itself authorise the snapshot it names.
+    snapshot = _assert_snapshot_scope(current_user, str(snapshot_id))
+    sheet = keying_sheet(
+        form=str(filing.get("itr_form") or ""),
+        # The filing's own AY, never the snapshot's: the filing is what is
+        # being furnished, and a snapshot computed for one year and pinned to
+        # another is a mistake this sheet must show rather than smooth over.
+        assessment_year=str(filing.get("assessment_year") or ""),
+        computation=snapshot.get("computation_json"),
+        snapshot=snapshot,
+    )
+    snapshot_ay = str(snapshot.get("assessment_year") or "")
+    if snapshot_ay and snapshot_ay != sheet["assessment_year"]:
+        sheet["gaps"].insert(0, (
+            f"The pinned snapshot was computed for AY {snapshot_ay} and this "
+            f"filing is for AY {sheet['assessment_year']}. The figures below "
+            f"are the snapshot's."))
+    sheet["filing_id"] = filing_id
+    sheet["return_type"] = filing.get("return_type")
+    sheet["status"] = filing.get("status")
+    sheet["snapshot_id"] = snapshot_id
+    # Whether the computation on this sheet was REVIEWED (IT-30). A draft
+    # snapshot is still keyable — a CA may be checking the figures against the
+    # utility as part of the review — so this is reported, not refused.
+    sheet["snapshot_status"] = snapshot.get("status")
+    return api_response(True, sheet)
+
+
 @router.post("/filings/{filing_id}/transition")
 def transition_filing(
     filing_id: str,

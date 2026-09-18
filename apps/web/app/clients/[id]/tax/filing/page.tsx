@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Fragment, useEffect, useState, useCallback } from "react";
 import { Plus, Loader2, FileText, ChevronRight, AlertTriangle, CheckCircle } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -104,6 +104,39 @@ interface Filing {
   original_filing_date: string | null;
 }
 
+/** IT-17. One line of the keying sheet: a computed figure, and the box on the
+ *  Department's own form it goes in.
+ *
+ *  THREE STATES, not two. `json_path` is the box. `not_on_this_form` with its
+ *  `absence_reason` means the form genuinely has no such field — a firm has no
+ *  salary head, §87A is for a resident individual — and is rendered as an
+ *  answer. `not_mapped` means nobody has resolved the path, which is work
+ *  outstanding and is rendered as such: showing it as an absence would tell a
+ *  CA to leave a box blank that the form does have. */
+interface Placement {
+  key: string;
+  label: string;
+  schedule: string;
+  reference: string;
+  amount_paise: number;
+  amount_rupees: number;
+  json_path: string | null;
+  not_on_this_form: boolean;
+  absence_reason: string | null;
+  not_mapped: boolean;
+}
+
+interface KeyingSheet {
+  form: string;
+  assessment_year: string;
+  placements: Placement[];
+  schema_is_verified: boolean;
+  notes: string[];
+  gaps: string[];
+  snapshot_id?: string | null;
+  snapshot_status?: string | null;
+}
+
 export default function ITRFilingPage() {
   // Not useParams(): apps/web is a static export and Cloudflare's 200-rewrite
   // serves the pre-rendered "_placeholder" HTML for every real client URL, so
@@ -120,6 +153,10 @@ export default function ITRFilingPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedFiling, setSelectedFiling] = useState<Filing | null>(null);
+  // IT-17 — the keying sheet, fetched per filing off its PINNED snapshot.
+  const [sheet, setSheet] = useState<KeyingSheet | null>(null);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+  const [sheetLoading, setSheetLoading] = useState(false);
 
   // Create form
   const [fy, setFy] = useState(FY_OPTIONS[0]);
@@ -150,7 +187,12 @@ export default function ITRFilingPage() {
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
-  const actionInFlight = creating || savingAck || transitioning;
+  // `sheetLoading` is in here although the keying sheet only READS: a
+  // transition in flight is about to change the filing's status, and the
+  // sheet reports it. One flag over all four, which is what
+  // scripts/concurrent-actions.test.ts asserts rather than a list of
+  // which pairs may overlap.
+  const actionInFlight = creating || savingAck || transitioning || sheetLoading;
 
   const load = useCallback(async () => {
     // Clearing loading matters: this returns while the id is still unresolved,
@@ -288,6 +330,26 @@ export default function ITRFilingPage() {
       alert(err instanceof Error ? err.message : "Failed");
     } finally {
       setSavingAck(false);
+    }
+  }
+
+  // IT-17. Fetched on demand rather than with the filing list: it is a read
+  // per filing and most visits to this screen never open it.
+  async function loadKeyingSheet(filing: Filing) {
+    setSheetLoading(true);
+    setSheetError(null);
+    setSheet(null);
+    try {
+      const res = await apiFetch(`/api/itr/filings/${filing.id}/keying-sheet`);
+      // The router answers a filing with no pinned snapshot as HTTP 200 with
+      // success:false and the sentence saying what to do, so an unchecked call
+      // would render an empty sheet — which reads as "nothing to key".
+      if (!res.success) { setSheetError(res.error ?? "Could not build the sheet"); return; }
+      setSheet(res.data as KeyingSheet);
+    } catch (err) {
+      setSheetError(err instanceof Error ? err.message : "Could not build the sheet");
+    } finally {
+      setSheetLoading(false);
     }
   }
 
@@ -461,7 +523,7 @@ export default function ITRFilingPage() {
           {filings.map(f => (
             <button
               key={f.id}
-              onClick={() => setSelectedFiling(f)}
+              onClick={() => { setSelectedFiling(f); setSheet(null); setSheetError(null); }}
               className={`w-full bg-white rounded-xl border px-4 py-3 flex items-center gap-3 hover:bg-[#F8FAFC] text-left ${
                 selectedFiling?.id === f.id ? "border-blue-200 bg-blue-50/30" : "border-[#F1F5F9]"
               }`}
@@ -501,7 +563,7 @@ export default function ITRFilingPage() {
             <p className="text-xs font-semibold text-[#334155]">
               {selectedFiling.itr_form} — FY {selectedFiling.financial_year}
             </p>
-            <button onClick={() => setSelectedFiling(null)} className="text-[10px] text-[#94A3B8] hover:text-[#64748B]">Close</button>
+            <button onClick={() => { setSelectedFiling(null); setSheet(null); setSheetError(null); }} className="text-[10px] text-[#94A3B8] hover:text-[#64748B]">Close</button>
           </div>
 
           {/* Workflow Progress */}
@@ -561,7 +623,27 @@ export default function ITRFilingPage() {
                 Record Acknowledgement
               </button>
             )}
+            {/* IT-17. Offered at EVERY status, not only when the return is
+                ready: the sheet is what a CA works from while keying the
+                Department's utility, and that happens before the return is
+                signed off, not after. */}
+            <button
+              onClick={() => loadKeyingSheet(selectedFiling)}
+              disabled={actionInFlight}
+              className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-hover disabled:opacity-50 flex items-center gap-1"
+            >
+              {sheetLoading && <Loader2 size={10} className="animate-spin" />}
+              Keying sheet
+            </button>
           </div>
+
+          {sheetError && (
+            <p className="text-xs text-state-attention-ink bg-state-attention-surface border border-state-attention-border rounded-lg p-3">
+              {sheetError}
+            </p>
+          )}
+
+          {sheet && <KeyingSheetPanel sheet={sheet} filing={selectedFiling} />}
 
           {showAck && (
             <div className="border border-[#E2E8F0] rounded-xl p-4 space-y-3">
@@ -594,6 +676,135 @@ export default function ITRFilingPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** IT-17 — the keying sheet: every computed figure and the box it goes in.
+ *
+ *  WHAT IT REPLACED. `itr_field_placements` has said where each figure belongs
+ *  since IT-17's first half, checked against the Department's own committed
+ *  schemas — and no screen reached it, so transcription into the offline
+ *  utility was done from memory. It is a READ: it computes nothing, saves
+ *  nothing and produces no file (`generate_itr_json` refuses for two named
+ *  reasons and is deliberately not reachable from any screen).
+ *
+ *  IT PRINTS. A CA keys with the utility open on one screen, so the sheet is
+ *  built to come out of a printer: `print:` classes strip the chrome and the
+ *  browser's own dialog is the control, which is one fewer thing to maintain
+ *  than a PDF route for a page that is a table.
+ */
+function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filing }) {
+  const rupees = (n: number) => n.toLocaleString("en-IN");
+  // Grouped by the form's own schedule, in the order the placements arrive —
+  // which `build_itr_payload` sets to the order of the FORM: heads, then
+  // Schedule VI-A, then Part B-TTI. A CA works down the form, not down this
+  // module's history.
+  const groups: { schedule: string; rows: Placement[] }[] = [];
+  for (const p of sheet.placements) {
+    const last = groups[groups.length - 1];
+    if (last && last.schedule === p.schedule) last.rows.push(p);
+    else groups.push({ schedule: p.schedule, rows: [p] });
+  }
+
+  return (
+    <div className="border border-ps-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold text-ps-ink">
+            Keying sheet — {sheet.form}, AY {sheet.assessment_year}
+          </p>
+          <p className="text-[10px] text-ps-label mt-0.5">
+            FY {filing.financial_year} · every figure and the field it goes in.
+            {sheet.snapshot_status === "reviewed"
+              ? " Computed from the reviewed snapshot."
+              : " ⚠ The pinned computation has not been reviewed."}
+          </p>
+        </div>
+        <button
+          onClick={() => window.print()}
+          className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-hover print:hidden flex-shrink-0"
+        >
+          Print
+        </button>
+      </div>
+
+      {/* THE PRODUCT DOES NOT FILE. Said on the sheet itself rather than only
+          on the screen around it, because the sheet is what gets printed and
+          carried to the desk where the utility is open. */}
+      <p className="px-4 py-2 text-[10px] text-state-attention-ink bg-state-attention-surface border-b border-state-attention-border">
+        Key these into the Income Tax Department&apos;s own offline utility. This
+        software prepares; it does not file, and nothing here has been submitted.
+        {!sheet.schema_is_verified
+          && " The field paths for this form and year are NOT verified against a"
+             + " committed schema — check each one in the utility."}
+      </p>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-ps-border bg-ps-bg">
+              <th className="px-3 py-2 text-left font-semibold text-ps-label uppercase text-[10px]">Figure</th>
+              <th className="px-3 py-2 text-right font-semibold text-ps-label uppercase text-[10px]">₹</th>
+              <th className="px-3 py-2 text-left font-semibold text-ps-label uppercase text-[10px]">Field</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map(g => (
+              <Fragment key={g.schedule}>
+                <tr className="bg-ps-bg">
+                  <td colSpan={3} className="px-3 py-1.5 text-[10px] font-semibold text-ps-label uppercase">
+                    {g.schedule}
+                  </td>
+                </tr>
+                {g.rows.map(p => (
+                  <tr key={p.key} className="border-b border-ps-border align-top">
+                    <td className="px-3 py-2">
+                      <p className="text-ps-ink">{p.label}</p>
+                      <p className="text-[10px] text-ps-hint">{p.reference}</p>
+                    </td>
+                    {/* Whole rupees — the schemas take integers, and the
+                        rounding happens once, at the server's payload
+                        boundary. Nothing here converts anything. */}
+                    <td className="px-3 py-2 text-right tabular-nums text-ps-ink whitespace-nowrap">
+                      {rupees(p.amount_rupees)}
+                    </td>
+                    <td className="px-3 py-2">
+                      {/* Each state named, never one left as the `else`: a
+                          reader of this file has to be able to see which of
+                          the three a branch renders. */}
+                      {p.json_path ? (
+                        <code className="text-[10px] text-ps-body break-all">{p.json_path}</code>
+                      ) : p.not_on_this_form ? (
+                        <p className="text-[10px] text-ps-hint">{p.absence_reason}</p>
+                      ) : p.not_mapped ? (
+                        <p className="text-[10px] text-state-attention-ink">
+                          No field is mapped for this figure yet — find it in the
+                          utility and key it by hand.
+                        </p>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* The gaps and the notes, on the sheet rather than beside it, for the
+          same reason the not-filed line is: this is the page that gets
+          printed. */}
+      {(sheet.gaps.length > 0 || sheet.notes.length > 0) && (
+        <div className="px-4 py-3 border-t border-ps-border space-y-1.5">
+          {sheet.gaps.map((g, i) => (
+            <p key={`g${i}`} className="text-[10px] text-state-attention-ink">⚠ {g}</p>
+          ))}
+          {sheet.notes.map((n, i) => (
+            <p key={`n${i}`} className="text-[10px] text-ps-hint">{n}</p>
+          ))}
         </div>
       )}
     </div>
