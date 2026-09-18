@@ -263,7 +263,7 @@ export default function PlatformAdminPage() {
               <p className="text-sm text-ps-label mt-1">We couldn’t reach the platform service to confirm your access. This is not a denial — it’s a connection problem.</p>
               {gateErr && <p className="text-xs text-ps-hint mt-2 break-words font-mono bg-ps-bg rounded-md px-2 py-1">{gateErr}</p>}
             </div>
-            <button onClick={() => verify()} className="inline-flex items-center gap-2 rounded-lg bg-brand-dark text-white text-sm font-medium px-4 py-2 hover:bg-brand-dark">
+            <button onClick={() => verify()} className="inline-flex items-center gap-2 rounded-lg bg-brand-dark text-white text-sm font-medium px-4 py-2 hover:bg-brand">
               <RefreshCw size={14} /> Retry
             </button>
           </div>

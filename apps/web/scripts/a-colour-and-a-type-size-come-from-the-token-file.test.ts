@@ -272,6 +272,47 @@ test("the scale reaches below Tailwind's smallest size", () => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// A HOVER HAS TO GO SOMEWHERE
+// ─────────────────────────────────────────────────────────────────────────────
+// THIS RULE WAS LEARNED BY BREAKING IT. Migrating 10,030 literals onto the
+// tokens collapses several spellings onto one name — which is the point — and
+// where a hover pair used TWO spellings of one role, both sides land on the
+// same token and the hover silently stops doing anything. `#0F172A` and
+// `#1E293B` both resolve to the near-black ink, so five dark buttons written
+// `bg-[#0F172A] hover:bg-[#1E293B]` came out `bg-brand-dark
+// hover:bg-brand-dark` and no longer lightened under the cursor.
+//
+// The pre-migration check that missed it looked only at `text-` pairs. Three
+// more were found by this rule and turned out to PRE-DATE the migration
+// entirely — `text-red-600 hover:text-red-600` and friends, dead hovers
+// nobody had noticed.
+//
+// An OPACITY MODIFIER counts as movement: `text-brand hover:text-brand/70` is
+// a real hover and the seven sites writing it are correct. The token compared
+// therefore includes any `/NN`.
+test("no hover lands on the colour it started from", () => {
+  const TOKEN = String.raw`([a-z0-9-]+(?:/\d+)?)`;
+  const collapsed: string[] = [];
+  for (const { file, body } of BODIES) {
+    for (const m of body.matchAll(/"[^"]*"/g)) {
+      const seg = m[0];
+      for (const h of seg.matchAll(new RegExp(`hover:(bg|text|border)-${TOKEN}`, "g"))) {
+        const [whole, prop, token] = h;
+        const rest = seg.split(whole).join(" ");
+        const base = new RegExp(`(?<![\\w:-])${prop}-${token.replace("/", "\\/")}(?![\\w/-])`);
+        if (base.test(rest)) collapsed.push(`${file}  ${prop}-${token}`);
+      }
+    }
+  }
+  assert.deepEqual(
+    [...new Set(collapsed)], [],
+    `A hover that resolves to the colour beside it does nothing, and looks ` +
+      `exactly like one that works. Pick the step above or below it in the ` +
+      `scale.\n  ` + [...new Set(collapsed)].join("\n  "),
+  );
+});
+
 test("the guards are not vacuous", () => {
   // Each of the three greps must be able to SEE something. A regex that
   // matches nothing passes every budget for ever, which is how a guard quietly
@@ -288,4 +329,8 @@ test("the guards are not vacuous", () => {
   const BUILT =
     /\b(?:text|bg|border)-\$\{/;
   assert.ok(BUILT.test('className={`text-${color}-600`}'), "the interpolation regex is inert");
+  // The collapsed-hover rule, on a string written here rather than on the
+  // tree — which is clean, so a grep over it proves nothing.
+  const probe = '"bg-brand-dark text-white hover:bg-brand-dark"';
+  assert.match(probe, /hover:(bg|text|border)-([a-z0-9-]+)/, "the hover regex is inert");
 });

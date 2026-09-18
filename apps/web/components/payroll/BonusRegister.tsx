@@ -20,6 +20,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw, Scale } from "lucide-react";
+import { Field, Input, Select } from "@/components/ui/field";
 import { api } from "@/lib/api";
 import type { BonusRegister as BonusRegisterData } from "@/lib/api";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
@@ -122,16 +123,11 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
           </p>
         </div>
         <div className="flex items-end gap-2">
-          <div>
-            <label htmlFor="bonus-year"
-                   className="block text-[10px] font-medium text-ps-hint mb-1">
-              Accounting year
-            </label>
-            <select id="bonus-year" value={year} onChange={(e) => setYear(e.target.value)}
-                    className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <Field label="Accounting year" htmlFor="bonus-year" size="sm">
+            <Select value={year} onChange={(e) => setYear(e.target.value)} size="sm" className="w-auto">
               {years.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
+            </Select>
+          </Field>
           <button onClick={load}
                   className="p-1.5 mb-0.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
@@ -181,37 +177,21 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
 
             {editing && (
               <div className="border-t border-ps-border px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="bonus-rate" className="block text-[10px] font-medium text-ps-hint mb-1">
-                    Rate % (§10 minimum 8.33, §11 maximum 20)
-                  </label>
-                  <input id="bonus-rate" value={rate} onChange={(e) => setRate(e.target.value)}
-                         className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label htmlFor="bonus-surplus" className="block text-[10px] font-medium text-ps-hint mb-1">
-                    Allocable surplus ₹ (§§4-7, optional)
-                  </label>
-                  <input id="bonus-surplus" value={surplus} onChange={(e) => setSurplus(e.target.value)}
-                         className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label htmlFor="bonus-minwage" className="block text-[10px] font-medium text-ps-hint mb-1">
-                    §12 minimum wage, ₹ a month
-                  </label>
-                  <input id="bonus-minwage" value={minWage} onChange={(e) => setMinWage(e.target.value)}
-                         className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label htmlFor="bonus-employment" className="block text-[10px] font-medium text-ps-hint mb-1">
-                    Scheduled employment
-                  </label>
-                  <input id="bonus-employment" value={employment} onChange={(e) => setEmployment(e.target.value)}
-                         className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
+                <Field label="Rate % (§10 minimum 8.33, §11 maximum 20)" htmlFor="bonus-rate" size="sm">
+                  <Input value={rate} onChange={(e) => setRate(e.target.value)} size="sm" />
+                </Field>
+                <Field label="Allocable surplus ₹ (§§4-7, optional)" htmlFor="bonus-surplus" size="sm">
+                  <Input value={surplus} onChange={(e) => setSurplus(e.target.value)} size="sm" />
+                </Field>
+                <Field label="§12 minimum wage, ₹ a month" htmlFor="bonus-minwage" size="sm">
+                  <Input value={minWage} onChange={(e) => setMinWage(e.target.value)} size="sm" />
+                </Field>
+                <Field label="Scheduled employment" htmlFor="bonus-employment" size="sm">
+                  <Input value={employment} onChange={(e) => setEmployment(e.target.value)} size="sm" />
+                </Field>
                 <div className="sm:col-span-2 flex justify-end">
                   <button onClick={saveDeclaration} disabled={saving}
-                          className="px-2.5 py-1.5 text-xs bg-brand-dark text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
+                          className="px-2.5 py-1.5 text-xs bg-brand-dark text-white rounded-lg hover:bg-brand disabled:opacity-50">
                     {saving ? "Saving…" : "Record"}
                   </button>
                 </div>

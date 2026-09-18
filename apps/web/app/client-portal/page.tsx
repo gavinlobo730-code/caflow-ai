@@ -774,7 +774,7 @@ export default function ClientPortalPage() {
                                   await sb.from("shared_reports").delete().eq("id", r.id);
                                   setSharedReports((prev) => prev.filter((x) => x.id !== r.id));
                                 }}
-                                className="flex items-center gap-1 text-xs text-red-600 hover:text-red-600 px-2 py-1.5 rounded-lg hover:bg-red-50"
+                                className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 px-2 py-1.5 rounded-lg hover:bg-red-50"
                               >
                                 <Trash2 size={12} />
                               </button>

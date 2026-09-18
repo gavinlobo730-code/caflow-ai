@@ -614,7 +614,7 @@ export default function DeductionsPage() {
               </select>
               <button onClick={() => upd({ donations: state.donations.filter((_, j) => j !== i) })}
                 aria-label={`Remove donation ${i + 1}`}
-                className="text-red-600 hover:text-red-600 text-xs">✕</button>
+                className="text-red-600 hover:text-red-700 text-xs">✕</button>
             </div>
           ))}
           <button onClick={() => upd({ donations: [...state.donations, { description: "", amountPaise: 0, deductionPct: 100, subjectToLimit: true, paidInCash: null }] })}

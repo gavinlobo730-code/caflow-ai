@@ -169,7 +169,7 @@ export default function NotificationsPage() {
               <a
                 href={n.action_url}
                 onClick={e => e.stopPropagation()}
-                className="mt-1 inline-flex items-center gap-0.5 text-[11px] text-blue-600 hover:text-blue-600"
+                className="mt-1 inline-flex items-center gap-0.5 text-[11px] text-blue-600 hover:text-blue-700"
               >
                 View <ExternalLink size={9} />
               </a>

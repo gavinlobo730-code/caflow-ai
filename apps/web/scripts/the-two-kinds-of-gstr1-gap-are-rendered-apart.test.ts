@@ -40,12 +40,25 @@ test("the strip does not make the scan vacuous", () => {
 });
 
 test("the panel splits the gaps into two groups", () => {
-  assert.match(src, /withheld\.map\(/, "the held-out documents are their own list");
-  assert.match(src, /reported\.map\(/, "the reported rows are their own list");
+  // THE RULE, NOT A SPELLING OF IT. This used to assert `withheld.map(` and
+  // `reported.map(` — true of the hand-rolled `<ul>` the panel had at the
+  // time, and false the moment the two lists moved into `<GapList>` without
+  // the rule changing at all. That is the fifth time that shape has had to be
+  // fixed in this repository (CLAUDE.md records four others), so what is
+  // asserted is: the two arrays are DERIVED from the server's stamp, EACH
+  // reaches the returned markup, and the undivided `gaps` never does.
+  assert.match(src, /const\s+withheld\s*=/, "the held-out documents are derived");
+  assert.match(src, /const\s+reported\s*=/, "the reported rows are derived");
+
+  const markup = src.slice(src.indexOf("return ("));
+  assert.ok(markup.length > 200, "the returned markup was not found");
+  assert.match(markup, /\bwithheld\b/, "the held-out documents reach the markup");
+  assert.match(markup, /\breported\b/, "the reported rows reach the markup");
   assert.doesNotMatch(
-    src,
-    /\bgaps\.map\(/,
-    "one list under one heading is what said something false about half of it",
+    markup,
+    /[{=]\s*gaps\s*[}\s),]/,
+    "the undivided list reaches the markup — one list under one heading is " +
+      "what said something false about half of it",
   );
 });
 
