@@ -25,9 +25,10 @@
  * runs the same `apportion_many` the receipt runs, over the same goods lines.
  */
 import { useCallback, useEffect, useState } from "react";
-import { X, Truck, AlertTriangle, Info, Trash2, Lock } from "lucide-react";
+import { X, Truck, AlertTriangle, Trash2, Lock } from "lucide-react";
 import { apiGet, apiCall, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { GapList } from "@/components/ui/callout";
 
 interface Charge {
   id: string;
@@ -241,14 +242,7 @@ export function LandedCostPanel({
               {/* WHAT COULD NOT BE DECIDED — actionable, so it is separated
                   from the notes below the same way the RCM panel separates
                   gaps from settled reasons. */}
-              {data.gaps.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 space-y-1">
-                  <p className="font-semibold flex items-center gap-1.5">
-                    <Info size={12} /> Not decided yet
-                  </p>
-                  {data.gaps.map((g, i) => <p key={i}>{g}</p>)}
-                </div>
-              )}
+              <GapList gaps={data.gaps} tone="attention" title="Not decided yet" />
 
               {/* The charges. */}
               <div>

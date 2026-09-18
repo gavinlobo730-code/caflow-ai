@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCw, AlertTriangle, Info, Loader2, Check, X } from "lucide-react";
+import { ArrowLeft, RefreshCw, AlertTriangle, Loader2, Check, X } from "lucide-react";
 import {
   api, type ScheduleIiiRatioNote, type ScheduleIiiRatio,
 } from "@/lib/api";
@@ -10,6 +10,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { objectOrNull } from "@/lib/api/shape";
+import { GapList } from "@/components/ui/callout";
 
 /**
  * The eleven Schedule III ratios — Division I, General Instructions, Additional
@@ -209,16 +210,7 @@ export default function ClientRatioNotePage() {
             </div>
           )}
 
-          {note.gaps.length > 0 && (
-            <div className="bg-ps-bg border border-ps-border rounded-xl px-4 py-3 space-y-2">
-              {note.gaps.map((g) => (
-                <div key={g.code} className="flex items-start gap-2.5">
-                  <Info size={13} className="text-ps-hint flex-shrink-0 mt-0.5" />
-                  <p className="text-3xs text-ps-label">{g.message}</p>
-                </div>
-              ))}
-            </div>
-          )}
+          <GapList gaps={note.gaps} tone="attention" />
 
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-50">

@@ -539,7 +539,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
               </p>
             )}
             {matched.caveats.map((c) => (
-              <p key={c} className="text-xs text-gray-500">{c}</p>
+              <p key={c} className="text-xs text-ps-label">{c}</p>
             ))}
           </div>
         )}

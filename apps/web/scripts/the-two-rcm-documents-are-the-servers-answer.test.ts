@@ -51,17 +51,25 @@ test("a reason and a gap are rendered as different things", () => {
      third registration state exists to prevent. */
   const src = code(PANEL);
   assert.match(src, /preview\.reasons\.map/);
-  assert.match(src, /preview\.gaps\.map/);
+  // THE RULE, NOT A SPELLING OF IT. This asserted `preview.gaps.map / p.gaps.map`, which broke on
+  // 18 Sep when the panel moved to `<GapList>` — a change that renders the
+  // same sentences and does not break the rule. Sixth time in this repo;
+  // CLAUDE.md records the other five. What matters is that the array
+  // REACHES a renderer, however it is spelled.
+  assert.match(src, /\bgaps=\{preview\?\.gaps\b|preview\.gaps\.map/);
   assert.match(src, /Not decided yet/,
     "the gap block must say that it is undecided rather than refused");
 });
 
 test("every caveat and gap on the particulars is rendered", () => {
   const src = code(PANEL);
-  assert.match(src, /p\.caveats\.map/,
+  // Both halves now travel on ONE `<StatutoryNotes>`, which is the point of
+  // it: they wore a byte-identical class string here until 18 Sep, two
+  // adjacent amber boxes under a comment saying they differ.
+  assert.match(src, /caveats=\{p\.caveats\}|p\.caveats\.map/,
     "a document shown without the sentence saying its bill contradicts itself " +
     "is exactly the disclosure a reader would rely on");
-  assert.match(src, /p\.gaps\.map/);
+  assert.match(src, /\bgaps=\{p\.gaps\}|p\.gaps\.map/);
 });
 
 test("the supplier block shows an absent GSTIN as a fact, not a blank", () => {

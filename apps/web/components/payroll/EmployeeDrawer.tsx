@@ -35,6 +35,7 @@ import type {
 } from "@/lib/api";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { financialYearOfMonth, financialYearChoicesAround } from "@/lib/dates/periods";
+import { GapList } from "@/components/ui/callout";
 
 export type DrawerEmployee = {
   id: string;
@@ -105,14 +106,7 @@ function Notes({ gaps, problems }: { gaps?: string[]; problems?: string[] }) {
           {problems.map((p, i) => <p key={i} className="text-2xs text-red-700 mt-0.5">· {p}</p>)}
         </div>
       )}
-      {!!gaps?.length && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
-          <p className="text-2xs font-semibold text-amber-800">
-            What payroll cannot know
-          </p>
-          {gaps.map((g, i) => <p key={i} className="text-2xs text-amber-800 mt-0.5">· {g}</p>)}
-        </div>
-      )}
+      <GapList gaps={gaps ?? []} tone="withheld" title="What payroll cannot know" />
     </div>
   );
 }

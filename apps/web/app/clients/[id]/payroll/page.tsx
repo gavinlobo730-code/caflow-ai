@@ -28,6 +28,7 @@ import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSk
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
 import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
+import { GapList } from "@/components/ui/callout";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1446,18 +1447,8 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
               </ul>
             </div>
           )}
-          {!!data?.gaps?.length && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-2xs font-semibold text-amber-800">
-                What payroll cannot know — the employee holds these
-              </p>
-              <ul className="mt-1 space-y-0.5">
-                {data.gaps.map((g, i) => (
-                  <li key={i} className="text-2xs text-amber-800">· {g}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <GapList gaps={data?.gaps ?? []} tone="withheld"
+                   title="What payroll cannot know — the employee holds these" />
 
           {rows.length === 0 ? (
             <p className="text-[12px] text-ps-hint py-6 text-center">

@@ -76,7 +76,12 @@ test("what the goods cost is the server's answer", async (t) => {
   await t.test("keeps GAPS apart from NOTES", () => {
     // Gaps are actionable — nobody can yet tell. Notes are settled. The RCM
     // panel makes the same distinction for the same reason.
-    assert.match(code, /data\.gaps\.map/);
+    // THE RULE, NOT A SPELLING OF IT. This asserted `data.gaps.map`, which broke on
+  // 18 Sep when the panel moved to `<GapList>` — a change that renders the
+  // same sentences and does not break the rule. Sixth time in this repo;
+  // CLAUDE.md records the other five. What matters is that the array
+  // REACHES a renderer, however it is spelled.
+    assert.match(code, /\bgaps=\{data\.gaps\}|data\.gaps\.map/);
     assert.match(code, /data\.notes\.map/);
   });
 

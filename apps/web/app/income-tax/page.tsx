@@ -58,6 +58,7 @@ import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { GapList } from "@/components/ui/callout";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1317,17 +1318,8 @@ export default function IncomeTaxPage() {
                       {dueDate.basis}
                     </p>
                   ) : (
-                    <div className="mt-1.5 flex gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        <p className="font-medium">
-                          Assumed — please confirm before saving.
-                        </p>
-                        {dueDate.statutory_gaps.map((gap) => (
-                          <p key={gap}>{gap}</p>
-                        ))}
-                      </div>
-                    </div>
+                    <GapList className="mt-1.5" gaps={dueDate.statutory_gaps}
+                             tone="attention" title="Assumed — please confirm before saving." />
                   )
                 )}
               </div>

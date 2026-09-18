@@ -17,8 +17,9 @@
  * against.
  */
 import { useCallback, useState } from "react";
-import { AlertTriangle, Check, Info, Calculator } from "lucide-react";
+import { AlertTriangle, Check, Calculator } from "lucide-react";
 import { api, type GSTR9Working as Working } from "@/lib/api";
+import { GapList } from "@/components/ui/callout";
 
 const TABLE_TITLES: Record<string, string> = {
   "4": "Table 4 — supplies on which tax is payable",
@@ -106,14 +107,8 @@ export default function GSTR9Working({
           {/* WHAT COULD NOT BE DERIVED, verbatim. A nil on an annual return is
               a positive declaration that nothing was owed, so a row the server
               could not derive must never read as one. */}
-          {working.gaps.length > 0 && (
-            <div className="bg-ps-bg border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-body space-y-1.5">
-              <p className="font-semibold flex items-center gap-1.5">
-                <Info size={12} /> What this working does not answer
-              </p>
-              {working.gaps.map((g, i) => <p key={i}>{g}</p>)}
-            </div>
-          )}
+          <GapList gaps={working.gaps} tone="withheld"
+                   title="What this working does not answer" />
 
           {Object.entries(TABLE_TITLES).map(([key, title]) => {
             const rows = working.tables[key] ?? [];

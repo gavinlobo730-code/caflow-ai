@@ -29,6 +29,7 @@ import { api, type WorthALook, type WorthALookRow } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { fmt } from "@/components/banking/shared";
 import { toLocalISO } from "@/lib/dateMath";
+import { GapList } from "@/components/ui/callout";
 
 /** The previous whole month, on the LOCAL calendar — the period a partner
  *  reviews, and a complete one, since half of this month is not a review.
@@ -116,12 +117,7 @@ export function WorthALookTab({ clientId }: { clientId: string }) {
           {/* What could not be asked comes FIRST. A rule that did not run looks
               exactly like one that passed, and a partner reading a short list
               needs to know which rules were behind it. */}
-          {data.gaps.map((g) => (
-            <div key={g.code}
-              className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3 text-xs text-ps-body">
-              {g.message}
-            </div>
-          ))}
+          <GapList gaps={data.gaps} tone="attention" />
 
           <p className="text-xs text-ps-label">
             {data.reviewed_count === 0

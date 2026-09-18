@@ -15,6 +15,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { objectOrNull } from "@/lib/api/shape";
+import { GapList } from "@/components/ui/callout";
 /**
  * Trade Receivables and Trade Payables ageing schedules — the notes to the
  * balance sheet required by Schedule III to the Companies Act 2013 as amended
@@ -399,16 +400,7 @@ export default function ClientAgeingSchedulePage() {
       {!loading && !error && schedule && (
         <>
           {/* The gaps, always visible — they are what stops the note being signed. */}
-          {schedule.gaps.length > 0 && (
-            <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 space-y-2">
-              {schedule.gaps.map((g) => (
-                <div key={g.code} className="flex items-start gap-2.5">
-                  <AlertTriangle size={13} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-2xs text-amber-900">{g.message}</p>
-                </div>
-              ))}
-            </div>
-          )}
+          <GapList gaps={schedule.gaps} tone="attention" />
 
           {tab === "note" && (
             <div className="space-y-5">

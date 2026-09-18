@@ -37,6 +37,7 @@ import {
 import type { Client } from "@/lib/types";
 import { todayLocalISO } from "@/lib/dateMath";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { StatutoryNotes } from "@/components/ui/callout";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -772,14 +773,7 @@ export default function AdvanceTaxPage() {
               differently for that reason — a mis-headed challan or an unpaid
               §140A balance needs doing something about; the statement that
               the interest came from the panel above needs reading once. */}
-          {saPosition?.gaps.map((g, i) => (
-            <p key={`g${i}`} className="text-2xs text-state-attention flex items-start gap-1">
-              <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />{g}
-            </p>
-          ))}
-          {saPosition?.caveats.map((c, i) => (
-            <p key={`c${i}`} className="text-2xs text-ps-hint">{c}</p>
-          ))}
+          <StatutoryNotes gaps={saPosition?.gaps} caveats={saPosition?.caveats} />
         </CardContent>
       </Card>
 

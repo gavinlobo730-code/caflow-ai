@@ -55,7 +55,13 @@ test("an incomplete year says so before any figure", () => {
 
 test("every gap the server named is rendered verbatim", () => {
   const src = code(PANEL);
-  assert.match(src, /working\.gaps\.map/);
+  // THE RULE, NOT A SPELLING OF IT. This asserted `working.gaps.map`, which broke on
+  // 18 Sep when the panel moved to `<GapList>` — a change that renders the
+  // same sentences and does not break the rule. Sixth time in this repo;
+  // CLAUDE.md records the other five. What matters is that the array
+  // REACHES a renderer, however it is spelled.
+  assert.match(src, /\bgaps=\{working\.gaps\}|working\.gaps\.map/,
+    "the working's gaps reach no renderer");
   // RENDERED, not merely mentioned: a mention survives a panel gated off.
   assert.match(src, /Object\.entries\(working\.not_built\)\.map/,
     "and what is left to do on the portal, so the working never reads as the whole return");
