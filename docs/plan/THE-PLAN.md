@@ -48,7 +48,7 @@ _Last updated: 2026-09-16_
 | **T1** | Repair the safety net | 🔧 C | 4–6d | `DONE` — 7 of 7 |
 | **T2** | A demo firm that exists | 🔧 C | 2–3d | `DOING` — T2-0 done |
 | **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `DOING` — T3-a, T3-b, T3-f and T3-c's money cell done 18 Sep |
-| **T4** | Token adoption | 🔧 C | 5–8d | `DOING` — colour done (10,146 → 116); type is next |
+| **T4** | Token adoption | 🔧 C | 5–8d | `DOING` — colour 10,146 → 116, type 2,265 → 405 |
 | **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `TODO` — unblocked 16 Sep |
 | **T6** | Navigation + the hub | 🔧 C | 11–17d | `BLOCKED` on T4 |
 | **T7** | Analytics & AI | 🔧 C | 3 layers | `BLOCKED` on T3 |
@@ -605,6 +605,9 @@ find apps/web/app -name error.tsx | wc -l
 grep -v '^#' apps/web/public/_redirects | grep -c '200$'
 
 # T3-a/T4-a hardcoded hex colours                 now    116  target 0  (was 10,146)
+
+# T4-a  arbitrary font sizes                       now    405  target ~130 (was 2,265)
+grep -rEoh 'text-\[[0-9]+px\]' apps/web/app apps/web/components apps/web/lib | wc -l
 grep -rEoh '#[0-9a-fA-F]{6}' apps/web/app apps/web/components | wc -l
 
 # T5b       browser-side Excel writers            now 7       target 0
