@@ -201,6 +201,54 @@ def stock_summary(
         return api_response(False, None, "Unable to load the stock summary. Please try again.")
 
 
+@router.get("/stock-ageing")
+def stock_ageing(
+    client_id: str = Query(..., description="CA client ID — stock is client-owned"),
+    as_of: Optional[str] = Query(None, description="YYYY-MM-DD; defaults to today in IST"),
+    service_catalogue_id: Optional[str] = Query(None, description="One item, or the whole register"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """How long has the stock ON HAND been held (INV-04, migration 408).
+
+    A DIFFERENT QUESTION FROM DAYS IDLE, which this router already answers.
+    Days Idle is about the ITEM — when did it last move — and an item selling
+    steadily has a recent answer while still carrying units bought three years
+    ago behind the ones that keep turning over. Those units are the
+    obsolescence AS-2 paragraph 24 makes the CA write down to net realisable
+    value, and `/items/{id}/writedown` has offered the write-down since it was
+    written with nothing to decide it on.
+
+    Ageing assumes goods leave oldest-first for EVERY client, whatever cost
+    formula their books use: AS-2 paragraph 14's choice governs what an issue
+    is valued at, not which carton was carried out. The value in each band is
+    the item's own carrying amount split in proportion to quantity — not the
+    cost of the units in that band — because under the weighted average the
+    layer costs would not sum to the carrying amount and the report would not
+    foot to the Inventories line. Every answer says so.
+
+    Computes and writes nothing: no provision, no percentage. AS-2 paragraph
+    21 makes net realisable value an estimate of selling price less the costs
+    to complete and sell, which is a fact about the market no ledger holds.
+    """
+    assert_client_access(current_user, client_id)
+    try:
+        from services import stock_ageing_service
+        if _USE_MOCK:
+            return api_response(True, stock_ageing_service.ageing(
+                None, current_user.get("firm_id"), client_id, as_of,
+                service_catalogue_id))
+
+        from core.supabase_client import get_supabase
+        return api_response(True, stock_ageing_service.ageing(
+            get_supabase(), current_user.get("firm_id"), client_id, as_of,
+            service_catalogue_id))
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("stock_ageing: %s", e)
+        return api_response(False, None, "Unable to load the stock ageing. Please try again.")
+
+
 @router.get("/items/{service_catalogue_id}/ledger")
 def get_item_stock_ledger(
     service_catalogue_id: str,

@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **255** | re-read against the code. The defect is gone. |
-| partial | **14** | part of the finding is answered, part is not. Each says which. |
+| closed | **256** | re-read against the code. The defect is gone. |
+| partial | **13** | part of the finding is answered, part is not. Each says which. |
 | open | **4** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 18 items — 4 open and 14 partial — not 254.**
+**The work left is 17 items — 4 open and 13 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -51,7 +51,6 @@ is left as "unknown".
 | medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
-| medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
 | medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
@@ -234,6 +233,7 @@ is left as "unknown".
 | medium | **GST-29** | GSTIN check-digit validation is not applied on any GST return path |
 | medium | **GST-30** | A test encodes the assumption behind the reverse-charge underpayment, so the suite cannot catch  |
 | medium | **INV-02** | Moving average is the only costing method — no FIFO and no standard cost |
+| medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
 | medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |
 | medium | **INV-07** | Opening the Inventory tab walks the client's ENTIRE stock ledger |
 | medium | **INV-08** | Physical verification is one item at a time, with no count sheet and no session |
