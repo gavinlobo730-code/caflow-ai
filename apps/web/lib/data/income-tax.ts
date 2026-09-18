@@ -633,6 +633,11 @@ export interface Section234ABResult {
   section_234a: SectionInterestResult;
   section_234b: SectionInterestResult;
   total_interest_paise: number;
+  /** §140A(1)'s own figure — the tax payable on the basis of the return after
+   *  the TDS/TCS, advance tax and §90/90A/91 relief the section names. Served
+   *  from this endpoint because it already has all four inputs; the §140A
+   *  panel passes it straight through rather than subtracting them itself. */
+  section_140a_tax_due_paise: number;
   itr_due_date: ITRDueDateBasis;
   assessment_date: string;
   return_furnished_on: string | null;
@@ -670,6 +675,115 @@ export async function saveAdvanceTaxPayments(req: SaveAdvanceTaxRequest): Promis
   const json = await res.json();
   if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to save advance tax payments: ${res.statusText}`);
   return json.data as AdvanceTaxRecord[];
+}
+
+// ── §140A self-assessment tax — the Challan 280 (IT-13) ─────────────────────
+// IT Act §140A(1) makes the tax, interest and fee on a return payable BEFORE
+// the return is furnished, and requires the return to be "accompanied by proof
+// of payment". That proof is a Challan 280. Nothing here recorded one, so
+// Schedule IT was keyed off a bank receipt and the ITR keying sheet printed
+// §140A as a structural nil.
+//
+// EVERY FIGURE IS THE SERVER'S. The appropriation order — fee, then interest,
+// then tax — is `domain/income_tax/self_assessment.py`, and no part of it is
+// restated here.
+
+export interface SelfAssessmentChallan {
+  id: string;
+  client_id: string;
+  financial_year: string;
+  bsr_code: string;
+  deposit_date: string;
+  challan_serial_no: string;
+  tax_paise: number;
+  surcharge_paise: number;
+  cess_paise: number;
+  interest_paise: number;
+  fee_paise: number;
+  /** What left the bank account, and what Schedule IT's Amount column takes. */
+  total_paise: number;
+  major_head: string;
+  minor_head: string;
+  bank_name: string | null;
+  notes: string | null;
+}
+
+/** How the aggregate paid lands across §140A(1)'s three heads. `null` where no
+ *  tax due was supplied — appropriating against a liability nobody has
+ *  computed would invent an outstanding figure. */
+export interface SelfAssessmentAppropriation {
+  towards_fee_paise: number;
+  towards_interest_paise: number;
+  towards_tax_paise: number;
+  fee_outstanding_paise: number;
+  interest_outstanding_paise: number;
+  tax_outstanding_paise: number;
+  total_applied_paise: number;
+  is_fully_paid: boolean;
+}
+
+export interface SelfAssessmentPosition {
+  financial_year: string;
+  challans: SelfAssessmentChallan[];
+  total_paid_paise: number;
+  appropriation: SelfAssessmentAppropriation | null;
+  /** Actionable — a mis-headed challan, a split that does not foot, §140A(3). */
+  gaps: string[];
+  /** Settled statements the CA should read once, not act on. */
+  caveats: string[];
+  verified: boolean;
+}
+
+export interface SelfAssessmentChallanInput {
+  client_id: string;
+  financial_year: string;
+  bsr_code: string;
+  deposit_date: string;
+  challan_serial_no: string;
+  tax_paise: number;
+  surcharge_paise: number;
+  cess_paise: number;
+  interest_paise: number;
+  fee_paise: number;
+  total_paise: number;
+  major_head?: string;
+  minor_head?: string;
+  bank_name?: string | null;
+  notes?: string | null;
+}
+
+/** The year's challans and, where the dues are known, the §140A appropriation.
+ *  The three dues are OPTIONAL: a CA records a challan before the computation
+ *  is finished, and the server names the absence rather than defaulting it. */
+export async function getSelfAssessmentPosition(
+  clientId: string,
+  fy: string,
+  dues?: { taxDuePaise?: number; interestDuePaise?: number; feeDuePaise?: number },
+): Promise<SelfAssessmentPosition> {
+  const params = new URLSearchParams({ client_id: clientId, fy });
+  if (dues?.taxDuePaise !== undefined) params.set("tax_due_paise", String(dues.taxDuePaise));
+  if (dues?.interestDuePaise !== undefined) params.set("interest_due_paise", String(dues.interestDuePaise));
+  if (dues?.feeDuePaise !== undefined) params.set("fee_due_paise", String(dues.feeDuePaise));
+  const res = await fetch(`${API_BASE}/api/income-tax/self-assessment?${params}`, { headers: await _authHeaders() });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load self-assessment challans: ${res.statusText}`);
+  return json.data as SelfAssessmentPosition;
+}
+
+export async function createSelfAssessmentChallan(req: SelfAssessmentChallanInput): Promise<SelfAssessmentChallan> {
+  const res = await fetch(`${API_BASE}/api/income-tax/self-assessment`, {
+    method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to record the challan: ${res.statusText}`);
+  return json.data as SelfAssessmentChallan;
+}
+
+export async function deleteSelfAssessmentChallan(challanId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/income-tax/self-assessment/${challanId}`,
+    { method: "DELETE", headers: await _authHeaders() });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to remove the challan: ${res.statusText}`);
 }
 
 export async function getITNotices(clientId: string): Promise<Record<string, unknown>[]> {

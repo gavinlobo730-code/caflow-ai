@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **252** | re-read against the code. The defect is gone. |
-| partial | **17** | part of the finding is answered, part is not. Each says which. |
+| closed | **253** | re-read against the code. The defect is gone. |
+| partial | **16** | part of the finding is answered, part is not. Each says which. |
 | open | **4** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 21 items — 4 open and 17 partial — not 254.**
+**The work left is 20 items — 4 open and 16 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -46,7 +46,6 @@ is left as "unknown".
 | high | **ACC-03** | Every receipt and vendor payment posts to one generic "Bank Account" ledger, while bank-statemen |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
-| high | **IT-13** | §234A and §234B are implemented and tested but exposed by no endpoint and no screen — only §234C |
 | high | **SALES-13** | Firm branding, invoice templates, bank/UPI details and footer text are stored by a full Settings |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
@@ -140,6 +139,7 @@ is left as "unknown".
 | high | **IT-09** | IT Act §32 depreciation (block of assets, WDV, the 180-day half-rate rule, additional depreciati |
 | high | **IT-10** | Brought-forward losses are stored and displayed but never enter the computation, and there is no |
 | high | **IT-12** | The tax audit report due date is wrong in both places it appears — the compliance calendar uses  |
+| high | **IT-13** | §234A and §234B are implemented and tested but exposed by no endpoint and no screen — only §234C |
 | high | **IT-14** | Holding period is counted in whole calendar months rather than days, so a holding one day short  |
 | high | **IT-15** | The ITR deadline tracker conflates assessment year with financial year — the period it stores an |
 | high | **IT-16** | The presumptive engine for §44AD, §44ADA and §44AE is reachable from nothing — no endpoint, no r |

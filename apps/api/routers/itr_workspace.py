@@ -32,6 +32,21 @@ def _assert_snapshot_scope(current_user: dict, snapshot_id: str) -> dict:
     return snap
 
 
+def _challan_db():
+    """The handle `services/self_assessment_service` reads §140A challans with.
+
+    Guarded rather than unconditional: this router otherwise touches no table
+    directly, and the keying sheet must still answer for a firm with no
+    database configured (mock mode, local dev) — where the service returns no
+    challans and the sheet says so.
+    """
+    import os
+    if not os.environ.get("SUPABASE_URL"):
+        return None
+    from core.supabase_client import get_supabase
+    return get_supabase()
+
+
 def _assert_filing_scope(current_user: dict, filing_id: str) -> dict:
     """Resolve an itr_filings row and 404 unless the caller may access its
     client. Shared by every endpoint addressed by filing_id (transition,
@@ -467,6 +482,7 @@ def filing_keying_sheet(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
     """
     from domain.income_tax.keying_sheet import NO_SNAPSHOT_PINNED, keying_sheet
+    from services import self_assessment_service
 
     filing = _assert_filing_scope(current_user, filing_id)
     snapshot_id = filing.get("computation_snapshot_id")
@@ -475,6 +491,14 @@ def filing_keying_sheet(
     # Scoped like every other snapshot read here — a filing_id the caller may
     # see does not by itself authorise the snapshot it names.
     snapshot = _assert_snapshot_scope(current_user, str(snapshot_id))
+    # §140A (IT-13). Read off the FILING's own client and financial year, never
+    # the snapshot's: the filing is what is being furnished, and a challan is
+    # proof of payment for that return. The total is computed in the service —
+    # `keying_sheet` derives nothing and a test walks its AST to keep it so.
+    challans = self_assessment_service.list_challans(
+        _challan_db(), firm_id=current_user["firm_id"],
+        client_id=str(filing.get("client_id") or ""),
+        financial_year=str(filing.get("financial_year") or ""))
     sheet = keying_sheet(
         form=str(filing.get("itr_form") or ""),
         # The filing's own AY, never the snapshot's: the filing is what is
@@ -483,6 +507,8 @@ def filing_keying_sheet(
         assessment_year=str(filing.get("assessment_year") or ""),
         computation=snapshot.get("computation_json"),
         snapshot=snapshot,
+        self_assessment_tax_paise=self_assessment_service.total_paise_of(challans),
+        self_assessment_challan_count=len(challans),
     )
     snapshot_ay = str(snapshot.get("assessment_year") or "")
     if snapshot_ay and snapshot_ay != sheet["assessment_year"]:

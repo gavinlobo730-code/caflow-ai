@@ -22,6 +22,8 @@ from domain.income_tax.capital_gains_engine import (
 )
 from domain.income_tax.assessee import AssesseeKind, assessee_kind_for_entity_type
 from domain.income_tax.chapter_vi_a import ChapterVIAClaims
+from domain.income_tax import self_assessment as sa_domain
+from services import self_assessment_service
 from domain.income_tax import msmed_interest as _msmed
 from domain.income_tax import reinvestment_exemption as rex
 from services import capital_gain_exemption_service as cgx
@@ -1473,6 +1475,18 @@ def compute_234ab_interest(
         "section_234a": _section_interest_payload(s234a),
         "section_234b": _section_interest_payload(s234b),
         "total_interest_paise": s234a.interest_paise + s234b.interest_paise,
+        # §140A(1)'s own figure — the tax payable on the basis of the return
+        # after the credits the section names. Served from HERE because this
+        # endpoint already has all four inputs and the screen must not
+        # subtract them itself: the §140A panel passes this straight through
+        # as the tax due. Computed by `self_assessment.tax_payable_on_return`
+        # rather than read off §234A's base, which happens to be the same
+        # figure under a different provision.
+        "section_140a_tax_due_paise": sa_domain.tax_payable_on_return(
+            tax_on_total_income_paise=req.tax_on_total_income_paise,
+            tds_tcs_paise=req.tds_tcs_paise,
+            advance_tax_paid_paise=req.advance_tax_paid_paise,
+            relief_paise=req.relief_paise),
         # The provenance of the date §234A is charged from. `decided: false`
         # means the statute does not settle it on facts held here and the
         # EARLIER date was taken — the interest below is then a floor, not a
@@ -1796,6 +1810,210 @@ def save_advance_tax(
     return api_response(True, result.data or rows)
 
 
+
+
+# ── IT Act §140A — the Challan 280 a return is accompanied by (IT-13) ────────
+#
+# §140A(1) makes the assessee liable to pay the tax, interest and fee due on a
+# return BEFORE furnishing it, and requires the return to be "accompanied by
+# proof of payment". That proof is a Challan 280 and nothing here recorded one,
+# so Schedule IT was keyed off a bank receipt and the ITR keying sheet printed
+# §140A as a structural nil.
+#
+# `domain/income_tax/self_assessment.py` is the authority for §140A(1)'s
+# appropriation order and `services/self_assessment_service.py` reads the rows.
+# These three endpoints decide nothing either of them decides.
+#
+# # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+
+import re as _re
+
+_BSR_CODE_RE = _re.compile(r"^[0-9]{7}$")
+
+
+class SelfAssessmentChallanIn(BaseModel):
+    """One Challan 280, as the bank receipt states it.
+
+    EVERY FIGURE IS RECORDED, NONE IS DERIVED. `total_paise` is what left the
+    account and is the figure Schedule IT declares; the five-way split is what
+    the challan says it was paid towards. The two are not reconciled here — see
+    `self_assessment.SPLIT_DOES_NOT_FOOT` — because both came off the same
+    document and replacing one with the other would hide a keying error.
+    """
+    client_id: str
+    financial_year: FYLabel
+    #: Seven numeric digits, the same shape migration 112 gave
+    #: `tds_challans.bsr_code`, enforced here as well as in the CHECK so the
+    #: screen gets a sentence rather than a database error.
+    bsr_code: str
+    deposit_date: date
+    challan_serial_no: str = Field(min_length=1, max_length=40)
+    tax_paise: int = Field(default=0, ge=0)
+    surcharge_paise: int = Field(default=0, ge=0)
+    cess_paise: int = Field(default=0, ge=0)
+    interest_paise: int = Field(default=0, ge=0)
+    fee_paise: int = Field(default=0, ge=0)
+    #: What Schedule IT's Amount column takes and what §140A(1) appropriates.
+    total_paise: int = Field(ge=0)
+    major_head: str = sa_domain.MAJOR_HEAD_OTHER
+    minor_head: str = sa_domain.MINOR_HEAD_SELF_ASSESSMENT
+    bank_name: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("bsr_code")
+    @classmethod
+    def seven_digits(cls, v: str) -> str:
+        value = (v or "").strip()
+        if not _BSR_CODE_RE.match(value):
+            raise ValueError(
+                "bsr_code is the seven-digit code of the bank branch that "
+                "collected the challan, as printed on the counterfoil")
+        return value
+
+    @field_validator("challan_serial_no")
+    @classmethod
+    def serial_present(cls, v: str) -> str:
+        value = (v or "").strip()
+        if not value:
+            raise ValueError("challan_serial_no is required — it is one of "
+                             "Schedule IT's three identifying particulars")
+        return value
+
+    @field_validator("major_head")
+    @classmethod
+    def known_major_head(cls, v: str) -> str:
+        if v not in sa_domain.MAJOR_HEADS:
+            raise ValueError(
+                f"major_head must be one of {list(sa_domain.MAJOR_HEADS)} "
+                f"(0020 = company, 0021 = any other assessee)")
+        return v
+
+    @field_validator("minor_head")
+    @classmethod
+    def known_minor_head(cls, v: str) -> str:
+        if v not in sa_domain.MINOR_HEADS:
+            raise ValueError(
+                f"minor_head must be one of {list(sa_domain.MINOR_HEADS)} "
+                f"(300 = self-assessment tax, 100 = advance tax, "
+                f"400 = tax on regular assessment)")
+        return v
+
+
+@router.get("/self-assessment")
+def list_self_assessment_challans(
+    client_id: str = Query(...),
+    fy: Annotated[FYLabel, Query()] = ...,
+    #: The dues, if the caller has them. All three OPTIONAL and their absence
+    #: is NAMED rather than defaulted: a CA records a challan before the
+    #: computation is finished, and appropriating against a liability nobody
+    #: has computed would invent an outstanding figure. The interest is the
+    #: Advance Tax screen's §234A/B/C working — it is not re-derived here, see
+    #: `self_assessment.INTEREST_IS_NOT_DERIVED_HERE`.
+    tax_due_paise: Optional[int] = Query(default=None, ge=0),
+    interest_due_paise: Optional[int] = Query(default=None, ge=0),
+    fee_due_paise: Optional[int] = Query(default=None, ge=0),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """Every §140A challan for one client-year, and how the total lands.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    assert_client_access(current_user, client_id)
+    return api_response(True, self_assessment_service.position(
+        _db(), firm_id=current_user["firm_id"], client_id=client_id,
+        financial_year=fy, tax_due_paise=tax_due_paise,
+        interest_due_paise=interest_due_paise, fee_due_paise=fee_due_paise))
+
+
+@router.post("/self-assessment")
+def create_self_assessment_challan(
+    req: SelfAssessmentChallanIn,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Record a Challan 280 against a client-year.
+
+    A DUPLICATE IS REFUSED WITH A SENTENCE. The same BSR code, deposit date and
+    serial number is the same payment, and recording it twice would double the
+    credit claimed on the return — the one error this table can cause on its
+    own. Migration 407's unique index is the backstop; this is the message.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    assert_client_access(current_user, req.client_id)
+    db = _db()
+    if not db:
+        # Mock mode echoes the request. There is no stored row to read back
+        # and nothing downstream reads this, and echoing it rather than
+        # building a second copy of the column mapping keeps the INSERT below
+        # the only place that names the columns — see the comment there.
+        return api_response(True, req.model_dump(mode="json"))
+    existing = (db.table("self_assessment_challans")
+                .select("id, bsr_code, deposit_date, challan_serial_no")
+                .eq("firm_id", current_user["firm_id"])
+                .eq("bsr_code", req.bsr_code)
+                .eq("deposit_date", req.deposit_date.isoformat())
+                .eq("challan_serial_no", req.challan_serial_no)
+                .limit(1).execute())
+    if existing.data:
+        return api_response(False, None, (
+            f"Challan {req.challan_serial_no} deposited on "
+            f"{req.deposit_date.isoformat()} at BSR {req.bsr_code} is already "
+            f"recorded. The same three particulars are the same payment, and "
+            f"entering it twice would claim the credit twice on the return."))
+    # THE PAYLOAD IS A LITERAL AT THE CALL SITE, not a dict built above and
+    # passed by name. `test_backend_columns_exist_pg` reads inserts as
+    # LITERALS and counts a payload reached through a name as unreadable —
+    # and PostgREST rejects the WHOLE write with PGRST204 for one wrong key,
+    # so an unreadable payload is exactly where a typo has nothing else to
+    # catch it. The same decision the §32(1)(iia) asset write records.
+    res = db.table("self_assessment_challans").insert({
+        "firm_id": current_user["firm_id"],
+        "client_id": req.client_id,
+        "financial_year": req.financial_year,
+        "bsr_code": req.bsr_code,
+        "deposit_date": req.deposit_date.isoformat(),
+        "challan_serial_no": req.challan_serial_no,
+        "tax_paise": req.tax_paise,
+        "surcharge_paise": req.surcharge_paise,
+        "cess_paise": req.cess_paise,
+        "interest_paise": req.interest_paise,
+        "fee_paise": req.fee_paise,
+        "total_paise": req.total_paise,
+        "major_head": req.major_head,
+        "minor_head": req.minor_head,
+        "bank_name": req.bank_name,
+        "notes": req.notes,
+        "created_by": current_user.get("id"),
+    }).execute()
+    return api_response(True, (res.data or [{}])[0])
+
+
+@router.delete("/self-assessment/{challan_id}")
+def delete_self_assessment_challan(
+    challan_id: str,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Remove a challan recorded in error.
+
+    Nothing is posted by recording one, so nothing is unwound by removing one:
+    this table holds the record of a payment made at a bank, not a journal. A
+    challan the client actually paid should be corrected rather than deleted,
+    which is why the screen asks.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    db = _db()
+    if not db:
+        return api_response(True, {"id": challan_id})
+    # The client scope is checked off the ROW rather than off a caller-supplied
+    # client_id — a challan id alone must not authorise a read of somebody
+    # else's client, and the firm filter is the primary isolation control.
+    found = (db.table("self_assessment_challans").select("id, client_id")
+             .eq("id", challan_id).eq("firm_id", current_user["firm_id"])
+             .limit(1).execute())
+    if not found.data:
+        raise HTTPException(status_code=404, detail="Challan not found")
+    assert_client_access(current_user, str(found.data[0].get("client_id")))
+    (db.table("self_assessment_challans").delete().eq("id", challan_id)
+     .eq("firm_id", current_user["firm_id"]).execute())
+    return api_response(True, {"id": challan_id})
 # ── IT Act §32 and the book-to-tax bridge (IT-09 ≡ FA-06) ────────────────────
 #
 # Two engines that existed and could not be reached. `book_to_tax_bridge` was
