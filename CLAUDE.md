@@ -1976,6 +1976,27 @@ change. The code is the authority; keep this file in step with it.
   with no HSN is exactly what the requirement is about and is the line Table 12
   drops, so checking after the skip would report every shortfall except the
   complete absence.
+  **AND THE COUNT WAS A CHARACTER COUNT.** `problem_with` answered `len(clean)`
+  to a question about DIGITS with no numeric test anywhere in the module, so
+  `'SAC998'` satisfied a six-digit requirement and `'ABCD'` a four-digit one —
+  the gap list was silent about exactly the codes the portal refuses.
+  `hsn_digits.is_a_code` is the rule, from two primary sources now committed
+  under `docs/compliance/sources/e-invoice/`: the IRP states the field's own
+  expression as `HSN_Code ^[0-9]*$` and refuses anything else as error
+  **2176**. **The regex, never `str.isdigit`** — Python calls `'²'` and the
+  fullwidth digits digits and `^[0-9]*$` does not. **ASKED FIRST AND ASKED
+  WHATEVER THE REQUIREMENT IS**: first because a code that is not a number
+  cannot be counted (and once past it, `len` IS the digit count, which is why
+  nothing counts them a second way), and unconditionally because a nil
+  requirement makes the code OPTIONAL and does not make a wrong one
+  acceptable — Table 12 files what is recorded, so a junk code on a B2C line
+  still comes back as 2176. An ABSENT code under a nil requirement is what the
+  notification permits and is the one thing that stays silent.
+  **`GAP_HSN_NOT_A_CODE` is its own kind**, not a long `GAP_HSN_DIGITS`,
+  because a screen filtering on the kind would title an eight-character
+  non-code "below requirement". Nothing refuses at the API DOOR, the `uqc`
+  carve-out: a line may carry a code typed before there was anything to check
+  it, and a 422 there makes the row un-editable for any unrelated change.
   **THE SPLIT IS PER SUPPLY, NOT PER RETURN** — resolved inside the loop from
   the invoice's own category against `classifier.B2B_SECTION_CATEGORIES`
   (derived, not listed, because B2C is the side where the requirement falls
@@ -2078,6 +2099,30 @@ change. The code is the authority; keep this file in step with it.
   aggregation left alone, the `interest_on_rule_37_reversal` discipline: state
   the open question rather than answer it from memory. The real fix is the
   CA's anyway, since one HSN should have one unit.
+  **AND NO FEEDER MAY INVENT A UNIT.** `GAP_UQC_NOT_RECORDED` was written,
+  tested and UNREACHABLE from production: `gst_return_service` passed
+  `r.get("unit") or "OTH"` and `routers/gst` `or "NOS"`, both valid codes, so
+  an unrecorded unit arrived at the builder indistinguishable from a recorded
+  one — and "NOS" is the worse invention, asserting the goods were counted in
+  NUMBERS. Table 12's `uqc` is a string in the schema so something must be
+  filed, and `OTH` (OTHERS) still is; what MOVED is where, to the one place
+  the row is built, beside the gap naming the absence. The FILED value is
+  unchanged. **And the mixed-unit sentence named the wrong unit**:
+  `one_unit_for` returns them SORTED and the sentence interpolated `mixed[0]`
+  while the row files the first unit SEEN, so it told the CA which unit was
+  filed and was right only by coincidence — the fixture that pinned it built
+  the two units in alphabetical order.
+  **A GAP HAS TWO KINDS AND THE SERVER SAYS WHICH.** `REPORTED_NOT_WITHHELD`
+  has been the builder's vocabulary since GST-18 and nothing carried it across
+  the wire, so `Gstr1Findings` headed the whole list "Not declared in this
+  return" — which the reported kinds' own reasons contradict ("Table 12 files
+  the code exactly as recorded"). `stamp_withheld` answers per gap and the
+  panel renders two groups; the browser keeps NO list of kinds, the Schedule
+  III caption lesson, and an ABSENT `withheld` reads as withheld so a frontend
+  ahead of its backend renders exactly as before. `gst_return_service`'s two
+  quarterly caveats used to carry the literal kind `"REPORTED_NOT_WITHHELD"` —
+  the NAME of the set, which is not a member of it, so `withheld_gaps`
+  classified them as documents held out; they carry `GAP_RETURN_CAVEAT` now.
   **ALL SIX DOORS ASK THE AUTHORITY** — `ServiceCatalogueIn`/`UpdateIn`,
   `InvoiceLineIn`, `PurchaseBillLineIn`, `FirmHsnLibraryIn`/`UpdateIn` — and
   the last pair had **no validator at all**, which mattered most because

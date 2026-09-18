@@ -164,7 +164,11 @@ def _parse_invoice_line(r: dict) -> InvoiceLine:
         hsn_sac_code=r.get("hsn_sac_code") or "",
         description=r.get("description") or "",
         quantity=float(r.get("quantity", 1)),
-        unit=r.get("unit") or "NOS",
+        # `or "NOS"` stood here — NUMBERS, asserting the goods were counted
+        # in units when nobody had said so, and a different invention from the
+        # "OTH" the other feeder used. Neither may substitute: the builder
+        # files OTH and reports the absence. See `InvoiceLine.unit`.
+        unit=(r.get("unit") or "").strip() or None,
         rate_paise=int(r.get("rate_paise", 0)),
         taxable_paise=int(r.get("taxable_paise", 0)),
         gst_rate=float(r.get("gst_rate", 0)),

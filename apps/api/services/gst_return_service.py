@@ -36,6 +36,7 @@ from core.observability import capture_soft_failure
 import domain.gst.bank_charge_gst as bank_charge_gst
 import domain.gst.section_18_6 as section_18_6
 import domain.gst.rule_36_4 as rule_36_4
+from domain.gst import gstr1_builder
 from domain.gst.gstr1_builder import CancelledDocument, InvoiceForGSTR1, build_gstr1
 import domain.gst.return_period as return_period
 from domain.gst.classifier import classify_transaction, TransactionForClassification
@@ -380,7 +381,14 @@ def _document_lines(db, table: str, fk: str, doc_ids: list[str]) -> dict[str, li
             hsn_sac_code=(r.get("hsn_sac") or "").strip(),
             description=r.get("description") or "",
             quantity=float(r.get("quantity") or 0),
-            unit=(r.get("unit") or "OTH"),
+            # PASSED THROUGH, NEVER SUBSTITUTED. This used to read
+            # `or "OTH"`, which is a valid UQC — so a line whose unit nobody
+            # recorded arrived at the builder indistinguishable from one
+            # recorded as OTHERS, and `uqc.GAP_UQC_NOT_RECORDED` could not be
+            # reached from any production feeder. Table 12 still files OTH;
+            # `gstr1_builder._hsn_summary_and_gaps` does it where the row is
+            # built, beside the gap naming the absence.
+            unit=(r.get("unit") or "").strip() or None,
             rate_paise=int(r.get("rate_paise") or 0),
             taxable_paise=int(r.get("taxable_amount_paise") or 0),
             # Stored in basis points (1800 = 18%); the builder wants percent.
@@ -2370,13 +2378,17 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     # recipient's credit waits for this return. Emitted only on a quarter: a
     # monthly filer owes neither.
     if window.is_quarter:
+        # `GAP_RETURN_CAVEAT`, not the literal "REPORTED_NOT_WITHHELD" that
+        # stood here: that is the name of the SET and is not a member of it,
+        # so `withheld_gaps` counted both of these as documents held out of
+        # the payload and the screen headed them "Not declared in this return".
         payload.gaps.append({
-            "kind": "REPORTED_NOT_WITHHELD",
+            "kind": gstr1_builder.GAP_RETURN_CAVEAT,
             "reference_no": window.key,
             "reason": return_period.PAYLOAD_PERIOD_CAVEAT.format(key=window.key),
         })
         payload.gaps.append({
-            "kind": "REPORTED_NOT_WITHHELD",
+            "kind": gstr1_builder.GAP_RETURN_CAVEAT,
             "reference_no": window.key,
             "reason": return_period.IFF_NOT_BUILT,
         })
@@ -2421,7 +2433,9 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # validation error is a document that IS in the return and is wrong; a
         # gap is a document that is NOT in the return at all. Filing short is
         # the failure a CA finds out about from the recipient.
-        "payload_gaps": payload.gaps,
+        # STAMPED with `withheld`, because two of the kinds in this list are
+        # about a row the payload DOES carry — see `stamp_withheld`.
+        "payload_gaps": gstr1_builder.stamp_withheld(payload.gaps),
         # Compensation cess a s.34 note in this period could not carry, because
         # the note tables have no cess column. Empty on every return whose
         # notes adjust cess-free invoices, which is almost all of them.
