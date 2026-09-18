@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **248** | re-read against the code. The defect is gone. |
-| partial | **21** | part of the finding is answered, part is not. Each says which. |
+| closed | **252** | re-read against the code. The defect is gone. |
+| partial | **17** | part of the finding is answered, part is not. Each says which. |
 | open | **4** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 25 items — 4 open and 21 partial — not 254.**
+**The work left is 21 items — 4 open and 17 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -45,8 +45,6 @@ is left as "unknown".
 |---|---|---|
 | high | **ACC-03** | Every receipt and vendor payment posts to one generic "Bank Account" ledger, while bank-statemen |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
-| high | **GST-13** | The module's most differentiating backend work — amendments, exception report, ITC register, adv |
-| high | **IT-09** | IT Act §32 depreciation (block of assets, WDV, the 180-day half-rate rule, additional depreciati |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **IT-13** | §234A and §234B are implemented and tested but exposed by no endpoint and no screen — only §234C |
 | high | **SALES-13** | Firm branding, invoice templates, bank/UPI details and footer text are stored by a full Settings |
@@ -55,10 +53,8 @@ is left as "unknown".
 | medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **GST-19** | Rule 36(4) is applied as an aggregate per-head cap, not invoice-level 2B matching, and the cappe |
-| medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
 | medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
-| medium | **IT-20** | §80CCD(2) is capped at 10% of salary for a non-government employee under the NEW regime, where t |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
 | medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
@@ -133,6 +129,7 @@ is left as "unknown".
 | high | **GST-08** | GSTR-1 Table 7 (B2CS) uses a blended rate inferred from the whole invoice, producing rates that  |
 | high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **GST-12** | The "Add GST Filing" modal on /gst throws on every save — the period is "MMM YYYY" and is parsed |
+| high | **GST-13** | The module's most differentiating backend work — amendments, exception report, ITC register, adv |
 | high | **GST-14** | Two contradictory "filed" states: /gst marks filings in compliance_calendar over PostgREST and n |
 | high | **GST-16** | The GSTR-1 validator never runs on the path a CA actually uses |
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
@@ -140,6 +137,7 @@ is left as "unknown".
 | high | **INV-06** | A §17(5)(h) ITC reversal on a stock write-off is posted to the GL but can never reach GSTR-3B Ta |
 | high | **IT-05** | The per-client Tax Computation workspace collects only five figures — no deductions, no house pr |
 | high | **IT-06** | §234C interest is charged on the first three instalments for a §44AD/§44ADA presumptive assessee |
+| high | **IT-09** | IT Act §32 depreciation (block of assets, WDV, the 180-day half-rate rule, additional depreciati |
 | high | **IT-10** | Brought-forward losses are stored and displayed but never enter the computation, and there is no |
 | high | **IT-12** | The tax audit report due date is wrong in both places it appears — the compliance calendar uses  |
 | high | **IT-14** | Holding period is counted in whole calendar months rather than days, so a holding one day short  |
@@ -228,6 +226,7 @@ is left as "unknown".
 | medium | **GST-15** | GSTR-1 Table 11 advance tax is computed into the filed payload while the advances report tells t |
 | medium | **GST-17** | The HSN digit requirement is computed and then never applied or warned about, and the thresholds |
 | medium | **GST-18** | GSTR-1 Table 13 (documents issued) is missing the serial-number range the form requires |
+| medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-22** | The GSTR-3B screen prints taxable VALUES in the IGST column and shows none of tables 3.1(d), 3.1 |
 | medium | **GST-24** | Table 4(A) rows for import IGST and ISD are permanently zero, and ISD is now compulsory |
 | medium | **GST-27** | The 2A/2B reconciliation engine is business logic in TypeScript and parses money with parseFloat |
@@ -239,6 +238,7 @@ is left as "unknown".
 | medium | **INV-07** | Opening the Inventory tab walks the client's ENTIRE stock ledger |
 | medium | **INV-08** | Physical verification is one item at a time, with no count sheet and no session |
 | medium | **IT-08** | The unexhausted basic exemption limit is never absorbed against §111A / §112 capital gains, so a |
+| medium | **IT-20** | §80CCD(2) is capped at 10% of salary for a non-government employee under the NEW regime, where t |
 | medium | **IT-23** | The ITR filing workflow offers only ITR-3/5/6/7, has no revised or updated return path, and the  |
 | medium | **IT-24** | The Form 26AS parser is fixed-column and silently drops every line it cannot read, then marks th |
 | medium | **IT-25** | The ITR due date is chosen by entity type rather than by whether an audit applies, so a small fi |

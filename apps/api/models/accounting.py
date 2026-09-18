@@ -460,6 +460,26 @@ class FixedAssetIn(BaseModel):
     # never assumed either way.
     rule_43_use: Optional[str] = None
 
+    #: IT Act §32(1)(iia) (IT-09, migration 406). TRUE where this is NEW plant
+    #: or machinery the first proviso does not exclude: not used by anybody
+    #: before the assessee installed it, not installed in office premises,
+    #: residential accommodation or a guest house, not an office appliance or a
+    #: road transport vehicle, and not plant whose whole actual cost is allowed
+    #: as a deduction in one year. The single answer asserts all four and
+    #: `domain/income_tax/additional_depreciation` says so on every answer it
+    #: allows.
+    #:
+    #: NONE IS A THIRD STATE and is what an asset arrives in. The §32 working
+    #: NAMES an unanswered addition rather than treating it as refused — the
+    #: hardcoded False it replaces is exactly the defect, because a nil
+    #: additional-depreciation row looks identical either way.
+    #:
+    #: It is only half the test. The section also needs the ASSESSEE to be
+    #: engaged in manufacture, production or power, which lives on the client
+    #: (`clients.section_32_1_iia_business`) because it is true of every asset
+    #: they own or of none. The server ANDs the two.
+    additional_depreciation_eligible: Optional[bool] = None
+
     @field_validator("rule_43_use")
     @classmethod
     def known_rule_43_use(cls, v):
@@ -667,6 +687,12 @@ class FixedAssetUpdateIn(BaseModel):
     #: Tier A — a GST classification, not an accounting estimate. See
     #: FixedAssetIn.rule_43_use.
     rule_43_use: Optional[str] = None
+
+    #: See FixedAssetIn.additional_depreciation_eligible. On the PATCH door for
+    #: the same reason every other statutory fact is: a validator or a field on
+    #: the create door alone is one edit away from being neither, and a CA
+    #: answering §32(1)(iia) after the asset was entered is the ordinary case.
+    additional_depreciation_eligible: Optional[bool] = None
 
     useful_life_years: Optional[int] = None
     salvage_value_paise: Optional[int] = None

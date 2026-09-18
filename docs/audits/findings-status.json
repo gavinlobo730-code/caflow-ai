@@ -1315,15 +1315,15 @@
       "reread_on": "2026-09-16"
     },
     "GST-13": {
-      "status": "partial",
-      "verified_on": "2026-09-16",
+      "status": "closed",
+      "verified_on": "2026-09-18",
       "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters. \u2014 RE-READ 16-09-2026 against main 171ef0e3: apps/web/app/clients/[id]/compliance/gst/page.tsx:2174-2175 mounts AmendmentsTab and ItcRegisterTab; components/gst/AmendmentsTab.tsx wires /gstr1/exceptions, /gstr1/amendments and /gst/gstr1/with-amendments; components/gst/ItcRegisterTab.tsx wires /itc/register, POST /itc/register/reversal and /reclaim (line 179) and GET /gstr1/advances (line 371); GSTR-9 wired at page.tsx tab \"gstr9\". BUT `grep -rn \"gst-portal\" apps/web` still returns nothing against apps/api/routers/gst_portal.py:19 (prefix \"/api/gst-portal\", mounted at main.py:361)",
       "commits": [
         "ac7fe5b5 Phase 7h\u20137l: the last five screens for engines that already worked (#4",
         "ac7fe5b5 Phase 7h\u20137l: the last five screens for engines that already worked (#4"
       ],
-      "reread_on": "2026-09-16",
-      "what_is_left": "/api/gst-portal (sync jobs, manual snapshots) has no frontend caller.",
+      "reread_on": "2026-09-18",
+      "what_is_left": "Nothing buildable, and the refusal is now STRUCTURAL. `/api/gst-portal` reaches no screen on purpose: its only provider is `ManualGSTProvider`, whose every method returns a `status: \"manual\"` stub or an empty list pending GSP empanelment, so a screen over it would be a Sync button that fetches nothing and a snapshot list empty by construction \u2014 a dead control, which this codebase refuses by name. `tests/test_the_gst_portal_router_has_no_screen_on_purpose.py` holds the refusal to its own PREMISE: it asserts every provider answer is still a stub, so the moment a real provider exists the test fails and whoever wires a GSP in has to build the screen in the same change. The router stays mounted and assignment-scoped, and stays COUNTED by the reachability ratchet rather than allowlisted out of it \u2014 an endpoint excused from the ratchet is one nobody notices when the excuse expires.",
       "user_visible_impact": "Four of the five named capabilities are now on screen. The GST portal sync/snapshot router is still unreachable from any UI \u2014 but its only provider is ManualGSTProvider (domain/gst/portal_service.py:50), which returns `status: \"manual\"` stubs and empty lists pending GSP empanelment, so a CA loses no real function in a demo."
     },
     "GST-14": {
@@ -1369,11 +1369,11 @@
       "user_visible_impact": "When the cap fires the CA is told only \"Credit was trimmed to the GSTR-2B figure\" (apps/web/app/gst/gstr3b/page.tsx:660-670) with no list of the documents disallowed \u2014 they must cross-reference the GSTR-2B Recon tab by hand. Credit is compared in aggregate rather than invoice-by-invoice as \u00a716(2)(aa) requires, so a month where one bill is missing from 2B and another is over-claimed can net out and the cap never fires."
     },
     "GST-21": {
-      "status": "partial",
-      "verified_on": "2026-09-13",
+      "status": "closed",
+      "verified_on": "2026-09-18",
       "why": "The INTEREST is built and shown. domain/gst/late_filing.py computes s.50(1) per head on the CASH payable (Rule 88B(1)), s.50(1) with Rule 88B(2) on undeclared tax, and s.50(3) at 24% on credit wrongly availed AND UTILISED \u2014 refusing rather than substituting the availed figure. GSTR-3B Table 5.1 carries it once a filing date is given, and the client GST screen asks for one and renders the per-head working.",
-      "what_is_left": "The s.47 LATE FEE, deliberately. LATE_FEE_RATES is empty and the engine refuses with a sentence naming the notification to read: the statutory Rs 100/day per Act capped at Rs 5,000 has not been what anyone pays since Notifications 4/2018 and 76/2018, and 19/2021 and 20/2021 capped it by turnover band. This environment cannot reach a .gov.in, and Rs 200/day where Rs 50 is notified is four times a figure a CA would pay over. Adding a row is a human step, like the state professional-tax slabs \u2014 see docs/audits/questions-for-the-owner.md #2.",
-      "reread_on": "2026-09-17"
+      "what_is_left": "Nothing. STATUS CORRECTED 18-09-2026: the previous `what_is_left` said \"LATE_FEE_RATES is empty and the engine refuses\", which is STALE. `domain/gst/late_filing.LATE_FEE_RATES` now holds Notifications 19/2021-CT and 20/2021-CT for FY 2021-22 through 2026-27 on both GSTR-1 and GSTR-3B \u2014 \u20b950 a day, \u20b920 nil, capped by aggregate-turnover band \u2014 `gst_return_service` computes it, the response carries `late_fee`, and `components/gst/Gstr3bFindings.tsx` renders both the computed figure and the refusal, with `what-being-late-costs-reaches-the-ca.test.ts` holding it. The remaining refusals are DELIBERATE and named in the module: a year before 2021-22 (Notifications 4/2018 and 76/2018 carry different caps and no bands) and \u00a747(2)'s ANNUAL-return fee, which is a different figure again.",
+      "reread_on": "2026-09-18"
     },
     "GST-22": {
       "status": "closed",
@@ -1504,17 +1504,11 @@
       "reread_on": "2026-09-16"
     },
     "IT-09": {
-      "status": "partial",
-      "verified_on": "2026-09-16",
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters. \u2014 RE-READ 16-09-2026 against main 171ef0e3: CLOSED PART: apps/api/domain/income_tax/section_32.py implements \u00a72(11) blocks, \u00a743(6)(c) WDV, the second proviso's 180-day half rate (half_rate_cutoff :91) and \u00a750; apps/api/services/section_32_service.py:72-155 assembles it from fixed_assets + income_tax_asset_blocks; GET /api/income-tax/section-32 (routers/income_tax.py:1729) and PUT /section-32/blocks (:1764) serve it; apps/web/app/income-tax/section-32/page.tsx:105 renders it and POST /api/income-tax/book-to-tax-bridge (:1807) reads the \u00a732 figure so the bridge completes. NOT CLOSED PART: apps/api/services/section_32_service.py:117 `additional_depreciation_eligible=False` is hardcoded for every addition; there is no column (grep 'additional_depreciation' over migrations/*.sql returns nothing), no field on Section32BlockIn (routers/income_tax.py:1661-1679), and no control on the screen.",
-      "commits": [
-        "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre",
-        "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre",
-        "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre"
-      ],
-      "reread_on": "2026-09-16",
-      "what_is_left": "A way for the CA to mark an addition as \u00a732(1)(iia)-eligible (a column on fixed_assets or a per-addition flag on the block upsert), or \u2014 failing that \u2014 a named statutory_gap saying additional depreciation is never claimed here, so the permanently-nil row stops reading as a computed zero.",
-      "user_visible_impact": "A manufacturing or power client can never claim \u00a732(1)(iia) additional depreciation \u2014 20% of the actual cost of new plant and machinery \u2014 through this product. Worse, apps/web/app/income-tax/section-32/page.tsx:180 renders a headline row labelled 'Additional u/s 32(1)(iia)' that is structurally \u20b90 for every client with no sentence saying why, so a CA reads a nil meaning 'we cannot see it' as a nil meaning 'there was none'."
+      "status": "closed",
+      "verified_on": "2026-09-18",
+      "reread_on": "2026-09-18",
+      "why": "CLOSED 18-09-2026 (migration 406). `section_32.py` has computed \u00a732(1)(iia) since it was written \u2014 20% of actual cost, halved by the second proviso, third proviso named \u2014 and `section_32_service.py:117` passed a hardcoded `False` for every addition, so the screen's \"Additional u/s 32(1)(iia)\" row was a structural \u20b90 for every client: a nil meaning \"we cannot see it\" rendered as a nil meaning \"there was none\". **TWO FACTS, NOT ONE**: `clients.section_32_1_iia_business` (the assessee is engaged in manufacture, production or power \u2014 the section's own opening words) and `fixed_assets.additional_depreciation_eligible` (new plant the first proviso does not exclude). `domain/income_tax/additional_depreciation.py` ANDs them and is the only place that decides. **NULL IS A THIRD STATE ON EACH AND THE TWO REASONS ARE NOT INTERCHANGEABLE**: \"nobody has recorded\" sends a CA to record something, \"this client is outside the section\" says the nil is right. The gap is GATED on there being an addition this year, or every client who bought no plant would carry a permanent false alarm. The first proviso's four exclusions are asserted by the one tick and NAMED on every allowed answer, the Form 10-IA discipline \u00a780DD takes. **NO SECOND DOOR FOR THE ASSET HALF**: a dedicated endpoint was written and deleted \u2014 the ordinary asset PATCH already carries the column as Tier A, and the repo's reachability ratchet is what caught the rival. \u26a0\ufe0f `VERIFIED` is False and the rate is pinned by a test.",
+      "what_is_left": "Nothing for this finding. The THIRD proviso's carry-forward \u2014 where an eligible asset was put to use for under 180 days, the other half is allowed in the FOLLOWING previous year \u2014 is still named as a gap by `section_32` rather than computed; it needs the prior year's additions and is a build of its own."
     },
     "IT-10": {
       "status": "closed",
@@ -1580,15 +1574,11 @@
       "reread_on": "2026-09-16"
     },
     "IT-20": {
-      "status": "partial",
-      "verified_on": "2026-09-16",
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters. \u2014 RE-READ 16-09-2026 against main 171ef0e3: apps/api/domain/income_tax/itr_engine.py:62 `LIMIT_80CCD2_OTHER_PERCENT: int = 10`, applied with no regime branch at :709-713 (`cap_percent = LIMIT_80CCD2_GOVT_PERCENT if req.is_government_employee else LIMIT_80CCD2_OTHER_PERCENT`). Probe on current code: new regime, non-government, \u20b910,00,000 salary, \u20b91,40,000 employer contribution -> deduction \u20b91,00,000, unchanged from the finding. What IS new is a warning at :738-746 naming the Finance (No. 2) Act 2024 14% figure and the \u20b940,000 at stake, returned at routers/income_tax.py:433 and rendered at apps/web/app/clients/[id]/tax/computation/page.tsx:1810.",
-      "commits": [
-        "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
-      ],
-      "reread_on": "2026-09-16",
-      "what_is_left": "Either confirm the Finance (No. 2) Act 2024 amendment and make the cap regime-dependent (14% under \u00a7115BAC(1A)), changing tests/test_itr_engine.py's pinning assertion with it; or, if the conservative figure stands, render the warning on the deductions planner too so the refusal reaches the user on both screens that compute.",
-      "user_visible_impact": "A new-regime, non-government employee whose employer NPS contribution exceeds 10% of salary is computed with a smaller \u00a780CCD(2) deduction than the finding says the Act allows, so the tax is over-stated on that difference. The client Tax Computation screen now shows an amber sentence telling the CA to check the proviso; the firm-level deductions planner (apps/web/app/income-tax/deductions/page.tsx) renders no warnings at all, so there the 10% cap is still silent."
+      "status": "closed",
+      "verified_on": "2026-09-18",
+      "reread_on": "2026-09-18",
+      "why": "CLOSED 18-09-2026 by the SECOND of the two branches the finding offered. The \u00a780CCD(2) cap stays at the conservative 10% for a non-government employee \u2014 the Finance (No. 2) Act 2024's 14% under \u00a7115BAC(1A) still cannot be confirmed from this environment and under-claiming is the safe direction \u2014 and the engine's warning now reaches BOTH screens that compute. `itr_engine` has raised the sentence since IT-05, only where it BITES (a non-government employee, new regime, contribution over 10% of salary), and the client Tax Computation tab rendered it; the firm-level deductions PLANNER read `deductions.*` and dropped `warnings` on the floor, so a CA planning a salary package saw the smaller deduction and no reason for it. The planner renders the WHOLE list, deduplicated across the two regime calls \u2014 a screen filtering the server's warnings would be a second copy of the engine's judgement about which of them matter.",
+      "what_is_left": "Nothing for this finding. Confirming the 14% against the Act remains a human step; the code is written so that lifting it is one constant and one pinned test."
     },
     "IT-21": {
       "status": "closed",

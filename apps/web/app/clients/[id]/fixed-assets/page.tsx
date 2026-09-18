@@ -694,6 +694,10 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     // ways, so an unanswered asset is reported as a gap in the Rule 43 working
     // rather than apportioned or left out silently.
     rule_43_use:           "" as "" | "common" | "exclusively_exempt" | "exclusively_taxable",
+    // IT-09, migration 406. A TRI-STATE on the form, because "" is what an
+    // asset arrives in and is a real third answer: the §32 working names an
+    // unanswered addition rather than treating it as refused.
+    additional_depreciation_eligible: "" as "" | "yes" | "no",
   });
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
@@ -844,6 +848,13 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
         // it; omitting leaves the column NULL, which is what "not classified"
         // means everywhere else this asset is read.
         rule_43_use:           form.rule_43_use || undefined,
+        // `undefined` where nobody has answered, never false — the column is
+        // nullable and NULL means unrecorded. Sending false would settle the
+        // question with a shrug, which is the defect IT-09 closes.
+        additional_depreciation_eligible:
+          form.additional_depreciation_eligible === ""
+            ? undefined
+            : form.additional_depreciation_eligible === "yes",
       };
       if (body.wdv_rate_percent !== undefined && !Number.isFinite(body.wdv_rate_percent)) {
         setError("The WDV rate must be a percentage, e.g. 12.5."); return;  // the finally below lowers `saving`
@@ -1097,6 +1108,30 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                            onChange={e => setForm(f => ({ ...f, itc_blocked_reason: e.target.value }))} />
                   </Field>
                 )}
+                {/* IT Act §32(1)(iia) (IT-09). 20% of the actual cost of NEW
+                    plant and machinery, on top of the ordinary §32 charge.
+                    Offered on every asset because the ASSET half of the test
+                    is what this form holds; the other half — whether the
+                    assessee is engaged in manufacture, production or power —
+                    is recorded once per client on the §32 screen, and the
+                    server ANDs the two. A tick here at a client the section
+                    does not reach claims nothing and is not an error. */}
+                <Field label="New plant for §32(1)(iia) additional depreciation?">
+                  <select className={INPUT} value={form.additional_depreciation_eligible}
+                          onChange={e => setForm(f => ({ ...f, additional_depreciation_eligible: e.target.value as typeof f.additional_depreciation_eligible }))}>
+                    <option value="">Not decided yet</option>
+                    <option value="yes">Yes — new plant or machinery</option>
+                    <option value="no">No</option>
+                  </select>
+                  <p className="mt-1 text-[10px] text-[#94A3B8]">
+                    {form.additional_depreciation_eligible === "yes"
+                      ? "This asserts the whole first proviso: not used by anybody before you installed it, not in office premises, residential accommodation or a guest house, not an office appliance or a road transport vehicle, and its whole cost is not allowed as a deduction in one year."
+                      : form.additional_depreciation_eligible === "no"
+                      ? "No additional depreciation is claimed on this asset."
+                      : "Leave this until the CA has decided. The §32 working names an unanswered addition rather than refusing it — an unanswered asset is not a refused one, and 20% of cost is worth going back for."}
+                  </p>
+                </Field>
+
                 {/* CGST Rule 43. Asked only where credit was CLAIMED — there is
                     nothing to apportion on tax §17(5) already blocked, and on an
                     asset carrying no tax at all. Deliberately not required: an

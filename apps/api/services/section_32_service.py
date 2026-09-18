@@ -39,6 +39,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
+from domain.income_tax import additional_depreciation as addl
 from domain.income_tax.section_32 import (
     Addition, Block, Deletion, Section32Result, compute,
 )
@@ -79,6 +80,22 @@ class Section32Service:
                   .eq("firm_id", firm_id).eq("client_id", client_id)
                   .is_("deleted_at", "null").execute().data or [])
 
+        # §32(1)(iia) (IT-09, migration 406). TWO facts, and this one is about
+        # the CLIENT: the section reaches only an assessee engaged in
+        # manufacture, production, or the generation, transmission or
+        # distribution of power. `domain/income_tax/additional_depreciation`
+        # decides; nothing here infers it from `industry` (free text) or
+        # `business_type` (the legal form).
+        #
+        # A row that cannot be read leaves the fact UNRECORDED rather than
+        # False — the distinction the hardcoded False destroyed.
+        client_rows = (db.table("clients").select("id, section_32_1_iia_business")
+                       .eq("firm_id", firm_id).eq("id", client_id)
+                       .execute().data or [])
+        within = addl.assessee_is_within_the_section(
+            (client_rows[0] if client_rows else {}).get("section_32_1_iia_business"))
+        addl_additions: list = []
+
         unclassified: list[dict] = []
         additions: dict[str, list[Addition]] = {}
         deletions: dict[str, list[Deletion]] = {}
@@ -112,10 +129,19 @@ class Section32Service:
                     # why, and the engine reports a gap where it is absent
                     # rather than substituting one for the other.
                     put_to_use_date=_d(a.get("put_to_use_date")),
-                    # §32(1)(iia) needs three facts this product does not hold.
-                    # Never inferred from an asset being new plant.
-                    additional_depreciation_eligible=False,
+                    # §32(1)(iia) (IT-09). BOTH facts, ANDed in the domain
+                    # module: the assessee has to be within the section and the
+                    # asset has to be marked. An asset ticked at a client the
+                    # section does not reach claims nothing, which is not a
+                    # contradiction to resolve — a CA may mark their machines
+                    # before recording the business.
+                    additional_depreciation_eligible=addl.addition_is_eligible(
+                        assessee_within_section=within.reaches_the_assessee,
+                        asset_flag=a.get("additional_depreciation_eligible")),
                 ))
+                addl_additions.append((
+                    a.get("asset_code") or a.get("asset_name") or a["id"][:8],
+                    a.get("additional_depreciation_eligible")))
             if sold and fy_start <= sold <= fy_end:
                 deletions.setdefault(key, []).append(Deletion(
                     label=a.get("asset_code") or a.get("asset_name") or a["id"][:8],
@@ -140,6 +166,15 @@ class Section32Service:
 
         result: Section32Result = compute(blocks, fy_end=fy_end)
         gaps = list(result.gaps)
+        # §32(1)(iia)'s own gaps come FIRST, because the business fact settles
+        # every asset at once and a CA works down the list. Before IT-09 the
+        # additional-depreciation row was a structural ₹0 with no sentence at
+        # all, which reads as "there was none" rather than "nobody said".
+        eligibility = addl.report(
+            section_32_1_iia_business=(
+                (client_rows[0] if client_rows else {}).get("section_32_1_iia_business")),
+            additions=addl_additions)
+        gaps = list(eligibility.gaps) + gaps
         if unclassified:
             gaps.append(
                 f"{len(unclassified)} asset(s) bought or sold this year are not "
@@ -183,6 +218,9 @@ class Section32Service:
             # schedule, and §74 does not let a capital loss relieve business
             # income anyway.
             "short_term_capital_gain_paise": result.short_term_capital_gain_paise,
+            # The §32(1)(iia) working, so the screen renders WHY the row is
+            # what it is rather than a number with no account of itself.
+            "additional_depreciation": eligibility.to_dict(),
             "unclassified_assets": unclassified,
             "blocks_without_opening_wdv": without_opening,
             "statutory_gaps": gaps,

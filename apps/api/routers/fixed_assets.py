@@ -157,7 +157,15 @@ def _db():
 #: to a CLASSIFICATION, not to an estimate.
 _TIER_A_FIELDS = frozenset({"asset_name", "location", "notes",
                             "it_block_key", "put_to_use_date",
-                            "rule_43_use"})
+                            "rule_43_use",
+                            # IT-09, migration 406. Tier A for exactly the
+                            # reason the other two §32 facts are: it changes no
+                            # Companies Act figure and posts nothing.
+                            # §32(1)(iia) is the IT Act's own charge, read by
+                            # domain/income_tax/additional_depreciation, and
+                            # answering it later is a correction to a
+                            # CLASSIFICATION rather than to an estimate.
+                            "additional_depreciation_eligible"})
 _TIER_B_FIELDS = frozenset({
     "purchase_cost_paise", "asset_category", "purchase_date",
     "acquisition_mode", "vendor_id", "purchase_bill_id", "bank_account_id",
@@ -675,6 +683,11 @@ def create_asset(
         # domain/gst/rule_43.py reads it itself. NULL where the CA has not
         # said, and reported as a gap rather than assumed.
         "rule_43_use":                 data.rule_43_use,
+        # IT Act §32(1)(iia) (IT-09, migration 406). NULL where the CA has not
+        # said, and NAMED as a gap in the §32 working rather than read as
+        # "not eligible" — the hardcoded False this replaces made a real
+        # deduction invisible, because the row renders ₹0 either way.
+        "additional_depreciation_eligible": data.additional_depreciation_eligible,
     }).execute()
 
     asset = (row.data or [{}])[0]

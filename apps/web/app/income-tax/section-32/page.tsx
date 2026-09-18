@@ -81,6 +81,17 @@ interface Section32Answer {
     asset_category: string | null; purchase_cost_paise: number;
   }[];
   blocks_without_opening_wdv: string[];
+  /** IT-09. Whether §32(1)(iia) reaches this assessee, and what nobody has
+   *  recorded. `reaches_the_assessee: false` is TWO different answers — the
+   *  section does not apply, or nobody has said — told apart by whether
+   *  `gaps` carries a sentence. Before migration 406 the additional
+   *  depreciation row was a structural ₹0 with no account of itself at all. */
+  additional_depreciation: {
+    reaches_the_assessee: boolean;
+    gaps: string[];
+    caveats: string[];
+    verified: boolean;
+  };
   statutory_gaps: string[];
   /** The field to read before using the figure in a return. */
   is_complete: boolean;
@@ -94,6 +105,9 @@ export default function Section32Page() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  // IT-09 — recording whether the client is within §32(1)(iia). One write per
+  // client, not per year: the section's opening words are about the business.
+  const [savingBusiness, setSavingBusiness] = useState(false);
 
   useEffect(() => { getClients().then(setClients).catch(() => setClients([])); }, []);
 
@@ -114,6 +128,29 @@ export default function Section32Page() {
   }, [clientId, fy]);
 
   useEffect(() => { load(); }, [load]);
+
+  /** IT-09. The WHO half of §32(1)(iia), recorded on the client.
+   *
+   *  Reloads rather than patching local state: marking the business changes
+   *  every addition's answer and the two totals with them, and the server is
+   *  the one that ANDs the two facts. A local flip would show a figure this
+   *  screen computed. */
+  async function recordBusiness(within: boolean) {
+    if (!clientId) return;
+    setSavingBusiness(true); setError(null);
+    try {
+      const j = await request<ApiEnvelope>("/api/income-tax/section-32/business", {
+        method: "PUT",
+        body: JSON.stringify({ client_id: clientId, section_32_1_iia_business: within }),
+      });
+      if (!j.success) throw new Error(j.error ?? "Could not record it.");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not record it.");
+    } finally {
+      setSavingBusiness(false);
+    }
+  }
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -173,6 +210,51 @@ export default function Section32Page() {
               </ul>
             </div>
           )}
+
+          {/* IT-09 — WHY the additional-depreciation row is what it is.
+              Rendered ABOVE the totals rather than beside them, because a
+              structural ₹0 with no account of itself is exactly what this
+              closes: a CA reading "Additional u/s 32(1)(iia) — ₹0" has no way
+              to tell a section that does not apply from a fact nobody
+              recorded. Every sentence is the server's. */}
+          <div className="bg-ps-surface border border-ps-border rounded-xl px-5 py-4 space-y-2">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-sm font-medium text-ps-ink">
+                  Additional depreciation under §32(1)(iia)
+                </p>
+                <p className="text-xs text-ps-label mt-0.5">
+                  20% of the actual cost of NEW plant and machinery — but only
+                  for an assessee engaged in manufacture or production, or in
+                  the generation, transmission or distribution of power.
+                </p>
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                <Button size="sm" variant="outline" disabled={savingBusiness}
+                        onClick={() => recordBusiness(true)}>
+                  This client is
+                </Button>
+                <Button size="sm" variant="outline" disabled={savingBusiness}
+                        onClick={() => recordBusiness(false)}>
+                  This client is not
+                </Button>
+              </div>
+            </div>
+            {answer.additional_depreciation.gaps.map((g, i) => (
+              <p key={`g${i}`} className="text-xs text-state-attention-ink">⚠ {g}</p>
+            ))}
+            {answer.additional_depreciation.caveats.map((c, i) => (
+              <p key={`c${i}`} className="text-[11px] text-ps-hint">{c}</p>
+            ))}
+            {answer.additional_depreciation.reaches_the_assessee
+              && answer.additional_depreciation.gaps.length === 0 && (
+              <p className="text-xs text-ps-label">
+                Mark each eligible addition on the asset register — the section
+                reaches an asset only where it also reaches the assessee, and
+                both have to be recorded.
+              </p>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
