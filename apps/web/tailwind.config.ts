@@ -1,7 +1,15 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: ["class"],
+  /* THERE IS NO DARK MODE AND `darkMode: ["class"]` IS NOT HOW ONE WOULD BE
+     ADDED. It sat here from the shadcn scaffold and was provably inert: zero
+     `dark:` utilities in `app/`, `components/` and `lib/`, no `.dark` selector
+     anywhere, and `globals.css` declares `html { color-scheme: light }`. Left
+     in, it reads as a switch somebody could flip — and flipping it would emit
+     a dark variant with nothing defined behind it, so the first `dark:` class
+     written against it would be the only styled thing on an otherwise
+     unchanged screen. A real dark theme is a second value for every token
+     below, not a line here. */
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -10,7 +18,6 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
@@ -38,10 +45,6 @@ const config: Config = {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
-        },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
         },
         /* ── PracticeSync brand tokens ── */
         brand: {
@@ -91,11 +94,50 @@ const config: Config = {
              step, and every existing pair still moves.
 
              The navy cast is deliberate. A pure slate grey beside a navy brand
-             reads as unconsidered. */
+             reads as unconsidered.
+
+             ── THE TWO LIGHT STEPS MOVED DOWN, AND THE MEASUREMENT IS WHY ──
+             The scale named four roles; the app wrote SEVEN greys, two or
+             three spellings per role, and the token file had picked the
+             LIGHTER spelling of each of the bottom two:
+
+               role     spellings in the code            token held
+               ink      #0F172A (801) #1E293B (333)      #0D1635 (13)
+               body     #334155 (1,070)                  #334155  ✓
+               label    #64748B (1,388) #475569 (894)    #64748B  ← lighter
+               hint     #94A3B8 (1,567)                  #94A3B8  ← unreadable
+
+             `hint` at #94A3B8 is **2.56:1 on white** — the single most-used
+             colour in the product, far below WCAG 1.4.3's 4.5:1, and most of
+             its 1,567 sites are `text-[10px]` or `text-[11px]`. `label` at
+             #64748B is 4.76 on white and **4.34 on `ps.muted`**, so it failed
+             on the very fill a table header uses it over.
+
+             Each moves down ONE spelling, to a value the product already uses
+             for the same role, so nothing is invented:
+
+               label  #64748B → #475569   7.58 white · 7.24 bg · 6.92 muted
+               hint   #94A3B8 → #64748B   4.76 white · 4.55 bg · 4.34 muted
+
+             THE HOVER PAIRS ALL STILL MOVE, which is the invariant that had to
+             hold and was checked over every `text-[#a] hover:text-[#b]` pair in
+             the tree: the dominant one is #94A3B8 → #475569 (95 sites), which
+             becomes hint → label with the TARGET unchanged and only the base
+             darkened. The only pairs that collapse are seven already spelling
+             #182350 → #182350 today.
+
+             ⚠️ `hint` is 4.34 on `ps.muted` — below 4.5 — and 18 sites put it
+             there. A hint belongs on white or on `ps.bg`, both of which it
+             passes; those 18 want `label`. Named rather than solved, because
+             solving it means a grey the product does not already use.
+
+             `disabled` is deliberately left failing: WCAG 1.4.3 exempts text in
+             an inactive control, and darkening it would stop it reading as
+             inactive, which is the one thing it has to say. */
           ink:      "#0D1635",  /* headings, figures, anything load-bearing */
           body:     "#334155",  /* body copy, and the hover target */
-          label:    "#64748B",  /* labels, secondary copy, quiet controls */
-          hint:     "#94A3B8",  /* hints, placeholders, empty states */
+          label:    "#475569",  /* labels, secondary copy, quiet controls */
+          hint:     "#64748B",  /* hints, placeholders, empty states */
           disabled: "#CBD5E1",
         },
 
@@ -148,16 +190,41 @@ const config: Config = {
           negative: "#7F1D1D",  /* a balance below zero */
         },
       },
+      /* ── The two steps below Tailwind's smallest ────────────────────────
+         Tailwind stops at `text-xs` (12px). A CA screen does not: the product
+         writes `text-[10px]` 999 times and `text-[11px]` 861 times — a detail
+         line under a figure, a column header, a chip — because there was no
+         name for either. 2,252 arbitrary `text-[Npx]` in all, against a scale
+         with nothing at that end to converge on.
+
+         DELIBERATELY BARE — a font size and NO line-height, which is what
+         `text-[10px]` already emits. Tailwind's tuple form would pin a leading
+         as well, and a site nested inside `text-sm` currently inherits 20px
+         rather than 1.5×10px, so pinning one changes the rendering of an
+         unknown share of 1,860 places. The rename has to be pixel-identical or
+         it is not a rename. What the leading should be is a real question and
+         it belongs with the reference screens, where it can be looked at.
+
+         `text-[9px]` (29 sites) gets no name on purpose: it is below the size
+         at which the remaining steps are distinguishable, and naming it would
+         bless it. */
+      fontSize: {
+        "3xs": "10px",
+        "2xs": "11px",
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
-      boxShadow: {
-        card:        "0 1px 3px rgba(24,35,80,0.06), 0 1px 2px rgba(24,35,80,0.04)",
-        "card-hover":"0 4px 16px rgba(24,35,80,0.10)",
-        modal:       "0 20px 60px rgba(24,35,80,0.20)",
-      },
+      /* NO ELEVATION TOKENS. `shadow-card`, `shadow-card-hover` and
+         `shadow-modal` were declared here and used ZERO times — every card in
+         the product writes Tailwind's own `shadow-sm` or a `shadow-[...]`
+         arbitrary value. Three names nothing reads are three names the next
+         author has to check before trusting, which is the `capital_wip` shape
+         this codebase keeps finding. A real elevation scale is part of the
+         reference screens, where it can be looked at against a card; declaring
+         one here first would just re-create what was deleted. */
     },
   },
   plugins: [],
