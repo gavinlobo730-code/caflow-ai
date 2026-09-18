@@ -163,6 +163,43 @@ def _normalise_residency(model) -> list[str]:
     return errors
 
 
+def _state_code_problem(value: Optional[str]) -> Optional[str]:
+    """What is wrong with a party's recorded two-digit state code, or None.
+
+    WHY THE DOOR AND NOT ONLY THE RESOLVER. A customer's `state_code` is the
+    SECOND link of `domain/gst/place_of_supply.recipient_place_of_supply`, so
+    what is typed here becomes the invoice's place of supply — and that decides
+    CGST+SGST against IGST (IGST §§7 and 8) and is a Rule 46(n) particular of
+    the document. The identical value typed into `SalesInvoiceIn.place_of_supply`
+    or `ReceiptIn.place_of_supply` has been refused against this very list for
+    months; typed onto the customer it was stored and then used, so the two
+    doors to one figure disagreed about what a state is.
+
+    THE PLACE-OF-SUPPLY LIST, DELIBERATELY — `domain/gst/validator`, which holds
+    **96** (outside India). An export customer IS outside India and 96 is the
+    place of supply GSTN requires on that invoice, so the GSTIN list would
+    refuse exactly the party this field exists to describe. `core/validators`
+    names all three lists and what each is for.
+
+    Nothing NORMALISES here beyond stripping: a state code is two characters
+    from a picker, so there is no case to fold and no spelling to canonicalise,
+    and a value that is not one of them is a fact somebody has to correct rather
+    than one this model can repair.
+    """
+    if value is None:
+        return None
+    code = str(value).strip()
+    if not code:
+        return None
+    from domain.gst.validator import VALID_STATE_CODES
+    if code not in VALID_STATE_CODES:
+        return (f"'{code}' is not a GST state code. It is the two-digit code "
+                f"(27 for Maharashtra, 96 for a recipient outside India), and "
+                f"it becomes this party's place of supply on every invoice — "
+                f"which decides CGST+SGST against IGST.")
+    return None
+
+
 class CustomerIn(BaseModel):
     client_id: str
     name: str
@@ -237,6 +274,9 @@ class CustomerIn(BaseModel):
             err = validate_pincode(self.pincode)
             if err:
                 errors.append(err)
+        err = _state_code_problem(self.state_code)
+        if err:
+            errors.append(err)
         if errors:
             raise ValueError("; ".join(errors))
         return self
@@ -296,6 +336,9 @@ class CustomerUpdateIn(BaseModel):
             err = validate_pincode(self.pincode)
             if err:
                 errors.append(err)
+        err = _state_code_problem(self.state_code)
+        if err:
+            errors.append(err)
         if errors:
             raise ValueError("; ".join(errors))
         return self
@@ -434,6 +477,9 @@ class VendorIn(BaseModel):
             err = validate_pincode(self.pincode)
             if err:
                 errors.append(err)
+        err = _state_code_problem(self.state_code)
+        if err:
+            errors.append(err)
         if errors:
             raise ValueError("; ".join(errors))
         return self
@@ -520,6 +566,9 @@ class VendorUpdateIn(BaseModel):
             err = validate_pincode(self.pincode)
             if err:
                 errors.append(err)
+        err = _state_code_problem(self.state_code)
+        if err:
+            errors.append(err)
         if errors:
             raise ValueError("; ".join(errors))
         return self

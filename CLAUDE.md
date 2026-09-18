@@ -4345,13 +4345,35 @@ not parse, so `"1200abc"` passed at 1200 while `toPaise` returned NaN, and
   check digits and were used in 77 files, including two frontend
   placeholders that taught a CA an example their own keystroke validator
   rejects.
-  **TWO STATE LISTS, DELIBERATELY DIFFERENT.**
+  **THREE STATE LISTS, DELIBERATELY DIFFERENT, AND A FOURTH THAT IS A PICKER.**
   `domain/gst/validator.VALID_STATE_CODES` is for a PLACE OF SUPPLY and
-  includes **96** (outside India, where an export goes);
+  includes **96** (outside India, where an export goes) and not 99;
   `domain/gst/gstin.VALID_STATE_CODES` is for the first two characters of a
-  GSTIN and does not, because a GSTIN is a registration in a state.
-  Collapsing them would either refuse every export or accept a GSTIN that
-  cannot exist.
+  GSTIN and is the other way round, because a GSTIN is a registration in a
+  state and nobody is registered outside India;
+  `core/validators._VALID_STATE_CODES` is a REGISTRATION's state for the firm's
+  own profile and an internal client, so it holds both. Collapsing any pair
+  would either refuse every export or accept a GSTIN that cannot exist. **The
+  third was reported as dead and is not** — `validate_state_code` and
+  `derive_state_code` read it, and `routers/practice` and
+  `internal_client_service` read them — so `core/validators` now NAMES all
+  three beside the one it declares, which is where a fourth would be added.
+  `apps/web/lib/constants/indianStates.ts` is not a validator at all: it is the
+  PICKER, and it deliberately omits the DEAD codes 25 and 28, because they may
+  not be chosen for a NEW document while a historical one must still parse.
+  **A PARTY'S OWN `state_code` IS THE SECOND LINK OF THE PLACE-OF-SUPPLY CHAIN
+  AND HAD NO RULE ON IT AT ALL.** Both halves of the resolver returned it as
+  stored, while the GSTIN branch four lines below has always been gated with a
+  comment saying "so a truncated or garbage value cannot become a place of
+  supply" — and no door refused one, although the identical value typed into
+  `SalesInvoiceIn.place_of_supply` has been refused for months. So an invoice's
+  CGST+SGST-against-IGST split ran off an unvalidated field.
+  `models/parties._state_code_problem` refuses it at all FOUR doors (create and
+  PATCH, customer and vendor — a validator on one door is one PATCH from being
+  none) against the PLACE-OF-SUPPLY list, because an export customer's state IS
+  96. The RESOLVER falls through instead of raising: it is a fallback chain, an
+  unusable link is what the next one is for, and that also repairs rows written
+  before the door existed or straight over PostgREST.
   Deliberately still NOT in `models.client.validate_gstin`, which guards a
   Pydantic field that 512 invented fixture GSTINs across 95 files flow through.
   Closing the bulk door showed how load-bearing that carve-out is:

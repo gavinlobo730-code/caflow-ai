@@ -27,6 +27,27 @@ _PHONE_RE  = re.compile(r"^\+?[\d\s\-]{10,16}$")  # allows spaces/hyphens; e.g. 
 _EMAIL_RE  = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _PINCODE_RE = re.compile(r"^[1-9][0-9]{5}$")
 
+# THERE ARE THREE STATE LISTS AND THEY ANSWER THREE QUESTIONS. Do not collapse
+# them — each omits something the others need.
+#
+#   THIS ONE                                  a REGISTRATION's state, for the
+#                                             firm's own profile and an internal
+#                                             client: 01-38, 96, 97, 99. Read by
+#                                             `validate_state_code` and
+#                                             `derive_state_code` below.
+#   `domain/gst/gstin.VALID_STATE_CODES`      a GSTIN's first two characters:
+#                                             01-38, 97, 99. Never 96 — nobody
+#                                             is registered outside India.
+#   `domain/gst/validator.VALID_STATE_CODES`  a PLACE OF SUPPLY: 01-38, 96, 97.
+#                                             96 is where an export goes; 99 is
+#                                             Centre Jurisdiction and is not a
+#                                             place a supply is made to.
+#
+# `apps/web/lib/constants/indianStates.ts` is a fourth and is NOT a validator at
+# all: it is the PICKER, and it deliberately omits the DEAD codes 25 and 28,
+# because they may not be chosen for a NEW document while a historical one must
+# still parse. Its own header says so.
+#
 # Two-digit state codes per GST council
 _VALID_STATE_CODES = {
     "01","02","03","04","05","06","07","08","09","10",
