@@ -13,6 +13,7 @@ import { useState, useRef } from "react";
 import { X, Download, Upload, AlertCircle, CheckCircle, Plus } from "lucide-react";
 import * as XLSX from "xlsx";
 import { LogoIcon } from "@/components/LogoIcon";
+import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 
 export interface CsvColumn {
   key: string;          // CSV header name (must match template)
@@ -170,17 +171,16 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
   function downloadCsvTemplate() {
     // A plain CSV the user can open in Excel / Google Sheets / Tally export tools.
     // Row 1 = headers, row 2 = a commented hint line (starts with #, skipped on parse).
-    const headerRow = columns.map(c => c.key).join(",");
+    // The header row goes through the one writer. The `#` hint line is
+    // deliberately ONE field separated by " | " — it is a note to the reader,
+    // not data — so it is appended as text rather than escaped into cells.
     const hintRow = "# " + columns.map(c => c.hint ?? (c.required ? "REQUIRED" : "optional")).join(" | ");
-    const csv = `${headerRow}\n${hintRow}\n`;
-    // BOM so Excel opens it as UTF-8 (and so ₹/non-ASCII hints render correctly).
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = templateFilename.endsWith(".csv") ? templateFilename : templateFilename.replace(/\.(xlsx|xls)$/, "") + ".csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    const csv = `${toCsvRows([columns.map(c => c.key)])}\n${hintRow}\n`;
+    downloadCsv(
+      templateFilename.endsWith(".csv")
+        ? templateFilename
+        : templateFilename.replace(/\.(xlsx|xls)$/, "") + ".csv",
+      csv);
   }
 
   function downloadTemplate() {

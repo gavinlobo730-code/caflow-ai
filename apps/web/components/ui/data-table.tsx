@@ -19,6 +19,11 @@ import { useDataTable } from "@/lib/table/useDataTable";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toCsv } from "@/lib/table/process";
 import type { BulkAction, Column, FilterDef, SortState } from "@/lib/table/types";
+// The CSV writer MOVED to `lib/export/csv.ts`, which is now the one place a
+// CSV is written — the BOM, the escaping and the anchor. Re-exported under
+// the old name below because eleven screens import it from here, and a
+// rename is a change to eleven files that says nothing about what was wrong.
+import { downloadCsv } from "@/lib/export/csv";
 
 // 1000 matches lib/supabase/selectAll's own page size — the largest page a
 // caller can pick still corresponds to exactly one fetched page of data, so
@@ -186,18 +191,8 @@ export interface ServerPaging {
   onSearchChange?: (q: string) => void;
 }
 
-export function downloadCsv(filename: string, csv: string) {
-  // Prepend a UTF-8 BOM: without it, Excel sniffs the file as Windows-1252
-  // and mangles multi-byte chars (e.g. ₹ U+20B9 → "â‚¹"). The BOM makes
-  // Excel auto-detect UTF-8 with no manual fix-up needed on the user's end.
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename.endsWith(".csv") ? filename : `${filename}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+
+export { downloadCsv };
 
 /**
  * A ready-made "Export selected" bulk action — reuses the same CSV export

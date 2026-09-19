@@ -11,6 +11,10 @@ import type {
   SortState,
   TableState,
 } from "./types";
+// Relative, not "@/": this module is unit-tested with bare
+// `node --experimental-strip-types --test`, which does not resolve the
+// tsconfig path alias.
+import { csvField } from "../export/csv.ts";
 
 const _s = (v: unknown): string => (v == null ? "" : String(v));
 
@@ -131,10 +135,10 @@ export function processRows<T>(
   return { filtered: sorted, page };
 }
 
-function csvCell(v: string | number): string {
-  const s = String(v ?? "");
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
+// The escaping moved to `lib/export/csv.ts` when it turned out seven other
+// files had written their own and two were wrong. This was the correct copy;
+// it was module-private, which is exactly why the others exist.
+const csvCell = csvField;
 
 /** CSV of the given rows using visible, exportable columns (header row included). */
 export function toCsv<T>(rows: T[], columns: Column<T>[]): string {

@@ -38,6 +38,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { MonthlyReview } from "@/components/payroll/MonthlyReview";
 import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
 import { api, type PayrollDepositDueDates_FY, type PayrollTdsProjection } from "@/lib/api";
+import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -64,16 +65,6 @@ function fmtPaise(paise: number): string {
   return `₹${rupees.toLocaleString("en-IN")}.${p.toString().padStart(2, "0")}`;
 }
 
-function downloadCsv(content: string, filename: string): void {
-  // BOM so Excel opens as UTF-8 instead of mangling ₹ into "â‚¹".
-  const blob = new Blob(["\uFEFF" + content], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 // ── Financial Year helpers ────────────────────────────────────────────────
 
@@ -542,7 +533,7 @@ function YtdTab({ employees, runs, fyOptions }: {
     const header = "Month,Gross,PF,ESI,PT,TDS,Total Deductions,Net Pay,YTD Gross,YTD TDS,YTD Net";
     const csvRows = rows.map(r =>
       [
-        `"${monthLabel(r.month)}"`,
+        monthLabel(r.month),
         (r.gross / 100).toFixed(2),
         (r.pf / 100).toFixed(2),
         (r.esi / 100).toFixed(2),
@@ -553,9 +544,10 @@ function YtdTab({ employees, runs, fyOptions }: {
         (r.ytdGross / 100).toFixed(2),
         (r.ytdTds / 100).toFixed(2),
         (r.ytdNet / 100).toFixed(2),
-      ].join(",")
+      ]
     );
-    downloadCsv([header, ...csvRows].join("\n"), `YTD_${emp?.name ?? "employee"}_FY${selectedFy}.csv`);
+    downloadCsv(`YTD_${emp?.name ?? "employee"}_FY${selectedFy}.csv`,
+                toCsvRows([header.split(","), ...csvRows]));
   }
 
   return (
@@ -718,25 +710,26 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
     const rows = ctcRows.map(r => {
       const emp = r.slip.employee;
       return [
-        `"${emp?.name ?? ""}"`, `"${emp?.pan ?? ""}"`,
+        emp?.name ?? "", emp?.pan ?? "",
         (r.gross / 100).toFixed(2),
         (r.employerPf / 100).toFixed(2),
         (r.employerEsi / 100).toFixed(2),
         (r.edli / 100).toFixed(2),
         (r.admin / 100).toFixed(2),
         (r.totalCtc / 100).toFixed(2),
-      ].join(",");
+      ];
     });
     const footer = [
-      `"TOTAL"`, `""`,
+      "TOTAL", "",
       (totals.gross / 100).toFixed(2),
       (totals.employerPf / 100).toFixed(2),
       (totals.employerEsi / 100).toFixed(2),
       (totals.edli / 100).toFixed(2),
       (totals.admin / 100).toFixed(2),
       (totals.totalCtc / 100).toFixed(2),
-    ].join(",");
-    downloadCsv([header, ...rows, footer].join("\n"), `CTC_${selectedMonth}.csv`);
+    ];
+    downloadCsv(`CTC_${selectedMonth}.csv`,
+                toCsvRows([header.split(","), ...rows, footer]));
   }
 
   return (
@@ -1109,25 +1102,26 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
     const header = "Employee,PAN,Total Gross Paid,Total PF Deducted,Total ESI Deducted,Total PT,Total TDS Deducted,Total Net Paid";
     const rows = empRows.map(r =>
       [
-        `"${r.emp?.name ?? ""}"`, `"${r.emp?.pan ?? ""}"`,
+        r.emp?.name ?? "", r.emp?.pan ?? "",
         (r.gross / 100).toFixed(2),
         (r.pf / 100).toFixed(2),
         (r.esi / 100).toFixed(2),
         (r.pt / 100).toFixed(2),
         (r.tds / 100).toFixed(2),
         (r.net / 100).toFixed(2),
-      ].join(",")
+      ]
     );
     const footer = [
-      `"GRAND TOTAL"`, `""`,
+      "GRAND TOTAL", "",
       (grandTotal.gross / 100).toFixed(2),
       (grandTotal.pf / 100).toFixed(2),
       (grandTotal.esi / 100).toFixed(2),
       (grandTotal.pt / 100).toFixed(2),
       (grandTotal.tds / 100).toFixed(2),
       (grandTotal.net / 100).toFixed(2),
-    ].join(",");
-    downloadCsv([header, ...rows, footer].join("\n"), `Year_End_Summary_FY_${selectedFy}.csv`);
+    ];
+    downloadCsv(`Year_End_Summary_FY_${selectedFy}.csv`,
+                toCsvRows([header.split(","), ...rows, footer]));
   }
 
   return (

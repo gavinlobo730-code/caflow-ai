@@ -16,6 +16,7 @@ import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
 import type { GLReconciliation, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";
 import { formatPaise } from "@/lib/money/format";
+import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -199,15 +200,8 @@ function GSTR3BDetailDrawer({
     if (!rows) return;
     const cols = ["document_date", "kind", "document_no", "party",
                   "taxable_paise", "igst_paise", "cgst_paise", "sgst_paise", "tax_paise"];
-    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const body = [cols.join(","),
-      ...rows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\n");
-    const url = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `gstr3b-${period}-${line}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(`gstr3b-${period}-${line}.csv`,
+                toCsvRows([cols, ...rows.map((r) => cols.map((c) => r[c]))]));
   }
 
   const matches = expectedPaise === null || totals === null

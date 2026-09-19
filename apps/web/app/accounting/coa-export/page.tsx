@@ -7,6 +7,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
+import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 
 interface CoaRow {
   account_code: string;
@@ -23,33 +24,13 @@ interface CoaRow {
 
 function toCSV(rows: CoaRow[]): string {
   const headers = ["account_code", "account_name", "account_type", "account_subtype", "parent_group", "sub_group", "tax_category", "schedule_iii_mapping", "is_active"];
-  const escape = (v: string | boolean | null) => {
-    if (v === null || v === undefined) return "";
-    const s = String(v);
-    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const lines = [headers.join(",")];
-  for (const r of rows) {
-    lines.push([
-      r.account_code, r.account_name, r.account_type,
-      r.account_subtype, r.parent_group, r.sub_group,
-      r.tax_category, r.schedule_iii_mapping, r.is_active,
-    ].map(escape).join(","));
-  }
-  return lines.join("\n");
+  return toCsvRows([headers, ...rows.map((r) => [
+    r.account_code, r.account_name, r.account_type,
+    r.account_subtype, r.parent_group, r.sub_group,
+    r.tax_category, r.schedule_iii_mapping, r.is_active,
+  ])]);
 }
 
-function downloadFile(content: string, filename: string, mime: string) {
-  // BOM so Excel opens CSV as UTF-8 instead of mangling non-ASCII chars.
-  const body = mime.startsWith("text/csv") ? "\uFEFF" + content : content;
-  const blob = new Blob([body], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export default function CoaExportPage() {
   const [loading, setLoading] = useState(false);
@@ -76,7 +57,7 @@ export default function CoaExportPage() {
       setCount(rows.length);
       const today = todayLocalISO();
       if (format === "csv") {
-        downloadFile(toCSV(rows), `chart-of-accounts-${today}.csv`, "text/csv");
+        downloadCsv(`chart-of-accounts-${today}.csv`, toCSV(rows));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export failed");
