@@ -305,7 +305,7 @@ function AmountTable({ title, note, fys, series }: {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px]">
-          <thead className="bg-[#FAFBFC] border-b border-gray-50"><ColumnHeads fys={fys} /></thead>
+          <thead className="bg-ps-bg border-b border-gray-50"><ColumnHeads fys={fys} /></thead>
           <tbody className="divide-y divide-gray-50">
             {series.map((s) => (
               <tr key={s.key}>
@@ -349,7 +349,7 @@ function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[]
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px]">
-          <thead className="bg-[#FAFBFC] border-b border-gray-50"><ColumnHeads fys={fys} /></thead>
+          <thead className="bg-ps-bg border-b border-gray-50"><ColumnHeads fys={fys} /></thead>
           <tbody className="divide-y divide-gray-50">
             {series.map((s) => (
               <tr key={s.key}>

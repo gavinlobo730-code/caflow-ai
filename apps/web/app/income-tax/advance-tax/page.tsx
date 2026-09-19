@@ -587,7 +587,7 @@ export default function AdvanceTaxPage() {
                 <InterestBlock r={lateResult.section_234a} />
                 <InterestBlock r={lateResult.section_234b} />
               </div>
-              <div className="rounded-lg bg-ps-bg border border-[#EEF2F7] px-3 py-2 space-y-1">
+              <div className="rounded-lg bg-ps-bg border border-ps-muted px-3 py-2 space-y-1">
                 <p className="text-2xs text-ps-label">
                   §139(1) due date <span className="font-medium tabular-nums">{lateResult.itr_due_date.due_date}</span>
                   {" — "}{lateResult.itr_due_date.basis}

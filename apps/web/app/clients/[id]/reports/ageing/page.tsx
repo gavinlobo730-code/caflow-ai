@@ -133,7 +133,7 @@ function ScheduleTable({ table }: { table: AgeingTable }) {
                 <td
                   key={b.key}
                   className={`text-right px-3 py-2.5 ${
-                    b.prescribed ? "" : "border-r border-dashed border-ps-border bg-[#FAFBFC]"
+                    b.prescribed ? "" : "border-r border-dashed border-ps-border bg-ps-bg"
                   }`}
                 >
                   <Amount paise={r.amounts[b.key] ?? 0} />

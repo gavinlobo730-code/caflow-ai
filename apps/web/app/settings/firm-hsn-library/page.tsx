@@ -392,7 +392,7 @@ export default function FirmHsnLibraryPage() {
                   {items.map((r) => {
                     const active = filter === "active";
                     return (
-                      <tr key={r.id} className={active ? "" : "bg-[#FAFAFA] text-ps-hint"}>
+                      <tr key={r.id} className={active ? "" : "bg-ps-bg text-ps-hint"}>
                         <td className="px-4 py-2.5">
                           <input
                             type="checkbox"

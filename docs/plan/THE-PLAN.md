@@ -255,6 +255,41 @@ So T3 is replace-and-migrate, not define.
 
 **T3-e, part 1 — the guard's one class-string assertion, restated.** `bank-entries-is-a-table.test.ts` was already component-named throughout except one test: *"the two ways out of an unanswerable line are the LARGEST controls in the modal"* asserted `text-xs` and `px-3 py-1.5` — and `text-xs` is this app's DEFAULT button size, so the assertion said *ordinary* while its own name said *largest*. It now parses every button's type step and vertical padding into ORDINALS and asserts the two escape hatches tie for the top and are never below it. **Measured, not claimed**: growing an unrelated button to `text-base py-4` passed the old guard 20/20 and fails the new one — the exact defect its name describes. A second bug fell out: the label cut took the last `>` in the chunk, which is inside `{t.credit_paise > 0 ? …}`, so *Find the invoice* read as `0 ? "invoice" : "bill"}` and the test reported an escape hatch missing.
 
+**T4, part 1 — the colours nobody chose, and the theme colour declared three
+times.** The hex ratchet counted `border-[#E2E8F0]` and nothing else, so a hex in
+a `style={{}}`, an SVG attribute or a prop default — the same literal, drifting
+the same way — matched nothing. **Measured 19 Sep: 60 of them in 8 files**, and
+the guard's own name is *a colour comes from the token file*. It has a second
+limb now (budget **46**, with five files allowlisted WITH their reason: the root
+error boundary, which renders when the stylesheet may not have loaded; the
+`<meta>` tag; the logo's SVG; a colour PICKER, where hex is the data; and a
+print stylesheet injected as a string).
+
+Two findings fell out of measuring it:
+
+* **Twenty literals sat within 3/255 per channel of a token** — a distance no
+  screen resolves, so nobody CHOSE them. Six near-whites (`#FAFBFC`, `#FAFBFD`,
+  `#FAFAFA`, `#FCFDFE`, `#FCFCFD` and `#EEF2F7`) where the token file holds two,
+  and `#FAFBFC` against `#FAFBFD` differ by **one** in blue. 16 collapsed onto
+  `bg-ps-bg` / `border-ps-muted`. **`#FCFDFE` and `#FCFCFD` deliberately did
+  not**: they are a band LIGHTER than `ps.bg`, used on GSTR-3B against a
+  `hover:bg-ps-bg` row, so collapsing them would make a row identical to its own
+  hover state — the system has no token for that step and inventing one is a
+  design decision.
+* **The browser chrome colour was declared three times, in two values, and one
+  declaration was dead.** `metadata.themeColor: "#2563EB"` (a generic blue this
+  product's brand is nowhere), a hand-written `<meta>` at `#0B1635`, and
+  `manifest.json` at `#0B1635` — while `ps.ink` is `#0D1635`. Next 14 moved
+  `themeColor` out of `metadata`, so that key was silently dropped and the built
+  page has only ever emitted one tag. All three now say `#0D1635`, verified in
+  the built HTML.
+
+**Still owner-held and now measured exactly: the rival indigo is 55 sites across
+7 files**, not the ~40 recorded earlier — `#4338CA` (18), `#C7D2FE` (12),
+`#EEF2FF` (8), `#3730A3` (7), `#E0E7FF` (5), `#6366F1` (5). Folding them into
+`brand` changes what three screens look like, so it is one decision rather than
+fifty-five.
+
 **Why two reference screens.** Banking Entries cannot prove the width rule —
 it is already full-bleed (`px-6`, no max-width) and has 6 columns against 12 on
 the invoice editor. The Trial Balance is 9 Dr/Cr columns inside `max-w-4xl`
