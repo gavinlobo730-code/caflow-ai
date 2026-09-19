@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, Download, FileText } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
@@ -44,14 +45,25 @@ export default function CoaExportPage() {
     try {
       const fid = await getFirmId();
       const sb = getSupabaseClient();
-      let query = sb
-        .from("chart_of_accounts")
-        .select("account_code, account_name, account_type, account_subtype, parent_group, sub_group, tax_category, schedule_iii_mapping, is_active")
-        .eq("firm_id", fid)
-        .is("client_id", null)
-        .order("account_code");
-      if (!includeArchived) query = query.eq("is_active", true);
-      const { data, error: err } = await query;
+      // This read IS the export: one CSV line per account, downloaded and
+      // opened in a spreadsheet. PostgREST caps a response at ~1000 rows and
+      // reports nothing when it does, so an unpaged read hands the CA a chart
+      // of accounts missing however many rows the cap removed — and the count
+      // shown beside the button would agree with the short file. A firm-level
+      // chart with per-client sub-ledgers reaches 1000 accounts.
+      //
+      // `.order("id")` is the unique tiebreaker selectAll's OFFSET paging needs
+      // for a stable total ordering; it does not have to be in the projection
+      // and is not exported, so the CSV's columns are unchanged.
+      const { data, error: err } = await selectAll(() => {
+        let query = sb
+          .from("chart_of_accounts")
+          .select("account_code, account_name, account_type, account_subtype, parent_group, sub_group, tax_category, schedule_iii_mapping, is_active")
+          .eq("firm_id", fid)
+          .is("client_id", null);
+        if (!includeArchived) query = query.eq("is_active", true);
+        return query.order("account_code").order("id");
+      });
       if (err) throw new Error(err.message);
       const rows = (data ?? []) as CoaRow[];
       setCount(rows.length);

@@ -3167,6 +3167,49 @@ have been eight Singapore-to-Mumbai round trips for one screen.
 `fy_bounds`, never restating April), which is what lets the pre-aggregated
 buckets answer exactly with no edge month to replay.
 
+**AND THE BROWSER'S PAGER IS `lib/supabase/selectAll.ts`, WHICH EXPORTS TWO OF
+THEM.** `selectAll` pages by OFFSET in widening waves (1, 2, 4, 4 … requests at
+a time) and `selectAllKeyset` pages by cursor — and WHICH to use is not a
+preference: with `.range()` Postgres must produce every row before the offset in
+order to skip it, and producing a row runs its embedded aggregate, so **a query
+that EMBEDS a related table runs that aggregate over the whole table on every
+page**. Measured on the Journal tab, 12,836 entries with lines embedded: 1,342 ms
+and 54,180 buffers per page against 32 ms and 15,758. Embed → keyset; no embed →
+`selectAll`, whose waves the sequential cursor cannot match.
+
+**AN OFFSET-PAGED READ NEEDS A UNIQUE TOTAL ORDERING, and the ordering a screen
+already had is usually not one.** Postgres guarantees nothing without an ORDER
+BY, and a NON-unique one — `invoice_date`, `account_name`, `client_name` — lets
+ties land either side of a page boundary, so a row can come back twice or never.
+The fix is a tiebreaker LAST, `.order("id")`, which need not be in the
+projection and so changes no exported column. `app/risks` (six reads),
+`app/accounting/receivables` and `app/accounting/coa-export` build a CSV
+straight from these reads and had none of this: `compliance_calendar` carries a
+row per obligation per client per period, so a 50-client book passes 1000 inside
+one year, and the file opened, looked complete, and was short by whatever the
+cap removed. `app/accounting/recurring` is paged too and is NOT one of them —
+its Export reads `templates` from the API and its PostgREST read feeds the
+account dropdowns — which the guard says rather than keeping one list by
+softening the claim. **The other 68 of the 102 files touching PostgREST still
+carry a read that is neither paged nor bounded**, and are left as a finding
+rather than swept: most are bounded in practice by one client or one month, a
+screen that truncates is at least a screen somebody is looking at, and a budget
+over 68 files is the shape that gets raised until it means nothing.
+
+⚠️ **THE FIRST ATTEMPT AT THIS WROTE A THIRD PAGER**, `lib/data/pageAll.ts`,
+because nothing grepped for what already existed — the mistake this file records
+at `/accounting/retainer` and warns about at `/gst/reconciliation`. It was the
+guard that found it, on its own first run. Two more spellings of that guard were
+tried and both fired on correct code: matching the NAME collides with
+`useDataTable.selectAllFiltered`, which ticks checkboxes and pages nothing, and
+matching a `.range(` near any loop collides with `lib/data/tasks.ts`, which
+pages by a CALLER-supplied offset. What distinguishes a hand-rolled pager is
+that the same code decides the offset AND loops over it, so
+`scripts/an-export-reads-every-row.test.ts` finds a loop's body by brace depth
+and looks for the paging call INSIDE it. Its two pager-invariant assertions are
+COUNTS rather than matches for the same reason: the module holds two pagers, and
+a negative control that broke one stayed green on the other's copy of the line.
+
 **Closing stock as at a date is the same shape, and it also carries a rule about
 WHICH COLUMN answers a dated question.** `public.stock_position_as_at`
 (migration 363) sums `inventory_stock_ledger`'s DELTAS to a date — one row per

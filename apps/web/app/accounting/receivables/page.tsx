@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
@@ -100,7 +101,9 @@ export default function ReceivablesAgingPage() {
       setFirmId(fid);
       // clients has no is_active column; its lifecycle field is `status`
       // (CHECK: active | inactive | archived).
-      const { data } = await sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("status", "active").order("client_name");
+      const { data } = await selectAll(() => sb.from("clients")
+        .select("id, client_name").eq("firm_id", fid).eq("status", "active")
+        .order("client_name").order("id"));
       setClients((data ?? []) as Client[]);
     }).catch(() => setError("Failed to load clients"));
   }, []);
@@ -113,9 +116,24 @@ export default function ReceivablesAgingPage() {
     const today = todayLocalISO();
 
     try {
-      let query = sb.from("fee_invoices").select("id, invoice_no, invoice_date, due_date, client_id, total_paise, status").eq("firm_id", firmId).neq("status", "Paid").neq("status", "paid");
-      if (selectedClientId !== "all") query = query.eq("client_id", selectedClientId);
-      const { data, error: err } = await query.order("invoice_date", { ascending: false });
+      // The ageing this builds is downloaded as a CSV, so the read must return
+      // every open invoice rather than PostgREST's first thousand — the cap is
+      // silent, and a receivables ageing short by a year of invoices is worse
+      // than no ageing, because somebody foots it. fee_invoices passes 1000 in
+      // under two years on a 50-client book.
+      //
+      // `.order("id")` after invoice_date is the unique TIEBREAKER selectAll's
+      // OFFSET paging needs: invoice_date is not unique, so without it two
+      // invoices sharing a date can shift across a page boundary and be
+      // duplicated or dropped. It does not change the displayed order — rows
+      // sharing a date had no defined order before either.
+      const { data, error: err } = await selectAll(() => {
+        let query = sb.from("fee_invoices")
+          .select("id, invoice_no, invoice_date, due_date, client_id, total_paise, status")
+          .eq("firm_id", firmId).neq("status", "Paid").neq("status", "paid");
+        if (selectedClientId !== "all") query = query.eq("client_id", selectedClientId);
+        return query.order("invoice_date", { ascending: false }).order("id");
+      });
 
       if (err) throw new Error(err.message);
       const invoices = (data ?? []) as FeeInvoice[];
