@@ -24,15 +24,51 @@ of those are blocked on a document a person has to fetch, not on code:
 that closes a finding. Its four states are not interchangeable — read
 `findings-status.md`'s header before quoting any number from it.
 
-**The redesign (THE-PLAN) is where the work now is.** T1, T2, T3 and T4 are
-done; T5 is in progress.
+**The redesign (THE-PLAN) is where the work now is, and its tracks are NOT
+level.** Counted off the plan's own item rows on 19 September rather than from
+memory — an earlier draft of this paragraph read *"T1, T2, T3 and T4 are done;
+T5 is in progress"*, which was wrong about three of those four and would have
+sent the next session straight past the one track everything downstream waits
+on:
+
+| track | state, by the plan's own rows |
+|---|---|
+| T1 — safety net | **7 of 7 done** |
+| T2 — demo data | 1 of 3; only T2-0, the 18 corrected GSTINs |
+| T3 — design system | 3 of 6 fully done. T3-c is 5 of 6, T3-e's guard is half built |
+| **T4 — token adoption** | **0 of 4, and it is the bottleneck** |
+| T5a — documents | 5 of 9 marked ✅. T5a-3's condition is in fact met — `invoice_pdf_service` imports `invoice_layout` and `email_service` imports `email_template` — so the row is simply unmarked, making it 6 in substance. T5a-5 is owner-blocked (§M) |
+| T5b — spreadsheets | 1 of 5; T5b-5, the one CSV writer |
+| T6 / T7 / T8 / V | not started. The plan marks T6 and T8 `BLOCKED on T4` |
+| T9 — backlog | effectively done; open + partial is **14**, was 49 |
+
+The plan's own critical path is **T1 → T3 → T4 → T6 → T8 → V**. T4 is
+unblocked today and nothing else on that path can start until it moves.
+
+Re-measured the same day, against the plan's own commands in its metrics
+section:
+
+| check | plan records | measured 19 Sep | target |
+|---|---|---|---|
+| hardcoded hex colours | 116 | **170** | 0 |
+| arbitrary font sizes | 405 | **379** | ~130 |
+| error boundaries | 65 | 65 | ≥ 14 |
+| Cloudflare redirect rules | 98 | 98 | ≤ 90 (cap 100) |
+| browser-side Excel writers | 7 | 7 | 0 |
+| backlog open + partial | 49 | **14** | ≤ 10 |
+
+**The hex count has gone UP, 116 → 170**, which is T4-a's own metric moving the
+wrong way while T4 sits unstarted. It is recorded here and deliberately not
+chased: finding where 54 literals came back is T4-a's first hour of work, not a
+checkpoint's.
 
 ---
 
 ## In flight
 
-**PR #567** — `claude/ca-platform-audit-roadmap-yuoad3`, two commits, open and
-green locally. Carries no migration.
+**PR #567 — merged**, as `0485c88a`. Two commits, no migration. Recorded here
+because this section read "open and green locally" when it was written, an hour
+before the merge.
 
 1. **Three export screens read only the first 1000 rows.** PostgREST's
    `db-max-rows` cap is silent, so a risk report and a receivables ageing were
@@ -70,14 +106,20 @@ Nothing else is waiting on anybody.
 
 ## What is next, in order
 
-1. **T5b-1 + T5b-3** once the scope question is answered. A shared workbook
+1. **T4 — token adoption.** The critical path, unblocked, and the only track
+   whose own metric is moving backwards (hex 116 → 170). T4-a is the codemod
+   over the hex literals, T4-b the judgement pass over the 8,234 named-colour
+   utilities, T4-c the type-size codemod, T4-d the width sweep. **T6 and T8 are
+   marked `BLOCKED on T4` in the plan**, so this is what unblocks the rest of
+   the redesign.
+2. **T5b-1 + T5b-3** once the scope question is answered. A shared workbook
    module with no caller would be the `capital_wip` shape this file keeps
-   recording, so the two land together.
-2. **T5b-4** — `shareToPortal` writes to storage from the browser, so `rbac()`
+   recording, so the two land together. Parallel with T4 — different files.
+3. **T5b-4** — `shareToPortal` writes to storage from the browser, so `rbac()`
    never runs.
-3. **T6** — navigation and the module hub, which is also where the one
-   `deferred_to_the_redesign` finding is answered.
-4. **The 68 remaining unpaged PostgREST reads.** Recorded, deliberately not
+4. **T6** — navigation and the module hub, which is also where the one
+   `deferred_to_the_redesign` finding is answered. Not before T4.
+5. **The 68 remaining unpaged PostgREST reads.** Recorded, deliberately not
    swept: most are bounded in practice by one client or one month, and a budget
    over 68 files is the shape that gets raised until it means nothing. Worth
    revisiting per-screen when each is next touched.
