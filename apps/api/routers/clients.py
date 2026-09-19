@@ -12,6 +12,7 @@ from datetime import date
 from services.audit_service import log_event
 from services.internal_client_service import assert_can_view_client
 from core.authz import effective_client_ids, can_access_client
+from core.ist_clock import ist_today
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -203,7 +204,7 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
 
     open_tasks = [t for t in client_tasks if t.get("status") != "completed"]
     completed_tasks = [t for t in client_tasks if t.get("status") == "completed"]
-    today_iso = date.today().isoformat()
+    today_iso = ist_today().isoformat()
 
     upcoming = sorted(open_compliance, key=lambda t: t.get("due_date", ""))[:5]
 

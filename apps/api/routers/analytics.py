@@ -7,6 +7,7 @@ from repositories.invoice_repository import invoice_repo
 from repositories.engagement_repository import engagement_repo
 from repositories.user_repository import user_repo
 from repositories.client_repository import client_repo
+from core.ist_clock import ist_today
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -17,7 +18,7 @@ def _get_db():
 
 
 def _period_range(period: str) -> tuple[str, str, str]:
-    today = date.today()
+    today = ist_today()
     if period == "week":
         start = today - timedelta(days=today.weekday())
         label = f"Week of {start.strftime('%d %b %Y')}"
@@ -40,7 +41,7 @@ def team_analytics(
     firm_id = current_user.get("firm_id")
     db = _get_db()
     date_from, date_to, label = _period_range(period)
-    today = date.today().isoformat()
+    today = ist_today().isoformat()
 
     # All users in firm
     users_result = db.table("users").select("id, full_name, email, role").eq("firm_id", firm_id).execute()
@@ -129,7 +130,7 @@ def client_analytics(
     firm_id = current_user.get("firm_id")
     db = _get_db()
     date_from, date_to, label = _period_range(period)
-    today = date.today().isoformat()
+    today = ist_today().isoformat()
 
     # Guardrail G2: exclude the internal practice client from analytics.
     clients_result = db.table("clients").select("id, client_name").eq("firm_id", firm_id).eq("is_internal", False).execute()
@@ -207,7 +208,7 @@ def firm_analytics(
     firm_id = current_user.get("firm_id")
     db = _get_db()
     date_from, date_to, label = _period_range(period)
-    today = date.today().isoformat()
+    today = ist_today().isoformat()
 
     # Bounded to the period, not the firm's entire task history (same pattern
     # already used correctly by team_analytics above) — completed tasks from

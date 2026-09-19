@@ -25,6 +25,7 @@ import logging
 import os
 from datetime import date, datetime, timezone
 from typing import Optional
+from core.ist_clock import ist_today
 
 logger = logging.getLogger("caflow.jobs")
 
@@ -63,7 +64,7 @@ def _get_db():
 
 
 def _already_ran_today(job_name: str, firm_id: Optional[str]) -> bool:
-    today = date.today().isoformat()
+    today = ist_today().isoformat()
     if _USE_MOCK:
         return any(
             r["job_name"] == job_name and r["run_date"] == today
@@ -108,7 +109,7 @@ def _log_run(job_name: str, firm_id: Optional[str], status: str, detail: dict,
     """
     record = {
         "job_name": job_name,
-        "run_date": date.today().isoformat(),
+        "run_date": ist_today().isoformat(),
         "firm_id": firm_id,
         "status": status,
         "detail": detail,
@@ -310,7 +311,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 outcome = generate_due(fid, financial_year=current_fy)
                 gen_detail["current_fy"] = outcome
                 # Roll forward near FY end (31 Mar) so next-FY periods pre-exist.
-                if date.today().month in (1, 2, 3):
+                if ist_today().month in (1, 2, 3):
                     # Match _current_fy()'s format, e.g. "2026-27".
                     start = int(current_fy[:4]) + 1
                     next_fy = f"{start}-{str(start + 1)[2:]}"
@@ -485,7 +486,7 @@ def _all_runs_today() -> list[dict]:
     firm_id is selected because _pending_jobs_today() needs to know WHICH firm a
     success belongs to, not merely that some firm succeeded — see its docstring.
     """
-    today = date.today().isoformat()
+    today = ist_today().isoformat()
     if _USE_MOCK:
         return [r for r in _MOCK_RUNS if r.get("run_date") == today]
     try:

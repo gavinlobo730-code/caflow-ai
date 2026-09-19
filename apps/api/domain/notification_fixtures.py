@@ -33,8 +33,9 @@ WHAT IS LEFT IS USED, AND THE RECORDED BELIEF ABOUT IT WAS WRONG TWICE
 from datetime import date, timedelta, datetime
 from typing import Optional
 import uuid
+from core.ist_clock import ist_today
 
-today = date.today()
+today = ist_today()
 
 MOCK_NOTIFICATIONS: list[dict] = [
     {

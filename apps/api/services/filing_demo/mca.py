@@ -33,6 +33,7 @@ from datetime import date
 from services import year_end_financial_service
 from services.compliance_engine import MCA_AGM_OFFSET_DAYS, mca_due_date
 from services.filing_demo import common
+from core.ist_clock import ist_today
 
 # Companies Act 2013 — the ROC ANNUAL forms, the only ones this demo covers:
 #   AOC-4   §137 — financial statements, within 30 days of the AGM
@@ -201,7 +202,7 @@ def _overdue_warning(form_type: str, agm_date_iso: str):
     if offset_form not in MCA_AGM_OFFSET_DAYS:
         return None
     due = mca_due_date(agm, offset_form)
-    if date.today() <= due:
+    if ist_today() <= due:
         return None
 
     if form_type == "ADT-1":

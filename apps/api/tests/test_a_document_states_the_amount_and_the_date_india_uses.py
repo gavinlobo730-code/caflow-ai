@@ -107,7 +107,12 @@ def test_the_formatter_is_right_about_a_negative():
 _NAIVE = re.compile(r"\b(?:datetime\.now\(\)|date\.today\(\))")
 
 #: EXACT. Lower it as sites are read and moved; never raise it.
-NAIVE_CLOCK_READS = 58
+#: Reached NIL on 19 September 2026 — all 58 read one at a time and moved to
+#: `core.ist_clock`, with the two kinds told apart: a date answering "what day
+#: is it for the CA" takes `ist_today()`, and a timestamp recording when
+#: something happened takes an AWARE datetime. Nil is not a reason to delete
+#: this file; it is what makes the next regression fail here.
+NAIVE_CLOCK_READS = 0
 
 
 def _naive_sites() -> list[str]:
@@ -133,8 +138,38 @@ def test_no_new_naive_clock_read():
 
 
 def test_the_probe_still_sees_naive_reads():
-    """A regex that matched nothing would pass the ratchet for ever."""
-    assert len(_naive_sites()) >= 10, "the naive-clock probe has stopped working"
+    """A regex that matched nothing would pass the ratchet for ever.
+
+    This used to assert the tree CONTAINED at least ten naive reads, which
+    proved the probe worked only for as long as the defect survived. The
+    budget reached nil on 19 September and the check failed — and the
+    tempting move at that point is to delete it, leaving the probe with
+    nothing holding it up at the exact moment it has nothing to find.
+
+    So the proof is now independent of the tree: the probe is shown a source
+    string that carries each naive form and must find all of them.
+    """
+    sample = (
+        "import datetime\n"
+        "x = date.today()\n"
+        "y = datetime.now()\n"
+        "z = (date.today() - timedelta(days=1)).isoformat()\n"
+        "w = datetime.now().strftime('%Y')\n"
+    )
+    assert len(_NAIVE.findall(sample)) == 4, (
+        "the naive-clock probe no longer recognises its own examples"
+    )
+    # And it must NOT flag the two correct forms, or the ratchet would demand
+    # a budget for code that is already right.
+    correct = (
+        "a = ist_today()\n"
+        "b = ist_now()\n"
+        "c = datetime.now(timezone.utc)\n"
+        "d = datetime.now(IST)\n"
+    )
+    assert _NAIVE.findall(correct) == [], (
+        f"the probe flags a correct clock read: {_NAIVE.findall(correct)}"
+    )
 
 
 def test_the_year_end_pack_is_dated_in_ist():

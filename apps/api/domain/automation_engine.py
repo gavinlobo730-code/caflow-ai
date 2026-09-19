@@ -6,9 +6,10 @@ Rules are evaluated when trigger events occur.
 from datetime import date, timedelta, datetime
 from typing import Optional
 import uuid
+from core.ist_clock import ist_today
 
 
-today = date.today()
+today = ist_today()
 
 MOCK_AUTOMATION_RULES: list[dict] = [
     {

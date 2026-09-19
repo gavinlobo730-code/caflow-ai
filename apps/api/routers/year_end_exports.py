@@ -27,6 +27,7 @@ from services.audit_service import log_event
 # metadata leak. Delegates to year_end.py's own _assert_engagement_scope
 # rather than a sixth copy of the same check.
 from routers.year_end import _assert_engagement_scope
+from core.ist_clock import ist_now
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -246,7 +247,7 @@ def export_financial_statements(
         raise HTTPException(status_code=422, detail=str(e))
 
     pdf_bytes = generate_financial_statements_pdf(_with_firm_name(eng), statements)
-    filename  = f"financial_statements_{engagement_id[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    filename  = f"financial_statements_{engagement_id[:8]}_{ist_now().strftime('%Y%m%d_%H%M%S')}.pdf"
 
     record = _upload_and_record(
         db, eng, "financial_statements", pdf_bytes, filename,
@@ -292,7 +293,7 @@ def export_notes(
     db = get_supabase()
     notes = _get_notes_data(db, engagement_id, current_user["firm_id"])
     pdf_bytes = generate_notes_pdf(_with_firm_name(eng), notes)
-    filename  = f"notes_{engagement_id[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    filename  = f"notes_{engagement_id[:8]}_{ist_now().strftime('%Y%m%d_%H%M%S')}.pdf"
 
     record = _upload_and_record(
         db, eng, "notes", pdf_bytes, filename,
@@ -350,7 +351,7 @@ def export_complete_pack(
     notes       = _get_notes_data(db, engagement_id, current_user["firm_id"])
     adjustments = _get_adjustments_data(db, engagement_id, current_user["firm_id"])
     pdf_bytes   = generate_complete_pack_pdf(_with_firm_name(eng), statements, notes, adjustments)
-    filename    = f"complete_pack_{engagement_id[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    filename    = f"complete_pack_{engagement_id[:8]}_{ist_now().strftime('%Y%m%d_%H%M%S')}.pdf"
 
     record = _upload_and_record(
         db, eng, "complete_pack", pdf_bytes, filename,

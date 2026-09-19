@@ -20,6 +20,7 @@ from core.validators import validate_pan, validate_gstin
 from services.timeline_service import timeline_service
 from services.audit_service import log_event
 from models.fy import FYLabel, OptionalFYLabel
+from core.ist_clock import ist_today
 
 _logger = logging.getLogger("caflow.lifecycle")
 
@@ -1830,7 +1831,7 @@ def create_renewal(
     db = _db()
     now = datetime.now(timezone.utc).isoformat()
     # renewals.renewal_date is NOT NULL — default to 1 year from today if not provided
-    renewal_date = data.renewal_date or (date.today() + timedelta(days=365)).isoformat()
+    renewal_date = data.renewal_date or (ist_today() + timedelta(days=365)).isoformat()
     db_status = _RENEWAL_STATUS_MAP.get(data.status, "pending")
 
     row = {

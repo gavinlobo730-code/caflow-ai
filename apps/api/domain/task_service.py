@@ -6,6 +6,7 @@ from core.permissions import require_permission
 from core.exceptions import NotFoundError, ValidationError
 from services.task_service import is_valid_transition
 from services.activity_service import log_activity
+from core.ist_clock import ist_today
 
 
 class TaskDomainService:
@@ -20,7 +21,7 @@ class TaskDomainService:
     def get_dashboard_summary(self, firm_id: Optional[str] = None) -> dict:
         from datetime import date, timedelta
         from domain.compliance_record_service import compliance_record_service
-        today = date.today()
+        today = ist_today()
         today_str = today.isoformat()
         week_end = (today + timedelta(days=7)).isoformat()
 

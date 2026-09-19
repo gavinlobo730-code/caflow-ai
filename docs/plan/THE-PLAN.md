@@ -49,7 +49,7 @@ _Last updated: 2026-09-16_
 | **T2** | A demo firm that exists | 🔧 C | 2–3d | `DOING` — T2-0 done |
 | **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `DOING` — T3-a, T3-b, T3-f done; T3-c 5 of 6 (money cell, Dr/Cr, gap callout, period picker, refusal banner) 19 Sep |
 | **T4** | Token adoption | 🔧 C | 5–8d | `DOING` — colour 10,146 → 116, type 2,265 → 405 |
-| **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `DOING` — T5a-6 and T5a-7 done 19 Sep (both were live bugs) |
+| **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `DOING` — T5a-4, T5a-4b, T5a-6, T5a-7, T5a-8 done 19 Sep; T5a-5 blocked on an owner licence decision (§M) |
 | **T6** | Navigation + the hub | 🔧 C | 11–17d | `BLOCKED` on T4 |
 | **T7** | Analytics & AI | 🔧 C | 3 layers | `BLOCKED` on T3 |
 | **T8** | The portals | 🔧 C | 8–12d | `BLOCKED` on T4 |
@@ -405,7 +405,22 @@ as written.
   across 15 services moved — the due-date countdown, the dates generated
   documents take, the windows statements cover — leaving **58** behind a ratchet,
   because a log timestamp may legitimately be UTC and telling the two apart is a
-  read of each site rather than a sweep.
+  read of each site rather than a sweep. ✅ **Those 58 are now nil**, read one
+  at a time on 19 Sep. The dates that decide something rather than display it:
+  the compliance calendar's own **default FINANCIAL YEAR** (opened at 02:00 IST
+  on 1 April it resolved to the year that closed the night before, so every
+  obligation and every due date was the wrong year's), a journal's default
+  **`entry_date`**, an engagement letter's own date, **`rate_date`** on a
+  foreign-currency document (CGST Rule 34 fixes the rate at the time of supply),
+  whether an MCA form is overdue, and the name of the **current month**.
+  `routers/workload.py` also read the clock TWICE in one expression to find this
+  week's Monday. The two `computed_at` on the intelligence responses were a
+  different bug — naive, so no offset, so a browser read UTC as local and showed
+  a time five and a half hours behind. **The scheduler's `run_date` changes
+  meaning** and the commit says so. And the ratchet's vacuity proof had to be
+  restated: it asserted the TREE contained ten naive reads, which held only
+  while the defect did, so it now shows the probe its own examples and requires
+  it to reject the four correct forms.
 
 **⚠️ Do NOT put firm branding on the sales invoice, payslip or statement.**
 Three separately-fixed bugs are pinned by tests and written into the code as

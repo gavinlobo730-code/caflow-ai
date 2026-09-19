@@ -45,6 +45,7 @@ from core.permissions import rbac
 from core.observability import capture_soft_failure
 from core.authz import filter_by_client, assert_client_access, can_access_client, effective_client_ids
 from services.timeline_service import timeline_service
+from core.ist_clock import ist_today
 
 router = APIRouter(prefix="/api/health", tags=["health"])
 
@@ -155,7 +156,7 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
     Returns the first matching override key, or None.
     Integer date arithmetic only.
     """
-    today = date.today()
+    today = ist_today()
 
     # 1. Government notice with response deadline missed. F5 fix: this read a
     # nonexistent "notices" table with invented column/status names — the real
@@ -284,7 +285,7 @@ def _dim_compliance_health_db(db, client_id: str, firm_id: str) -> int:
         overdue_returns = (db.table("compliance_records").select("id")
                            .eq("firm_id", firm_id).eq("client_id", client_id)
                            .not_.in_("status", ["Filed", "Completed"])
-                           .lt("due_date", date.today().isoformat()).execute().data or [])
+                           .lt("due_date", ist_today().isoformat()).execute().data or [])
         score -= len(overdue_returns) * 25
     except Exception as exc:
         capture_soft_failure(exc, operation="health.dim_compliance_health_db.1", firm_id=firm_id, client_id=client_id)
@@ -319,7 +320,7 @@ def _dim_accounting_quality_db(db, client_id: str, firm_id: str) -> int:
       -20 if unclosed accounting periods exist
     """
     score = 100
-    today = date.today()
+    today = ist_today()
 
     try:
         cutoff_30 = (today - timedelta(days=30)).isoformat()
@@ -343,7 +344,7 @@ def _dim_work_progress_db(db, client_id: str, firm_id: str) -> int:
     Start 100, -15 per overdue work item, -10 per at-risk item (within 3 days of due).
     """
     score = 100
-    today = date.today()
+    today = ist_today()
     at_risk_cutoff = (today + timedelta(days=3)).isoformat()
 
     # F5 fix: "work_items" never existed — work lives in tasks (migration 002;
@@ -410,7 +411,7 @@ def _dim_open_notices_db(db, client_id: str, firm_id: str) -> int:
       > 30 days → -15
     """
     score = 100
-    today = date.today()
+    today = ist_today()
 
     try:
         notices = db.table("government_notices").select("id, response_due_date").eq("firm_id", firm_id).eq("client_id", client_id).in_("status", ["open", "in_progress"]).execute().data or []
@@ -445,7 +446,7 @@ def _dim_client_responsiveness_db(db, client_id: str, firm_id: str) -> int:
       -10 per document request outstanding > 7 days
     """
     score = 100
-    today = date.today()
+    today = ist_today()
 
     try:
         cutoff_14 = (today - timedelta(days=14)).isoformat()
@@ -609,7 +610,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
     Real dimension detail factors from DB.
     Returns list of {label, impact, action_label, action_url}.
     """
-    today = date.today()
+    today = ist_today()
     factors: list[dict] = []
 
     if dimension == "compliance_health":

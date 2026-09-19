@@ -5,8 +5,9 @@ Provider-swappable: mock | aws_textract | google_docai | azure_formrec | claude_
 """
 from datetime import date, timedelta
 from typing import Optional
+from core.ist_clock import ist_today
 
-today = date.today()
+today = ist_today()
 
 # ---------------------------------------------------------------------------
 # Seed mock data
