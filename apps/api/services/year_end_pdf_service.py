@@ -21,6 +21,8 @@ from reportlab.platypus import (
     Paragraph, Spacer, PageBreak, HRFlowable,
 )
 
+from services import pdf_style
+
 # ── Indian number formatting ──────────────────────────────────────────────────
 from core.ist_clock import ist_now
 from domain.firm.letterhead import generated_note, prepared_by
@@ -52,14 +54,23 @@ _format_indian = group_indian_rupees
 
 # ── Colour palette ────────────────────────────────────────────────────────────
 
-_HEADER_BG   = colors.HexColor("#1a3c5e")   # Navy blue — CA firm theme
-_SUBHEAD_BG  = colors.HexColor("#2e6da4")
-_ALT_ROW_BG  = colors.HexColor("#f0f4f8")
-_TOTAL_BG    = colors.HexColor("#dce8f5")
-_WHITE       = colors.white
-_BLACK       = colors.black
-_GREY        = colors.HexColor("#666666")
-_DRAFT_RED   = colors.HexColor("#cc0000")
+# These are `services/pdf_style`'s, the one palette every document shares.
+# This pack used to have its own: a #1a3c5e navy header where the invoice and
+# the payslip used #1f2937 and the statement #0F172A — four header colours
+# across six documents, and the navy was on the SIGNED set, the one with the
+# most authority and the furthest from everything else.
+#
+# THREE CONSTANTS WENT RATHER THAN MOVED, because nothing read them:
+# `_SUBHEAD_BG` (#2e6da4), `_BLACK` and `_DRAFT_RED` (#cc0000). The last is the
+# one worth naming — a constant called DRAFT_RED reads as though this pack
+# stamps a draft, and it never has. A declared colour nobody reads is a claim
+# about the document that is not true.
+_HEADER_BG   = pdf_style.C_INK
+_ALT_ROW_BG  = pdf_style.C_PAGE_BG       # the zebra stripe
+_TOTAL_BG    = pdf_style.C_MUTED         # the band under a total
+_WHITE       = pdf_style.C_WHITE
+_GREY        = pdf_style.C_HINT          # captions, the date line, "as at"
+_RULE        = pdf_style.C_BORDER_STRONG  # the table grid, which is not text
 
 PAGE_W, PAGE_H = A4
 
@@ -122,7 +133,7 @@ def _table_style(has_total_row: bool = False) -> TableStyle:
         ("FONTSIZE",     (0, 1), (-1, -1), 9),
         ("ALIGN",        (1, 1), (-1, -1), "RIGHT"),
         ("ALIGN",        (0, 1), (0, -1), "LEFT"),
-        ("GRID",         (0, 0), (-1, -1), 0.4, _GREY),
+        ("GRID",         (0, 0), (-1, -1), 0.4, _RULE),
         ("TOPPADDING",   (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
         ("LEFTPADDING",  (0, 0), (-1, -1), 6),

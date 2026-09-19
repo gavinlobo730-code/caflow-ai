@@ -24,6 +24,8 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
+from services import pdf_style
+
 from services.invoice_pdf_service import _load_firm, _paise_to_rupee_str
 from services.pdf_page_furniture import numbered
 
@@ -46,7 +48,7 @@ def build_reconciliation_pdf(report: dict, firm: dict) -> bytes:
     styles = getSampleStyleSheet()
     h = ParagraphStyle("h", parent=styles["Title"], fontSize=16, spaceAfter=2)
     sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=9,
-                         textColor=colors.HexColor("#64748B"))
+                         textColor=pdf_style.C_HINT)
     small = ParagraphStyle("small", parent=styles["Normal"], fontSize=9)
     elems = []
 
@@ -104,10 +106,9 @@ def build_reconciliation_pdf(report: dict, firm: dict) -> bytes:
         ("FONTNAME", (0, 4), (-1, 4), "Helvetica-Bold"),
         ("FONTNAME", (0, 5), (-1, 5), "Helvetica-Bold"),
         ("FONTNAME", (0, 6), (-1, 6), "Helvetica-Bold"),
-        ("LINEABOVE", (0, 4), (-1, 4), 0.5, colors.HexColor("#94A3B8")),
-        ("LINEABOVE", (0, 6), (-1, 6), 0.5, colors.HexColor("#94A3B8")),
-        ("BACKGROUND", (0, 6), (-1, 6),
-         colors.HexColor("#DCFCE7") if summary["reconciles"] else colors.HexColor("#FEE2E2")),
+        pdf_style.subtotal_rule(4),
+        pdf_style.subtotal_rule(6),
+        pdf_style.verdict_fill(6, bool(summary["reconciles"])),
         ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     elems.append(tie)
@@ -167,15 +168,14 @@ def build_reconciliation_pdf(report: dict, firm: dict) -> bytes:
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("LINEABOVE", (0, len(brs_rows) - (3 if brs.get("statement_balance_paise") is not None else 1)),
              (-1, len(brs_rows) - (3 if brs.get("statement_balance_paise") is not None else 1)),
-             0.5, colors.HexColor("#94A3B8")),
+             0.5, pdf_style.C_HINT),
             ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ]
         if brs.get("statement_balance_paise") is not None:
             brs_style.append(("FONTNAME", (0, len(brs_rows) - 3), (-1, len(brs_rows) - 1),
                               "Helvetica-Bold"))
-            brs_style.append((
-                "BACKGROUND", (0, len(brs_rows) - 1), (-1, len(brs_rows) - 1),
-                colors.HexColor("#DCFCE7") if brs.get("agrees") else colors.HexColor("#FEE2E2")))
+            brs_style.append(
+                pdf_style.verdict_fill(len(brs_rows) - 1, bool(brs.get("agrees"))))
         else:
             brs_style.append(("FONTNAME", (0, len(brs_rows) - 1), (-1, len(brs_rows) - 1),
                               "Helvetica-Bold"))
@@ -202,15 +202,8 @@ def build_reconciliation_pdf(report: dict, firm: dict) -> bytes:
                 _amount(t.get("debit_paise")), _amount(t.get("credit_paise")),
             ])
         table = Table(rows, colWidths=[22 * mm, 82 * mm, 30 * mm, 22 * mm, 22 * mm], repeatRows=1)
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("ALIGN", (3, 0), (-1, -1), "RIGHT"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FAFAFA")]),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E2E8F0")),
-            ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ]))
+        table.setStyle(TableStyle(pdf_style.data_table_style(
+            font_size=8, padding=3, right_align_from=3)))
         elems.append(table)
         elems.append(Spacer(1, 10))
 

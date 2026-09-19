@@ -72,6 +72,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing
 
+from services import pdf_style
+
 from domain.branding.invoice_layout import DEFAULT_LAYOUT, InvoiceLayout, layout_from_row
 
 logger = logging.getLogger("caflow.services")
@@ -669,7 +671,11 @@ def _render_tax_invoice(
         title=f"Tax Invoice {invoice.get('invoice_no', '')}",
     )
     styles = getSampleStyleSheet()
-    small = ParagraphStyle("small", parent=styles["Normal"], fontSize=8, textColor=colors.grey)
+    # `ps.label`, not reportlab's stock grey. #808080 at 8pt is 3.95:1 on
+    # white — below WCAG 1.4.3's 4.5:1 — and this style carries the Rule 46
+    # citation, the branding footer and the bank details a customer pays into.
+    small = ParagraphStyle("small", parent=styles["Normal"], fontSize=8,
+                           textColor=pdf_style.C_LABEL)
     bold = ParagraphStyle("bold", parent=styles["Normal"], fontName="Helvetica-Bold")
     cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, leading=10)
 
@@ -688,7 +694,9 @@ def _render_tax_invoice(
         story.append(Spacer(1, 3 * mm))
     story.append(Paragraph("TAX INVOICE", ParagraphStyle(
         "title", parent=styles["Title"], fontSize=16, spaceAfter=2,
-        textColor=accent or colors.black)))
+        # The firm's OWN branding colour wins here and must: this is a document
+        # the firm issues to its customer. `ps.ink` is only the fallback.
+        textColor=accent or pdf_style.C_INK)))
     story.append(Paragraph("(Issued under Section 31, CGST Act 2017 read with Rule 46, CGST Rules 2017)", small))
     # The tagline is the one thing a header style removes, and it is not a
     # Rule 46 particular — see LAYOUT_NEVER_CHANGES_PARTICULARS.
@@ -800,12 +808,16 @@ def _render_tax_invoice(
         rows.append(_summary_row(n_cols, label, value))
 
     style = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTNAME", (1, -1), (-1, -1), "Helvetica-Bold"),
+        ("BACKGROUND", (0, 0), (-1, 0), pdf_style.C_INK),
+        ("TEXTCOLOR", (0, 0), (-1, 0), pdf_style.C_WHITE),
+        ("FONTNAME", (0, 0), (-1, 0), pdf_style.FONT_BOLD),
+        ("FONTNAME", (1, -1), (-1, -1), pdf_style.FONT_BOLD),
         ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        # `ps.border-strong`, which is LIGHTER than the stock #808080 it
+        # replaces, deliberately: a mid-grey grid is heavier than any rule
+        # anywhere else in this product and competes with the figures it is
+        # meant to separate.
+        ("GRID", (0, 0), (-1, -1), 0.5, pdf_style.C_BORDER_STRONG),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),

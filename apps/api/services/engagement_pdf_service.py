@@ -14,6 +14,8 @@ NO arithmetic on amounts — it only typesets the already-rendered HTML.
 import io
 import logging
 
+from services import pdf_style
+
 logger = logging.getLogger("caflow.services")
 
 
@@ -46,13 +48,13 @@ _WRAPPER = """<!DOCTYPE html>
                            left: 2cm; right: 2cm; bottom: 1cm; height: 1cm; }}
   }}
   body {{ font-family: Helvetica, Arial, sans-serif; font-size: 11pt;
-          color: #1a1a1a; line-height: 1.5; }}
+          color: {body_ink}; line-height: 1.5; }}
   h2 {{ font-size: 16pt; margin: 0 0 12pt 0; }}
   h3 {{ font-size: 12pt; margin: 14pt 0 4pt 0; }}
   ul {{ margin: 4pt 0 8pt 18pt; }}
   li {{ margin: 2pt 0; }}
   p  {{ margin: 6pt 0; }}
-  #pageFooter {{ text-align: right; font-size: 7.5pt; color: #737373; }}
+  #pageFooter {{ text-align: right; font-size: 7.5pt; color: {footer_ink}; }}
 </style>
 </head>
 <body>
@@ -71,7 +73,15 @@ def render_engagement_pdf(content_html: str, engagement_number: str) -> tuple[by
     """
     from xhtml2pdf import pisa  # lazy import — keeps app start-up light
 
-    document = _WRAPPER.format(body=_pdf_safe(content_html))
+    # The colours come from services/pdf_style, the one palette every document
+    # in this product shares. This letter used #1a1a1a body and #737373 footer
+    # — two more greys in a set that already had three, and neither was a
+    # colour anybody had reasoned about.
+    document = _WRAPPER.format(
+        body=_pdf_safe(content_html),
+        body_ink=pdf_style.BODY,
+        footer_ink=pdf_style.HINT,
+    )
     buf = io.BytesIO()
     result = pisa.CreatePDF(src=document, dest=buf, encoding="utf-8")
     if result.err:

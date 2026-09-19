@@ -21,6 +21,8 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
+from services import pdf_style
+
 from domain.reporting.amount_words import amount_in_words
 from domain.reporting.pdf_money import rupees_paise
 from services.pdf_page_furniture import numbered
@@ -276,7 +278,11 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
         title=f"Payslip {period_label}",
     )
     styles = getSampleStyleSheet()
-    small = ParagraphStyle("small", parent=styles["Normal"], fontSize=8, textColor=colors.grey)
+    # `ps.label`. Reportlab's stock grey is #808080 — 3.95:1 on white, below
+    # WCAG 1.4.3 — and this style carries the employer's registration numbers
+    # and the "computer-generated" note.
+    small = ParagraphStyle("small", parent=styles["Normal"], fontSize=8,
+                           textColor=pdf_style.C_LABEL)
     bold = ParagraphStyle("bold", parent=styles["Normal"], fontName="Helvetica-Bold")
 
     story = []
@@ -393,12 +399,12 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
 
     earnings = Table(earning_rows, colWidths=[120 * mm, 60 * mm], repeatRows=1)
     earnings.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+        ("BACKGROUND", (0, 0), (-1, 0), pdf_style.C_INK),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("GRID", (0, 0), (-1, -1), 0.5, pdf_style.C_BORDER_STRONG),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
@@ -411,12 +417,12 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
 
     deductions = Table(deduction_rows, colWidths=[120 * mm, 60 * mm], repeatRows=1)
     deductions.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+        ("BACKGROUND", (0, 0), (-1, 0), pdf_style.C_INK),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("GRID", (0, 0), (-1, -1), 0.5, pdf_style.C_BORDER_STRONG),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
@@ -433,12 +439,12 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
                               _paise_to_rupee_str(employer_total)])
         contributions = Table(employer_rows, colWidths=[120 * mm, 60 * mm], repeatRows=1)
         contributions.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+            ("BACKGROUND", (0, 0), (-1, 0), pdf_style.C_INK),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
             ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("GRID", (0, 0), (-1, -1), 0.5, pdf_style.C_BORDER_STRONG),
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]))
@@ -458,7 +464,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
         colWidths=[120 * mm, 60 * mm],
     )
     net.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#065f46")),
+        ("BACKGROUND", (0, 0), (-1, -1), pdf_style.C_READY),
         ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
         ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 11),
@@ -491,12 +497,12 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
         ]
         ytd_table = Table(ytd_rows, colWidths=[120 * mm, 60 * mm], repeatRows=1)
         ytd_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+            ("BACKGROUND", (0, 0), (-1, 0), pdf_style.C_INK),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
             ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("GRID", (0, 0), (-1, -1), 0.5, pdf_style.C_BORDER_STRONG),
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]))

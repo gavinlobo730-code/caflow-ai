@@ -4334,6 +4334,65 @@ declare purpose code 102.
 - So: convert at the point of reporting. When you show a raw query result or edit a cron line, say which zone that value is in, since the stored value stays UTC.
 - Worked example: the daily sweep is nominally 06:00 IST = 00:30 UTC. A run recorded as `2026-08-18 01:36+00` is reported as "07:06 IST" — and that hour of drift is GitHub cron lateness under load, which is what the catch-up in jobs/ exists to absorb.
 
+## PDFs — one palette, and it is the product's
+
+`apps/api/services/pdf_style.py` is the only place a PDF colour is decided, and
+its values are the `ps.*` and `state.*` tokens in
+`apps/web/tailwind.config.ts` — the one palette in this repository with a
+recorded contrast audit behind it.
+
+**IT REPLACED FOUR HEADER COLOURS ACROSS SIX DOCUMENTS**: `#0F172A` on the bank
+reconciliation and the customer statement, `#1f2937` on the sales invoice and
+the payslip, **`#1a3c5e` navy on the year-end pack — the set a CA SIGNS**, and
+`#1a1a1a` on the engagement letter, with three body greys beside them. A
+practice printing all four in one morning got four documents that looked like
+four products, and the one with the most authority was furthest off.
+
+**TWO OF THE CHANGES ARE CONTRAST FIXES, NOT CONSISTENCY.** The invoice's and
+the payslip's `small` style was reportlab's stock `colors.grey` — **#808080,
+3.95:1 on white at 8pt**, below WCAG 1.4.3 — and it carries the Rule 46
+citation, the bank details a customer pays into and the employer's PF and ESI
+numbers. The reconciliation drew its tie-out rule in **#94A3B8**, which is the
+value `tailwind.config.ts` records moving the hint step OFF at 2.56:1, below
+even 1.4.11's 3:1 for a non-text component; `subtotal_rule` is DARKER than what
+it replaced, because that line is the one mark saying which figures are being
+added and it has to survive a laser printer.
+
+**MAPPING IS BY ROLE, NEVER BY NEAREST HEX.** A "this reconciles" fill is a
+READY SURFACE (`state.ready-surface`, #ECFDF5); matching on proximity would
+have chosen `state.ready-hover`, which happens to be the #DCFCE7 that was there
+and means *a ready row under the cursor* — something a printed page does not
+have. A test asserts that specific wrong answer is not taken.
+
+**IT CHANGES NO FONT SIZE AND NO COLUMN WIDTH.** `data_table_style` requires
+`font_size` and `padding` with NO defaults, and a test asserts calling it
+without them raises: T5a-4b measured the invoice's nine columns against real
+worst-case content and found seven too narrow, and a shared module that quietly
+renormalised them would re-break exactly that. It also sets no font family
+beyond Helvetica — which face carries U+20B9 is an open licence decision, and
+this module must not pre-empt it.
+
+**THE GUARD IS ON THE PYTHON SIDE**
+(`tests/test_one_pdf_style_and_every_document_shares_it.py`), the Schedule III
+caption lesson: one written in `apps/web` would assert the browser against a
+copy of itself. It reads source with docstrings stripped (these modules explain
+their old palettes in prose), and it has a RENDER limb — a service can import
+the module, satisfy every scan, and still paint the old colour through a branch
+no scan looks at.
+
+⚠️ **T5a-4's own guard went blind and was restated, not relaxed.**
+`test_a_document_that_runs_to_two_pages_says_so` derived "does this table have
+a header row" by reading a LITERAL `TableStyle` command list. Moving two
+services onto the shared builder left them with no literal, so the guard read
+them as headerless and failed them for carrying `repeatRows=1` — their header
+rows had not moved. It follows a call into `pdf_style` now. That is the rule
+this file keeps having to record: **write the rule, not a spelling of it.**
+
+**Three dead constants went with the conversion** — `_SUBHEAD_BG`, `_BLACK` and
+`_DRAFT_RED` in the year-end service, none of them read by anything. The last
+is the one worth naming: a constant called DRAFT_RED reads as though the pack
+stamps a draft, and it never has.
+
 ## Money in the browser — one parser, and only one
 
 `apps/web/lib/money/rupeeInput.ts` turns a typed rupee amount into integer paise
