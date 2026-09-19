@@ -77,18 +77,36 @@ _BUILDS_WEB_PATH = re.compile(r'/\s*"apps"\s*/\s*"(web|marketing)"')
 # the docstring's own rule holds: a path in a comment is not a read.
 _WEB_TAIL = re.compile(r'^(web|marketing)/')
 
+# AND A THIRD SPELLING, found the same evening by the guard written for the
+# second: the path built one SEGMENT at a time, where no single literal is a
+# path at all —
+#
+#     Path(__file__).resolve().parents[2] / "web" / "app" / "clients" / "[id]"
+#         / "compliance" / "tds" / "page.tsx"
+#
+# Four more modules are written that way, among them the GSTR-3B screen
+# contract and the access-matrix guard. `"web"` alone has no suffix and
+# `"page.tsx"` alone has no slash, so neither of the checks above sees it.
+# What identifies it is a `/` chain whose literals BEGIN at "web" or
+# "marketing".
+
 
 def _has_web_literal(path: pathlib.Path) -> bool:
     try:
         tree = ast.parse(path.read_text(errors="ignore"))
     except SyntaxError:
         return False
-    return any(
-        isinstance(n, ast.Constant)
-        and isinstance(n.value, str)
-        and _WEB_TAIL.match(n.value)
-        for n in ast.walk(tree)
-    )
+    for n in ast.walk(tree):
+        if (isinstance(n, ast.Constant) and isinstance(n.value, str)
+                and _WEB_TAIL.match(n.value)):
+            return True
+        # `… / "web" / "app" / …`: a Div whose left operand is not itself a
+        # string and whose right operand opens the frontend tree.
+        if (isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div)
+                and isinstance(n.right, ast.Constant)
+                and n.right.value in ("web", "marketing")):
+            return True
+    return False
 
 
 def _module_name(path: pathlib.Path) -> str:

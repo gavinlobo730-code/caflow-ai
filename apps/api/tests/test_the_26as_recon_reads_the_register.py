@@ -266,14 +266,22 @@ def test_the_tabs_year_picker_comes_from_the_clock():
     """It was a free-text box the CA typed a year into. CLAUDE.md: a year
     picker is derived from the clock, never listed — and never typed.
 
-    THE RULE, NOT A SPELLING OF IT. This asserted the helper's NAME, and broke
-    on 18 September when the control became `<PeriodPicker>` — which calls that
-    very helper and is guarded, in `a-financial-year-choice-comes-from-the-
-    clock.test.ts`, to carry no year literal of its own. The rule is that the
-    list is DERIVED, by the screen or by a component that derives it.
+    THE RULE, NOT A SPELLING OF IT — TWICE. This first asserted the helper's
+    NAME and broke when the control became a component that CALLS the helper.
+    The replacement named that component, `<PeriodPicker>`, and broke again
+    forty minutes later when it was renamed `<YearPicker>` (it had collided
+    with `components/PeriodPicker.tsx`, the range control). Naming the
+    replacement is the same mistake as naming the original.
+
+    The rule is that the year list is DERIVED — by this screen, or by a
+    component whose own guard says it derives it. Both of the pickers in the
+    tree qualify: `a-financial-year-choice-comes-from-the-clock.test.ts`
+    asserts `YearPicker` carries no year literal, and `PeriodPicker` builds
+    its list from `lib/dates/periods` too. So the test is "delegated to A
+    picker", not "to the one I happen to know the name of today".
     """
     src = _TAB.read_text()
-    assert "financialYearChoicesAround" in src or "<PeriodPicker" in src, (
-        "the tab's year list is neither derived here nor delegated to the one "
+    assert re.search(r"financialYearChoicesAround|<\w*(Year|Period)Picker\b", src), (
+        "the tab's year list is neither derived here nor delegated to a "
         "picker that derives it — it is listed or typed again")
     assert 'placeholder="Financial Year (e.g. 2025-26)"' not in src

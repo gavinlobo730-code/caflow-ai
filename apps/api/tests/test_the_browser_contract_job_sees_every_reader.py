@@ -41,16 +41,59 @@ sys.path.insert(0, str(_API / "scripts" / "ci"))
 import tests_reading_the_browser as selector  # noqa: E402
 
 
+def _div_chains(tree: ast.AST) -> list[str]:
+    """Every `a / "b" / "c"` chain, as the joined tail of string constants.
+
+    THE THIRD SPELLING, and the one that broke this guard's own PR. A module
+    may build the path one SEGMENT at a time:
+
+        Path(__file__).resolve().parents[2] / "web" / "app" / "clients"
+            / "[id]" / "compliance" / "tds" / "page.tsx"
+
+    No single constant here is a path — `"web"` has no suffix and `"page.tsx"`
+    has no slash — so the per-constant probe below rejects every one of them,
+    and `test_the_26as_recon_reads_the_register.py` stayed outside the
+    browser-contract set while reading a frontend page. Flattening the `/`
+    chain is what makes the probe about PATHS rather than about literals.
+    """
+    out: list[str] = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)):
+            continue
+        parts: list[str] = []
+        cur: ast.AST = node
+        while isinstance(cur, ast.BinOp) and isinstance(cur.op, ast.Div):
+            if isinstance(cur.right, ast.Constant) and isinstance(cur.right.value, str):
+                parts.append(cur.right.value)
+            else:
+                parts.append("\0")  # a non-literal segment breaks the run
+            cur = cur.left
+        parts.reverse()
+        # Keep the LONGEST trailing run of literals — the head is the Path()
+        # expression, which we do not need to evaluate.
+        tail: list[str] = []
+        for p in reversed(parts):
+            if p == "\0":
+                break
+            tail.append(p)
+        if tail:
+            out.append("/".join(reversed(tail)))
+    return out
+
+
 def _opens_a_frontend_file(path: pathlib.Path) -> str | None:
-    """The first string constant in this module that IS a frontend file."""
+    """The first string constant, or `/`-chain, in this module that IS a
+    frontend file."""
     try:
         tree = ast.parse(path.read_text(errors="ignore"))
     except SyntaxError:
         return None
+    candidates: list[ast.Constant | str] = [*_div_chains(tree)]
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
-            continue
-        raw = node.value
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            candidates.append(node)
+    for node in candidates:
+        raw = node if isinstance(node, str) else node.value
         # A DOCSTRING IS A STRING CONSTANT. Several of these modules carry a
         # 1,500-character one with a slash in it, and handing that to `is_file`
         # raises ENAMETOOLONG rather than answering False. Bound it to
@@ -91,6 +134,24 @@ def test_every_module_that_opens_a_frontend_file_is_in_the_list():
         + "\nWiden scripts/ci/tests_reading_the_browser.py rather than "
           "listing them by hand — it derives the set on purpose."
     )
+
+
+def test_the_probe_sees_a_path_built_one_segment_at_a_time():
+    """The spelling that broke this guard on its own PR, asserted directly —
+    because the three test modules that use it could all move, and then the
+    probe would silently lose a third of its reach with nothing failing."""
+    import ast as _ast
+    chains = _div_chains(_ast.parse(
+        'P = Path(__file__).resolve().parents[2] / "web" / "app" / "x" / "page.tsx"'))
+    assert "web/app/x/page.tsx" in chains, chains
+    # A non-literal segment ends the run rather than being guessed at, so the
+    # chain starts at the first literal after it. `ast.walk` also visits the
+    # nested BinOps, which yields the shorter sub-chains too — harmless, since
+    # a candidate that does not resolve to a file is simply not a hit.
+    mixed = _div_chains(_ast.parse('P = base / name / "app" / "page.tsx"'))
+    assert "app/page.tsx" in mixed, mixed
+    assert not any(c.startswith("name") for c in mixed), (
+        "a non-literal segment was guessed at rather than ending the run")
 
 
 def test_the_filesystem_probe_actually_finds_something():
