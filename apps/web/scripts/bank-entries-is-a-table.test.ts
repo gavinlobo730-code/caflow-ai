@@ -122,15 +122,59 @@ test("the row offers no ranked candidate list; the modal does, behind opening th
   assert.match(modal(), /t\.suggestions/, "the modal must offer the candidates");
 });
 
+/** A button's type step and its vertical padding, read off its own class
+ *  string. Both are ORDINALS to compare, not strings to match. */
+const TYPE_STEPS = ["text-3xs", "text-2xs", "text-xs", "text-sm", "text-base", "text-lg"];
+
+function buttonSizes(src: string): { label: string; step: number; pad: number }[] {
+  return src.split("</button>").slice(0, -1).map((chunk) => {
+    const at = chunk.lastIndexOf("<button");
+    const tag = chunk.slice(at, at + 800);
+    const cls = (/className="([^"]*)"/.exec(tag) ?? /className=\{`([^`]*)`/.exec(tag))?.[1] ?? "";
+    const step = TYPE_STEPS.findIndex((t) => new RegExp(`\\b${t}\\b`).test(cls));
+    const pad = Number((/\bpy-([\d.]+)\b/.exec(cls) ?? /\bp-([\d.]+)\b/.exec(cls))?.[1] ?? 0);
+    // The label is cut the way `buttonLabels` cuts it — at the tag's own close
+    // (`">`, `}>` or `/>`), NOT at the last `>` in the chunk. "Find the {t.
+    // credit_paise > 0 ? …}" contains a `>` inside its own expression, so the
+    // naive cut returned `0 ? "invoice" : "bill"}` and this test reported the
+    // escape hatch missing.
+    const cut = Math.max(chunk.lastIndexOf('">'), chunk.lastIndexOf("}>"),
+                         chunk.lastIndexOf("/>"));
+    const label = chunk.slice(cut + 2).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    // An unrecognised step is the inherited size. Treating it as -1 would let a
+    // button with no `text-*` at all read as the smallest thing on the screen,
+    // which is the opposite of true.
+    return { label, step: step < 0 ? TYPE_STEPS.indexOf("text-xs") : step, pad };
+  });
+}
+
 test("the two ways out of an unanswerable line are the largest controls in the modal", () => {
+  // THE RULE, NOT A SPELLING OF IT. This asserted `text-xs` and `px-3 py-1.5`
+  // under a name claiming these two are the LARGEST — and `text-xs` is this
+  // app's DEFAULT button size, so the assertion said "ordinary" while the name
+  // said "largest" and a change that shrank them relative to a new, bigger
+  // control would have passed. What matters is the comparison: a CA who cannot
+  // answer a line must not have to hunt for the two ways out.
   const m = modal();
-  for (const label of ["Find the ", "Split across several"]) {
-    const at = m.indexOf(label);
-    assert.ok(at > 0, `"${label}" is missing from the modal`);
-    const btn = m.lastIndexOf("<button", at);
-    const cls = m.slice(btn, at);
-    assert.match(cls, /text-xs/, `"${label}" is back to a smaller type size than the rest of the modal`);
-    assert.match(cls, /px-3 py-1\.5/, `"${label}" is back to a link-sized hit area`);
+  const all = buttonSizes(m);
+  assert.ok(all.length > 12, `only ${all.length} buttons parsed out of the modal`);
+
+  const escapes = all.filter((b) => /Find the |Split across several/.test(b.label));
+  assert.equal(escapes.length, 2,
+    `expected both escape hatches; found ${escapes.map((e) => e.label).join(", ")}`);
+
+  const others = all.filter((b) => !escapes.includes(b));
+  const topStep = Math.max(...others.map((b) => b.step));
+  const topPad = Math.max(...others.filter((b) => b.step === topStep).map((b) => b.pad));
+
+  for (const e of escapes) {
+    assert.ok(e.step >= topStep,
+      `"${e.label}" is ${TYPE_STEPS[e.step]} while something else in the modal is ` +
+      `${TYPE_STEPS[topStep]} — the two ways out of an unanswerable line may tie ` +
+      "for the largest control and may never be smaller than one");
+    assert.ok(e.pad >= topPad,
+      `"${e.label}" has py-${e.pad} against py-${topPad} elsewhere — it is back ` +
+      "to a link-sized hit area");
   }
 });
 
