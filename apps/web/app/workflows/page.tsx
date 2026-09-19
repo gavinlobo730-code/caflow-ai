@@ -264,7 +264,7 @@ export default function WorkflowsPage() {
 
         {/* Templates Tab */}
         {toggleError && (
-          <div className="mb-3 flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <div role="alert" className="mb-3 flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
             <p className="text-xs text-red-700">{toggleError}</p>
             <button onClick={() => setToggleError(null)} className="text-xs text-red-500 hover:underline shrink-0">Dismiss</button>
           </div>

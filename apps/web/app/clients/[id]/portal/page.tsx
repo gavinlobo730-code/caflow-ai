@@ -156,7 +156,7 @@ export default function PortalPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       {pageLoadError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+        <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
           <p className="text-xs text-red-700 font-medium">{pageLoadError}</p>
         </div>
       )}

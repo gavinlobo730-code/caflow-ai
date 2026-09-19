@@ -1465,7 +1465,7 @@ function EngagementsPageInner() {
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+        <div role="alert" className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
           <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
           <div className="flex-1 text-sm text-red-700">
             <span className="font-semibold">Error: </span>{error}

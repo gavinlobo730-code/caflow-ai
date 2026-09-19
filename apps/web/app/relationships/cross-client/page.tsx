@@ -161,7 +161,7 @@ export default function CrossClientMatchesPage() {
       )}
 
       {error && (
-        <Card className="bg-red-50 border-red-200">
+        <Card role="alert" className="bg-red-50 border-red-200">
           <CardContent className="p-4 text-sm text-red-600">{error}</CardContent>
         </Card>
       )}

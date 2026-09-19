@@ -1034,7 +1034,7 @@ export default function TaxComputationPage() {
       </div>
 
       {loadError && (
-        <div className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+        <div role="alert" className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
           <p className="text-xs text-red-700 font-medium">{loadError}</p>
           <button onClick={() => load()} className="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-100 text-red-700 shrink-0">Retry</button>
         </div>

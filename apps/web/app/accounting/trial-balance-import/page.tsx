@@ -178,7 +178,7 @@ export default function TrialBalanceImportPage() {
         </div>
 
         {err && (
-          <Card className="mb-4 border-red-200 bg-red-50">
+          <Card role="alert" className="mb-4 border-red-200 bg-red-50">
             <CardContent className="pt-4 flex gap-2">
               <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
               <p className="text-sm text-red-700">{err}</p>

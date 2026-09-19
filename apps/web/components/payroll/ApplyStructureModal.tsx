@@ -222,7 +222,7 @@ export default function ApplyStructureModal({
           )}
 
           {err && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3">
               <p className="text-2xs font-semibold text-red-700">
                 Nothing was changed
               </p>

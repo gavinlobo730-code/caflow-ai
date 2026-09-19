@@ -478,7 +478,7 @@ export default function DSCTrackerPage() {
       )}
 
       {tableError && (
-        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex items-start gap-2">
+        <div role="alert" className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="text-sm text-red-700 font-medium">Couldn&apos;t load DSC records.</p>

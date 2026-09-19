@@ -149,7 +149,7 @@ export default function ApprovalsPage() {
         </div>
 
         {respondError && (
-          <div className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+          <div role="alert" className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
             <p className="text-xs text-red-700">{respondError}</p>
             <button onClick={() => setRespondError(null)} className="text-xs text-red-500 hover:underline shrink-0">Dismiss</button>
           </div>
