@@ -32,6 +32,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
 import { DrCr } from "@/components/ui/drcr";
 import { Callout } from "@/components/ui/callout";
+import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -3414,9 +3415,14 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
   // selected basis. No journal aggregation in the browser (single source of truth).
   async function buildReportSheet(
     reportType: "pl" | "bs" | "trial",
-  ): Promise<{ rows: Record<string, string | number>[]; sheetName: string }> {
+  ): Promise<{ rows: Record<string, string | number | null>[]; sheetName: string;
+              moneyColumns: string[] }> {
     const { start, end } = fyDateRange(financialYear);
-    const money = (p: number) => (p / 100).toFixed(2);
+    // A NUMBER, not a string. `json_to_sheet` types the cell from the JS
+    // value, so `.toFixed(2)` made a TEXT cell and `=SUM()` on the amount
+    // column of an exported trial balance returned 0 — silently, because
+    // SheetJS writes no `ignoredErrors` so Excel shows no warning either.
+    const money = moneyCell;
 
     if (reportType === "trial") {
       // ACC-08. `start` as well as `end`, because this function's own contract
@@ -3429,7 +3435,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
         { success: boolean; data: TBApiData | null };
       const d = res.data;
       const periodic = !!d?.start_date;
-      const rows: Record<string, string | number>[] = (d?.lines ?? []).map((l) => ({
+      const rows: Record<string, string | number | null>[] = (d?.lines ?? []).map((l) => ({
         "Account Code": l.account_code, "Account Name": l.account_name, "Type": l.account_type,
         ...(periodic ? {
           "Opening Dr (₹)": money(l.opening_debit_paise ?? 0),
@@ -3443,14 +3449,20 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
         "Account Code": "TOTAL", "Account Name": "", "Type": "",
         "Debit (₹)": money(d?.total_debit_paise ?? 0), "Credit (₹)": money(d?.total_credit_paise ?? 0),
       });
-      return { rows, sheetName: `Trial Balance ${basisLabel}`.slice(0, 31) };
+      // The Dr/Cr pairs only exist on the periodic view, so the money list
+      // is built from the same condition rather than stated twice.
+      return { rows, sheetName: `Trial Balance ${basisLabel}`.slice(0, 31),
+               moneyColumns: [
+                 ...(periodic ? ["Opening Dr (₹)", "Opening Cr (₹)",
+                                 "Period Dr (₹)", "Period Cr (₹)"] : []),
+                 "Debit (₹)", "Credit (₹)"] };
     }
 
     if (reportType === "pl") {
       const res = (await api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId })) as
         { success: boolean; data: PLApiData | null };
       const d = res.data;
-      const rows: Record<string, string | number>[] = [];
+      const rows: Record<string, string | number | null>[] = [];
       // Prefer the backend's own Schedule III caption (single source of
       // truth); plBucket() is only a fallback for the brief window where the
       // frontend has redeployed ahead of the backend.
@@ -3469,13 +3481,14 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
         rows.push({ "Schedule III Category": captionOf(l, "Expense"), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
       rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Expenses", "Type": "", "Amount (₹)": money((d?.cost_of_sales.total_paise ?? 0) + (d?.operating_expenses.total_paise ?? 0)) });
       rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Net Profit", "Type": "", "Amount (₹)": money(d?.net_profit_paise ?? 0) });
-      return { rows, sheetName: `P&L ${basisLabel}`.slice(0, 31) };
+      return { rows, sheetName: `P&L ${basisLabel}`.slice(0, 31),
+               moneyColumns: ["Amount (₹)"] };
     }
 
     const res = (await api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId })) as
       { success: boolean; data: BSApiData | null };
     const d = res.data;
-    const rows: Record<string, string | number>[] = [];
+    const rows: Record<string, string | number | null>[] = [];
     const section = (secs: BSApiSection[] | undefined, type: string) => {
       for (const s of secs ?? []) for (const l of s.lines ?? [])
         // The same caption the screen groups by — an export that classified
@@ -3488,16 +3501,16 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     section(d?.liabilities, "Liability");
     section(d?.equity, "Equity");
     rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Equity & Liabilities", "Type": "", "Amount (₹)": money(d?.total_liabilities_equity_paise ?? 0) });
-    return { rows, sheetName: `Balance Sheet ${basisLabel}`.slice(0, 31) };
+    return { rows, sheetName: `Balance Sheet ${basisLabel}`.slice(0, 31),
+             moneyColumns: ["Amount (₹)"] };
   }
 
   async function exportXLSX(reportType: "pl" | "bs" | "trial") {
     setExporting(reportType);
     try {
       const XLSX = (await import("xlsx")).default;
-      const { rows, sheetName } = await buildReportSheet(reportType);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName);
+      const { rows, sheetName, moneyColumns } = await buildReportSheet(reportType);
+      const wb = buildWorkbook(XLSX, { rows, moneyColumns, sheetName });
       const base = reportType === "pl" ? "PL" : reportType === "bs" ? "BalanceSheet" : "Trial-Balance";
       XLSX.writeFile(wb, `${base}-FY${financialYear}-${basisLabel}.xlsx`);
     } catch (e) {
@@ -3518,9 +3531,8 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       const fileName = `${reportType}-${basis}-FY${financialYear}-${Date.now()}.xlsx`;
 
       // Same backend-sourced report as the on-screen view and the XLSX export.
-      const { rows, sheetName } = await buildReportSheet(reportType);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName);
+      const { rows, sheetName, moneyColumns } = await buildReportSheet(reportType);
+      const wb = buildWorkbook(XLSX, { rows, moneyColumns, sheetName });
       const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
       const file = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 

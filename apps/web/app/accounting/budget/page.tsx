@@ -15,6 +15,7 @@ import type { Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
+import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -169,23 +170,25 @@ export default function BudgetPage() {
   }
 
   function exportXlsx() {
+    // A budget nobody has set is an EMPTY cell, not a zero — `moneyCell(null)`
+    // — because a variance against an unset budget is not a variance.
+    const money = ["Budget (₹)", ...quarterLabels.map(q => `${q} Actual (₹)`),
+                   "Year Actual (₹)", "Variance (₹)"];
     const exportRows = rows.map(r => {
-      const out: Record<string, string | null> = {
+      const out: Record<string, string | number | null> = {
         Code: r.account_code,
         Account: r.account_name,
         Type: r.account_type,
-        "Budget (₹)": r.budget_paise === null ? "" : (r.budget_paise / 100).toFixed(2),
+        "Budget (₹)": moneyCell(r.budget_paise),
       };
       for (const q of quarterLabels) {
-        out[`${q} Actual (₹)`] = ((r.actuals[q] ?? 0) / 100).toFixed(2);
+        out[`${q} Actual (₹)`] = moneyCell(r.actuals[q] ?? 0);
       }
-      out["Year Actual (₹)"] = (r.actual_paise / 100).toFixed(2);
-      out["Variance (₹)"] = r.variance_paise === null ? "" : (r.variance_paise / 100).toFixed(2);
+      out["Year Actual (₹)"] = moneyCell(r.actual_paise);
+      out["Variance (₹)"] = moneyCell(r.variance_paise);
       return out;
     });
-    const ws = XLSX.utils.json_to_sheet(exportRows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Budget");
+    const wb = buildWorkbook(XLSX, { rows: exportRows, moneyColumns: money, sheetName: "Budget" });
     XLSX.writeFile(wb, `budget_vs_actuals_${fy}.xlsx`);
   }
 

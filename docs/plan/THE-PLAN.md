@@ -423,10 +423,30 @@ refusals — those documents belong to the *client*, not the practice.
 **⚠️ Do not remove `xlsx` from `package.json`** — it is the .xlsx import parser
 on 17 screens. Only the write side moves.
 
-**The real defect the old plan missed:** every money cell in every browser
-export is a **text** cell, and SheetJS suppresses Excel's warning triangle. A
-CA who types `=SUM()` on your trial balance gets 0 with nothing explaining why.
-That is a correctness defect on an output that leaves the building.
+**✅ T5b-2 done 19 Sep — and it was seven sites, not eleven.** Every money
+cell in every browser export was a **text** cell: `json_to_sheet` types a cell
+from the JS value and every export built its money with `.toFixed(2)`. Excel's
+`=SUM()` skips text, so the amount column of an exported trial balance, P&L or
+balance sheet totalled **0** — silently, because SheetJS writes no
+`ignoredErrors` so not even the "number stored as text" triangle appeared.
+
+`lib/export/xlsx.ts` is the one workbook builder: money is a NUMBER carrying an
+Indian number FORMAT (`[>=10000000]…` — Excel has no locale-free way to say
+it), a figure nobody holds is an **empty cell rather than a zero**, the header
+freezes and columns are sized to their content. Seven exports converted; a
+guard asserts both the door (nothing else may call `json_to_sheet`) AND the
+behaviour (a real workbook is built and the cell read back as `t: "n"`),
+because a door everything goes through is worth nothing if what comes out is
+still a string.
+
+**Two things the row did not anticipate.** `CsvImportModal` is allowlisted —
+it builds a TEMPLATE with no money in it. And the AIS screen's `exportRows`
+feeds the CSV *and* the workbook, which want opposite things: a CSV cell must
+be a bare string with no grouping and no ₹. It re-types the money on the way
+into the sheet and leaves the CSV's rows alone; "Not reviewed" stays the word
+it is, because a zero in that column is a claim about the books.
+
+T5b-1, 3, 4 and 5 are unchanged.
 
 ---
 
