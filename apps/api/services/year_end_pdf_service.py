@@ -23,6 +23,7 @@ from reportlab.platypus import (
 
 # ── Indian number formatting ──────────────────────────────────────────────────
 from core.ist_clock import ist_now
+from domain.firm.letterhead import generated_note, prepared_by
 from domain.reporting.pdf_money import group_indian, whole_rupees
 
 
@@ -162,7 +163,13 @@ def _cover_page(elements, st, eng: dict, doc_title: str, is_draft: bool):
         ["Financial Year:",f"FY {fy} (April 1 – March 31)"],
         ["Status:",        status],
         ["Generated:",     generated_at],
-        ["Prepared by:",   "PracticeSync AI — Practice Management Platform"],
+        # THE PRACTICE, not the software. The statements are the CA's and
+        # they sign them; a reader asks who stands behind the set. The name
+        # rides on the engagement the caller resolved (`firm_name`), and
+        # where none is known `domain/firm/letterhead` says "The practice"
+        # rather than falling back to a product name — a wrong attribution
+        # on a signed document is worse than a vague one.
+        ["Prepared by:",   prepared_by(eng.get("firm_name"))],
     ]
     # The UDIN the signing member obtained from ICAI's portal, if one has been
     # recorded. Shown so a reader can verify the signature on that portal.
@@ -713,8 +720,8 @@ def generate_complete_pack_pdf(
 
     elements.append(
         Paragraph(
-            f"Generated on {ist_now().strftime('%d %b %Y %H:%M')} IST. "
-            "For CA firm internal use only.",
+            generated_note(engagement_data.get("firm_name"),
+                           f"{ist_now().strftime('%d %b %Y %H:%M')} IST"),
             st["note"],
         )
     )

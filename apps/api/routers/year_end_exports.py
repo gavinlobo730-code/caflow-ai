@@ -39,6 +39,35 @@ router = APIRouter(prefix="/year-end", tags=["year-end-exports"])
 _MOCK_EXPORTS: dict[str, list[dict]] = {}
 
 
+def _with_firm_name(eng: dict) -> dict:
+    """The engagement plus `firm_name`, for the pack's "Prepared by" line.
+
+    THE PDF SERVICE IS GIVEN AN ENGAGEMENT AND AN ENGAGEMENT HAS NO NAME —
+    `year_end_engagements` carries `firm_id` — which is why the cover said
+    "PracticeSync AI" for as long as it did. The name is fetched once here and
+    all three exports go through it, so it cannot be threaded into two of them
+    and forgotten in the third.
+
+    A FAILED FETCH IS NOT A FAILED EXPORT. `domain/firm/letterhead` answers
+    "The practice" where no name is known, which is vague and true; refusing to
+    produce a CA's year-end pack because a name lookup timed out would be the
+    wrong trade, and falling back to the product's name is the defect this
+    closes.
+    """
+    from domain.firm.letterhead import firm_name_of
+
+    firm_id = eng.get("firm_id")
+    if not firm_id:
+        return eng
+    try:
+        from core.supabase_client import get_supabase
+        row = (get_supabase().table("firms").select("name")
+               .eq("id", firm_id).limit(1).execute().data or [None])[0]
+    except Exception:
+        row = None
+    return {**eng, "firm_name": firm_name_of(row)}
+
+
 def _storage_path(firm_id: str, client_id: str, financial_year: str, filename: str) -> str:
     """Build Supabase Storage path for year-end exports."""
     return f"{firm_id}/{client_id}/{financial_year}/{filename}"
@@ -192,7 +221,7 @@ def export_financial_statements(
     if _USE_MOCK:
         statements = generate_financial_statements(None, eng["client_id"], eng["firm_id"],
                                                     eng["fy_start"], eng["fy_end"])
-        pdf_bytes = generate_financial_statements_pdf(eng, statements)
+        pdf_bytes = generate_financial_statements_pdf(_with_firm_name(eng), statements)
         record = _create_export_record(
             engagement_id=engagement_id,
             firm_id=eng["firm_id"],
@@ -216,7 +245,7 @@ def export_financial_statements(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    pdf_bytes = generate_financial_statements_pdf(eng, statements)
+    pdf_bytes = generate_financial_statements_pdf(_with_firm_name(eng), statements)
     filename  = f"financial_statements_{engagement_id[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
 
     record = _upload_and_record(
@@ -243,7 +272,7 @@ def export_notes(
     if _USE_MOCK:
         from routers.year_end_notes import _MOCK_NOTES
         notes = _MOCK_NOTES.get(engagement_id, [])
-        pdf_bytes = generate_notes_pdf(eng, notes)
+        pdf_bytes = generate_notes_pdf(_with_firm_name(eng), notes)
         record = _create_export_record(
             engagement_id=engagement_id,
             firm_id=eng["firm_id"],
@@ -262,7 +291,7 @@ def export_notes(
     from core.supabase_client import get_supabase
     db = get_supabase()
     notes = _get_notes_data(db, engagement_id, current_user["firm_id"])
-    pdf_bytes = generate_notes_pdf(eng, notes)
+    pdf_bytes = generate_notes_pdf(_with_firm_name(eng), notes)
     filename  = f"notes_{engagement_id[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
 
     record = _upload_and_record(
@@ -294,7 +323,7 @@ def export_complete_pack(
         from routers.year_end_adjustments import _MOCK_ADJUSTMENTS
         notes       = _MOCK_NOTES.get(engagement_id, [])
         adjustments = _MOCK_ADJUSTMENTS.get(engagement_id, [])
-        pdf_bytes   = generate_complete_pack_pdf(eng, statements, notes, adjustments)
+        pdf_bytes   = generate_complete_pack_pdf(_with_firm_name(eng), statements, notes, adjustments)
         record = _create_export_record(
             engagement_id=engagement_id,
             firm_id=eng["firm_id"],
@@ -320,7 +349,7 @@ def export_complete_pack(
 
     notes       = _get_notes_data(db, engagement_id, current_user["firm_id"])
     adjustments = _get_adjustments_data(db, engagement_id, current_user["firm_id"])
-    pdf_bytes   = generate_complete_pack_pdf(eng, statements, notes, adjustments)
+    pdf_bytes   = generate_complete_pack_pdf(_with_firm_name(eng), statements, notes, adjustments)
     filename    = f"complete_pack_{engagement_id[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
 
     record = _upload_and_record(
