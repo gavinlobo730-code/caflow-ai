@@ -17,6 +17,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
+import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -166,14 +167,11 @@ export default function ReceivablesAgingPage() {
       String(r.daysOverdue),
       BUCKET_LABEL[r.bucket],
     ]);
-    const csv = [headers, ...csvRows].map(row => row.map(v => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `receivables-aging-${todayLocalISO()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // Every field used to be wrapped in quotes WITHOUT doubling the ones
+    // inside it, so a customer name or narration carrying a quote ended its
+    // field early and every parser disagreed about where the row ended.
+    downloadCsv(`receivables-aging-${todayLocalISO()}.csv`,
+                toCsvRows([headers, ...csvRows]));
   }
 
   // Summary stats

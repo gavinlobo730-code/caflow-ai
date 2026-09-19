@@ -36,6 +36,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { api, type StatutoryRow, type StatutorySummary } from "@/lib/api";
 import { GapList } from "@/components/ui/callout";
+import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 
 type Client = { id: string; client_name: string };
 
@@ -51,15 +52,6 @@ function fmtRs(paise: number): string {
   return p > 0 ? `₹${formatted}.${String(p).padStart(2, "0")}` : `₹${formatted}`;
 }
 
-function downloadCSV(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export default function StatutoryPage() {
   const now = new Date();
@@ -118,8 +110,10 @@ export default function StatutoryPage() {
 
   function handleExport() {
     const header = "Employee,Basic,DA,Gross,Emp PF,Empr EPF,Empr EPS,EDLI,Admin,Emp ESIC,Empr ESIC,Gratuity,Service Yrs";
+    // The employee name used to be wrapped in quotes without doubling the ones
+    // inside it — a name carrying an apostrophe-as-quote ended its field early.
     const dataRows = rows.map((r) => [
-      `"${r.name ?? ""}"`,
+      r.name ?? "",
       (r.basic_paise / 100).toFixed(2),
       (r.da_paise / 100).toFixed(2),
       (r.gross_paise / 100).toFixed(2),
@@ -132,7 +126,12 @@ export default function StatutoryPage() {
       (r.esi_employer_paise / 100).toFixed(2),
       (r.gratuity_payable_paise / 100).toFixed(2),
       r.gratuity_years,
-    ].join(","));
+    ]);
+    // The `#` preamble is not CSV — it is a note to the CA reading the file —
+    // so it is joined in rather than escaped. This one gets a BOM, unlike the
+    // EPFO and ESIC files on the sibling screens: it is OURS, opened in Excel
+    // by the CA, and an employee name outside ASCII mangles without it. A
+    // government upload must still never receive one.
     const content = [
       `# Statutory Summary — ${MONTHS[selMonth - 1]} ${selYear}`,
       `# PF: Employees' Provident Funds and Misc. Provisions Act 1952`,
@@ -140,9 +139,9 @@ export default function StatutoryPage() {
       `# Gratuity: Payment of Gratuity Act 1972 Section 4`,
       `# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT`,
       header,
-      ...dataRows,
+      toCsvRows(dataRows),
     ].join("\n");
-    downloadCSV(content, `Statutory_${selYear}_${String(selMonth).padStart(2, "0")}.csv`);
+    downloadCsv(`Statutory_${selYear}_${String(selMonth).padStart(2, "0")}.csv`, content);
   }
 
   return (

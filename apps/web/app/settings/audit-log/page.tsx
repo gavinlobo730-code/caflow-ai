@@ -8,6 +8,7 @@ import { RoleGuard } from "@/components/RoleGuard";
 import { formatDate } from "@/lib/services/formatting";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Skeleton } from "@/components/ui/skeleton";
+import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 
 // ── Formatting helpers ─────────────────────────────────────────────────────────
 // The audit_log table stores backend vocabulary: entity_type is snake_case
@@ -177,28 +178,13 @@ function toDisplay(row: AuditEntry): DisplayRow {
 }
 
 function toCSV(rows: DisplayRow[]): string {
-  const header = ["Timestamp", "Actor", "Action", "Entity Type", "Entity", "Entity ID", "Detail"];
-  const escape = (v: string) => `"${(v ?? "").replace(/"/g, '""')}"`;
-  const lines = [
-    header.join(","),
-    ...rows.map((r) =>
-      [r.created_at, r.actor, formatAction(r.action), formatEntityType(r.entity_type), r.entity_name, r.entity_id, r.detail]
-        .map(escape)
-        .join(","),
-    ),
-  ];
-  return lines.join("\n");
+  return toCsvRows([
+    ["Timestamp", "Actor", "Action", "Entity Type", "Entity", "Entity ID", "Detail"],
+    ...rows.map((r) => [r.created_at, r.actor, formatAction(r.action),
+                        formatEntityType(r.entity_type), r.entity_name, r.entity_id, r.detail]),
+  ]);
 }
 
-function downloadCSV(content: string, filename: string) {
-  const blob = new Blob(["\uFEFF" + content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -305,7 +291,7 @@ function AuditLogContent() {
   function handleExport() {
     const csv = toCSV(filtered);
     const now = todayLocalISO();
-    downloadCSV(csv, `audit-log-${now}.csv`);
+    downloadCsv(`audit-log-${now}.csv`, csv);
   }
 
   return (

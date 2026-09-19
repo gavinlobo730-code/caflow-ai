@@ -23,6 +23,7 @@ import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
 import { toLocalISO, todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ComplianceEntry {
@@ -160,15 +161,15 @@ function riskRowColor(level: string) {
 }
 
 function exportCsv(rows: RiskRegisterRow[]) {
-  const header = ["Client", "Risk Type", "Description", "Severity", "Recommended Action"];
-  const lines = [header.join(","), ...rows.map((r) => [r.clientName, r.riskType, `"${r.description}"`, r.severity, `"${r.action}"`].join(","))];
-  const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `risk-report-${todayLocalISO()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  // The client name and the risk type used to go out UNQUOTED, so a client
+  // called "Sharma, Gupta & Co" shifted every column after it by one — for
+  // that row alone, so the file opened and one line sat under the wrong
+  // headings. `toCsvRows` quotes what needs quoting and doubles the quotes
+  // inside a description.
+  downloadCsv(`risk-report-${todayLocalISO()}.csv`, toCsvRows([
+    ["Client", "Risk Type", "Description", "Severity", "Recommended Action"],
+    ...rows.map((r) => [r.clientName, r.riskType, r.description, r.severity, r.action]),
+  ]));
 }
 
 function OverallScoreCard({ total }: { total: number }) {

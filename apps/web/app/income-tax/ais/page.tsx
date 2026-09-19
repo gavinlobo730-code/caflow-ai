@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook } from "@/lib/export/xlsx";
+import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 
 function formatRupees(paise: number): string {
   const rupees = Math.floor(Math.abs(paise) / 100);
@@ -267,19 +268,16 @@ export default function AISPage() {
   function exportCSV() {
     if (!exportRows.length) return;
     const header = Object.keys(exportRows[0]);
-    const csv = [
-      header.join(","),
-      ...exportRows.map((row) => header
-        .map((h) => `"${String((row as Record<string, string>)[h]).replace(/"/g, '""')}"`)
-        .join(",")),
-    ].join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `AIS_${client?.client_name ?? "Client"}_AY${assessmentYear}_${todayLocalISO()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // The byte-order mark used to be a LITERAL U+FEFF typed into the source,
+    // invisible in every editor and one stray keystroke from being deleted
+    // without anyone seeing. `downloadCsv` prepends it by escape.
+    const csv = toCsvRows([
+      header,
+      ...exportRows.map((row) => header.map((h) => (row as Record<string, string>)[h])),
+    ]);
+    downloadCsv(
+      `AIS_${client?.client_name ?? "Client"}_AY${assessmentYear}_${todayLocalISO()}.csv`,
+      csv);
   }
 
   function exportXLSX() {

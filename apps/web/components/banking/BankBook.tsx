@@ -15,6 +15,7 @@ import { api } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { fmt, BankAccount } from "@/components/banking/shared";
 import { objectOrNull } from "@/lib/api/shape";
+import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 
 // ── Bank register (Tier 1.1) ───────────────────────────────────────────────
 // The ledger view of one account. READ-ONLY by design: posted journals are
@@ -174,15 +175,10 @@ export function BankRegister({ clientId }: { clientId: string }) {
         l.cleared || "", l.posted_journal_id ? "Yes" : "No",
       ]),
     ];
-    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
-    // Leading BOM so Excel reads the ₹ and Indian names as UTF-8.
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `register-${data.account?.account_no ?? "account"}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // This copy was the one that escaped CORRECTLY, and its byte-order mark
+    // was a LITERAL U+FEFF typed into the source — invisible in every editor.
+    const csv = toCsvRows(rows);
+    downloadCsv(`register-${data.account?.account_no ?? "account"}.csv`, csv);
   }
 
   const filtersActive = !!(dateFrom || dateTo || status !== "all" || search.trim());
