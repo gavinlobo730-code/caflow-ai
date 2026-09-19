@@ -7,6 +7,7 @@ import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Combobox } from "@/components/ui/combobox";
 import type { Client, FirmUser } from "@/lib/types";
 import type { CreateTaskInput } from "@/lib/data/tasks";
+import { Callout } from "@/components/ui/callout";
 
 const PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
@@ -208,11 +209,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
             />
           </div>
 
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {error}
-            </p>
-          )}
+          {error && <Callout tone="problem">{error}</Callout>}
 
           <div className="flex gap-3 pt-1">
             <button

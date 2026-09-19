@@ -10,6 +10,7 @@ import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reau
 import { api, type ApiResp } from "@/lib/api";
 import CsvImportModal, { type ImportRow, type ImportResult } from "@/components/CsvImportModal";
 import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
+import { Callout } from "@/components/ui/callout";
 
 interface SignupStash { firmName?: string; fullName?: string }
 function readSignupStash(): SignupStash {
@@ -608,11 +609,7 @@ export default function OnboardingPage() {
 
         <ProgressBar step={step} />
 
-        {error && (
-          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <Callout tone="problem">{error}</Callout>}
 
         {provisionNote && (
           <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">

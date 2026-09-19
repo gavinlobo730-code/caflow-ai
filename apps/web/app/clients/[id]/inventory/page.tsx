@@ -29,6 +29,7 @@ import { StockAgeingPanel } from "@/components/inventory/StockAgeing";
 import { ReorderPanel } from "@/components/inventory/ReorderPanel";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 interface StockItem {
   id: string;
   name: string;
@@ -461,11 +462,7 @@ export default function InventoryPage() {
         />
       </div>
 
-      {countError && (
-        <div className="mx-6 mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
-          {countError}
-        </div>
-      )}
+      {countError && <Callout tone="problem">{countError}</Callout>}
 
       {countSessionId && (
         <StockCountSheetPanel
@@ -835,7 +832,7 @@ function AdjustStockModal({
               placeholder="Details for the audit trail" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
-          {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+          {error && <Callout tone="problem">{error}</Callout>}
 
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
@@ -952,7 +949,7 @@ function NrvWritedownModal({
               placeholder="Basis for the NRV estimate" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
-          {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+          {error && <Callout tone="problem">{error}</Callout>}
 
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>

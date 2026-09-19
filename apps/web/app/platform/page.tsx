@@ -17,6 +17,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatDate } from "@/lib/services/formatting";
+import { Callout } from "@/components/ui/callout";
 
 interface FirmRow { id: string; name: string; created_at: string; users: number; clients: number; status: string }
 interface Stats { total_firms: number; active_firms: number; suspended_firms: number; total_users: number; total_clients: number }
@@ -396,7 +397,7 @@ export default function PlatformAdminPage() {
                   className="mt-1 w-full rounded-lg border border-ps-border px-3 py-2 text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-red-200" />
                 <p className="text-2xs text-ps-hint mt-1">From the authenticator app you enrolled for this account.</p>
               </div>
-              {purgeErr && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">{purgeErr}</p>}
+              {purgeErr && <Callout tone="problem">{purgeErr}</Callout>}
             </div>
             <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-ps-muted">
               <button onClick={() => setPurgeTarget(null)} disabled={purgeBusy} className="text-sm text-ps-label px-3 py-2 hover:underline disabled:opacity-50">Cancel</button>

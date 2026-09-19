@@ -7,7 +7,6 @@ import {
   Download,
   Trash2,
   X,
-  AlertCircle,
   Loader2,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -21,6 +20,7 @@ import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
+import { Callout } from "@/components/ui/callout";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -213,12 +213,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
 
         {/* Modal body */}
         <div className="space-y-4 px-6 py-5">
-          {error && (
-            <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
-              <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
+          {error && <Callout tone="problem">{error}</Callout>}
 
           {/* Client */}
           <div>

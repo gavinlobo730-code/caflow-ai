@@ -50,6 +50,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { Callout } from "@/components/ui/callout";
 
 function formatRupees(paise: number): string {
   const rupees = Math.floor(Math.abs(paise) / 100);
@@ -347,12 +348,7 @@ export default function AISPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-red-700">{error}</p>
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
       {message && !error && (
         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-start gap-2">
           <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />

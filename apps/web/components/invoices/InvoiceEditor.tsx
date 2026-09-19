@@ -46,6 +46,7 @@ import {
   percentBpsOf, previewTotals, validateInvoiceEditor, isValidLine,
   type Customer, type InvoiceDetail, type InvoiceLine, type CurrencyOption,
 } from "@/lib/invoices/shared";
+import { Callout } from "@/components/ui/callout";
 
 type SaveAction = "draft" | "issue" | "send";
 
@@ -1392,9 +1393,7 @@ export function InvoiceEditor({
           )}
         </section>
 
-        {error && (
-          <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
-        )}
+        {error && <Callout tone="problem">{error}</Callout>}
       </div>
     </InvoiceWorkspaceLayout>
   );

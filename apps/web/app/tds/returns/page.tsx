@@ -15,8 +15,7 @@
 import { useEffect, useState } from "react";
 import {
   FileText, CheckCircle, AlertTriangle, Download,
-  Info, X,
-} from "lucide-react";
+  Info, } from "lucide-react";
 import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
@@ -27,6 +26,7 @@ import {
   saveTDSReturn, downloadTDSJSON, currentFinancialYear, currentQuarter,
   type TDSReturnPayload, type TDSReturnStatus, type TDSQuarter, type TDSReturnType,
 } from "@/lib/data/tds";
+import { Callout } from "@/components/ui/callout";
 
 function r(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -249,12 +249,7 @@ export default function TDSReturnsPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
-          <X size={15} className="shrink-0 mt-0.5" />
-          {error}
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {/* Results */}
       {result && (

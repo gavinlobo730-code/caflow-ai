@@ -6,6 +6,7 @@ import { ChevronLeft, Plus, Star, Trash2, Check } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
+import { Callout } from "@/components/ui/callout";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface InvoiceTemplate {
@@ -93,7 +94,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <h3 className="text-sm font-semibold text-ps-ink">New Invoice Template</h3>
         </div>
         <div className="px-6 py-4 space-y-4">
-          {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+          {error && <Callout tone="problem">{error}</Callout>}
           <div>
             <label className="text-xs font-medium text-ps-label block mb-1">Template Name <span className="text-red-500">*</span></label>
             <input

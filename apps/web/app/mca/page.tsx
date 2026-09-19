@@ -25,6 +25,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO, toLocalISO, computeOverdueStatus } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -230,7 +231,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           <h3 className="text-sm font-semibold text-ps-ink">Add MCA Filing</h3>
           <button onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>
         </div>
-        {err && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{err}</p>}
+        {err && <Callout tone="problem">{err}</Callout>}
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Client</label>
@@ -984,9 +985,7 @@ export default function MCAPage() {
                 />
               </div>
 
-              {filedError && (
-                <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{filedError}</p>
-              )}
+              {filedError && <Callout tone="problem">{filedError}</Callout>}
             </div>
 
             <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">

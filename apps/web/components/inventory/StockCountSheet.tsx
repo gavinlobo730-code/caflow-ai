@@ -22,6 +22,7 @@ import { X, ClipboardCheck, AlertTriangle, Check } from "lucide-react";
 import { api, type StockCountSheet as Sheet, type StockCountLine,
          type StockCountPostResult } from "@/lib/api";
 import { parseQuantity } from "@/lib/money/rupeeInput";
+import { Callout } from "@/components/ui/callout";
 
 export function StockCountSheetPanel({
   clientId, sessionId, onClose, onPosted,
@@ -125,9 +126,7 @@ export function StockCountSheetPanel({
         </div>
 
         <div className="px-5 py-4 space-y-3">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">{error}</div>
-          )}
+          {error && <Callout tone="problem">{error}</Callout>}
 
           {result && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-900 space-y-1">

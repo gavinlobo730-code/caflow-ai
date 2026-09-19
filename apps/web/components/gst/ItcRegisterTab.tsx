@@ -36,6 +36,7 @@ import type {
 } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { gstPeriodLabel, isGstPeriod } from "@/lib/gst/period";
+import { Callout } from "@/components/ui/callout";
 
 function money(paise?: number | null) {
   const p = Number(paise ?? 0);
@@ -236,7 +237,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
         )}
       </div>
 
-      {err && <p className="text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
+      {err && <Callout tone="problem">{err}</Callout>}
       {ok && <p className="text-[12px] px-3 py-2 rounded-lg bg-green-50 text-green-700">{ok}</p>}
 
       {register && (

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, Trash2, Edit2, CheckSquare, Tag, Clock, User,
-  X, AlertCircle, Loader2, Copy,
+  X, Loader2, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import {
 import { getClients } from "@/lib/data/clients";
 import type { TaskTemplate, Client } from "@/lib/types";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { Callout } from "@/components/ui/callout";
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-ps-muted text-ps-label",
@@ -186,11 +187,7 @@ export default function TaskTemplatesPage() {
         </Button>
       </div>
 
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <AlertCircle size={14} /> {error}
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {loading ? (
         <div className="flex items-center justify-center py-20 text-ps-hint">

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  Bell, CheckCheck, Archive, AlertCircle, Loader2,
+  Bell, CheckCheck, Archive, Loader2,
   Clock, AlertTriangle, Info,
   ExternalLink,
 } from "lucide-react";
@@ -13,6 +13,7 @@ import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import type { Notification, InsightSeverity } from "@/lib/types";
 import { objectOrNull, arrayOrEmpty } from "@/lib/api/shape";
+import { Callout } from "@/components/ui/callout";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -278,11 +279,7 @@ export default function NotificationsPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <AlertCircle size={14} /> {error}
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {/* Tabs (server-side scope: all / unread / archived) */}
       <div className="flex gap-1 border-b">

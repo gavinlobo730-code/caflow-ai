@@ -10,6 +10,7 @@ import { usePermissions } from "@/lib/auth/AuthContext";
 import { assessmentYearChoicesAround } from "@/lib/dates/periods";
 import RegimeElectionPanel from "@/components/tax/RegimeElectionPanel";
 import { YearPicker } from "@/components/ui/year-picker";
+import { Callout } from "@/components/ui/callout";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1391,11 +1392,7 @@ export default function TaxComputationPage() {
                     {presComputing ? "Computing…" : "Compute presumptive income"}
                   </button>
 
-                  {presError && (
-                    <p className="text-2xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">
-                      {presError}
-                    </p>
-                  )}
+                  {presError && <Callout tone="problem">{presError}</Callout>}
 
                   {presResult && (
                     <div className={`rounded-lg border p-3 space-y-1.5 ${
@@ -2146,9 +2143,7 @@ export default function TaxComputationPage() {
               </p>
             )}
 
-            {statusError && (
-              <p className="text-2xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{statusError}</p>
-            )}
+            {statusError && <Callout tone="problem">{statusError}</Callout>}
 
             {!showDisallForm ? (
               <button
@@ -2308,9 +2303,7 @@ export default function TaxComputationPage() {
                   </ul>
                 )}
 
-                {lossError && (
-                  <p className="text-2xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{lossError}</p>
-                )}
+                {lossError && <Callout tone="problem">{lossError}</Callout>}
                 <div className="flex justify-end">
                   <button
                     type="button"
@@ -2389,11 +2382,7 @@ export default function TaxComputationPage() {
                   </div>
                 </div>
               ))}
-              {reviewError && (
-                <p className="text-2xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {reviewError}
-                </p>
-              )}
+              {reviewError && <Callout tone="problem">{reviewError}</Callout>}
             </div>
           )}
         </div>

@@ -50,6 +50,7 @@ import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker"
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
+import { Callout } from "@/components/ui/callout";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -1268,7 +1269,7 @@ function DeleteBillModal({
             </p>
           </div>
         </div>
-        {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mb-3">{error}</p>}
+        {error && <Callout tone="problem">{error}</Callout>}
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <button

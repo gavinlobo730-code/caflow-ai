@@ -36,6 +36,7 @@ import type {
 // lib/gst/period. The two transpose, and "202606" is a well-formed six-digit
 // string that GSTN reads as month 20.
 import { gstPeriodLabel as periodLabel, isGstPeriod as isPeriod } from "@/lib/gst/period";
+import { Callout } from "@/components/ui/callout";
 
 function money(paise?: number | null) {
   const p = Number(paise ?? 0);
@@ -186,7 +187,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
         </p>
       </div>
 
-      {err && <p className="text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
+      {err && <Callout tone="problem">{err}</Callout>}
 
       {/* ── 1. What drifted in a period already filed ────────────────────── */}
       <section className="space-y-3">

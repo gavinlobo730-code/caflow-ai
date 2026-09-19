@@ -69,6 +69,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import { DrCr, sideOf } from "@/components/ui/drcr";
 import { formatPaiseBare } from "@/lib/money/format";
+import { Callout } from "@/components/ui/callout";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements";
@@ -876,7 +877,7 @@ function RecurringEditor({
             Each run creates a <strong>draft</strong> invoice for CA review — it is never issued or emailed automatically.
           </p>
 
-          {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+          {error && <Callout tone="problem">{error}</Callout>}
           <div className="flex gap-3 justify-end">
             <button type="button" onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <button type="submit" disabled={saving}
@@ -1183,7 +1184,7 @@ function Statements({ clientId }: { clientId: string }) {
             </>
           )}
         </div>
-        {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2.5">{error}</p>}
+        {error && <Callout tone="problem">{error}</Callout>}
       </div>
 
       {stmt && (
@@ -1258,7 +1259,7 @@ function Statements({ clientId }: { clientId: string }) {
               <input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="customer@example.com"
                 className="mt-1 w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </label>
-            {emailMsg && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2.5">{emailMsg}</p>}
+            {emailMsg && <Callout tone="problem">{emailMsg}</Callout>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <button onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{emailing ? "Sending…" : "Send"}</button>
@@ -1292,7 +1293,7 @@ function Statements({ clientId }: { clientId: string }) {
               <input type="number" min="0" step="0.01" value={applyAmount} onChange={(e) => setApplyAmount(e.target.value)}
                 className="mt-1 w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </label>
-            {applyError && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-2.5">{applyError}</p>}
+            {applyError && <Callout tone="problem">{applyError}</Callout>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <button onClick={applyCredit} disabled={actionInFlight || !applyInvoiceId || !applyAmount}
@@ -2418,7 +2419,7 @@ function SendInvoiceModal({
           <p className="text-xs text-ps-label">
             A PDF of this invoice will be attached and sent by email.
           </p>
-          {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+          {error && <Callout tone="problem">{error}</Callout>}
           <div className="flex gap-3 justify-end">
             <button
               type="button"
@@ -2511,7 +2512,7 @@ function RemindInvoiceModal({
           <p className="text-3xs text-ps-hint">
             Reminders are a collections communication only — they do not change any accounting entry.
           </p>
-          {error && <p className="text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+          {error && <Callout tone="problem">{error}</Callout>}
         </div>
         <div className="flex gap-3 justify-end mt-4">
           <button
@@ -2666,7 +2667,7 @@ function DeleteInvoiceModal({
             </p>
           </div>
         </div>
-        {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mb-3">{error}</p>}
+        {error && <Callout tone="problem">{error}</Callout>}
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <button
@@ -4037,7 +4038,7 @@ function ReceiptForm({
         </div>
       )}
 
-      {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+      {error && <Callout tone="problem">{error}</Callout>}
       <div className="flex gap-3 justify-end">
         <button onClick={onCancel} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
         <button

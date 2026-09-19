@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ChevronLeft, Layers, Plus, AlertCircle } from "lucide-react";
+import { ChevronLeft, Layers, Plus } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
+import { Callout } from "@/components/ui/callout";
 
 interface CoaRow {
   id: string;
@@ -162,12 +163,7 @@ function LedgerDialog({ account, onClose, onSaved }:
           )}
         </div>
 
-        {error && (
-          <div className="flex gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-            <AlertCircle size={13} className="text-red-600 shrink-0 mt-0.5" />
-            <p className="text-2xs text-red-700">{error}</p>
-          </div>
-        )}
+        {error && <Callout tone="problem">{error}</Callout>}
 
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>

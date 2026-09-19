@@ -25,7 +25,7 @@ import { api } from "@/lib/api";
 import type { BonusRegister as BonusRegisterData } from "@/lib/api";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
-import { GapList } from "@/components/ui/callout";
+import { Callout, GapList } from "@/components/ui/callout";
 
 function rupees(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN", {
@@ -136,11 +136,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-2xs text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {loading && !data && (
         <div className="flex items-center gap-2 text-xs text-ps-hint">

@@ -31,6 +31,7 @@ import { todayLocalISO, computeOverdueStatus } from "@/lib/dateMath";
 import { MONTH_NAMES, buildMonthOptions, parsePeriodOption, periodBounds } from "@/lib/gst/filingPeriod";
 import { useToast } from "@/components/ui/use-toast";
 import { api, type GstDueDates } from "@/lib/api";
+import { Callout } from "@/components/ui/callout";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -268,9 +269,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
           </button>
         </div>
 
-        {err && (
-          <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{err}</p>
-        )}
+        {err && <Callout tone="problem">{err}</Callout>}
 
         {/* Client */}
         <div>
@@ -538,9 +537,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
             ))}
           </div>
 
-          {formError && (
-            <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{formError}</p>
-          )}
+          {formError && <Callout tone="problem">{formError}</Callout>}
         </div>
 
         <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
@@ -864,12 +861,7 @@ export default function GSTPage() {
       </div>
 
       {/* Error banner */}
-      {error && (
-        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-red-700">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {/* Key Deadlines Banner — CGST Act Sections 37, 39, 44 */}
       <div className="bg-white rounded-xl border border-ps-muted p-4">
@@ -1079,9 +1071,7 @@ export default function GSTPage() {
                 />
               </div>
 
-              {filedError && (
-                <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{filedError}</p>
-              )}
+              {filedError && <Callout tone="problem">{filedError}</Callout>}
             </div>
 
             <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">

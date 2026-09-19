@@ -13,6 +13,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { Callout } from "@/components/ui/callout";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -242,9 +243,7 @@ export default function CashFlowForecastPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-xs text-red-700">{error}</div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {/* What this forecast does NOT contain. Shown with the results rather
           than buried in a tooltip: a CA reading a closing balance needs to know

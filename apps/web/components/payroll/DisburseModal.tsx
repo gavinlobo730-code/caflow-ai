@@ -11,6 +11,7 @@ import { X } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { toLocalISO } from "@/lib/dateMath";
 import { fmtRs } from "@/components/payroll/shared";
+import { Callout } from "@/components/ui/callout";
 
 /** Only what the modal actually needs. Narrower than the pages' own PayrollRun
  *  types, deliberately: a shared component that demanded every column would
@@ -112,7 +113,7 @@ export function DisburseModal({ run, onClose, onDone }: {
             </div>
           </>
         )}
-        {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+        {error && <Callout tone="problem">{error}</Callout>}
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={save} disabled={saving || loadingAccts || accounts.length === 0} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">

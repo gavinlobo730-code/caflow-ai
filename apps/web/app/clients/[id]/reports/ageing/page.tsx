@@ -15,7 +15,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { objectOrNull } from "@/lib/api/shape";
-import { GapList } from "@/components/ui/callout";
+import { Callout, GapList } from "@/components/ui/callout";
 /**
  * Trade Receivables and Trade Payables ageing schedules — the notes to the
  * balance sheet required by Schedule III to the Companies Act 2013 as amended
@@ -383,12 +383,7 @@ export default function ClientAgeingSchedulePage() {
         </div>
       )}
 
-      {error && (
-        <div className="flex items-start gap-2.5 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-          <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
-          <p className="text-2xs text-red-700">{error}</p>
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {detailError && (
         <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">

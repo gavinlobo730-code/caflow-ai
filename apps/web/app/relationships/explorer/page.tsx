@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { Callout } from "@/components/ui/callout";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -118,9 +119,7 @@ export default function RelationshipExplorerPage() {
         </p>
       </div>
 
-      {error && (
-        <div className="bg-red-50 text-red-600 border border-red-200 rounded-lg px-4 py-3 text-sm">{error}</div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Left — entity list */}

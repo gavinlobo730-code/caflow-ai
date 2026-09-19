@@ -6,6 +6,7 @@ import { ChevronLeft, Mail, Save } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
+import { Callout } from "@/components/ui/callout";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type TemplateType = "invoice" | "engagement" | "document_request" | "reminder";
@@ -173,7 +174,7 @@ function TemplateEditor({
 
   return (
     <div className="space-y-4">
-      {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       <div>
         <label className="text-xs font-medium text-ps-label block mb-1">Subject <span className="text-red-500">*</span></label>

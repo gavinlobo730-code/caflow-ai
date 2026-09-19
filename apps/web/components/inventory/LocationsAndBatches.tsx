@@ -26,6 +26,7 @@ import { request } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { todayLocalISO } from "@/lib/dateMath";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { Callout } from "@/components/ui/callout";
 
 interface Godown {
   id: string;
@@ -452,9 +453,7 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
         </h3>
       </div>
       <div className="px-5 py-4 space-y-3">
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">{error}</div>
-        )}
+        {error && <Callout tone="problem">{error}</Callout>}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <label className="text-xs">
             <span className="block text-ps-hint mb-1">From</span>
@@ -545,9 +544,7 @@ function GodownModal({ clientId, onClose, onSaved }: {
           <h3 className="text-sm font-semibold text-ps-ink">New godown</h3>
         </div>
         <div className="px-5 py-4 space-y-3">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">{error}</div>
-          )}
+          {error && <Callout tone="problem">{error}</Callout>}
           <label className="block text-xs">
             <span className="block text-ps-hint mb-1">Name</span>
             <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
@@ -639,9 +636,7 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
           <h3 className="text-sm font-semibold text-ps-ink">New lot</h3>
         </div>
         <div className="px-5 py-4 space-y-3">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">{error}</div>
-          )}
+          {error && <Callout tone="problem">{error}</Callout>}
           <label className="block text-xs">
             <span className="block text-ps-hint mb-1">Item</span>
             <select value={item} onChange={(e) => setItem(e.target.value)} className={INPUT}>

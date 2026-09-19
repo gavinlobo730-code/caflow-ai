@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   CheckSquare, Clock, AlertTriangle, CheckCircle2,
-  Calendar, Loader2, AlertCircle, ExternalLink, Activity, InboxIcon,
+  Calendar, Loader2, ExternalLink, Activity, InboxIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { getUserProfile } from "@/lib/data/getFirmId";
 import type { Task, TaskStatus, TeamWorkload } from "@/lib/types";
 import type { TaskCounts } from "@/lib/data/tasks";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-ps-muted text-ps-label",
@@ -162,11 +163,7 @@ export default function WorkPage() {
         </Link>
       </div>
 
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <AlertCircle size={14} /> {error}
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {loadingTasks ? (
         <div className="flex items-center justify-center py-20 text-ps-hint">

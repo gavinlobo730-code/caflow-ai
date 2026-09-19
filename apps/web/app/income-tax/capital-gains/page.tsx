@@ -57,7 +57,7 @@ import {
   type ReinvestmentSection, type AcquisitionKind, type TransferredAssetNature,
 } from "@/lib/data/income-tax";
 import { listingIsAsked, grandfatheringIsAsked } from "@/lib/income-tax/capitalGainsFacts";
-import { GapList } from "@/components/ui/callout";
+import { Callout, GapList } from "@/components/ui/callout";
 
 /** Anything the compute endpoint accepts. The calculator and the register
  *  have different vocabularies and the backend takes the union of both. */
@@ -612,9 +612,7 @@ export default function CapitalGainsPage() {
 
             {/* Result Panel */}
             <div className="space-y-4">
-              {computeError && (
-                <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{computeError}</div>
-              )}
+              {computeError && <Callout tone="problem">{computeError}</Callout>}
               {!result ? (
                 <div className="bg-white rounded-xl border border-ps-muted p-5 flex items-center justify-center h-full min-h-[200px]">
                   <div className="text-center">
@@ -938,9 +936,7 @@ export default function CapitalGainsPage() {
                 </div>
 
                 <div className="px-5 py-4 space-y-4">
-                  {exemptError && (
-                    <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg">{exemptError}</div>
-                  )}
+                  {exemptError && <Callout tone="problem">{exemptError}</Callout>}
 
                   {exemption && (
                     <div className="grid grid-cols-3 gap-3">
@@ -1146,7 +1142,7 @@ export default function CapitalGainsPage() {
                   <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
                 </div>
                 <div className="px-5 py-4 space-y-4">
-                  {regError && <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg">{regError}</div>}
+                  {regError && <Callout tone="problem">{regError}</Callout>}
 
                   <div>
                     <label className="text-xs font-medium text-ps-body block mb-1">Asset Description *</label>

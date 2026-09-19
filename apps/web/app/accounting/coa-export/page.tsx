@@ -6,6 +6,7 @@ import { ChevronLeft, Download, FileText } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { todayLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 
 interface CoaRow {
   account_code: string;
@@ -117,7 +118,7 @@ export default function CoaExportPage() {
           <span className="text-sm text-ps-label">Include archived accounts</span>
         </label>
 
-        {error && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-md">{error}</p>}
+        {error && <Callout tone="problem">{error}</Callout>}
 
         {count !== null && !loading && (
           <p className="text-xs text-green-700 bg-green-50 px-3 py-2 rounded-md flex items-center gap-1.5">

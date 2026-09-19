@@ -11,6 +11,7 @@ import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle, RefreshCw } f
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -189,7 +190,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
           a typo never moved.
         </p>
 
-        {err && <p className="text-[12px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
+        {err && <Callout tone="problem">{err}</Callout>}
 
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose}
@@ -299,7 +300,7 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
           <input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} />
         </div>
 
-        {err && <p className="text-[12px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
+        {err && <Callout tone="problem">{err}</Callout>}
 
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose}
@@ -372,7 +373,7 @@ function AddDSCModal({ onClose, onAdded }: {
           <h3 className="text-sm font-semibold text-ps-ink">Add DSC Record</h3>
           <button onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>
         </div>
-        {err && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{err}</p>}
+        {err && <Callout tone="problem">{err}</Callout>}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="text-xs font-medium text-ps-body block mb-1">Full Name</label>

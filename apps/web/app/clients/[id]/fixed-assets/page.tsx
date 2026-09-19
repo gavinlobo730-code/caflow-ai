@@ -16,7 +16,7 @@ import { fyRangeFor } from "@/lib/dates/periods";
 import { CwipTab } from "@/components/fixed-assets/CwipTab";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
-import { GapList } from "@/components/ui/callout";
+import { Callout, GapList } from "@/components/ui/callout";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
 // `credentials` carries a COOKIE — which this API does not read. core/auth.py
@@ -578,12 +578,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
           </div>
         ))}
 
-        {error && (
-          <div className="flex gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-            <AlertCircle size={13} className="text-red-600 shrink-0 mt-0.5" />
-            <p className="text-2xs text-red-700">{error}</p>
-          </div>
-        )}
+        {error && <Callout tone="problem">{error}</Callout>}
 
         <div className="flex gap-2 pt-2">
           <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
@@ -631,12 +626,7 @@ function DeleteAssetDialog({ asset, onClose, onSaved }: { asset: Asset; onClose:
           </div>
         </div>
 
-        {error && (
-          <div className="flex gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-            <AlertCircle size={13} className="text-red-600 shrink-0 mt-0.5" />
-            <p className="text-2xs text-red-700">{error}</p>
-          </div>
-        )}
+        {error && <Callout tone="problem">{error}</Callout>}
 
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
@@ -882,7 +872,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
         </div>
 
         <div className="flex-1 px-6 py-5 space-y-4 text-xs">
-          {error && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-red-700 flex gap-2 items-center"><AlertCircle size={13} />{error}</div>}
+          {error && <Callout tone="problem">{error}</Callout>}
 
           <Field label="Asset Name *">
             <input className={INPUT} value={form.asset_name} onChange={e => setForm(f => ({ ...f, asset_name: e.target.value }))} placeholder="e.g. Dell Laptop SN12345" />
@@ -1361,9 +1351,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
         </div>
       </div>
 
-      {runError && (
-        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-2.5 text-2xs text-red-700">{runError}</div>
-      )}
+      {runError && <Callout tone="problem">{runError}</Callout>}
       {runResult && (
         /* What the run DID, per asset. The browser loop reported nothing at
            all; a batch that says only "done" is the same defect with a nicer
@@ -1746,7 +1734,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
       {selected && (
         <div className="bg-white rounded-xl border border-red-200 px-5 py-5 space-y-4">
           <p className="text-xs font-semibold text-ps-ink">Dispose: {selected.asset_name}</p>
-          {error && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-red-700 text-xs">{error}</div>}
+          {error && <Callout tone="problem">{error}</Callout>}
           <div className="grid grid-cols-2 gap-4">
             <Field label="Disposal Date">
               <input type="date" className={INPUT} value={disposalDate} onChange={e => setDisposalDate(e.target.value)} />

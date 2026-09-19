@@ -222,7 +222,7 @@ export default function SignPage() {
                       </label>
 
                       {actionErr && (
-                        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
                           <AlertCircle size={14} className="mt-0.5 shrink-0" />
                           {actionErr}
                         </div>
@@ -262,7 +262,7 @@ export default function SignPage() {
                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
                       />
                       {actionErr && (
-                        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
                           <AlertCircle size={14} className="mt-0.5 shrink-0" />
                           {actionErr}
                         </div>

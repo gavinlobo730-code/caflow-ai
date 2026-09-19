@@ -10,6 +10,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { CardGridSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { Callout } from "@/components/ui/callout";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -244,9 +245,7 @@ export default function ClientLifecyclePage() {
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-3 text-sm">{error}</div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {/* Onboarding Workflows */}
       <div>

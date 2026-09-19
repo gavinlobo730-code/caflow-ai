@@ -39,7 +39,7 @@ import { request } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
-import { GapList, StatutoryNotes } from "@/components/ui/callout";
+import { Callout, GapList, StatutoryNotes } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
@@ -184,7 +184,7 @@ export default function Section32Page() {
         </div>
       </div>
 
-      {error && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-3 text-sm">{error}</div>}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {!clientId ? (
         <div className="bg-white rounded-xl border border-ps-muted text-center py-16">
@@ -471,7 +471,7 @@ function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
                  placeholder="Optional" />
         </label>
 
-        {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded px-3 py-2">{error}</p>}
+        {error && <Callout tone="problem">{error}</Callout>}
 
         <div className="flex gap-2 justify-end pt-1">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>

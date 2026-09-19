@@ -6,6 +6,7 @@ import type { Client } from "@/lib/types";
 import type { CreateClientInput } from "@/lib/data/clients";
 
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
+import { Callout } from "@/components/ui/callout";
 const ENTITY_TYPES = [
   "Proprietorship", "Partnership", "LLP", "Private Limited",
   "Public Limited", "Trust", "Society", "Individual",
@@ -293,11 +294,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             />
           </div>
 
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {error}
-            </p>
-          )}
+          {error && <Callout tone="problem">{error}</Callout>}
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">

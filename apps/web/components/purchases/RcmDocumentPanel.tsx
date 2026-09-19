@@ -20,9 +20,9 @@
  * copy of it here is a second place for it to be wrong.
  */
 import { useCallback, useEffect, useState } from "react";
-import { X, FileText, AlertTriangle, Check } from "lucide-react";
+import { X, FileText, Check } from "lucide-react";
 import { api, type RcmDocumentPreview } from "@/lib/api";
-import { GapList, StatutoryNotes } from "@/components/ui/callout";
+import { Callout, GapList, StatutoryNotes } from "@/components/ui/callout";
 
 export function RcmDocumentPanel({
   clientId, kind, purchaseBillId, purchasePaymentId, onClose, onIssued,
@@ -107,12 +107,7 @@ export function RcmDocumentPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex gap-2">
-              <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
+          {error && <Callout tone="problem">{error}</Callout>}
 
           {busy && !preview && <p className="text-xs text-ps-hint">Loading…</p>}
 

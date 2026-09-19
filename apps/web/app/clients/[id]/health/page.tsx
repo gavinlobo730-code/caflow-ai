@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { Callout } from "@/components/ui/callout";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -275,9 +276,7 @@ export default function ClientHealthPage() {
   if (!score) {
     return (
       <div className="p-6 space-y-4">
-        {error && (
-          <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-3 text-sm">{error}</div>
-        )}
+        {error && <Callout tone="problem">{error}</Callout>}
         <Card className="bg-white border border-gray-200">
           <CardContent className="py-12 text-center">
             <Activity size={32} className="text-gray-300 mx-auto mb-3" />
@@ -310,9 +309,7 @@ export default function ClientHealthPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-3 text-sm">{error}</div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {/* Score hero */}
       <Card className="bg-white border border-gray-200">
