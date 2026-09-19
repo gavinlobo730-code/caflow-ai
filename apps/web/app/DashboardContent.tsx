@@ -303,7 +303,7 @@ export default function DashboardContent() {
       {/* A failed load must never read as "0 Clients / All caught up". Keep the
           KPIs on screen but make it explicit they may be stale, and offer Retry. */}
       {loadFailed && (
-        <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+        <div role="alert" className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
           <AlertTriangle size={16} className="text-red-600 shrink-0" />
           <p className="text-[13px] text-red-700 flex-1">
             Couldn&apos;t load your dashboard — please retry. The figures below may be stale.

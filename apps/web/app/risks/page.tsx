@@ -409,8 +409,8 @@ export default function RisksPage() {
     ...inactiveClients.map((c) => ({ clientName: c.clientName, riskType: "Inactive Client", description: "No compliance entries in last 90 days", severity: "low" as const, action: "Confirm client status and add compliance calendar entries if active" })),
     ...advanceTaxRisks.map((r) => ({ clientName: r.clientName, riskType: "Advance Tax Default", description: `${r.installment} not filed — due ${r.dueDate}, ${r.daysOverdue} days overdue`, severity: "high" as const, action: "Pay advance tax with interest u/s 234B/234C of IT Act", daysOverdue: r.daysOverdue, date: r.dueDate })),
     ...dscExpiryRisks.map((r) => ({ clientName: r.clientName, riskType: "DSC Expiry", description: `DSC of ${r.dscHolder} expires on ${r.expiryDate} (${r.daysLeft} days left)`, severity: (r.daysLeft <= 15 ? "high" : "medium") as "high" | "medium", action: "Renew DSC before expiry — required for e-filing under IT Act Rule 12", date: r.expiryDate })),
-    ...loanOverdueRisks.map((r) => ({ clientName: r.clientName, riskType: "Loan Overdue", description: `${r.loanType} from ${r.lenderName} is overdue — ₹${(r.outstandingPaise / 100).toLocaleString("en-IN")} outstanding`, severity: "high" as const, action: "Contact lender immediately — overdue may affect credit rating and attract penal interest", amountPaise: r.outstandingPaise })),
-    ...fdMaturityRisks.map((r) => ({ clientName: r.clientName, riskType: "FD Maturing Soon", description: `FD at ${r.bankName} matures on ${r.maturityDate} (${r.daysLeft} days) — ₹${(r.maturityAmountPaise / 100).toLocaleString("en-IN")}`, severity: "low" as const, action: "Advise client on renewal or withdrawal — TDS applicable u/s 194A if interest > ₹40,000", amountPaise: r.maturityAmountPaise, date: r.maturityDate })),
+    ...loanOverdueRisks.map((r) => ({ clientName: r.clientName, riskType: "Loan Overdue", description: `${r.loanType} from ${r.lenderName} is overdue — ${formatPaise(r.outstandingPaise)} outstanding`, severity: "high" as const, action: "Contact lender immediately — overdue may affect credit rating and attract penal interest", amountPaise: r.outstandingPaise })),
+    ...fdMaturityRisks.map((r) => ({ clientName: r.clientName, riskType: "FD Maturing Soon", description: `FD at ${r.bankName} matures on ${r.maturityDate} (${r.daysLeft} days) — ${formatPaise(r.maturityAmountPaise)}`, severity: "low" as const, action: "Advise client on renewal or withdrawal — TDS applicable u/s 194A if interest > ₹40,000", amountPaise: r.maturityAmountPaise, date: r.maturityDate })),
     ...missingPanRisks.map((r) => ({ clientName: r.clientName, riskType: "Missing PAN", description: "Client has no PAN on record", severity: "medium" as const, action: "Obtain PAN — mandatory for TDS deduction and ITR filing u/s 139A of IT Act" })),
   ];
 
@@ -725,7 +725,7 @@ export default function RisksPage() {
                           <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
                           <td className="px-4 py-3 text-ps-label">{r.lenderName}</td>
                           <td className="px-4 py-3 text-ps-label capitalize">{r.loanType.replace(/_/g, " ")}</td>
-                          <td className="px-4 py-3 font-semibold text-red-700">₹{(r.outstandingPaise / 100).toLocaleString("en-IN")}</td>
+                          <td className="px-4 py-3 font-semibold text-red-700">{formatPaise(r.outstandingPaise)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -758,7 +758,7 @@ export default function RisksPage() {
                           <td className="px-4 py-3 text-ps-label">{r.bankName}</td>
                           <td className="px-4 py-3 text-ps-label">{r.maturityDate}</td>
                           <td className="px-4 py-3 font-semibold text-blue-700">{r.daysLeft}</td>
-                          <td className="px-4 py-3 text-ps-body">₹{(r.maturityAmountPaise / 100).toLocaleString("en-IN")}</td>
+                          <td className="px-4 py-3 text-ps-body">{formatPaise(r.maturityAmountPaise)}</td>
                         </tr>
                       ))}
                     </tbody>

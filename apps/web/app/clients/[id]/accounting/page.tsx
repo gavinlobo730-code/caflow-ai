@@ -1367,7 +1367,7 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
   const isBalanced = totals.balanced;
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
+    <div className={`space-y-4 mx-auto ${periodic ? "max-w-6xl" : "max-w-4xl"}`}>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-ps-body">
           Trial Balance — {periodic ? `${periodStart} to ${asOf}` : `as at ${asOf}`}
@@ -1450,16 +1450,16 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
             <tfoot>
               <tr className="border-t-2 border-ps-border font-semibold">
                 <td colSpan={periodic ? 7 : 3} className="px-4 py-3 text-ps-body text-sm">Total</td>
-                <td className="px-3 py-3 text-right font-mono text-ps-ink text-sm">₹{(grandDebit/100).toFixed(2)}</td>
-                <td className="px-4 py-3 text-right font-mono text-ps-ink text-sm">₹{(grandCredit/100).toFixed(2)}</td>
+                <td className="px-3 py-3 text-right font-mono text-ps-ink text-sm">{formatPaise(grandDebit)}</td>
+                <td className="px-4 py-3 text-right font-mono text-ps-ink text-sm">{formatPaise(grandCredit)}</td>
               </tr>
-              <tr><td colSpan={periodic ? 9 : 5} className="px-4 pb-3">{isBalanced ? <span className="text-xs text-green-600 font-medium">✓ Trial Balance is balanced</span> : <span className="text-xs text-red-600 font-medium">✗ Out of balance by ₹{(Math.abs(grandDebit-grandCredit)/100).toFixed(2)}</span>}</td></tr>
+              <tr><td colSpan={periodic ? 9 : 5} className="px-4 pb-3">{isBalanced ? <span className="text-xs text-green-600 font-medium">✓ Trial Balance is balanced</span> : <span className="text-xs text-red-600 font-medium">✗ Out of balance by {formatPaise(Math.abs(grandDebit - grandCredit))}</span>}</td></tr>
             </tfoot>
           </table>
         </div>
       ) : loaded ? (
         loadFailed ? (
-          <div className="text-center py-12">
+          <div className="text-center py-12" role="alert">
             <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the trial balance — the request failed or timed out.</p>
             <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
           </div>

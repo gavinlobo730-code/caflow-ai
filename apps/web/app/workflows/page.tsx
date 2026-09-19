@@ -264,7 +264,7 @@ export default function WorkflowsPage() {
 
         {/* Templates Tab */}
         {toggleError && (
-          <div className="mb-3 flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <div role="alert" className="mb-3 flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
             <p className="text-xs text-red-700">{toggleError}</p>
             <button onClick={() => setToggleError(null)} className="text-xs text-red-500 hover:underline shrink-0">Dismiss</button>
           </div>
@@ -366,7 +366,7 @@ export default function WorkflowsPage() {
                 </thead>
                 <tbody>
                   {analytics.by_template.map((row: WorkflowAnalytics["by_template"][number], i: number) => (
-                    <tr key={row.template_id} className={`border-b border-ps-muted hover:bg-[#FAFBFD] ${i % 2 === 0 ? "" : "bg-[#FAFBFD]"}`}>
+                    <tr key={row.template_id} className={`border-b border-ps-muted hover:bg-ps-bg ${i % 2 === 0 ? "" : "bg-ps-bg"}`}>
                       <td className="px-4 py-3 font-medium text-brand">{row.template_name}</td>
                       <td className="px-4 py-3 text-ps-body">{row.total_executions}</td>
                       <td className="px-4 py-3 text-green-600 font-medium">{row.successful}</td>
@@ -466,7 +466,7 @@ function WorkflowInstancesTab() {
             </thead>
             <tbody>
               {instances.map((inst: WorkflowInstance) => (
-                <tr key={inst.id} className="border-b border-ps-muted hover:bg-[#FAFBFD]">
+                <tr key={inst.id} className="border-b border-ps-muted hover:bg-ps-bg">
                   <td className="px-4 py-3 font-mono text-xs text-ps-label">{inst.id.slice(0,12)}...</td>
                   <td className="px-4 py-3 text-ps-body">{TRIGGER_LABELS[inst.trigger_event] || inst.trigger_event}</td>
                   <td className="px-4 py-3">

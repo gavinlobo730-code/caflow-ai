@@ -100,7 +100,12 @@ type ActiveTab = "all" | "draft" | "sent" | "signed" | "templates";
 // ---------------------------------------------------------------------------
 
 function formatPaise(paise: number): string {
-  return "₹" + Math.floor(paise / 100).toLocaleString("en-IN");
+  // D5: two decimals. `toLocaleString("en-IN")` with no options
+  // defaults to maximumFractionDigits 3 and minimumFractionDigits 0, so a
+  // paise figure came out as ₹1,18,000.5 — and with Math.floor/trunc in
+  // front of it, as ₹1,18,000 with the paise gone. A column where some rows
+  // carry paise and some do not cannot be added up by eye.
+  return formatPaiseINR(paise);
 }
 
 function formatDate(iso: string | null): string {
@@ -1460,7 +1465,7 @@ function EngagementsPageInner() {
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+        <div role="alert" className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
           <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
           <div className="flex-1 text-sm text-red-700">
             <span className="font-semibold">Error: </span>{error}

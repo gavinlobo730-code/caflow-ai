@@ -286,7 +286,7 @@ export function DebitNoteViewDrawer({
                     <thead><tr className="text-ps-hint"><th className="text-left font-semibold py-1">Account</th><th className="text-right font-semibold">Debit</th><th className="text-right font-semibold">Credit</th></tr></thead>
                     <tbody>
                       {journal.lines.map((jl, i) => (
-                        <tr key={i} className="border-t border-[#EEF2F7]">
+                        <tr key={i} className="border-t border-ps-muted">
                           <td className="py-1 text-ps-body">{jl.account_name ?? jl.account_id ?? "—"}</td>
                           <td className="py-1 text-right font-mono">{jl.debit_paise ? fmt(jl.debit_paise) : ""}</td>
                           <td className="py-1 text-right font-mono">{jl.credit_paise ? fmt(jl.credit_paise) : ""}</td>

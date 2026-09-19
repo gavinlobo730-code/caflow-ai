@@ -138,7 +138,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
   return (
     <div className="space-y-5">
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex gap-2">
+        <div role="alert" className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex gap-2">
           <AlertCircle size={13} className="shrink-0 mt-0.5" /><span>{error}</span>
         </div>
       )}

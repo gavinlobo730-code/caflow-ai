@@ -30,6 +30,7 @@ import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
 import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
+import { formatPaise } from "@/lib/money/format";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -69,7 +70,12 @@ type Tab = "inputs" | "register" | "release" | "outputs" | "file" | "bonus" | "s
 const OVERRIDE_REASON_MIN = 20;
 
 function fmt(paise: number) {
-  return "₹" + Math.floor(paise / 100).toLocaleString("en-IN");
+  // D5: two decimals. `toLocaleString("en-IN")` with no options
+  // defaults to maximumFractionDigits 3 and minimumFractionDigits 0, so a
+  // paise figure came out as ₹1,18,000.5 — and with Math.floor/trunc in
+  // front of it, as ₹1,18,000 with the paise gone. A column where some rows
+  // carry paise and some do not cannot be added up by eye.
+  return formatPaise(paise);
 }
 
 function fmtMonth(m: string) {

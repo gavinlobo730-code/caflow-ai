@@ -237,7 +237,7 @@ So T3 is replace-and-migrate, not define.
 | T3-b | ✅ **18 Sep.** FIVE built, not eight: `components/ui/field.tsx` (Input, Select, Textarea, Label, **Field** — the aria wiring, since `aria-describedby` appeared ONCE in the tree against 927 `<label>`) and `components/ui/callout.tsx` (Callout + GapList, four tones). **Table and Pagination already exist** as `DataTable` — the 242 raw `<table>` are adoption, not a missing primitive — and **Tooltip is deferred**: 292 sites use native `title=`, and a custom one is a behaviour decision for the reference screens. Both adopted on the screens that argued for them. | 3d | ✅ done |
 | T3-c | The 6 product-specific components | 3.5d | 5 of 6 done — below |
 | T3-d | Reference screen 1 — **periodic Trial Balance** | 1.5d | Renders full-width; 9 Dr/Cr columns; owner approves |
-| T3-e | Reference screen 2 — **Banking Entries** | 1.5d | Density proven; its guard rewritten to name components, not class strings |
+| T3-e | Reference screen 2 — **Banking Entries** | 1.5d | Guard half done 19 Sep — see below. Density still to prove; owner approves |
 | T3-f | ✅ **18 Sep.** `ps.hint` was **2.56:1** — the most-used colour in the product. `label` #64748B→#475569, `hint` #94A3B8→#64748B. Guarded, reading the config. | in T3-a | ✅ every ink token ≥ 4.5:1 on white and on `ps.bg` |
 
 **T3-c, the six components:**
@@ -247,9 +247,48 @@ So T3 is replace-and-migrate, not define.
 | **Money cell** | ✅ **18 Sep** — `lib/money/format.ts`. Re-measured: **248 formatters, 26 behaviours**, not 53/11. **139 had no `en-IN` locale at all**, ~150 were null-unsafe, the shared one rendered `undefined` as "₹NaN" and `null` as "₹0.00", and the whole-rupee one ROUNDED — a second CGST §170. Four Intl construction sites became two, both inside the authority | ~~53 / 11~~ **done** |
 | **Dr/Cr pair** | ✅ **18 Sep** — `components/ui/drcr.tsx`. The finding was not the duplication: two of the three sites read `p >= 0 ? "Dr" : "Cr"`, so a customer who had **settled every invoice** was emailed a statement reading **"₹0.00 Dr"**, and the same `>= 0` coloured it blue. A nil balance is on neither side; `sideOf` is a tri-state | ~~4 sites~~ **done** |
 | **Statutory-gap callout** | ✅ **18 Sep** — `GapList` existed and accepted ONE of the three shapes the backend emits, which is why 48 sites hand-rolled it. Widened, plus `StatutoryNotes` for the gap/caveat pair. The real defect: a GAP wore **11 distinct inks** and a CAVEAT **7**, with **5 used for both** — `RcmDocumentPanel` rendered the two in a *byte-identical* class string | ~~48 sites~~ **18 + 12**, ratcheted |
-| **Refusal banner** | ✅ **19 Sep.** The finding read as adoption and the real defect was ACCESSIBILITY: of 176 guarded failure bands with a red ground, exactly **one** carried `role="alert"`, so a CA pressing Save and being refused was told nothing at all by a screen reader — focus still in the form, page apparently unchanged. Both primitives already announce; `Callout tone="problem"` had **one caller in the whole product** (`Gstr1Findings`), the `capital_wip` shape again. 145 bands onto `Callout`, 12 public-facing ones kept their own markup and gained the announcement, **21 left** (each carries a heading, a Retry button or extra prose — hand decisions). Guard: `a-refusal-a-reader-must-act-on-is-announced.test.ts`, stated as *announced* rather than *uses the primitive*, because being announced is correctness and adopting the primitive is a design preference the owner reviews | 176 → 21 |
+| **Refusal banner** | ✅ **19 Sep.** The finding read as adoption and the real defect was ACCESSIBILITY: of 176 guarded failure bands with a red ground, exactly **one** carried `role="alert"`, so a CA pressing Save and being refused was told nothing at all by a screen reader — focus still in the form, page apparently unchanged. Both primitives already announce; `Callout tone="problem"` had **one caller in the whole product** (`Gstr1Findings`), the `capital_wip` shape again. 145 bands onto `Callout`, 12 public-facing ones kept their own markup and gained the announcement, **nil left** — the last 21 were finished by hand, each keeping its own shape (a Retry button, a Dismiss control, a heading over a list of problems, a `<Card>`, a sentence of extra prose) and taking `role="alert"` alone. Guard: `a-refusal-a-reader-must-act-on-is-announced.test.ts`, stated as *announced* rather than *uses the primitive*, because being announced is correctness and adopting the primitive is a design preference the owner reviews | 176 → 21 |
 | **Period picker** | ✅ **18 Sep** — `components/ui/period.tsx`, on T3-b's `Select`. **25** selects in 24 files, **14 class strings, 4 focus treatments**. Every option now carries `FY` or `AY`: IT Act §2(9) with §3 makes AY 2026-27 the same period as FY 2025-26, and the filing screen shows both dropdowns together. Month/quarter/range NOT built — no screen asks for one. **Still per-page** | ~~20 sites~~ **done** |
 | **Working panel** | "what this figure is made of" — the vehicle for T7 | 7 unrelated panels inside 2,000–4,800-line pages |
+
+**T3-d, part 1 — the periodic Trial Balance, and what widening it found.** The 9-column view now takes `max-w-6xl` where the 5-column one keeps `max-w-4xl` (the shape this file's own cash-flow view already uses), rather than a new global width rule — that is T3-d's own question and it is the owner's. Widening it surfaced a real defect: the rows go through `formatPaise` and the FOOTER did `₹{(x/100).toFixed(2)}`, so the one line a CA reads to check the two sides agree grouped **Western** — ₹123456.78 under a column of ₹1,23,456.78. Sweeping for that shape across the tree found **20 more sites in 16 files** losing the paise outright through `toLocaleString("en-IN")` with no options (`maximumFractionDigits` defaults to 3 and `minimum` to 0, so ₹1,18,000.50 renders "1,18,000.5"), most of them a per-file `rupees()`/`fmt()` helper — the ITC register, the §37(3) amendment panel, payroll, the GST and TDS compliance tabs, engagements, the loan risk register and both party lookups. Guard: `a-money-figure-keeps-its-paise.test.ts`. **The `(₹)` in a CSV HEADER is not a display figure** — 7 of the 15 the first heuristic caught were CSV columns that must stay bare, so the rule is about the OPTIONS and never about "divides by 100".
+
+**T3-e, part 1 — the guard's one class-string assertion, restated.** `bank-entries-is-a-table.test.ts` was already component-named throughout except one test: *"the two ways out of an unanswerable line are the LARGEST controls in the modal"* asserted `text-xs` and `px-3 py-1.5` — and `text-xs` is this app's DEFAULT button size, so the assertion said *ordinary* while its own name said *largest*. It now parses every button's type step and vertical padding into ORDINALS and asserts the two escape hatches tie for the top and are never below it. **Measured, not claimed**: growing an unrelated button to `text-base py-4` passed the old guard 20/20 and fails the new one — the exact defect its name describes. A second bug fell out: the label cut took the last `>` in the chunk, which is inside `{t.credit_paise > 0 ? …}`, so *Find the invoice* read as `0 ? "invoice" : "bill"}` and the test reported an escape hatch missing.
+
+**T4, part 1 — the colours nobody chose, and the theme colour declared three
+times.** The hex ratchet counted `border-[#E2E8F0]` and nothing else, so a hex in
+a `style={{}}`, an SVG attribute or a prop default — the same literal, drifting
+the same way — matched nothing. **Measured 19 Sep: 60 of them in 8 files**, and
+the guard's own name is *a colour comes from the token file*. It has a second
+limb now (budget **46**, with five files allowlisted WITH their reason: the root
+error boundary, which renders when the stylesheet may not have loaded; the
+`<meta>` tag; the logo's SVG; a colour PICKER, where hex is the data; and a
+print stylesheet injected as a string).
+
+Two findings fell out of measuring it:
+
+* **Twenty literals sat within 3/255 per channel of a token** — a distance no
+  screen resolves, so nobody CHOSE them. Six near-whites (`#FAFBFC`, `#FAFBFD`,
+  `#FAFAFA`, `#FCFDFE`, `#FCFCFD` and `#EEF2F7`) where the token file holds two,
+  and `#FAFBFC` against `#FAFBFD` differ by **one** in blue. 16 collapsed onto
+  `bg-ps-bg` / `border-ps-muted`. **`#FCFDFE` and `#FCFCFD` deliberately did
+  not**: they are a band LIGHTER than `ps.bg`, used on GSTR-3B against a
+  `hover:bg-ps-bg` row, so collapsing them would make a row identical to its own
+  hover state — the system has no token for that step and inventing one is a
+  design decision.
+* **The browser chrome colour was declared three times, in two values, and one
+  declaration was dead.** `metadata.themeColor: "#2563EB"` (a generic blue this
+  product's brand is nowhere), a hand-written `<meta>` at `#0B1635`, and
+  `manifest.json` at `#0B1635` — while `ps.ink` is `#0D1635`. Next 14 moved
+  `themeColor` out of `metadata`, so that key was silently dropped and the built
+  page has only ever emitted one tag. All three now say `#0D1635`, verified in
+  the built HTML.
+
+**Still owner-held and now measured exactly: the rival indigo is 55 sites across
+7 files**, not the ~40 recorded earlier — `#4338CA` (18), `#C7D2FE` (12),
+`#EEF2FF` (8), `#3730A3` (7), `#E0E7FF` (5), `#6366F1` (5). Folding them into
+`brand` changes what three screens look like, so it is one decision rather than
+fifty-five.
 
 **Why two reference screens.** Banking Entries cannot prove the width rule —
 it is already full-bleed (`px-6`, no max-width) and has 6 columns against 12 on

@@ -40,12 +40,12 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Banknote, Building2, Download, Info, TrendingUp } from "lucide-react";
 import { api, type PayrollBankAdvice, type PayrollDepartmentCost, type PayrollMonthOnMonth } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { formatPaise } from "@/lib/money/format";
 
 function rupees(paise: number): string {
   const sign = paise < 0 ? "-" : "";
   const abs = Math.abs(paise);
-  return `${sign}₹${Math.floor(abs / 100).toLocaleString("en-IN")}.${(abs % 100)
-    .toString().padStart(2, "0")}`;
+  return `${sign}${formatPaise(abs)}`;
 }
 
 /** A movement's own colour, and it is NOT the ready/problem pair. A payroll

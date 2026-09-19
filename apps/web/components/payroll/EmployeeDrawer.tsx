@@ -37,6 +37,7 @@ import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput
 import { financialYearOfMonth } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
+import { formatPaise } from "@/lib/money/format";
 
 export type DrawerEmployee = {
   id: string;
@@ -65,8 +66,12 @@ const SECTIONS: { key: Section; label: string; hint: string }[] = [
 
 function fmt(paise?: number | null) {
   const p = Number(paise ?? 0);
-  return "₹" + Math.floor(Math.abs(p) / 100).toLocaleString("en-IN")
-    + (p < 0 ? " Cr" : "");
+  // D5: two decimals. `toLocaleString("en-IN")` with no options
+  // defaults to maximumFractionDigits 3 and minimumFractionDigits 0, so a
+  // paise figure came out as ₹1,18,000.5 — and with Math.floor/trunc in
+  // front of it, as ₹1,18,000 with the paise gone. A column where some rows
+  // carry paise and some do not cannot be added up by eye.
+  return formatPaise(Math.abs(p)) + (p < 0 ? " Cr" : "");
 }
 
 const FIELD =

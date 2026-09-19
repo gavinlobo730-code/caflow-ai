@@ -296,7 +296,7 @@ export default function AccountGroupsPage() {
               </div>
               {subGroups.map(sg => (
                 <div key={sg}>
-                  <div className="px-5 py-2 border-b border-ps-bg flex items-center justify-between bg-[#FAFAFA]">
+                  <div className="px-5 py-2 border-b border-ps-bg flex items-center justify-between bg-ps-bg">
                     <span className="text-xs font-medium text-ps-label">{sg}</span>
                     <span className="text-3xs text-ps-hint">{grouped[pg][sg].length}</span>
                   </div>

@@ -24,11 +24,17 @@
  * their icon bubble is a considered part of a page a stranger sees and
  * dropping it for a primitive is a visible change on a sign-in form.
  *
- * ── AND IT IS A RATCHET, NOT A BAN ──────────────────────────────────────────
- * 21 bands are left. Each carries a heading, a Retry button or extra prose, so
- * each is a hand decision rather than a sweep. The budget is EXACT with no
- * headroom: a budget with slack lets a regression in silently, which is how
- * the colour budget passed one last week.
+ * ── THE BUDGET IS NOW NIL ───────────────────────────────────────────────────
+ * The last 21 were finished by hand. Each has a CONSIDERED shape the primitive
+ * does not have — a Retry button, a Dismiss control, a heading over a list of
+ * problems, a `<Card>`, or a sentence of extra prose — so each took
+ * `role="alert"` and nothing else moved. That is the rule this file states,
+ * and adopting `Callout` on top of it is a design preference that belongs with
+ * the screens the owner reviews.
+ *
+ * It stays a RATCHET rather than a flat ban so the failure message keeps
+ * saying what to do; the budget is EXACT, because slack lets a regression in
+ * silently — which is how the colour budget passed one last week.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -78,7 +84,7 @@ function silentBands(): { file: string; attrs: string }[] {
 }
 
 /** EXACT, no headroom. Lower it when you fix one; never raise it. */
-const SILENT_REFUSAL_BANDS = 21;
+const SILENT_REFUSAL_BANDS = 0;
 
 test("no NEW refusal band may be silent", () => {
   const found = silentBands();

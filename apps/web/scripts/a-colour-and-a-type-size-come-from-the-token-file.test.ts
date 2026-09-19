@@ -107,8 +107,84 @@ function count(re: RegExp): { total: number; byFile: Map<string, number> } {
 // no name at all, and `text-[9px]` (29) deliberately has none: it is below the
 // size at which the remaining steps are distinguishable, and naming it would
 // bless it. Each needs a decision, which belongs with the reference screens.
-const HEX_BUDGET = 116;
+const HEX_BUDGET = 98;
 const PX_TEXT_BUDGET = 405;
+
+// ── THE SECOND WAY TO WRITE A COLOUR, WHICH THIS FILE COULD NOT SEE ─────────
+//
+// `HEX_CLASS` matches a Tailwind ARBITRARY VALUE — `border-[#E2E8F0]`. A hex in
+// a `style={{ backgroundColor: "#182350" }}`, an SVG `stroke=`, a prop default
+// or a chart palette is the same defect and matched nothing, so a file could
+// hold thirty raw colours and pass a guard whose own name is "a colour comes
+// from the token file". Measured on 19 Sep 2026: 46 of them once comments and the
+// allowlist below are taken out, in 3 files.
+//
+// FOUR OF THOSE FILES ARE LEGITIMATE and are allowlisted with their reason
+// rather than counted, because a budget that includes sites nobody should ever
+// convert never reaches nil and stops meaning anything:
+//
+//   app/global-error.tsx    the ROOT error boundary. It renders when the app
+//                           itself failed, which may be before the stylesheet
+//                           loaded, so a Tailwind class cannot be relied on.
+//   app/layout.tsx          <meta name="theme-color"> takes no class.
+//   components/LogoIcon.tsx the brand mark's own SVG.
+//   app/settings/branding/  a colour PICKER — hex is its data, not its style.
+//   app/sign/page.tsx       a print stylesheet injected as a string.
+//
+// The rest — the executive dashboard, copilot and workflows — thread colours
+// through `style={{}}` and prop defaults, and every one of them maps to a token
+// or a Tailwind palette class. Converting them is per-component work on three
+// screens and it is what lowers this budget.
+const RAW_HEX = /#[0-9a-fA-F]{6}\b/g;
+const HEX_OUTSIDE_A_CLASS_BUDGET = 46;
+const HEX_LITERAL_IS_THE_POINT = [
+  "app/global-error.tsx",
+  "app/layout.tsx",
+  "components/LogoIcon.tsx",
+  "app/settings/branding/page.tsx",
+  "app/sign/page.tsx",
+];
+
+test("a colour is not written as a raw hex anywhere else either", () => {
+  const byFile = new Map<string, number>();
+  let total = 0;
+  for (const { file, body } of BODIES) {
+    if (HEX_LITERAL_IS_THE_POINT.some((a) => file.replace(/\\/g, "/").endsWith(a))) continue;
+    // COMMENTS FIRST. `skeleton.tsx` documents its own palette in prose —
+    // "slate: #F1F5F9 blocks, #E2E8F0 borders" — and counting that as a raw
+    // colour puts a file in the worst list for explaining itself. Three of the
+    // first draft's 50 were exactly that. Then strip the arbitrary-value
+    // classes, because those are the budget above's population and counting
+    // them twice would make one fix move two numbers.
+    const src = body.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+    const n = (src.replace(HEX_CLASS, " ").match(RAW_HEX) ?? []).length;
+    if (n) { byFile.set(file, n); total += n; }
+  }
+  const worst = [...byFile.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  assert.ok(
+    total <= HEX_OUTSIDE_A_CLASS_BUDGET,
+    `${total} raw hex colours outside a Tailwind class, budget ` +
+      `${HEX_OUTSIDE_A_CLASS_BUDGET}. A style={{}} or an SVG attr is the same ` +
+      `literal as border-[#…] and drifts the same way — #182350 IS brand and ` +
+      `#DC2626 IS red-600, so both have a name.\n  worst: ` +
+      worst.map(([f, n]) => `${f} (${n})`).join("\n         "),
+  );
+  assert.ok(total >= 1,
+    "the probe found no raw hex at all — it has stopped seeing them, and a " +
+    "budget nothing can reach passes for ever");
+});
+
+test("the allowlist names files that exist and still hold a literal", () => {
+  // An allowlist entry for a file that moved, or that no longer has a hex in
+  // it, is an exemption nobody is using and a reason nobody can check.
+  for (const rel of HEX_LITERAL_IS_THE_POINT) {
+    const hit = BODIES.find(({ file }) => file.replace(/\\/g, "/").endsWith(rel));
+    assert.ok(hit, `${rel} is allowlisted and does not exist`);
+    assert.ok(RAW_HEX.test(hit!.body.replace(HEX_CLASS, " ")),
+      `${rel} is allowlisted and holds no raw hex — drop the exemption`);
+    RAW_HEX.lastIndex = 0;
+  }
+});
 
 test("a colour is not written as a raw hex class", () => {
   const { total, byFile } = count(HEX_CLASS);

@@ -192,7 +192,7 @@ export default function ChecklistPage() {
   return (
     <div className="p-6 space-y-5 max-w-3xl mx-auto">
       {actionError && (
-        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-2.5 text-sm text-red-700 flex items-center justify-between gap-3">
+        <div role="alert" className="bg-red-50 border border-red-100 rounded-xl px-4 py-2.5 text-sm text-red-700 flex items-center justify-between gap-3">
           <span>{actionError}</span>
           <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600 shrink-0">✕</button>
         </div>

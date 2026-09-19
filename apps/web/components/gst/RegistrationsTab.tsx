@@ -28,6 +28,7 @@ import { api, type ClientGstRegistration, type GstRegistrationKinds,
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { YearPicker } from "@/components/ui/year-picker";
+import { formatPaise } from "@/lib/money/format";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -279,7 +280,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                 <tr key={y.id}>
                   <td className="py-1.5 font-mono text-ps-body">{y.financial_year}</td>
                   <td className="py-1.5 text-right font-mono tabular-nums text-ps-body">
-                    ₹{Math.floor(y.aggregate_turnover_paise / 100).toLocaleString("en-IN")}
+                    {formatPaise(y.aggregate_turnover_paise)}
                   </td>
                   <td className="py-1.5 text-ps-label">{y.source_note || "—"}</td>
                 </tr>

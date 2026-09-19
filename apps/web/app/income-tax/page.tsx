@@ -1288,7 +1288,7 @@ export default function IncomeTaxPage() {
                 )}
 
                 {dueDateError && (
-                  <p className="mt-1.5 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+                  <p role="alert" className="mt-1.5 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
                     {dueDateError} — enter the date yourself and check it against
                     §139(1).
                   </p>

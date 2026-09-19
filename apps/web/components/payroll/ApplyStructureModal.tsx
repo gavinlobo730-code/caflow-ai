@@ -30,6 +30,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { ApplyStructureResult } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { formatPaise } from "@/lib/money/format";
 
 type RosterEmployee = {
   id: string; name: string; basic_paise?: number; status?: string;
@@ -37,7 +38,12 @@ type RosterEmployee = {
 
 function fmt(paise?: number | string | null) {
   const p = Number(paise ?? 0);
-  return "₹" + Math.floor(p / 100).toLocaleString("en-IN");
+  // D5: two decimals. `toLocaleString("en-IN")` with no options
+  // defaults to maximumFractionDigits 3 and minimumFractionDigits 0, so a
+  // paise figure came out as ₹1,18,000.5 — and with Math.floor/trunc in
+  // front of it, as ₹1,18,000 with the paise gone. A column where some rows
+  // carry paise and some do not cannot be added up by eye.
+  return formatPaise(p);
 }
 
 const FIELD =
@@ -216,7 +222,7 @@ export default function ApplyStructureModal({
           )}
 
           {err && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3">
               <p className="text-2xs font-semibold text-red-700">
                 Nothing was changed
               </p>

@@ -33,6 +33,7 @@ import {
   type PurchaseBillLine,
 } from "@/lib/purchases/billEditor";
 import { Callout } from "@/components/ui/callout";
+import { formatPaise } from "@/lib/money/format";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1301,7 +1302,7 @@ export function PurchaseBillEditor({
                 <li key={d.bill_id} className="text-amber-900/90">
                   <span className="font-medium">
                     {d.bill_no || "(no number)"}
-                    {d.bill_date ? ` · ${d.bill_date}` : ""} · ₹{(d.total_paise / 100).toLocaleString("en-IN")}
+                    {d.bill_date ? ` · ${d.bill_date}` : ""} · {formatPaise(d.total_paise)}
                   </span>
                   <br />
                   {d.detail}
@@ -1322,7 +1323,7 @@ export function PurchaseBillEditor({
                 <li key={d.bill_id} className="text-amber-900/90">
                   <span className="font-medium">
                     {d.bill_no || "(no number)"}
-                    {d.bill_date ? ` · ${d.bill_date}` : ""} · ₹{(d.total_paise / 100).toLocaleString("en-IN")}
+                    {d.bill_date ? ` · ${d.bill_date}` : ""} · {formatPaise(d.total_paise)}
                   </span>
                   <br />
                   {d.detail}
