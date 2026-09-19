@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import { EntityLookup } from "./EntityLookup";
+import { formatPaise } from "@/lib/money/format";
 
 /** Minimal vendor shape the lookup needs (structural — extra fields ignored). */
 export interface VendorLike {
@@ -16,7 +17,7 @@ export interface VendorLike {
 }
 
 const fmtOutstanding = (p?: number | null) =>
-  p == null || p === 0 ? "" : `₹${(Math.abs(p) / 100).toLocaleString("en-IN")} due`;
+  p == null || p === 0 ? "" : `${formatPaise(Math.abs(p))} due`;
 
 /**
  * Searchable vendor picker — drop-in for the old `<select>` (id-controlled).

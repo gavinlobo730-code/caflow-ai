@@ -10,6 +10,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { YearPicker } from "@/components/ui/year-picker";
+import { formatPaise } from "@/lib/money/format";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -32,7 +33,12 @@ async function apiFetch(path: string, opts?: RequestInit) {
 }
 
 function rupees(paise: number) {
-  return `₹${(paise / 100).toLocaleString("en-IN")}`;
+  // D5: two decimals. `toLocaleString("en-IN")` with no options
+  // defaults to maximumFractionDigits 3 and minimumFractionDigits 0, so a
+  // paise figure came out as ₹1,18,000.5 — and with Math.floor/trunc in
+  // front of it, as ₹1,18,000 with the paise gone. A column where some rows
+  // carry paise and some do not cannot be added up by eye.
+  return formatPaise(paise);
 }
 
 type TDSTab = "dashboard" | "deductions" | "challans" | "returns" | "form26as" | "certificates" | "lower_deduction";

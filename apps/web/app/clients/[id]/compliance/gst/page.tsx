@@ -15,6 +15,7 @@ import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
 import type { GLReconciliation, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";
+import { formatPaise } from "@/lib/money/format";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -131,7 +132,12 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
 }
 
 function rupees(paise: number) {
-  return `₹${(paise / 100).toLocaleString("en-IN")}`;
+  // D5: two decimals. `toLocaleString("en-IN")` with no options
+  // defaults to maximumFractionDigits 3 and minimumFractionDigits 0, so a
+  // paise figure came out as ₹1,18,000.5 — and with Math.floor/trunc in
+  // front of it, as ₹1,18,000 with the paise gone. A column where some rows
+  // carry paise and some do not cannot be added up by eye.
+  return formatPaise(paise);
 }
 
 type GSTTab = "dashboard" | "gstr1" | "amendments" | "gstr3b" | "itc" | "gstr2b" | "history" | "gstr9" | "registrations";

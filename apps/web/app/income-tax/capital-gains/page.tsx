@@ -58,6 +58,7 @@ import {
 } from "@/lib/data/income-tax";
 import { listingIsAsked, grandfatheringIsAsked } from "@/lib/income-tax/capitalGainsFacts";
 import { Callout, GapList } from "@/components/ui/callout";
+import { formatPaise } from "@/lib/money/format";
 
 /** Anything the compute endpoint accepts. The calculator and the register
  *  have different vocabularies and the backend takes the union of both. */
@@ -640,7 +641,7 @@ export default function CapitalGainsPage() {
                       <div>
                         <p className="text-xs text-ps-hint">Capital Gain</p>
                         <p className={`text-sm font-semibold ${result.gain_paise >= 0 ? "text-green-700" : "text-red-700"}`}>
-                          {result.gain_paise >= 0 ? "+" : ""}₹{(result.gain_paise / 100).toLocaleString("en-IN")}
+                          {result.gain_paise >= 0 ? "+" : ""}{formatPaise(result.gain_paise)}
                         </p>
                       </div>
                       <div>
@@ -655,11 +656,11 @@ export default function CapitalGainsPage() {
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span className="text-ps-label">Sale Price</span>
-                        <span className="font-medium">₹{((salePaise ?? 0) / 100).toLocaleString("en-IN")}</span>
+                        <span className="font-medium">{formatPaise(salePaise ?? 0)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-ps-label">Cost of Acquisition</span>
-                        <span className="font-medium">₹{((purchasePaise ?? 0) / 100).toLocaleString("en-IN")}</span>
+                        <span className="font-medium">{formatPaise(purchasePaise ?? 0)}</span>
                       </div>
                       {/* IT-19. Where s.55(2)(ac) substituted the cost, the gain
                           below is measured against the DEEMED figure, so the
@@ -667,19 +668,19 @@ export default function CapitalGainsPage() {
                       {result.grandfathered_cost_is_applied && (
                         <div className="flex justify-between text-sm">
                           <span className="text-ps-label">Deemed cost — s.55(2)(ac)</span>
-                          <span className="font-medium">₹{((result.cost_of_acquisition_paise ?? 0) / 100).toLocaleString("en-IN")}</span>
+                          <span className="font-medium">{formatPaise(result.cost_of_acquisition_paise ?? 0)}</span>
                         </div>
                       )}
                       {(improvementPaise ?? 0) > 0 && (
                         <div className="flex justify-between text-sm">
                           <span className="text-ps-label">Improvement Cost</span>
-                          <span className="font-medium">₹{((improvementPaise ?? 0) / 100).toLocaleString("en-IN")}</span>
+                          <span className="font-medium">{formatPaise(improvementPaise ?? 0)}</span>
                         </div>
                       )}
                       <div className="border-t border-ps-muted pt-2 flex justify-between text-sm font-semibold">
                         <span className="text-ps-ink">Capital Gain</span>
                         <span className={result.gain_paise >= 0 ? "text-green-700" : "text-red-700"}>
-                          ₹{(result.gain_paise / 100).toLocaleString("en-IN")}
+                          {formatPaise(result.gain_paise)}
                         </span>
                       </div>
 
@@ -688,12 +689,12 @@ export default function CapitalGainsPage() {
                           <p className="text-xs font-medium text-ps-label mb-2">With Indexation ({result.tax_with_indexation_percent}%)</p>
                           <div className="flex justify-between text-sm">
                             <span className="text-ps-label">Indexed Cost (CII {ciiByFy[purchaseFY] ?? "—"} → {ciiByFy[saleFY] ?? "—"})</span>
-                            <span>₹{(result.indexed_cost_paise / 100).toLocaleString("en-IN")}</span>
+                            <span>{formatPaise(result.indexed_cost_paise)}</span>
                           </div>
                           <div className="flex justify-between text-sm font-semibold mt-1">
                             <span className="text-ps-ink">Gain (indexed)</span>
                             <span className={result.gain_with_indexation_paise >= 0 ? "text-green-700" : "text-red-700"}>
-                              ₹{(result.gain_with_indexation_paise / 100).toLocaleString("en-IN")}
+                              {formatPaise(result.gain_with_indexation_paise)}
                             </span>
                           </div>
                         </div>

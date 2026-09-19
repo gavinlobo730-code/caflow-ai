@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { apiGet, getAuthToken } from "@/lib/invoices/shared";
+import { formatPaise } from "@/lib/money/format";
 
 /**
  * Cash Book — every Cash ledger in date order, and the one rule cash has.
@@ -76,7 +77,7 @@ function rupees(paise: number | null | undefined): string {
   const p = Number(paise ?? 0);
   const sign = p < 0 ? "-" : "";
   const abs = Math.abs(p);
-  return `${sign}₹${Math.floor(abs / 100).toLocaleString("en-IN")}.${String(abs % 100).padStart(2, "0")}`;
+  return `${sign}${formatPaise(abs)}`;
 }
 
 export function CashRegister({ clientId }: { clientId: string }) {

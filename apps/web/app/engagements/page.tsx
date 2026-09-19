@@ -100,7 +100,12 @@ type ActiveTab = "all" | "draft" | "sent" | "signed" | "templates";
 // ---------------------------------------------------------------------------
 
 function formatPaise(paise: number): string {
-  return "₹" + Math.floor(paise / 100).toLocaleString("en-IN");
+  // D5: two decimals. `toLocaleString("en-IN")` with no options
+  // defaults to maximumFractionDigits 3 and minimumFractionDigits 0, so a
+  // paise figure came out as ₹1,18,000.5 — and with Math.floor/trunc in
+  // front of it, as ₹1,18,000 with the paise gone. A column where some rows
+  // carry paise and some do not cannot be added up by eye.
+  return formatPaiseINR(paise);
 }
 
 function formatDate(iso: string | null): string {

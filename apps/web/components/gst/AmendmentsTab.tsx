@@ -37,11 +37,17 @@ import type {
 // string that GSTN reads as month 20.
 import { gstPeriodLabel as periodLabel, isGstPeriod as isPeriod } from "@/lib/gst/period";
 import { Callout } from "@/components/ui/callout";
+import { formatPaise } from "@/lib/money/format";
 
 function money(paise?: number | null) {
   const p = Number(paise ?? 0);
   const sign = p < 0 ? "−" : "";
-  return `${sign}₹${Math.abs(Math.trunc(p / 100)).toLocaleString("en-IN")}`;
+  // D5: two decimals. `toLocaleString("en-IN")` with no options
+  // defaults to maximumFractionDigits 3 and minimumFractionDigits 0, so a
+  // paise figure came out as ₹1,18,000.5 — and with Math.floor/trunc in
+  // front of it, as ₹1,18,000 with the paise gone. A column where some rows
+  // carry paise and some do not cannot be added up by eye.
+  return `${sign}${formatPaise(Math.abs(p))}`;
 }
 
 const FIELD =

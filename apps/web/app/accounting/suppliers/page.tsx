@@ -58,6 +58,7 @@ import { listTdsSections, computeTdsAmount, type TDSSection, type TDSAmountResul
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import { Callout } from "@/components/ui/callout";
+import { formatPaise } from "@/lib/money/format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -578,7 +579,7 @@ export default function SuppliersPage() {
                   )}
                   {billPaise > 0 && tdsCalc && !tdsCalc.tds_applicable && (
                     <p className="text-xs text-ps-label">
-                      Below the ₹{(tdsCalc.threshold_paise / 100).toLocaleString("en-IN")} threshold for Section {tdsCalc.section} — no TDS applicable.
+                      Below the {formatPaise(tdsCalc.threshold_paise)} threshold for Section {tdsCalc.section} — no TDS applicable.
                     </p>
                   )}
                   {billPaise > 0 && tdsCalc && tdsCalc.tds_applicable && (

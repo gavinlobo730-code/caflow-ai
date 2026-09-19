@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { X, FileText, Check } from "lucide-react";
 import { api, type RcmDocumentPreview } from "@/lib/api";
+import { formatPaise } from "@/lib/money/format";
 import { Callout, GapList, StatutoryNotes } from "@/components/ui/callout";
 
 export function RcmDocumentPanel({
@@ -182,7 +183,7 @@ export function RcmDocumentPanel({
                         <td className="py-1.5 text-ps-ink">{l.description}</td>
                         <td className="py-1.5 font-mono text-ps-label">{l.hsn_sac ?? "—"}</td>
                         <td className="py-1.5 text-right tabular-nums">
-                          {(l.taxable_paise / 100).toFixed(2)}
+                          {formatPaise(l.taxable_paise)}
                         </td>
                       </tr>
                     ))}
@@ -194,22 +195,22 @@ export function RcmDocumentPanel({
                 {p.amount_paid_paise > 0 && (
                   <div className="flex justify-between">
                     <span className="text-ps-label">Amount paid (Rule 52(f))</span>
-                    <span className="tabular-nums">₹{(p.amount_paid_paise / 100).toFixed(2)}</span>
+                    <span className="tabular-nums">{formatPaise(p.amount_paid_paise)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span className="text-ps-label">Taxable value</span>
-                  <span className="tabular-nums">₹{(p.taxable_paise / 100).toFixed(2)}</span>
+                  <span className="tabular-nums">{formatPaise(p.taxable_paise)}</span>
                 </div>
                 {p.taxes.map((t) => (
                   <div key={t.head} className="flex justify-between">
                     <span className="text-ps-label">{t.head}</span>
-                    <span className="tabular-nums">₹{(t.amount_paise / 100).toFixed(2)}</span>
+                    <span className="tabular-nums">{formatPaise(t.amount_paise)}</span>
                   </div>
                 ))}
                 <div className="flex justify-between font-semibold pt-1 border-t border-ps-border">
                   <span>Tax payable on reverse charge</span>
-                  <span className="tabular-nums">₹{(p.total_tax_paise / 100).toFixed(2)}</span>
+                  <span className="tabular-nums">{formatPaise(p.total_tax_paise)}</span>
                 </div>
                 {p.place_of_supply[0] && (
                   <div className="flex justify-between">

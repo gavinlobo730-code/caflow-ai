@@ -27,6 +27,7 @@ import {
   type ServiceCatalogueItem, type ServiceFormInput,
 } from "@/lib/catalogue/service";
 import { Callout } from "@/components/ui/callout";
+import { formatPaise } from "@/lib/money/format";
 
 const EMPTY_FORM: ServiceFormInput = {
   name: "", description: "", kind: "service", hsn_sac: "", gstRate: 18,
@@ -170,7 +171,7 @@ export function ProductServiceFormModal({
             {stockAlreadyStarted ? (
               <Field label="Current stock">
                 <div className={`${inputCls} bg-ps-bg text-ps-label`}>
-                  {existing?.stock_qty_units ?? 0} {form.unit || "units"} · avg ₹{((existing?.avg_cost_paise ?? 0) / 100).toFixed(2)}
+                  {existing?.stock_qty_units ?? 0} {form.unit || "units"} · avg {formatPaise(existing?.avg_cost_paise ?? 0)}
                 </div>
               </Field>
             ) : (
