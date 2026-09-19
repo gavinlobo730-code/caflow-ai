@@ -79,14 +79,20 @@ logger = logging.getLogger("caflow.services")
 # SAC 998211 is "legal and accounting services" — the PRACTICE's own supply.
 # It is the default only on the practice's fee invoice. It is never printed on
 # a client's sales invoice: what the client sells is not what the CA sells.
+from domain.reporting.pdf_money import rupees_paise
+
 SAC_CODE = "998211"
 
 
 def _paise_to_rupee_str(paise: int) -> str:
-    """Format integer paise as rupees string, e.g. 123456 -> '1,234.56'."""
-    rupees = paise // 100
-    fraction = paise % 100
-    return f"{rupees:,}.{fraction:02d}"
+    """Format integer paise as rupees string, e.g. 123456 -> '1,234.56'.
+
+    Delegates to `domain/reporting/pdf_money` — this used to be
+    `f"{paise // 100:,}.{paise % 100:02d}"`, which groups the WESTERN way
+    (1,234,567 against D6's 12,34,567) and inverts a negative, because `//`
+    floors and `%` follows it: -1 paise came out as "-1.99".
+    """
+    return rupees_paise(paise)
 
 
 # The amount in words MOVED to domain/reporting/amount_words.py when the

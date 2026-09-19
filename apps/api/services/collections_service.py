@@ -21,6 +21,7 @@ from typing import Optional
 from services.internal_client_service import get_internal_client_id
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from domain.reporting.party_advances import aging_bucket as _shared_aging_bucket
+from core.ist_clock import ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.collections")
@@ -63,7 +64,7 @@ def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
 
 
 def _today() -> date:
-    return date.today()
+    return ist_today()
 
 
 def reference_due_date(inv: dict, credit_days: int = DEFAULT_CREDIT_DAYS) -> Optional[date]:

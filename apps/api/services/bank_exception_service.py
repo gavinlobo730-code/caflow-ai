@@ -76,6 +76,7 @@ from core.db_paging import fetch_all
 from core.observability import capture_soft_failure
 from domain.banking import exceptions as rules
 from domain.banking.matcher import bill_open_paise, invoice_open_paise
+from core.ist_clock import ist_today
 
 _logger = logging.getLogger(__name__)
 
@@ -333,7 +334,7 @@ def review_list(db, firm_id: str, client_id: str, *, from_date: str, to_date: st
     docstring on why an optional period is the defect rather than a convenience.
     """
     policy = policy or rules.ExceptionPolicy()
-    today = today or date.today()
+    today = today or ist_today()
 
     window = _period_rows(db, firm_id, client_id, from_date=from_date, to_date=to_date,
                           margin_days=policy.duplicate_window_days,

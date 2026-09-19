@@ -35,6 +35,7 @@ from fastapi import HTTPException
 from models.invoices import SalesInvoiceIn, SalesInvoiceLineIn
 from services.internal_client_service import get_internal_client_id
 from services.numbering import draft_placeholder_invoice_no
+from core.ist_clock import ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.billing")
@@ -53,14 +54,14 @@ def _db():
 
 
 def _today_iso() -> str:
-    return date.today().isoformat()
+    return ist_today().isoformat()
 
 
 # ── Period + cadence helpers ─────────────────────────────────────────────────
 
 def period_for(cadence: str, run_date: Optional[str]) -> str:
     """Deterministic period label for idempotency (one invoice per schedule/period)."""
-    d = date.fromisoformat(run_date) if run_date else date.today()
+    d = date.fromisoformat(run_date) if run_date else ist_today()
     if cadence == "monthly":
         return f"{d.year}-{d.month:02d}"
     if cadence == "quarterly":
@@ -79,7 +80,7 @@ def _add_months(d: date, months: int) -> date:
 
 def next_run_after(cadence: str, current: Optional[str]) -> Optional[str]:
     """Next run date after a generated period (None for one_time → schedule closes)."""
-    base = date.fromisoformat(current) if current else date.today()
+    base = date.fromisoformat(current) if current else ist_today()
     if cadence == "monthly":
         return _add_months(base, 1).isoformat()
     if cadence == "quarterly":

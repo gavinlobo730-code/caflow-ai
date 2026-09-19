@@ -12,6 +12,7 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from repositories.invoice_repository import invoice_repo
+from core.ist_clock import ist_today
 
 logger = logging.getLogger("caflow.services")
 
@@ -30,7 +31,7 @@ def run_overdue_check(firm_id: Optional[str] = None, client_id: Optional[str] = 
     Returns:
         dict with 'transitioned' count and list of affected invoice ids.
     """
-    today = date.today()
+    today = ist_today()
     issued = invoice_repo.find_all(firm_id=firm_id, client_id=client_id, status="Issued")
 
     transitioned: list[str] = []

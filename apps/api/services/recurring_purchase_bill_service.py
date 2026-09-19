@@ -57,6 +57,7 @@ _d = _rec.to_date
 
 # Imported, not re-implemented — see the module docstring.
 from domain.recurrence import next_occurrence                       # noqa: E402
+from core.ist_clock import ist_today
 
 # Mock stores (mock mode only).
 MOCK_RECURRING_BILL_TEMPLATES: list[dict] = []
@@ -564,7 +565,7 @@ def generate_due_recurring_bills(firm_id: str, client_id: Optional[str] = None,
     Catches up missed occurrences, bounded by MAX_CATCHUP_PER_RUN. Never
     receives, posts or pays.
     """
-    as_of = _d(as_of) if as_of else date.today()
+    as_of = _d(as_of) if as_of else ist_today()
     db = db or (None if _USE_MOCK else _db())
     actor = actor or _system_actor(firm_id)
     generated, skipped, failed = [], [], []
@@ -586,7 +587,7 @@ def run_for_template(firm_id: str, template_id: str, as_of=None,
         raise HTTPException(status_code=404, detail="Recurring bill template not found.")
     if t.get("status") != "active":
         raise HTTPException(status_code=422, detail="Only active templates can be run.")
-    as_of = _d(as_of) if as_of else date.today()
+    as_of = _d(as_of) if as_of else ist_today()
     db = db or (None if _USE_MOCK else _db())
     actor = actor or _system_actor(firm_id)
     out = _run_template(firm_id, t, actor, as_of, db)

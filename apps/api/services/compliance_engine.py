@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from calendar import monthrange
 from typing import Optional
 from models.compliance import ComplianceType, ComplianceStatus, CompliancePriority
+from core.ist_clock import ist_today
 
 
 def last_day_of_month(year: int, month: int) -> date:
@@ -452,7 +453,7 @@ def advance_tax_due_dates(financial_year_end: int) -> list[dict]:
 
 
 def days_remaining(due_date: date) -> int:
-    return (due_date - date.today()).days
+    return (due_date - ist_today()).days
 
 
 def compute_priority(days_left: int) -> CompliancePriority:

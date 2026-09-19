@@ -7,6 +7,7 @@ import logging
 from datetime import date, timedelta, datetime, timezone
 from dateutil.relativedelta import relativedelta
 from typing import Optional
+from core.ist_clock import ist_today
 
 
 logger = logging.getLogger("caflow.services")
@@ -45,7 +46,7 @@ def _is_already_generated_today(config: dict) -> bool:
 
     try:
         last_gen_date = datetime.fromisoformat(last_generated.replace('Z', '+00:00')).date()
-        today = date.today()
+        today = ist_today()
         return last_gen_date == today
     except Exception:
         return False
@@ -74,7 +75,7 @@ def generate_due_recurring_tasks(firm_id: Optional[str] = None,
     from repositories.user_repository import user_repo
 
     db = _get_db()
-    today = date.today()
+    today = ist_today()
     created_tasks = []
 
     # Query all active configs with next_due_date <= today

@@ -36,6 +36,7 @@ from domain.banking.matcher import Candidate, invoice_open_paise, bill_open_pais
 from domain.banking.candidate_search import (
     search as search_candidates, describe, allowed_types, CandidateHit, MAX_RESULTS,
 )
+from core.ist_clock import ist_today
 
 _logger = logging.getLogger("caflow.bank_candidate_search")
 
@@ -239,7 +240,7 @@ class BankCandidateSearchService:
                         f"Allowed here: {', '.join(permitted)}."))
 
         txn_date = str(txn.get("transaction_date") or "")[:10]
-        base = date.fromisoformat(txn_date) if txn_date else date.today()
+        base = date.fromisoformat(txn_date) if txn_date else ist_today()
         fetch_from = date_from or _iso(base - timedelta(days=DEFAULT_WINDOW_DAYS))
         fetch_to = date_to or _iso(base + timedelta(days=DEFAULT_WINDOW_DAYS))
 

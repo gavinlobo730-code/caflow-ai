@@ -49,7 +49,7 @@ _Last updated: 2026-09-16_
 | **T2** | A demo firm that exists | 🔧 C | 2–3d | `DOING` — T2-0 done |
 | **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `DOING` — T3-a, T3-b, T3-f done; T3-c 5 of 6 (money cell, Dr/Cr, gap callout, period picker, refusal banner) 19 Sep |
 | **T4** | Token adoption | 🔧 C | 5–8d | `DOING` — colour 10,146 → 116, type 2,265 → 405 |
-| **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `TODO` — unblocked 16 Sep |
+| **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `DOING` — T5a-6 and T5a-7 done 19 Sep (both were live bugs) |
 | **T6** | Navigation + the hub | 🔧 C | 11–17d | `BLOCKED` on T4 |
 | **T7** | Analytics & AI | 🔧 C | 3 layers | `BLOCKED` on T3 |
 | **T8** | The portals | 🔧 C | 8–12d | `BLOCKED` on T4 |
@@ -379,8 +379,32 @@ as written.
 | T5a-7 | **IST on the year-end pack** — `datetime.now()` at two sites, no TZ set | A pack generated 01:00 IST on 1 April is dated 1 April, not 31 March |
 | T5a-8 | The year-end pack says **"PracticeSync AI"** where the firm's name belongs | The practice's name is on the document a CA signs |
 
-**T5a-6 and T5a-7 are live correctness bugs, not styling.** They can ship
-before the rest of T5a.
+**T5a-6 and T5a-7 were live correctness bugs, not styling — ✅ both done
+19 Sep, and each was worse than the row describing it.**
+
+* **T5a-6.** The sales invoice and the payslip did
+  `f"{paise // 100:,}.{paise % 100:02d}"`. `f"{1234567:,}"` is `1,234,567` —
+  Western — against D6's `12,34,567`, on the two documents that leave the
+  building most. **And those same two lines invert a NEGATIVE**: `//` floors and
+  `%` follows it, so **-1 paise rendered as "-1.99"** and -150 as "-2.50". Every
+  negative that is not an exact rupee was wrong by one rupee minus its fraction
+  — a payslip whose recoveries exceed the pay, a credit note, an adjustment
+  line. `domain/reporting/pdf_money.py` is the one formatter; the year-end
+  pack's own version was the one of three that was right, so it is the one that
+  moved. **Three tests pinned the defect**, one of them building its expectation
+  with the very expression that WAS the defect and one asserting
+  `"1,00,000.00" not in text  # formatting is western-grouped` — an observation
+  about the implementation frozen as a requirement. All three now assert through
+  the formatter, so they cannot pin a grouping at all.
+* **T5a-7.** `core/ist_clock`'s own docstring says the container is UTC with no
+  TZ pinning, so a bare `date.today()` is YESTERDAY from 00:00 to 05:30 IST —
+  and **79 sites read it anyway**. On the year-end pack that is the cover of a
+  set a CA signs: built at 01:00 IST on 1 April it was dated 31 March, the
+  previous day and, that one night a year, the previous FINANCIAL YEAR. 21 reads
+  across 15 services moved — the due-date countdown, the dates generated
+  documents take, the windows statements cover — leaving **58** behind a ratchet,
+  because a log timestamp may legitimately be UTC and telling the two apart is a
+  read of each site rather than a sweep.
 
 **⚠️ Do NOT put firm branding on the sales invoice, payslip or statement.**
 Three separately-fixed bugs are pinned by tests and written into the code as

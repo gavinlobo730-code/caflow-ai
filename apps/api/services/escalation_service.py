@@ -5,6 +5,7 @@ from repositories.task_repository import task_repo
 from repositories.user_repository import user_repo
 from repositories.notifications_repository import notifications_repo
 from repositories.task_extras_repository import task_extras_repo
+from core.ist_clock import ist_today
 
 
 class EscalationService:
@@ -124,7 +125,7 @@ class EscalationService:
                             "metadata": {
                                 "task_id": task["id"],
                                 "escalation_rule_id": rule["id"],
-                                "days_overdue": (date.today() - (
+                                "days_overdue": (ist_today() - (
                                     datetime.fromisoformat(task["due_date"]).date()
                                     if isinstance(task["due_date"], str)
                                     else task["due_date"]

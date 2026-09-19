@@ -31,6 +31,7 @@ from typing import Optional
 from core.db_paging import fetch_all
 from domain.inventory import batches as batch_domain
 from domain.inventory import location as loc
+from core.ist_clock import ist_today
 
 _logger = logging.getLogger("caflow.inventory")
 
@@ -133,7 +134,7 @@ def close_godown(db, *, firm_id: str, client_id: str, godown_id: str) -> dict:
 def _held_at(db, *, firm_id: str, client_id: str, godown_id: str) -> list:
     """Items with a non-zero position at one godown, as at today."""
     detail = position_detail(db, firm_id=firm_id, client_id=client_id,
-                             as_of=date.today())
+                             as_of=ist_today())
     return [r for r in detail.get("rows", [])
             if str(r.get("godown_id") or "") == str(godown_id)
             and Decimal(str(r.get("qty_units") or 0)) != 0]
