@@ -276,18 +276,36 @@ def test_the_importer_carries_no_gstin_pattern_of_its_own():
 
 def test_the_importer_asks_the_rule_at_both_ends():
     """Validation names the withholding for the preview; the insert performs
-    it. Two call sites, deliberately — the preview is the insert's own walk,
-    so what a CA is shown held back is what is held back."""
+    it — the preview is the insert's own walk, so what a CA is shown held back
+    is what is held back.
+
+    THE RULE IS WHICH FUNCTIONS ASK, NOT HOW MANY TIMES. This first asserted
+    `len(calls) == 2`, which is a SPELLING of the rule and not the rule: the
+    insert branch had to be split back into one call site per party kind so
+    `test_backend_columns_exist_pg` could still read the table names, and a
+    correct change broke a guard that had counted them. Same lesson this
+    repository has recorded four times over — write the rule.
+    """
     tree = ast.parse(SERVICE.read_text())
-    calls = [n for n in ast.walk(tree)
-             if isinstance(n, ast.Call)
-             and isinstance(n.func, ast.Attribute)
-             and n.func.attr == "resolve"
-             and isinstance(n.func.value, ast.Name)
-             and n.func.value.id == "party_identifiers"]
-    assert len(calls) == 2, (
-        f"expected party_identifiers.resolve at validation and at the insert; "
-        f"found {len(calls)}"
+    asked_in: set[str] = set()
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for n in ast.walk(fn):
+            if (isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == "resolve"
+                    and isinstance(n.func.value, ast.Name)
+                    and n.func.value.id == "party_identifiers"):
+                asked_in.add(fn.name)
+
+    assert "validate_migration_data" in asked_in, (
+        "the preview cannot name what will be withheld: validation never asks "
+        "party_identifiers.resolve"
+    )
+    assert "_import_single_item" in asked_in, (
+        "the insert writes the export's raw value: the insert never asks "
+        "party_identifiers.resolve"
     )
 
 

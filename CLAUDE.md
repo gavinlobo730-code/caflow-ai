@@ -4490,6 +4490,20 @@ not parse, so `"1200abc"` passed at 1200 while `toPaise` returned NaN, and
   GSTIN-vs-state agreement the four party models make is deliberately not
   attempted here — only the GSTIN's own first two characters, which
   `problem_with` already tests.
+  ⚠️ **THE TWO INSERTS ARE NOT COLLAPSED AND THEIR PAYLOAD IS NOT BOUND TO A
+  NAME**, and that cost a CI cycle to learn. The note on
+  `domain/firm/identity`'s projections says a `.select()` reached through a
+  name is invisible to `tests/test_backend_columns_exist_pg`; the same scan
+  counts **a table reached through a variable** (`sb.table(table)`) and **an
+  insert whose payload is a name** (`insert(party)`) as unreadable too, and
+  its budget is EXACT with no headroom. Tidying the customer and vendor
+  branches into one `sb.table(table)` took the count from 459 to 460; binding
+  the shared dict instead took it to 461. Either way these two writes stop
+  being schema-checked at all, which is the opposite of what a door handling
+  identifiers wants. Seven duplicated keys is the price, and it is the right
+  one. **Raising the budget would have been the wrong fix** — the guard's own
+  message invites it, and here it would buy an exemption where the coverage
+  was recoverable.
 
 - **THE FIRM'S OWN GSTIN LIVES IN TWO COLUMNS AND ONLY ONE IS READ.**
   `public.firms` carries `gst_number` (migration 003) AND `gstin` (014, given

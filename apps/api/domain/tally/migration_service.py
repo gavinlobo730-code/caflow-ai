@@ -650,15 +650,24 @@ def _import_single_item(
             "vendor masters."
         )
 
-    if item_type in ("customer", "vendor"):
-        # Resolved AGAIN here rather than read off the stored item, so that
-        # `tally_data` keeps what the export actually said and this insert
-        # writes only what may be written. One rule asked twice — the same
-        # discipline fx_revaluation's plan() and revalue() share, so what the
-        # preview names withheld is what the import withholds.
+    # Resolved AGAIN here rather than read off the stored item, so that
+    # `tally_data` keeps what the export actually said and this insert writes
+    # only what may be written. One rule asked twice — the same discipline
+    # fx_revaluation's plan() and revalue() share, so what the preview names
+    # withheld is what the import withholds.
+    #
+    # THE TWO BRANCHES ARE NOT COLLAPSED, and the payload is NOT bound to a
+    # name, however much both invite it. `tests/test_backend_columns_exist_pg`
+    # reads every reference in apps/api against the REAL SCHEMA as a string and
+    # counts what it cannot read against an EXACT budget: a table reached
+    # through a variable is unreadable, and so is an insert whose payload is a
+    # name. Collapsing these two cost one, binding the dict cost two, and both
+    # stop these writes being schema-checked at all. Same reason
+    # domain/firm/identity's three projections are written out at their call
+    # sites rather than shared through a constant.
+    if item_type == "customer":
         resolved = party_identifiers.resolve(data.get("gstin"), data.get("pan"))
-        table = "customers" if item_type == "customer" else "vendors"
-        res = sb.table(table).insert({
+        res = sb.table("customers").insert({
             "firm_id": firm_id,
             "client_id": client_id,
             "name": data.get("name", ""),
@@ -667,7 +676,20 @@ def _import_single_item(
             "email": data.get("email"),
             "address": data.get("address"),
         }).execute()
-        return (res.data[0]["id"] if res.data else None), table
+        return (res.data[0]["id"] if res.data else None), "customers"
+
+    if item_type == "vendor":
+        resolved = party_identifiers.resolve(data.get("gstin"), data.get("pan"))
+        res = sb.table("vendors").insert({
+            "firm_id": firm_id,
+            "client_id": client_id,
+            "name": data.get("name", ""),
+            "gstin": resolved.gstin,
+            "pan": resolved.pan,
+            "email": data.get("email"),
+            "address": data.get("address"),
+        }).execute()
+        return (res.data[0]["id"] if res.data else None), "vendors"
 
     return None, None  # Other types require more complex mapping
 
