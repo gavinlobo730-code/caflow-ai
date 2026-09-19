@@ -520,8 +520,29 @@ _PLAIN_WIDTHS = [10 * mm, 95 * mm, 25 * mm, 50 * mm]
 # do not add three more of the same artefact.
 _DETAIL_HEADER = ["#", "Description", "HSN/SAC", "Qty", "Unit",
                   "Rate (Rs.)", "Taxable Value (Rs.)", "GST Rate", "Tax (Rs.)"]
-_DETAIL_WIDTHS = [7 * mm, 45 * mm, 19 * mm, 13 * mm, 12 * mm,
-                  22 * mm, 26 * mm, 14 * mm, 22 * mm]
+#: Nine columns re-tuned 19-09-2026 because SEVEN of them overflowed. The
+#: table was sized for a small invoice and an Indian one is routinely not:
+#: at the old widths a ₹1.23 crore figure ran 3pt into the next column in
+#: Rate, Taxable Value AND Tax; a 99th line number ran out of `#`; a
+#: fractional quantity ran 22pt out of Qty; and the headings `Taxable Value
+#: (Rs.)` and `GST Rate` overflowed by 11.7pt and 8.3pt whatever the data
+#: was, so every detail invoice ever rendered printed them touching —
+#: `(Rs.)GST` came back as ONE word from the extracted text.
+#:
+#: The room came from the PADDING, not from Description. Nine columns at
+#: reportlab's default 6pt each side spend 108pt — 38mm, a fifth of the
+#: table — on whitespace at 8pt type. At 4pt a side everything fits with
+#: headroom and Description keeps 108pt of text against the 116pt it had,
+#: which a wrapping Paragraph absorbs in a line.
+#:
+#: `tests/test_a_column_is_wide_enough_for_what_goes_in_it.py` measures
+#: these three constants against each other, so a longer heading or a
+#: narrower column fails rather than silently overlapping again.
+_DETAIL_WIDTHS = [8 * mm, 41 * mm, 16 * mm, 17 * mm, 9 * mm,
+                  22 * mm, 29 * mm, 16 * mm, 22 * mm]
+#: Side padding, one place, because the guard has to measure against the
+#: same number the style applies.
+_LINE_TABLE_SIDE_PAD = 4
 
 
 def _summary_row(n_cols: int, label: str, value: str) -> list:
@@ -788,6 +809,8 @@ def _render_tax_invoice(
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), _LINE_TABLE_SIDE_PAD),
+        ("RIGHTPADDING", (0, 0), (-1, -1), _LINE_TABLE_SIDE_PAD),
     ]
     if line_detail:
         style.append(("FONTSIZE", (0, 0), (-1, -1), 8))
