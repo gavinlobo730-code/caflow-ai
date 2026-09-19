@@ -7,6 +7,7 @@ from core.authz import filter_by_client
 from repositories.capacity_repository import capacity_repo, DEFAULT_WEEKLY_HOURS, DEFAULT_MAX_TASKS
 
 from datetime import date, timedelta
+from core.ist_clock import ist_today
 
 router = APIRouter(prefix="/api/workload", tags=["workload"])
 
@@ -50,7 +51,8 @@ def set_capacity(body: CapacityUpdate, current_user: dict = Depends(rbac("worklo
 
 def _minutes_logged_this_week(db, firm_id: str) -> dict[str, int]:
     """Minutes logged per user since Monday of the current week."""
-    week_start = (date.today() - timedelta(days=date.today().weekday())).isoformat()
+    today = ist_today()
+    week_start = (today - timedelta(days=today.weekday())).isoformat()
     try:
         result = (
             db.table("time_entries").select("user_id, duration_minutes")
@@ -69,8 +71,8 @@ def _minutes_logged_this_week(db, firm_id: str) -> dict[str, int]:
 def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
     firm_id = current_user.get("firm_id")
     db = _get_db()
-    today = date.today().isoformat()
-    week_end = (date.today() + timedelta(days=7)).isoformat()
+    today = ist_today().isoformat()
+    week_end = (ist_today() + timedelta(days=7)).isoformat()
 
     # Single query for all firm users
     users_result = db.table("users").select("id, full_name, email, role, is_active").eq("firm_id", firm_id).execute()
@@ -85,7 +87,7 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
     tasks = filter_by_client(current_user, tasks_result.data or [])
 
     # Single query for recently completed (this month)
-    month_start = date.today().replace(day=1).isoformat()
+    month_start = ist_today().replace(day=1).isoformat()
     completed_result = db.table("tasks").select("id, assigned_to, assignee_id, updated_at, client_id").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", month_start).execute()
     completed_tasks = filter_by_client(current_user, completed_result.data or [])
 
@@ -178,8 +180,8 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
 def get_user_workload(user_id: str, current_user: dict = Depends(rbac("workload", "read"))):
     firm_id = current_user.get("firm_id")
     db = _get_db()
-    today = date.today().isoformat()
-    week_end = (date.today() + timedelta(days=7)).isoformat()
+    today = ist_today().isoformat()
+    week_end = (ist_today() + timedelta(days=7)).isoformat()
 
     # H1 fix: scope the user lookup to the caller's firm so a cross-firm user_id
     # cannot disclose another firm's user PII. 404 (not 403) — existence hidden.

@@ -21,6 +21,7 @@ All monetary figures are integer paise.
 import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
+from core.ist_clock import ist_now, ist_today
 
 logger = logging.getLogger("caflow.services")
 
@@ -49,7 +50,7 @@ def compute_compliance_risk(
         clients = [c for c in clients if str(c.get("id")) in allowed_client_ids]
     records = compliance_records_repo.find_all(firm_id=firm_id)
 
-    today = date.today()
+    today = ist_today()
     week_ahead = today + timedelta(days=7)
 
     by_client: dict[str, list[dict]] = {}
@@ -126,7 +127,7 @@ def compute_compliance_risk(
     return {
         "clients": results,
         "high_risk_count": sum(1 for r in results if r["risk_level"] in ("high", "critical")),
-        "computed_at": datetime.now().isoformat(),
+        "computed_at": ist_now().isoformat(),
     }
 
 
@@ -154,8 +155,8 @@ def compute_relationship_health(
     tasks = task_repo.find_all(firm_id=firm_id)
     invoices = invoice_repo.find_all(firm_id=firm_id)
 
-    today = date.today().isoformat()
-    ninety_days_ago = (date.today() - timedelta(days=90)).isoformat()
+    today = ist_today().isoformat()
+    ninety_days_ago = (ist_today() - timedelta(days=90)).isoformat()
 
     tasks_by_client: dict[str, list[dict]] = {}
     for t in tasks:
@@ -215,7 +216,7 @@ def compute_relationship_health(
     return {
         "clients": results,
         "at_risk_count": sum(1 for r in results if r["health_level"] != "healthy"),
-        "computed_at": datetime.now().isoformat(),
+        "computed_at": ist_now().isoformat(),
     }
 
 
@@ -238,7 +239,7 @@ def compute_journal_suggestions(
     """
     from domain.accounting_service import accounting_service
 
-    today = date.today()
+    today = ist_today()
     current_month = today.strftime("%Y-%m")
     lookback_start = (today.replace(day=1) - timedelta(days=92)).isoformat()
 
@@ -300,7 +301,7 @@ def approve_journal_suggestion(firm_id: str, suggestion: dict, user_id: Optional
     entry = accounting_service.create_journal_entry({
         "firm_id": firm_id,
         "client_id": suggestion.get("client_id"),
-        "entry_date": suggestion.get("suggested_date") or date.today().isoformat(),
+        "entry_date": suggestion.get("suggested_date") or ist_today().isoformat(),
         "narration": suggestion.get("narration", ""),
         "entry_type": suggestion.get("entry_type", "Journal"),
         "status": "draft",

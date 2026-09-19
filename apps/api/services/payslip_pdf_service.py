@@ -23,6 +23,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from domain.reporting.amount_words import amount_in_words
 from domain.reporting.pdf_money import rupees_paise
+from services.pdf_page_furniture import numbered
 
 logger = logging.getLogger("caflow.services")
 
@@ -390,7 +391,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
         earning_rows.append(["Gross Earnings", _paise_to_rupee_str(gross_paise)])
     earning_rows.append(["Gross Salary", _paise_to_rupee_str(gross_paise)])
 
-    earnings = Table(earning_rows, colWidths=[120 * mm, 60 * mm])
+    earnings = Table(earning_rows, colWidths=[120 * mm, 60 * mm], repeatRows=1)
     earnings.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -408,7 +409,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
     deduction_rows, total_deductions = deduction_lines(slip)
     deduction_rows.append(["Total Deductions", _paise_to_rupee_str(total_deductions)])
 
-    deductions = Table(deduction_rows, colWidths=[120 * mm, 60 * mm])
+    deductions = Table(deduction_rows, colWidths=[120 * mm, 60 * mm], repeatRows=1)
     deductions.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -430,7 +431,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
     if employer_rows:
         employer_rows.append(["Total Employer Contribution",
                               _paise_to_rupee_str(employer_total)])
-        contributions = Table(employer_rows, colWidths=[120 * mm, 60 * mm])
+        contributions = Table(employer_rows, colWidths=[120 * mm, 60 * mm], repeatRows=1)
         contributions.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -488,7 +489,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
             ["of which TDS (§192)", _paise_to_rupee_str(ytd.get("tds_paise") or 0)],
             ["Net Paid", _paise_to_rupee_str(ytd.get("net_paise") or 0)],
         ]
-        ytd_table = Table(ytd_rows, colWidths=[120 * mm, 60 * mm])
+        ytd_table = Table(ytd_rows, colWidths=[120 * mm, 60 * mm], repeatRows=1)
         ytd_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -509,7 +510,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
         small,
     ))
 
-    doc.build(story)
+    numbered(doc, story)
     return buf.getvalue()
 
 

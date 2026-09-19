@@ -154,7 +154,7 @@ def seed_compliance_calendar(
     # boundary check (client_repo.find_by_id is looked up inside it too).
     assert_client_access(current_user, client_id)
 
-    today = date.today()
+    today = ist_today()
     # Financial year is the April-start year; default to current FY
     # Accepts: int 2025, str "2025", or str "2025-26" (frontend format)
     fy_int: int

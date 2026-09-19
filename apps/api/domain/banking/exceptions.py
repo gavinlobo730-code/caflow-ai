@@ -47,6 +47,7 @@ import re
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Iterable, Optional
+from core.ist_clock import ist_today
 
 
 # ── policy ────────────────────────────────────────────────────────────────────
@@ -300,7 +301,7 @@ def evaluate(txn: dict, ctx: Optional[TxnContext] = None,
     """
     ctx = ctx or TxnContext()
     policy = policy or ExceptionPolicy()
-    today = today or date.today()
+    today = today or ist_today()
     found = [e for rule in RULES if (e := rule(txn, ctx, policy, today)) is not None]
     return sorted(found, key=lambda e: (SEVERITY_ORDER.get(e.severity, 9), e.code))
 

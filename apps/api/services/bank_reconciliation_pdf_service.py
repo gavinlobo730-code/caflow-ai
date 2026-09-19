@@ -25,6 +25,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from services.invoice_pdf_service import _load_firm, _paise_to_rupee_str
+from services.pdf_page_furniture import numbered
 
 logger = logging.getLogger("caflow.services")
 
@@ -223,7 +224,7 @@ def build_reconciliation_pdf(report: dict, firm: dict) -> bytes:
         "between the bank account's ledger and its statement for the period; it is not "
         "a tax document and carries no accounting entries. Amounts in INR.", sub))
 
-    doc.build(elems)
+    numbered(doc, elems)
     return buf.getvalue()
 
 

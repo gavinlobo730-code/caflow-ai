@@ -19,6 +19,7 @@ import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Any
+from core.ist_clock import ist_today
 
 _logger = logging.getLogger("caflow.workflow_engine")
 
@@ -154,7 +155,7 @@ class WorkflowEngineV2:
                 try:
                     from datetime import date
                     due = date.fromisoformat(trigger_data["due_date"])
-                    trigger_data["days_remaining"] = (due - date.today()).days
+                    trigger_data["days_remaining"] = (due - ist_today()).days
                 except Exception:
                     pass
             return True
@@ -251,7 +252,7 @@ class WorkflowEngineV2:
                 if op == "<=": return actual_f <= expected
             elif value_type == "date":
                 from datetime import date
-                today = date.today()
+                today = ist_today()
                 expected_date = datetime.fromisoformat(str(expected_raw)).date()
                 actual_date = datetime.fromisoformat(str(actual)).date() if actual else today
                 if op == "before":      return actual_date < expected_date

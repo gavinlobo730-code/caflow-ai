@@ -73,6 +73,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, ROUND_CEILING
 from typing import Optional
+from core.ist_clock import ist_today
 
 #: §16's multiplier. Not a rate — the rate is the RBI's and is an input.
 BANK_RATE_MULTIPLE = 3
@@ -323,7 +324,7 @@ def compute(amounts, *, financial_year: str, bank_rate_bps: Optional[int] = None
     """
     refusal = interest_refusal(bank_rate_bps)
     rate = charged_rate_bps(bank_rate_bps)
-    today = as_at or date.today()
+    today = as_at or ist_today()
 
     rows: list[InterestOnOneAmount] = []
     gaps: list[str] = []

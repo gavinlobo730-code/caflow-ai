@@ -21,6 +21,7 @@ from domain.currency.policy import BASE_CURRENCY, resolve_currency_policy
 from domain.currency.rate_types import DEFAULT_RATE_TYPE
 from domain.currency.conversion import to_base_minor, to_txn_minor
 from domain.currency import currency_service
+from core.ist_clock import ist_today
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,7 @@ def identity_currency(rate_date: Optional[str] = None) -> DocumentCurrency:
     return DocumentCurrency(
         is_foreign=False, currency=BASE_CURRENCY, rate=Decimal(1), minor_unit=2,
         rate_source="identity", rate_type=DEFAULT_RATE_TYPE,
-        rate_date=rate_date or _date.today().isoformat(),
+        rate_date=rate_date or ist_today().isoformat(),
         rate_selected_by=None, rate_overridden=False,
     )
 
@@ -75,7 +76,7 @@ def document_currency_from_row(db, row: dict) -> DocumentCurrency:
     return DocumentCurrency(
         is_foreign=True, currency=ccy, rate=rate, minor_unit=minor,
         rate_source=row.get("rate_source") or "manual", rate_type=row.get("rate_type") or DEFAULT_RATE_TYPE,
-        rate_date=(str(rate_date)[:10] if rate_date else _date.today().isoformat()),
+        rate_date=(str(rate_date)[:10] if rate_date else ist_today().isoformat()),
         rate_selected_by=row.get("rate_selected_by"),
         rate_overridden=bool(row.get("rate_overridden")),
     )
@@ -96,7 +97,7 @@ def resolve_document_currency(
     inert INR identity for INR / feature-off; otherwise validates and freezes a
     foreign rate. Raises HTTP 422 on any validation failure — all backend-side."""
     req = (currency or BASE_CURRENCY).strip().upper()
-    r_date = (rate_date or _date.today().isoformat())[:10]
+    r_date = (rate_date or ist_today().isoformat())[:10]
 
     # INR (or unspecified) → identity: existing behaviour, zero overhead.
     if req == BASE_CURRENCY:

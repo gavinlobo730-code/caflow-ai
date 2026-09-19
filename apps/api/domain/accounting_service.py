@@ -4,9 +4,10 @@ All monetary values in paise (integer) — never float.
 CGST Act Section 2(59): Input Tax Credit; IT Act Section 44AB: Tax Audit
 """
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional
 from core.exceptions import ValidationError, NotFoundError
+from core.ist_clock import ist_today
 
 
 # ─── In-memory seed data ──────────────────────────────────────────────────────
@@ -269,14 +270,14 @@ class AccountingService:
             "id": entry_id,
             "client_id": data.get("client_id", ""),
             "firm_id": data.get("firm_id"),
-            "entry_date": data.get("entry_date", date.today().isoformat()),
+            "entry_date": data.get("entry_date", ist_today().isoformat()),
             "reference_no": data.get("reference_no"),
             "narration": data.get("narration", ""),
             "entry_type": data.get("entry_type", "Journal"),
             "status": data.get("status", "draft"),
             "lines": enriched_lines,
             "created_by": data.get("created_by"),
-            "created_at": datetime.now().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         MOCK_JOURNAL_ENTRIES.append(entry)
         JOURNAL_INDEX[entry_id] = entry
@@ -368,7 +369,7 @@ class AccountingService:
         tb_lines.sort(key=lambda x: x["account_code"])
         difference: int = grand_debit - grand_credit
         return {
-            "as_of_date": as_of_date or date.today().isoformat(),
+            "as_of_date": as_of_date or ist_today().isoformat(),
             "lines": tb_lines,
             "total_debit_paise": grand_debit,
             "total_credit_paise": grand_credit,
@@ -390,7 +391,7 @@ class AccountingService:
         all production reporting are served by domain.reporting.ReportingService.
         """
         # Default: current FY April 1 to today
-        today = date.today()
+        today = ist_today()
         fy_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1).isoformat()
         _start = start_date or fy_start
         _end = end_date or today.isoformat()
@@ -456,7 +457,7 @@ class AccountingService:
         Companies Act Section 128. Cash-basis and all production reporting are
         served by domain.reporting.ReportingService.
         """
-        _as_of = as_of_date or date.today().isoformat()
+        _as_of = as_of_date or ist_today().isoformat()
         balances: dict[str, int] = {}
 
         for entry in MOCK_JOURNAL_ENTRIES:

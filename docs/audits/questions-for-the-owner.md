@@ -550,7 +550,7 @@ decision across the product.
 > **The question:** one content width for every screen, or width by column
 > count as the two views now do?
 
-## K. The year-end pack still says "PracticeSync AI"
+## K. The year-end pack still says "PracticeSync AI"  *(BUILT 19 Sep — answered as "the practice's name alone"; say the word and the second line goes back in)*
 
 Its cover reads **"Prepared by: PracticeSync AI — Practice Management
 Platform"**, on a set of financial statements a CA signs. The practice's name
@@ -574,3 +574,37 @@ is a refactor through the posting kernel's callers.
 
 > **The question:** WHERE should a CA be told — on the entry row, in the
 > posting confirmation, or only in a report?
+
+## M. The rupee sign on a PDF — a licence choice, not a technical one
+
+Every document this product prints spells money `Rs. 12,34,567.89`. Every
+other Indian product — TallyPrime, Zoho Books — prints `₹`. It is not wrong,
+just dated: ReportLab's built-in Helvetica is WinAnsiEncoded and has no glyph
+for U+20B9, so printing the sign needs a font file embedded in the PDF, which
+means a font file committed to this repo.
+
+Measured 19 September against the 48 fonts on the build image. Twenty carry
+the glyph, and the shortlist is two, because the trade-off is entirely about
+the licence:
+
+| | metrics vs Helvetica | licence | what it costs |
+|---|---|---|---|
+| **GNU FreeSans** | **0.977–1.013×** both weights — a drop-in, no column moves | **GPLv3** with the font exception | the exception covers a DOCUMENT that embeds the font; shipping the font **in this repo** is GPLv3 redistribution, with its source-availability duty |
+| **DejaVu Sans** | 1.13× regular, 1.26× bold | **Bitstream Vera** — permissive, no copyleft | re-breaks the columns T5a-4b has just fixed; every table needs re-measuring, and some will not fit |
+
+**Liberation Sans would have been the obvious answer** — it is metrically
+compatible with Arial and therefore with Helvetica, and it is OFL. This
+build's copy has **no rupee glyph at all**. Checked, not assumed.
+
+Nothing is blocked on this: "Rs." is correct on a tax invoice and CGST Rule 46
+prescribes no currency symbol. It is a question about how the document *looks*
+and what obligations the repo takes on.
+
+> **The question:** are you willing to carry a GPLv3 font file in this repo
+> (FreeSans, and the documents do not change shape), or would you rather stay
+> on permissive licensing — in which case it is DejaVu plus a re-measure of
+> every table, or "Rs." for now?
+
+My own read: **stay on "Rs." until you say otherwise.** It is the only item in
+T5 whose blocker is legal rather than technical, and the cost of being wrong
+about a licence is much larger than the cost of a dated currency marker.

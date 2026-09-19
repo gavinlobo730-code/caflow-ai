@@ -8,8 +8,9 @@ Serves from /api/ai-insights (new router) — does not conflict with /api/insigh
 from datetime import date, timedelta, datetime
 from typing import Optional
 import uuid
+from core.ist_clock import ist_today
 
-today = date.today()
+today = ist_today()
 
 MOCK_AI_INSIGHTS_V2: list[dict] = [
     {

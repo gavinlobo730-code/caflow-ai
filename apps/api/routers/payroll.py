@@ -100,6 +100,7 @@ from domain.income_tax.statutory_rates import (
 )
 from models.fy import FYLabel, OptionalFYLabel
 from services.compliance_obligation_service import fy_months
+from core.ist_clock import ist_today
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
@@ -933,7 +934,7 @@ def _apply_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
             new_balance = owed - applied
             db.table("payroll_loans").update({
                 "outstanding_paise": new_balance,
-                "closed_on": (str(date.today()) if new_balance == 0 else None),
+                "closed_on": (str(ist_today()) if new_balance == 0 else None),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }).eq("id", loan["id"]).execute()
             # WHICH loan took WHAT — migration 367. Written because the undo

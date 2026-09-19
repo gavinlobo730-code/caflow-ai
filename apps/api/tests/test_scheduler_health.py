@@ -257,11 +257,19 @@ def _spy_daily_jobs(monkeypatch):
 
 
 def _record_success(job_name, firm_id="F1"):
-    """A successful scheduler_runs row for today, as _log_run would write it."""
-    from datetime import date
+    """A successful scheduler_runs row for today, as _log_run would write it.
+
+    Through `sched.ist_today`, not `date.today` — every test here freezes the
+    IST clock to 06:30 on 1 APRIL, and while `_log_run` read the naive clock
+    the two agreed only by accident. They stopped agreeing the moment the
+    scheduler moved onto `ist_today()` (19-09-2026), which is the point: 1
+    April at 06:30 IST is 1 April at 01:00 UTC, and the FY boundary is exactly
+    where a run_date one day out matters most. A helper whose docstring says
+    "as _log_run would write it" has to go through what _log_run goes through.
+    """
     sched._MOCK_RUNS.append({
         "job_name": job_name,
-        "run_date": date.today().isoformat(),
+        "run_date": sched.ist_today().isoformat(),
         "firm_id": firm_id,
         "status": "success",
         "detail": {},

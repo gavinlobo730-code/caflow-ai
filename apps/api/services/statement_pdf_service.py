@@ -19,6 +19,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from services.invoice_pdf_service import _load_firm, _paise_to_rupee_str
 from services.customer_statement_service import customer_statement_service
+from services.pdf_page_furniture import numbered
 
 logger = logging.getLogger("caflow.services")
 
@@ -121,7 +122,7 @@ def build_statement_pdf(statement: dict, account_holder: dict, customer: dict) -
     elems.append(Spacer(1, 6))
     elems.append(Paragraph("This is a statement of account, not a tax invoice. Amounts in INR.", sub))
 
-    doc.build(elems)
+    numbered(doc, elems)
     return buf.getvalue()
 
 

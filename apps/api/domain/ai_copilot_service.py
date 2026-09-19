@@ -19,6 +19,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Optional
+from core.ist_clock import ist_today
 
 _logger = logging.getLogger("caflow.ai_copilot")
 
@@ -62,8 +63,8 @@ def _due_within_days_compliance_records(days, firm_id=None, client_id=None):
 
 def _due_soon_from_records(records, days):
     from datetime import date
-    today_s = date.today().isoformat()
-    horizon_s = (date.today() + timedelta(days=days)).isoformat()
+    today_s = ist_today().isoformat()
+    horizon_s = (ist_today() + timedelta(days=days)).isoformat()
     return [
         r for r in records
         if r.get("status") not in ("Filed", "Completed")

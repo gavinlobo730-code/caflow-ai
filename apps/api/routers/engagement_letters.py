@@ -27,6 +27,7 @@ from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access, filter_by_client
 from services.audit_service import log_event
+from core.ist_clock import ist_today
 
 _logger = logging.getLogger("caflow.engagement_letters")
 
@@ -1317,7 +1318,7 @@ def generate_engagement(
     _assert_engagement_scope(db, current_user, engagement_id)
     firm_id = current_user["firm_id"]
     now = datetime.now(timezone.utc).isoformat()
-    today = date.today().isoformat()
+    today = ist_today().isoformat()
 
     if not db:
         eng = next(

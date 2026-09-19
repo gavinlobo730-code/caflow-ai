@@ -6,8 +6,9 @@ Risk score: 0–100 (critical=100, high=75, medium=50, low=25, info=10)
 """
 from datetime import date, timedelta
 from typing import Optional
+from core.ist_clock import ist_today
 
-today = date.today()
+today = ist_today()
 
 _SEVERITY_SCORE = {"critical": 100, "high": 75, "medium": 50, "low": 25, "info": 10}
 

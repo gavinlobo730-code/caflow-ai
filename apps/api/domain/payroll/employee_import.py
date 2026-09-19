@@ -75,6 +75,7 @@ from core.validators import validate_pan
 # later. Re-exported under their old names because this module's callers and
 # tests use them.
 from domain.payroll.identity import IFSC_RE, UAN_RE            # noqa: E402,F401
+from core.ist_clock import ist_today
 
 AADHAAR_RE = re.compile(r"^\d{12}$")
 
@@ -317,7 +318,7 @@ def validate(rows: list[dict], *, existing_by_code: dict) -> ImportResult:
         dob, err = _date(row, "date_of_birth")
         if err:
             problems.append(f"Row {n}: {err}")
-        elif dob and dob >= date.today().isoformat():
+        elif dob and dob >= ist_today().isoformat():
             problems.append(f"Row {n}: date_of_birth {dob} is not in the past")
 
         joining, err = _date(row, "joining_date")

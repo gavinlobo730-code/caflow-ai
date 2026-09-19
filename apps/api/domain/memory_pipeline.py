@@ -6,6 +6,7 @@ import os
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from core.ist_clock import ist_now
 
 logger = logging.getLogger("caflow.memory")
 
@@ -371,7 +372,7 @@ class MemoryPipeline:
             return triggers
 
         risk_months = profile.get("cash_flow_risk_months", [])
-        current_month = datetime.now().strftime("%B")
+        current_month = ist_now().strftime("%B")
 
         if current_month in risk_months:
             # Dedup
@@ -507,7 +508,7 @@ class MemoryPipeline:
                     std_dev = variance ** 0.5
 
                     # Current month
-                    current_month_key = datetime.now().strftime("%Y-%m")
+                    current_month_key = ist_now().strftime("%Y-%m")
                     current_count = month_counts.get(current_month_key, 0)
 
                     if std_dev > 0:
