@@ -21,6 +21,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from services import collections_service
+from core.ist_clock import ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.portal_data")
@@ -38,7 +39,7 @@ def _db():
 
 def current_fy_range(today: Optional[date] = None) -> tuple[str, str]:
     """Indian FY (Apr 1 – Mar 31) containing `today`. Default statement window."""
-    today = today or date.today()
+    today = today or ist_today()
     start_year = today.year if today.month >= 4 else today.year - 1
     return f"{start_year}-04-01", f"{start_year + 1}-03-31"
 

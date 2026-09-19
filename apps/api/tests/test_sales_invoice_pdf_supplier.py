@@ -435,7 +435,11 @@ def test_totals_and_amount_in_words_are_unchanged():
     """The money was never wrong — only who was named and what was labelled.
     Guard the arithmetic the fix must not disturb."""
     text = _pdf_text(build_sales_invoice_pdf(_invoice(), CLIENT, CUSTOMER))
-    assert "1,00,000.00" not in text              # formatting is western-grouped
-    assert "100,000.00" in text                   # taxable value
-    assert "118,000.00" in text                   # total
+    # THE GROUPING WAS AN OBSERVATION, NOT A REQUIREMENT. "formatting is
+    # western-grouped" was true of the implementation and was frozen here as if
+    # it were the rule — so this test forbade decision D6's Indian grouping on
+    # the one document a client issues to their own customer. What it exists to
+    # guard, per its own docstring, is the arithmetic.
+    assert "1,00,000.00" in text                  # taxable value, grouped per D6
+    assert "1,18,000.00" in text                  # total
     assert "Rupees One Lakh Eighteen Thousand Only" in text

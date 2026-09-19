@@ -51,6 +51,7 @@ import {
   Upload,
 } from "lucide-react";
 import { Callout } from "@/components/ui/callout";
+import { buildWorkbook } from "@/lib/export/xlsx";
 
 function formatRupees(paise: number): string {
   const rupees = Math.floor(Math.abs(paise) / 100);
@@ -283,9 +284,24 @@ export default function AISPage() {
 
   function exportXLSX() {
     if (!exportRows.length) return;
-    const ws = XLSX.utils.json_to_sheet(exportRows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "AIS review");
+    // THE CSV AND THE WORKBOOK WANT DIFFERENT THINGS and `exportRows` is shared.
+    // A CSV cell must be a bare string with no grouping and no ₹; a workbook
+    // cell must be a NUMBER or `=SUM()` returns 0. So the money columns are
+    // re-typed here, on the way into the sheet, and `exportRows` is left as the
+    // CSV's. "Not reviewed" stays the word it is — a zero in that column would
+    // be a claim about the books.
+    const MONEY = ["AIS Amount (₹)", "TDS Deducted (₹)", "Amount in Books (₹)",
+                   "Difference (₹)"];
+    const sheetRows = exportRows.map((row) => {
+      const out: Record<string, string | number | null> = { ...row };
+      for (const h of MONEY) {
+        const v = row[h as keyof typeof row];
+        if (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v)) out[h] = Number(v);
+      }
+      return out;
+    });
+    const wb = buildWorkbook(XLSX, { rows: sheetRows, moneyColumns: MONEY,
+                                     sheetName: "AIS review" });
     XLSX.writeFile(wb, `AIS_${client?.client_name ?? "Client"}_AY${assessmentYear}_${todayLocalISO()}.xlsx`);
   }
 

@@ -22,6 +22,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from domain.reporting.amount_words import amount_in_words
+from domain.reporting.pdf_money import rupees_paise
 
 logger = logging.getLogger("caflow.services")
 
@@ -212,11 +213,17 @@ def mask_account(number) -> str:
 def _paise_to_rupee_str(paise: int) -> str:
     """Format integer paise as a rupee string, e.g. 123456 -> 'Rs.1,234.56'.
 
-    Integer paise arithmetic only — never float (project rupee rule)."""
-    paise = int(paise or 0)
-    rupees = paise // 100
-    fraction = paise % 100
-    return f"Rs.{rupees:,}.{fraction:02d}"
+    Integer paise arithmetic only — never float (project rupee rule). The
+    grouping and the sign are `domain/reporting/pdf_money`'s: this used to
+    group 12,34,567 as 1,234,567, and a NEGATIVE net — a leaver whose
+    recoveries exceed their pay — came out a rupee wrong, because `//` floors
+    and `%` follows it. "Rs." stays here because U+20B9 has no glyph in
+    ReportLab's core fonts.
+    """
+    body = rupees_paise(paise)
+    # The sign goes OUTSIDE the unit. "Rs.-1.50" reads as a typo; a
+    # negative net is what a leaver whose recoveries exceed their pay sees.
+    return f"-Rs.{body[1:]}" if body.startswith("-") else f"Rs.{body}"
 
 
 def _pay_period(slip: dict, run: dict) -> tuple[str, int, int]:

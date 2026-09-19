@@ -77,6 +77,7 @@ from domain.tds.purchase_return import (
 )
 from domain.tds.section_195_rates import rates_are_verified
 from domain.tds.section_rates import rates_are_verified as resident_rates_are_verified
+from core.ist_clock import ist_today
 
 _logger = logging.getLogger("caflow.tds_register")
 
@@ -236,7 +237,7 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
                 "purchase_bill_id", bill_id).eq("firm_id", firm_id).execute()
             return {"synced": True, "action": "removed", "reason": status or "no tds"}
 
-        when = _as_date(bill.get("bill_date")) or date.today()
+        when = _as_date(bill.get("bill_date")) or ist_today()
         # bps -> percent for a NUMERIC(5,2) column: 2000 bps is 20.00%.
         rate_pct = round(int(bill.get("tds_rate_bps") or 0) / 100, 2)
         v = vendor or {}
@@ -492,7 +493,7 @@ def sync_for_payment(db, firm_id: str, client_id: str, payment: dict,
             return {"synced": True, "action": "removed",
                     "reason": "reversed" if payment.get("is_reversed") else "no tds"}
 
-        when = _as_date(payment.get("payment_date")) or date.today()
+        when = _as_date(payment.get("payment_date")) or ist_today()
         # bps -> percent for a NUMERIC(5,2) column: 2000 bps is 20.00%.
         rate_pct = round(int(payment.get("tds_rate_bps") or 0) / 100, 2)
         v = vendor or {}

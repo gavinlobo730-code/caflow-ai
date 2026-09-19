@@ -89,6 +89,7 @@ from domain.recurrence import (                                    # noqa: E402
     next_occurrence,
     preview_occurrences,
 )
+from core.ist_clock import ist_today
 
 # ── Due date (Decision 4) ────────────────────────────────────────────────────
 
@@ -470,7 +471,7 @@ def generate_due_recurring_invoices(firm_id: str, client_id: Optional[str] = Non
     """Generate DRAFT invoices for every active template whose occurrences are due
     on/before `as_of`. Idempotent and safe to run repeatedly (manually or via the
     scheduler). Catches up missed occurrences (bounded). Never issues/posts/emails."""
-    as_of = _d(as_of) if as_of else date.today()
+    as_of = _d(as_of) if as_of else ist_today()
     db = db or (None if _USE_MOCK else _db())
     actor = actor or _system_actor(firm_id)
     generated, skipped, failed = [], [], []
@@ -506,7 +507,7 @@ def run_for_template(firm_id: str, template_id: str, as_of=None, actor: Optional
     if t.get("status") != "active":
         raise HTTPException(status_code=422, detail="Only active templates can be run.")
     # Reuse the batch engine scoped to this one template via its client + a filter.
-    as_of = _d(as_of) if as_of else date.today()
+    as_of = _d(as_of) if as_of else ist_today()
     db = db or (None if _USE_MOCK else _db())
     actor = actor or _system_actor(firm_id)
     end = _d(t["end_date"]) if t.get("end_date") else None

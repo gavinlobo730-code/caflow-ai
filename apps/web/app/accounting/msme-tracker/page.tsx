@@ -45,6 +45,7 @@ import * as XLSX from "xlsx";
 import type { Client } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
+import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 
 export default function MSME43BHPage() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -97,17 +98,20 @@ export default function MSME43BHPage() {
       "Bill Date": b.bill_date ?? "",
       "MSMED s.15 limit (days)": b.limit_days ?? "",
       "Due by": b.due_by ?? "",
-      "Invoice total (Rs)": (b.total_paise / 100).toFixed(2),
-      "Deduction claimed (Rs)": (b.deductible_paise / 100).toFixed(2),
-      "Paid in time (Rs)": (b.paid_in_time_paise / 100).toFixed(2),
-      "Paid late (Rs)": (b.paid_late_paise / 100).toFixed(2),
-      "Still unpaid (Rs)": (b.unpaid_paise / 100).toFixed(2),
-      "Disallowed this year (Rs)": (b.disallowed_paise / 100).toFixed(2),
+      "Invoice total (Rs)": moneyCell(b.total_paise),
+      "Deduction claimed (Rs)": moneyCell(b.deductible_paise),
+      "Paid in time (Rs)": moneyCell(b.paid_in_time_paise),
+      "Paid late (Rs)": moneyCell(b.paid_late_paise),
+      "Still unpaid (Rs)": moneyCell(b.unpaid_paise),
+      "Disallowed this year (Rs)": moneyCell(b.disallowed_paise),
       Basis: b.reason,
     }));
-    const ws = XLSX.utils.json_to_sheet(sheet);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "43B(h)");
+    const wb = buildWorkbook(XLSX, {
+      rows: sheet,
+      moneyColumns: ["Invoice total (Rs)", "Deduction claimed (Rs)", "Paid in time (Rs)",
+                     "Paid late (Rs)", "Still unpaid (Rs)", "Disallowed this year (Rs)"],
+      sheetName: "43B(h)",
+    });
     XLSX.writeFile(wb, `msme_43bh_${working.financial_year}.xlsx`);
   }
 

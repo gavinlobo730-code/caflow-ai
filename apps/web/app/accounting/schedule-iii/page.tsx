@@ -19,6 +19,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { api } from "@/lib/api";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
+import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 
 // Financial year helpers — FY runs April 1 to March 31 (Indian fiscal year).
 //
@@ -408,18 +409,20 @@ export default function ScheduleIIIPage() {
             const priorHead = data.comparatives.present && data.comparatives.period?.fy_end
               ? `Prior (FY ending ${data.comparatives.period.fy_end.slice(0, 4)})`
               : null;
-            const rupees = (paise: number | null | undefined) =>
-              paise === null || paise === undefined ? "" : (paise / 100).toFixed(2);
+            // A heading row passes `undefined` and carries no figure; a line
+            // whose value is genuinely absent passes `null`. Both write an
+            // EMPTY cell rather than a zero — a statement with a phantom nil
+            // on every heading does not foot by eye.
             const row = (section: string, item: string, paise?: number | null,
-                         prior?: number | null): Record<string, string> => {
-              const r: Record<string, string> = {
+                         prior?: number | null): Record<string, string | number | null> => {
+              const r: Record<string, string | number | null> = {
                 Section: section, Item: item,
-                Amount: paise === undefined ? "" : rupees(paise),
+                Amount: paise === undefined ? "" : moneyCell(paise),
               };
-              if (priorHead) r[priorHead] = prior === undefined ? "" : rupees(prior);
+              if (priorHead) r[priorHead] = prior === undefined ? "" : moneyCell(prior);
               return r;
             };
-            const rows: Record<string, string>[] = [];
+            const rows: Record<string, string | number | null>[] = [];
             rows.push(row("BALANCE SHEET", ""));
             for (const sec of data.balanceSheet.equityAndLiabilities) {
               rows.push(row(sec.heading, ""));
@@ -444,9 +447,11 @@ export default function ScheduleIIIPage() {
                           data.profitAndLoss.taxExpense, data.profitAndLoss.taxExpensePrior));
             rows.push(row("Summary", "Profit After Tax",
                           data.profitAndLoss.profitAfterTax, data.profitAndLoss.profitAfterTaxPrior));
-            const ws = XLSX.utils.json_to_sheet(rows);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Schedule III");
+            const wb = buildWorkbook(XLSX, {
+              rows,
+              moneyColumns: priorHead ? ["Amount", priorHead] : ["Amount"],
+              sheetName: "Schedule III",
+            });
             XLSX.writeFile(wb, `schedule_iii_${fy.label}.xlsx`);
           }}
           disabled={!data}

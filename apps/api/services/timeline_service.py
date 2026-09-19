@@ -13,6 +13,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+from core.ist_clock import ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.timeline_service")
@@ -172,7 +173,7 @@ class TimelineService:
         """Convenience shorthand for log_timeline_event with minimal required args."""
         if not financial_year:
             from datetime import date
-            today = date.today()
+            today = ist_today()
             fy_start = today.year if today.month >= 4 else today.year - 1
             financial_year = f"{fy_start}-{str(fy_start + 1)[-2:]}"
         self.log_timeline_event(

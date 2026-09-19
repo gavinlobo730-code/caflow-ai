@@ -497,3 +497,80 @@ plus `domain/banking/attachments` is the answer, and the CA confirms the claim
 with their client as part of their own engagement. Recorded as
 `not_a_defect_as_stated` rather than left open, so nobody re-opens it as a
 gap: it is a scope decision, not a hole.
+
+---
+
+# What the redesign work surfaced — 19 September 2026
+
+Five slices landed overnight (PRs #560–#563). Each is described in its own
+commit; these are the **decisions left for you**, and nothing below is blocking
+— the work went round them.
+
+## G. The rival indigo — one decision, 55 sites
+
+`#4338CA` (18), `#C7D2FE` (12), `#EEF2FF` (8), `#3730A3` (7), `#E0E7FF` (5),
+`#6366F1` (5) — **55 sites across 7 files** on an indigo that is not `brand`.
+The plan has called this "~40 sites" since T3-a; it is 55, measured 19 Sep.
+
+Folding them into `brand` (`#182350`) changes what the **executive dashboard,
+copilot and workflows** screens look like. That is a visible change on three
+screens, so it is yours.
+
+> **The question:** is the indigo a second brand colour you want, or a drift to
+> be folded into the navy?
+
+## H. The type scale's leading — 317 sites
+
+`text-[12px]` (189), `text-[13px]` (88), `text-[14px]` (40). The first and
+third are *exactly* Tailwind's `text-xs` and `text-sm` — but those also set a
+**line-height** (16px and 20px), so the substitution changes leading on 242
+sites and is not a rename. `text-[13px]` has no name at all.
+
+> **The question:** pin a line-height on the two new steps (and accept that
+> every nested site re-flows once), or keep the bare pixel sizes?
+
+## I. A band lighter than `ps.bg`
+
+`#FCFDFE` and `#FCFCFD` were left alone in the colour sweep. They are a zebra
+band **lighter** than `ps.bg`, and on GSTR-3B one sits on a row whose own hover
+is `bg-ps-bg` — collapsing it would make the row identical to its own hover
+state. The token file has no name for that step.
+
+> **The question:** add a `ps.surface-alt` step between white and `ps.bg`, or
+> let those rows take `ps.bg` and lose the band?
+
+## J. The global width rule (T3-d)
+
+The periodic Trial Balance now takes `max-w-6xl` when it renders nine columns
+and keeps `max-w-4xl` at five — the shape the cash-flow view in the same file
+already uses. **A global rule was not written**: that one page carries
+**fourteen different `max-w-*` containers**, and picking one is a design
+decision across the product.
+
+> **The question:** one content width for every screen, or width by column
+> count as the two views now do?
+
+## K. The year-end pack still says "PracticeSync AI"
+
+Its cover reads **"Prepared by: PracticeSync AI — Practice Management
+Platform"**, on a set of financial statements a CA signs. The practice's name
+belongs there. T5a-8 in the plan.
+
+Not built yet because the firm's name is not in the data the PDF service is
+given — it takes an engagement, which carries `firm_id` and no name — so it
+needs a fetch threaded through three routers. Small, but it changes what the
+document says, so it is worth one line from you:
+
+> **The question:** the practice's name alone, or the practice's name with a
+> small "prepared using PracticeSync" line?
+
+## L. What a CA is told when a posting falls back to the generic Bank ledger
+
+Pre-existing and recorded in CLAUDE.md: `PaymentAccount.is_fallback` and
+`.reason` are computed and reach no caller, so when a payment posts to the
+firm's generic `%Bank%` ledger rather than the client's own account, nothing
+says so. The resolver runs inside eight journal-line builders, so surfacing it
+is a refactor through the posting kernel's callers.
+
+> **The question:** WHERE should a CA be told — on the entry row, in the
+> posting confirmation, or only in a report?

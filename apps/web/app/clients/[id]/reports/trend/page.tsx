@@ -12,6 +12,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { objectOrNull } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
+import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 
 /**
  * The multi-year trend — Schedule III captions and the clause (Q) ratios across
@@ -121,27 +122,29 @@ export default function ClientTrendPage() {
   const exportExcel = useCallback(() => {
     if (!trend) return;
     // Rupees at the spreadsheet boundary only — the wire and every computation
-    // above are integer paise.
-    const rupees = (p: number) => (p / 100).toFixed(2);
-    const rows: Record<string, string>[] = [];
-    const push = (section: string, item: string, values: string[]) => {
-      const r: Record<string, string> = { Section: section, Item: item };
+    // above are integer paise. A money cell is a NUMBER so `=SUM()` works;
+    // the RATIO rows share these columns and stay STRINGS ("12.5%", "1.8
+    // times"), which is right — `buildWorkbook` formats only numeric cells, so
+    // a column carrying both is not given a rupee format on its ratios.
+    const rows: Record<string, string | number | null>[] = [];
+    const push = (section: string, item: string, values: (string | number | null)[]) => {
+      const r: Record<string, string | number | null> = { Section: section, Item: item };
       trend.fys.forEach((fy, i) => { r[fy] = values[i] ?? ""; });
       rows.push(r);
     };
     push("", trend.basis, []);
     push("PROFIT & LOSS", "", []);
-    for (const s of trend.profit_and_loss) push("", s.label, s.values_paise.map(rupees));
+    for (const s of trend.profit_and_loss) push("", s.label, s.values_paise.map(moneyCell));
     push("BALANCE SHEET", "", []);
-    for (const s of trend.balance_sheet) push("", s.label, s.values_paise.map(rupees));
+    for (const s of trend.balance_sheet) push("", s.label, s.values_paise.map(moneyCell));
     push("RATIOS", "", []);
     for (const s of trend.ratios) {
       push("", `${s.clause} ${s.label}`,
            s.values_bps.map((b) => (b === null ? "" : formatBps(b, s.unit))));
     }
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Trend");
+    const wb = buildWorkbook(XLSX, {
+      rows, moneyColumns: trend.fys, sheetName: "Trend",
+    });
     XLSX.writeFile(wb, `trend_${trend.fys[0] ?? ""}_to_${trend.fys[trend.fys.length - 1] ?? ""}.xlsx`);
   }, [trend]);
 

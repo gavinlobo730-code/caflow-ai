@@ -4,6 +4,7 @@ Handles task lifecycle, status transitions, and workload calculations.
 """
 from datetime import date, datetime, timezone
 from typing import Optional
+from core.ist_clock import ist_today
 
 
 VALID_TRANSITIONS: dict[str, list[str]] = {
@@ -25,7 +26,7 @@ def compute_task_urgency(due_date_str: Optional[str], status: str) -> str:
     if not due_date_str:
         return "low"
     due = date.fromisoformat(due_date_str)
-    days = (due - date.today()).days
+    days = (due - ist_today()).days
     if days < 0:
         return "overdue"
     if days <= 1:

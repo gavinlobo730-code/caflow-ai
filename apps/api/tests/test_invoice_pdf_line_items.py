@@ -24,6 +24,7 @@ import io
 import pdfplumber
 
 from services.invoice_pdf_service import build_invoice_pdf, get_sales_invoice_pdf
+from domain.reporting.pdf_money import rupees_paise
 
 FIRM = {"name": "Test & Co", "gstin": "27AAAAA9999A1Z5", "address": "Mumbai"}
 CLIENT = {"client_name": "Acme Pvt Ltd", "gstin": "27BBBBB8888B1Z3", "address": "Pune"}
@@ -88,7 +89,11 @@ def test_gst_tax_summary_rows_are_preserved_alongside_real_lines():
     assert "CGST @ 9%" in text
     assert "SGST @ 9%" in text
     assert "Total" in text
-    assert "118,000.00" in text  # aggregate Taxable Value, unchanged by the fix
+    # THE FIGURE IS UNCHANGED; ITS GROUPING WAS WRONG. This asserted
+    # "118,000.00" — Python's own f"{n:,}", which groups in threes — and
+    # decision D6 is Indian grouping everywhere. ₹1,18,000 is 1,18,000, and
+    # the assertion was pinning the defect rather than the value.
+    assert "1,18,000.00" in text  # aggregate Taxable Value, grouped per D6
 
 
 def test_taxable_value_total_matches_the_sum_of_real_lines():
@@ -101,7 +106,13 @@ def test_taxable_value_total_matches_the_sum_of_real_lines():
     invoice = _invoice(amount_paise=sum(l["taxable_amount_paise"] for l in lines), lines=lines)
     pdf = build_invoice_pdf(invoice, FIRM, CLIENT)
     text = _pdf_text(pdf)
-    expected_total_str = f"{invoice['amount_paise'] // 100:,}.{invoice['amount_paise'] % 100:02d}"
+    # THROUGH THE FORMATTER, not a copy of it. This built its expectation with
+    # `f"{paise // 100:,}.{paise % 100:02d}"` — the very expression that was the
+    # defect, so the test agreed with the renderer by reproducing its bug and
+    # would have agreed with any future one too. The test is about the
+    # ARITHMETIC (does the aggregate equal the sum of the lines), which is what
+    # asking the one formatter leaves it asserting.
+    expected_total_str = rupees_paise(invoice["amount_paise"])
     assert expected_total_str in text
     assert sum(l["taxable_amount_paise"] for l in lines) == invoice["amount_paise"]
 
