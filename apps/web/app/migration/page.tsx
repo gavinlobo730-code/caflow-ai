@@ -62,8 +62,15 @@ interface ParseResult {
   parsed_counts: Record<string, number>;
 }
 
+interface WithheldIdentifier {
+  item_type: string;
+  name: string | null;
+  reasons: string[];
+}
+
 interface MigrationPreview {
   error_count: number;
+  withheld_identifiers?: WithheldIdentifier[];
   [key: string]: unknown;
 }
 
@@ -283,6 +290,36 @@ export default function MigrationPage() {
                 <div className="flex items-center gap-2 bg-red-50 p-3 rounded-lg">
                   <XCircle size={14} className="text-red-500" />
                   <p className="text-xs text-red-700">{preview.error_count} items have errors — fix before importing</p>
+                </div>
+              )}
+              {/* A customer or vendor whose GSTIN or PAN cannot be read is
+                  still imported — the name, address and email are fine, and
+                  refusing the job would make a migration impossible for the
+                  legacy books that most need one. The identifier is held
+                  back, and this is where the CA is told which parties to
+                  re-key. The whole list, never a slice: every row is an
+                  action. */}
+              {(preview.withheld_identifiers ?? []).length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={13} className="text-amber-600 shrink-0" />
+                    <p className="text-xs font-medium text-amber-900">
+                      {preview.withheld_identifiers!.length} part
+                      {preview.withheld_identifiers!.length === 1 ? "y" : "ies"} will
+                      be imported without an identifier
+                    </p>
+                  </div>
+                  <ul className="space-y-1.5 max-h-56 overflow-y-auto">
+                    {preview.withheld_identifiers!.map((w, i) => (
+                      <li key={i} className="text-3xs text-amber-900">
+                        <span className="font-medium">{w.name || "(unnamed)"}</span>
+                        <span className="text-amber-700"> · {w.item_type}</span>
+                        {w.reasons.map((r, j) => (
+                          <p key={j} className="text-amber-800 pl-2">{r}</p>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
               <div className="flex items-center gap-3">
