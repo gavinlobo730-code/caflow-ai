@@ -82,41 +82,112 @@ export function Callout({ tone = "note", title, children, className }: CalloutPr
   );
 }
 
-/** One gap as the backend emits it. Every field but `reason` is optional
- *  because the 32 shapes do not agree on the others, and a renderer that
- *  required one would simply not be used by two thirds of them. */
+/** One gap as the backend emits it — and it emits THREE shapes, not one.
+ *
+ *  A bare `string` is by far the commonest (`statutory_gaps`, `caveats`,
+ *  `movement_gaps`, `rate_gaps`, `payload_gaps` on most builders); `{reason,
+ *  kind}` is the GSTR-1 payload's; `{code, message}` is the ageing note's, the
+ *  ratios note's and the Worth-A-Look list's. `GapList` used to accept only
+ *  the second, which is why 54 sites across 31 files hand-rolled the panel
+ *  instead of using it — a renderer that speaks one of three dialects is a
+ *  renderer two thirds of its callers cannot call.
+ *
+ *  Nothing here UNIFIES the backend's vocabulary: 32 differently-named fields
+ *  in three shapes is the server's business, and a browser-side normaliser
+ *  would be a second authority on what a gap is. This only reads whichever
+ *  shape arrived. */
 export interface Gap {
-  reason: string;
+  /** The sentence. `message` is the other spelling; one of the two is present. */
+  reason?: string;
+  message?: string;
   kind?: string;
+  code?: string;
   reference_no?: string | null;
   /** GST-29's stamp. `undefined` reads as withheld, so a frontend running
    *  ahead of its backend renders exactly as it did before the field existed. */
   withheld?: boolean;
 }
 
+/** What a caller may pass. `string` first because it is what most of them hold. */
+export type GapLike = string | Gap;
+
+function sentenceOf(g: GapLike): string {
+  return typeof g === "string" ? g : (g.reason ?? g.message ?? "");
+}
+
 export interface GapListProps {
-  gaps: Gap[];
+  gaps: GapLike[];
   tone?: CalloutTone;
   title?: React.ReactNode;
   className?: string;
+  /** Renders each sentence with a leading marker, as several screens do by
+   *  hand today. Off by default: a single-item list reads better without one. */
+  bulleted?: boolean;
 }
 
 /** The list inside a callout. Renders nothing at all for an empty list — an
  *  empty panel headed "Gaps" reads as a clean bill of health, which is the one
  *  thing a gap list must never say by accident. */
-export function GapList({ gaps, tone = "withheld", title, className }: GapListProps) {
+export function GapList({ gaps, tone = "withheld", title, className, bulleted }: GapListProps) {
   if (!gaps.length) return null;
   return (
     <Callout tone={tone} title={title} className={className}>
-      <ul className="space-y-1.5">
-        {gaps.map((g, i) => (
-          <li key={`${g.kind ?? ""}-${g.reference_no ?? ""}-${i}`}>
-            {g.reference_no && <span className="mr-1 font-mono">[{g.reference_no}]</span>}
-            {g.kind && <span className="mr-1 font-medium">{g.kind}</span>}
-            {g.reason}
-          </li>
-        ))}
+      <ul className={cn("space-y-1.5", bulleted && "list-disc pl-4")}>
+        {gaps.map((g, i) => {
+          const o = typeof g === "string" ? null : g;
+          return (
+            <li key={`${o?.kind ?? o?.code ?? ""}-${o?.reference_no ?? ""}-${i}`}>
+              {o?.reference_no && <span className="mr-1 font-mono">[{o.reference_no}]</span>}
+              {o?.kind && <span className="mr-1 font-medium">{o.kind}</span>}
+              {sentenceOf(g)}
+            </li>
+          );
+        })}
       </ul>
     </Callout>
+  );
+}
+
+/** THE TWO LISTS A STATUTORY PANEL CARRIES, AND WHY THEY ARE ONE COMPONENT.
+ *
+ *  `app/income-tax/advance-tax/page.tsx` already states the rule in a comment:
+ *  *"GAPS ARE ACTIONABLE AND CAVEATS ARE NOT, and they are rendered
+ *  differently for that reason — a mis-headed challan or an unpaid §140A
+ *  balance needs doing something about; the statement that the interest came
+ *  from the panel above needs reading once."* `components/fixed-assets/
+ *  CwipTab.tsx` states it again, and `domain/gst/late_filing.py`,
+ *  `domain/gst/rule_43.py` and `domain/income_tax/self_assessment.py` all emit
+ *  the pair on the same payload.
+ *
+ *  It was rendered FIVE ways. Measured over the 54 sites: a gap wore 11
+ *  distinct inks and a caveat 6, and **five inks were used for both** — so on
+ *  the GSTR-3B screen `rule37a.caveats` came out slate (right) while
+ *  `rule37.interest_caveats` and `r43.caveats` came out amber, the same colour
+ *  as the gap list two panels above. A CA reading that screen cannot tell
+ *  "read this once" from "go and record this".
+ *
+ *  So the pair is one component and the tones are not the caller's to pick.
+ *  An empty half renders nothing, and BOTH empty renders nothing at all. */
+export interface StatutoryNotesProps {
+  gaps?: GapLike[] | null;
+  caveats?: GapLike[] | null;
+  /** Heading on the gaps half only. Caveats are read, not acted on, and a
+   *  heading over them invites a CA to treat them as a list of jobs. */
+  title?: React.ReactNode;
+  className?: string;
+  bulleted?: boolean;
+}
+
+export function StatutoryNotes(
+  { gaps, caveats, title, className, bulleted }: StatutoryNotesProps,
+) {
+  const g = gaps ?? [];
+  const c = caveats ?? [];
+  if (!g.length && !c.length) return null;
+  return (
+    <div className={cn("space-y-2", className)}>
+      <GapList gaps={g} tone="attention" title={title} bulleted={bulleted} />
+      <GapList gaps={c} tone="note" bulleted={bulleted} />
+    </div>
   );
 }

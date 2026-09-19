@@ -61,8 +61,14 @@ test("the exemption panel renders the server's claims and computes nothing", () 
 
 test("every refusal shown is a sentence that came off the wire", () => {
   const src = code(SCREEN);
+  // THE RULE, NOT A SPELLING OF IT. This asserted `exemption.gaps.map`, which broke on
+  // 18 Sep when the panel moved to `<GapList>` — a change that renders the
+  // same sentences and does not break the rule. Sixth time in this repo;
+  // CLAUDE.md records the other five. What matters is that the array
+  // REACHES a renderer, however it is spelled.
   assert.match(src, /c\.gaps\.map/, "a claim's own gaps");
-  assert.match(src, /exemption\.gaps\.map/, "and the transfer-level ones");
+  assert.match(src, /\bgaps=\{exemption\?\.gaps|exemption\.gaps\.map/,
+    "and the transfer-level ones");
   assert.match(src, /c\.caveats\.map/, "…and the caveats, which say what was not tested");
   // The screen must not invent its own version of a statutory refusal.
   assert.doesNotMatch(src, /does not reach/i, "the server says which section reaches what");

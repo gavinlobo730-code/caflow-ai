@@ -34,7 +34,9 @@ import type {
   SalaryRevisionRow, SettlementInput, SettlementResult,
 } from "@/lib/api";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
-import { financialYearOfMonth, financialYearChoicesAround } from "@/lib/dates/periods";
+import { financialYearOfMonth } from "@/lib/dates/periods";
+import { GapList } from "@/components/ui/callout";
+import { YearPicker } from "@/components/ui/year-picker";
 
 export type DrawerEmployee = {
   id: string;
@@ -105,14 +107,7 @@ function Notes({ gaps, problems }: { gaps?: string[]; problems?: string[] }) {
           {problems.map((p, i) => <p key={i} className="text-2xs text-red-700 mt-0.5">· {p}</p>)}
         </div>
       )}
-      {!!gaps?.length && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
-          <p className="text-2xs font-semibold text-amber-800">
-            What payroll cannot know
-          </p>
-          {gaps.map((g, i) => <p key={i} className="text-2xs text-amber-800 mt-0.5">· {g}</p>)}
-        </div>
-      )}
+      <GapList gaps={gaps ?? []} tone="withheld" title="What payroll cannot know" />
     </div>
   );
 }
@@ -777,10 +772,8 @@ function PerquisitesSection({ employee, clientId }: {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <label className={LABEL}>Financial year
-          <select value={fy} onChange={(e) => { setFy(e.target.value); setResult(null); setDone(null); }}
-            className={`${FIELD} mt-1`}>
-            {financialYearChoicesAround(null).map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <YearPicker className="mt-1" value={fy}
+          onChange={v => { setFy(v); setResult(null); setDone(null); }} />
         </label>
         <Money label="Salary for Rule 3" value={salaryForRule3} onChange={setSalaryForRule3} />
       </div>
@@ -984,10 +977,7 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
 
       <div className="grid grid-cols-2 gap-3">
         <label className={LABEL}>Year of receipt
-          <select value={receiptFy} onChange={(e) => setReceiptFy(e.target.value)}
-            className={`${FIELD} mt-1`}>
-            {financialYearChoicesAround(null).map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <YearPicker className="mt-1" value={receiptFy} onChange={setReceiptFy} />
         </label>
         <Money label="Total income in the year of receipt" value={totalIncome} onChange={setTotalIncome} />
         <label className={LABEL}>Form 10E acknowledgement

@@ -6,6 +6,7 @@ import { yearEndApi, type NoteToAccount, type NoteData } from "@/lib/api/yearEnd
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
+import { GapList } from "@/components/ui/callout";
 
 const TYPE_BADGE: Record<string, string> = {
   auto: "bg-blue-100 text-blue-700",
@@ -371,12 +372,10 @@ function FixedAssetMovement({ data }: { data?: NoteData | null }) {
           </tbody>
         </table>
       </div>
-      {gaps.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
-          <p className="text-2xs font-semibold text-amber-900">What this note does not account for</p>
-          {gaps.map((g, i) => <p key={i} className="text-2xs text-amber-800">{g}</p>)}
-        </div>
-      )}
+      {/* "does not account for" is a WITHHELD statement, not a warning: the
+          figure below is what the ledger holds and these are the things it
+          cannot see. Amber said the note was wrong. */}
+      <GapList gaps={gaps} tone="withheld" title="What this note does not account for" />
     </div>
   );
 }

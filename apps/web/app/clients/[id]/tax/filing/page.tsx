@@ -7,6 +7,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { assessmentYearChoicesAround, financialYearChoicesAround } from "@/lib/dates/periods";
+import { YearPicker } from "@/components/ui/year-picker";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -415,17 +416,11 @@ export default function ITRFilingPage() {
             </div>
             <div>
               <label className="text-3xs text-ps-label mb-1 block">Financial Year</label>
-              <select value={fy} onChange={e => setFy(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
-                {FY_OPTIONS.map(f => <option key={f}>{f}</option>)}
-              </select>
+              <YearPicker value={fy} onChange={setFy} size="sm" />
             </div>
             <div>
               <label className="text-3xs text-ps-label mb-1 block">Assessment Year</label>
-              <select value={ay} onChange={e => setAy(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
-                {AY_OPTIONS.map(a => <option key={a}>{a}</option>)}
-              </select>
+              <YearPicker kind="ay" value={ay} onChange={setAy} size="sm" />
             </div>
           </div>
           <div>

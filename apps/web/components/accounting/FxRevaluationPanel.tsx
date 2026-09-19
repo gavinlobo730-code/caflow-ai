@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
+import { GapList } from "@/components/ui/callout";
 
 interface PlanRow {
   currency: string;
@@ -200,15 +201,7 @@ export default function FxRevaluationPanel({
         </table>
       </div>
 
-      {plan.rate_gaps.length > 0 && (
-        <ul className="space-y-1">
-          {plan.rate_gaps.map((g, i) => (
-            <li key={i} className="text-2xs text-[#92400E] bg-amber-50 border border-amber-200 rounded px-2 py-1">
-              {g}
-            </li>
-          ))}
-        </ul>
-      )}
+      <GapList gaps={plan.rate_gaps} tone="attention" />
 
       {error && (
         <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{error}</p>

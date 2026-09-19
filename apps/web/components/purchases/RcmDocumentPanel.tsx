@@ -20,8 +20,9 @@
  * copy of it here is a second place for it to be wrong.
  */
 import { useCallback, useEffect, useState } from "react";
-import { X, FileText, AlertTriangle, Check, Info } from "lucide-react";
+import { X, FileText, AlertTriangle, Check } from "lucide-react";
 import { api, type RcmDocumentPreview } from "@/lib/api";
+import { GapList, StatutoryNotes } from "@/components/ui/callout";
 
 export function RcmDocumentPanel({
   clientId, kind, purchaseBillId, purchasePaymentId, onClose, onIssued,
@@ -135,14 +136,7 @@ export function RcmDocumentPanel({
 
           {/* WHAT IS MISSING — nobody can yet tell. Different from the above,
               and shown differently, because this one is actionable. */}
-          {preview && preview.gaps.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 space-y-1">
-              <p className="font-semibold flex items-center gap-1.5">
-                <Info size={12} /> Not decided yet
-              </p>
-              {preview.gaps.map((g, i) => <p key={i}>{g}</p>)}
-            </div>
-          )}
+          <GapList gaps={preview?.gaps ?? []} tone="attention" title="Not decided yet" />
 
           {p && (
             <>
@@ -233,16 +227,11 @@ export function RcmDocumentPanel({
               {/* Every caveat the server attached, verbatim — a document shown
                   without the sentence saying its own bill contradicts itself is
                   exactly the disclosure a reader would rely on. */}
-              {p.caveats.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 space-y-1">
-                  {p.caveats.map((c, i) => <p key={i}>{c}</p>)}
-                </div>
-              )}
-              {p.gaps.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 space-y-1">
-                  {p.gaps.map((g, i) => <p key={i}>{g}</p>)}
-                </div>
-              )}
+              {/* The two lists wore a BYTE-IDENTICAL class string until
+                  18 Sep — two adjacent amber boxes under the comment above
+                  saying they are different things. `StatutoryNotes` is the
+                  one place that decides which tone each gets. */}
+              <StatutoryNotes gaps={p.gaps} caveats={p.caveats} />
             </>
           )}
         </div>

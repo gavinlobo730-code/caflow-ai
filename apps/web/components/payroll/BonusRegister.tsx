@@ -19,12 +19,13 @@
  * their determination and the account is their choice.
  */
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Loader2, RefreshCw, Scale } from "lucide-react";
+import { Loader2, RefreshCw, Scale } from "lucide-react";
 import { Field, Input, Select } from "@/components/ui/field";
 import { api } from "@/lib/api";
 import type { BonusRegister as BonusRegisterData } from "@/lib/api";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { GapList } from "@/components/ui/callout";
 
 function rupees(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN", {
@@ -214,16 +215,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
             ))}
           </div>
 
-          {data.gaps.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
-              {data.gaps.map((g, i) => (
-                <p key={i} className="text-2xs text-amber-800 flex gap-1.5 leading-relaxed">
-                  <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-                  <span>{g}</span>
-                </p>
-              ))}
-            </div>
-          )}
+          <GapList gaps={data.gaps} tone="attention" />
 
           <div className="border border-ps-border rounded-lg bg-white overflow-x-auto">
             <table className="w-full text-2xs">

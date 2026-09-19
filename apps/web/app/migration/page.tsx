@@ -6,6 +6,7 @@ import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { Can } from "@/components/Can";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { YearPicker } from "@/components/ui/year-picker";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -229,10 +230,7 @@ export default function MigrationPage() {
               </div>
               <div>
                 <label className="text-3xs text-ps-label mb-1 block">Financial Year</label>
-                <select value={fy} onChange={e => setFy(e.target.value)}
-                  className="text-xs px-3 py-1.5 border border-ps-border rounded-lg">
-                  {FY_OPTIONS.map(f => <option key={f}>{f}</option>)}
-                </select>
+                <YearPicker value={fy} onChange={setFy} size="sm" />
               </div>
               <div>
                 <label className="text-3xs text-ps-label mb-2 block">Import Types</label>

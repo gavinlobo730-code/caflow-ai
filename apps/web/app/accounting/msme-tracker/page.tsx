@@ -31,7 +31,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { ChevronLeft, AlertTriangle, CheckCircle, Info, Download } from "lucide-react";
+import { ChevronLeft, CheckCircle, Info, Download } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -43,6 +43,8 @@ import { bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { api, type MSME43BHWorking, type MSMEDInterest } from "@/lib/api";
 import * as XLSX from "xlsx";
 import type { Client } from "@/lib/types";
+import { Callout } from "@/components/ui/callout";
+import { YearPicker } from "@/components/ui/year-picker";
 
 export default function MSME43BHPage() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -135,14 +137,7 @@ export default function MSME43BHPage() {
             placeholder="Select a client"
           />
         </div>
-        <select
-          aria-label="Financial year"
-          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
-          value={fy}
-          onChange={e => setFy(e.target.value)}
-        >
-          {fyChoices.map(y => <option key={y} value={y}>FY {y}</option>)}
-        </select>
+        <YearPicker value={fy} onChange={setFy} className="w-auto" />
         <div className="flex items-center gap-2">
           <label htmlFor="bank-rate" className="text-xs text-ps-label whitespace-nowrap">
             RBI Bank Rate
@@ -208,23 +203,15 @@ export default function MSME43BHPage() {
           <MsmedInterestPanel interest={working.msmed_interest} />
 
           {working.gaps.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
-              <div className="flex items-start gap-2">
-                <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-amber-900">
-                    {working.gaps.length} supplier{working.gaps.length !== 1 ? "s are" : " is"} not
-                    in this working, and should be
-                  </p>
-                  {working.gaps.map((g, i) => (
-                    <p key={i} className="text-xs text-amber-800">• {g}</p>
-                  ))}
-                  <p className="text-2xs text-amber-700 pt-1">
-                    Record it on the client&apos;s Schedule III ageing screen, then recompute.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <Callout tone="attention"
+                     title={`${working.gaps.length} supplier${working.gaps.length !== 1 ? "s are" : " is"} not in this working, and should be`}>
+              <ul className="space-y-1">
+                {working.gaps.map((g, i) => <li key={i}>{g}</li>)}
+              </ul>
+              <p className="pt-1.5">
+                Record it on the client&apos;s Schedule III ageing screen, then recompute.
+              </p>
+            </Callout>
           )}
 
           <div className="bg-ps-bg border border-ps-border rounded-xl px-5 py-4 space-y-1.5">
@@ -362,7 +349,7 @@ function MsmedInterestPanel({ interest }: { interest: MSMEDInterest }) {
       {interest.gaps.length > 0 && (
         <div className="px-5 py-3 bg-state-attention-surface/60 border-b border-state-attention-border/60 space-y-1">
           {interest.gaps.map((g, i) => (
-            <p key={i} className="text-xs text-state-attention">• {g}</p>
+            <p key={i} className="text-xs text-state-attention">{g}</p>
           ))}
         </div>
       )}

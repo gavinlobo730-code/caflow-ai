@@ -81,9 +81,24 @@ test("every refusal rendered is the server's sentence", () => {
   // map replaced by an empty array, because the name still sits in the
   // interface declaration above.
   assert.match(PANEL, /\{plan\.refusal\}/, "the gate refusal must be rendered");
-  assert.match(PANEL, /plan\.rate_gaps\.map\(/, "each rate gap must be rendered");
+  // THE RULE, NOT A SPELLING OF IT. This asserted `plan.rate_gaps.map(`, which broke on
+  // 18 Sep when the panel moved to `<GapList>` — a change that renders the
+  // same sentences and does not break the rule. Sixth time in this repo;
+  // CLAUDE.md records the other five. What matters is that the array
+  // REACHES a renderer, however it is spelled.
+  assert.match(PANEL, /\bgaps=\{plan\.rate_gaps\}|plan\.rate_gaps\.map\(/,
+    "each rate gap must be rendered");
   assert.match(PANEL, /\{plan\.period_problem\}/, "the period refusal must be rendered");
-  assert.match(PANEL, /\{g\}/, "the rate-gap sentence itself must reach the page");
+  // MENTIONED IS NOT RENDERED still holds, and `<GapList gaps={…}>` satisfies
+  // it differently from a local `.map`: the sentences are rendered by a
+  // component whose own guard asserts it renders them and returns null for an
+  // empty list. So the rule here is that the array reaches THAT renderer —
+  // asserting a literal `{g}` would now only be asserting the old spelling.
+  assert.match(
+    PANEL,
+    /<GapList[^>]*gaps=\{plan\.rate_gaps\}|\{g\}/,
+    "the rate-gap sentences must reach a renderer that renders them",
+  );
   // And it must not invent its own wording for the gates — Settings is where
   // a Partner fixes them, and the server's sentence already says so.
   assert.ok(!/multi_currency_entitled|multi_currency_enabled/.test(PANEL),

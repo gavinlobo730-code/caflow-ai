@@ -30,6 +30,7 @@ import { toast } from "@/components/ui/use-toast";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
+import { DrCr } from "@/components/ui/drcr";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -1086,9 +1087,9 @@ function LedgerDrillDown({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const bal = (paise: number, isDebit: boolean) => (
-    <>{fmt(Math.abs(paise))}<span className="text-3xs font-normal ml-1 opacity-60">{isDebit ? "Dr" : "Cr"}</span></>
-  );
+  // The side is the SERVER's (`is_debit` on the ledger page), not the sign's:
+  // a bank overdraft is a credit balance on an asset ledger.
+  const bal = (paise: number, isDebit: boolean) => <DrCr paise={paise} isDebit={isDebit} quiet />;
   const hasActivity = !!ledger && (ledger.lines.length > 0 || ledger.opening_balance_paise !== 0);
   const accountName = ledger?.account_name ?? accounts.find((a) => a.id === accountId)?.account_name ?? "";
 

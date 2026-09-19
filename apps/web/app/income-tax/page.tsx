@@ -58,6 +58,8 @@ import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { GapList } from "@/components/ui/callout";
+import { YearPicker } from "@/components/ui/year-picker";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1255,19 +1257,8 @@ export default function IncomeTaxPage() {
                     (the year the return reports on)
                   </span>
                 </label>
-                <select
-                  value={addForm.financial_year}
-                  onChange={(e) =>
-                    handleAddFormChange("financial_year", e.target.value)
-                  }
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {FINANCIAL_YEARS.map((fy) => (
-                    <option key={fy} value={fy}>
-                      {fy}
-                    </option>
-                  ))}
-                </select>
+                <YearPicker value={addForm.financial_year}
+                onChange={v => handleAddFormChange("financial_year", v)} />
               </div>
 
               {/* Due Date — computed by apps/api, editable */}
@@ -1317,17 +1308,8 @@ export default function IncomeTaxPage() {
                       {dueDate.basis}
                     </p>
                   ) : (
-                    <div className="mt-1.5 flex gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        <p className="font-medium">
-                          Assumed — please confirm before saving.
-                        </p>
-                        {dueDate.statutory_gaps.map((gap) => (
-                          <p key={gap}>{gap}</p>
-                        ))}
-                      </div>
-                    </div>
+                    <GapList className="mt-1.5" gaps={dueDate.statutory_gaps}
+                             tone="attention" title="Assumed — please confirm before saving." />
                   )
                 )}
               </div>

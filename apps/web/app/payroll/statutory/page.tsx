@@ -35,6 +35,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { api, type StatutoryRow, type StatutorySummary } from "@/lib/api";
+import { GapList } from "@/components/ui/callout";
 
 type Client = { id: string; client_name: string };
 
@@ -211,13 +212,7 @@ export default function StatutoryPage() {
 
         {/* Anything the backend could not compute, named. A missing joining
             date used to look identical to no entitlement. */}
-        {(summary?.gaps?.length ?? 0) > 0 && (
-          <div className="mb-4 space-y-1.5 p-3 bg-state-attention-surface border border-state-attention-border rounded-lg">
-            {summary!.gaps.map((g, i) => (
-              <p key={i} className="text-xs text-[#78350F]">{g}</p>
-            ))}
-          </div>
-        )}
+        <GapList gaps={summary?.gaps ?? []} tone="attention" className="mb-4" />
 
         {loading && (
           <Card><CardContent className="py-12 text-center text-ps-label">Loading…</CardContent></Card>

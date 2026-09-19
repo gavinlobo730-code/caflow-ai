@@ -57,6 +57,7 @@ import {
   type ReinvestmentSection, type AcquisitionKind, type TransferredAssetNature,
 } from "@/lib/data/income-tax";
 import { listingIsAsked, grandfatheringIsAsked } from "@/lib/income-tax/capitalGainsFacts";
+import { GapList } from "@/components/ui/callout";
 
 /** Anything the compute endpoint accepts. The calculator and the register
  *  have different vocabularies and the backend takes the union of both. */
@@ -960,15 +961,7 @@ export default function CapitalGainsPage() {
 
                   {/* What the register could not answer. A sentence saying what
                       to go and record beats a figure computed from a guess. */}
-                  {exemption && exemption.gaps.length > 0 && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
-                      {exemption.gaps.map((g, i) => (
-                        <p key={i} className="text-2xs text-amber-900 flex gap-1.5">
-                          <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />{g}
-                        </p>
-                      ))}
-                    </div>
-                  )}
+                  <GapList gaps={exemption?.gaps ?? []} tone="attention" />
 
                   {exemption?.claims?.map(c => (
                     <div key={c.id ?? c.section}

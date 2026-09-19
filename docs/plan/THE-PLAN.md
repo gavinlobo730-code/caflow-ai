@@ -47,7 +47,7 @@ _Last updated: 2026-09-16_
 |---|---|---|---|---|
 | **T1** | Repair the safety net | 🔧 C | 4–6d | `DONE` — 7 of 7 |
 | **T2** | A demo firm that exists | 🔧 C | 2–3d | `DOING` — T2-0 done |
-| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `DOING` — T3-a, T3-b, T3-f and T3-c's money cell done 18 Sep |
+| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `DOING` — T3-a, T3-b, T3-f done; T3-c 4 of 6 (money cell, Dr/Cr, gap callout, period picker) 18 Sep |
 | **T4** | Token adoption | 🔧 C | 5–8d | `DOING` — colour 10,146 → 116, type 2,265 → 405 |
 | **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `TODO` — unblocked 16 Sep |
 | **T6** | Navigation + the hub | 🔧 C | 11–17d | `BLOCKED` on T4 |
@@ -235,7 +235,7 @@ So T3 is replace-and-migrate, not define.
 |---|---|---|---|
 | T3-a | ✅ **18 Sep.** Type scale reaches 10px (`text-3xs`) and 11px (`text-2xs`), bare. `darkMode` deleted. Dead gone: 2 colour tokens, 3 box shadows, **17 `:root` variables**, 9 CSS classes. **10,146 → 116 raw hex classes.** Spacing/radius/elevation deliberately NOT invented — see below. | 2.5d | ✅ done |
 | T3-b | ✅ **18 Sep.** FIVE built, not eight: `components/ui/field.tsx` (Input, Select, Textarea, Label, **Field** — the aria wiring, since `aria-describedby` appeared ONCE in the tree against 927 `<label>`) and `components/ui/callout.tsx` (Callout + GapList, four tones). **Table and Pagination already exist** as `DataTable` — the 242 raw `<table>` are adoption, not a missing primitive — and **Tooltip is deferred**: 292 sites use native `title=`, and a custom one is a behaviour decision for the reference screens. Both adopted on the screens that argued for them. | 3d | ✅ done |
-| T3-c | The 6 product-specific components | 3.5d | below |
+| T3-c | The 6 product-specific components | 3.5d | 4 of 6 done — below |
 | T3-d | Reference screen 1 — **periodic Trial Balance** | 1.5d | Renders full-width; 9 Dr/Cr columns; owner approves |
 | T3-e | Reference screen 2 — **Banking Entries** | 1.5d | Density proven; its guard rewritten to name components, not class strings |
 | T3-f | ✅ **18 Sep.** `ps.hint` was **2.56:1** — the most-used colour in the product. `label` #64748B→#475569, `hint` #94A3B8→#64748B. Guarded, reading the config. | in T3-a | ✅ every ink token ≥ 4.5:1 on white and on `ps.bg` |
@@ -245,10 +245,10 @@ So T3 is replace-and-migrate, not define.
 | component | why it is not generic | today |
 |---|---|---|
 | **Money cell** | ✅ **18 Sep** — `lib/money/format.ts`. Re-measured: **248 formatters, 26 behaviours**, not 53/11. **139 had no `en-IN` locale at all**, ~150 were null-unsafe, the shared one rendered `undefined` as "₹NaN" and `null` as "₹0.00", and the whole-rupee one ROUNDED — a second CGST §170. Four Intl construction sites became two, both inside the authority | ~~53 / 11~~ **done** |
-| **Dr/Cr pair** | signed paise + a normal side | 4 sites, no component |
-| **Statutory-gap callout** | the backend emits 32 differently-named gap fields from 96 files | 63 sites, 36 files, no component |
-| **Refusal banner** | `ErrorState`/`AsyncBoundary` already exist and are right | 198 inline sites in 125 files — adoption, not design |
-| **Period picker** | FY, AY, month, quarter, range | 20 hand-rolled FY selects. **Must stay per-page** — a global FY control was removed on purpose |
+| **Dr/Cr pair** | ✅ **18 Sep** — `components/ui/drcr.tsx`. The finding was not the duplication: two of the three sites read `p >= 0 ? "Dr" : "Cr"`, so a customer who had **settled every invoice** was emailed a statement reading **"₹0.00 Dr"**, and the same `>= 0` coloured it blue. A nil balance is on neither side; `sideOf` is a tri-state | ~~4 sites~~ **done** |
+| **Statutory-gap callout** | ✅ **18 Sep** — `GapList` existed and accepted ONE of the three shapes the backend emits, which is why 48 sites hand-rolled it. Widened, plus `StatutoryNotes` for the gap/caveat pair. The real defect: a GAP wore **11 distinct inks** and a CAVEAT **7**, with **5 used for both** — `RcmDocumentPanel` rendered the two in a *byte-identical* class string | ~~48 sites~~ **18 + 12**, ratcheted |
+| **Refusal banner** | `ErrorState`/`AsyncBoundary` exist (`components/ui/states.tsx`) and are right — **re-measured 18 Sep: 9 files import them against 94 with an inline red panel, and the overlap is ZERO.** Not one file reached for the primitive and then fell back, which is what "nobody knows it is there" looks like. `ErrorState` is a centred `py-10` REGION block; the ~136 inline sites are thin STRIPS, for which `Callout tone="problem"` (built 18 Sep) is already the shape — so the row's "adoption, not design" holds, and the strip half now has a primitive it did not have when this was written | 136 sites, 93 files |
+| **Period picker** | ✅ **18 Sep** — `components/ui/period.tsx`, on T3-b's `Select`. **25** selects in 24 files, **14 class strings, 4 focus treatments**. Every option now carries `FY` or `AY`: IT Act §2(9) with §3 makes AY 2026-27 the same period as FY 2025-26, and the filing screen shows both dropdowns together. Month/quarter/range NOT built — no screen asks for one. **Still per-page** | ~~20 sites~~ **done** |
 | **Working panel** | "what this figure is made of" — the vehicle for T7 | 7 unrelated panels inside 2,000–4,800-line pages |
 
 **Why two reference screens.** Banking Entries cannot prove the width rule —

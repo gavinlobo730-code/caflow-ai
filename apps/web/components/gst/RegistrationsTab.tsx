@@ -27,7 +27,7 @@ import { api, type ClientGstRegistration, type GstRegistrationKinds,
          type ClientGstTurnover } from "@/lib/api";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { YearPicker } from "@/components/ui/year-picker";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -291,13 +291,8 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
         <div className="flex items-end gap-2 flex-wrap">
           <label className="text-xs">
             <span className="block text-ps-body font-medium mb-1">Financial year</span>
-            <select value={tvForm.fy} onChange={(e) => setTvForm(f => ({ ...f, fy: e.target.value }))}
-              aria-label="Financial year of the turnover"
-              className="px-2.5 py-1.5 border border-ps-border rounded-lg">
-              {financialYearChoicesAround(null, 8).map((fy) => (
-                <option key={fy} value={fy}>{fy}</option>
-              ))}
-            </select>
+            <YearPicker value={tvForm.fy} onChange={v => setTvForm(f => ({ ...f, fy: v }))}
+            count={8} size="sm" className="w-auto" />
           </label>
           <label className="text-xs">
             <span className="block text-ps-body font-medium mb-1">Aggregate turnover (₹)</span>

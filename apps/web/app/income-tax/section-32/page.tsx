@@ -28,7 +28,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, Plus, Info, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Plus, Info } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -39,6 +39,8 @@ import { request } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { GapList, StatutoryNotes } from "@/components/ui/callout";
+import { YearPicker } from "@/components/ui/year-picker";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -178,10 +180,7 @@ export default function Section32Page() {
         </div>
         <div>
           <label className="text-xs text-ps-label">Previous year</label>
-          <select value={fy} onChange={e => setFy(e.target.value)}
-            className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
-            {FY_OPTIONS.map(f => <option key={f} value={f}>FY {f}</option>)}
-          </select>
+          <YearPicker value={fy} onChange={setFy} className="mt-1 w-auto" />
         </div>
       </div>
 
@@ -199,16 +198,8 @@ export default function Section32Page() {
               incomplete §32 computation looks exactly like a complete one if
               the total is all you show. */}
           {!answer.is_complete && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 space-y-2">
-              <p className="text-sm font-medium text-amber-900 flex items-center gap-2">
-                <AlertTriangle size={15} /> This computation is not complete.
-              </p>
-              <ul className="list-disc pl-5 space-y-1">
-                {answer.statutory_gaps.map((g, i) => (
-                  <li key={i} className="text-xs text-amber-800">{g}</li>
-                ))}
-              </ul>
-            </div>
+            <GapList gaps={answer.statutory_gaps} tone="attention" bulleted
+                     title="This computation is not complete." />
           )}
 
           {/* IT-09 — WHY the additional-depreciation row is what it is.
@@ -240,12 +231,8 @@ export default function Section32Page() {
                 </Button>
               </div>
             </div>
-            {answer.additional_depreciation.gaps.map((g, i) => (
-              <p key={`g${i}`} className="text-xs text-state-attention">⚠ {g}</p>
-            ))}
-            {answer.additional_depreciation.caveats.map((c, i) => (
-              <p key={`c${i}`} className="text-2xs text-ps-hint">{c}</p>
-            ))}
+            <StatutoryNotes gaps={answer.additional_depreciation.gaps}
+                            caveats={answer.additional_depreciation.caveats} />
             {answer.additional_depreciation.reaches_the_assessee
               && answer.additional_depreciation.gaps.length === 0 && (
               <p className="text-xs text-ps-label">

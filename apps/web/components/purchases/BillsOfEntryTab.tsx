@@ -336,7 +336,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                       </div>
                     )}
                     {r.caveats.length > 0 && (
-                      <div className="mt-1 text-3xs text-amber-800 space-y-0.5 max-w-xs">
+                      <div className="mt-1 text-3xs text-ps-label space-y-0.5 max-w-xs">
                         {r.caveats.map((x, i) => (
                           <p key={i} className="flex gap-1"><Info size={10} className="shrink-0 mt-0.5" />{x}</p>
                         ))}

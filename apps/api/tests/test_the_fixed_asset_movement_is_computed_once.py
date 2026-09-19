@@ -30,6 +30,7 @@ WHY THIS FILE IS ABOUT ONE MODULE AND NOT TWO SCREENS
 from __future__ import annotations
 
 import inspect
+import re
 from pathlib import Path
 
 import pytest
@@ -309,14 +310,22 @@ def test_the_reports_tab_renders_the_caveats_it_is_given():
     """Showing the figures without the sentence is how a CA comes to trust a
     number the note itself qualifies.
 
-    Asserted on the MAP, not on the word. The first version of this checked
+    Asserted on the RENDERING, not on the word. The first version checked
     `"statutory_gaps" in src` and passed with the rendering deleted, because
     the type declaration and the length guard both still spell it — the
     money-parser mistake in miniature, inside a guard written to prevent it.
+
+    The SECOND version asserted `statutory_gaps.map(`, which is one spelling
+    of "rendered" and broke on 18 September when the panel became
+    `<GapList gaps={movement?.statutory_gaps ?? []}>` — a component that
+    renders each sentence and returns null for an empty list. That is the
+    eleventh time in this repository a guard has named a spelling instead of
+    its rule (CLAUDE.md records the earlier ones). What the rule needs is that
+    the array reaches SOMETHING that renders it.
     """
     src = _strip_comments(FA_PAGE.read_text())
     assert "statutory_gaps: string[]" in src, "the field must be declared"
-    assert "statutory_gaps.map(" in src, (
+    assert re.search(r"gaps=\{movement\??\.?!?\.statutory_gaps|statutory_gaps\.map\(", src), (
         "the tab declares the caveats and renders none of them — the figures "
         "then read as unqualified")
 

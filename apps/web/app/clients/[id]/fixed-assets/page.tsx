@@ -16,6 +16,7 @@ import { fyRangeFor } from "@/lib/dates/periods";
 import { CwipTab } from "@/components/fixed-assets/CwipTab";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
+import { GapList } from "@/components/ui/callout";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
 // `credentials` carries a COOKIE — which this API does not read. core/auth.py
@@ -2017,14 +2018,8 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
       </div>
 
       {/* What the server could not vouch for. Above the table deliberately. */}
-      {(movement?.statutory_gaps?.length ?? 0) > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 space-y-1">
-          <p className="text-xs font-semibold text-amber-900">What this movement does not account for</p>
-          {movement!.statutory_gaps.map((g, i) => (
-            <p key={i} className="text-xs text-amber-800">{g}</p>
-          ))}
-        </div>
-      )}
+      <GapList gaps={movement?.statutory_gaps ?? []} tone="withheld"
+               title="What this movement does not account for" />
 
       {/* The Schedule III movement */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">

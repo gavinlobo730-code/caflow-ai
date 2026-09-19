@@ -25,6 +25,7 @@ import { Loader2, Info, TrendingUp } from "lucide-react";
 import { apiGet, getAuthToken } from "@/lib/invoices/shared";
 import { formatPaise } from "@/lib/services/formatting";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { YearPicker } from "@/components/ui/year-picker";
 
 interface MonthRow {
   month: string;
@@ -92,10 +93,7 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
             Income-tax Act s.192 · what has been deducted, and what is expected
           </p>
         </div>
-        <select value={fy} onChange={(e) => setFy(e.target.value)}
-          className="px-2.5 py-1.5 border border-ps-border rounded-lg text-xs bg-white">
-          {years.map((y) => <option key={y} value={y}>FY {y}</option>)}
-        </select>
+        <YearPicker value={fy} onChange={setFy} size="sm" className="w-auto" />
       </div>
 
       {loading && (

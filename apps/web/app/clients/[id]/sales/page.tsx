@@ -67,6 +67,8 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { StateLookup } from "@/components/lookups/StateLookup";
+import { DrCr, sideOf } from "@/components/ui/drcr";
+import { formatPaiseBare } from "@/lib/money/format";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements";
@@ -993,8 +995,12 @@ interface StmtData {
   totals: { invoiced_paise: number; received_paise: number; credited_paise: number; transaction_count: number };
 }
 
-const stmtRupees = (p: number) => (Math.abs(p) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const stmtBal = (p: number) => `₹${stmtRupees(p)} ${p >= 0 ? "Dr" : "Cr"}`;
+// Magnitude only — the caller prints the ₹ and, where there is one, the side.
+const stmtRupees = (p: number) => formatPaiseBare(Math.abs(p));
+// `p >= 0 ? "Dr" : "Cr"` printed "₹0.00 Dr" for a customer who had settled
+// every invoice — a positive claim that they stand as a debtor, on a document
+// that gets emailed to them. `DrCr` answers no side at nil.
+const stmtBal = (p: number) => <DrCr paise={p} />;
 const stmtAmt = (p: number) => (p ? `₹${stmtRupees(p)}` : "—");
 
 function Statements({ clientId }: { clientId: string }) {
@@ -1190,7 +1196,10 @@ function Statements({ clientId }: { clientId: string }) {
             <div className="text-right space-y-1">
               <div>
                 <p className="text-3xs text-ps-hint">Closing Outstanding</p>
-                <p className={`text-sm font-mono font-semibold ${stmt.closing_balance_paise >= 0 ? "text-blue-700" : "text-orange-700"}`}>{stmtBal(stmt.closing_balance_paise)}</p>
+                <p className={`text-sm font-mono font-semibold ${
+                  sideOf(stmt.closing_balance_paise) === "debit" ? "text-blue-700"
+                  : sideOf(stmt.closing_balance_paise) === "credit" ? "text-orange-700"
+                  : "text-ps-body"}`}>{stmtBal(stmt.closing_balance_paise)}</p>
               </div>
               {!!credit && credit.balance_paise > 0 && (
                 <div className="flex items-center justify-end gap-1.5">

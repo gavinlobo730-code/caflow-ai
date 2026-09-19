@@ -1080,9 +1080,17 @@ export default function GSTR3BPage() {
                           <p className="font-mono text-sm text-amber-900">{r(dueInterest.expiry)}</p>
                         </div>
                       </div>
-                      {rule37!.interest_caveats.map((c, i) => (
-                        <p key={i} className="text-2xs text-amber-700 mt-2">{c}</p>
-                      ))}
+                      {/* A CAVEAT IS NOT A GAP. These sat in amber-700 —
+                          the same ink as the Rule 43 gap list below — so "the
+                          rule no longer says which clock" read as a job to do.
+                          Slate on white, inside the amber section. */}
+                      {rule37!.interest_caveats.length > 0 && (
+                        <div className="mt-2 rounded-lg bg-white/70 border border-ps-border px-3 py-2 space-y-1">
+                          {rule37!.interest_caveats.map((c, i) => (
+                            <p key={i} className="text-2xs text-ps-label">{c}</p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1243,9 +1251,9 @@ export default function GSTR3BPage() {
                 )}
 
                 {r43.caveats.length > 0 && (
-                  <div className="px-5 py-3 border-t border-amber-200 space-y-1">
+                  <div className="px-5 py-3 border-t border-amber-200 bg-white/70 space-y-1">
                     {r43.caveats.map((c, i) => (
-                      <p key={i} className="text-2xs text-amber-700">{c}</p>
+                      <p key={i} className="text-2xs text-ps-label">{c}</p>
                     ))}
                   </div>
                 )}

@@ -18,7 +18,7 @@ import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { api } from "@/lib/api";
 import type { AnnexureIIResponse } from "@/lib/api";
-import { financialYearOfMonth, financialYearChoicesAround } from "@/lib/dates/periods";
+import { financialYearOfMonth } from "@/lib/dates/periods";
 import { DisburseModal } from "@/components/payroll/DisburseModal";
 import EmployeeDrawer from "@/components/payroll/EmployeeDrawer";
 import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
@@ -28,6 +28,8 @@ import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSk
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
 import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
+import { GapList } from "@/components/ui/callout";
+import { YearPicker } from "@/components/ui/year-picker";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1404,10 +1406,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <select value={fy} onChange={(e) => setFy(e.target.value)}
-            className="border border-ps-border rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400">
-            {financialYearChoicesAround(month).map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <YearPicker value={fy} onChange={setFy} anchorMonth={month} size="sm" className="w-auto" />
           <button onClick={() => setOpen((v) => !v)}
             className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
             {open ? "Hide" : "Show"}
@@ -1446,18 +1445,8 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
               </ul>
             </div>
           )}
-          {!!data?.gaps?.length && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-2xs font-semibold text-amber-800">
-                What payroll cannot know — the employee holds these
-              </p>
-              <ul className="mt-1 space-y-0.5">
-                {data.gaps.map((g, i) => (
-                  <li key={i} className="text-2xs text-amber-800">· {g}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <GapList gaps={data?.gaps ?? []} tone="withheld"
+                   title="What payroll cannot know — the employee holds these" />
 
           {rows.length === 0 ? (
             <p className="text-[12px] text-ps-hint py-6 text-center">
