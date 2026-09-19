@@ -57,6 +57,7 @@ import { api, type Vendor, type VendorWrite } from "@/lib/api";
 import { listTdsSections, computeTdsAmount, type TDSSection, type TDSAmountResult } from "@/lib/data/tds";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
+import { Callout } from "@/components/ui/callout";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -369,7 +370,7 @@ export default function SuppliersPage() {
         </Button>
       </div>
 
-      {error && <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>}
+      {error && <Callout tone="problem">{error}</Callout>}
       {/* PUR-32 — outside the modal, because the modal has closed and the
           supplier is saved. Dismissed by the CA, never on a timer. */}
       <PossibleDuplicatesNotice duplicates={resemblances} noun="supplier"
@@ -472,7 +473,7 @@ export default function SuppliersPage() {
               <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
             </div>
             <div className="px-5 py-4 space-y-4">
-              {error && <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg">{error}</div>}
+              {error && <Callout tone="problem">{error}</Callout>}
 
               <div>
                 <label className="text-xs font-medium text-ps-body block mb-1">Supplier Name *</label>

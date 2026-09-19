@@ -47,6 +47,7 @@ import { api, request, type ApiResp, type HandoffObligation,
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { todayLocalISO } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
+import { Callout } from "@/components/ui/callout";
 
 type PayrollRun = { id: string; month: string; status: string };
 
@@ -345,9 +346,7 @@ function MappedIpCheck({ runId }: { runId: string }) {
             </button>
           </div>
 
-          {err && (
-            <p className="text-2xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>
-          )}
+          {err && <Callout tone="problem">{err}</Callout>}
 
           {result && (
             <div className={`rounded-lg px-3 py-2 border text-2xs ${

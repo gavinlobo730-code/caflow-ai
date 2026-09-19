@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { Callout } from "@/components/ui/callout";
 
 type Grade = "A" | "B" | "C" | "D" | "F";
 
@@ -59,7 +60,7 @@ export default function CriticalClientsPage() {
           <p className="text-sm text-gray-500">Health score below 40 — requires immediate attention</p>
         </div>
       </div>
-      {error && <div className="bg-red-50 text-red-600 border border-red-200 rounded-lg px-4 py-3 text-sm">{error}</div>}
+      {error && <Callout tone="problem">{error}</Callout>}
       {loading ? (
         <TableSkeleton cols={5} rows={3} />
       ) : clients.length === 0 ? (

@@ -18,6 +18,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { api } from "@/lib/api";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 
 // Financial year helpers — FY runs April 1 to March 31 (Indian fiscal year).
 //
@@ -455,11 +456,7 @@ export default function ScheduleIIIPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm flex gap-2 items-center">
-          <AlertTriangle size={16} /> {error}
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {data && (
         <>

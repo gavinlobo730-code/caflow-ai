@@ -8,6 +8,7 @@ import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNav
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { writeTimelineEvent } from "@/lib/services/timeline";
+import { Callout } from "@/components/ui/callout";
 
 interface ClientDocument {
   id: string;
@@ -352,7 +353,7 @@ export default function DocumentsPage() {
                   <p className="text-xs text-ps-hint mt-1">{uploadFile.name} — {formatFileSize(uploadFile.size)}</p>
                 )}
               </div>
-              {uploadError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{uploadError}</p>}
+              {uploadError && <Callout tone="problem">{uploadError}</Callout>}
             </div>
             <div className="flex gap-3 justify-end">
               <button

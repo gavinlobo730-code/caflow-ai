@@ -51,6 +51,7 @@ import {
 } from "@/lib/data/gst";
 import { periodEndDate, splitRule37Bills } from "@/lib/gst/rule37Period";
 import { financialYearOfMonth } from "@/lib/dates/periods";
+import { Callout } from "@/components/ui/callout";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -288,11 +289,7 @@ export default function GSTR3BPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {result && w && (
         <>

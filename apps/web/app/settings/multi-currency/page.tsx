@@ -26,12 +26,13 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, Globe, AlertTriangle, Check } from "lucide-react";
+import { ChevronLeft, Globe, Check } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type CurrencyPolicy } from "@/lib/api/index";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { FxRatesPanel } from "@/components/currency/FxRatesPanel";
+import { Callout } from "@/components/ui/callout";
 
 type ClientRow = { id: string; name?: string; client_name?: string };
 type Row = { client: ClientRow; policy: CurrencyPolicy | null };
@@ -131,12 +132,7 @@ export default function MultiCurrencyPage() {
           computed and posted. The books stay in rupees.
         </p>
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700 flex gap-2">
-            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-            <span>{error}</span>
-          </div>
-        )}
+        {error && <Callout tone="problem">{error}</Callout>}
 
         {loading ? <TableSkeleton cols={4} rows={4} /> : (
           <>

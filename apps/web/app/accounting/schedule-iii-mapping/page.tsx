@@ -27,11 +27,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, GitBranch, AlertCircle } from "lucide-react";
+import { ChevronLeft, GitBranch } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
+import { Callout } from "@/components/ui/callout";
 
 interface CoaRow {
   id: string;
@@ -199,12 +200,7 @@ export default function ScheduleIIIMappingPage() {
         </Link>
       </div>
 
-      {saveError && (
-        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 flex gap-2 text-xs text-red-700">
-          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          <span>{saveError}</span>
-        </div>
-      )}
+      {saveError && <Callout tone="problem">{saveError}</Callout>}
 
       {unrecognised.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">

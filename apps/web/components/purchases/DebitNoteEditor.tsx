@@ -34,6 +34,7 @@ import {
   isValidDebitNoteLine, previewDebitNoteTotals, validateDebitNoteEditor,
   type DebitNoteEditorLine,
 } from "@/lib/purchases/debitNoteEditor";
+import { Callout } from "@/components/ui/callout";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const EMPTY_LINE: DebitNoteEditorLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "NOS", service_catalogue_id: "" };
@@ -585,7 +586,7 @@ export function DebitNoteEditor({
           {fieldErr(validation.errors.lines)}
         </section>
 
-        {error && <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+        {error && <Callout tone="problem">{error}</Callout>}
       </div>
     </InvoiceWorkspaceLayout>
   );

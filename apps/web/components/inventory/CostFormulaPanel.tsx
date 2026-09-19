@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, Scale } from "lucide-react";
 import { api } from "@/lib/api";
 import type { InventoryCostingPolicy } from "@/lib/api";
+import { Callout } from "@/components/ui/callout";
 
 export function CostFormulaPanel({ clientId }: { clientId: string }) {
   const [policy, setPolicy] = useState<InventoryCostingPolicy | null>(null);
@@ -151,11 +152,7 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
             </p>
           </div>
           <p className="text-2xs text-ps-label leading-relaxed">{policy.standard_cost_refused}</p>
-          {refusal && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-2xs text-red-700 leading-relaxed">
-              {refusal}
-            </div>
-          )}
+          {refusal && <Callout tone="problem">{refusal}</Callout>}
           <div className="flex justify-end gap-2">
             <button onClick={() => setOpen(false)}
                     className="px-2.5 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">

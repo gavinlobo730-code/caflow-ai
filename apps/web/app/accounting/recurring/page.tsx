@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
-  ChevronLeft, Plus, Play, Pause, Trash2, AlertCircle, CheckCircle2,
+  ChevronLeft, Plus, Play, Pause, Trash2, CheckCircle2,
   Download, X, History, ExternalLink,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +19,7 @@ import { api, type RecurringJournalTemplate, type RecurringJournalRun } from "@/
 import { todayLocalISO } from "@/lib/dateMath";
 import type { Account, Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
+import { Callout } from "@/components/ui/callout";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -365,12 +366,7 @@ export default function RecurringPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-red-700">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
       {notice && (
         <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-blue-800">
           <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />

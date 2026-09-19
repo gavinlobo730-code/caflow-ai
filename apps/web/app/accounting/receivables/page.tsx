@@ -16,6 +16,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -199,7 +200,7 @@ export default function ReceivablesAgingPage() {
         )}
       </div>
 
-      {error && <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {/* Toast */}
       {toast && (

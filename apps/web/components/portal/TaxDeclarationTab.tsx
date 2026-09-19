@@ -35,6 +35,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Loader2, Lock, Save } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
+import { Callout } from "@/components/ui/callout";
 
 type Regime = "new" | "old";
 
@@ -405,11 +406,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
               onChange={(v) => setMoney((m) => ({ ...m, house_property_loss_declared_paise: v }))} />
           </Section>
 
-          {moneyError && (
-            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
-              {moneyError}
-            </p>
-          )}
+          {moneyError && <Callout tone="problem">{moneyError}</Callout>}
 
           {!locked && (
             <div className="flex justify-end pt-1">

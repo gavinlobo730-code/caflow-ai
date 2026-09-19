@@ -15,6 +15,7 @@ import type { Client } from "@/lib/types";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 // Module 9.0 / M1 — canonical staff roles (single source of truth = backend Role enum).
 type Role = "Partner" | "Manager" | "Executive" | "Reviewer";
 
@@ -121,7 +122,7 @@ function ReassignModal({ task, members, onClose, onReassigned }: ReassignModalPr
           <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <p className="text-sm text-ps-label">{task.title}</p>
-        {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
+        {error && <Callout tone="problem">{error}</Callout>}
         <div>
           <label className="text-xs font-medium text-ps-body block mb-1">Reassign to:</label>
           <select value={targetId} onChange={e => setTargetId(e.target.value)}
@@ -235,9 +236,7 @@ export default function WorkAllocationPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
       {!error && clientNamesError && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700">
           Client names couldn&apos;t be loaded ({clientNamesError}) — tasks below may be missing their client name.

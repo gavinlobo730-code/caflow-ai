@@ -17,6 +17,7 @@ import { CardGridSkeleton } from "@/components/ui/skeleton";
 import type { Client } from "@/lib/types";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 type DocCategory = "Identity" | "GST" | "Income Tax" | "MCA" | "Financials" | "Other";
 
 const CATEGORIES: DocCategory[] = ["Identity", "GST", "Income Tax", "MCA", "Financials", "Other"];
@@ -140,7 +141,7 @@ function UploadModal({ onClose, onUploaded, clientId, firmId }: UploadModalProps
           <h3 className="text-sm font-semibold text-ps-ink">Upload Document</h3>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
-        {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
+        {error && <Callout tone="problem">{error}</Callout>}
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Document Name</label>

@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/services/formatting";
+import { Callout } from "@/components/ui/callout";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -385,12 +386,7 @@ export default function OnboardingChecklistPage() {
                   Mandatory steps: 1, 2, 3, 4, 5, 8, 9, 10. Optional: 6 (Accounting Setup), 7 (Relationship Intelligence).
                 </p>
               </div>
-              {goLiveError && (
-                <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                  {goLiveError}
-                </div>
-              )}
+              {goLiveError && <Callout tone="problem">{goLiveError}</Callout>}
               <button
                 onClick={handleGoLive}
                 disabled={goLiveLoading || !allMandatoryDone}
@@ -420,12 +416,7 @@ export default function OnboardingChecklistPage() {
               Loading onboardings…
             </div>
           )}
-          {error && (
-            <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-              <AlertTriangle size={14} />
-              {error}
-            </div>
-          )}
+          {error && <Callout tone="problem">{error}</Callout>}
           {!loading && !error && workflows.length === 0 && (
             <div className="text-center py-16 text-ps-hint">
               <p className="text-sm font-medium">No active onboardings</p>

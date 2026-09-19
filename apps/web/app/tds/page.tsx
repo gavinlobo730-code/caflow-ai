@@ -75,6 +75,7 @@ import {
   fetchDepositDue, type DepositDueWorksheet,
 } from "@/lib/data/tds";
 import { YearPicker } from "@/components/ui/year-picker";
+import { Callout } from "@/components/ui/callout";
 
 // ─── TDS section labels ──────────────────────────────────────────────────────
 //
@@ -358,7 +359,7 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
           <h3 className="text-sm font-semibold text-ps-ink">Add TDS Deduction</h3>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X className="w-4 h-4" /></button>
         </div>
-        {err && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{err}</p>}
+        {err && <Callout tone="problem">{err}</Callout>}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
@@ -743,7 +744,7 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
           {/* Without this the refusal above would be silent, which is worse
               than the coercion it replaced: the CA would press Add and nothing
               would happen. */}
-          {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+          {error && <Callout tone="problem">{error}</Callout>}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Period</label>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle, TrendingDown, Activity, Users,
-  Loader2, AlertCircle, RefreshCw, Pencil, X,
+  Loader2, RefreshCw, Pencil, X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getTeamWorkload } from "@/lib/data/analytics";
 import type { TeamWorkload, WorkloadMember } from "@/lib/types";
+import { Callout } from "@/components/ui/callout";
 
 function UtilisationBar({ pct }: { pct: number }) {
   const clamped = Math.min(100, Math.max(0, pct));
@@ -77,11 +78,7 @@ function CapacityModal({ member, onClose, onSaved }: {
             <X size={18} />
           </button>
         </div>
-        {error && (
-          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-            <AlertCircle size={13} /> {error}
-          </div>
-        )}
+        {error && <Callout tone="problem">{error}</Callout>}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Weekly Hours</label>
@@ -222,11 +219,7 @@ export default function WorkloadPage() {
         </Button>
       </div>
 
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <AlertCircle size={14} /> {error}
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {loading && !workload ? (
         <div className="flex items-center justify-center py-20 text-ps-hint">

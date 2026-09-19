@@ -26,6 +26,7 @@ import {
   validateServiceForm, serviceFormToPayload, serviceToForm,
   type ServiceCatalogueItem, type ServiceFormInput,
 } from "@/lib/catalogue/service";
+import { Callout } from "@/components/ui/callout";
 
 const EMPTY_FORM: ServiceFormInput = {
   name: "", description: "", kind: "service", hsn_sac: "", gstRate: 18,
@@ -235,9 +236,7 @@ export function ProductServiceFormModal({
           <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Internal note" className={inputCls} />
         </Field>
 
-        {saveError && (
-          <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{saveError}</p>
-        )}
+        {saveError && <Callout tone="problem">{saveError}</Callout>}
 
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>

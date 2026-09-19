@@ -10,7 +10,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { objectOrNull } from "@/lib/api/shape";
-import { GapList } from "@/components/ui/callout";
+import { Callout, GapList } from "@/components/ui/callout";
 
 /**
  * The eleven Schedule III ratios — Division I, General Instructions, Additional
@@ -188,12 +188,7 @@ export default function ClientRatioNotePage() {
         </div>
       )}
 
-      {error && (
-        <div className="flex items-start gap-2.5 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-          <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
-          <p className="text-2xs text-red-700">{error}</p>
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {!loading && note && (
         <>

@@ -155,7 +155,7 @@ export default function MSME43BHPage() {
         </div>
       </div>
 
-      {error && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {!clientId && (
         <div className="bg-ps-bg border border-ps-border rounded-xl px-5 py-4 text-sm text-ps-label">

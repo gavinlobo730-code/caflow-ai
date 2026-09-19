@@ -31,6 +31,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { Callout } from "@/components/ui/callout";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -508,12 +509,7 @@ export default function LoansAndFDPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 flex gap-2 text-sm text-red-700">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-          {error}
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {/* Tabs */}
       <div className="flex gap-1 bg-ps-muted rounded-xl p-1 w-fit">
@@ -921,7 +917,7 @@ export default function LoansAndFDPage() {
               <FormField label="Notes" optional>
                 <textarea rows={2} placeholder="Any additional notes…" value={loanForm.notes} onChange={(e) => setLoanForm({ ...loanForm, notes: e.target.value })} className={inputCls} />
               </FormField>
-              {loanError && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{loanError}</p>}
+              {loanError && <Callout tone="problem">{loanError}</Callout>}
             </div>
             <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
               <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
@@ -1018,7 +1014,7 @@ export default function LoansAndFDPage() {
               <FormField label="Notes" optional>
                 <textarea rows={2} placeholder="Any additional notes…" value={fdForm.notes} onChange={(e) => setFDForm({ ...fdForm, notes: e.target.value })} className={inputCls} />
               </FormField>
-              {fdError && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{fdError}</p>}
+              {fdError && <Callout tone="problem">{fdError}</Callout>}
             </div>
             <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
               <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>

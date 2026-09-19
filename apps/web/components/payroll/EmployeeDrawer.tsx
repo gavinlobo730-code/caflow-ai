@@ -35,7 +35,7 @@ import type {
 } from "@/lib/api";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { financialYearOfMonth } from "@/lib/dates/periods";
-import { GapList } from "@/components/ui/callout";
+import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 
 export type DrawerEmployee = {
@@ -335,7 +335,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
         {!canPreview && <span className="text-2xs text-ps-hint">A last working day first.</span>}
       </div>
 
-      {err && <p className="text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
+      {err && <Callout tone="problem">{err}</Callout>}
       {done && <p className="text-[12px] px-3 py-2 rounded-lg bg-green-50 text-green-700">{done}</p>}
 
       {result && (
@@ -528,7 +528,7 @@ function RevisionsSection({ employee, clientId, onSaved }: {
               className={`${FIELD} mt-1`} />
           </label>
         </div>
-        {err && <p className="mt-2 text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
+        {err && <Callout tone="problem">{err}</Callout>}
         <div className="mt-3 flex justify-end">
           <button onClick={save} disabled={busy || !effectiveFrom}
             className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
@@ -640,7 +640,7 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
               className={`${FIELD} mt-1`} />
           </label>
         </div>
-        {err && <p className="mt-2 text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
+        {err && <Callout tone="problem">{err}</Callout>}
         {!!notes.length && (
           <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
             {notes.map((n, i) => <p key={i} className="text-2xs text-amber-800">· {n}</p>)}
@@ -868,7 +868,7 @@ function PerquisitesSection({ employee, clientId }: {
         </button>
       </div>
 
-      {err && <p className="text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
+      {err && <Callout tone="problem">{err}</Callout>}
       {done && <p className="text-[12px] px-3 py-2 rounded-lg bg-green-50 text-green-700">{done}</p>}
 
       {result && (
@@ -1036,7 +1036,7 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
         {busy ? "Computing…" : "Compute §89 relief"}
       </button>
 
-      {err && <p className="text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
+      {err && <Callout tone="problem">{err}</Callout>}
 
       {result && (
         <div className="space-y-3">

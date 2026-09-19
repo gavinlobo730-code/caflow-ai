@@ -25,6 +25,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 import { todayLocalISO } from "@/lib/dateMath";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { Callout } from "@/components/ui/callout";
 
 interface Project {
   id: string;
@@ -81,9 +82,7 @@ function Shell({ title, children, onClose, onSave, saving, error, cta }: {
           <h3 className="text-sm font-semibold text-ps-ink">{title}</h3>
         </div>
         <div className="px-5 py-4 space-y-3">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">{error}</div>
-          )}
+          {error && <Callout tone="problem">{error}</Callout>}
           {children}
         </div>
         <div className="px-5 py-3 border-t border-ps-muted flex justify-end gap-2">

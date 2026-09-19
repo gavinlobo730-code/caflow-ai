@@ -47,6 +47,7 @@ import {
 import { validateSalesCreditNoteEditor } from "@/lib/sales/salesCreditNoteEditor";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "NOS" };
 
 type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null };
@@ -520,7 +521,7 @@ export function SalesCreditNoteEditor({
           {fieldErr(validation.errors.lines)}
         </section>
 
-        {error && <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+        {error && <Callout tone="problem">{error}</Callout>}
       </div>
     </InvoiceWorkspaceLayout>
   );

@@ -28,6 +28,7 @@ import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type ReportId = "gst_summary" | "pl_statement" | "compliance_status" | "outstanding_invoices";
@@ -837,12 +838,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
 
       {/* Report output */}
       <div className="p-5">
-        {error && (
-          <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
-            <AlertCircle size={14} className="shrink-0" />
-            {error}
-          </div>
-        )}
+        {error && <Callout tone="problem">{error}</Callout>}
 
         {!data && !loading && !error && (
           <p className="text-sm text-ps-hint text-center py-8">

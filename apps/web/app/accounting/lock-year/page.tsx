@@ -7,6 +7,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { RoleGuard } from "@/components/RoleGuard";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { Callout } from "@/components/ui/callout";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -263,9 +264,7 @@ function LockYearContent() {
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {/* FY list */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">

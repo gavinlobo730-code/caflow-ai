@@ -27,6 +27,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 import { Badge } from "@/components/ui/badge";
+import { Callout } from "@/components/ui/callout";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -351,11 +352,7 @@ export default function RelationshipsPage() {
                 </div>
               </div>
             </div>
-            {saveError && (
-              <p className="mt-3 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-md border border-red-200">
-                {saveError}
-              </p>
-            )}
+            {saveError && <Callout tone="problem">{saveError}</Callout>}
             <div className="flex gap-2 mt-5">
               <button
                 onClick={() => setModalOpen(false)}

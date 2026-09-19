@@ -31,6 +31,7 @@ import { toast } from "@/components/ui/use-toast";
 import { todayLocalISO } from "@/lib/dateMath";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
 import { DrCr } from "@/components/ui/drcr";
+import { Callout } from "@/components/ui/callout";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -3079,7 +3080,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
         <button disabled={loading} onClick={load} className="disabled:opacity-40 text-xs text-ps-label hover:text-ps-body">Refresh</button>
       </div>
 
-      {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{error}</p>}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {loading ? <TableSkeleton cols={6} rows={5} /> : rows.length === 0 ? (
         <div className="bg-white rounded-xl border border-ps-muted p-10 text-center text-sm text-ps-hint">
@@ -3259,7 +3260,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
         </button>
       </div>
 
-      {error && <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg p-3">{error}</p>}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {runs.length > 0 && (
         <div className="bg-white rounded-xl border border-ps-muted p-3 flex items-center gap-2 overflow-x-auto">

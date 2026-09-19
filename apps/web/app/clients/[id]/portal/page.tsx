@@ -9,6 +9,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { api, type PortalContact } from "@/lib/api";
 import type { Client } from "@/lib/types";
+import { Callout } from "@/components/ui/callout";
 
 export default function PortalPage() {
   // A timeline event records WHEN SOMETHING HAPPENED, so its financial year is
@@ -253,7 +254,7 @@ export default function PortalPage() {
                     className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-                {inviteError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{inviteError}</p>}
+                {inviteError && <Callout tone="problem">{inviteError}</Callout>}
                 <div className="flex gap-3 justify-end">
                   <button
                     onClick={() => setShowInviteModal(false)}

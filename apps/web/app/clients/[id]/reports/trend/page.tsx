@@ -11,6 +11,7 @@ import { api, type MultiYearTrend, type TrendSeries, type TrendRatioSeries } fro
 import { formatPaise } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { objectOrNull } from "@/lib/api/shape";
+import { Callout } from "@/components/ui/callout";
 
 /**
  * The multi-year trend — Schedule III captions and the clause (Q) ratios across
@@ -199,12 +200,7 @@ export default function ClientTrendPage() {
         </div>
       )}
 
-      {error && (
-        <div className="flex items-start gap-2.5 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-          <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
-          <p className="text-2xs text-red-700">{error}</p>
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {!loading && trend && (
         <>

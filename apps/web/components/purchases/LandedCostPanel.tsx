@@ -25,10 +25,10 @@
  * runs the same `apportion_many` the receipt runs, over the same goods lines.
  */
 import { useCallback, useEffect, useState } from "react";
-import { X, Truck, AlertTriangle, Trash2, Lock } from "lucide-react";
+import { X, Truck, Trash2, Lock } from "lucide-react";
 import { apiGet, apiCall, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import { GapList } from "@/components/ui/callout";
+import { Callout, GapList } from "@/components/ui/callout";
 
 interface Charge {
   id: string;
@@ -192,12 +192,7 @@ export function LandedCostPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex gap-2">
-              <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
+          {error && <Callout tone="problem">{error}</Callout>}
 
           {busy && !data && <p className="text-xs text-ps-hint">Loading…</p>}
 

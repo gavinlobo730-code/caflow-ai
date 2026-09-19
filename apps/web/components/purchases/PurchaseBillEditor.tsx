@@ -32,6 +32,7 @@ import {
   lineIsItcEligible, reasonForHintLabel,
   type PurchaseBillLine,
 } from "@/lib/purchases/billEditor";
+import { Callout } from "@/components/ui/callout";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1340,7 +1341,7 @@ export function PurchaseBillEditor({
             </button>
           </div>
         )}
-        {error && <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+        {error && <Callout tone="problem">{error}</Callout>}
       </div>
     </InvoiceWorkspaceLayout>
   );

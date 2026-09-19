@@ -29,6 +29,7 @@ import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { formatPaise as formatPaiseINR } from "@/lib/services/formatting";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { Callout } from "@/components/ui/callout";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -257,12 +258,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {err && (
-            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-600">
-              <AlertCircle size={14} className="shrink-0 mt-0.5" />
-              {err}
-            </div>
-          )}
+          {err && <Callout tone="problem">{err}</Callout>}
 
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Title *</label>
@@ -439,12 +435,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {err && (
-            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-600">
-              <AlertCircle size={14} className="shrink-0 mt-0.5" />
-              {err}
-            </div>
-          )}
+          {err && <Callout tone="problem">{err}</Callout>}
 
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Template Name *</label>
@@ -858,12 +849,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
           )}
 
           {/* Error */}
-          {actionErr && (
-            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-600">
-              <AlertCircle size={14} className="shrink-0 mt-0.5" />
-              {actionErr}
-            </div>
-          )}
+          {actionErr && <Callout tone="problem">{actionErr}</Callout>}
 
           {/* Actions */}
           <div className="flex flex-wrap gap-2 pt-1">

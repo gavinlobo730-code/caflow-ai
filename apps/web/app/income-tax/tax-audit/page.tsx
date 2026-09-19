@@ -26,6 +26,7 @@ import { api, type TaxAuditDueDates, type TaxAuditApplicability } from "@/lib/ap
 import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
+import { Callout } from "@/components/ui/callout";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -254,7 +255,7 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
           <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <div className="px-6 py-4 space-y-3">
-          {error && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</div>}
+          {error && <Callout tone="problem">{error}</Callout>}
           <div>
             <label className={lbl}>Client *</label>
             <ClientLookup
@@ -519,7 +520,7 @@ export default function TaxAuditPage() {
         })}
       </div>
 
-      {error && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {/* Table */}
       <Card>

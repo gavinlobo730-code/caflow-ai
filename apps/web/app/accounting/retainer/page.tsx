@@ -12,6 +12,7 @@ import { api, type BillingSchedule } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { todayLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -332,12 +333,7 @@ export default function RetainerPage() {
         </Link>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-red-700">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
       {notice && (
         <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-blue-800">
           <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />

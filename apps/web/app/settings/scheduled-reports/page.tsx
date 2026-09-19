@@ -14,6 +14,7 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { Callout } from "@/components/ui/callout";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -411,9 +412,7 @@ export default function ScheduledReportsPage() {
                 />
               </div>
 
-              {formError && (
-                <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{formError}</p>
-              )}
+              {formError && <Callout tone="problem">{formError}</Callout>}
             </div>
 
             <div className="flex gap-3 justify-end pt-1">

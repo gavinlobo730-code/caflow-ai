@@ -37,7 +37,7 @@ import {
 import type { Client } from "@/lib/types";
 import { todayLocalISO } from "@/lib/dateMath";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
-import { StatutoryNotes } from "@/components/ui/callout";
+import { Callout, StatutoryNotes } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
@@ -411,8 +411,8 @@ export default function AdvanceTaxPage() {
         </Button>
       </div>
 
-      {error && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>}
-      {computeError && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{computeError}</div>}
+      {error && <Callout tone="problem">{error}</Callout>}
+      {computeError && <Callout tone="problem">{computeError}</Callout>}
       {saveMsg && <div className="bg-green-50 text-green-700 rounded-lg px-5 py-2 text-sm">{saveMsg}</div>}
 
       {/* Summary */}

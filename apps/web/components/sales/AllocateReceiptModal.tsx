@@ -34,6 +34,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import {
   allocationProblems, ceilingFor as ceilingOf, settlementValue,
 } from "@/lib/sales/receiptAllocation";
+import { Callout } from "@/components/ui/callout";
 
 type OpenInvoice = {
   id: string;
@@ -259,7 +260,7 @@ export default function AllocateReceiptModal({
               second receipt.
             </p>
           )}
-          {err && <p className="text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
+          {err && <Callout tone="problem">{err}</Callout>}
 
           {/* Leaving an advance unallocated is a legitimate outcome, not a
               failure — a customer may genuinely have paid ahead of an invoice.

@@ -58,7 +58,7 @@ import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
-import { GapList } from "@/components/ui/callout";
+import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 
 // ---------------------------------------------------------------------------
@@ -363,11 +363,7 @@ function BulkMarkFiledModal({
             </div>
           </div>
 
-          {error && (
-            <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-              {error}
-            </p>
-          )}
+          {error && <Callout tone="problem">{error}</Callout>}
         </div>
 
         <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
@@ -1314,11 +1310,7 @@ export default function IncomeTaxPage() {
                 )}
               </div>
 
-              {addError && (
-                <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-                  {addError}
-                </p>
-              )}
+              {addError && <Callout tone="problem">{addError}</Callout>}
             </div>
 
             <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
@@ -1417,11 +1409,7 @@ export default function IncomeTaxPage() {
                 />
               </div>
 
-              {filedError && (
-                <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-                  {filedError}
-                </p>
-              )}
+              {filedError && <Callout tone="problem">{filedError}</Callout>}
             </div>
 
             <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">

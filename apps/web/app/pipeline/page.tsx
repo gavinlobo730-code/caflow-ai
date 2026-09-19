@@ -24,6 +24,7 @@ import { formatDate as formatDateShared } from "@/lib/services/formatting";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -876,9 +877,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
                 />
               </div>
             </div>
-            {err && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-600">{err}</div>
-            )}
+            {err && <Callout tone="problem">{err}</Callout>}
             <div className="flex gap-3 pt-1">
               <button
                 onClick={onClose}

@@ -40,6 +40,7 @@ import {
   type GSTR1BuildResult,
   type GSTReturnStatus,
 } from "@/lib/data/gst";
+import { Callout } from "@/components/ui/callout";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -249,11 +250,7 @@ export default function GSTR1Page() {
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {result && (
         <>

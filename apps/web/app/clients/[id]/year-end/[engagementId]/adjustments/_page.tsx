@@ -9,6 +9,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
   if (paise === 0) return "₹0";
@@ -426,9 +427,7 @@ function AdjustmentForm({
         </div>
       </div>
 
-      {error && (
-        <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       <div className="flex gap-3 justify-end">
         <button

@@ -28,7 +28,7 @@ import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSk
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
 import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
-import { GapList } from "@/components/ui/callout";
+import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -708,7 +708,7 @@ function RunsTab({ clientId, firmId, openDoc }:
             <Play size={12} /> {creating ? "Computing…" : "Compute & Draft"}
           </button>
         </div>
-        {createError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mt-3">{createError}</p>}
+        {createError && <Callout tone="problem">{createError}</Callout>}
         {runGaps.length > 0 && (
           <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2">
             <p className="text-xs font-medium text-amber-900">
@@ -742,7 +742,7 @@ function RunsTab({ clientId, firmId, openDoc }:
         )}
       </div>
 
-      {finalizeError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{finalizeError}</p>}
+      {finalizeError && <Callout tone="problem">{finalizeError}</Callout>}
 
       {/* The block. Migration 328: finalising posts a journal that cannot be
           changed afterwards, so a run with an unresolved gap is refused rather
@@ -1425,7 +1425,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
         </div>
       </div>
 
-      {err && <p className="mt-3 text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
+      {err && <Callout tone="problem">{err}</Callout>}
 
       {open && (loading ? <div className="mt-3"><TableSkeleton cols={6} rows={3} bare /></div> : (
         <div className="mt-3 space-y-3">
@@ -1668,9 +1668,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
         </p>
       </div>
 
-      {saveError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-[12px] text-red-700">{saveError}</div>
-      )}
+      {saveError && <Callout tone="problem">{saveError}</Callout>}
 
       <div className="bg-white rounded-xl border border-ps-border divide-y divide-ps-muted">
         {fields.map(f => (
@@ -2016,7 +2014,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
               </label>
             ))}
           </div>
-          {saveError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{saveError}</p>}
+          {saveError && <Callout tone="problem">{saveError}</Callout>}
           <div className="flex gap-2">
             <button onClick={addStructure} disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
             <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 text-[12px] text-ps-label border border-ps-border rounded-lg">Cancel</button>

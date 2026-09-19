@@ -14,6 +14,7 @@ import { api, type BudgetRow, type BudgetVsActuals } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { YearPicker } from "@/components/ui/year-picker";
+import { Callout } from "@/components/ui/callout";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -244,9 +245,7 @@ export default function BudgetPage() {
       </div>
 
       {/* Error */}
-      {error && (
-        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>
-      )}
+      {error && <Callout tone="problem">{error}</Callout>}
 
       {!clientId && !loading && (
         <div className="text-center py-10 text-sm text-ps-hint">

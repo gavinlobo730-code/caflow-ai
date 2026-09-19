@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { Callout } from "@/components/ui/callout";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -804,11 +805,7 @@ export default function ClientHealthDetailPage() {
                 />
               </div>
             </div>
-            {overrideSaveError && (
-              <p className="mt-3 text-xs text-red-700 bg-red-50 px-3 py-2 rounded-md border border-red-200">
-                {overrideSaveError}
-              </p>
-            )}
+            {overrideSaveError && <Callout tone="problem">{overrideSaveError}</Callout>}
             <div className="flex gap-2 mt-5">
               <button
                 onClick={() => setOverrideModalOpen(false)}

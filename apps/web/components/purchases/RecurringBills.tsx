@@ -28,6 +28,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { todayLocalISO } from "@/lib/dateMath";
+import { Callout } from "@/components/ui/callout";
 
 const FREQUENCIES = ["weekly", "monthly", "quarterly", "half_yearly", "yearly"] as const;
 type Frequency = (typeof FREQUENCIES)[number];
@@ -525,9 +526,7 @@ function RecurringBillEditor({
         </div>
 
         <div className="p-5 space-y-4">
-          {err && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</div>
-          )}
+          {err && <Callout tone="problem">{err}</Callout>}
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="col-span-2 lg:col-span-1">
