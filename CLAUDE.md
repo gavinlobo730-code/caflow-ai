@@ -4454,6 +4454,57 @@ not parse, so `"1200abc"` passed at 1200 while `toPaise` returned NaN, and
   path had only ever been exercised with GSTINs the portal would reject. The
   fixtures were corrected, not the guard relaxed.
 
+- **A TALLY IMPORT IS A BULK IMPORT OF AN IDENTIFIER SOMEBODY TYPED, AND IT
+  WITHHOLDS RATHER THAN REFUSES.** `validate_migration_data` tested a
+  CUSTOMER's GSTIN against a private shape regex, appended a sentence to
+  `validation_errors` and left `status` at `validated` — and nothing reads
+  `validation_errors`: the preview counts only `failed` items, `execute_import`
+  skips only those, and `_import_single_item` wrote the value straight into
+  `customers.gstin` over PostgREST, the one door `models/parties.CustomerIn`
+  does not stand in front of. The error was recorded and moved nothing. The
+  VENDOR branch asked nothing at all, which is the worse half — a wrong GSTIN
+  there costs the client the input tax credit — and the PAN was never looked
+  at, although `tds_computer.has_pan` reads any non-empty value as a PAN on
+  file, so a malformed one suppresses §206AA's floor and §40(a)(ia) disallows
+  the WHOLE expenditure for the under-deduction.
+  **`domain/tally/party_identifiers.py` is the rule** and asks
+  `gstin.problem_with` and `core.validators.validate_pan` — one authority, no
+  second pattern (a test forbids a GSTIN-shaped literal in the importer).
+  **THE PARTY IS IMPORTED AND THE IDENTIFIER IS NOT, and both halves of that
+  are decisions.** Marking the item `failed` would drop a customer whose name,
+  address and email are fine AND block the whole export, because the migration
+  screen disables its import button on any error count — one typo among two
+  thousand legacy customers making a migration impossible for the clients who
+  most need one, `opening_documents`' reason for not checking a carried-over
+  number against Rule 46(b). And the identifier is WITHHELD rather than
+  imported with a warning because the error is not symmetric: an absent GSTIN
+  makes the party B2C and their credit waits until somebody records the real
+  number, while a well-formed WRONG one declares a stranger's registration on
+  every invoice and is undone only by a §37(3) amendment inside a window.
+  **The rule is asked TWICE** — at validation for the sentences the preview
+  names, at the INSERT for the value — so `tally_data` keeps what the export
+  actually said and the CA has something to re-key from; the same discipline
+  `fx_revaluation`'s `plan()` and `revalue()` share. The withheld list is
+  served WHOLE while `by_type` is sliced to ten, because one is a sample and
+  the other is a list of actions. A Tally LEDGER carries no state field, so the
+  GSTIN-vs-state agreement the four party models make is deliberately not
+  attempted here — only the GSTIN's own first two characters, which
+  `problem_with` already tests.
+  ⚠️ **THE TWO INSERTS ARE NOT COLLAPSED AND THEIR PAYLOAD IS NOT BOUND TO A
+  NAME**, and that cost a CI cycle to learn. The note on
+  `domain/firm/identity`'s projections says a `.select()` reached through a
+  name is invisible to `tests/test_backend_columns_exist_pg`; the same scan
+  counts **a table reached through a variable** (`sb.table(table)`) and **an
+  insert whose payload is a name** (`insert(party)`) as unreadable too, and
+  its budget is EXACT with no headroom. Tidying the customer and vendor
+  branches into one `sb.table(table)` took the count from 459 to 460; binding
+  the shared dict instead took it to 461. Either way these two writes stop
+  being schema-checked at all, which is the opposite of what a door handling
+  identifiers wants. Seven duplicated keys is the price, and it is the right
+  one. **Raising the budget would have been the wrong fix** — the guard's own
+  message invites it, and here it would buy an exemption where the coverage
+  was recoverable.
+
 - **THE FIRM'S OWN GSTIN LIVES IN TWO COLUMNS AND ONLY ONE IS READ.**
   `public.firms` carries `gst_number` (migration 003) AND `gstin` (014, given
   its CHECK by 112/316), nothing has ever synced them, and the two sides of the

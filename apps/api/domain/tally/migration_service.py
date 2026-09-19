@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
+from domain.tally import party_identifiers
+
 try:
     import xml.etree.ElementTree as ET
 except ImportError:
@@ -316,29 +318,27 @@ def validate_migration_data(
                 errors.append(f"Ledger missing name: {ledger}")
             items.append(item)
 
-    if "customers" in import_types:
-        for cust in parsed.get("customers", []):
-            gstin = cust.get("gstin", "")
+    # A party's GSTIN and PAN are judged by the one authority and WITHHELD
+    # where they are wrong, rather than recorded as an error that moves
+    # nothing — see domain/tally/party_identifiers for why the party is still
+    # imported and why the job is not blocked. Asked identically for customers
+    # and vendors: the vendor side is where a wrong GSTIN costs the input tax
+    # credit, and it used not to be asked at all.
+    for kind, key in (("customer", "customers"), ("vendor", "vendors")):
+        if key not in import_types:
+            continue
+        for party in parsed.get(key, []):
             item = {
-                "item_type": "customer",
-                "tally_id": cust.get("tally_id"),
-                "tally_data": cust,
+                "item_type": kind,
+                "tally_id": party.get("tally_id"),
+                "tally_data": party,
                 "status": "validated",
                 "validation_errors": [],
             }
-            if gstin and not re.match(r"^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$", gstin):
-                item["validation_errors"].append(f"Invalid GSTIN format: {gstin}")
-            items.append(item)
-
-    if "vendors" in import_types:
-        for vendor in parsed.get("vendors", []):
-            item = {
-                "item_type": "vendor",
-                "tally_id": vendor.get("tally_id"),
-                "tally_data": vendor,
-                "status": "validated",
-                "validation_errors": [],
-            }
+            resolved = party_identifiers.resolve(
+                party.get("gstin"), party.get("pan")
+            )
+            item["validation_errors"].extend(resolved.withheld)
             items.append(item)
 
     if "journals" in import_types:
@@ -412,17 +412,35 @@ def get_migration_preview(firm_id: str, job_id: str) -> dict:
 
     by_type: dict[str, list] = {}
     errors_count = 0
+    withheld: list[dict] = []
     for item in items:
         t = item["item_type"]
         by_type.setdefault(t, []).append(item)
         if item.get("status") == "failed":
             errors_count += 1
+        # Every party whose GSTIN or PAN will not be imported, IN FULL and not
+        # sliced to ten like `by_type`: the list is proportional to the answer
+        # (the identifiers that are wrong) rather than to the export, and each
+        # row is one the CA has to go and re-key. A truncated list of things to
+        # act on reads as the whole of them.
+        reasons = item.get("validation_errors") or []
+        if reasons and item.get("item_type") in ("customer", "vendor"):
+            withheld.append({
+                "item_type": item["item_type"],
+                "name": (item.get("tally_data") or {}).get("name")
+                        or item.get("tally_id"),
+                "reasons": list(reasons),
+            })
 
     return {
         "total": len(items),
         "by_type": {k: {"count": len(v), "items": v[:10]} for k, v in by_type.items()},
         "error_count": errors_count,
         "can_import": errors_count == 0,
+        # NOT counted in error_count and deliberately not blocking: the party
+        # is imported without the identifier, so there is nothing to fix before
+        # importing — domain/tally/party_identifiers records why.
+        "withheld_identifiers": withheld,
     }
 
 
@@ -632,25 +650,42 @@ def _import_single_item(
             "vendor masters."
         )
 
-    if item_type in ("customer",):
+    # Resolved AGAIN here rather than read off the stored item, so that
+    # `tally_data` keeps what the export actually said and this insert writes
+    # only what may be written. One rule asked twice — the same discipline
+    # fx_revaluation's plan() and revalue() share, so what the preview names
+    # withheld is what the import withholds.
+    #
+    # THE TWO BRANCHES ARE NOT COLLAPSED, and the payload is NOT bound to a
+    # name, however much both invite it. `tests/test_backend_columns_exist_pg`
+    # reads every reference in apps/api against the REAL SCHEMA as a string and
+    # counts what it cannot read against an EXACT budget: a table reached
+    # through a variable is unreadable, and so is an insert whose payload is a
+    # name. Collapsing these two cost one, binding the dict cost two, and both
+    # stop these writes being schema-checked at all. Same reason
+    # domain/firm/identity's three projections are written out at their call
+    # sites rather than shared through a constant.
+    if item_type == "customer":
+        resolved = party_identifiers.resolve(data.get("gstin"), data.get("pan"))
         res = sb.table("customers").insert({
             "firm_id": firm_id,
             "client_id": client_id,
             "name": data.get("name", ""),
-            "gstin": data.get("gstin"),
-            "pan": data.get("pan"),
+            "gstin": resolved.gstin,
+            "pan": resolved.pan,
             "email": data.get("email"),
             "address": data.get("address"),
         }).execute()
         return (res.data[0]["id"] if res.data else None), "customers"
 
-    if item_type in ("vendor",):
+    if item_type == "vendor":
+        resolved = party_identifiers.resolve(data.get("gstin"), data.get("pan"))
         res = sb.table("vendors").insert({
             "firm_id": firm_id,
             "client_id": client_id,
             "name": data.get("name", ""),
-            "gstin": data.get("gstin"),
-            "pan": data.get("pan"),
+            "gstin": resolved.gstin,
+            "pan": resolved.pan,
             "email": data.get("email"),
             "address": data.get("address"),
         }).execute()
