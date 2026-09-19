@@ -30,12 +30,21 @@ def _pdf_safe(html: str) -> str:
 # A minimal, print-friendly wrapper. xhtml2pdf supports a CSS subset; these
 # rules are all within it. The letter content itself is a trusted HTML fragment
 # produced from our own templates (h2/h3/p/ul/li/strong/br).
+# The page number is a STATIC FRAME rather than a `canvasmaker`, because this
+# is the one document rendered by xhtml2pdf and not by reportlab: `pdf:pagecount`
+# is resolved on a second pass by xhtml2pdf itself, which is the same two-pass
+# reason `services/pdf_page_furniture.NumberedCanvas` exists on the other side.
+# Same furniture, same words, two renderers — and deliberately nothing in the
+# margin but the number, for the reason that module records.
 _WRAPPER = """<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8"/>
 <style>
-  @page {{ size: a4; margin: 2cm; }}
+  @page {{ size: a4; margin: 2cm;
+    @frame footer_frame {{ -pdf-frame-content: pageFooter;
+                           left: 2cm; right: 2cm; bottom: 1cm; height: 1cm; }}
+  }}
   body {{ font-family: Helvetica, Arial, sans-serif; font-size: 11pt;
           color: #1a1a1a; line-height: 1.5; }}
   h2 {{ font-size: 16pt; margin: 0 0 12pt 0; }}
@@ -43,9 +52,12 @@ _WRAPPER = """<!DOCTYPE html>
   ul {{ margin: 4pt 0 8pt 18pt; }}
   li {{ margin: 2pt 0; }}
   p  {{ margin: 6pt 0; }}
+  #pageFooter {{ text-align: right; font-size: 7.5pt; color: #737373; }}
 </style>
 </head>
-<body>{body}</body>
+<body>
+<div id="pageFooter">Page <pdf:pagenumber> of <pdf:pagecount></div>
+{body}</body>
 </html>"""
 
 

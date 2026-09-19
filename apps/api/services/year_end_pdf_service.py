@@ -25,6 +25,7 @@ from reportlab.platypus import (
 from core.ist_clock import ist_now
 from domain.firm.letterhead import generated_note, prepared_by
 from domain.reporting.pdf_money import group_indian, whole_rupees
+from services.pdf_page_furniture import numbered
 
 
 def group_indian_rupees(amount_rupees: int) -> str:
@@ -362,7 +363,7 @@ def _bs_section(elements, st, bs_data: dict, comp: dict | None = None,
              else [avail * 0.70, avail * 0.30])
 
     for rows in [eq_rows, asset_rows]:
-        t = Table(rows, colWidths=col_w)
+        t = Table(rows, colWidths=col_w, repeatRows=1)
         t.setStyle(_table_style(has_total_row=True))
         elements.append(t)
         elements.append(Spacer(1, 4 * mm))
@@ -439,7 +440,7 @@ def _pl_section(elements, st, pl_data: dict, comp: dict | None = None,
     avail = PAGE_W - 60 * mm
     col_w = ([avail * 0.52, avail * 0.24, avail * 0.24] if comp
              else [avail * 0.70, avail * 0.30])
-    t = Table(rows, colWidths=col_w)
+    t = Table(rows, colWidths=col_w, repeatRows=1)
     t.setStyle(_table_style(has_total_row=False))
     elements.append(t)
 
@@ -469,7 +470,7 @@ def generate_financial_statements_pdf(engagement_data: dict, statements_data: di
     elements.append(PageBreak())
     _pl_section(elements, st, pl, comp_pl, fmt, caption)
 
-    doc.build(elements)
+    numbered(doc, elements)
     return buf.getvalue()
 
 
@@ -520,7 +521,7 @@ def _movement_table(note_data: dict) -> Optional[Table]:
         _rs(totals.get("closing_net_paise", 0)),
     ])
     width = PAGE_W - 70 * mm
-    tbl = Table(rows, colWidths=[width * 0.20] + [width * 0.1143] * 7)
+    tbl = Table(rows, colWidths=[width * 0.20] + [width * 0.1143] * 7, repeatRows=1)
     tbl.setStyle(_table_style(has_total_row=True))
     return tbl
 
@@ -584,6 +585,7 @@ def generate_notes_pdf(engagement_data: dict, notes_data: list) -> bytes:
             tbl = Table(
                 [["Particulars", "Rupees"]] + [[r[0], r[1]] for r in monetary_rows],
                 colWidths=[(PAGE_W - 70 * mm) * 0.65, (PAGE_W - 70 * mm) * 0.35],
+                repeatRows=1,
             )
             tbl.setStyle(_table_style(has_total_row=False))
             elements.append(tbl)
@@ -596,7 +598,7 @@ def generate_notes_pdf(engagement_data: dict, notes_data: list) -> bytes:
 
         elements.append(Spacer(1, 6 * mm))
 
-    doc.build(elements)
+    numbered(doc, elements)
     return buf.getvalue()
 
 
@@ -687,7 +689,7 @@ def generate_complete_pack_pdf(
         avail_w * 0.05, avail_w * 0.13, avail_w * 0.35,
         avail_w * 0.12, avail_w * 0.15, avail_w * 0.20,
     ]
-    t = Table(adj_rows, colWidths=adj_col_w)
+    t = Table(adj_rows, colWidths=adj_col_w, repeatRows=1)
     t.setStyle(_table_style(has_total_row=False))
     elements.append(t)
     elements.append(PageBreak())
@@ -713,7 +715,7 @@ def generate_complete_pack_pdf(
         hist_rows.append(["No approval history", "—", "—", "—"])
 
     hist_col_w = [avail_w * 0.35, avail_w * 0.25, avail_w * 0.20, avail_w * 0.20]
-    th = Table(hist_rows, colWidths=hist_col_w)
+    th = Table(hist_rows, colWidths=hist_col_w, repeatRows=1)
     th.setStyle(_table_style(has_total_row=False))
     elements.append(th)
     elements.append(Spacer(1, 8 * mm))
@@ -726,5 +728,5 @@ def generate_complete_pack_pdf(
         )
     )
 
-    doc.build(elements)
+    numbered(doc, elements)
     return buf.getvalue()

@@ -105,6 +105,7 @@ def _paise_to_rupee_str(paise: int) -> str:
 # crore raised IndexError out of the PDF builder.
 from domain.branding import image_source  # noqa: E402
 from domain.reporting.amount_words import amount_in_words  # noqa: E402,F401
+from services.pdf_page_furniture import numbered  # noqa: E402
 
 
 def _state_code(gstin: Optional[str]) -> Optional[str]:
@@ -796,7 +797,10 @@ def _render_tax_invoice(
         for r in range(summary_from, len(rows)):
             style.append(("SPAN", (1, r), (-2, r)))
 
-    table = Table(rows, colWidths=widths)
+    # repeatRows: row 0 is the column heading. A 60-line invoice runs to
+    # three pages, and without this pages 2 and 3 are columns of figures
+    # with nothing saying which is Taxable and which is GST.
+    table = Table(rows, colWidths=widths, repeatRows=1)
     table.setStyle(TableStyle(style))
     story.append(table)
     story.append(Spacer(1, 4 * mm))
@@ -893,7 +897,7 @@ def _render_tax_invoice(
         story.append(Paragraph(
             "This is a computer-generated invoice.", small))
 
-    doc.build(story)
+    numbered(doc, story)
     return buf.getvalue()
 
 
