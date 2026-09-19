@@ -17,6 +17,8 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
+from services import pdf_style
+
 from services.invoice_pdf_service import _load_firm, _paise_to_rupee_str
 from services.customer_statement_service import customer_statement_service
 from services.pdf_page_furniture import numbered
@@ -54,7 +56,7 @@ def build_statement_pdf(statement: dict, account_holder: dict, customer: dict) -
                             title="Customer Statement")
     styles = getSampleStyleSheet()
     h = ParagraphStyle("h", parent=styles["Title"], fontSize=16, spaceAfter=2)
-    sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#64748B"))
+    sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=9, textColor=pdf_style.C_HINT)
     small = ParagraphStyle("small", parent=styles["Normal"], fontSize=9)
     elems = []
 
@@ -97,20 +99,17 @@ def build_statement_pdf(statement: dict, account_holder: dict, customer: dict) -
     rows.append(["", "Closing Outstanding", "", "", "", _bal(statement["closing_balance_paise"])])
 
     table = Table(rows, colWidths=[20 * mm, 70 * mm, 24 * mm, 22 * mm, 22 * mm, 20 * mm], repeatRows=1)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("ALIGN", (3, 0), (-1, -1), "RIGHT"),
-        ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#F1F5F9")),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F1F5F9")),
-        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
-        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#0F172A")),
-        ("ROWBACKGROUNDS", (0, 2), (-1, -2), [colors.white, colors.HexColor("#FAFAFA")]),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E2E8F0")),
-        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
+    # The opening-balance row sits directly under the header and the closing
+    # balance at the foot, so the zebra runs between them rather than over
+    # them — which is why `data_table_style` takes both bounds.
+    table.setStyle(TableStyle(
+        pdf_style.data_table_style(
+            font_size=8, padding=3, right_align_from=3,
+            first_body_row=2, last_body_row=-2)
+        + pdf_style.emphasis_row(1)
+        + pdf_style.emphasis_row(-1)
+        + [("LINEBELOW", (0, 0), (-1, 0), 0.5, pdf_style.C_INK)]
+    ))
     elems.append(table)
     elems.append(Spacer(1, 8))
 

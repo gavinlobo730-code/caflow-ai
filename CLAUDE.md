@@ -3167,6 +3167,49 @@ have been eight Singapore-to-Mumbai round trips for one screen.
 `fy_bounds`, never restating April), which is what lets the pre-aggregated
 buckets answer exactly with no edge month to replay.
 
+**AND THE BROWSER'S PAGER IS `lib/supabase/selectAll.ts`, WHICH EXPORTS TWO OF
+THEM.** `selectAll` pages by OFFSET in widening waves (1, 2, 4, 4 … requests at
+a time) and `selectAllKeyset` pages by cursor — and WHICH to use is not a
+preference: with `.range()` Postgres must produce every row before the offset in
+order to skip it, and producing a row runs its embedded aggregate, so **a query
+that EMBEDS a related table runs that aggregate over the whole table on every
+page**. Measured on the Journal tab, 12,836 entries with lines embedded: 1,342 ms
+and 54,180 buffers per page against 32 ms and 15,758. Embed → keyset; no embed →
+`selectAll`, whose waves the sequential cursor cannot match.
+
+**AN OFFSET-PAGED READ NEEDS A UNIQUE TOTAL ORDERING, and the ordering a screen
+already had is usually not one.** Postgres guarantees nothing without an ORDER
+BY, and a NON-unique one — `invoice_date`, `account_name`, `client_name` — lets
+ties land either side of a page boundary, so a row can come back twice or never.
+The fix is a tiebreaker LAST, `.order("id")`, which need not be in the
+projection and so changes no exported column. `app/risks` (six reads),
+`app/accounting/receivables` and `app/accounting/coa-export` build a CSV
+straight from these reads and had none of this: `compliance_calendar` carries a
+row per obligation per client per period, so a 50-client book passes 1000 inside
+one year, and the file opened, looked complete, and was short by whatever the
+cap removed. `app/accounting/recurring` is paged too and is NOT one of them —
+its Export reads `templates` from the API and its PostgREST read feeds the
+account dropdowns — which the guard says rather than keeping one list by
+softening the claim. **The other 68 of the 102 files touching PostgREST still
+carry a read that is neither paged nor bounded**, and are left as a finding
+rather than swept: most are bounded in practice by one client or one month, a
+screen that truncates is at least a screen somebody is looking at, and a budget
+over 68 files is the shape that gets raised until it means nothing.
+
+⚠️ **THE FIRST ATTEMPT AT THIS WROTE A THIRD PAGER**, `lib/data/pageAll.ts`,
+because nothing grepped for what already existed — the mistake this file records
+at `/accounting/retainer` and warns about at `/gst/reconciliation`. It was the
+guard that found it, on its own first run. Two more spellings of that guard were
+tried and both fired on correct code: matching the NAME collides with
+`useDataTable.selectAllFiltered`, which ticks checkboxes and pages nothing, and
+matching a `.range(` near any loop collides with `lib/data/tasks.ts`, which
+pages by a CALLER-supplied offset. What distinguishes a hand-rolled pager is
+that the same code decides the offset AND loops over it, so
+`scripts/an-export-reads-every-row.test.ts` finds a loop's body by brace depth
+and looks for the paging call INSIDE it. Its two pager-invariant assertions are
+COUNTS rather than matches for the same reason: the module holds two pagers, and
+a negative control that broke one stayed green on the other's copy of the line.
+
 **Closing stock as at a date is the same shape, and it also carries a rule about
 WHICH COLUMN answers a dated question.** `public.stock_position_as_at`
 (migration 363) sums `inventory_stock_ledger`'s DELTAS to a date — one row per
@@ -4290,6 +4333,65 @@ declare purpose code 102.
 - This is a PRESENTATION rule only. It does not change what is stored or scheduled: `timestamptz` columns (e.g. `scheduler_runs.started_at`) are UTC on disk, and GitHub Actions cron expressions — including the daily-sweep schedule in .github/workflows/ and any `create_trigger` cron — are evaluated in UTC. Both are correct; rewriting either to "look like IST" would move when jobs actually run.
 - So: convert at the point of reporting. When you show a raw query result or edit a cron line, say which zone that value is in, since the stored value stays UTC.
 - Worked example: the daily sweep is nominally 06:00 IST = 00:30 UTC. A run recorded as `2026-08-18 01:36+00` is reported as "07:06 IST" — and that hour of drift is GitHub cron lateness under load, which is what the catch-up in jobs/ exists to absorb.
+
+## PDFs — one palette, and it is the product's
+
+`apps/api/services/pdf_style.py` is the only place a PDF colour is decided, and
+its values are the `ps.*` and `state.*` tokens in
+`apps/web/tailwind.config.ts` — the one palette in this repository with a
+recorded contrast audit behind it.
+
+**IT REPLACED FOUR HEADER COLOURS ACROSS SIX DOCUMENTS**: `#0F172A` on the bank
+reconciliation and the customer statement, `#1f2937` on the sales invoice and
+the payslip, **`#1a3c5e` navy on the year-end pack — the set a CA SIGNS**, and
+`#1a1a1a` on the engagement letter, with three body greys beside them. A
+practice printing all four in one morning got four documents that looked like
+four products, and the one with the most authority was furthest off.
+
+**TWO OF THE CHANGES ARE CONTRAST FIXES, NOT CONSISTENCY.** The invoice's and
+the payslip's `small` style was reportlab's stock `colors.grey` — **#808080,
+3.95:1 on white at 8pt**, below WCAG 1.4.3 — and it carries the Rule 46
+citation, the bank details a customer pays into and the employer's PF and ESI
+numbers. The reconciliation drew its tie-out rule in **#94A3B8**, which is the
+value `tailwind.config.ts` records moving the hint step OFF at 2.56:1, below
+even 1.4.11's 3:1 for a non-text component; `subtotal_rule` is DARKER than what
+it replaced, because that line is the one mark saying which figures are being
+added and it has to survive a laser printer.
+
+**MAPPING IS BY ROLE, NEVER BY NEAREST HEX.** A "this reconciles" fill is a
+READY SURFACE (`state.ready-surface`, #ECFDF5); matching on proximity would
+have chosen `state.ready-hover`, which happens to be the #DCFCE7 that was there
+and means *a ready row under the cursor* — something a printed page does not
+have. A test asserts that specific wrong answer is not taken.
+
+**IT CHANGES NO FONT SIZE AND NO COLUMN WIDTH.** `data_table_style` requires
+`font_size` and `padding` with NO defaults, and a test asserts calling it
+without them raises: T5a-4b measured the invoice's nine columns against real
+worst-case content and found seven too narrow, and a shared module that quietly
+renormalised them would re-break exactly that. It also sets no font family
+beyond Helvetica — which face carries U+20B9 is an open licence decision, and
+this module must not pre-empt it.
+
+**THE GUARD IS ON THE PYTHON SIDE**
+(`tests/test_one_pdf_style_and_every_document_shares_it.py`), the Schedule III
+caption lesson: one written in `apps/web` would assert the browser against a
+copy of itself. It reads source with docstrings stripped (these modules explain
+their old palettes in prose), and it has a RENDER limb — a service can import
+the module, satisfy every scan, and still paint the old colour through a branch
+no scan looks at.
+
+⚠️ **T5a-4's own guard went blind and was restated, not relaxed.**
+`test_a_document_that_runs_to_two_pages_says_so` derived "does this table have
+a header row" by reading a LITERAL `TableStyle` command list. Moving two
+services onto the shared builder left them with no literal, so the guard read
+them as headerless and failed them for carrying `repeatRows=1` — their header
+rows had not moved. It follows a call into `pdf_style` now. That is the rule
+this file keeps having to record: **write the rule, not a spelling of it.**
+
+**Three dead constants went with the conversion** — `_SUBHEAD_BG`, `_BLACK` and
+`_DRAFT_RED` in the year-end service, none of them read by anything. The last
+is the one worth naming: a constant called DRAFT_RED reads as though the pack
+stamps a draft, and it never has.
 
 ## Money in the browser — one parser, and only one
 

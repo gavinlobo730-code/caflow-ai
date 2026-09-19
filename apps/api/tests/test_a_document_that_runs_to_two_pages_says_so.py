@@ -44,6 +44,7 @@ Two limbs, both read off the AST rather than off a grep for one phrasing:
 from __future__ import annotations
 
 import ast
+import functools
 import pathlib
 
 import pytest
@@ -103,12 +104,28 @@ def _commands_style_row_zero_alone(node: ast.AST) -> bool:
     return False
 
 
+@functools.lru_cache(maxsize=1)
+def _shared_style_module() -> ast.Module:
+    """`services/pdf_style.py`, the one place a table style is now built."""
+    return ast.parse((SERVICES / "pdf_style.py").read_text())
+
+
 def _style_arg_is_a_header_style(arg: ast.AST, module: ast.Module) -> bool:
     """Does this `setStyle(...)` argument style the first row on its own?
 
-    Follows ONE level of indirection: `setStyle(_table_style(...))` is looked
-    up in the module and its body scanned. Six year-end tables reach their
-    style that way, and a guard reading only the call site sees nothing.
+    Follows ONE level of indirection, in three shapes:
+    `setStyle(_table_style(...))` looked up in this module, a local list built
+    a few lines above, and `setStyle(pdf_style.data_table_style(...))` looked
+    up in the SHARED module. Six year-end tables reach their style the first
+    way and a guard reading only the call site sees nothing.
+
+    THE CROSS-MODULE SHAPE IS WHY THIS IS RESTATED. When T5a-2 moved the
+    reconciliation and the statement onto `services/pdf_style`, both stopped
+    carrying a literal command list — so this guard read them as HEADERLESS
+    and failed them for carrying `repeatRows=1`. Their header rows had not
+    moved; the guard had simply gone blind to the shape that is now the
+    dominant one. It names the RULE — a style that distinguishes row 0,
+    wherever it is built — rather than the shape the commands arrive in.
     """
     if _commands_style_row_zero_alone(arg):
         return True
@@ -116,6 +133,17 @@ def _style_arg_is_a_header_style(arg: ast.AST, module: ast.Module) -> bool:
         for fn in ast.walk(module):
             if isinstance(fn, ast.FunctionDef) and fn.name == arg.func.id:
                 return _commands_style_row_zero_alone(fn)
+    # `pdf_style.data_table_style(...)`, possibly added to more commands.
+    for call in ast.walk(arg):
+        if not (isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and isinstance(call.func.value, ast.Name)
+                and call.func.value.id == "pdf_style"):
+            continue
+        for fn in ast.walk(_shared_style_module()):
+            if (isinstance(fn, ast.FunctionDef) and fn.name == call.func.attr
+                    and _commands_style_row_zero_alone(fn)):
+                return True
     # `setStyle(TableStyle(style))` where `style` is a local list built a few
     # lines above — the invoice's line table and the reconciliation's BRS both
     # do this, and a scan reading only the call site sees a bare Name and

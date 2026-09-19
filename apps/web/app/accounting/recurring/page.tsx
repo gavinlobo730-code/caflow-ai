@@ -12,6 +12,7 @@ import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -128,8 +129,15 @@ export default function RecurringPage() {
       try {
         const fid = await getFirmId();
         const sb = getSupabaseClient();
-        const { data } = await sb.from("chart_of_accounts").select("*")
-          .eq("firm_id", fid).eq("is_active", true).order("account_name");
+        // Paged for the same silent-truncation reason as the export screens,
+        // though this read is NOT one of them: this screen's Export button
+        // builds its CSV from `templates`, which comes from the API. What this
+        // read feeds is the account DROPDOWNS — and PostgREST's ~1000-row cap
+        // would remove accounts from them with no error and no empty state, so
+        // a template simply could not be built against an account past the cap.
+        const { data } = await selectAll(() => sb.from("chart_of_accounts").select("*")
+          .eq("firm_id", fid).eq("is_active", true)
+          .order("account_name").order("id"));
         if (!cancelled) setAccounts((data ?? []) as Account[]);
       } catch { /* the dropdowns degrade; the list above still loads */ }
       try {

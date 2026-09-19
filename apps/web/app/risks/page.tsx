@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { DataTable } from "@/components/ui/data-table";
@@ -228,12 +229,25 @@ export default function RisksPage() {
       today.setHours(0, 0, 0, 0);
       const todayStr = toLocalISO(today);
 
-      // Compliance calendar
-      const { data: complianceData, error: compErr } = await sb
+      // Compliance calendar.
+      //
+      // EVERY READ ON THIS SCREEN PAGES, because the Export button builds a CSV
+      // straight from what these queries return. PostgREST caps a response at
+      // ~1000 rows and says nothing when it does — no error, no flag — so an
+      // unpaged read produces a risk report that is short by however much the
+      // cap removed, with nothing on the page or in the file to say so.
+      // compliance_calendar carries one row per obligation per client per
+      // period, so a 50-client book passes 1000 inside a single year.
+      //
+      // `.order("id")` is not cosmetic: selectAll pages by OFFSET, so without a
+      // stable TOTAL ordering rows can shift between pages and be duplicated or
+      // skipped. See lib/supabase/selectAll.
+      const { data: complianceData, error: compErr } = await selectAll(() => sb
         .from("compliance_calendar")
         .select("id, client_id, compliance_type, due_date, filing_status")
         .eq("firm_id", firmId)
-        .lt("due_date", todayStr);
+        .lt("due_date", todayStr)
+        .order("id"));
       // M17: a failed category query must surface as pageError (retryable),
       // never be swallowed to [] and rendered as a reassuring "All Clear".
       if (compErr) throw compErr;
@@ -273,7 +287,10 @@ export default function RisksPage() {
       // Inactive clients (no entries in last 90 days)
       const ninetyAgo = new Date(today);
       ninetyAgo.setDate(ninetyAgo.getDate() - 90);
-      const { data: recentData, error: recentErr } = await sb.from("compliance_calendar").select("client_id").eq("firm_id", firmId).gte("due_date", toLocalISO(ninetyAgo));
+      const { data: recentData, error: recentErr } = await selectAll(() => sb
+        .from("compliance_calendar").select("client_id").eq("firm_id", firmId)
+        .gte("due_date", toLocalISO(ninetyAgo))
+        .order("id"));
       if (recentErr) throw recentErr;
       const activeIds = new Set((recentData ?? []).map((r: { client_id: string }) => r.client_id));
       setInactiveClients(clients.filter((c) => !activeIds.has(c.id)).map((c) => ({ clientId: c.id, clientName: c.client_name, daysInactive: 90 })));
@@ -294,12 +311,13 @@ export default function RisksPage() {
         { label: "3rd Installment (75%)", date: `${curYear}-12-15` },
         { label: "4th Installment (100%)", date: `${curYear + 1}-03-15` },
       ];
-      const { data: advTaxData, error: advTaxErr } = await sb
+      const { data: advTaxData, error: advTaxErr } = await selectAll(() => sb
         .from("compliance_calendar")
         .select("client_id, compliance_type, due_date, filing_status")
         .eq("firm_id", firmId)
         .eq("compliance_type", "ADVANCE_TAX")
-        .lt("due_date", todayStr);
+        .lt("due_date", todayStr)
+        .order("id"));
       if (advTaxErr) throw advTaxErr;
       const filedAdvTax = new Set(
         ((advTaxData ?? []) as { client_id: string; due_date: string; filing_status: string }[])
@@ -338,13 +356,14 @@ export default function RisksPage() {
       // holder_name but no client_id, so there is no client to attribute one to.
       // The client column therefore reads "Firm-wide" rather than inventing an
       // owner — the holder name in the next column is the identifying fact.
-      const { data: dscData, error: dscErr } = await sb
+      const { data: dscData, error: dscErr } = await selectAll(() => sb
         .from("dsc_records")
         .select("id, holder_name, expiry_date")
         .eq("firm_id", firmId)
         .is("deleted_at", null)
         .lte("expiry_date", sixtyAheadStr)
-        .gte("expiry_date", todayStr);
+        .gte("expiry_date", todayStr)
+        .order("id"));
       if (dscErr) throw dscErr;
       setDscExpiryRisks(
         ((dscData ?? []) as { id: string; holder_name: string; expiry_date: string }[]).map((d) => ({
@@ -357,11 +376,12 @@ export default function RisksPage() {
       );
 
       // Loan Overdue
-      const { data: loanData, error: loanErr } = await sb
+      const { data: loanData, error: loanErr } = await selectAll(() => sb
         .from("loans")
         .select("client_id, lender_name, loan_type, outstanding_paise")
         .eq("firm_id", firmId)
-        .eq("status", "overdue");
+        .eq("status", "overdue")
+        .order("id"));
       if (loanErr) throw loanErr;
       setLoanOverdueRisks(
         ((loanData ?? []) as { client_id: string; lender_name: string; loan_type: string; outstanding_paise: number }[]).map((l) => ({
@@ -376,13 +396,14 @@ export default function RisksPage() {
       // FD Maturity within 30 days — Section 194A TDS on interest
       const thirtyAhead = new Date(today);
       thirtyAhead.setDate(thirtyAhead.getDate() + 30);
-      const { data: fdData, error: fdErr } = await sb
+      const { data: fdData, error: fdErr } = await selectAll(() => sb
         .from("fixed_deposits")
         .select("client_id, bank_name, maturity_date, maturity_amount_paise")
         .eq("firm_id", firmId)
         .eq("status", "active")
         .lte("maturity_date", toLocalISO(thirtyAhead))
-        .gte("maturity_date", todayStr);
+        .gte("maturity_date", todayStr)
+        .order("id"));
       if (fdErr) throw fdErr;
       setFdMaturityRisks(
         ((fdData ?? []) as { client_id: string; bank_name: string; maturity_date: string; maturity_amount_paise: number }[]).map((f) => ({
