@@ -16,6 +16,8 @@ the sub-ledger the GL AP control is built from. Integer paise throughout.
 from __future__ import annotations
 
 import logging
+
+from core.ist_clock import ist_today
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional
 
@@ -277,7 +279,7 @@ class VendorStatementService:
     def ap_aging(self, db, firm_id: str, client_id: str, as_of: Optional[str] = None) -> dict:
         """Accounts-payable aging: per non-cancelled bill, outstanding = net_payable −
         paid − debited, bucketed by age from due_date (or bill_date). Mirrors AR aging."""
-        today = date.fromisoformat(_d(as_of)) if as_of else datetime.now(timezone.utc).date()
+        today = date.fromisoformat(_d(as_of)) if as_of else ist_today()
         # Filtered in the query, not in Python — see customer_statement_service
         # .ar_aging for the reasoning; this is its mirror. outstanding_paise is a
         # generated column (migration 278).

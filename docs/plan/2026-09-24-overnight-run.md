@@ -96,13 +96,46 @@ five files.
 - [x] **2.6** ✅ class budget **98 → 44**.
       *Verified by rendering:* the built stylesheet is grepped for the emitted utilities, so `bg-brand-surface` and `bg-ps-hover` are proved to reach CSS rather than assumed — a Tailwind class naming a token the config does not declare is simply absent, and the element renders unstyled.
 
-## Batch 3 — T6-a, redirect headroom
+## Batch 3 — T6-a, redirect headroom ⏸ **BLOCKED on an observation, not a decision**
 
 98 of Cloudflare's hard cap of 100. THE-PLAN says do this before anything else
 in T6, and it is independent of T4.
 
-- [ ] **3.1** Read `apps/web/public/_redirects` and `scripts/generate-redirects.js`; establish which rules a pattern could collapse.
-      *Accept:* `grep -v '^#' apps/web/public/_redirects | grep -c '200$'` ≤ 90, and `scripts/generate-redirects.test.ts` still passes.
+- [!] **3.1** ⏸ **NOT DONE, and the plan's own target is stale.** Investigated and
+      deliberately left alone. What was found:
+
+      **The ≤90 target was already tried and abandoned, on the record.**
+      `scripts/generate-redirects.test.ts:58` says so: *"The budget was previously
+      pinned at 90 for headroom, but by the time the … count was OVER the real cap,
+      meaning some pages were silently 404ing in production."* The cap IS enforced
+      today, at 99, with one rule of headroom deliberately left.
+
+      **98 rules = 12 splats + 86 enumerated, and 82 of the 86 are one group.**
+      `/clients/:id` has 41 dynamic pages × 2 shapes — the bare path and the bare
+      `.txt` RSC payload — which are the two the generator's own doc says a
+      wildcard cannot express, because each needs a transform (append `/`, insert
+      `/index`) rather than a straight copy.
+
+      **The one idea that would collapse them needs a fact I cannot establish
+      here.** If Cloudflare Pages resolves `/clients/x/bank` to
+      `clients/_placeholder/bank/index.html` by ordinary directory-index lookup,
+      then the 41 bare-path rules are unnecessary and the count drops to ~57. The
+      generator's author says the transform is needed; whether that is Cloudflare's
+      asset resolution or Next's `trailingSlash` redirect is not written down.
+      Settling it means requesting a path against a deployed preview, and **egress
+      is refused at this environment's proxy** — the same class of blocker as the
+      NSDL file layout, not a design question a default can settle.
+
+      **I did NOT verify the `.txt` half was dead weight — I checked, and it is
+      not.** The static export emits 163 RSC `.txt` payloads, so shapes 3 and 4 are
+      real. That was the cheap hypothesis and it was wrong; recorded because the
+      next person will have it too.
+
+      **Why not guess:** the comment this generator carries exists because of a
+      production incident in which *"the whole client workspace 404s"*. A wrong
+      splat reproduces it, and it would not fail CI — rules past position 100 are
+      ignored **silently**. Added to the owner questions as a one-request
+      observation, since a Cloudflare preview already deploys on every PR.
 
 ## Batch 4 — T5b, the exports that bypass `rbac()`
 
@@ -110,10 +143,35 @@ Default taken on T5b-3's open scope question: **convert the `rbac()`-bypassing
 exports first**. That is the security half and cannot be the wrong call,
 whichever way the full-scope question is eventually answered.
 
-- [ ] **4.1** Enumerate the 7 `XLSX.write` sites and say which bypass `rbac()`.
-- [ ] **4.2** The shared workbook module in `apps/api`, copying `services/time_export_service.py`.
-- [ ] **4.3** T5b-2 — money as a NUMBER, so `=SUM(B:B)` on an exported trial balance returns the total.
-- [ ] **4.4** The bypassing exports become endpoints.
+- [x] **4.1** ✅ Enumerated. **Six** writers, not seven — `components/CsvImportModal.tsx`
+      is a blank TEMPLATE download and exports no data at all, so counting it
+      overstates the surface.
+
+- [x] **4.2 + 4.3** ✅ **ALREADY DONE — two more stale plan rows.**
+      `apps/web/lib/export/xlsx.ts` exists with `buildWorkbook`, `moneyCell` and
+      `INR_FORMAT`, and `scripts/a-money-cell-in-a-spreadsheet-is-a-number.test.ts`
+      passes all five of its assertions: no export may call `json_to_sheet`
+      directly (the door), the helper must actually emit a numeric cell (the
+      behaviour), the header freezes, columns are not clipped, and `moneyCell` is
+      exact for the figures this product holds. `=SUM(B:B)` already returns the
+      total.
+
+      The plan says the module belongs in `apps/api` and it is in `apps/web`. That
+      placement is **right where it is** for the five exports whose data already
+      comes from an API: the browser is only formatting what the server computed,
+      which is not business logic. It is wrong only for a write path, which is 4.4.
+
+- [ ] **4.4** ⚠️ **`shareToPortal` is the real remaining item, and it is an access-control
+      gap rather than a tidy-up.** `app/clients/[id]/accounting/page.tsx:3523`
+      builds the P&L, Balance Sheet or Trial Balance, uploads the workbook to
+      Supabase storage **from the browser**, and inserts into `shared_reports` over
+      PostgREST — so `rbac()` never runs on either half, and what it publishes is a
+      client's financial statements to that client's own portal. The only control
+      is RLS.
+
+      *Accept:* one endpoint under `rbac()` that builds the workbook server-side
+      (openpyxl, `services/time_export_service.py`'s shape), uploads, and inserts —
+      with the browser holding neither the storage write nor the table insert.
 
 ## Batch 5 — the backlog residue and the unpaged reads
 
