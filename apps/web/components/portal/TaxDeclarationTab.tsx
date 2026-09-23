@@ -298,9 +298,9 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
         </div>
 
         {locked && (
-          <div className="mx-5 mt-4 flex gap-2.5 text-xs bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg p-3">
+          <div className="mx-5 mt-4 flex gap-2.5 text-xs bg-state-ready-surface border border-state-ready-border rounded-lg p-3">
             <Lock className="w-3.5 h-3.5 text-state-ready shrink-0 mt-0.5" />
-            <p className="text-[#065F46]">
+            <p className="text-state-ready">
               Your proofs have been verified, so this is now read-only. Ask your
               payroll contact if something needs to change.
             </p>
@@ -322,7 +322,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
               ]).map((o) => (
                 <label key={o.v}
                   className={`flex gap-2.5 items-start border rounded-lg p-3 cursor-pointer ${
-                    decl.regime === o.v ? "border-[#2563EB] bg-[#EFF6FF]" : "border-ps-border"}`}>
+                    decl.regime === o.v ? "border-brand bg-brand-surface" : "border-ps-border"}`}>
                   <input type="radio" name="regime" className="mt-1"
                     checked={decl.regime === o.v}
                     onChange={() => set("regime", o.v)} />
@@ -334,7 +334,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
               ))}
             </div>
             {decl.regime === "old" && (
-              <p className="text-xs text-[#78350F] bg-state-attention-surface border border-state-attention-border rounded-lg p-3 mt-2">
+              <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg p-3 mt-2">
                 Telling your employer you want the old regime changes how tax is
                 deducted from your salary. It is not the same as choosing the old
                 regime in your tax return — if you have business or professional
@@ -448,7 +448,7 @@ function Money({ label, hint, value, onChange, disabled }: {
       <span className="text-sm text-ps-body">{label}</span>
       {hint && <span className="block text-xs text-ps-hint">{hint}</span>}
       <div className="mt-1 flex items-center border border-ps-border rounded-lg overflow-hidden
-                      focus-within:border-[#2563EB]">
+                      focus-within:border-brand">
         <span className="px-2.5 text-sm text-ps-hint bg-ps-bg py-2">₹</span>
         <input inputMode="decimal" value={value} disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
@@ -469,7 +469,7 @@ function Text({ label, hint, value, onChange, disabled }: {
       <input value={value} disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         className="mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm
-                   outline-none focus:border-[#2563EB] disabled:bg-ps-bg" />
+                   outline-none focus:border-brand disabled:bg-ps-bg" />
     </label>
   );
 }

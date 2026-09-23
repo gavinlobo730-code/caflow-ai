@@ -107,7 +107,16 @@ function count(re: RegExp): { total: number; byFile: Map<string, number> } {
 // no name at all, and `text-[9px]` (29) deliberately has none: it is below the
 // size at which the remaining steps are distinguishable, and naming it would
 // bless it. Each needs a decision, which belongs with the reference screens.
-const HEX_BUDGET = 98;
+// 98 → 44 on 24-09-2026. The 54 removed were ONE colour family in five files:
+// the indigo the config's own comment names as a rival primary — "#4338CA in
+// banking" — carried by `components/ui/data-table.tsx` (18, every one of them
+// the SELECTION affordance, so every screen using DataTable inherited it) and
+// by the bulk-action bars three screens render beside it. The portal's tax tab
+// held the OTHER two rivals, blue-700 as a primary and its own emerald for
+// "ready". Mapped by ROLE — the accent to `brand`, its hover step to
+// `brand-dark`, a white chip under the cursor to `ps-hover`, which is what
+// that token means — never by nearest value.
+const HEX_BUDGET = 44;
 // 392 since 24-09-2026: the three screens tokenised that day carried a few
 // arbitrary sizes alongside their colours. Lowered to what is actually there,
 // because a budget with slack in it is a budget that permits a regression.

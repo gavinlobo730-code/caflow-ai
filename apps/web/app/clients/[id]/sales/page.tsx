@@ -518,22 +518,22 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
       ) : (
         <>
           {selected.size > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 text-xs">
-              <span className="font-semibold text-[#3730A3]">{selected.size} selected</span>
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-light bg-brand-surface px-3 py-2 text-xs">
+              <span className="font-semibold text-brand-dark">{selected.size} selected</span>
               <div className="ml-auto flex flex-wrap items-center gap-2">
                 <button onClick={() => bulkChangeStatus("pause")} disabled={bulkBusy}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50">
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-brand-light bg-white px-2.5 py-1.5 font-medium text-brand hover:bg-ps-hover disabled:cursor-not-allowed disabled:opacity-50">
                   Pause
                 </button>
                 <button onClick={() => bulkChangeStatus("resume")} disabled={bulkBusy}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-white px-2.5 py-1.5 font-medium text-[#4338CA] hover:bg-[#E0E7FF] disabled:cursor-not-allowed disabled:opacity-50">
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-brand-light bg-white px-2.5 py-1.5 font-medium text-brand hover:bg-ps-hover disabled:cursor-not-allowed disabled:opacity-50">
                   Resume
                 </button>
                 <button onClick={() => bulkChangeStatus("archive")} disabled={bulkBusy}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">
                   Archive
                 </button>
-                <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className="text-[#6366F1] hover:text-[#4338CA] disabled:opacity-50" aria-label="Clear selection">
+                <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className="text-ps-label hover:text-brand disabled:opacity-50" aria-label="Clear selection">
                   <X size={14} />
                 </button>
               </div>
@@ -3900,7 +3900,7 @@ function ReceiptForm({
           that gets it wrong. */}
       {advanceTaxApplicable && (
         <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2.5">
-          <p className="text-2xs font-medium text-[#92400E] mb-2">
+          <p className="text-2xs font-medium text-state-attention mb-2">
             Advance — GSTR-1 Table 11A
             <span className="ml-1 font-normal">
               Fill these in for any part of this receipt that is NOT settling an

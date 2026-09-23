@@ -88,7 +88,7 @@ function ColumnResizer({
       onDoubleClick={(e) => { e.stopPropagation(); onReset(columnKey); }}
       onClick={(e) => e.stopPropagation()}
       className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize select-none
-                 hover:bg-[#C7D2FE] active:bg-[#4338CA] touch-none"
+                 hover:bg-brand-light active:bg-brand touch-none"
     />
   );
 }
@@ -354,8 +354,8 @@ export function DataTable<T>({
 
       {/* ── Bulk action bar ─────────────────────────────────────────────── */}
       {hasBulk && t.selectedRows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 text-xs">
-          <span className="font-semibold text-[#3730A3]">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-light bg-brand-surface px-3 py-2 text-xs">
+          <span className="font-semibold text-brand-dark">
             {!t.allFilteredSelected
               ? `${t.selectedRows.length} selected`
               // "All N matching rows" is only TRUE when the table holds every
@@ -382,7 +382,7 @@ export function DataTable<T>({
                 offset: 0,
                 pageSize: Math.min(PAGE_SIZES[PAGE_SIZES.length - 1], serverPaged.total),
               })}
-              className="font-medium text-[#4338CA] underline hover:text-[#3730A3] disabled:opacity-40"
+              className="font-medium text-brand underline hover:text-brand-dark disabled:opacity-40"
             >
               {serverPaged.total > PAGE_SIZES[PAGE_SIZES.length - 1]
                 ? `Show the first ${PAGE_SIZES[PAGE_SIZES.length - 1]} of ${serverPaged.total} on one page`
@@ -397,7 +397,7 @@ export function DataTable<T>({
           {!serverPaged && t.allOnPageSelected && !t.allFilteredSelected && t.page.total > t.page.rows.length && (
             <button
               onClick={t.selectAllFiltered}
-              className="font-medium text-[#4338CA] underline hover:text-[#3730A3]"
+              className="font-medium text-brand underline hover:text-brand-dark"
             >
               Select all {t.page.total} matching rows
             </button>
@@ -434,13 +434,13 @@ export function DataTable<T>({
                   "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                   a.variant === "danger"
                     ? "border border-red-200 bg-white text-red-700 hover:bg-red-50"
-                    : "border border-[#C7D2FE] bg-white text-[#4338CA] hover:bg-[#E0E7FF]",
+                    : "border border-brand-light bg-white text-brand hover:bg-ps-hover",
                 )}
               >
                 {runningActionId === a.id ? <Loader2 size={13} className="animate-spin" /> : a.icon} {a.label}
               </button>
             ))}
-            <button onClick={t.clearSelection} disabled={runningActionId !== null} className="text-[#6366F1] hover:text-[#4338CA] disabled:opacity-50" aria-label="Clear selection">
+            <button onClick={t.clearSelection} disabled={runningActionId !== null} className="text-ps-label hover:text-brand disabled:opacity-50" aria-label="Clear selection">
               <X size={14} />
             </button>
           </div>
@@ -467,7 +467,7 @@ export function DataTable<T>({
                       aria-label="Select all on this page"
                       checked={t.allOnPageSelected}
                       onChange={t.toggleAllOnPage}
-                      className="cursor-pointer accent-[#4338CA]"
+                      className="cursor-pointer accent-brand"
                     />
                   </th>
                 )}
@@ -520,7 +520,7 @@ export function DataTable<T>({
                   <tr
                     ref={lit ? highlightRef : undefined}
                     className={cn("hover:bg-ps-bg", rowClassName?.(row),
-                                  sel && "bg-[#EEF2FF]", clickable && "cursor-pointer",
+                                  sel && "bg-brand-surface", clickable && "cursor-pointer",
                                   lit && "bg-amber-50 ring-2 ring-inset ring-amber-300")}
                     onClick={clickable ? () => onRowClick!(row) : undefined}
                   >
@@ -531,7 +531,7 @@ export function DataTable<T>({
                           aria-label="Select row"
                           checked={sel}
                           onChange={() => t.toggleRow(row)}
-                          className="cursor-pointer accent-[#4338CA]"
+                          className="cursor-pointer accent-brand"
                         />
                       </td>
                     )}
@@ -734,7 +734,7 @@ function ColumnVisibility<T>({
       <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-ps-border bg-white p-1.5 shadow-lg">
         {hideable.map((c) => (
           <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-ps-label hover:bg-ps-bg">
-            <input type="checkbox" checked={!hidden.includes(c.key)} onChange={() => onToggle(c.key)} className="cursor-pointer accent-[#4338CA]" />
+            <input type="checkbox" checked={!hidden.includes(c.key)} onChange={() => onToggle(c.key)} className="cursor-pointer accent-brand" />
             {c.header}
           </label>
         ))}
