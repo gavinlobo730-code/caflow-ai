@@ -19,6 +19,8 @@ activity, so a statement for any window is correct. Integer paise throughout.
 from __future__ import annotations
 
 import logging
+
+from core.ist_clock import ist_today
 from datetime import date, datetime, timezone
 from typing import Optional
 
@@ -306,7 +308,7 @@ class CustomerStatementService:
         due_date (or invoice_date). Adds dual-currency detail on FOREIGN invoices only
         and a per-currency breakdown, so an INR-only client's aging is unchanged.
         Base amounts stay authoritative and reconcile with the AR sub-ledger / GL."""
-        today = date.fromisoformat(_d(as_of)) if as_of else datetime.now(timezone.utc).date()
+        today = date.fromisoformat(_d(as_of)) if as_of else ist_today()
         # BOTH filters belong in the query (CLAUDE.md, "Reporting performance").
         # This used to fetch every non-deleted invoice the client had ever raised
         # and drop the settled ones in Python — 5,655 rows on the live client, to

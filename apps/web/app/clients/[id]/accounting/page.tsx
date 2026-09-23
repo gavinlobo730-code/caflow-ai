@@ -3520,6 +3520,23 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     }
   }
 
+  // WHAT THE TABLE CALLS EACH REPORT. `shared_reports.report_type` is CHECKed
+  // (migration 032, widened by 412) and this screen's own ids are not those
+  // values, so the two have to be mapped — the conditional that used to do it
+  // handled "bs" and passed "trial" STRAIGHT THROUGH, which the constraint has
+  // always refused. Sharing a Trial Balance therefore never once worked, and it
+  // failed in the worst order: the workbook uploads first, so each press left an
+  // orphaned file in storage and put a raw Postgres message in an alert().
+  //
+  // Spelled as a total map so a fourth report cannot be added without deciding
+  // what the table calls it. tests/test_a_shared_report_names_a_type_the_table_allows.py
+  // reads THIS object and the migration's CHECK and holds the two together.
+  const SHARED_REPORT_TYPE: Record<"pl" | "bs" | "trial", string> = {
+    pl: "pl",
+    bs: "balance_sheet",
+    trial: "trial_balance",
+  };
+
   async function shareToPortal(reportType: "pl" | "bs" | "trial") {
     setSharing(reportType);
     try {
@@ -3545,7 +3562,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       const { error: dbErr } = await supabase.from("shared_reports").insert({
         firm_id: firmId,
         client_id: clientId,
-        report_type: reportType === "bs" ? "balance_sheet" : reportType,
+        report_type: SHARED_REPORT_TYPE[reportType],
         report_label: label,
         financial_year: financialYear,
         storage_path: storagePath,

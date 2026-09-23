@@ -7,7 +7,7 @@ import logging
 from datetime import date, timedelta, datetime, timezone
 from dateutil.relativedelta import relativedelta
 from typing import Optional
-from core.ist_clock import ist_today
+from core.ist_clock import IST, ist_today
 
 
 logger = logging.getLogger("caflow.services")
@@ -45,9 +45,27 @@ def _is_already_generated_today(config: dict) -> bool:
         return False
 
     try:
-        last_gen_date = datetime.fromisoformat(last_generated.replace('Z', '+00:00')).date()
-        today = ist_today()
-        return last_gen_date == today
+        stamped = datetime.fromisoformat(last_generated.replace('Z', '+00:00'))
+        # THE TWO DATES MUST BE IN THE SAME ZONE, AND THEY WERE NOT.
+        #
+        # `last_generated_at` is a timestamptz, so PostgREST hands it back in
+        # UTC, and `.date()` on it is the UTC calendar date. `ist_today()` is
+        # the INDIAN calendar date. Between 18:30 and 24:00 UTC — which is
+        # 00:00 to 05:30 IST the following day — those are different days, so
+        # the comparison said "not generated today" about a config generated
+        # minutes earlier and the sweep generated the task AGAIN.
+        #
+        # IST is the right "today" to keep: a recurring task is due on the
+        # firm's day, not on UTC's. So the STAMP moves into IST rather than
+        # the comparison moving out of it.
+        #
+        # A naive value is read as UTC, which is what it is: everything that
+        # writes this column writes `datetime.now(timezone.utc)`, and reading
+        # a naive stamp as local time would re-open the same gap on any host
+        # not set to UTC.
+        if stamped.tzinfo is None:
+            stamped = stamped.replace(tzinfo=timezone.utc)
+        return stamped.astimezone(IST).date() == ist_today()
     except Exception:
         return False
 

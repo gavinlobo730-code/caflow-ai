@@ -635,11 +635,16 @@ Pages resolves a request for `/clients/x/bank` to
 41 of those rules are doing nothing and the count drops to about 57 — years of
 headroom.
 
-**How to answer it in one request.** On any PR preview URL, open:
+**How to answer it in one request.** A preview is already deployed — Cloudflare
+comments the URL on every PR. From #570:
 
 ```
-https://<preview>.pages.dev/clients/anything/bank      (no trailing slash)
+https://claude-ca-platform-audit-roa.practicesync.pages.dev/clients/anything/bank
 ```
+
+with **no trailing slash**. (I tried it from here on 24-09-2026 and the proxy
+refused the CONNECT with a 403, which is what makes this yours rather than
+mine.)
 
 - renders the client Bank screen → the 41 bare-path rules are unnecessary;
   tell me and I will collapse them and re-pin the budget.
