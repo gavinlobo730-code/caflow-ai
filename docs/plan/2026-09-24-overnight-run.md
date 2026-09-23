@@ -84,16 +84,17 @@ found by doing the consistency sweep, real on its own.
 - [x] **1.5** ✅ 8 → 0, and the inactive-template icon moves off `#94A3B8` (2.56:1) onto `ps.hint` `#64748B` (4.76:1 on white).
 - [x] **1.6** ✅ bare-hex budget **46 → 0**, arbitrary font size **405 → 392**. `lib/design/tokens.ts` is allowlisted — hex is its data, the colour picker's exemption. The vacuity floor MOVED rather than being deleted: `total >= 1` becomes self-contradictory at a budget of 0 (the assertion the ratchet exists to reach would fail on reaching it), and the property it protected — that the probe still matches and still reads bodies — is already proved by the allowlist test, which asserts each exempt file still holds a literal.
 
-## Batch 2 — the 98 hex classes
+## Batch 2 — the 98 hex classes ✅ **LANDED**
 
 Worst first, and they are concentrated: `components/ui/data-table.tsx` (18),
 `app/clients/[id]/sales` (12), `app/clients/[id]/compliance` (8),
 `app/clients` (8), `components/portal/TaxDeclarationTab.tsx` (8) — 54 of 98 in
 five files.
 
-- [ ] **2.1** `data-table.tsx` — the shared table primitive, so it is worth most.
-- [ ] **2.2–2.5** the four screens above.
-- [ ] **2.6** ratchet the class budget down to whatever is actually left.
+- [x] **2.1** ✅ `data-table.tsx`, 18 → 0. Every one was the SELECTION affordance — the bar, the selected-row fill, the checkbox accent, the bulk-action links — so every screen using `DataTable` inherited the rival indigo.
+- [x] **2.2–2.5** ✅ the four screens, 36 → 0. Three carry the same bulk-action bar; `components/portal/TaxDeclarationTab.tsx` held the OTHER two rivals the config names, blue-700 as a primary and its own emerald for "ready".
+- [x] **2.6** ✅ class budget **98 → 44**.
+      *Verified by rendering:* the built stylesheet is grepped for the emitted utilities, so `bg-brand-surface` and `bg-ps-hover` are proved to reach CSS rather than assumed — a Tailwind class naming a token the config does not declare is simply absent, and the element renders unstyled.
 
 ## Batch 3 — T6-a, redirect headroom
 
