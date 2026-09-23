@@ -143,10 +143,35 @@ Default taken on T5b-3's open scope question: **convert the `rbac()`-bypassing
 exports first**. That is the security half and cannot be the wrong call,
 whichever way the full-scope question is eventually answered.
 
-- [ ] **4.1** Enumerate the 7 `XLSX.write` sites and say which bypass `rbac()`.
-- [ ] **4.2** The shared workbook module in `apps/api`, copying `services/time_export_service.py`.
-- [ ] **4.3** T5b-2 — money as a NUMBER, so `=SUM(B:B)` on an exported trial balance returns the total.
-- [ ] **4.4** The bypassing exports become endpoints.
+- [x] **4.1** ✅ Enumerated. **Six** writers, not seven — `components/CsvImportModal.tsx`
+      is a blank TEMPLATE download and exports no data at all, so counting it
+      overstates the surface.
+
+- [x] **4.2 + 4.3** ✅ **ALREADY DONE — two more stale plan rows.**
+      `apps/web/lib/export/xlsx.ts` exists with `buildWorkbook`, `moneyCell` and
+      `INR_FORMAT`, and `scripts/a-money-cell-in-a-spreadsheet-is-a-number.test.ts`
+      passes all five of its assertions: no export may call `json_to_sheet`
+      directly (the door), the helper must actually emit a numeric cell (the
+      behaviour), the header freezes, columns are not clipped, and `moneyCell` is
+      exact for the figures this product holds. `=SUM(B:B)` already returns the
+      total.
+
+      The plan says the module belongs in `apps/api` and it is in `apps/web`. That
+      placement is **right where it is** for the five exports whose data already
+      comes from an API: the browser is only formatting what the server computed,
+      which is not business logic. It is wrong only for a write path, which is 4.4.
+
+- [ ] **4.4** ⚠️ **`shareToPortal` is the real remaining item, and it is an access-control
+      gap rather than a tidy-up.** `app/clients/[id]/accounting/page.tsx:3523`
+      builds the P&L, Balance Sheet or Trial Balance, uploads the workbook to
+      Supabase storage **from the browser**, and inserts into `shared_reports` over
+      PostgREST — so `rbac()` never runs on either half, and what it publishes is a
+      client's financial statements to that client's own portal. The only control
+      is RLS.
+
+      *Accept:* one endpoint under `rbac()` that builds the workbook server-side
+      (openpyxl, `services/time_export_service.py`'s shape), uploads, and inserts —
+      with the browser holding neither the storage write nor the table insert.
 
 ## Batch 5 — the backlog residue and the unpaged reads
 
