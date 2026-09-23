@@ -29,6 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { useSlips } from "@/lib/payroll/useSlips";
 import { employerCostOf } from "@/lib/payroll/types";
 import type {
@@ -1387,11 +1388,24 @@ export default function PayrollReportsPage() {
     try {
       const firmId = await getFirmId();
       const sb = getSupabaseClient();
+      // PAGED, because what these feed is an EXPORT. PostgREST caps a response
+      // at ~1000 rows and says nothing when it does, so an unpaged firm-wide
+      // roster silently truncates and the CSV goes out short with no error
+      // anywhere. `.order("id")` is not cosmetic: selectAll pages by OFFSET, so
+      // without a stable TOTAL ordering a row can land either side of a page
+      // boundary and be duplicated or skipped. See lib/supabase/selectAll.
+      //
+      // `payroll_runs` is the one that passes 1000 first: it is a row per client
+      // per month, so a fifty-client practice crosses it inside two years. The
+      // month ordering is applied to the rows that come BACK, because fetch_all
+      // imposes its own key ordering inside the paged query.
       const [empRes, runsRes, clientsRes] = await Promise.all([
-        sb.from("payroll_employees").select("*").eq("firm_id", firmId),
-        sb.from("payroll_runs").select("*").eq("firm_id", firmId).order("month", { ascending: false }),
-        sb.from("clients").select("id, client_name").eq("firm_id", firmId),
+        selectAll(() => sb.from("payroll_employees").select("*").eq("firm_id", firmId).order("id")),
+        selectAll(() => sb.from("payroll_runs").select("*").eq("firm_id", firmId).order("id")),
+        selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", firmId).order("id")),
       ]);
+      runsRes.data.sort((a: { month: string }, b: { month: string }) =>
+        String(b.month).localeCompare(String(a.month)));
       if (empRes.error) throw new Error(empRes.error.message);
       if (runsRes.error) throw new Error(runsRes.error.message);
       // A missing client name is not worth failing the page for — the run is

@@ -33,6 +33,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { api, type StatutoryRow, type StatutorySummary } from "@/lib/api";
 import { GapList } from "@/components/ui/callout";
@@ -70,9 +71,13 @@ export default function StatutoryPage() {
         const sb = getSupabaseClient();
         const fid = await getFirmId();
         if (!fid) return;
-        const { data } = await sb.from("clients")
-          .select("id, client_name").eq("firm_id", fid).order("client_name");
-        setClients(data ?? []);
+        // Paged: the client picker on a statutory screen must not silently
+        // stop at 1000, and the name ordering is applied to the rows that come
+        // back because selectAll orders by its own key inside the query.
+        const { data } = await selectAll(() => sb.from("clients")
+          .select("id, client_name").eq("firm_id", fid).order("id"));
+        setClients([...(data ?? [])].sort((a, b) =>
+          String(a.client_name).localeCompare(String(b.client_name))));
       } catch (e) {
         console.error("load clients:", e);
       } finally {
