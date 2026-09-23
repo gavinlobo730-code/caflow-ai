@@ -70,9 +70,9 @@ const TASK_STATUS_COLORS: Record<string, string> = {
 };
 
 const RENEWAL_STATUS_COLORS: Record<string, string> = {
-  pending:  "bg-amber-100 text-amber-700",
+  pending:  "bg-amber-100 text-state-attention",
   accepted: "bg-green-100 text-green-700",
-  expired:  "bg-red-100 text-red-700",
+  expired:  "bg-red-100 text-state-problem",
   rejected: "bg-gray-100 text-gray-500",
   sent:     "bg-blue-100 text-blue-700",
 };

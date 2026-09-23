@@ -27,14 +27,14 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 const STATUS_COLOR: Record<string, string> = {
   uploaded: "bg-ps-muted text-ps-label",
-  parsing: "bg-amber-100 text-amber-700",
+  parsing: "bg-amber-100 text-state-attention",
   parsed: "bg-blue-100 text-blue-700",
-  validating: "bg-amber-100 text-amber-700",
+  validating: "bg-amber-100 text-state-attention",
   previewing: "bg-purple-100 text-purple-700",
   importing: "bg-orange-100 text-orange-700",
   completed: "bg-green-100 text-green-700",
-  rolled_back: "bg-red-100 text-red-700",
-  error: "bg-red-100 text-red-700",
+  rolled_back: "bg-red-100 text-state-problem",
+  error: "bg-red-100 text-state-problem",
 };
 
 const IMPORT_TYPES = ["ledgers", "journals", "customers", "vendors", "opening_balances", "masters"];
@@ -199,7 +199,7 @@ export default function MigrationPage() {
         )}
       </div>
 
-      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+      <div className="flex items-center gap-2 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-2.5">
         <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
         <p className="text-xs text-amber-800 font-medium">
           Always run dry-run first. Review preview before importing. Rollback available if needed.
@@ -287,9 +287,9 @@ export default function MigrationPage() {
                 </div>
               )}
               {preview.error_count > 0 && (
-                <div className="flex items-center gap-2 bg-red-50 p-3 rounded-lg">
+                <div className="flex items-center gap-2 bg-state-problem-surface p-3 rounded-lg">
                   <XCircle size={14} className="text-red-500" />
-                  <p className="text-xs text-red-700">{preview.error_count} items have errors — fix before importing</p>
+                  <p className="text-xs text-state-problem">{preview.error_count} items have errors — fix before importing</p>
                 </div>
               )}
               {/* A customer or vendor whose GSTIN or PAN cannot be read is
@@ -300,7 +300,7 @@ export default function MigrationPage() {
                   re-key. The whole list, never a slice: every row is an
                   action. */}
               {(preview.withheld_identifiers ?? []).length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                <div className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3 space-y-2">
                   <div className="flex items-center gap-2">
                     <AlertTriangle size={13} className="text-amber-600 shrink-0" />
                     <p className="text-xs font-medium text-amber-900">
@@ -313,7 +313,7 @@ export default function MigrationPage() {
                     {preview.withheld_identifiers!.map((w, i) => (
                       <li key={i} className="text-3xs text-amber-900">
                         <span className="font-medium">{w.name || "(unnamed)"}</span>
-                        <span className="text-amber-700"> · {w.item_type}</span>
+                        <span className="text-state-attention"> · {w.item_type}</span>
                         {w.reasons.map((r, j) => (
                           <p key={j} className="text-amber-800 pl-2">{r}</p>
                         ))}
@@ -329,9 +329,9 @@ export default function MigrationPage() {
                 </label>
               </div>
               {!isDryRun && (
-                <div className="flex items-center gap-2 bg-red-50 border border-red-200 p-3 rounded-lg">
+                <div className="flex items-center gap-2 bg-state-problem-surface border border-state-problem-border p-3 rounded-lg">
                   <AlertTriangle size={13} className="text-red-500" />
-                  <p className="text-xs text-red-700 font-medium">Live import — data will be written. Ensure you have reviewed the preview.</p>
+                  <p className="text-xs text-state-problem font-medium">Live import — data will be written. Ensure you have reviewed the preview.</p>
                 </div>
               )}
               {/* An explanation rather than a vanished button: this is the last

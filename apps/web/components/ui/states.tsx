@@ -51,7 +51,7 @@ export function ErrorState({
     <div
       role="alert"
       className={cn(
-        "flex flex-col items-center justify-center rounded-xl border border-red-200 bg-red-50 px-6 py-10 text-center",
+        "flex flex-col items-center justify-center rounded-xl border border-state-problem-border bg-state-problem-surface px-6 py-10 text-center",
         className,
       )}
     >
@@ -61,7 +61,7 @@ export function ErrorState({
       {onRetry && (
         <button
           onClick={onRetry}
-          className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100"
+          className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-state-problem transition-colors hover:bg-red-100"
         >
           <RefreshCw size={14} />
           Try again

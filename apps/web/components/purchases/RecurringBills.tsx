@@ -40,7 +40,7 @@ const FREQUENCY_LABEL: Record<Frequency, string> = {
 
 const STATUS_CHIP: Record<string, string> = {
   active: "bg-green-50 text-green-700",
-  paused: "bg-amber-50 text-amber-700",
+  paused: "bg-state-attention-surface text-state-attention",
   archived: "bg-ps-muted text-ps-label",
 };
 
@@ -213,7 +213,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
       {msg && (
         <div className={`rounded-lg px-3 py-2 text-xs ${msg.type === "ok"
           ? "bg-green-50 text-green-700 border border-green-200"
-          : "bg-red-50 text-red-700 border border-red-200"}`}>
+          : "bg-state-problem-surface text-state-problem border border-state-problem-border"}`}>
           {msg.text}
         </div>
       )}
@@ -268,8 +268,8 @@ export function RecurringBills({ clientId }: { clientId: string }) {
       {loading ? (
         <TableSkeleton cols={7} rows={3} />
       ) : loadFailed ? (
-        <div className="bg-white rounded-xl border border-red-200 text-center py-12">
-          <p className="text-sm text-red-700">Could not load recurring templates.</p>
+        <div className="bg-white rounded-xl border border-state-problem-border text-center py-12">
+          <p className="text-sm text-state-problem">Could not load recurring templates.</p>
           <button onClick={load} className="mt-2 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">
             Try again
           </button>
@@ -349,7 +349,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
                         )}
                         {t.status !== "archived" && (
                           <button onClick={() => changeStatus(t, "archive")} disabled={busy === t.id}
-                            className="text-2xs px-2 py-1 border border-red-200 text-red-600 rounded-md hover:bg-red-50 disabled:opacity-40">
+                            className="text-2xs px-2 py-1 border border-state-problem-border text-red-600 rounded-md hover:bg-state-problem-surface disabled:opacity-40">
                             Archive
                           </button>
                         )}
@@ -653,7 +653,7 @@ function RecurringBillEditor({
                     {lines.length > 1 && (
                       <button type="button" aria-label={`Remove line ${i + 1}`}
                         onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}
-                        className="ml-auto text-red-500 hover:text-red-700">
+                        className="ml-auto text-red-500 hover:text-state-problem">
                         <Trash2 size={13} />
                       </button>
                     )}

@@ -34,10 +34,10 @@ const PORTAL_TABS: { id: PortalTab; label: string; icon: React.ElementType }[] =
 
 
 const FILING_STATUS_COLORS: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700",
+  pending: "bg-amber-100 text-state-attention",
   in_progress: "bg-blue-100 text-blue-700",
   filed: "bg-green-100 text-green-700",
-  overdue: "bg-red-100 text-red-700",
+  overdue: "bg-red-100 text-state-problem",
   na: "bg-ps-muted text-ps-label",
 };
 
@@ -604,7 +604,7 @@ export default function ClientPortalPage() {
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               {req.is_urgent && (
-                                <Badge className="text-xs bg-amber-100 text-amber-700">
+                                <Badge className="text-xs bg-amber-100 text-state-attention">
                                   <AlertTriangle size={10} className="mr-1" /> Urgent
                                 </Badge>
                               )}
@@ -619,7 +619,7 @@ export default function ClientPortalPage() {
                               </Badge>
                               <button
                                 onClick={() => handleDeleteRequest(req.id)}
-                                className="p-1.5 text-ps-hint hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                className="p-1.5 text-ps-hint hover:text-red-500 hover:bg-state-problem-surface rounded transition-colors"
                                 title="Delete request"
                               >
                                 <Trash2 size={13} />
@@ -714,7 +714,7 @@ export default function ClientPortalPage() {
                               </button>
                               <button
                                 onClick={() => handleDeleteSharedDoc(doc)}
-                                className="p-1.5 text-ps-hint hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                className="p-1.5 text-ps-hint hover:text-red-500 hover:bg-state-problem-surface rounded transition-colors"
                                 title="Delete"
                               >
                                 <Trash2 size={13} />
@@ -774,7 +774,7 @@ export default function ClientPortalPage() {
                                   await sb.from("shared_reports").delete().eq("id", r.id);
                                   setSharedReports((prev) => prev.filter((x) => x.id !== r.id));
                                 }}
-                                className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 px-2 py-1.5 rounded-lg hover:bg-red-50"
+                                className="flex items-center gap-1 text-xs text-red-600 hover:text-state-problem px-2 py-1.5 rounded-lg hover:bg-state-problem-surface"
                               >
                                 <Trash2 size={12} />
                               </button>
@@ -893,7 +893,7 @@ export default function ClientPortalPage() {
                               {formatPaise(due.total_paise)}
                             </span>
                             <Badge
-                              className={`text-xs ${due.status === "overdue" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}
+                              className={`text-xs ${due.status === "overdue" ? "bg-red-100 text-state-problem" : "bg-amber-100 text-state-attention"}`}
                             >
                               {due.status}
                             </Badge>
@@ -915,7 +915,7 @@ export default function ClientPortalPage() {
                           <span className="text-sm font-semibold text-ps-ink">
                             {formatPaise(t.total_paise)}
                           </span>
-                          <Badge className="text-xs bg-amber-100 text-amber-700">{t.status}</Badge>
+                          <Badge className="text-xs bg-amber-100 text-state-attention">{t.status}</Badge>
                         </div>
                       ));
                     })()}

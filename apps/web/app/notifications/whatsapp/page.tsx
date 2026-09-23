@@ -846,7 +846,7 @@ export default function WhatsAppPage() {
             {history.length > 0 && (
               <button
                 onClick={handleClearHistory}
-                className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                className="flex items-center gap-1.5 text-xs text-red-500 hover:text-state-problem px-2 py-1 rounded hover:bg-state-problem-surface transition-colors"
               >
                 <Trash2 size={12} />
                 Clear History

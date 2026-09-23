@@ -151,7 +151,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
         </div>
 
         {error && (
-          <div className="bg-state-problem-surface border border-red-100 rounded-lg px-3 py-2 flex gap-2 text-xs text-money-out">
+          <div role="alert" className="bg-state-problem-surface border border-red-100 rounded-lg px-3 py-2 flex gap-2 text-xs text-money-out">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
@@ -244,7 +244,7 @@ function EditRoleModal({ member, onClose, onSave }: EditRoleModalProps) {
         <p className="text-xs text-ps-label">{member.full_name} · {member.email}</p>
 
         {error && (
-          <div className="bg-state-problem-surface border border-red-100 rounded-lg px-3 py-2 flex gap-2 text-xs text-money-out">
+          <div role="alert" className="bg-state-problem-surface border border-red-100 rounded-lg px-3 py-2 flex gap-2 text-xs text-money-out">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
@@ -837,7 +837,7 @@ export default function TeamPage() {
       </div>
 
       {error && (
-        <div className="bg-state-problem-surface border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-money-out">
+        <div role="alert" className="bg-state-problem-surface border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-money-out">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>

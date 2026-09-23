@@ -90,7 +90,7 @@ export function Gstr3bLateFiling({ lateFiling }: { lateFiling?: LateFilingBlock 
   }
   const heads = (lf.interest_by_head ?? []).filter((h) => h.base_paise > 0);
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm space-y-1">
+    <div className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3 text-sm space-y-1">
       <p className="font-medium text-amber-900">
         Table 5.1 — {lf.days_late} day{lf.days_late === 1 ? "" : "s"} after the
         due date of {lf.due_date}
@@ -113,17 +113,17 @@ export function Gstr3bLateFiling({ lateFiling }: { lateFiling?: LateFilingBlock 
         </table>
       )}
       {lf.late_fee?.refused ? (
-        <p className="text-2xs text-amber-800 border-t border-amber-200 pt-1">
+        <p className="text-2xs text-amber-800 border-t border-state-attention-border pt-1">
           {lf.late_fee.reason}
         </p>
       ) : (
-        <div className="flex justify-between text-amber-900 border-t border-amber-200 pt-1">
+        <div className="flex justify-between text-amber-900 border-t border-state-attention-border pt-1">
           <span>§47 late fee</span>
           <span className="font-mono">{rupees(lf.late_fee?.fee_paise ?? 0)}</span>
         </div>
       )}
       {(lf.caveats ?? []).map((c, i) => (
-        <p key={i} className="text-2xs text-amber-700">{c}</p>
+        <p key={i} className="text-2xs text-state-attention">{c}</p>
       ))}
     </div>
   );

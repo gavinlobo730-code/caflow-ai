@@ -84,8 +84,8 @@ const TABS = ["Companies", "Filings", "Directors", "Deadlines"];
 
 const STATUS_STYLE: Record<FilingStatus, string> = {
   Filed:    "bg-green-100 text-green-700",
-  Pending:  "bg-amber-100 text-amber-700",
-  Overdue:  "bg-red-100 text-red-700",
+  Pending:  "bg-amber-100 text-state-attention",
+  Overdue:  "bg-red-100 text-state-problem",
 };
 
 // Key annual MCA deadlines — Companies Act 2013. This is a generic "upcoming
@@ -290,7 +290,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
             {saving ? "Saving…" : "Add Filing"}
           </button>
         </div>
-        <p className="text-3xs text-amber-600 bg-amber-50 rounded px-2 py-1.5">
+        <p className="text-3xs text-amber-600 bg-state-attention-surface rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           All filings must be submitted manually on MCA21 portal (mca.gov.in) after CA review.
         </p>
@@ -389,9 +389,9 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
         </div>
 
         <div className="px-6 py-5 space-y-4 overflow-y-auto">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+          <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
             <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
-            <p className="text-xs text-amber-700 mt-1">
+            <p className="text-xs text-state-attention mt-1">
               This records already-filed ROC forms. PracticeSync does NOT auto-submit to the MCA21 portal.
               Verify each SRN before saving.
             </p>
@@ -442,7 +442,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
           )}
 
           {failures.length > 0 && (
-            <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 space-y-1">
+            <div className="text-xs text-red-600 bg-state-problem-surface rounded-lg px-3 py-2 space-y-1">
               <p className="font-medium">{failures.length} filing{failures.length === 1 ? "" : "s"} failed to update:</p>
               <ul className="list-disc list-inside space-y-0.5">
                 {failures.map((f, i) => <li key={i}>{f.label}: {f.error}</li>)}
@@ -758,7 +758,7 @@ export default function MCAPage() {
       },
       render: (d) => {
         const daysToKyc = daysUntilKyc(d.kyc_due_date);
-        const kycStyle = daysToKyc < 0 ? "bg-red-100 text-red-700" : daysToKyc <= 30 ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700";
+        const kycStyle = daysToKyc < 0 ? "bg-red-100 text-state-problem" : daysToKyc <= 30 ? "bg-amber-100 text-state-attention" : "bg-green-100 text-green-700";
         const kycLabel = daysToKyc < 0 ? "Overdue" : daysToKyc <= 30 ? `Due in ${daysToKyc}d` : "Valid";
         return <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${kycStyle}`}>{kycLabel}</span>;
       },
@@ -780,9 +780,9 @@ export default function MCAPage() {
       </div>
 
       {tableError && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-700">
+          <p className="text-sm text-state-attention">
             {loadErrorMessage ?? "MCA filings table not found — run migration to create "}
             {!loadErrorMessage && <code className="font-mono bg-amber-100 px-1 rounded">mca_filings</code>}
             {loadErrorMessage && " — some data below may be incomplete."}
@@ -794,8 +794,8 @@ export default function MCAPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { icon: <Building2 className="w-4 h-4 text-blue-600" />,    bg: "bg-blue-50",   label: "Total Companies",       value: String(totalCompanies), sub: "Company clients" },
-          { icon: <Clock className="w-4 h-4 text-amber-600" />,       bg: "bg-amber-50",  label: "Filings Due This Month", value: loading ? "—" : String(dueThisMonth), sub: new Date(todayLocalISO() + "T00:00:00").toLocaleDateString("en-IN", { month: "short", year: "numeric" }) },
-          { icon: <AlertTriangle className="w-4 h-4 text-red-600" />, bg: "bg-red-50",    label: "Overdue Filings",       value: loading ? "—" : String(overdueCount), sub: "Past due date" },
+          { icon: <Clock className="w-4 h-4 text-amber-600" />,       bg: "bg-state-attention-surface",  label: "Filings Due This Month", value: loading ? "—" : String(dueThisMonth), sub: new Date(todayLocalISO() + "T00:00:00").toLocaleDateString("en-IN", { month: "short", year: "numeric" }) },
+          { icon: <AlertTriangle className="w-4 h-4 text-red-600" />, bg: "bg-state-problem-surface",    label: "Overdue Filings",       value: loading ? "—" : String(overdueCount), sub: "Past due date" },
           { icon: <Users className="w-4 h-4 text-purple-600" />,      bg: "bg-purple-50", label: "Directors KYC Due",     value: String(kycDueSoon), sub: "Within 30 days" },
         ].map(c => (
           <div key={c.label} className="bg-white rounded-xl border border-ps-muted p-4">
@@ -945,9 +945,9 @@ export default function MCAPage() {
             </div>
 
             <div className="px-6 py-5 space-y-4">
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+              <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
                 <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
-                <p className="text-xs text-amber-700 mt-1">
+                <p className="text-xs text-state-attention mt-1">
                   This records an already-filed ROC form. PracticeSync does NOT auto-submit to the MCA21 portal.
                   Verify the SRN before saving.
                 </p>

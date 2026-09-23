@@ -230,14 +230,14 @@ function buildStatutoryCalendar(
 function StatusBadge({ status }: { status: DueStatus }) {
   if (status === "overdue") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-state-problem">
         <AlertTriangle size={11} />Overdue
       </span>
     );
   }
   if (status === "due-soon") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-state-attention">
         <Clock size={11} />Due Soon
       </span>
     );
@@ -376,7 +376,7 @@ function PayslipSummaryTab({
         {note && (
           <p className={`text-xs mt-3 ${
             note.kind === "error" ? "text-red-600"
-            : note.kind === "warn" ? "text-amber-700"
+            : note.kind === "warn" ? "text-state-attention"
             : "text-green-700"}`}>
             {note.text}
           </p>
@@ -418,10 +418,10 @@ function PayslipSummaryTab({
                 <tr className="bg-ps-bg font-semibold border-t-2 border-ps-border">
                   <td className="py-3 px-4" colSpan={2}>Total ({runSlips.length} employees)</td>
                   <td className="py-3 px-4 text-right font-mono">{fmtPaise(totals.gross)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-red-700">{fmtPaise(totals.pf)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-red-700">{fmtPaise(totals.esi)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-red-700">{fmtPaise(totals.pt)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-red-700">{fmtPaise(totals.tds)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-state-problem">{fmtPaise(totals.pf)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-state-problem">{fmtPaise(totals.esi)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-state-problem">{fmtPaise(totals.pt)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-state-problem">{fmtPaise(totals.tds)}</td>
                   <td className="py-3 px-4 text-right font-mono text-green-800">{fmtPaise(totals.net)}</td>
                 </tr>
               </tbody>
@@ -613,10 +613,10 @@ function YtdTab({ employees, runs, fyOptions }: {
                     <td className="py-3 px-4 text-right font-mono text-red-600">{r.esi > 0 ? fmtPaise(r.esi) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono text-red-600">{r.pt > 0 ? fmtPaise(r.pt) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono text-red-600">{r.tds > 0 ? fmtPaise(r.tds) : "—"}</td>
-                    <td className="py-3 px-4 text-right font-mono text-red-700">{r.totalDeductions > 0 ? fmtPaise(r.totalDeductions) : "—"}</td>
+                    <td className="py-3 px-4 text-right font-mono text-state-problem">{r.totalDeductions > 0 ? fmtPaise(r.totalDeductions) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{r.net > 0 ? fmtPaise(r.net) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono bg-blue-50/50 font-semibold text-ps-ink">{fmtPaise(r.ytdGross)}</td>
-                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-red-700">{fmtPaise(r.ytdTds)}</td>
+                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-state-problem">{fmtPaise(r.ytdTds)}</td>
                     <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-green-700 font-semibold">{fmtPaise(r.ytdNet)}</td>
                   </tr>
                 ))}
@@ -749,7 +749,7 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
               the shares, which is a LOWER BOUND on what is remitted: three
               members at ₹60 each owe ₹500, not ₹180. Said out loud rather than
               left for a CA to discover against the challan. */}
-          <p className="text-2xs text-amber-700 mt-1">
+          <p className="text-2xs text-state-attention mt-1">
             Per-employee cost. The PF admin charge has a ₹500 per-establishment
             monthly floor, so the total below is the sum of member shares — the
             remittable challan figure is on the client&apos;s Statutory summary.
@@ -902,7 +902,7 @@ function TdsProjectionTab({ employees, fyOptions }: {
     <>
     <SliceState loading={projLoading} error={projError} />
     <div className="space-y-4">
-      <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+      <div className="flex items-start gap-2 p-3 bg-state-attention-surface border border-state-attention-border rounded-lg">
         <AlertCircle size={15} className="text-amber-600 mt-0.5 flex-shrink-0" />
         <p className="text-xs text-amber-800">
           <strong>IT Act Section 234B/234C — CA Review Required.</strong> TDS projections are estimates
@@ -941,9 +941,9 @@ function TdsProjectionTab({ employees, fyOptions }: {
               <p className="text-xs text-ps-label">Est. Annual Gross</p>
               <p className="text-base font-bold text-ps-ink mt-0.5">{fmtPaise(estimatedAnnualGross)}</p>
             </div>
-            <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+            <div className="p-3 bg-state-problem-surface rounded-lg border border-red-100">
               <p className="text-xs text-ps-label">Est. Annual Tax</p>
-              <p className="text-base font-bold text-red-700 mt-0.5">{fmtPaise(estimatedAnnualTds)}</p>
+              <p className="text-base font-bold text-state-problem mt-0.5">{fmtPaise(estimatedAnnualTds)}</p>
             </div>
             <div className="p-3 bg-green-50 rounded-lg border border-green-100">
               <p className="text-xs text-ps-label">TDS Deducted So Far</p>
@@ -1157,9 +1157,9 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
                 <p className="text-xs text-ps-label">Total Gross Paid</p>
                 <p className="text-lg font-bold text-ps-ink mt-0.5">{fmtPaise(grandTotal.gross)}</p>
               </div>
-              <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+              <div className="p-3 bg-state-problem-surface rounded-lg border border-red-100">
                 <p className="text-xs text-ps-label">Total TDS Deducted</p>
-                <p className="text-lg font-bold text-red-700 mt-0.5">{fmtPaise(grandTotal.tds)}</p>
+                <p className="text-lg font-bold text-state-problem mt-0.5">{fmtPaise(grandTotal.tds)}</p>
               </div>
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                 <p className="text-xs text-ps-label">Total PF (Employee)</p>
@@ -1211,7 +1211,7 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
                     <td className="py-3 px-4 text-right font-mono text-blue-700">{fmtPaise(grandTotal.pf)}</td>
                     <td className="py-3 px-4 text-right font-mono text-purple-700">{fmtPaise(grandTotal.esi)}</td>
                     <td className="py-3 px-4 text-right font-mono text-teal-700">{fmtPaise(grandTotal.pt)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-red-700">{fmtPaise(grandTotal.tds)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-state-problem">{fmtPaise(grandTotal.tds)}</td>
                     <td className="py-3 px-4 text-right font-mono text-green-800">{fmtPaise(grandTotal.net)}</td>
                   </tr>
                 </tbody>
@@ -1267,7 +1267,7 @@ function StatutoryDuesCalendarTab() {
   return (
     <div className="space-y-4">
       {(overdue > 0 || dueSoon > 0) && (
-        <div className={`flex items-start gap-2 p-3 border rounded-lg ${overdue > 0 ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+        <div className={`flex items-start gap-2 p-3 border rounded-lg ${overdue > 0 ? "bg-state-problem-surface border-state-problem-border" : "bg-state-attention-surface border-state-attention-border"}`}>
           <AlertTriangle size={15} className={`mt-0.5 flex-shrink-0 ${overdue > 0 ? "text-red-600" : "text-amber-600"}`} />
           <p className={`text-xs ${overdue > 0 ? "text-red-800" : "text-amber-800"}`}>
             {overdue > 0 && <><strong>{overdue} overdue filing(s)</strong> require immediate attention. </>}
@@ -1286,7 +1286,7 @@ function StatutoryDuesCalendarTab() {
                 and the gap below says so rather than the row going quiet. */}
             <p className="text-xs text-ps-label mt-0.5">EPF, ESI and salary-TDS deposits and the quarterly TDS returns — colour-coded by status</p>
             {(servedDates?.gaps ?? []).map(g => (
-              <p key={g} className="text-xs text-amber-700 mt-1.5 max-w-2xl">{g}</p>
+              <p key={g} className="text-xs text-state-attention mt-1.5 max-w-2xl">{g}</p>
             ))}
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -1329,9 +1329,9 @@ function StatutoryDuesCalendarTab() {
                     key={r.id}
                     className={`border-b ${
                       r.status === "overdue"
-                        ? "bg-red-50 hover:bg-red-100"
+                        ? "bg-state-problem-surface hover:bg-red-100"
                         : r.status === "due-soon"
-                        ? "bg-amber-50 hover:bg-amber-100"
+                        ? "bg-state-attention-surface hover:bg-amber-100"
                         : "hover:bg-ps-bg"
                     }`}
                   >

@@ -344,7 +344,7 @@ export function SalesDebitNoteEditor({
         Preview — GST is confirmed by the server on save.
       </p>
       {!isLocked && attempted && !validation.ok && (
-        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-red-50 rounded px-2 py-1.5">
+        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-state-problem-surface rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.customer ?? validation.errors.debitNoteDate ?? validation.errors.lines}</span>
         </div>
@@ -446,7 +446,7 @@ export function SalesDebitNoteEditor({
                   const g = previewTotals([line], isInterstate, false);
                   const invalid = attempted && !isValidLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
-                    <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
+                    <tr key={line._k} className={invalid ? "bg-state-problem-surface/40" : undefined}>
                       <td className="py-1.5 pr-2">
                         <ServiceCataloguePicker clientId={clientId} value={line.product} onPick={(item) => onPickProduct(idx, item)} size="sm" ariaLabel={`Line ${idx + 1} product or service`} />
                       </td>

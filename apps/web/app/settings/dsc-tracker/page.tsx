@@ -80,8 +80,8 @@ interface DSCStatus {
 
 function getDSCStatus(expiryDate: string): DSCStatus {
   const days = getDaysRemaining(expiryDate);
-  if (days < 0)  return { label: "Expired",      style: "bg-red-100 text-red-700" };
-  if (days <= 30) return { label: "Renew Now",    style: "bg-amber-100 text-amber-700" };
+  if (days < 0)  return { label: "Expired",      style: "bg-red-100 text-state-problem" };
+  if (days <= 30) return { label: "Renew Now",    style: "bg-amber-100 text-state-attention" };
   if (days <= 90) return { label: "Renew Soon",   style: "bg-yellow-100 text-yellow-700" };
   return              { label: "Valid",          style: "bg-green-100 text-green-700" };
 }
@@ -469,7 +469,7 @@ export default function DSCTrackerPage() {
 
       {/* Alert banner */}
       {expiringIn30 > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex gap-2">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3 flex gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <p className="text-sm font-medium text-amber-800">
             {expiringIn30} DSC{expiringIn30 > 1 ? "s" : ""} expiring within 30 days — renew immediately to avoid disruption to GST / MCA filings.
@@ -478,13 +478,13 @@ export default function DSCTrackerPage() {
       )}
 
       {tableError && (
-        <div role="alert" className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex items-start gap-2">
+        <div role="alert" className="bg-state-problem-surface border border-red-100 rounded-lg px-4 py-3 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-sm text-red-700 font-medium">Couldn&apos;t load DSC records.</p>
+            <p className="text-sm text-state-problem font-medium">Couldn&apos;t load DSC records.</p>
             <p className="text-xs text-red-600 mt-0.5">{tableError}</p>
           </div>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-100 text-red-700 shrink-0">
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-state-problem-border rounded-lg hover:bg-red-100 text-state-problem shrink-0">
             Retry
           </button>
         </div>
@@ -494,8 +494,8 @@ export default function DSCTrackerPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { icon: <Shield className="w-4 h-4 text-blue-600" />,    bg: "bg-blue-50",   label: "Total DSCs",         value: String(dscs.length), sub: "Tracked" },
-          { icon: <AlertTriangle className="w-4 h-4 text-red-600" />,   bg: "bg-red-50",   label: "Expired",            value: String(expired),       sub: "Immediate action" },
-          { icon: <AlertCircle className="w-4 h-4 text-amber-600" />,  bg: "bg-amber-50",  label: "Expiring (30 days)", value: String(expiringIn30), sub: "Renew Now" },
+          { icon: <AlertTriangle className="w-4 h-4 text-red-600" />,   bg: "bg-state-problem-surface",   label: "Expired",            value: String(expired),       sub: "Immediate action" },
+          { icon: <AlertCircle className="w-4 h-4 text-amber-600" />,  bg: "bg-state-attention-surface",  label: "Expiring (30 days)", value: String(expiringIn30), sub: "Renew Now" },
           { icon: <CheckCircle className="w-4 h-4 text-green-600" />,  bg: "bg-green-50",  label: "Expiring (90 days)", value: String(expiringIn90), sub: "Renew Soon" },
         ].map(c => (
           <div key={c.label} className="bg-white rounded-xl border border-ps-muted p-4">

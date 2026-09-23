@@ -302,7 +302,7 @@ export default function InventoryPage() {
     { key: "stock_value_paise", header: "Stock Value", accessor: (i) => i.stock_value_paise ?? 0, sortable: true, align: "right",
       exportValue: (i) => (i.stock_value_paise ?? 0) / 100,
       render: (i) => isUntrackedOversold(i) ? (
-        <span className="text-3xs px-1.5 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700"
+        <span className="text-3xs px-1.5 py-0.5 rounded-full font-medium bg-state-attention-surface text-state-attention"
           title="Cost not established — this item sold before it ever had a purchase or opening balance recorded. Enter one to start valuing its stock.">
           Cost unknown
         </span>
@@ -357,7 +357,7 @@ export default function InventoryPage() {
         // Schedule III fixes a slow-moving threshold; AS 2 requires stock at
         // the lower of cost and net realisable value on the CA's own
         // judgement, so this colours a row and decides nothing.
-        return <span className={`font-mono ${d >= 90 ? "text-amber-700 font-semibold" : "text-ps-label"}`}>{d}</span>;
+        return <span className={`font-mono ${d >= 90 ? "text-state-attention font-semibold" : "text-ps-label"}`}>{d}</span>;
       } },
   ];
 
@@ -655,7 +655,7 @@ function StockLedgerDrillDown({
                       <td className="px-3 py-2 text-ps-label whitespace-nowrap">{l.movement_date}</td>
                       <td className="px-3 py-2 text-ps-body">{MOVEMENT_LABELS[l.movement_type] ?? l.movement_type}</td>
                       <td className="px-3 py-2 font-mono text-ps-hint">{l.reference_no ?? "—"}</td>
-                      <td className={`px-3 py-2 text-right font-mono ${delta >= 0 ? "text-green-700" : "text-red-700"}`}>
+                      <td className={`px-3 py-2 text-right font-mono ${delta >= 0 ? "text-green-700" : "text-state-problem"}`}>
                         {delta >= 0 ? "+" : ""}{fmtQty(delta)}
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-ps-label">{formatServicePrice(l.unit_cost_paise) || "—"}</td>
@@ -804,7 +804,7 @@ function AdjustStockModal({
           </div>
 
           {direction === "decrease" && (
-            <label className="flex items-start gap-2 text-xs text-ps-label bg-amber-50 border border-amber-200 rounded-lg p-2.5 cursor-pointer">
+            <label className="flex items-start gap-2 text-xs text-ps-label bg-state-attention-surface border border-state-attention-border rounded-lg p-2.5 cursor-pointer">
               <input type="checkbox" checked={reverseItc} onChange={(e) => setReverseItc(e.target.checked)} className="mt-0.5 rounded" />
               <span>
                 Reverse input tax credit (CGST Act §17(5)(h)). Approximated using this item&apos;s own GST rate — verify against the
@@ -924,11 +924,11 @@ function NrvWritedownModal({
           </div>
 
           {previewWritedownPaise > 0 ? (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+            <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg p-2.5">
               This writes down inventory value by {formatServicePrice(previewWritedownPaise)}.
             </p>
           ) : nrvPerUnit.trim() !== "" && nrvPaise === null ? (
-            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">
+            <p className="text-xs text-state-problem bg-state-problem-surface border border-state-problem-border rounded-lg p-2.5">
               That isn&apos;t an amount — enter rupees per unit, like 120 or 120.50.
             </p>
           ) : nrvPaise !== null && nrvPaise >= avgCostPaise ? (

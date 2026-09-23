@@ -128,7 +128,7 @@ const QUARTER_LABEL: Record<string, string> = {
 // database can equal "Pending", so every badge rendered with no class at all.
 const STATUS_STYLE: Record<string, string> = {
   // tds_certificates
-  pending:    "bg-amber-100 text-amber-700",
+  pending:    "bg-amber-100 text-state-attention",
   generated:  "bg-blue-100 text-blue-700",
   issued:     "bg-green-100 text-green-700",
   downloaded: "bg-green-100 text-green-700",
@@ -136,11 +136,11 @@ const STATUS_STYLE: Record<string, string> = {
   prepared:    "bg-blue-100 text-blue-700",
   ca_approved: "bg-indigo-100 text-indigo-700",
   filed:       "bg-green-100 text-green-700",
-  revised:     "bg-amber-100 text-amber-700",
+  revised:     "bg-amber-100 text-state-attention",
   // tds_challans
   deposited: "bg-green-100 text-green-700",
   matched:   "bg-green-100 text-green-700",
-  unmatched: "bg-red-100 text-red-700",
+  unmatched: "bg-red-100 text-state-problem",
 };
 
 // A return is FILED once it has been furnished — "revised" is a return that
@@ -414,7 +414,7 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
               </p>
             )}
             {quote?.explain.gap_messages.map((m) => (
-              <p key={m} className="text-2xs text-amber-700 bg-amber-50 rounded px-2 py-1">{m}</p>
+              <p key={m} className="text-2xs text-state-attention bg-state-attention-surface rounded px-2 py-1">{m}</p>
             ))}
             {quoteErr && <p className="text-2xs text-red-600">{quoteErr}</p>}
           </div>
@@ -434,7 +434,7 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
             {saving ? "Saving…" : "Add Deduction"}
           </button>
         </div>
-        <p className="text-3xs text-amber-600 bg-amber-50 rounded px-2 py-1.5">
+        <p className="text-3xs text-amber-600 bg-state-attention-surface rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           Deposit TDS to the government account via e-Pay Tax on incometax.gov.in (challan ITNS 281). PracticeSync does not auto-submit.
         </p>
@@ -511,7 +511,7 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
         <p className="px-5 py-8 text-center text-xs text-ps-hint">Pick a client to see what is due.</p>
       )}
       {state.phase === "error" && (
-        <p className="mx-5 my-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        <p className="mx-5 my-4 text-xs text-red-600 bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2">
           {state.message} — this is a failed check, not a clear month.
         </p>
       )}
@@ -546,7 +546,7 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
                       <td className="px-4 py-3 text-xs font-medium text-ps-ink">{formatPaise(row.outstanding_paise)}</td>
                       <td className="px-4 py-3 text-xs">
                         {row.interest_paise > 0
-                          ? <span className="text-red-700 font-medium">{formatPaise(row.interest_paise)}</span>
+                          ? <span className="text-state-problem font-medium">{formatPaise(row.interest_paise)}</span>
                           : <span className="text-ps-hint">—</span>}
                       </td>
                       <td className="px-4 py-3 text-sm font-semibold text-ps-ink">{formatPaise(row.payable_paise)}</td>
@@ -560,7 +560,7 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
                     <td className="px-4 py-3 text-xs text-ps-ink">{formatPaise(state.sheet.totals.tax_paise)}</td>
                     <td className="px-4 py-3 text-xs text-ps-label">{formatPaise(state.sheet.totals.deposited_paise)}</td>
                     <td className="px-4 py-3 text-xs font-medium text-ps-ink">{formatPaise(state.sheet.totals.outstanding_paise)}</td>
-                    <td className="px-4 py-3 text-xs font-medium text-red-700">{formatPaise(state.sheet.totals.interest_paise)}</td>
+                    <td className="px-4 py-3 text-xs font-medium text-state-problem">{formatPaise(state.sheet.totals.interest_paise)}</td>
                     <td className="px-4 py-3 text-sm font-semibold text-ps-ink">{formatPaise(state.sheet.totals.payable_paise)}</td>
                   </tr>
                 </tfoot>
@@ -569,7 +569,7 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
           )}
 
           {state.sheet.totals.late_row_count > 0 && (
-            <p className="mx-5 my-3 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+            <p className="mx-5 my-3 text-xs text-amber-800 bg-state-attention-surface border border-amber-100 rounded-lg px-3 py-2">
               {state.sheet.totals.late_row_count} deduction{state.sheet.totals.late_row_count === 1 ? " is" : "s are"} past
               the Rule 30(2) date. IT Act s.201(1A)(ii) charges 1.5% for every month or part of a month
               <strong> from the date of deduction</strong>, not from the due date — so a deposit one day late
@@ -584,9 +584,9 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
           <p className="mx-5 mb-4 text-2xs text-ps-hint">{state.sheet.covers}</p>
 
           {state.sheet.statutory_gaps.map(g => (
-            <p key={g.kind} className="mx-5 mb-3 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+            <p key={g.kind} className="mx-5 mb-3 text-xs text-amber-800 bg-state-attention-surface border border-amber-100 rounded-lg px-3 py-2">
               {g.message}
-              {g.deductees.length > 0 && <span className="block mt-1 text-2xs text-amber-700">{g.deductees.join(", ")}</span>}
+              {g.deductees.length > 0 && <span className="block mt-1 text-2xs text-state-attention">{g.deductees.join(", ")}</span>}
             </p>
           ))}
         </>
@@ -974,9 +974,9 @@ export default function TDSPage() {
       )}
 
       {tableError && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-700">
+          <p className="text-sm text-state-attention">
             {loadErrorMessage ?? (
               <>TDS deductions table not found. Run migration to create <code className="font-mono bg-amber-100 px-1 rounded">tds_deductions</code> table.</>
             )}
@@ -988,8 +988,8 @@ export default function TDSPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { icon: <IndianRupee className="w-4 h-4 text-blue-600" />, bg: "bg-blue-50", label: "Total TDS Deducted", value: loading ? "—" : formatPaise(totalTDSPaise), sub: "All time" },
-          { icon: <FileText className="w-4 h-4 text-amber-600" />, bg: "bg-amber-50", label: "Pending Challans", value: String(pendingChallans), sub: "Undeposited" },
-          { icon: <Calendar className="w-4 h-4 text-red-600" />, bg: "bg-red-50", label: "Returns Due", value: String(pendingReturns), sub: "24Q/26Q/27Q" },
+          { icon: <FileText className="w-4 h-4 text-amber-600" />, bg: "bg-state-attention-surface", label: "Pending Challans", value: String(pendingChallans), sub: "Undeposited" },
+          { icon: <Calendar className="w-4 h-4 text-red-600" />, bg: "bg-state-problem-surface", label: "Returns Due", value: String(pendingReturns), sub: "24Q/26Q/27Q" },
           { icon: <Award className="w-4 h-4 text-purple-600" />, bg: "bg-purple-50", label: "Certificates Pending", value: String(pendingCerts), sub: "Form 16/16A" },
         ].map(c => (
           <div key={c.label} className="bg-white rounded-xl border border-ps-muted p-4">
@@ -1114,10 +1114,10 @@ export default function TDSPage() {
       {/* Tab: Returns */}
       {activeTab === 2 && (
         <div className="space-y-4">
-          <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex gap-2">
+          <div className="bg-state-attention-surface border border-amber-100 rounded-lg px-4 py-3 flex gap-2">
             {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-amber-700">File 24Q/26Q returns manually on the Income Tax e-filing portal (incometax.gov.in), under the deductor&apos;s TAN login. TRACES is post-filing only (Form 16/16A, defaults, corrections). PracticeSync does not auto-submit to any government portal.</p>
+            <p className="text-sm text-state-attention">File 24Q/26Q returns manually on the Income Tax e-filing portal (incometax.gov.in), under the deductor&apos;s TAN login. TRACES is post-filing only (Form 16/16A, defaults, corrections). PracticeSync does not auto-submit to any government portal.</p>
           </div>
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">

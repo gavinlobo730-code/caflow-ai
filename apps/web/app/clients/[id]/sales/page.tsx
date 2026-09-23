@@ -216,8 +216,8 @@ function Toast({ msg, type }: { msg: string; type: "success" | "error" | "warnin
         type === "success"
           ? "bg-green-50 border border-green-100 text-green-700"
           : type === "warning"
-          ? "bg-amber-50 border border-amber-200 text-amber-800"
-          : "bg-red-50 border border-red-100 text-red-700"
+          ? "bg-state-attention-surface border border-state-attention-border text-amber-800"
+          : "bg-state-problem-surface border border-red-100 text-state-problem"
       }`}
     >
       {msg}
@@ -350,7 +350,7 @@ const FREQ_LABEL: Record<string, string> = {
   weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly", half_yearly: "Half-Yearly", yearly: "Yearly",
 };
 const REC_STATUS_BADGE: Record<string, string> = {
-  active: "bg-green-50 text-green-700", paused: "bg-amber-50 text-amber-700", archived: "bg-ps-muted text-ps-label",
+  active: "bg-green-50 text-green-700", paused: "bg-state-attention-surface text-state-attention", archived: "bg-ps-muted text-ps-label",
 };
 const recBase = (lines: RecurringLine[]) =>
   lines.reduce((s, l) => s + Math.round((l.rate_paise || 0) * (l.quantity || 0)), 0);
@@ -530,7 +530,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
                   Resume
                 </button>
                 <button onClick={() => bulkChangeStatus("archive")} disabled={bulkBusy}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-state-problem-border bg-white px-2.5 py-1.5 font-medium text-red-600 hover:bg-state-problem-surface disabled:cursor-not-allowed disabled:opacity-50">
                   Archive
                 </button>
                 <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className="text-ps-label hover:text-brand disabled:opacity-50" aria-label="Clear selection">
@@ -868,7 +868,7 @@ function RecurringEditor({
             Reverse charge (CGST §9(3)/§9(4))
           </label>
           {isNonStandard(classification) && (
-            <p className="text-2xs text-amber-700 bg-amber-50 rounded px-3 py-2">
+            <p className="text-2xs text-state-attention bg-state-attention-surface rounded px-3 py-2">
               Every invoice this template generates will carry this classification.
             </p>
           )}
@@ -963,7 +963,7 @@ function RecurringHistoryDrawer({
                       </div>
                       <div className="flex items-center gap-2">
                         {r.invoice?.total_paise != null && <span className="font-mono text-ps-body">{fmt(r.invoice.total_paise)}</span>}
-                        <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${r.status === "generated" ? "bg-green-50 text-green-700" : r.status === "failed" ? "bg-red-50 text-red-700" : "bg-ps-muted text-ps-label"}`}>
+                        <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${r.status === "generated" ? "bg-green-50 text-green-700" : r.status === "failed" ? "bg-state-problem-surface text-state-problem" : "bg-ps-muted text-ps-label"}`}>
                           {r.status}
                         </span>
                       </div>
@@ -2059,7 +2059,7 @@ function SalesInvoices({
                   </button>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); setDeleteTarget(inv); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
                     <Trash2 size={13} /> Delete draft
                   </button>
                 </>
@@ -2085,7 +2085,7 @@ function SalesInvoices({
                       title={inv.last_reminded_at
                         ? `Last reminded ${fmtDateTime(inv.last_reminded_at)} · ${inv.reminder_count ?? 0} sent`
                         : "Send an overdue-payment reminder"}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-amber-700"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-state-attention"
                     >
                       <AlertTriangle size={13} /> Remind{inv.reminder_count ? ` (${inv.reminder_count})` : ""}
                     </button>
@@ -2225,9 +2225,9 @@ interface PaymentHistory { outstanding_paise: number; links: PaymentLinkRow[]; p
 const PAY_STATUS_BADGE: Record<string, string> = {
   created: "bg-ps-muted text-ps-label", active: "bg-blue-100 text-blue-700",
   paid: "bg-green-100 text-green-700", captured: "bg-green-100 text-green-700",
-  authorized: "bg-amber-100 text-amber-700", failed: "bg-red-100 text-red-600",
+  authorized: "bg-amber-100 text-state-attention", failed: "bg-red-100 text-red-600",
   refunded: "bg-purple-100 text-purple-700", expired: "bg-ps-muted text-ps-hint",
-  cancelled: "bg-red-50 text-red-500",
+  cancelled: "bg-state-problem-surface text-red-500",
 };
 
 function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose: () => void }) {
@@ -2289,7 +2289,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         </p>
 
         {msg && (
-          <div className={`rounded-lg px-3 py-2 text-xs mb-3 ${msg.type === "success" ? "bg-green-50 text-green-700 border border-green-100" : "bg-red-50 text-red-700 border border-red-100"}`}>
+          <div className={`rounded-lg px-3 py-2 text-xs mb-3 ${msg.type === "success" ? "bg-green-50 text-green-700 border border-green-100" : "bg-state-problem-surface text-state-problem border border-red-100"}`}>
             {msg.text}
           </div>
         )}
@@ -2542,8 +2542,8 @@ const DELIVERY_STATUS_COLOR: Record<string, string> = {
   queued:  "bg-ps-muted text-ps-label",
   sending: "bg-blue-50 text-blue-600",
   sent:    "bg-green-50 text-green-700",
-  failed:  "bg-red-50 text-red-700",
-  bounced: "bg-amber-50 text-amber-700",
+  failed:  "bg-state-problem-surface text-state-problem",
+  bounced: "bg-state-attention-surface text-state-attention",
 };
 
 function DeliveryHistoryModal({
@@ -2578,7 +2578,7 @@ function DeliveryHistoryModal({
                   <span className="text-ps-body font-medium flex items-center gap-1.5">
                     {d.sent_to}
                     {d.kind === "reminder" && (
-                      <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-amber-50 text-amber-700">
+                      <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-state-attention-surface text-state-attention">
                         Reminder
                       </span>
                     )}
@@ -2657,7 +2657,7 @@ function DeleteInvoiceModal({
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
         <div className="flex items-start gap-3 mb-4">
-          <div className="p-2 rounded-full bg-red-50 text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
+          <div className="p-2 rounded-full bg-state-problem-surface text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
           <div>
             <h3 className="text-sm font-semibold text-ps-ink">Delete draft invoice?</h3>
             <p className="text-xs text-ps-label mt-1">
@@ -3213,7 +3213,7 @@ function Customers({
                 </button>
               )}
               <button onClick={() => { setMenu(null); startDelete(c); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
                 <Trash2 size={13} /> Delete
               </button>
             </div>
@@ -3415,7 +3415,7 @@ function Receipts({
       render: (r) => <span className="font-mono text-green-700">{fmt(r.allocated_paise ?? 0)}</span> },
     { key: "unallocated_paise", header: "Unallocated", accessor: unallocatedOf, align: "right",
       exportValue: (r) => formatPaise(unallocatedOf(r)),
-      render: (r) => <span className="font-mono text-amber-700">{fmt(unallocatedOf(r))}</span> },
+      render: (r) => <span className="font-mono text-state-attention">{fmt(unallocatedOf(r))}</span> },
     { key: "is_reversed", header: "Status", accessor: (r) => (r.is_reversed ? "Reversed" : "Active"),
       render: (r) => r.is_reversed ? (
         <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-red-100 text-red-600">Reversed</span>
@@ -3933,7 +3933,7 @@ function ReceiptForm({
                   answer — that is derived in domain/gst/place_of_supply.py from
                   the client's own GSTIN. Shown so a CA is not surprised, and
                   honest about the one case where nobody can decide. */}
-              <p className={`mt-1 text-3xs ${advancePos && !clientStateCode ? "text-amber-700" : "text-ps-hint"}`}>
+              <p className={`mt-1 text-3xs ${advancePos && !clientStateCode ? "text-state-attention" : "text-ps-hint"}`}>
                 {!advancePos
                   ? "Decides CGST+SGST against IGST."
                   : clientStateCode
@@ -4379,7 +4379,7 @@ function CreditNotes({
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deleteCreditNote(c); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
                     Delete draft
                   </button>
                 </>
@@ -4809,7 +4809,7 @@ function SalesDebitNotes({
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deleteSalesDebitNote(d); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
                     Delete draft
                   </button>
                 </>
@@ -4935,10 +4935,10 @@ function SummaryCard({
   color: "amber" | "blue" | "green" | "red" | "gray";
 }) {
   const colors = {
-    amber: "bg-amber-50 border-amber-100",
+    amber: "bg-state-attention-surface border-amber-100",
     blue: "bg-blue-50 border-blue-100",
     green: "bg-green-50 border-green-100",
-    red: "bg-red-50 border-red-100",
+    red: "bg-state-problem-surface border-red-100",
     gray: "bg-white border-ps-muted",
   };
   const text = {

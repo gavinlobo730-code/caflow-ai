@@ -274,11 +274,11 @@ export default function ExecutiveDashboardPage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-[#FEF3C7] rounded-lg p-2.5 text-center">
-                <p className="text-lg font-bold text-amber-700">{firm_health_summary.pending_approvals}</p>
+                <p className="text-lg font-bold text-state-attention">{firm_health_summary.pending_approvals}</p>
                 <p className="text-3xs text-amber-600">Pending Approvals</p>
               </div>
               <div className="bg-[#FEE2E2] rounded-lg p-2.5 text-center">
-                <p className="text-lg font-bold text-red-700">{firm_health_summary.critical_actions}</p>
+                <p className="text-lg font-bold text-state-problem">{firm_health_summary.critical_actions}</p>
                 <p className="text-3xs text-red-600">Critical Actions</p>
               </div>
             </div>
@@ -374,7 +374,7 @@ export default function ExecutiveDashboardPage() {
                       <p className="text-xs text-ps-label mt-0.5">{sig.signal}</p>
                     </div>
                     <span className={`ml-auto text-3xs px-2 py-0.5 rounded-full font-semibold ${
-                      sig.risk === "high" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                      sig.risk === "high" ? "bg-red-100 text-state-problem" : "bg-amber-100 text-state-attention"
                     }`}>
                       {sig.risk.toUpperCase()}
                     </span>

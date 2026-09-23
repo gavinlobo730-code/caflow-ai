@@ -89,7 +89,7 @@ export default function GSTR9Working({
               </span>
             </div>
           ) : (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 flex gap-2">
+            <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 text-xs text-amber-900 flex gap-2">
               <AlertTriangle size={13} className="shrink-0 mt-0.5" />
               <span>
                 This is a consolidation of <strong>part</strong> of the year — not

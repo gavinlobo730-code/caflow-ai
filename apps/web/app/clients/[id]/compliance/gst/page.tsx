@@ -231,7 +231,7 @@ function GSTR3BDetailDrawer({
 
           {totals && (
             <div className={`text-xs px-3 py-2 rounded ${
-              matches === false ? "bg-amber-50 text-amber-800" : "bg-green-50 text-green-700"}`}>
+              matches === false ? "bg-state-attention-surface text-amber-800" : "bg-green-50 text-green-700"}`}>
               {matches === false
                 ? `These documents total ${rupees(totals.tax)}, but the return shows ${rupees(expectedPaise ?? 0)}. They should agree — review before filing.`
                 : `${rows?.length ?? 0} document${rows?.length === 1 ? "" : "s"}, totalling ${rupees(totals.tax)} tax — matches the return.`}
@@ -416,7 +416,7 @@ function GSTDashboard({ clientId }: { clientId: string }) {
           <span className="text-ps-hint">· month {data.monthInQuarter} of the quarter</span>
         )}
         {quarterly && data.stateCategory === null && (
-          <span className="px-2 py-1 rounded-full bg-amber-50 text-amber-800 ring-1 ring-amber-200">
+          <span className="px-2 py-1 rounded-full bg-state-attention-surface text-amber-800 ring-1 ring-amber-200">
             State not set — GSTR-3B date shown is the earlier of the two (22nd)
           </span>
         )}
@@ -429,7 +429,7 @@ function GSTDashboard({ clientId }: { clientId: string }) {
           </p>
           <p className="font-semibold">{data.gstr1Due}</p>
         </div>
-        <div className="rounded border p-4 bg-amber-50">
+        <div className="rounded border p-4 bg-state-attention-surface">
           <p className="text-xs text-ps-label">
             GSTR-3B due date{quarterly ? " (quarter)" : ""}
           </p>
@@ -442,7 +442,7 @@ function GSTDashboard({ clientId }: { clientId: string }) {
           the scheme, and previously not mentioned anywhere in this product. */}
       {quarterly && (
         <div className="grid grid-cols-2 gap-4">
-          <div className="rounded border p-4 bg-red-50">
+          <div className="rounded border p-4 bg-state-problem-surface">
             <p className="text-xs text-ps-label">PMT-06 challan (tax is still paid monthly)</p>
             <p className="font-semibold">
               {data.pmt06Due ?? "Not due — this month's tax is paid with the quarterly return"}
@@ -680,7 +680,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
             const reconciled = Boolean(rec?.reconciled);
             return (
               <div className="border-t pt-3 space-y-2">
-                <div className={`text-sm px-3 py-2 rounded ${reconciled ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"}`}>
+                <div className={`text-sm px-3 py-2 rounded ${reconciled ? "bg-green-50 text-green-700" : "bg-state-attention-surface text-amber-800"}`}>
                   {reconciled ? "✓ Reconciled to the General Ledger" : "⚠ Does not reconcile to the General Ledger — review before saving"}
                   {!reconciled && netOut && (
                     <span className="block mt-1 text-xs">
@@ -749,7 +749,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
         />
       )}
       {rowError && !filingRow && (
-        <p className="text-sm text-red-600 border border-red-200 bg-red-50 rounded px-3 py-2 mb-3">
+        <p className="text-sm text-red-600 border border-state-problem-border bg-state-problem-surface rounded px-3 py-2 mb-3">
           {rowError}
         </p>
       )}
@@ -789,7 +789,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                       says the walk-through exists — the dead-control rule. */}
                   {r.status === "ca_approved" && demoFlows.includes("gstr1") && (
                     <button onClick={() => setDemo({ id: r.id as string })}
-                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-amber-50 text-amber-800">
+                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-state-attention-surface text-amber-800">
                       File (demo)
                     </button>
                   )}
@@ -1070,7 +1070,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           point of the gate — swallowing it would leave a CA believing they had
           approved a return the server declined. */}
       {rowError && !filingRow && (
-        <div className="text-sm px-3 py-2 rounded bg-amber-50 text-amber-900 border border-amber-200 flex items-start justify-between gap-3">
+        <div className="text-sm px-3 py-2 rounded bg-state-attention-surface text-amber-900 border border-state-attention-border flex items-start justify-between gap-3">
           <span>{rowError}</span>
           <button onClick={() => setRowError(null)}
             className="text-xs underline shrink-0">Dismiss</button>
@@ -1137,7 +1137,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             const cf = (computeResult.itc_carried_forward_paise as number) ?? 0;
             return (
               <div className="border-t pt-3 space-y-2">
-                <div className={`text-sm px-3 py-2 rounded ${reconciled ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"}`}>
+                <div className={`text-sm px-3 py-2 rounded ${reconciled ? "bg-green-50 text-green-700" : "bg-state-attention-surface text-amber-800"}`}>
                   {reconciled ? "✓ Reconciled to the General Ledger" : "⚠ Does not reconcile to the General Ledger — review before saving"}
                   {!reconciled && (
                     <div className="mt-1 text-xs space-y-0.5">
@@ -1400,7 +1400,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       than no control. */}
                   {r.status === "ca_approved" && demoFlows.includes("gstr3b") && (
                     <button onClick={() => setDemo({ id: r.id as string })}
-                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-amber-50 text-amber-800">
+                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-state-attention-surface text-amber-800">
                       File (demo)
                     </button>
                   )}
@@ -1432,7 +1432,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       <button onClick={() => deleteReturn(r.id as string, r.period as string)}
                         disabled={busyRow === r.id}
                         title="Delete this saved working. Nothing has been filed."
-                        className="text-xs px-2 py-0.5 border border-red-200 rounded hover:bg-red-50 text-red-700 disabled:opacity-40">
+                        className="text-xs px-2 py-0.5 border border-state-problem-border rounded hover:bg-state-problem-surface text-state-problem disabled:opacity-40">
                         Delete
                       </button>
                     </>
@@ -1443,7 +1443,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 <tr key={`${r.id}-fresh`}>
                   <td colSpan={6} className="px-3 pb-3">
                     {freshness[r.id as string].stale ? (
-                      <div className="text-xs bg-amber-50 text-amber-900 border border-amber-200 rounded px-3 py-2 space-y-1">
+                      <div className="text-xs bg-state-attention-surface text-amber-900 border border-state-attention-border rounded px-3 py-2 space-y-1">
                         <p className="font-semibold">
                           The books have changed since this return was computed.
                         </p>
@@ -1550,9 +1550,9 @@ interface Recon2BResult {
 const RECON_2B_BUCKETS: { status: string; label: string; hint: string; tone: string }[] = [
   { status: "matched", label: "Matched", tone: "text-green-700",
     hint: "The bill and the 2B document agree, to the paisa." },
-  { status: "amount_mismatch", label: "Amount mismatch", tone: "text-amber-700",
+  { status: "amount_mismatch", label: "Amount mismatch", tone: "text-state-attention",
     hint: "Both exist and the tax differs — one of the two documents is wrong." },
-  { status: "missing_in_2b", label: "Supplier has not filed", tone: "text-red-700",
+  { status: "missing_in_2b", label: "Supplier has not filed", tone: "text-state-problem",
     hint: "We hold the bill; §16(2)(aa) makes the credit unavailable until the supplier files. Chase the SUPPLIER." },
   { status: "missing_in_books", label: "No bill in the books", tone: "text-blue-700",
     hint: "The supplier filed it and we have no bill — credit that may be available and is not being claimed. Chase the DOCUMENT." },
@@ -1642,7 +1642,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
       </div>
 
       {result && (result.problems?.length ?? 0) > 0 && (
-        <div className="border border-amber-200 bg-amber-50 rounded p-3 space-y-1">
+        <div className="border border-state-attention-border bg-state-attention-surface rounded p-3 space-y-1">
           {result.problems.map((p, i) => (
             <p key={i} className="text-xs text-amber-900">{p}</p>
           ))}
@@ -1650,7 +1650,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
       )}
 
       {result && !result.persisted && (
-        <p className="text-sm text-red-700">
+        <p className="text-sm text-state-problem">
           Nothing was reconciled and nothing was saved. Fix what is named above and
           upload again — a result of zero from a file that would not read is not a
           clean reconciliation.
@@ -1683,11 +1683,11 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
             </div>
             <div>
               <p className="text-xs text-ps-label">At risk — supplier has not filed</p>
-              <p className="font-medium text-red-700">{rupees(summary.itc_at_risk_paise)}</p>
+              <p className="font-medium text-state-problem">{rupees(summary.itc_at_risk_paise)}</p>
             </div>
           </div>
           {summary.itc_blocked_by_2b_paise > 0 && (
-            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+            <p className="text-xs text-amber-800 bg-state-attention-surface border border-state-attention-border rounded p-2">
               {rupees(summary.itc_blocked_by_2b_paise)} of matched credit is marked
               UNAVAILABLE by GSTR-2B itself — the figures agreeing does not make it
               claimable (§16(2)(aa)).
@@ -1740,7 +1740,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
                     <td className="py-1.5 pr-3">
                       {m.document_number || m.bill_no || "—"}
                       {m.itc_available === "N" && (
-                        <span className="block text-3xs text-amber-700">2B: ITC not available</span>
+                        <span className="block text-3xs text-state-attention">2B: ITC not available</span>
                       )}
                     </td>
                     <td className="py-1.5 pr-3 text-right font-mono">
@@ -1771,7 +1771,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
                 {result.defaulters.map((d) => (
                   <li key={d.supplier_gstin} className="flex justify-between">
                     <span>{d.supplier_gstin || "(no GSTIN recorded)"} — {d.unfiled_count} bill(s)</span>
-                    <span className="font-mono text-red-700">{rupees(d.itc_at_risk_paise)}</span>
+                    <span className="font-mono text-state-problem">{rupees(d.itc_at_risk_paise)}</span>
                   </li>
                 ))}
               </ul>
@@ -1930,7 +1930,7 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
         </select>
       </div>
 
-      <div className="rounded border p-4 bg-amber-50 text-sm text-amber-800">
+      <div className="rounded border p-4 bg-state-attention-surface text-sm text-amber-800">
         <p className="font-medium">⚠ CA Review Required</p>
         <p className="mt-1">CGST Act §44 — the annual return is due 31 December following the
           financial year, and filing it closes the year&apos;s correction window early
@@ -1978,7 +1978,7 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
               is loaded — the dead-control rule. */}
           {demoFlows.includes("gstr9") && (
             <button onClick={() => setDemo({ id: draft.id as string })}
-              className="text-xs px-3 py-1.5 border border-amber-300 rounded hover:bg-amber-50 text-amber-800">
+              className="text-xs px-3 py-1.5 border border-amber-300 rounded hover:bg-state-attention-surface text-amber-800">
               File (demo)
             </button>
           )}
@@ -2035,7 +2035,7 @@ export default function GSTWorkspacePage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">GST Compliance Workspace</h2>
-        <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50 text-xs">
+        <Badge variant="outline" className="text-state-attention border-amber-300 bg-state-attention-surface text-xs">
           CA Review Required before filing
         </Badge>
       </div>

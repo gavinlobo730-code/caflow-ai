@@ -84,9 +84,9 @@ function StatusBadge({ status }: { status: AISLine["status"] }) {
   if (status === "explained")
     return <span className={`${base} bg-blue-100 text-blue-700`}><CheckCircle2 className="w-3 h-3" /> Explained</span>;
   if (status === "not_in_books")
-    return <span className={`${base} bg-red-100 text-red-700`}><AlertCircle className="w-3 h-3" /> Not in books</span>;
+    return <span className={`${base} bg-red-100 text-state-problem`}><AlertCircle className="w-3 h-3" /> Not in books</span>;
   if (status === "amount_mismatch")
-    return <span className={`${base} bg-amber-100 text-amber-700`}><AlertTriangle className="w-3 h-3" /> Differs</span>;
+    return <span className={`${base} bg-amber-100 text-state-attention`}><AlertTriangle className="w-3 h-3" /> Differs</span>;
   // Not a finding. It is the absence of one, and it reads that way.
   return <span className={`${base} bg-ps-muted text-ps-label`}><HelpCircle className="w-3 h-3" /> Not reviewed</span>;
 }
@@ -434,11 +434,11 @@ export default function AISPage() {
             </div>
           </div>
           {statement.upload.problems?.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+            <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
               <p className="text-xs font-semibold text-amber-800 mb-1">
                 This file did not read completely
               </p>
-              <ul className="text-xs text-amber-700 list-disc pl-4 space-y-0.5">
+              <ul className="text-xs text-state-attention list-disc pl-4 space-y-0.5">
                 {statement.upload.problems.map((p, i) => <li key={i}>{p}</li>)}
               </ul>
             </div>
@@ -654,13 +654,13 @@ export default function AISPage() {
               </p>
               <p className="text-2xs text-ps-hint mt-1">No conclusion is drawn about these.</p>
             </div>
-            <div className="bg-red-50 rounded-xl p-4">
+            <div className="bg-state-problem-surface rounded-xl p-4">
               <p className="text-xs text-red-600 font-medium uppercase tracking-wide mb-1">Not in the books</p>
-              <p className="text-lg font-semibold text-red-700">{formatRupees(summary.not_in_books_paise)}</p>
+              <p className="text-lg font-semibold text-state-problem">{formatRupees(summary.not_in_books_paise)}</p>
             </div>
-            <div className="bg-amber-50 rounded-xl p-4">
+            <div className="bg-state-attention-surface rounded-xl p-4">
               <p className="text-xs text-amber-600 font-medium uppercase tracking-wide mb-1">Books short by</p>
-              <p className="text-lg font-semibold text-amber-700">{formatRupees(summary.shortfall_paise)}</p>
+              <p className="text-lg font-semibold text-state-attention">{formatRupees(summary.shortfall_paise)}</p>
             </div>
           </div>
 

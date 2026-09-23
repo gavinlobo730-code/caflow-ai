@@ -97,11 +97,11 @@ export default function OverviewPage() {
   if (error) return <div className="p-6 text-red-500 text-sm">{error}</div>;
   if (loadFailed) return (
     <div className="p-6">
-      <div className="flex items-center justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-state-problem-border bg-state-problem-surface px-5 py-4 text-sm text-state-problem">
         <span>Couldn&apos;t load this client&apos;s overview — the request failed or timed out. Some figures may be incomplete, so they aren&apos;t shown.</span>
         <button
           onClick={() => setReloadKey((k) => k + 1)}
-          className="shrink-0 text-xs font-medium text-red-700 underline"
+          className="shrink-0 text-xs font-medium text-state-problem underline"
         >
           Retry
         </button>
@@ -168,9 +168,9 @@ export default function OverviewPage() {
               const Icon = alert.severity === "critical" ? AlertCircle
                 : alert.severity === "warning" ? AlertTriangle : Info;
               const colors = alert.severity === "critical"
-                ? "bg-red-50 border-red-200 text-red-600"
+                ? "bg-state-problem-surface border-state-problem-border text-red-600"
                 : alert.severity === "warning"
-                ? "bg-amber-50 border-amber-200 text-amber-600"
+                ? "bg-state-attention-surface border-state-attention-border text-amber-600"
                 : "bg-blue-50 border-blue-200 text-blue-600";
               return (
                 <div key={i} className={`rounded-lg border px-2.5 py-2 flex items-start gap-2 ${colors}`}>
@@ -291,7 +291,7 @@ function StatCard({
   accent: "indigo" | "amber" | "neutral";
 }) {
   const bg = accent === "indigo" && value > 0 ? "bg-blue-50 border-blue-500/20/15"
-    : accent === "amber" && value > 0 ? "bg-amber-50 border-amber-500/15"
+    : accent === "amber" && value > 0 ? "bg-state-attention-surface border-amber-500/15"
     : "bg-ps-bg border-ps-muted";
   return (
     <div className={`rounded-xl border p-3 space-y-1 ${bg}`}>

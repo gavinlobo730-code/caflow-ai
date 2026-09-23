@@ -224,10 +224,10 @@ export function JournalEditor({
 
       {/* Why this cannot be changed — the sentence, not a disabled button. */}
       {readOnly && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 space-y-1">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3 space-y-1">
           <p className="text-sm text-amber-900 font-medium">This entry can no longer be edited.</p>
           <p className="text-xs text-amber-800">{lockReason}</p>
-          <p className="text-xs text-amber-700">
+          <p className="text-xs text-state-attention">
             Correct it with a reversal, and an amendment in the next return.
           </p>
         </div>
@@ -359,7 +359,7 @@ export function JournalEditor({
                 const bad = (side: "debit" | "credit") => parsed[idx][side] === null;
                 const amountCls = (side: "debit" | "credit") =>
                   `w-full px-2 py-1 border rounded focus:outline-none focus:ring-1 text-right text-xs disabled:bg-ps-bg ${
-                    bad(side) ? "border-red-400 focus:ring-red-500 bg-red-50" : "border-ps-border focus:ring-blue-500"}`;
+                    bad(side) ? "border-red-400 focus:ring-red-500 bg-state-problem-surface" : "border-ps-border focus:ring-blue-500"}`;
                 return (
                   <tr key={line.key}>
                     <td className="py-1.5 pr-2">
@@ -433,7 +433,7 @@ export function JournalEditor({
         )}
 
         {(localError || serverError) && (
-          <p role="alert" className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">
+          <p role="alert" className="text-xs text-red-600 bg-state-problem-surface rounded px-3 py-2">
             {localError || serverError}
           </p>
         )}

@@ -23,9 +23,9 @@ const STEP_LABELS: Record<string, string> = {
 };
 
 const ACTION_BADGE: Record<string, string> = {
-  submitted: "bg-amber-100 text-amber-700",
+  submitted: "bg-amber-100 text-state-attention",
   approved: "bg-green-100 text-green-700",
-  revision_requested: "bg-red-100 text-red-700",
+  revision_requested: "bg-red-100 text-state-problem",
   final_approved: "bg-blue-100 text-blue-700",
   locked: "bg-blue-100 text-blue-700",
 };
@@ -122,7 +122,7 @@ export default function ReviewPage() {
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-4 text-sm text-red-700">
+        <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-4 text-sm text-state-problem">
           {error}
           <button onClick={load} className="ml-3 underline text-xs">Retry</button>
         </div>
@@ -208,7 +208,7 @@ export default function ReviewPage() {
         </div>
 
         {actionMsg && (
-          <div className={`rounded-lg px-4 py-2 text-xs font-medium ${actionMsg.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+          <div className={`rounded-lg px-4 py-2 text-xs font-medium ${actionMsg.ok ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-state-problem"}`}>
             {actionMsg.msg}
           </div>
         )}
@@ -327,7 +327,7 @@ function ActionButton({
   const styles = {
     primary: "bg-blue-600 text-white hover:bg-blue-700",
     success: "bg-green-600 text-white hover:bg-green-700",
-    danger: "bg-red-100 text-red-700 hover:bg-red-200 border border-red-200",
+    danger: "bg-red-100 text-state-problem hover:bg-red-200 border border-state-problem-border",
   };
 
   return (

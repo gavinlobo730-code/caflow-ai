@@ -441,7 +441,7 @@ export default function RecurringPage() {
                     <td className="px-3 py-2.5 text-right tabular-nums font-medium">{formatPaise(amount)}</td>
                     <td className="px-3 py-2.5 text-xs text-ps-label">{freqLabel(t.frequency)}</td>
                     <td className="px-3 py-2.5 text-xs">
-                      <span className={due ? "text-amber-700 font-medium" : "text-ps-label"}>
+                      <span className={due ? "text-state-attention font-medium" : "text-ps-label"}>
                         {t.next_run_date}
                       </span>
                       {t.status !== "active" && (

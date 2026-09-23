@@ -237,11 +237,11 @@ export default function BrandingPage() {
         </div>
 
         {loadError && !loading && (
-          <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-            <p className="text-xs text-red-700">
+          <div className="flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-state-problem">
               Couldn&apos;t load your saved branding — showing defaults. {loadError}
             </p>
-            <button onClick={load} className="text-xs px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-100 text-red-700 shrink-0">
+            <button onClick={load} className="text-xs px-3 py-1.5 border border-state-problem-border rounded-lg hover:bg-red-100 text-state-problem shrink-0">
               Retry
             </button>
           </div>
@@ -263,7 +263,7 @@ export default function BrandingPage() {
                     <img src={branding.logo_url} alt="Logo" className="h-10 object-contain" />
                     <button
                       onClick={() => update("logo_url", null)}
-                      className="text-xs text-red-500 hover:text-red-700"
+                      className="text-xs text-red-500 hover:text-state-problem"
                     >
                       Remove
                     </button>

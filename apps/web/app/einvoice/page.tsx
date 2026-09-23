@@ -24,7 +24,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 const STATUS_COLOR: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
   generated: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-700",
+  cancelled: "bg-red-100 text-state-problem",
 };
 
 interface EInvoice {
@@ -141,7 +141,7 @@ export default function EInvoicePage() {
         </button>
       </div>
 
-      <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+      <div className="flex items-center gap-2 bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">
         <AlertTriangle size={13} className="text-red-500 flex-shrink-0" />
         <p className="text-xs font-medium text-red-800">
           CA REVIEW REQUIRED — Generate IRN on IRP portal (einvoice1.gst.gov.in) first, then record here.
@@ -191,7 +191,7 @@ export default function EInvoicePage() {
       {loading ? (
         <TransactionListSkeleton rows={3} />
       ) : loadError ? (
-        <div className="bg-white rounded-xl border border-red-200 text-center py-10 space-y-2">
+        <div className="bg-white rounded-xl border border-state-problem-border text-center py-10 space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
           <button disabled={actionInFlight} onClick={() => load(clientId)} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
@@ -222,7 +222,7 @@ export default function EInvoicePage() {
       {showIRN && (
         <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
           <p className="text-xs font-semibold text-ps-body">Record IRN from IRP Portal</p>
-          <p className="text-2xs text-amber-700 bg-amber-50 p-2 rounded">
+          <p className="text-2xs text-state-attention bg-state-attention-surface p-2 rounded">
             CA REVIEW REQUIRED — Generate IRN on IRP portal first, then enter details below
           </p>
           <div className="grid grid-cols-2 gap-3">

@@ -83,7 +83,7 @@ export default function PortalLoginPage() {
           </div>
 
           {error && (
-            <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-red-50 border border-red-100">
+            <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-red-100">
               <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
                 <span className="text-red-500 text-3xs font-bold leading-none">!</span>
               </div>

@@ -303,7 +303,7 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
 
 const STATE_BADGE: Record<string, string> = {
   none: "bg-ps-muted text-ps-label",
-  draft: "bg-amber-100 text-amber-700",
+  draft: "bg-amber-100 text-state-attention",
   generated: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-600",
 };
@@ -500,16 +500,16 @@ function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean;
             className={inputCls} />
         </L>
       </div>
-      {computed?.gap && <p className="text-3xs text-amber-700">{computed.gap}</p>}
+      {computed?.gap && <p className="text-3xs text-state-attention">{computed.gap}</p>}
       {computed?.valid_upto && (
         <p className="text-3xs text-ps-hint">
           {computed.days} day{computed.days === 1 ? "" : "s"} at one per {computed.slab_km} km — {computed.source}.
           The portal&apos;s own date is what counts; correct this if it differs.
         </p>
       )}
-      {computed?.caveat && <p className="text-3xs text-amber-700">{computed.caveat}</p>}
+      {computed?.caveat && <p className="text-3xs text-state-attention">{computed.caveat}</p>}
       {disagrees && (
-        <p className="text-3xs text-amber-700">
+        <p className="text-3xs text-state-attention">
           This differs from the {computed?.valid_upto} that Rule 138(10) gives for the recorded
           distance. Recording the portal&apos;s date is right — but check the distance too, since
           it is what every later expiry warning is worked out from.
@@ -551,7 +551,7 @@ function IrpFindings({ findings, state }: {
 }) {
   if (!findings.length || state === "generated" || state === "cancelled") return null;
   return (
-    <div className="mt-2 rounded bg-amber-50 border border-amber-200 p-2 space-y-1.5">
+    <div className="mt-2 rounded bg-state-attention-surface border border-state-attention-border p-2 space-y-1.5">
       <p className="text-3xs font-semibold text-amber-800 flex items-center gap-1">
         <AlertTriangle size={11} /> The e-invoice portal will refuse this as it stands
       </p>

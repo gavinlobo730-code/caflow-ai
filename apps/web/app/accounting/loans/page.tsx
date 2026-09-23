@@ -543,7 +543,7 @@ export default function LoansAndFDPage() {
             />
             <SummaryCard
               icon={<IndianRupee className="w-4 h-4 text-red-600" />}
-              iconBg="bg-red-50"
+              iconBg="bg-state-problem-surface"
               label="Total Outstanding"
               value={loading ? "…" : formatPaise(totalOutstandingPaise)}
               sub="across active loans"
@@ -557,7 +557,7 @@ export default function LoansAndFDPage() {
             />
             <SummaryCard
               icon={<AlertTriangle className="w-4 h-4 text-amber-600" />}
-              iconBg="bg-amber-50"
+              iconBg="bg-state-attention-surface"
               label="Overdue"
               value={loading ? "…" : String(overdueCount)}
               sub="loans marked overdue"
@@ -713,13 +713,13 @@ export default function LoansAndFDPage() {
         <>
           {/* Maturing soon banner */}
           {maturingSoonFDs.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex gap-3">
+            <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-5 py-4 flex gap-3">
               <Bell className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-semibold text-amber-800">
                   {maturingSoonFDs.length} FD{maturingSoonFDs.length > 1 ? "s" : ""} maturing within 30 days
                 </p>
-                <p className="text-xs text-amber-700 mt-0.5">
+                <p className="text-xs text-state-attention mt-0.5">
                   {maturingSoonFDs
                     .map(
                       (f) =>
@@ -756,7 +756,7 @@ export default function LoansAndFDPage() {
             />
             <SummaryCard
               icon={<Bell className="w-4 h-4 text-amber-600" />}
-              iconBg="bg-amber-50"
+              iconBg="bg-state-attention-surface"
               label="Maturing This Month"
               value={loading ? "…" : String(maturingThisMonthCount)}
               sub="within 30 days"
@@ -808,7 +808,7 @@ export default function LoansAndFDPage() {
                       const days = daysToDate(fd.maturity_date);
                       const isMaturingSoon = fd.status === "active" && days >= 0 && days <= 30;
                       return (
-                        <tr key={fd.id} className={`hover:bg-ps-bg/50 ${isMaturingSoon ? "bg-amber-50/30" : ""}`}>
+                        <tr key={fd.id} className={`hover:bg-ps-bg/50 ${isMaturingSoon ? "bg-state-attention-surface/30" : ""}`}>
                           <td className="px-5 py-3 font-medium text-ps-ink">{fd.bank_name}</td>
                           <td className="px-4 py-3 text-xs text-ps-label">{fd.clients?.name ?? "—"}</td>
                           <td className="px-4 py-3 text-xs font-mono text-ps-label">{fd.fd_number ?? "—"}</td>
@@ -836,7 +836,7 @@ export default function LoansAndFDPage() {
                           </td>
                           <td className="px-4 py-3 text-xs">
                             {fd.tds_applicable ? (
-                              <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">s.194A</span>
+                              <span className="px-2 py-0.5 rounded-full bg-state-problem-surface text-red-600 font-medium">s.194A</span>
                             ) : (
                               <span className="text-ps-hint">No</span>
                             )}
@@ -1006,7 +1006,7 @@ export default function LoansAndFDPage() {
                 </label>
               </div>
               {fdForm.tds_applicable && (
-                <p className="text-3xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
+                <p className="text-3xs text-amber-600 bg-state-attention-surface px-3 py-2 rounded-lg">
                   {/* TDS on FD interest per IT Act Section 194A — threshold ₹40,000 p.a. (₹50,000 for senior citizens) */}
                   IT Act Section 194A — TDS deducted on FD interest exceeding ₹40,000 p.a. (₹50,000 for senior citizens). TDS rate: 10% (20% if PAN not furnished).
                 </p>
@@ -1059,7 +1059,7 @@ function SummaryCard({
 function LoanStatusBadge({ status }: { status: LoanStatus }) {
   const styles: Record<LoanStatus, string> = {
     active: "bg-green-100 text-green-700",
-    overdue: "bg-red-100 text-red-700",
+    overdue: "bg-red-100 text-state-problem",
     closed: "bg-ps-muted text-ps-label",
   };
   return (
@@ -1073,7 +1073,7 @@ function FDStatusBadge({ status }: { status: FDStatus }) {
   const styles: Record<FDStatus, string> = {
     active: "bg-green-100 text-green-700",
     matured: "bg-blue-100 text-blue-700",
-    broken: "bg-red-100 text-red-700",
+    broken: "bg-red-100 text-state-problem",
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${styles[status]}`}>

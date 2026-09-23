@@ -67,10 +67,24 @@ function code(rel: string): string {
  *  on one spelling: the tree holds `err`, `error`, `saveError`, `loadFailed`,
  *  `computeError`, `presError`, `reauthError` and a dozen more. */
 const GUARD = /\{\s*\w*(?:rr|rror|ailed|roblem)\w*\s*&&\s*\(?\s*<(\w+)\s+([^>]*?)>/gi;
-/** A RED GROUND is what makes it a refusal rather than red text in a table
- *  cell — a negative figure is not a failure, and `text-red-600` alone is on
- *  hundreds of perfectly correct money columns. */
-const GROUND = /\bbg-(?:red|rose)-(?:50|100|200)\b/;
+/** A PROBLEM-COLOURED GROUND is what makes it a refusal rather than red text in
+ *  a table cell — a negative figure is not a failure, and `text-red-600` alone
+ *  is on hundreds of perfectly correct money columns.
+ *
+ *  ⚠️ THIS WAS A SPELLING AND IT WENT BLIND, which is the thing this file's own
+ *  GUARD pattern was already careful about: the variable half is matched on what
+ *  it MEANS (err / error / failed / problem) precisely so a new name cannot
+ *  escape it, and the ground half named `bg-red-50` literally. On 24-09-2026 the
+ *  token pass renamed 1,291 byte-identical status utilities onto `state.*`, and
+ *  this probe stopped seeing every band in the tree — caught only because the
+ *  file carries a vacuity floor that says so out loud.
+ *
+ *  It names the ROLE now, in both vocabularies. `state-problem-surface` is the
+ *  destination; the raw shades are the ones the rename could not take because
+ *  they are not byte-identical to a token, and they will disappear as T4-b's
+ *  judgement pass reaches them. Do not drop either arm until the other is
+ *  provably empty — the vacuity floor below is what will tell you. */
+const GROUND = /\bbg-(?:(?:red|rose)-(?:50|100|200)|state-problem-surface)\b/;
 
 function silentBands(): { file: string; attrs: string }[] {
   const out: { file: string; attrs: string }[] = [];

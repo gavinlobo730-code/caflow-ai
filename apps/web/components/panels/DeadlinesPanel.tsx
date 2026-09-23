@@ -48,9 +48,9 @@ function DeadlinesPanelInner() {
       </div>
 
       <div className="mx-2 mt-2 shrink-0">
-        <div className="flex items-start gap-2 p-2.5 rounded-[7px] bg-amber-50 border border-amber-500/20">
+        <div className="flex items-start gap-2 p-2.5 rounded-[7px] bg-state-attention-surface border border-amber-500/20">
           <Info size={11} className="text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-2xs text-amber-700 leading-relaxed">
+          <p className="text-2xs text-state-attention leading-relaxed">
             Triage view. To file, open a{" "}
             <Link
               href="/clients"

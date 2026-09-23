@@ -249,7 +249,7 @@ export default function CashFlowForecastPage() {
           than buried in a tooltip: a CA reading a closing balance needs to know
           tax payments are missing from it before acting on the number. */}
       {rows.length > 0 && (
-        <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 text-xs text-amber-800">
+        <div className="bg-state-attention-surface border border-amber-100 rounded-lg px-4 py-3 text-xs text-amber-800">
           <span className="font-semibold">Excludes tax outflows.</span>{" "}
           GST and TDS payments are not included in these figures. The compliance
           calendar records when a filing is due but not how much is payable, so
@@ -277,7 +277,7 @@ export default function CashFlowForecastPage() {
                 {rows.map(row => (
                   <tr
                     key={row.label}
-                    className={row.isSurplus ? "bg-green-50/40 hover:bg-green-50" : "bg-red-50/40 hover:bg-red-50"}
+                    className={row.isSurplus ? "bg-green-50/40 hover:bg-green-50" : "bg-state-problem-surface/40 hover:bg-state-problem-surface"}
                   >
                     <td className="px-5 py-3 font-medium text-ps-ink text-xs">{row.label}</td>
                     <td className="px-4 py-3 text-right font-mono text-xs text-ps-label">{fmt(row.opening)}</td>
@@ -287,14 +287,14 @@ export default function CashFlowForecastPage() {
                     <td className="px-4 py-3 text-right font-mono text-xs text-red-600 font-semibold">
                       {row.outflows > 0 ? `-${fmt(row.outflows)}` : fmt(row.outflows)}
                     </td>
-                    <td className={`px-4 py-3 text-right font-mono text-sm font-bold ${row.isSurplus ? "text-green-800" : "text-red-700"}`}>
+                    <td className={`px-4 py-3 text-right font-mono text-sm font-bold ${row.isSurplus ? "text-green-800" : "text-state-problem"}`}>
                       {fmt(row.closing)}
                     </td>
                     <td className="px-5 py-3">
                       <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
                         row.isSurplus
                           ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
+                          : "bg-red-100 text-state-problem"
                       }`}>
                         {row.isSurplus
                           ? <TrendingUp size={11} />

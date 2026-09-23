@@ -135,7 +135,7 @@ const OVERRIDE_DIMENSION_OPTIONS = DIMENSION_KEYS;
 const SEVERITY_COLORS: Record<HealthAlert["severity"], string> = {
   info:     "bg-blue-100 text-blue-700",
   warning:  "bg-yellow-100 text-yellow-700",
-  critical: "bg-red-100 text-red-700",
+  critical: "bg-red-100 text-state-problem",
 };
 
 const EMPTY_OVERRIDE_FORM = {
@@ -169,7 +169,7 @@ function gradeBadgeColor(grade: Grade): string {
     "Good":             "bg-blue-100 text-blue-700",
     "Needs Attention":  "bg-yellow-100 text-yellow-700",
     "At Risk":          "bg-orange-100 text-orange-700",
-    "Critical":         "bg-red-100 text-red-700",
+    "Critical":         "bg-red-100 text-state-problem",
   };
   return map[grade] ?? "bg-gray-100 text-gray-700";
 }
@@ -521,7 +521,7 @@ export default function ClientHealthDetailPage() {
         <Link href="/health" className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand mb-4">
           <ChevronLeft size={14} /> Back
         </Link>
-        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm border border-red-200">
+        <div className="bg-state-problem-surface text-state-problem rounded-lg px-5 py-4 text-sm border border-state-problem-border">
           {error ?? "Client not found"}
         </div>
       </div>
@@ -537,10 +537,10 @@ export default function ClientHealthDetailPage() {
 
       {/* Hard override banner */}
       {health.hard_override && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-300 rounded-lg px-5 py-3">
+        <div className="flex items-start gap-3 bg-state-problem-surface border border-red-300 rounded-lg px-5 py-3">
           <AlertTriangle size={16} className="text-red-600 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="text-sm font-semibold text-red-700">Critical Override Active</p>
+            <p className="text-sm font-semibold text-state-problem">Critical Override Active</p>
             <p className="text-xs text-red-600 mt-0.5">
               {health.hard_override_reason ?? "Hard override forcing Critical status regardless of score."}
             </p>
@@ -577,7 +577,7 @@ export default function ClientHealthDetailPage() {
                 Last calculated: {formatDate(health.last_calculated_at)}
               </p>
               {health.is_critical && !health.hard_override && (
-                <Badge className="mt-2 text-xs bg-red-100 text-red-700">Critical</Badge>
+                <Badge className="mt-2 text-xs bg-red-100 text-state-problem">Critical</Badge>
               )}
               {health.is_at_risk && !health.is_critical && (
                 <Badge className="mt-2 text-xs bg-orange-100 text-orange-700">At Risk</Badge>

@@ -31,7 +31,7 @@ const TASK_STATUS_COLORS: Record<string, string> = {
   todo: "bg-ps-muted text-ps-label",
   in_progress: "bg-blue-100 text-blue-700",
   waiting_client: "bg-purple-100 text-purple-700",
-  review_required: "bg-amber-100 text-amber-700",
+  review_required: "bg-amber-100 text-state-attention",
   completed: "bg-green-100 text-green-700",
 };
 

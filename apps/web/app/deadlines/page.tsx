@@ -59,10 +59,10 @@ const TYPE_EMPTY_STATES: Record<string, EmptyStateCopy> = {
 
 // ─── Styling ───────────────────────────────────────────────────────────────
 const FILING_STATUS_COLORS: Record<string, string> = {
-  pending:     "bg-amber-100 text-amber-700",
+  pending:     "bg-amber-100 text-state-attention",
   in_progress: "bg-blue-100 text-blue-700",
   filed:       "bg-green-100 text-green-700",
-  overdue:     "bg-red-100 text-red-700",
+  overdue:     "bg-red-100 text-state-problem",
   na:          "bg-ps-muted text-ps-label",
 };
 
@@ -204,8 +204,8 @@ function DeadlinesContent() {
   const pending     = typeRecords.filter(r => r.filing_status === "pending").length;
 
   const STATS = [
-    { label: "Due This Week", value: dueThisWeek, icon: Clock,          color: "text-amber-600", bg: "bg-amber-50"  },
-    { label: "Overdue",       value: overdue,      icon: AlertTriangle,  color: "text-red-600",   bg: "bg-red-50"    },
+    { label: "Due This Week", value: dueThisWeek, icon: Clock,          color: "text-amber-600", bg: "bg-state-attention-surface"  },
+    { label: "Overdue",       value: overdue,      icon: AlertTriangle,  color: "text-red-600",   bg: "bg-state-problem-surface"    },
     { label: "In Progress",   value: inProgress,   icon: FileText,       color: "text-blue-600",  bg: "bg-blue-50"   },
     { label: "Pending",       value: pending,       icon: Calendar,       color: "text-purple-600",bg: "bg-purple-50" },
     { label: "Filed",         value: filed,         icon: CheckCircle,   color: "text-green-600", bg: "bg-green-50"  },
@@ -364,7 +364,7 @@ function DeadlinesContent() {
   if (error) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
-        <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>
+        <div className="bg-state-problem-surface text-state-problem rounded-lg px-5 py-4 text-sm">{error}</div>
       </div>
     );
   }
@@ -392,7 +392,7 @@ function DeadlinesContent() {
         ))}
       </div>
 
-      <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+      <div className="flex items-start gap-3 bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
         <Calendar size={16} className="text-amber-600 mt-0.5 shrink-0" />
         <p className="text-sm text-amber-800">
           <strong>Triage view.</strong> To file a return, click the client name or &ldquo;Open Client&rdquo; to go

@@ -243,7 +243,7 @@ export default function AIAssistantPage() {
 
         {error && (
           <div className="flex justify-center">
-            <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-2">
+            <div className="text-xs text-red-600 bg-state-problem-surface border border-red-100 rounded-lg px-4 py-2">
               {error}
             </div>
           </div>

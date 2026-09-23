@@ -156,8 +156,8 @@ export default function PortalPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       {pageLoadError && (
-        <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
-          <p className="text-xs text-red-700 font-medium">{pageLoadError}</p>
+        <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">
+          <p className="text-xs text-state-problem font-medium">{pageLoadError}</p>
         </div>
       )}
       <div className="bg-white rounded-xl border border-ps-muted p-6">
@@ -200,7 +200,7 @@ export default function PortalPage() {
                 <span
                   className={`shrink-0 text-2xs px-2 py-0.5 rounded-full font-medium ${
                     c.status === "active" ? "bg-green-100 text-green-700"
-                      : c.status === "invited" ? "bg-amber-100 text-amber-700"
+                      : c.status === "invited" ? "bg-amber-100 text-state-attention"
                       : "bg-ps-muted text-ps-label"
                   }`}
                 >

@@ -138,7 +138,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
   return (
     <div className="space-y-5">
       {error && (
-        <div role="alert" className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex gap-2">
+        <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 text-xs text-state-problem flex gap-2">
           <AlertCircle size={13} className="shrink-0 mt-0.5" /><span>{error}</span>
         </div>
       )}
@@ -186,7 +186,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                     <td className="px-5 py-2 font-mono text-2xs text-ps-label">
                       {/* Not recorded is its own answer: whether a transfer is a
                           supply cannot be determined without it. */}
-                      {g.gstin ?? <span className="font-sans text-amber-700">Not recorded</span>}
+                      {g.gstin ?? <span className="font-sans text-state-attention">Not recorded</span>}
                     </td>
                     <td className="px-5 py-2 text-right tabular-nums">
                       {formatPaise(detail
@@ -196,7 +196,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                     <td className="px-5 py-2 text-right">
                       {g.is_active && (
                         <button onClick={() => closeGodown(g)} aria-label={`Close ${g.name}`}
-                          className="p-1 rounded hover:bg-red-50 text-red-600">
+                          className="p-1 rounded hover:bg-state-problem-surface text-red-600">
                           <Trash2 size={12} />
                         </button>
                       )}
@@ -293,7 +293,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                       {/* Not recorded is its own answer: it is not the same as
                           stock that does not expire, and the server says so on
                           the expiry report below. */}
-                      {b.expiry_date ?? <span className="text-amber-700">Not recorded</span>}
+                      {b.expiry_date ?? <span className="text-state-attention">Not recorded</span>}
                     </td>
                   </tr>
                 ))}
@@ -348,8 +348,8 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                             thing decided here, and it is decided from the
                             bucket rather than from the date. */}
                         <span className={`text-2xs px-1.5 py-0.5 rounded ${
-                          r.bucket === "expired" ? "bg-red-50 text-red-700"
-                          : r.bucket === "within_30_days" ? "bg-amber-50 text-amber-700"
+                          r.bucket === "expired" ? "bg-state-problem-surface text-state-problem"
+                          : r.bucket === "within_30_days" ? "bg-state-attention-surface text-state-attention"
                           : r.bucket === "no_expiry_recorded" ? "bg-ps-muted text-ps-label"
                           : "bg-emerald-50 text-emerald-700"}`}>
                           {expiry.bucket_labels[r.bucket]}
@@ -488,9 +488,9 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
         {/* THE ANSWER THE CA HAS TO SEE BEFORE MOVING ANYTHING. */}
         {decision && (
           <div className={`rounded-lg px-3 py-2 text-xs flex gap-2 ${
-            decision.is_supply === true ? "bg-amber-50 border border-amber-200 text-amber-900"
+            decision.is_supply === true ? "bg-state-attention-surface border border-state-attention-border text-amber-900"
             : decision.is_supply === false ? "bg-ps-bg border border-ps-border text-ps-body"
-            : "bg-amber-50 border border-amber-200 text-amber-900"}`}>
+            : "bg-state-attention-surface border border-state-attention-border text-amber-900"}`}>
             <Info size={13} className="shrink-0 mt-0.5" />
             <span>{decision.reason}</span>
           </div>

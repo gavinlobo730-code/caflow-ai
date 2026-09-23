@@ -72,14 +72,14 @@ export default function RegimeElectionPanel({
   useEffect(() => { load(); }, [load]);
 
   if (error) {
-    return <p className="text-2xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">{error}</p>;
+    return <p className="text-2xs text-state-problem bg-state-problem-surface border border-state-problem-border rounded-lg p-2.5">{error}</p>;
   }
   if (!data) return null;
 
   const tone = !data.election_is_available
-    ? "bg-red-50 border-red-200 text-red-900"
+    ? "bg-state-problem-surface border-state-problem-border text-red-900"
     : data.history_unknown || data.form_10iea_required
-      ? "bg-amber-50 border-amber-200 text-amber-900"
+      ? "bg-state-attention-surface border-state-attention-border text-amber-900"
       : "bg-ps-bg border-ps-border text-ps-label";
 
   return (

@@ -61,7 +61,7 @@ const DATA_SECTIONS = new Set(["invoices", "statements", "reminders", "complianc
 function StatusBadge({ status, danger }: { status: string | null; danger?: boolean }) {
   return (
     <span className={`inline-block rounded-full px-2 py-0.5 text-2xs font-medium ${
-      danger ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"}`}>
+      danger ? "bg-red-100 text-state-problem" : "bg-gray-100 text-gray-600"}`}>
       {status ?? "—"}
     </span>
   );
@@ -302,9 +302,9 @@ export default function PortalDashboardPage() {
                 <p className="text-2xs uppercase tracking-wide text-gray-400">Total Outstanding</p>
                 <p className="mt-1 text-xl font-semibold text-brand">{formatPaise(dues.total_outstanding_paise)}</p>
               </div>
-              <div className={`rounded-xl border p-4 ${dues.overdue_paise > 0 ? "border-red-200 bg-red-50" : "border-gray-200 bg-white"}`}>
+              <div className={`rounded-xl border p-4 ${dues.overdue_paise > 0 ? "border-state-problem-border bg-state-problem-surface" : "border-gray-200 bg-white"}`}>
                 <p className="text-2xs uppercase tracking-wide text-gray-400">Overdue</p>
-                <p className={`mt-1 text-xl font-semibold ${dues.overdue_paise > 0 ? "text-red-700" : "text-brand"}`}>{formatPaise(dues.overdue_paise)}</p>
+                <p className={`mt-1 text-xl font-semibold ${dues.overdue_paise > 0 ? "text-state-problem" : "text-brand"}`}>{formatPaise(dues.overdue_paise)}</p>
               </div>
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <p className="text-2xs uppercase tracking-wide text-gray-400">Overdue Invoices</p>
@@ -330,7 +330,7 @@ export default function PortalDashboardPage() {
           </div>
 
           {notice && (
-            <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2 text-xs text-state-attention">
               <AlertCircle size={14} /> {notice}
             </div>
           )}

@@ -263,7 +263,7 @@ function monthState(c: ClientMonthState): {
     return { label: "Draft", className: "bg-blue-100 text-blue-700",
              note: `The run exists at "${c.run_status}" and has not been released.`, needsWork: true };
   }
-  return { label: "Not started", className: "bg-amber-100 text-amber-700",
+  return { label: "Not started", className: "bg-amber-100 text-state-attention",
            note: "Payroll is on for this client and this month has no run yet.",
            needsWork: true };
 }
@@ -470,14 +470,14 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
 function StatusBadge({ status }: { status: "overdue" | "due-soon" | "upcoming" | "filed" }) {
   if (status === "overdue") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-state-problem">
         <AlertTriangle size={11} />Overdue
       </span>
     );
   }
   if (status === "due-soon") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-state-attention">
         <Clock size={11} />Due Soon
       </span>
     );
@@ -730,7 +730,7 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
               instead, and a calendar with a silently missing row cannot be told
               from one whose client has no PT liability. */}
           {deadlineGaps.map(g => (
-            <p key={g} className="text-xs text-amber-700 mt-1.5">{g}</p>
+            <p key={g} className="text-xs text-state-attention mt-1.5">{g}</p>
           ))}
         </CardHeader>
         <CardContent>
@@ -740,9 +740,9 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
                 key={d.id}
                 className={`flex items-start justify-between p-3 rounded-lg border ${
                   d.status === "overdue"
-                    ? "border-red-200 bg-red-50"
+                    ? "border-state-problem-border bg-state-problem-surface"
                     : d.status === "due-soon"
-                    ? "border-amber-200 bg-amber-50"
+                    ? "border-state-attention-border bg-state-attention-surface"
                     : "border-ps-border bg-white"
                 }`}
               >
@@ -803,7 +803,7 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
           ) : (
             <div className="space-y-3">
               {/* CA Review notice */}
-              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-start gap-2 p-3 bg-state-attention-surface border border-state-attention-border rounded-lg">
                 <AlertCircle size={15} className="text-amber-600 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-amber-800">
                   <strong>CA Review Required.</strong> These files are generated for review only.

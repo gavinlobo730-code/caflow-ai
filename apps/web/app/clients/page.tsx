@@ -85,7 +85,7 @@ function payrollBadge(p: PayrollState | undefined):
   }
   return {
     label: "Payroll due",
-    className: "bg-amber-100 text-amber-700",
+    className: "bg-amber-100 text-state-attention",
     title: "Payroll is switched on for this client and this month's run has "
          + "not been started.",
   };
@@ -512,7 +512,7 @@ export default function ClientsPage() {
 
       {/* Error */}
       {error && (
-        <div role="alert" className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+        <div role="alert" className="rounded-lg bg-state-problem-surface border border-state-problem-border px-4 py-3 text-sm text-state-problem">
           {error} —{" "}
           <button onClick={load} className="underline">retry</button>
         </div>
@@ -735,7 +735,7 @@ export default function ClientsPage() {
                                   setDeleteBlockers(null);
                                   setActionError(null);
                                 }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-state-problem-surface"
                               >
                                 <Trash2 size={13} /> Permanent Delete
                               </button>
@@ -858,9 +858,9 @@ export default function ClientsPage() {
             )}
 
             {deleteBlockers && (
-              <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <div className="mb-4 bg-state-attention-surface border border-state-attention-border rounded-lg p-3">
                 <p className="text-xs font-semibold text-amber-800 mb-1">Cannot delete — linked records exist:</p>
-                <ul className="text-xs text-amber-700 list-disc list-inside space-y-0.5">
+                <ul className="text-xs text-state-attention list-disc list-inside space-y-0.5">
                   {deleteBlockers.map((b, i) => <li key={i}>{b}</li>)}
                 </ul>
                 <p className="text-xs font-medium text-amber-800 mt-2">Archive this client instead to preserve all history.</p>

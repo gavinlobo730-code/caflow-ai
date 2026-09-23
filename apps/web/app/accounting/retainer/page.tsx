@@ -342,7 +342,7 @@ export default function RetainerPage() {
       )}
 
       {practiceProvisioned === false && (
-        <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-amber-900">
+        <div className="bg-state-attention-surface border border-amber-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-amber-900">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>
             The firm&apos;s own practice client is not provisioned, so an invoice
@@ -352,7 +352,7 @@ export default function RetainerPage() {
         </div>
       )}
       {practiceProvisioned === true && services.length === 0 && (
-        <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-amber-900">
+        <div className="bg-state-attention-surface border border-amber-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-amber-900">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>
             The practice&apos;s service catalogue is empty. A retainer bills a
@@ -386,7 +386,7 @@ export default function RetainerPage() {
         </div>
         <div className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-state-attention-surface flex items-center justify-center">
               <FileText className="w-4 h-4 text-amber-600" />
             </div>
             <span className="text-xs text-ps-label">Due to invoice</span>

@@ -24,7 +24,7 @@ const STATUS_LABEL: Record<ChecklistItemStatus, string> = {
 
 const STATUS_BADGE: Record<ChecklistItemStatus, string> = {
   pending: "bg-ps-muted text-ps-hint",
-  in_progress: "bg-amber-100 text-amber-700",
+  in_progress: "bg-amber-100 text-state-attention",
   complete: "bg-green-100 text-green-700",
   not_applicable: "bg-ps-muted text-ps-label line-through",
 };
@@ -181,7 +181,7 @@ export default function ChecklistPage() {
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-4 text-sm text-red-700">
+        <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-4 text-sm text-state-problem">
           {error}
           <button onClick={load} className="ml-3 underline text-xs">Retry</button>
         </div>
@@ -192,7 +192,7 @@ export default function ChecklistPage() {
   return (
     <div className="p-6 space-y-5 max-w-3xl mx-auto">
       {actionError && (
-        <div role="alert" className="bg-red-50 border border-red-100 rounded-xl px-4 py-2.5 text-sm text-red-700 flex items-center justify-between gap-3">
+        <div role="alert" className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-2.5 text-sm text-state-problem flex items-center justify-between gap-3">
           <span>{actionError}</span>
           <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600 shrink-0">✕</button>
         </div>
@@ -310,7 +310,7 @@ export default function ChecklistPage() {
 
       {/* Submit for Review */}
       {submitMsg && (
-        <div className={`rounded-lg px-4 py-3 text-xs font-medium ${submitMsg.includes("success") ? "bg-green-50 text-green-700 border border-green-100" : "bg-red-50 text-red-700 border border-red-100"}`}>
+        <div className={`rounded-lg px-4 py-3 text-xs font-medium ${submitMsg.includes("success") ? "bg-green-50 text-green-700 border border-green-100" : "bg-state-problem-surface text-state-problem border border-red-100"}`}>
           {submitMsg}
         </div>
       )}

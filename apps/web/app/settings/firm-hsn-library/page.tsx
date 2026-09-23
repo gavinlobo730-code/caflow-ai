@@ -334,7 +334,7 @@ export default function FirmHsnLibraryPage() {
               <button
                 onClick={bulkDelete}
                 disabled={actionInFlight}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-state-problem-border bg-white px-2.5 py-1.5 font-medium text-state-problem hover:bg-state-problem-surface disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Trash2 size={13} /> {bulkBusy ? "Deleting…" : "Delete"}
               </button>
@@ -414,11 +414,11 @@ export default function FirmHsnLibraryPage() {
                           <div className="flex items-center justify-end gap-1">
                             <button onClick={() => setEditing(r)} className="p-1.5 text-ps-label hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
                             {active ? (
-                              <button disabled={actionInFlight} onClick={() => retire(r)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Retire"><Archive size={14} /></button>
+                              <button disabled={actionInFlight} onClick={() => retire(r)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-state-attention-surface rounded" aria-label="Retire"><Archive size={14} /></button>
                             ) : (
                               <button disabled={actionInFlight} onClick={() => restore(r)} className="p-1.5 text-ps-label hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
                             )}
-                            <button disabled={actionInFlight} onClick={() => purgeSingle(r)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete permanently"><Trash2 size={14} /></button>
+                            <button disabled={actionInFlight} onClick={() => purgeSingle(r)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-state-problem-surface rounded" aria-label="Delete permanently"><Trash2 size={14} /></button>
                           </div>
                         </td>
                       </tr>

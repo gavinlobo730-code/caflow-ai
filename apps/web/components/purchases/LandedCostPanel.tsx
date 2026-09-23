@@ -266,7 +266,7 @@ export function LandedCostPanel({
                               </span>
                             )}
                             {c.why_not_in_cost && (
-                              <p className="text-2xs text-amber-700 mt-0.5">{c.why_not_in_cost}</p>
+                              <p className="text-2xs text-state-attention mt-0.5">{c.why_not_in_cost}</p>
                             )}
                           </td>
                           <td className="py-1.5 text-right tabular-nums">{fmt(c.amount_paise)}</td>
@@ -277,7 +277,7 @@ export function LandedCostPanel({
                             ) : (
                               <button onClick={() => remove(c)} disabled={saving}
                                 aria-label={`Remove ${c.description}`}
-                                className="p-1 rounded hover:bg-red-50 text-red-600 disabled:opacity-40">
+                                className="p-1 rounded hover:bg-state-problem-surface text-red-600 disabled:opacity-40">
                                 <Trash2 size={12} />
                               </button>
                             )}
@@ -352,7 +352,7 @@ export function LandedCostPanel({
                     </tbody>
                   </table>
                   {data.unapportioned_paise > 0 && (
-                    <p className="text-2xs text-amber-700 mt-1.5">
+                    <p className="text-2xs text-state-attention mt-1.5">
                       {fmt(data.unapportioned_paise)} could not be apportioned.
                     </p>
                   )}

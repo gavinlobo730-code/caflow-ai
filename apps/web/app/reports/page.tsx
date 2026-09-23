@@ -269,7 +269,7 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
                   </td>
                   <td className="px-4 py-2.5 text-right font-medium">{formatPaise(rcmCash)}</td>
                 </tr>
-                <tr className="bg-red-50 font-semibold text-red-900">
+                <tr className="bg-state-problem-surface font-semibold text-red-900">
                   <td className="px-4 py-2.5" colSpan={3}>Total payable in cash</td>
                   <td className="px-4 py-2.5 text-right">
                     {formatPaise(Math.max(0, totalNetLiability) + rcmCash)}
@@ -369,7 +369,7 @@ function PLStatementReport({ data }: { data: PLData }) {
             )}
           </tbody>
           <tfoot>
-            <tr className="bg-red-50 font-semibold text-red-900">
+            <tr className="bg-state-problem-surface font-semibold text-red-900">
               <td className="px-4 py-2.5">Total Expenses</td>
               <td className="px-4 py-2.5 text-right">{formatPaise(data.totalExpenses)}</td>
             </tr>
@@ -382,7 +382,7 @@ function PLStatementReport({ data }: { data: PLData }) {
         className={`flex justify-between items-center px-5 py-4 rounded-xl font-bold text-base border-2 ${
           isProfit
             ? "bg-green-50 border-green-200 text-green-900"
-            : "bg-red-50 border-red-200 text-red-900"
+            : "bg-state-problem-surface border-state-problem-border text-red-900"
         }`}
       >
         <span>{isProfit ? "Net Profit" : "Net Loss"}</span>
@@ -394,9 +394,9 @@ function PLStatementReport({ data }: { data: PLData }) {
 
 function ComplianceStatusReport({ data }: { data: ComplianceRow[] }) {
   function trafficLight(filed: number, pending: number, overdue: boolean) {
-    if (overdue) return "bg-red-100 text-red-700";
+    if (overdue) return "bg-red-100 text-state-problem";
     if (pending === 0) return "bg-green-100 text-green-700";
-    return "bg-amber-100 text-amber-700";
+    return "bg-amber-100 text-state-attention";
   }
 
   function label(filed: number, pending: number) {

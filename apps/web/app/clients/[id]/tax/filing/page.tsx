@@ -36,7 +36,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 const STATUS_COLOR: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
-  review: "bg-amber-100 text-amber-700",
+  review: "bg-amber-100 text-state-attention",
   partner_review: "bg-blue-100 text-blue-700",
   ready_for_filing: "bg-purple-100 text-purple-700",
   filed: "bg-green-100 text-green-700",
@@ -383,7 +383,7 @@ export default function ITRFilingPage() {
       </div>
 
       {/* CA Review Banner */}
-      <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+      <div className="flex items-center gap-2 bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">
         <AlertTriangle size={13} className="text-red-500 flex-shrink-0" />
         <p className="text-xs font-medium text-red-800">
           CA REVIEW REQUIRED — Partner review mandatory before Ready for Filing. DO NOT AUTO-SUBMIT.
@@ -442,9 +442,9 @@ export default function ITRFilingPage() {
           {selectedKind?.window && (
             <div className={`rounded-lg border px-3 py-2 space-y-1 ${
               selectedKind.window.is_open === false
-                ? "bg-red-50 border-red-200"
+                ? "bg-state-problem-surface border-state-problem-border"
                 : selectedKind.window.is_open === null
-                  ? "bg-amber-50 border-amber-200"
+                  ? "bg-state-attention-surface border-state-attention-border"
                   : "bg-ps-bg border-ps-border"
             }`}>
               <p className="text-2xs font-medium text-ps-body">
@@ -503,7 +503,7 @@ export default function ITRFilingPage() {
       {loading ? (
         <TransactionListSkeleton rows={3} />
       ) : loadError ? (
-        <div className="bg-white rounded-xl border border-red-200 text-center py-16 space-y-2">
+        <div className="bg-white rounded-xl border border-state-problem-border text-center py-16 space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
           <button onClick={() => load()} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
@@ -605,7 +605,7 @@ export default function ITRFilingPage() {
             {selectedFiling.status === "ready_for_filing" && demoFlows.includes("itr") && (
               <button
                 onClick={() => setDemo({ id: selectedFiling.id })}
-                className="text-xs px-4 py-2 border border-amber-300 rounded-lg hover:bg-amber-50 text-amber-800"
+                className="text-xs px-4 py-2 border border-amber-300 rounded-lg hover:bg-state-attention-surface text-amber-800"
               >
                 File (demo)
               </button>
@@ -643,7 +643,7 @@ export default function ITRFilingPage() {
           {showAck && (
             <div className="border border-ps-border rounded-xl p-4 space-y-3">
               <p className="text-xs font-medium text-ps-body">Record Filing Acknowledgement</p>
-              <p className="text-3xs text-amber-700 bg-amber-50 p-2 rounded">
+              <p className="text-3xs text-state-attention bg-state-attention-surface p-2 rounded">
                 CA REVIEW REQUIRED — Only record after manually filing on Income Tax Portal
               </p>
               <div className="grid grid-cols-2 gap-3">

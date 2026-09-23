@@ -442,7 +442,7 @@ export default function DeductionsPage() {
       </div>
 
       {!ratesVerified && fy && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 text-sm text-amber-800">
           FY {fy} statutory rates are carried forward from the last verified year, pending confirmation
           against the official Finance Act / CBDT circulars for {fy}. Do not rely on these figures for
           filing until verified.
@@ -614,7 +614,7 @@ export default function DeductionsPage() {
               </select>
               <button onClick={() => upd({ donations: state.donations.filter((_, j) => j !== i) })}
                 aria-label={`Remove donation ${i + 1}`}
-                className="text-red-600 hover:text-red-700 text-xs">✕</button>
+                className="text-red-600 hover:text-state-problem text-xs">✕</button>
             </div>
           ))}
           <button onClick={() => upd({ donations: [...state.donations, { description: "", amountPaise: 0, deductionPct: 100, subjectToLimit: true, paidInCash: null }] })}

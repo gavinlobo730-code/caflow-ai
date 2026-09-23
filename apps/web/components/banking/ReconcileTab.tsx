@@ -401,7 +401,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
         </button>
       </div>
 
-      {error && <p className="text-xs text-money-out bg-state-problem-surface border border-red-100 rounded-lg p-3">{error}</p>}
+      {error && <p role="alert" className="text-xs text-money-out bg-state-problem-surface border border-red-100 rounded-lg p-3">{error}</p>}
 
       {/* New session form */}
       {showNew && (
@@ -638,7 +638,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                       className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" />
                     <span className="text-3xs text-ps-hint">At least 10 characters — this goes into the audit trail.</span>
                   </label>
-                  {error && <p className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
+                  {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
                 </div>
                 <div className="flex gap-2 justify-end px-5 py-4 border-t border-ps-muted">
                   <button onClick={() => { setReopening(false); setReopenReason(""); setError(null); }}

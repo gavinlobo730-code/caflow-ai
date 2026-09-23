@@ -852,7 +852,7 @@ export default function AttendancePage() {
                           const isEntered = entered.has(emp.id);
                           const isTouched = touched.has(emp.id);
                           return (
-                            <tr key={emp.id} className={`border-b hover:bg-ps-bg ${remainder < 0 ? "bg-red-50" : ""}`}>
+                            <tr key={emp.id} className={`border-b hover:bg-ps-bg ${remainder < 0 ? "bg-state-problem-surface" : ""}`}>
                               <td className="py-3 px-4">
                                 <div className="font-medium text-ps-ink">{emp.name}</div>
                                 {emp.designation && <div className="text-xs text-ps-label">{emp.designation}</div>}
@@ -888,7 +888,7 @@ export default function AttendancePage() {
                                   // Shown rather than floored. The server refuses
                                   // this row, and quietly displaying 0 would leave
                                   // the CA wondering why the save was rejected.
-                                  <span className="text-3xs font-medium text-red-700">
+                                  <span className="text-3xs font-medium text-state-problem">
                                     {row.days_present + row.casual_leaves + row.sick_leaves + row.earned_leaves} days
                                     entered vs {row.working_days} working
                                   </span>
@@ -944,7 +944,7 @@ export default function AttendancePage() {
                     invented — and the invented figure was what "Remaining"
                     was measured against. It shows an em dash now, and says
                     what the product does not do rather than papering over it. */}
-                <p className="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                <p className="text-xs text-state-attention mt-2 bg-state-attention-surface border border-state-attention-border rounded px-2 py-1.5">
                   An allocation shown as “—” has not been recorded for {leaveYear}; it is not
                   zero and it is not a default. Nothing here accrues leave monthly or carries a
                   balance into the next year — the figure is what the employment contract or
@@ -1177,7 +1177,7 @@ export default function AttendancePage() {
                 )}
 
                 {earnLocked && (
-                  <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2
+                  <div className="mb-4 rounded-lg border border-amber-300 bg-state-attention-surface px-3 py-2
                                   text-sm text-amber-900 flex items-start gap-2">
                     <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                     <span>

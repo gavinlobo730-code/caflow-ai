@@ -240,7 +240,7 @@ export default function TimeTrackingPage() {
       </div>
 
       {error && (
-        <div role="alert" className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+        <div role="alert" className="flex items-center gap-2 text-sm text-red-600 bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3">
           <AlertCircle size={14} /> {error}
           <button onClick={() => setError(null)} className="ml-auto"><X size={14} /></button>
         </div>
@@ -399,7 +399,7 @@ export default function TimeTrackingPage() {
                     </div>
                     <button
                       onClick={() => handleDelete(e.id)}
-                      className="p-1.5 rounded text-ps-disabled hover:text-red-500 hover:bg-red-50 transition-colors"
+                      className="p-1.5 rounded text-ps-disabled hover:text-red-500 hover:bg-state-problem-surface transition-colors"
                     >
                       <Trash2 size={13} />
                     </button>

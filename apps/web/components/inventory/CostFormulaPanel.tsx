@@ -94,7 +94,7 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
             <Scale size={13} className="text-ps-label" />
             <p className="text-xs font-semibold text-ps-ink">Cost formula</p>
             {!policy.is_recorded && (
-              <span className="px-1.5 py-0.5 rounded text-3xs bg-amber-50 text-amber-700 border border-amber-200">
+              <span className="px-1.5 py-0.5 rounded text-3xs bg-state-attention-surface text-state-attention border border-state-attention-border">
                 Not recorded
               </span>
             )}

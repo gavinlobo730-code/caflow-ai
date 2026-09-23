@@ -235,7 +235,7 @@ export default function StatutoryValuesPage() {
         {msg && (
           <div className={`mb-4 px-3 py-2 rounded-lg text-sm ${
             msg.type === "ok" ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                              : "bg-red-50 text-red-700 border border-red-200"}`}>
+                              : "bg-state-problem-surface text-state-problem border border-state-problem-border"}`}>
             {msg.text}
           </div>
         )}
@@ -243,7 +243,7 @@ export default function StatutoryValuesPage() {
         {/* A set recorded against a state the CODE models is never applied, and
             saying so here is the only option that cannot mislead. */}
         {conflicts.length > 0 && (
-          <div className="mb-4 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+          <div className="mb-4 px-3 py-2 rounded-lg bg-state-attention-surface border border-state-attention-border">
             <p className="flex items-center gap-1.5 text-sm font-medium text-amber-900">
               <AlertTriangle size={14} />Recorded, but not used
             </p>

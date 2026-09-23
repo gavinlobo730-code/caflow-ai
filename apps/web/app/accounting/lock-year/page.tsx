@@ -256,7 +256,7 @@ function LockYearContent() {
       </div>
 
       {/* Warning */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex gap-3">
+      <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 flex gap-3">
         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
         <div className="text-sm text-amber-800">
           <p className="font-medium">Locking a year prevents all journal entries, invoice edits, and adjustments for that period.</p>
@@ -296,7 +296,7 @@ function LockYearContent() {
                           here and could not be lifted — while migration 361 had
                           it refusing every posting in that year. */}
                       {fy.beyondWindow && (
-                        <p className="text-xs mt-0.5 text-amber-700">
+                        <p className="text-xs mt-0.5 text-state-attention">
                           Outside the usual range — shown because it is locked.
                         </p>
                       )}

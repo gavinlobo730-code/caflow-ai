@@ -402,7 +402,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
               </div>
             )}
           </div>
-          {formError && <p className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{formError}</p>}
+          {formError && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{formError}</p>}
           <div className="flex gap-2 justify-end pt-1">
             <button onClick={() => setEditing(null)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <button onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">

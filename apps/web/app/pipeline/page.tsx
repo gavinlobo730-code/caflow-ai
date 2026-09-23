@@ -424,7 +424,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
           {err && (
             <div
               role="alert"
-              className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-600"
+              className="flex items-start gap-2 bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 text-sm text-red-600"
             >
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
               <span>{err}</span>
@@ -830,7 +830,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
               ✓ Client created successfully. Onboarding workflow started.
             </div>
             {warnings.length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-800 space-y-1">
+              <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3 text-xs text-amber-800 space-y-1">
                 <p className="font-semibold">Completed with warnings:</p>
                 <ul className="list-disc list-inside space-y-0.5">
                   {warnings.map((w, i) => (
@@ -1062,9 +1062,9 @@ export default function PipelinePage() {
 
       {/* Overdue follow-up banner */}
       {overdueLeads.length > 0 && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+        <div className="flex items-start gap-3 bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3">
           <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
-          <div className="text-sm text-red-700">
+          <div className="text-sm text-state-problem">
             <span className="font-semibold">
               {overdueLeads.length} follow-up
               {overdueLeads.length > 1 ? "s" : ""} overdue or due today:
@@ -1076,9 +1076,9 @@ export default function PipelinePage() {
 
       {/* Load error banner */}
       {loadError && (
-        <div role="alert" className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+        <div role="alert" className="flex items-start gap-3 bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3">
           <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
-          <div className="flex-1 text-sm text-red-700">
+          <div className="flex-1 text-sm text-state-problem">
             <span className="font-semibold">Failed to load leads: </span>
             {loadError}
           </div>

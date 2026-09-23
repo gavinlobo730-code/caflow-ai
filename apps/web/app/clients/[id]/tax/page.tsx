@@ -49,7 +49,7 @@ export default function TaxPage() {
         </p>
       </div>
 
-      <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+      <div className="flex items-center gap-2.5 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
         <AlertTriangle size={14} className="text-amber-600 flex-shrink-0" />
         <p className="text-xs font-medium text-amber-800">
           CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal.

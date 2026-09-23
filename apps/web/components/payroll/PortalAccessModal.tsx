@@ -109,7 +109,7 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
                    placeholder="name@example.com" type="email"
                    className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm mb-1" />
             {status?.invite_pending && (
-              <p className="text-xs text-amber-700 mb-2">
+              <p className="text-xs text-state-attention mb-2">
                 An invitation is already pending. Sending again replaces it —
                 the earlier link stops working.
               </p>

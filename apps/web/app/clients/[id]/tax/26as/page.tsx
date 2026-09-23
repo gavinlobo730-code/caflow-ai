@@ -39,8 +39,8 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 const TALLY_TONES = {
   green: "bg-green-50 text-green-700 text-green-600",
-  red: "bg-red-50 text-red-700 text-red-600",
-  amber: "bg-amber-50 text-amber-700 text-amber-600",
+  red: "bg-state-problem-surface text-state-problem text-red-600",
+  amber: "bg-state-attention-surface text-state-attention text-amber-600",
   neutral: "bg-ps-bg text-ps-body text-ps-label",
 } as const;
 
@@ -265,7 +265,7 @@ export default function Form26ASPage() {
         <YearPicker value={fy} onChange={setFy} size="sm" className="w-auto" />
       </div>
 
-      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+      <div className="flex items-center gap-2 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-2.5">
         <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
         <p className="text-xs text-amber-800 font-medium">
           CA REVIEW REQUIRED — Review reconciliation results before filing ITR.
@@ -273,9 +273,9 @@ export default function Form26ASPage() {
       </div>
 
       {loadError && (
-        <div role="alert" className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
-          <p className="text-xs text-red-700 font-medium">{loadError}</p>
-          <button onClick={() => load()} className="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-100 text-red-700 shrink-0">Retry</button>
+        <div role="alert" className="flex items-center justify-between gap-2 bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">
+          <p className="text-xs text-state-problem font-medium">{loadError}</p>
+          <button onClick={() => load()} className="text-xs px-3 py-1 border border-state-problem-border rounded hover:bg-red-100 text-state-problem shrink-0">Retry</button>
         </div>
       )}
 
@@ -285,7 +285,7 @@ export default function Form26ASPage() {
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-ps-body">Reconciliation Summary</p>
             <span className={`text-3xs px-2 py-0.5 rounded-full font-medium ${
-              recon.status === "completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+              recon.status === "completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-state-attention"
             }`}>{recon.status}</span>
           </div>
 
@@ -294,7 +294,7 @@ export default function Form26ASPage() {
               direction of TDS — so its figures mean nothing. books_source is
               NULL on exactly those rows. */}
           {!recon.books_source && (
-            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="flex items-start gap-2 bg-state-attention-surface border border-state-attention-border rounded-lg p-3">
               <AlertTriangle size={14} className="text-amber-600 mt-px shrink-0" />
               <p className="text-xs text-amber-800">
                 This result predates the current reconciliation and compared the wrong
@@ -315,9 +315,9 @@ export default function Form26ASPage() {
               sitting only in the books is not claimable until they correct
               their TDS statement. */}
           {recon.unsupported_credit_paise > 0 && (
-            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3">
+            <div className="flex items-start gap-2 bg-state-problem-surface border border-state-problem-border rounded-lg p-3">
               <XCircle size={14} className="text-red-500 mt-px shrink-0" />
-              <p className="text-xs text-red-700">
+              <p className="text-xs text-state-problem">
                 <span className="font-semibold">{paise(recon.unsupported_credit_paise)}</span>{" "}
                 of TDS credit in the books is not reported in 26AS. It cannot be claimed
                 in the return (Rule 37BA(1)) until the deductor files a correction.
@@ -326,7 +326,7 @@ export default function Form26ASPage() {
           )}
 
           {recon.provisional_credit_paise > 0 && (
-            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="flex items-start gap-2 bg-state-attention-surface border border-state-attention-border rounded-lg p-3">
               <AlertTriangle size={14} className="text-amber-600 mt-px shrink-0" />
               <p className="text-xs text-amber-800">
                 <span className="font-semibold">{paise(recon.provisional_credit_paise)}</span>{" "}
@@ -387,7 +387,7 @@ export default function Form26ASPage() {
               the reconciliation with the summary still claiming to cover the
               books. */}
           {recon.unreconciled_gl_paise !== 0 && (
-            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="flex items-start gap-2 bg-state-attention-surface border border-state-attention-border rounded-lg p-3">
               <AlertTriangle size={14} className="text-amber-600 mt-px shrink-0" />
               <p className="text-xs text-amber-800">
                 The TDS Receivable ledger moved {paise(recon.gl_control_paise)} this year,
@@ -399,9 +399,9 @@ export default function Form26ASPage() {
           )}
 
           {recon.ai_insight_triggered && (
-            <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-lg p-3">
+            <div className="flex items-center gap-2 bg-state-problem-surface border border-red-100 rounded-lg p-3">
               <XCircle size={14} className="text-red-500" />
-              <p className="text-xs text-red-700">
+              <p className="text-xs text-state-problem">
                 Flagged for review — the variance exceeds the 1% threshold, or credit in
                 the books is unreported in 26AS. Review before filing.
               </p>
@@ -448,7 +448,7 @@ export default function Form26ASPage() {
           />
           {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
           {skipped && (
-            <div className="text-xs bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 space-y-2">
+            <div className="text-xs bg-state-attention-surface border border-amber-300 rounded-lg px-3 py-2.5 space-y-2">
               <p className="font-semibold text-amber-900">
                 {skipped.read} row{skipped.read === 1 ? "" : "s"} read
                 {" · "}{skipped.lines.length} line{skipped.lines.length === 1 ? "" : "s"} could not be

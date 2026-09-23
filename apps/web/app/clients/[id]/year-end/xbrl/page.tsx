@@ -36,8 +36,8 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 const STATUS_COLOR: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
-  validation_pending: "bg-amber-100 text-amber-700",
-  validation_failed: "bg-red-100 text-red-700",
+  validation_pending: "bg-amber-100 text-state-attention",
+  validation_failed: "bg-red-100 text-state-problem",
   validated: "bg-blue-100 text-blue-700",
   reviewed: "bg-green-100 text-green-700",
   filed: "bg-purple-100 text-purple-700",
@@ -182,7 +182,7 @@ export default function XBRLPage() {
         </button>
       </div>
 
-      <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+      <div className="flex items-center gap-2 bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">
         <AlertTriangle size={13} className="text-red-500 flex-shrink-0" />
         <p className="text-xs font-medium text-red-800">
           CA REVIEW REQUIRED — DO NOT AUTO-FILE XBRL to MCA portal. Partner review mandatory.
@@ -209,7 +209,7 @@ export default function XBRLPage() {
       {loading ? (
         <ListSkeleton rows={2} />
       ) : loadError ? (
-        <div className="bg-white rounded-xl border border-red-200 px-5 py-12 text-center space-y-2">
+        <div className="bg-white rounded-xl border border-state-problem-border px-5 py-12 text-center space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
@@ -253,7 +253,7 @@ export default function XBRLPage() {
               {selected.validation_errors.map((e, i) => (
                 <div key={i} className="flex items-start gap-1.5">
                   <XCircle size={10} className="text-red-500 mt-0.5 flex-shrink-0" />
-                  <p className="text-3xs text-red-700">{e}</p>
+                  <p className="text-3xs text-state-problem">{e}</p>
                 </div>
               ))}
             </div>
@@ -265,7 +265,7 @@ export default function XBRLPage() {
               {selected.missing_tags.slice(0, 5).map((t, i) => (
                 <div key={i} className="flex items-start gap-1.5">
                   <AlertTriangle size={10} className="text-amber-500 mt-0.5 flex-shrink-0" />
-                  <p className="text-3xs text-amber-700 font-mono">{t}</p>
+                  <p className="text-3xs text-state-attention font-mono">{t}</p>
                 </div>
               ))}
               {selected.missing_tags.length > 5 && (

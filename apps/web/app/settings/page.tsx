@@ -175,7 +175,7 @@ function Field({
         placeholder={placeholder}
         maxLength={maxLength}
         className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${
-          errors[field] ? "border-red-400 bg-red-50" : "border-ps-border"
+          errors[field] ? "border-red-400 bg-state-problem-surface" : "border-ps-border"
         }`}
       />
       {hint && !errors[field] && (
@@ -451,11 +451,11 @@ export default function SettingsPage() {
         </div>
 
         {loadError && !loading && (
-          <div className="mx-5 mt-4 flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-            <p className="text-xs text-red-700">
+          <div className="mx-5 mt-4 flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-state-problem">
               Couldn&apos;t load your saved firm profile — the form below may not reflect what&apos;s saved. {loadError}
             </p>
-            <button onClick={loadFirmData} className="text-xs px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-100 text-red-700 shrink-0">
+            <button onClick={loadFirmData} className="text-xs px-3 py-1.5 border border-state-problem-border rounded-lg hover:bg-red-100 text-state-problem shrink-0">
               Retry
             </button>
           </div>
@@ -744,7 +744,7 @@ export default function SettingsPage() {
               </div>
               <Link
                 href="/settings/multi-currency"
-                className="px-4 py-1.5 border border-amber-200 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-50 transition-colors whitespace-nowrap"
+                className="px-4 py-1.5 border border-state-attention-border text-state-attention text-sm font-medium rounded-lg hover:bg-state-attention-surface transition-colors whitespace-nowrap"
               >
                 Manage →
               </Link>
@@ -773,7 +773,7 @@ export default function SettingsPage() {
       <div className="bg-white rounded-xl border border-red-100 overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-red-50">
           <AlertTriangle size={15} className="text-red-500" />
-          <h2 className="text-sm font-semibold text-red-700">Danger Zone</h2>
+          <h2 className="text-sm font-semibold text-state-problem">Danger Zone</h2>
         </div>
         <div className="px-5 py-4 flex items-center justify-between">
           <div>

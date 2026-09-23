@@ -154,7 +154,7 @@ function LedgerDialog({ account, onClose, onSaved }:
                  value={form.account_subtype}
                  onChange={e => setForm(f => ({ ...f, account_subtype: e.target.value }))} />
           {!form.account_subtype.trim() && (
-            <p className="mt-1 text-3xs text-amber-700">
+            <p className="mt-1 text-3xs text-state-attention">
               Without this, the ledger presents under the generic caption for its
               type — an Asset as Other Current Assets — on the Balance Sheet and
               in every year-end schedule. Schedule III Mapping can override it
@@ -215,7 +215,7 @@ export default function AccountGroupsPage() {
       <TableSkeleton cols={4} rows={4} />
     </div>
   );
-  if (error) return <div className="p-6"><div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div></div>;
+  if (error) return <div className="p-6"><div className="bg-state-problem-surface text-state-problem rounded-lg px-5 py-4 text-sm">{error}</div></div>;
 
   // Group by parent_group → sub_group, DERIVING both where the CA has not said
   // (ACC-24).

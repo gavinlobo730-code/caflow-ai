@@ -25,7 +25,7 @@ interface FirmUser { name: string; email: string; role: string; status: string }
 
 const STATUS_BADGE: Record<string, string> = {
   active: "bg-green-100 text-green-700",
-  suspended: "bg-amber-100 text-amber-700",
+  suspended: "bg-amber-100 text-state-attention",
   deleted: "bg-red-100 text-red-600",
 };
 
@@ -258,7 +258,7 @@ export default function PlatformAdminPage() {
       return (
         <div className="flex h-screen items-center justify-center bg-ps-bg p-6">
           <div className="bg-white rounded-2xl border border-ps-muted shadow-sm max-w-md w-full p-6 text-center space-y-4">
-            <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center mx-auto"><AlertCircle size={18} className="text-amber-600" /></div>
+            <div className="w-10 h-10 rounded-full bg-state-attention-surface flex items-center justify-center mx-auto"><AlertCircle size={18} className="text-amber-600" /></div>
             <div>
               <h2 className="text-base font-semibold text-ps-ink">Couldn’t verify access</h2>
               <p className="text-sm text-ps-label mt-1">We couldn’t reach the platform service to confirm your access. This is not a denial — it’s a connection problem.</p>
@@ -297,7 +297,7 @@ export default function PlatformAdminPage() {
       </div>
 
       {toast && (
-        <div className={`rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2 ${toast.ok ? "bg-green-50 text-green-700 border border-green-100" : "bg-red-50 text-red-700 border border-red-100"}`}>
+        <div className={`rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2 ${toast.ok ? "bg-green-50 text-green-700 border border-green-100" : "bg-state-problem-surface text-state-problem border border-red-100"}`}>
           <AlertCircle size={14} /> {toast.msg}
         </div>
       )}
@@ -332,10 +332,10 @@ export default function PlatformAdminPage() {
           rowActions={(f) => (
             <div className="flex items-center justify-end gap-3 flex-wrap text-xs">
               <button disabled={actionInFlight} onClick={() => view(f)} className="text-blue-600 hover:underline">View</button>
-              {f.status === "active" && <button onClick={() => suspend(f)} disabled={busy} className="text-amber-700 hover:underline flex items-center gap-1"><Ban size={11} /> Suspend</button>}
+              {f.status === "active" && <button onClick={() => suspend(f)} disabled={busy} className="text-state-attention hover:underline flex items-center gap-1"><Ban size={11} /> Suspend</button>}
               {f.status === "suspended" && <button onClick={() => unsuspend(f)} disabled={busy} className="text-green-700 hover:underline flex items-center gap-1"><RotateCcw size={11} /> Unsuspend</button>}
               {f.status !== "deleted" && <button onClick={() => softDelete(f)} disabled={busy} className="text-red-600 hover:underline flex items-center gap-1"><Trash2 size={11} /> Delete</button>}
-              <button onClick={() => openPurge(f)} disabled={busy} className="text-red-700 hover:underline flex items-center gap-1 font-medium"><AlertTriangle size={11} /> Delete permanently</button>
+              <button onClick={() => openPurge(f)} disabled={busy} className="text-state-problem hover:underline flex items-center gap-1 font-medium"><AlertTriangle size={11} /> Delete permanently</button>
             </div>
           )}
         />
@@ -378,12 +378,12 @@ export default function PlatformAdminPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !purgeBusy && setPurgeTarget(null)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-ps-muted">
-              <h2 className="text-base font-semibold text-red-700 flex items-center gap-2"><AlertTriangle size={16} /> Permanently delete firm</h2>
+              <h2 className="text-base font-semibold text-state-problem flex items-center gap-2"><AlertTriangle size={16} /> Permanently delete firm</h2>
               <button onClick={() => !purgeBusy && setPurgeTarget(null)} className="text-ps-hint hover:text-ps-label"><X size={18} /></button>
             </div>
             <div className="px-6 py-4 space-y-4">
               <p className="text-sm text-ps-label">
-                This <span className="font-semibold text-red-700">irreversibly</span> deletes <span className="font-semibold">{purgeTarget.name}</span> and all of its data — {purgeTarget.users} user(s), {purgeTarget.clients} client(s), and every related record. This cannot be undone.
+                This <span className="font-semibold text-state-problem">irreversibly</span> deletes <span className="font-semibold">{purgeTarget.name}</span> and all of its data — {purgeTarget.users} user(s), {purgeTarget.clients} client(s), and every related record. This cannot be undone.
               </p>
               <p className="text-xs text-ps-hint">Login accounts in authentication are not removed — only the firm and its data.</p>
               <div>

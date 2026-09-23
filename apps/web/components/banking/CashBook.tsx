@@ -119,7 +119,7 @@ export function CashRegister({ clientId }: { clientId: string }) {
       {loading && <p className="text-2xs text-ps-hint">Loading…</p>}
 
       {error && (
-        <div className="rounded-lg border border-state-problem-border bg-state-problem-surface p-3">
+        <div role="alert" className="rounded-lg border border-state-problem-border bg-state-problem-surface p-3">
           <p className="text-2xs text-red-800">{error}</p>
           <button onClick={() => void load()}
                   className="mt-2 text-2xs text-money-out underline disabled:opacity-40"

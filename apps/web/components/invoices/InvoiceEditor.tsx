@@ -870,7 +870,7 @@ export function InvoiceEditor({
         Preview — GST, round-off and the exact total are confirmed by the server on save.
       </p>
       {!isLocked && attempted && !validation.ok && (
-        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-red-50 rounded px-2 py-1.5">
+        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-state-problem-surface rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.customer ?? validation.errors.invoiceNo ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate ?? validation.errors.supplyState ?? validation.errors.supplyType}</span>
         </div>
@@ -916,13 +916,13 @@ export function InvoiceEditor({
                   `sequence_warning` is the CONSECUTIVE limb: said once, never
                   blocking, because a gap has legitimate causes. */}
               {!isLocked && numberSeries?.gap && (
-                <p className="mt-1 text-3xs text-amber-700">{numberSeries.gap}</p>
+                <p className="mt-1 text-3xs text-state-attention">{numberSeries.gap}</p>
               )}
               {!isLocked && !validation.errors.invoiceNo && numberSeries?.format_problem && (
                 <p className="mt-1 text-3xs text-red-600">{numberSeries.format_problem}</p>
               )}
               {!isLocked && !numberSeries?.format_problem && numberSeries?.sequence_warning && (
-                <p className="mt-1 text-3xs text-amber-700">{numberSeries.sequence_warning}</p>
+                <p className="mt-1 text-3xs text-state-attention">{numberSeries.sequence_warning}</p>
               )}
               {!isLocked && !isEdit && !numberSeries?.gap && !numberSeries?.format_problem
                 && !numberSeries?.sequence_warning && numberSeries?.suggested_number && (
@@ -972,7 +972,7 @@ export function InvoiceEditor({
                   here — a draft may be incomplete, an issued invoice may not,
                   and finding out at the GSTR-1 build is six weeks too late. */}
               {!isLocked && !(supplyStateCode ?? "").trim() && (
-                <p className="mt-1 text-3xs text-amber-700">
+                <p className="mt-1 text-3xs text-state-attention">
                   Needed to issue — CGST Rule 46(n). Defaults from the customer&apos;s
                   state or GSTIN, and failing that the client&apos;s own state
                   (IGST §12(2)(b)(ii)).
@@ -1235,7 +1235,7 @@ export function InvoiceEditor({
                   })();
                   const invalid = !isLocked && attempted && !isValidLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
-                    <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
+                    <tr key={line._k} className={invalid ? "bg-state-problem-surface/40" : undefined}>
                       <td className="py-1.5 pr-2">
                         <ServiceCataloguePicker
                           ref={(el) => { productRefs.current[idx] = el; }}

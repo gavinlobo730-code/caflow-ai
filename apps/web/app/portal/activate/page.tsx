@@ -172,7 +172,7 @@ export default function PortalActivatePage() {
 
         {stage === "invalid" && (
           <div className="text-center">
-            <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+            <div className="w-12 h-12 rounded-full bg-state-problem-surface flex items-center justify-center mx-auto mb-4">
               <AlertCircle size={22} className="text-red-500" />
             </div>
             <h2 className="text-[22px] font-bold text-ps-ink tracking-tight">Invite invalid or expired</h2>
@@ -223,7 +223,7 @@ export default function PortalActivatePage() {
               </div>
 
               {error && (
-                <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-red-50 border border-red-100">
+                <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-red-100">
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-red-500 text-3xs font-bold leading-none">!</span>
                   </div>
@@ -264,7 +264,7 @@ export default function PortalActivatePage() {
                 />
               </div>
               {reauthError && (
-                <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-red-50 border border-red-100">
+                <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-red-100">
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-red-500 text-3xs font-bold leading-none">!</span>
                   </div>

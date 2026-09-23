@@ -482,7 +482,7 @@ export default function AdvanceTaxPage() {
                   const statusEl = status === "paid"
                     ? <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full"><CheckCircle size={11} /> Paid</span>
                     : status === "overdue"
-                    ? <span className="inline-flex items-center gap-1 text-xs text-red-700 bg-red-50 px-2 py-0.5 rounded-full"><AlertTriangle size={11} /> Overdue</span>
+                    ? <span className="inline-flex items-center gap-1 text-xs text-state-problem bg-state-problem-surface px-2 py-0.5 rounded-full"><AlertTriangle size={11} /> Overdue</span>
                     : <span className="inline-flex items-center gap-1 text-xs text-ps-label bg-ps-muted px-2 py-0.5 rounded-full"><Clock size={11} /> Upcoming</span>;
 
                   return (

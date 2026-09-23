@@ -208,7 +208,7 @@ function Field<T extends Record<string, string>>({
         placeholder={placeholder}
         maxLength={maxLength}
         className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${
-          errors[field] ? "border-red-400 bg-red-50" : "border-ps-border"
+          errors[field] ? "border-red-400 bg-state-problem-surface" : "border-ps-border"
         }`}
       />
       {hint && !errors[field] && <p className="text-xs text-ps-hint mt-1">{hint}</p>}
@@ -612,7 +612,7 @@ export default function OnboardingPage() {
         {error && <Callout tone="problem">{error}</Callout>}
 
         {provisionNote && (
-          <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+          <div className="mb-4 px-4 py-3 bg-state-attention-surface border border-state-attention-border rounded-lg text-sm text-amber-800">
             {provisionNote}
           </div>
         )}
@@ -649,7 +649,7 @@ export default function OnboardingPage() {
                     onChange={(e) => setPw(e.target.value)}
                     placeholder="At least 10 characters"
                     autoComplete="new-password"
-                    className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${pwError ? "border-red-400 bg-red-50" : "border-ps-border"}`}
+                    className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${pwError ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
                   />
                   <button type="button" onClick={() => setShowPw((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
                     {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -664,7 +664,7 @@ export default function OnboardingPage() {
                   onChange={(e) => setPw2(e.target.value)}
                   placeholder="Re-enter your password"
                   autoComplete="new-password"
-                  className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${pwError ? "border-red-400 bg-red-50" : "border-ps-border"}`}
+                  className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${pwError ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
                 />
               </div>
               {pwError && <p className="text-xs text-red-500">{pwError}</p>}

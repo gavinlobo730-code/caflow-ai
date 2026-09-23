@@ -252,13 +252,13 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       {msg && (
         <div className={`rounded-lg px-3 py-2 text-xs ${msg.type === "ok"
           ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
-          : "bg-red-50 border border-red-200 text-red-700"}`}>
+          : "bg-state-problem-surface border border-state-problem-border text-state-problem"}`}>
           {msg.text}
         </div>
       )}
 
       {loadFailed && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 flex gap-2">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 text-xs text-amber-900 flex gap-2">
           <AlertTriangle size={13} className="shrink-0 mt-0.5" />
           <span>The register could not be read, so this list is not the whole of it. Reload before recording anything.</span>
         </div>
@@ -310,7 +310,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                 // ring is spelled out; the rule is the same one
                 // `highlightRowId` states there.
                 <tr key={r.id} className={"align-top" +
-                     (openDoc && r.id === openDoc ? " bg-amber-50 ring-2 ring-inset ring-amber-300" : "")}>
+                     (openDoc && r.id === openDoc ? " bg-state-attention-surface ring-2 ring-inset ring-amber-300" : "")}>
                   <td className="py-2 font-mono text-ps-ink">
                     {r.be_number}
                     <span className="ml-1.5 text-3xs text-ps-hint uppercase">{r.gstr2b_section}</span>
@@ -331,7 +331,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                         nothing. Rendered apart so a note does not read as a
                         block. */}
                     {r.refusals.length > 0 && (
-                      <div className="mt-1 text-3xs text-red-700 space-y-0.5 max-w-xs">
+                      <div className="mt-1 text-3xs text-state-problem space-y-0.5 max-w-xs">
                         {r.refusals.map((x, i) => <p key={i}>{x}</p>)}
                       </div>
                     )}

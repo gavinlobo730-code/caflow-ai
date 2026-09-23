@@ -351,9 +351,9 @@ function MappedIpCheck({ runId }: { runId: string }) {
           {result && (
             <div className={`rounded-lg px-3 py-2 border text-2xs ${
               result.would_be_rejected
-                ? "bg-red-50 border-red-200 text-red-800"
+                ? "bg-state-problem-surface border-state-problem-border text-red-800"
                 : result.not_mapped_at_esic.length
-                  ? "bg-amber-50 border-amber-200 text-amber-900"
+                  ? "bg-state-attention-surface border-state-attention-border text-amber-900"
                   : "bg-green-50 border-green-200 text-green-800"}`}>
               {/* Composed on the server — it carries ESIC's own rule, which a
                   sentence written here would lose. */}
@@ -461,7 +461,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
 
       {/* ── what would be refused at the portal today ───────────────────── */}
       {o.blocking.map((b, i) => (
-        <p key={i} className="text-2xs text-red-700 bg-red-50 border border-red-200
+        <p key={i} className="text-2xs text-state-problem bg-state-problem-surface border border-state-problem-border
                               rounded-lg px-3 py-2 flex items-start gap-2">
           <Lock size={12} className="mt-0.5 shrink-0" />{b}
         </p>
@@ -469,7 +469,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
 
       {/* ── what changes what you do, but does not stop you ─────────────── */}
       {o.warnings.map((w, i) => (
-        <p key={i} className="text-2xs text-amber-900 bg-amber-50 border border-amber-200
+        <p key={i} className="text-2xs text-amber-900 bg-state-attention-surface border border-state-attention-border
                               rounded-lg px-3 py-2 flex items-start gap-2">
           <AlertTriangle size={12} className="mt-0.5 shrink-0" />{w}
         </p>
@@ -536,8 +536,8 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
         {note && (
           <p className={`text-2xs mt-2 px-3 py-2 rounded-lg ${
             note.kind === "ok" ? "bg-green-50 text-green-700"
-            : note.kind === "warn" ? "bg-amber-50 text-amber-800"
-            : "bg-red-50 text-red-600"}`}>{note.text}</p>
+            : note.kind === "warn" ? "bg-state-attention-surface text-amber-800"
+            : "bg-state-problem-surface text-red-600"}`}>{note.text}</p>
         )}
       </div>
 
@@ -627,7 +627,7 @@ function Retract({ clientId, remittanceId, onDone, onError }: {
     );
   }
   return (
-    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2
+    <div className="mt-2 rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2
                     space-y-2">
       <p className="text-2xs text-amber-900">
         This removes PracticeSync&apos;s record that the return was filed and the
@@ -704,7 +704,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
   if (!loaded || rows.length === 0) return null;
 
   return (
-    <div className="bg-white rounded-xl border border-amber-200 p-4 space-y-3">
+    <div className="bg-white rounded-xl border border-state-attention-border p-4 space-y-3">
       <div>
         <p className="text-[13px] font-semibold text-ps-ink">
           Paid, but not yet matched to a bank payment ({rows.length})
@@ -719,7 +719,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
       {note && (
         <p className={`text-2xs px-3 py-2 rounded-lg ${
           note.kind === "ok" ? "bg-green-50 text-green-700"
-          : "bg-red-50 text-red-600"}`}>{note.text}</p>
+          : "bg-state-problem-surface text-red-600"}`}>{note.text}</p>
       )}
 
       {rows.map((r) => (
@@ -864,7 +864,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
       </p>
 
       {err && (
-        <p className="text-[12px] px-3 py-2 rounded-lg bg-amber-50 text-amber-800">
+        <p className="text-[12px] px-3 py-2 rounded-lg bg-state-attention-surface text-amber-800">
           {err}
         </p>
       )}
@@ -874,7 +874,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
       <UnmatchedRemittances clientId={clientId} onLinked={load} />
 
       {handoff?.unattributed_pt_paise ? (
-        <p className="text-2xs text-red-700 bg-red-50 border border-red-200
+        <p className="text-2xs text-state-problem bg-state-problem-surface border border-state-problem-border
                       rounded-xl px-3 py-2">
           {fmtPaise(handoff.unattributed_pt_paise)} of professional tax was
           withheld from employees with no state recorded, so it belongs to no

@@ -23,13 +23,13 @@ const NEXT_STATUS: Record<string, string[]> = {
 };
 const STATUS_BADGE: Record<string, string> = {
   "Not Started": "bg-gray-100 text-gray-600",
-  "Awaiting Documents": "bg-amber-50 text-amber-700",
+  "Awaiting Documents": "bg-state-attention-surface text-state-attention",
   "In Progress": "bg-blue-50 text-blue-700",
   "Ready For Review": "bg-indigo-50 text-indigo-700",
   "Ready To File": "bg-violet-50 text-violet-700",
   "Filed": "bg-green-50 text-green-700",
   "Completed": "bg-emerald-50 text-emerald-700",
-  "Overdue": "bg-red-50 text-red-700",
+  "Overdue": "bg-state-problem-surface text-state-problem",
 };
 
 interface Obligation {

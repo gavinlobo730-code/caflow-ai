@@ -314,7 +314,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
               {remaining < 0 && (tdsPaise > 0 ? " — exceeds the receipt plus TDS." : " — exceeds the transaction amount.")}
             </div>
           )}
-          {error && <p className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
+          {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
         </div>
         <div className="flex gap-3 justify-end px-5 py-4 border-t border-ps-muted">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>

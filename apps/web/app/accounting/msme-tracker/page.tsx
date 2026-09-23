@@ -177,10 +177,10 @@ export default function MSME43BHPage() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className={`rounded-xl px-5 py-4 border ${working.disallowed_paise > 0
-              ? "bg-red-50 border-red-200" : "bg-ps-bg border-ps-border"}`}>
+              ? "bg-state-problem-surface border-state-problem-border" : "bg-ps-bg border-ps-border"}`}>
               <p className="text-xs text-ps-label">Added back to taxable income, FY {working.financial_year}</p>
               <p className={`text-2xl font-bold tabular-nums mt-1 ${working.disallowed_paise > 0
-                ? "text-red-700" : "text-ps-ink"}`}>
+                ? "text-state-problem" : "text-ps-ink"}`}>
                 {formatPaise(working.disallowed_paise)}
               </p>
               <p className="text-xs text-ps-label mt-1">
@@ -255,7 +255,7 @@ export default function MSME43BHPage() {
                       </td></tr>
                     )}
                     {rows.map(b => (
-                      <tr key={b.bill_id} className={b.disallowed_paise > 0 ? "bg-red-50/40" : ""}>
+                      <tr key={b.bill_id} className={b.disallowed_paise > 0 ? "bg-state-problem-surface/40" : ""}>
                         <td className="px-5 py-3 text-sm font-medium text-ps-ink">{b.vendor_name}</td>
                         <td className="px-3 py-3 text-xs font-mono text-ps-label">{b.bill_no ?? "—"}</td>
                         <td className="px-3 py-3 text-xs text-ps-label">{b.bill_date ?? "—"}</td>
@@ -267,7 +267,7 @@ export default function MSME43BHPage() {
                         <td className="px-3 py-3 text-sm tabular-nums text-right">{formatPaise(b.unpaid_paise)}</td>
                         <td className="px-5 py-3 text-sm tabular-nums text-right font-medium">
                           {b.disallowed_paise > 0
-                            ? <span className="text-red-700">{formatPaise(b.disallowed_paise)}</span>
+                            ? <span className="text-state-problem">{formatPaise(b.disallowed_paise)}</span>
                             : <span className="inline-flex items-center gap-1 text-ps-hint" title={b.reason}>
                                 <CheckCircle size={12} /> —
                               </span>}

@@ -105,11 +105,11 @@ function Notes({ gaps, problems }: { gaps?: string[]; problems?: string[] }) {
   return (
     <div className="space-y-2">
       {!!problems?.length && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-2.5">
-          <p className="text-2xs font-semibold text-red-700">
+        <div className="rounded-lg border border-state-problem-border bg-state-problem-surface p-2.5">
+          <p className="text-2xs font-semibold text-state-problem">
             {problems.length} problem{problems.length === 1 ? "" : "s"}
           </p>
-          {problems.map((p, i) => <p key={i} className="text-2xs text-red-700 mt-0.5">· {p}</p>)}
+          {problems.map((p, i) => <p key={i} className="text-2xs text-state-problem mt-0.5">· {p}</p>)}
         </div>
       )}
       <GapList gaps={gaps ?? []} tone="withheld" title="What payroll cannot know" />
@@ -647,7 +647,7 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
         </div>
         {err && <Callout tone="problem">{err}</Callout>}
         {!!notes.length && (
-          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+          <div className="mt-2 rounded-lg border border-state-attention-border bg-state-attention-surface p-2.5">
             {notes.map((n, i) => <p key={i} className="text-2xs text-amber-800">· {n}</p>)}
           </div>
         )}
@@ -1050,7 +1050,7 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
               registry does not hold. §89 compares years AT THEIR OWN RATES, so
               a substituted year makes the whole relief a plausible fiction. */}
           {result.available === false ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <div className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3">
               <p className="text-2xs font-semibold text-amber-800">Relief is not available</p>
               <p className="text-2xs text-amber-800 mt-1">
                 {result.blocked_reason || "The server did not say why."}

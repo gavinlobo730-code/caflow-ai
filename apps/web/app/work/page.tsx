@@ -21,7 +21,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-ps-muted text-ps-label",
   in_progress: "bg-blue-100 text-blue-700",
   waiting_client: "bg-purple-100 text-purple-700",
-  review_required: "bg-amber-100 text-amber-700",
+  review_required: "bg-amber-100 text-state-attention",
   completed: "bg-green-100 text-green-700",
 };
 
@@ -34,8 +34,8 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  critical: "bg-red-100 text-red-700",
-  high: "bg-amber-100 text-amber-700",
+  critical: "bg-red-100 text-state-problem",
+  high: "bg-amber-100 text-state-attention",
   medium: "bg-blue-100 text-blue-700",
   low: "bg-ps-muted text-ps-label",
 };
@@ -197,18 +197,18 @@ export default function WorkPage() {
                 <p className="text-2xs text-ps-hint">active</p>
               </CardContent>
             </Card>
-            <Card className={(counts?.due_today ?? 0) > 0 ? "border-amber-200 bg-amber-50/30" : ""}>
+            <Card className={(counts?.due_today ?? 0) > 0 ? "border-state-attention-border bg-state-attention-surface/30" : ""}>
               <CardContent className="py-4">
                 <div className="flex items-center gap-1.5 text-xs text-ps-label mb-1">
                   <Clock size={11} /> Due Today
                 </div>
-                <p className={`text-2xl font-bold ${(counts?.due_today ?? 0) > 0 ? "text-amber-700" : "text-ps-ink"}`}>
+                <p className={`text-2xl font-bold ${(counts?.due_today ?? 0) > 0 ? "text-state-attention" : "text-ps-ink"}`}>
                   {counts?.due_today ?? 0}
                 </p>
                 <p className="text-2xs text-ps-hint">tasks</p>
               </CardContent>
             </Card>
-            <Card className={(counts?.overdue ?? 0) > 0 ? "border-red-200 bg-red-50/20" : ""}>
+            <Card className={(counts?.overdue ?? 0) > 0 ? "border-state-problem-border bg-state-problem-surface/20" : ""}>
               <CardContent className="py-4">
                 <div className="flex items-center gap-1.5 text-xs text-ps-label mb-1">
                   <AlertTriangle size={11} /> Overdue
@@ -237,7 +237,7 @@ export default function WorkPage() {
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <Clock size={13} className="text-amber-500" /> Due Today
                   {todayTasks.length > 0 && (
-                    <Badge className="ml-1 text-3xs px-1.5 py-0 bg-amber-100 text-amber-700">{todayTasks.length}</Badge>
+                    <Badge className="ml-1 text-3xs px-1.5 py-0 bg-amber-100 text-state-attention">{todayTasks.length}</Badge>
                   )}
                 </CardTitle>
               </CardHeader>
@@ -256,7 +256,7 @@ export default function WorkPage() {
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <AlertTriangle size={13} className="text-red-500" /> Overdue
                   {overdueTasks.length > 0 && (
-                    <Badge className="ml-1 text-3xs px-1.5 py-0 bg-red-100 text-red-700">{overdueTasks.length}</Badge>
+                    <Badge className="ml-1 text-3xs px-1.5 py-0 bg-red-100 text-state-problem">{overdueTasks.length}</Badge>
                   )}
                 </CardTitle>
               </CardHeader>

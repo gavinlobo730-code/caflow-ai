@@ -30,14 +30,14 @@ const CAPACITY: Record<Role, number> = {
 const ROLE_COLORS: Record<Role, string> = {
   Partner: "bg-purple-100 text-purple-700",
   Manager: "bg-blue-100 text-blue-700",
-  Executive: "bg-amber-100 text-amber-700",
+  Executive: "bg-amber-100 text-state-attention",
   Reviewer: "bg-ps-muted text-ps-label",
 };
 
 const PRIORITY_BADGE: Record<string, string> = {
-  critical: "bg-red-100 text-red-700",
+  critical: "bg-red-100 text-state-problem",
   high: "bg-orange-100 text-orange-700",
-  medium: "bg-amber-100 text-amber-700",
+  medium: "bg-amber-100 text-state-attention",
   low: "bg-ps-muted text-ps-label",
 };
 
@@ -238,7 +238,7 @@ export default function WorkAllocationPage() {
 
       {error && <Callout tone="problem">{error}</Callout>}
       {!error && clientNamesError && (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700">
+        <div className="rounded-lg bg-state-attention-surface border border-state-attention-border px-4 py-3 text-sm text-state-attention">
           Client names couldn&apos;t be loaded ({clientNamesError}) — tasks below may be missing their client name.
         </div>
       )}

@@ -174,7 +174,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
   if (loadFailed) {
     return (
       <div className="p-6">
-        <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="rounded border border-state-problem-border bg-state-problem-surface p-4 text-sm text-red-800">
           The purchase cycle could not be loaded.{" "}
           <button onClick={() => void load()} className="underline">Try again</button>
         </div>
@@ -192,7 +192,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
       )}
 
       {openObjections.length > 0 && (
-        <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <div className="rounded border border-amber-300 bg-state-attention-surface p-3 text-sm text-amber-900">
           <div className="flex items-center gap-2 font-medium">
             <AlertTriangle size={16} />
             {openObjections.length} goods receipt
@@ -238,7 +238,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
 
       {msg && (
         <div className={`rounded p-2 text-sm ${
-          msg.type === "ok" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"
+          msg.type === "ok" ? "bg-green-50 text-green-800" : "bg-state-problem-surface text-red-800"
         }`}>{msg.text}</div>
       )}
 
@@ -527,10 +527,10 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
               empty="This bill has no lines."
             />
             {matched.differences.map((d) => (
-              <p key={d} className="rounded bg-red-50 p-2 text-red-900">{d}</p>
+              <p key={d} className="rounded bg-state-problem-surface p-2 text-red-900">{d}</p>
             ))}
             {matched.gaps.map((g) => (
-              <p key={g} className="rounded bg-amber-50 p-2 text-amber-900">{g}</p>
+              <p key={g} className="rounded bg-state-attention-surface p-2 text-amber-900">{g}</p>
             ))}
             {matched.acceptance_date && (
               <p className="text-gray-700">
