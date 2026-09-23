@@ -4332,6 +4332,32 @@ declare purpose code 102.
 - Always state times in IST (UTC + 5:30), never UTC. This applies to everything you tell the user — CI timings, when a job ran, when a check-in fires, timestamps read out of the database. Convert before reporting; don't make the user do the arithmetic.
 - This is a PRESENTATION rule only. It does not change what is stored or scheduled: `timestamptz` columns (e.g. `scheduler_runs.started_at`) are UTC on disk, and GitHub Actions cron expressions — including the daily-sweep schedule in .github/workflows/ and any `create_trigger` cron — are evaluated in UTC. Both are correct; rewriting either to "look like IST" would move when jobs actually run.
 - So: convert at the point of reporting. When you show a raw query result or edit a cron line, say which zone that value is in, since the stored value stays UTC.
+- **A STORED INSTANT AND `ist_today()` ARE NOT COMPARABLE UNTIL ONE OF THEM
+  MOVES.** A `timestamptz` comes back from PostgREST in UTC, so `.date()` on it
+  is the UTC calendar date; `ist_today()` is the Indian one. From **18:30 to
+  24:00 UTC — 00:00 to 05:30 IST the next day** — they are different days, and
+  every comparison between them is wrong for those five and a half hours.
+  Convert the STAMP (`.astimezone(IST).date()`), never the question: a firm's
+  day is the Indian one. Found on 24-09-2026 in
+  `recurring_task_service._is_already_generated_today`, where it made the
+  idempotency check answer "not generated today" about a config generated
+  minutes earlier, so the sweep generated the task AGAIN; and in
+  `customer_statement_service.ar_aging` / `vendor_statement_service.ap_aging`,
+  where it dated an ageing report YESTERDAY and shifted every bucket boundary.
+  ⚠️ **The earlier naive-clock sweep missed all three because it searched for
+  `date.today()` and these write `datetime.now(timezone.utc).date()`** — the
+  same defect in a different spelling, which is this file's most-repeated
+  lesson. And `_as_ist_date`'s string branch does NOT save you: it takes
+  `d[:10]`, which is right for a date string and gives the UTC date for a
+  timestamp string. Parse to a datetime first.
+- **A METRIC AND THE GUARD THAT ENFORCES IT MUST COUNT THE SAME POPULATION.**
+  `docs/plan/THE-PLAN.md`'s hex metric is a coarse `grep` over `app/` and
+  `components/`; the guard splits three populations, strips comments and honours
+  an allowlist. The coarse count read 170 against a recorded 116 and the 19
+  September checkpoint wrote that up as a regression — of 54 literals nobody had
+  added. An overnight run starting from it would have spent its first hour
+  hunting them. When the two disagree, the guard is the authority and the metric
+  is the thing to fix.
 - Worked example: the daily sweep is nominally 06:00 IST = 00:30 UTC. A run recorded as `2026-08-18 01:36+00` is reported as "07:06 IST" — and that hour of drift is GitHub cron lateness under load, which is what the catch-up in jobs/ exists to absorb.
 
 ## PDFs — one palette, and it is the product's
