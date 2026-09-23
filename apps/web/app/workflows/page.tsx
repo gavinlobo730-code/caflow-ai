@@ -7,6 +7,7 @@ import {
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/services/formatting";
+import { ATTENTION, BRAND, BRAND_SURFACE, HINT, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ function fmtDuration(ms?: number): string {
   return `${Math.round(ms / 3600000)}h`;
 }
 
-function StatCard({ label, value, sub, color = "#182350" }: { label: string; value: string | number; sub?: string; color?: string }) {
+function StatCard({ label, value, sub, color = BRAND }: { label: string; value: string | number; sub?: string; color?: string }) {
   return (
     <div className="bg-white border border-ps-border rounded-xl p-4 flex flex-col gap-1">
       <span className="text-xs text-ps-label font-medium uppercase tracking-wide">{label}</span>
@@ -214,9 +215,9 @@ export default function WorkflowsPage() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <StatCard label="Total Workflows" value={summary?.total_templates ?? 0} />
           <StatCard label="Total Executions" value={summary?.total_executions ?? 0} sub="all time" />
-          <StatCard label="Success Rate" value={`${summary?.overall_success_rate ?? 0}%`} color="#16A34A" />
-          <StatCard label="Pending Approvals" value={summary?.pending_approvals ?? 0} color="#D97706" />
-          <StatCard label="Unresolved Failures" value={summary?.unresolved_failures ?? 0} color="#DC2626" />
+          <StatCard label="Success Rate" value={`${summary?.overall_success_rate ?? 0}%`} color={READY} />
+          <StatCard label="Pending Approvals" value={summary?.pending_approvals ?? 0} color={ATTENTION} />
+          <StatCard label="Unresolved Failures" value={summary?.unresolved_failures ?? 0} color={PROBLEM} />
         </div>
 
         {/* Tabs */}
@@ -292,8 +293,8 @@ export default function WorkflowsPage() {
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-3 flex-1 min-w-0">
                         <div className="mt-0.5 w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{ backgroundColor: template.is_active ? "#EFF6FF" : "#F1F5F9" }}>
-                          <Zap size={16} style={{ color: template.is_active ? "#182350" : "#94A3B8" }} />
+                          style={{ backgroundColor: template.is_active ? BRAND_SURFACE : MUTED }}>
+                          <Zap size={16} style={{ color: template.is_active ? BRAND : HINT }} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">

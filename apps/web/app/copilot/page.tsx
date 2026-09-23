@@ -7,6 +7,7 @@ import {
   MessageSquare, Clock, Star,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { BORDER, BRAND, BRAND_SURFACE } from "@/lib/design/tokens";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -85,7 +86,7 @@ function MessageBubble({ msg, onRate }: { msg: Message; onRate: (id: string, rat
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}>
       {!isUser && (
         <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mr-2 mt-1"
-          style={{ backgroundColor: "#182350" }}>
+          style={{ backgroundColor: BRAND }}>
           <Sparkles size={13} className="text-white" />
         </div>
       )}
@@ -288,7 +289,7 @@ export default function CopilotPage() {
       <div className="bg-white border-b border-ps-border px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#182350" }}>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: BRAND }}>
               <Sparkles size={16} className="text-white" />
             </div>
             <div>
@@ -340,7 +341,7 @@ export default function CopilotPage() {
             <button disabled={actionInFlight}
               onClick={newConversation}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg text-white transition-colors"
-              style={{ backgroundColor: "#182350" }}
+              style={{ backgroundColor: BRAND }}
             >
               <Plus size={14} />
               New Conversation
@@ -395,8 +396,8 @@ export default function CopilotPage() {
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center">
                     <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-                      style={{ backgroundColor: "#EFF6FF" }}>
-                      <Sparkles size={28} style={{ color: "#182350" }} />
+                      style={{ backgroundColor: BRAND_SURFACE }}>
+                      <Sparkles size={28} style={{ color: BRAND }} />
                     </div>
                     <h2 className="text-lg font-semibold text-brand mb-1">Ask your Copilot</h2>
                     <p className="text-sm text-ps-label mb-6 max-w-sm">
@@ -422,7 +423,7 @@ export default function CopilotPage() {
                     {sending && (
                       <div className="flex justify-start mb-4">
                         <div className="w-7 h-7 rounded-full flex items-center justify-center mr-2 flex-shrink-0"
-                          style={{ backgroundColor: "#182350" }}>
+                          style={{ backgroundColor: BRAND }}>
                           <Sparkles size={13} className="text-white" />
                         </div>
                         <div className="bg-white border border-ps-border rounded-2xl rounded-tl-sm px-4 py-3">
@@ -481,7 +482,7 @@ export default function CopilotPage() {
                     onClick={() => sendMessage()}
                     disabled={actionInFlight || !input.trim()}
                     className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 transition-all"
-                    style={{ backgroundColor: input.trim() ? "#182350" : "#E2E8F0" }}
+                    style={{ backgroundColor: input.trim() ? BRAND : BORDER }}
                   >
                     <Send size={15} className={input.trim() ? "text-white" : "text-ps-hint"} />
                   </button>
@@ -545,7 +546,7 @@ export default function CopilotPage() {
                               onClick={() => actOnRecommendation(rec.id, "accept")}
                               disabled={actingRec === rec.id}
                               className="text-xs px-3 py-1.5 rounded-lg font-medium text-white disabled:opacity-50"
-                              style={{ backgroundColor: "#182350" }}
+                              style={{ backgroundColor: BRAND }}
                             >
                               {rec.action_label}
                             </button>

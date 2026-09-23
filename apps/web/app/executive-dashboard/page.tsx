@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
+import { ATTENTION, BRAND, GOLD, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -56,10 +57,10 @@ function fmtRupees(paise: number): string {
 }
 
 function healthColor(score: number): string {
-  if (score >= 85) return "#16A34A";
-  if (score >= 70) return "#D97706";
-  if (score >= 55) return "#EA580C";
-  return "#DC2626";
+  if (score >= 85) return READY;
+  if (score >= 70) return ATTENTION;
+  if (score >= 55) return ATTENTION;
+  return PROBLEM;
 }
 
 function healthLabel(score: number): string {
@@ -71,7 +72,7 @@ function healthLabel(score: number): string {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function KPICard({ label, value, sub, icon, trend, color = "#182350" }: {
+function KPICard({ label, value, sub, icon, trend, color = BRAND }: {
   label: string; value: string | number; sub?: string;
   icon: React.ReactNode; trend?: "up" | "down" | "neutral"; color?: string;
 }) {
@@ -106,7 +107,7 @@ function HealthRing({ score }: { score: number }) {
   return (
     <div className="relative flex items-center justify-center">
       <svg width="96" height="96" viewBox="0 0 96 96">
-        <circle cx="48" cy="48" r={r} fill="none" stroke="#F1F5F9" strokeWidth="8" />
+        <circle cx="48" cy="48" r={r} fill="none" stroke={MUTED} strokeWidth="8" />
         <circle
           cx="48" cy="48" r={r}
           fill="none"
@@ -204,7 +205,7 @@ export default function ExecutiveDashboardPage() {
       <div className="bg-white border-b border-ps-border px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#182350" }}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: BRAND }}>
               <BarChart2 size={18} className="text-white" />
             </div>
             <div>
@@ -227,32 +228,32 @@ export default function ExecutiveDashboardPage() {
             label="Outstanding Invoices"
             value={fmtRupees(revenue_insights.outstanding_amount_paise)}
             sub={`${revenue_insights.outstanding_invoices} invoices`}
-            icon={<DollarSign size={18} style={{ color: "#B9915E" }} />}
-            color="#B9915E"
+            icon={<DollarSign size={18} style={{ color: GOLD }} />}
+            color={GOLD}
             trend="neutral"
           />
           <KPICard
             label="Team Utilisation"
             value={`${capacity_insights.team_utilisation_percent}%`}
             sub={`${capacity_insights.avg_tasks_per_staff} tasks/person`}
-            icon={<Users size={18} style={{ color: "#182350" }} />}
-            color="#182350"
+            icon={<Users size={18} style={{ color: BRAND }} />}
+            color={BRAND}
             trend={capacity_insights.team_utilisation_percent > 90 ? "down" : "up"}
           />
           <KPICard
             label="At-Risk Clients"
             value={client_risk_insights.at_risk_clients + client_risk_insights.critical_clients}
             sub={`${client_risk_insights.critical_clients} critical`}
-            icon={<ShieldAlert size={18} style={{ color: "#DC2626" }} />}
-            color="#DC2626"
+            icon={<ShieldAlert size={18} style={{ color: PROBLEM }} />}
+            color={PROBLEM}
             trend="down"
           />
           <KPICard
             label="Avg Collection Days"
             value={revenue_insights.avg_collection_days}
             sub="days outstanding"
-            icon={<Clock size={18} style={{ color: "#D97706" }} />}
-            color="#D97706"
+            icon={<Clock size={18} style={{ color: ATTENTION }} />}
+            color={ATTENTION}
             trend="neutral"
           />
         </div>
@@ -266,9 +267,9 @@ export default function ExecutiveDashboardPage() {
             <div className="flex items-center gap-4 mb-4">
               <HealthRing score={firm_health_summary.overall_score} />
               <div className="flex-1 space-y-3">
-                <RiskBar label="Compliance Coverage" value={firm_health_summary.compliance_coverage} max={100} color="#16A34A" />
-                <RiskBar label="Active Automations" value={firm_health_summary.active_automations} max={10} color="#182350" />
-                <RiskBar label="Pending Actions" value={firm_health_summary.ai_recommendations_pending} max={20} color="#D97706" />
+                <RiskBar label="Compliance Coverage" value={firm_health_summary.compliance_coverage} max={100} color={READY} />
+                <RiskBar label="Active Automations" value={firm_health_summary.active_automations} max={10} color={BRAND} />
+                <RiskBar label="Pending Actions" value={firm_health_summary.ai_recommendations_pending} max={20} color={ATTENTION} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -289,18 +290,18 @@ export default function ExecutiveDashboardPage() {
             {totalClients > 0 && (
               <div className="h-3 rounded-full overflow-hidden flex mb-3">
                 {[
-                  { count: client_risk_insights.healthy_clients, color: "#16A34A" },
-                  { count: client_risk_insights.at_risk_clients, color: "#D97706" },
-                  { count: client_risk_insights.critical_clients, color: "#DC2626" },
+                  { count: client_risk_insights.healthy_clients, color: READY },
+                  { count: client_risk_insights.at_risk_clients, color: ATTENTION },
+                  { count: client_risk_insights.critical_clients, color: PROBLEM },
                 ].map(({ count, color }, i) => (
                   count > 0 && <div key={i} style={{ width: `${(count / totalClients) * 100}%`, backgroundColor: color }} />
                 ))}
               </div>
             )}
             <div className="space-y-3">
-              <RiskBar label={`Healthy (${client_risk_insights.healthy_clients})`} value={client_risk_insights.healthy_clients} max={totalClients} color="#16A34A" />
-              <RiskBar label={`At Risk (${client_risk_insights.at_risk_clients})`} value={client_risk_insights.at_risk_clients} max={totalClients} color="#D97706" />
-              <RiskBar label={`Critical (${client_risk_insights.critical_clients})`} value={client_risk_insights.critical_clients} max={totalClients} color="#DC2626" />
+              <RiskBar label={`Healthy (${client_risk_insights.healthy_clients})`} value={client_risk_insights.healthy_clients} max={totalClients} color={READY} />
+              <RiskBar label={`At Risk (${client_risk_insights.at_risk_clients})`} value={client_risk_insights.at_risk_clients} max={totalClients} color={ATTENTION} />
+              <RiskBar label={`Critical (${client_risk_insights.critical_clients})`} value={client_risk_insights.critical_clients} max={totalClients} color={PROBLEM} />
             </div>
             <div className="mt-4 pt-3 border-t border-ps-muted">
               <p className="text-xs text-ps-label">
@@ -316,11 +317,11 @@ export default function ExecutiveDashboardPage() {
             <div className="text-center mb-4">
               <div className="relative w-24 h-24 mx-auto">
                 <svg viewBox="0 0 96 96" className="w-24 h-24">
-                  <circle cx="48" cy="48" r="36" fill="none" stroke="#F1F5F9" strokeWidth="8" />
+                  <circle cx="48" cy="48" r="36" fill="none" stroke={MUTED} strokeWidth="8" />
                   <circle
                     cx="48" cy="48" r="36"
                     fill="none"
-                    stroke={capacity_insights.team_utilisation_percent > 90 ? "#DC2626" : capacity_insights.team_utilisation_percent > 75 ? "#D97706" : "#16A34A"}
+                    stroke={capacity_insights.team_utilisation_percent > 90 ? PROBLEM : capacity_insights.team_utilisation_percent > 75 ? ATTENTION : READY}
                     strokeWidth="8"
                     strokeLinecap="round"
                     strokeDasharray={`${(capacity_insights.team_utilisation_percent / 100) * 226} 226`}
@@ -417,7 +418,7 @@ export default function ExecutiveDashboardPage() {
         {ai_summary && (
           <div className="bg-white border border-ps-border rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
-              <Sparkles size={16} style={{ color: "#182350" }} />
+              <Sparkles size={16} style={{ color: BRAND }} />
               <h3 className="font-semibold text-brand">AI Executive Summary</h3>
               <span className="ml-auto text-3xs text-ps-hint flex items-center gap-1">
                 <Clock size={9} /> Generated {new Date(data.generated_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}

@@ -50,17 +50,31 @@ section:
 
 | check | plan records | measured 19 Sep | target |
 |---|---|---|---|
-| hardcoded hex colours | 116 | **170** | 0 |
+| hardcoded hex colours | 116 | **170**, but see below | 0 |
 | arbitrary font sizes | 405 | **379** | ~130 |
 | error boundaries | 65 | 65 | ≥ 14 |
 | Cloudflare redirect rules | 98 | 98 | ≤ 90 (cap 100) |
 | browser-side Excel writers | 7 | 7 | 0 |
 | backlog open + partial | 49 | **14** | ≤ 10 |
 
-**The hex count has gone UP, 116 → 170**, which is T4-a's own metric moving the
-wrong way while T4 sits unstarted. It is recorded here and deliberately not
-chased: finding where 54 literals came back is T4-a's first hour of work, not a
-checkpoint's.
+⚠️ **"The hex count has gone UP, 116 → 170" was WRONG, and the correction is
+worth more than the figure.** Checked on 24 September before any work started:
+nothing regressed. The plan's metric is a coarse `grep` for `#RRGGBB`, while the
+guard — `apps/web/scripts/a-colour-and-a-type-size-come-from-the-token-file.test.ts`
+— counts three separate populations, and the coarse grep is their sum plus
+comments plus an allowlist:
+
+| population | now | budget |
+|---|---|---|
+| hex in a Tailwind arbitrary class (`border-[#E2E8F0]`) | 98 | 98 |
+| bare hex outside a class (`style={{}}`, an SVG attr, a prop default) | 46 | 46 |
+| arbitrary font size (`text-[13px]`) | 392 | 405 |
+
+All eight guard assertions pass on `352dec8c`. Both hex budgets sit exactly at
+their ceiling, so a new colour written today fails CI — the ratchet doing its
+job. The lesson is the one this file keeps recording in other words: **a metric
+and the guard that enforces it have to count the same population, or the metric
+reports a regression the guard cannot see and nobody can find.**
 
 ---
 
