@@ -108,7 +108,10 @@ function count(re: RegExp): { total: number; byFile: Map<string, number> } {
 // size at which the remaining steps are distinguishable, and naming it would
 // bless it. Each needs a decision, which belongs with the reference screens.
 const HEX_BUDGET = 98;
-const PX_TEXT_BUDGET = 405;
+// 392 since 24-09-2026: the three screens tokenised that day carried a few
+// arbitrary sizes alongside their colours. Lowered to what is actually there,
+// because a budget with slack in it is a budget that permits a regression.
+const PX_TEXT_BUDGET = 392;
 
 // ── THE SECOND WAY TO WRITE A COLOUR, WHICH THIS FILE COULD NOT SEE ─────────
 //
@@ -135,14 +138,31 @@ const PX_TEXT_BUDGET = 405;
 // through `style={{}}` and prop defaults, and every one of them maps to a token
 // or a Tailwind palette class. Converting them is per-component work on three
 // screens and it is what lowers this budget.
+//
+// ── 24 SEPTEMBER 2026: 46 → 0, AND WHAT MADE IT POSSIBLE ────────────────────
+// The sentence above — "have no token to use" — was true and was the whole
+// defect. `tailwind.config.ts` is a Tailwind config, so what it declares
+// reaches a class and nothing else; a `style={{}}`, an SVG `stroke=` and a prop
+// default had nothing to reach for, which is why three screens still held 46
+// literals and one of them coloured an inactive icon **#94A3B8**, the very
+// value this file records `ps.hint` moving OFF at 2.56:1.
+//
+// `lib/design/tokens.ts` is the token to use, pinned to the config in both
+// directions by `one-palette-and-the-browser-reads-it.test.ts`. The three
+// screens now import it and the counted population is nil.
 const RAW_HEX = /#[0-9a-fA-F]{6}\b/g;
-const HEX_OUTSIDE_A_CLASS_BUDGET = 46;
+const HEX_OUTSIDE_A_CLASS_BUDGET = 0;
 const HEX_LITERAL_IS_THE_POINT = [
   "app/global-error.tsx",
   "app/layout.tsx",
   "components/LogoIcon.tsx",
   "app/settings/branding/page.tsx",
   "app/sign/page.tsx",
+  // The palette module itself. Hex is its DATA, the same exemption the colour
+  // picker has — it is the one file whose job is to hold these values, and the
+  // guard that checks it is a different one: every value here must equal what
+  // `tailwind.config.ts` declares at its named path, asserted both ways.
+  "lib/design/tokens.ts",
 ];
 
 test("a colour is not written as a raw hex anywhere else either", () => {
@@ -169,9 +189,16 @@ test("a colour is not written as a raw hex anywhere else either", () => {
       `#DC2626 IS red-600, so both have a name.\n  worst: ` +
       worst.map(([f, n]) => `${f} (${n})`).join("\n         "),
   );
-  assert.ok(total >= 1,
-    "the probe found no raw hex at all — it has stopped seeing them, and a " +
-    "budget nothing can reach passes for ever");
+  // THE VACUITY FLOOR MOVED RATHER THAN BEING DELETED. It used to read
+  // `total >= 1` — "a budget nothing can reach passes for ever" — which was
+  // right while the budget was 46 and becomes self-contradictory at 0: the
+  // assertion the ratchet exists to reach would fail the moment it was reached.
+  //
+  // The property it was protecting is that the PROBE still works — that
+  // RAW_HEX still matches and the file walk still reads bodies — and the test
+  // below already proves exactly that, on the allowlisted files, which hold a
+  // literal by construction and always will. So the floor lives there now, and
+  // deleting that test silently un-guards this one.
 });
 
 test("the allowlist names files that exist and still hold a literal", () => {

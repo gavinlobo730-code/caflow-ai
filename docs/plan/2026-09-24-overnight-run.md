@@ -75,18 +75,14 @@ found by doing the consistency sweep, real on its own.
 
 ---
 
-## Batch 1 — the browser has a palette it can read outside a class
+## Batch 1 — the browser has a palette it can read outside a class ✅ **LANDED**
 
-- [ ] **1.1** `lib/design/tokens.ts` — the module. Values by role, `TOKEN_SOURCE` naming each one's Tailwind path.
-      *Accept:* a new guard reads `tailwind.config.ts` and asserts every exported value against it, and fails if the module invents a value the config does not hold.
-- [ ] **1.2** `brand.surface` added to `tailwind.config.ts` with its reasoning.
-      *Accept:* the guard resolves it; no other token moved.
-- [ ] **1.3** `app/executive-dashboard/page.tsx` — 29 bare literals onto the module.
-      *Accept:* 0 bare hex in the file; `pnpm build` clean.
-- [ ] **1.4** `app/copilot/page.tsx` — 9.
-- [ ] **1.5** `app/workflows/page.tsx` — 8, including the `#94A3B8` contrast fix.
-- [ ] **1.6** Ratchet down: bare-hex budget 46 → 0, and the `HEX_LITERAL_IS_THE_POINT` allowlist re-checked so no exemption outlives its reason.
-      *Accept:* all guard assertions pass; the "budget nothing can reach passes for ever" floor assertion is restated rather than deleted, since a nil budget makes `total >= 1` false.
+- [x] **1.1** ✅ `lib/design/tokens.ts`, 28 values by role. `scripts/one-palette-and-the-browser-reads-it.test.ts` pins it to the config **both ways** — every value equals the config's at its named path, and every export must declare a path, so a value invented here fails. Two negative controls fire on exactly their own defect: changing `READY` to green-600 fails only assertion 1, adding an undeclared export fails only 2 and 3.
+- [x] **1.2** ✅ `brand.surface: #EFF6FF`, with the reason and the `ps.hover` trap written beside it. No other token moved — assertion 6 of the older guard still passes.
+- [x] **1.3** ✅ 29 → 0.
+- [x] **1.4** ✅ 9 → 0.
+- [x] **1.5** ✅ 8 → 0, and the inactive-template icon moves off `#94A3B8` (2.56:1) onto `ps.hint` `#64748B` (4.76:1 on white).
+- [x] **1.6** ✅ bare-hex budget **46 → 0**, arbitrary font size **405 → 392**. `lib/design/tokens.ts` is allowlisted — hex is its data, the colour picker's exemption. The vacuity floor MOVED rather than being deleted: `total >= 1` becomes self-contradictory at a budget of 0 (the assertion the ratchet exists to reach would fail on reaching it), and the property it protected — that the probe still matches and still reads bodies — is already proved by the allowlist test, which asserts each exempt file still holds a literal.
 
 ## Batch 2 — the 98 hex classes
 

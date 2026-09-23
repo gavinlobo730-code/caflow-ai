@@ -51,6 +51,20 @@ const config: Config = {
           DEFAULT: "#182350",
           light:   "#AFD2FA",
           dark:    "#0D1635",
+          /* A tinted fill behind a brand-ish or ACTIVE mark — an icon chip, an
+             empty state's medallion. Added 24-09-2026 while tokenising the
+             three screens that thread colour through `style={{}}`; it is not
+             an invented colour but the value those screens already wrote in
+             three places for exactly this one role, which is the same method
+             the ink steps below were fixed by.
+
+             NOT `ps.hover`. That token means a row UNDER THE CURSOR, and a
+             static fill borrowing it is the mistake the PDF palette recorded
+             refusing: there the nearest hex to a "this reconciles" fill was
+             `state.ready-hover`, which means a ready row being pointed at —
+             something a printed page does not have. Map by ROLE, never by
+             nearest value. */
+          surface: "#EFF6FF",
         },
         gold: {
           DEFAULT: "#B9915E",
