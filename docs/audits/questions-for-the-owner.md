@@ -608,3 +608,49 @@ and what obligations the repo takes on.
 My own read: **stay on "Rs." until you say otherwise.** It is the only item in
 T5 whose blocker is legal rather than technical, and the cost of being wrong
 about a licence is much larger than the cost of a dated currency marker.
+
+---
+
+## N. One request against a Cloudflare preview would reclaim 41 redirect rules  *(raised 24-09-2026, during the overnight run)*
+
+**This is not a decision — it is an observation this environment cannot make.**
+Egress is refused at the proxy here, and a Cloudflare Pages preview already
+deploys on every PR, so it costs you one click and one URL.
+
+`apps/web/public/_redirects` holds **98** dynamic rules against Cloudflare
+Pages' hard cap of **100**. Rules past position 100 are ignored **silently** —
+`scripts/generate-redirects.js` carries a comment recording the production
+incident where that made *"the whole client workspace 404"*, and
+`generate-redirects.test.ts` records that a ≤90 budget was tried and had to be
+abandoned. So there are two rules of headroom, and the next two dynamic pages
+under `/clients/[id]` spend them.
+
+82 of the 98 are one group: `/clients/:id`'s 41 pages × 2 shapes, the bare path
+and the bare `.txt` RSC payload. The generator says those two need a transform a
+wildcard cannot express.
+
+**The question is whether the bare-path half is needed at all.** If Cloudflare
+Pages resolves a request for `/clients/x/bank` to
+`clients/_placeholder/bank/index.html` by ordinary directory-index lookup, then
+41 of those rules are doing nothing and the count drops to about 57 — years of
+headroom.
+
+**How to answer it in one request.** On any PR preview URL, open:
+
+```
+https://<preview>.pages.dev/clients/anything/bank      (no trailing slash)
+```
+
+- renders the client Bank screen → the 41 bare-path rules are unnecessary;
+  tell me and I will collapse them and re-pin the budget.
+- 404s, or redirects to the trailing-slash form → they are load-bearing, the
+  current shape is right, and the real fix is reducing dynamic pages. Also worth
+  knowing, and it closes the question for good.
+
+⚠️ I have NOT guessed at this. A wrong splat reproduces the incident above and
+**would not fail CI**, because the failure is silent truncation rather than an
+error.
+
+*Checked and ruled out first, so nobody repeats it: the `.txt` RSC payloads are
+real — the static export emits 163 of them — so that half cannot simply be
+dropped.*

@@ -96,13 +96,46 @@ five files.
 - [x] **2.6** ✅ class budget **98 → 44**.
       *Verified by rendering:* the built stylesheet is grepped for the emitted utilities, so `bg-brand-surface` and `bg-ps-hover` are proved to reach CSS rather than assumed — a Tailwind class naming a token the config does not declare is simply absent, and the element renders unstyled.
 
-## Batch 3 — T6-a, redirect headroom
+## Batch 3 — T6-a, redirect headroom ⏸ **BLOCKED on an observation, not a decision**
 
 98 of Cloudflare's hard cap of 100. THE-PLAN says do this before anything else
 in T6, and it is independent of T4.
 
-- [ ] **3.1** Read `apps/web/public/_redirects` and `scripts/generate-redirects.js`; establish which rules a pattern could collapse.
-      *Accept:* `grep -v '^#' apps/web/public/_redirects | grep -c '200$'` ≤ 90, and `scripts/generate-redirects.test.ts` still passes.
+- [!] **3.1** ⏸ **NOT DONE, and the plan's own target is stale.** Investigated and
+      deliberately left alone. What was found:
+
+      **The ≤90 target was already tried and abandoned, on the record.**
+      `scripts/generate-redirects.test.ts:58` says so: *"The budget was previously
+      pinned at 90 for headroom, but by the time the … count was OVER the real cap,
+      meaning some pages were silently 404ing in production."* The cap IS enforced
+      today, at 99, with one rule of headroom deliberately left.
+
+      **98 rules = 12 splats + 86 enumerated, and 82 of the 86 are one group.**
+      `/clients/:id` has 41 dynamic pages × 2 shapes — the bare path and the bare
+      `.txt` RSC payload — which are the two the generator's own doc says a
+      wildcard cannot express, because each needs a transform (append `/`, insert
+      `/index`) rather than a straight copy.
+
+      **The one idea that would collapse them needs a fact I cannot establish
+      here.** If Cloudflare Pages resolves `/clients/x/bank` to
+      `clients/_placeholder/bank/index.html` by ordinary directory-index lookup,
+      then the 41 bare-path rules are unnecessary and the count drops to ~57. The
+      generator's author says the transform is needed; whether that is Cloudflare's
+      asset resolution or Next's `trailingSlash` redirect is not written down.
+      Settling it means requesting a path against a deployed preview, and **egress
+      is refused at this environment's proxy** — the same class of blocker as the
+      NSDL file layout, not a design question a default can settle.
+
+      **I did NOT verify the `.txt` half was dead weight — I checked, and it is
+      not.** The static export emits 163 RSC `.txt` payloads, so shapes 3 and 4 are
+      real. That was the cheap hypothesis and it was wrong; recorded because the
+      next person will have it too.
+
+      **Why not guess:** the comment this generator carries exists because of a
+      production incident in which *"the whole client workspace 404s"*. A wrong
+      splat reproduces it, and it would not fail CI — rules past position 100 are
+      ignored **silently**. Added to the owner questions as a one-request
+      observation, since a Cloudflare preview already deploys on every PR.
 
 ## Batch 4 — T5b, the exports that bypass `rbac()`
 
