@@ -1,28 +1,24 @@
 "use client";
 
-import { ClientNavProvider } from "@/lib/workspace/ClientNavContext";
-import { ClientContextPanel } from "@/components/ClientContextPanel";
 import { ClientHeader } from "@/components/ClientHeader";
 
-interface ClientWorkspaceShellProps {
-  children: React.ReactNode;
-}
-
-export function ClientWorkspaceShell({ children }: ClientWorkspaceShellProps) {
+/**
+ * What is left of the client workspace's own shell: its HEADER.
+ *
+ * It used to render `ClientNavProvider` + `ClientContextPanel` + the layout
+ * around them — a second shell, with its own collapse, storage key, mobile
+ * drawer, close-on-navigate effect and back link. `NavShell` owns all of that
+ * once now, for both scopes, and `AppShell` hoisted the provider so the one
+ * shell can render `ClientSections` beside the constant rail.
+ *
+ * The header stays because it is CONTENT, not chrome: the client's name and
+ * the switcher that moves to the same section of a different client.
+ */
+export function ClientWorkspaceShell({ children }: { children: React.ReactNode }) {
   return (
-    <ClientNavProvider>
-      <div className="flex h-full overflow-hidden">
-        {/* Single collapsible sidebar — handles desktop + mobile drawer */}
-        <ClientContextPanel />
-
-        {/* Main content area */}
-        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-          <ClientHeader />
-          <main className="flex-1 overflow-auto">
-            {children}
-          </main>
-        </div>
-      </div>
-    </ClientNavProvider>
+    <div className="flex flex-col h-full min-h-0">
+      <ClientHeader />
+      <div className="flex-1 min-h-0 overflow-auto">{children}</div>
+    </div>
   );
 }
