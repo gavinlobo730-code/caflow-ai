@@ -2681,6 +2681,25 @@ failed**: `setRows(prev => [json.data, ...prev])` puts undefined in as an
 ELEMENT, so a row renders blank and the screen lives — a different defect with
 a different fix, and folding it in would make the count bigger and the claim
 weaker.
+⚠️ **AND THE GUARD COVERS THE ARRAY HALF ONLY, WHICH IS NOT THE HALF THAT
+CRASHED.** It matches `useState<…>([])` and says in its own comment that an
+object-typed `useState<X | null>(null)` "is a separate shape whose guard is
+`objectOrNull` at the read" — and no guard for that shape exists. **Both
+components named above are that shape**: `ExpiringEwayBills` held a `report`
+object and read `report.bills.length`, `FxRatesPanel` held one and read
+`types.find`. Measured 24-09-2026: **65 object-state variables are set from a
+payload and then read with a nested `.map`/`.length`/`.filter`, and 62 of them
+do not pass the setter through `objectOrNull`.** A tranche of its own, and the
+one fixed so far is `components/inventory/ReorderPanel.tsx` — fixed because the
+`fetch_all` repair above made its success path reachable **for the first time
+ever**, so a latent crash became a live one in the same commit.
+**`objectOrNull` IS NECESSARY AND NOT SUFFICIENT**, which is the part to read
+before sweeping: it answers whether `data` is the right KIND of thing, so it
+converts `[]` and a scalar to `null` — and `{}` passes straight through it, so
+`report.groups.map` still throws. A nested list needs `arrayOrEmpty` at the
+READ as well as `objectOrNull` at the setter. And `if (!report ||
+report.items_considered === 0)` does not help: `undefined === 0` is false, so a
+payload missing the field walks past the guard into the map.
 
 ## The frontend's second data path
 

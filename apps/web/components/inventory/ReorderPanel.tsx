@@ -32,6 +32,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, HelpCircle, PackageSearch } from "lucide-react";
 import { api, type ReorderLine, type ReorderReport } from "@/lib/api";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
 function StateCell({ line }: { line: ReorderLine }) {
@@ -65,7 +66,13 @@ export function ReorderPanel({ clientId, asOf }: { clientId: string; asOf?: stri
       const params: Record<string, string> = { client_id: clientId };
       if (asOf) params.as_of = asOf;
       const r = await api.inventory.reorder(params);
-      setReport(r.success ? r.data : null);
+      // `objectOrNull` because `r.data` is a payload, not a promise of one:
+      // `lib/api` aborts at 45s and never retries, Render cold-starts, and a
+      // rolling deploy puts this screen in front of an older backend. Until
+      // now none of that was reachable — `assess` raised on its first page, so
+      // this component had ONLY ever rendered its failure branch, and the
+      // success path below has never run against a real response.
+      setReport(r.success ? objectOrNull<ReorderReport>(r.data) : null);
       if (!r.success) setFailed(true);
     } catch {
       setFailed(true);
@@ -84,7 +91,14 @@ export function ReorderPanel({ clientId, asOf }: { clientId: string; asOf?: stri
       </p>
     );
   }
-  if (!report || report.items_considered === 0) return null;
+  // `!report.items_considered` rather than `=== 0`: it covers the same nil
+  // (a client with no goods) AND a payload that arrived without the field,
+  // which `!report` cannot see — `{}` is truthy.
+  if (!report || !report.items_considered) return null;
+  // `objectOrNull` answers whether `data` is the right KIND of thing; it does
+  // not make `groups` an array. A nested list needs its own guard or the map
+  // below throws — the `ExpiringEwayBills` shape CLAUDE.md records.
+  const groups = arrayOrEmpty<ReorderReport["groups"][number]>(report.groups);
 
   return (
     <section className="bg-ps-surface border border-ps-border rounded-xl overflow-hidden">
@@ -101,7 +115,7 @@ export function ReorderPanel({ clientId, asOf }: { clientId: string; asOf?: stri
         </div>
       </div>
 
-      {report.groups.map((g) => (
+      {groups.map((g) => (
         <div key={g.group}>
           <div className="px-5 py-2 bg-ps-bg/60 border-b border-ps-border">
             <span className="text-xs font-medium text-ps-label">{g.group}</span>
