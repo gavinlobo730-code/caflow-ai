@@ -234,7 +234,7 @@ export default function ClientTrendPage() {
               books may be complete. */}
           {trend.unreadable_fys.length > 0 && (
             <div className="flex items-start gap-2.5 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
-              <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+              <AlertTriangle size={14} className="text-state-problem flex-shrink-0 mt-0.5" />
               <p className="text-2xs text-red-800">
                 <span className="font-medium">
                   {trend.unreadable_fys.join(", ")} could not be read

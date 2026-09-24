@@ -206,7 +206,7 @@ function Field<T extends Record<string, string>>({
     <div>
       <label className="text-xs font-medium text-ps-label block mb-1">
         {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
+        {required && <span className="text-state-problem ml-0.5">*</span>}
       </label>
       <input
         type={type}
@@ -219,7 +219,7 @@ function Field<T extends Record<string, string>>({
         }`}
       />
       {hint && !errors[field] && <p className="text-xs text-ps-hint mt-1">{hint}</p>}
-      {errors[field] && <p className="text-xs text-red-500 mt-1">{errors[field] as string}</p>}
+      {errors[field] && <p className="text-xs text-state-problem mt-1">{errors[field] as string}</p>}
     </div>
   );
 }
@@ -637,7 +637,7 @@ export default function OnboardingPage() {
 
             <div className="space-y-4 max-w-md">
               <div>
-                <label className="text-xs font-medium text-ps-label block mb-1">Full Name<span className="text-red-500 ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Full Name<span className="text-state-problem ml-0.5">*</span></label>
                 <input
                   type="text"
                   value={ownerName}
@@ -648,7 +648,7 @@ export default function OnboardingPage() {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-ps-label block mb-1">Password<span className="text-red-500 ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Password<span className="text-state-problem ml-0.5">*</span></label>
                 <div className="relative">
                   <input
                     type={showPw ? "text" : "password"}
@@ -664,7 +664,7 @@ export default function OnboardingPage() {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-ps-label block mb-1">Confirm password<span className="text-red-500 ml-0.5">*</span></label>
+                <label className="text-xs font-medium text-ps-label block mb-1">Confirm password<span className="text-state-problem ml-0.5">*</span></label>
                 <input
                   type={showPw ? "text" : "password"}
                   value={pw2}
@@ -674,7 +674,7 @@ export default function OnboardingPage() {
                   className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg ${pwError ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
                 />
               </div>
-              {pwError && <p className="text-xs text-red-500">{pwError}</p>}
+              {pwError && <p className="text-xs text-state-problem">{pwError}</p>}
               {pwSet && (
                 <div className="flex items-center gap-2 text-sm text-green-700"><CheckCircle size={15} /> Password set</div>
               )}
@@ -695,7 +695,7 @@ export default function OnboardingPage() {
                     autoComplete="one-time-code"
                     className="w-full text-sm border border-blue-300 rounded-lg px-3 py-2 tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-brand bg-white"
                   />
-                  {reauthError && <p className="text-xs text-red-500">{reauthError}</p>}
+                  {reauthError && <p className="text-xs text-state-problem">{reauthError}</p>}
                   <div className="flex items-center gap-3">
                     <button
                       onClick={verifyAndSetPassword}

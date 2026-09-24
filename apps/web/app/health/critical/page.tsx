@@ -54,7 +54,7 @@ export default function CriticalClientsPage() {
   return (
     <div className="p-6 space-y-5 bg-ps-bg min-h-full">
       <div className="flex items-center gap-3">
-        <AlertOctagon size={20} className="text-red-500" />
+        <AlertOctagon size={20} className="text-state-problem" />
         <div>
           <h1 className="text-2xl font-bold text-brand">Critical Clients</h1>
           <p className="text-sm text-gray-500">Health score below 40 — requires immediate attention</p>

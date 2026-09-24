@@ -182,7 +182,27 @@ const HEX_BUDGET = 44;
 // conversion cannot be quietly undone by the next screen somebody writes, and
 // that the plan's metric and this guard cannot drift apart. The end state is a
 // number small enough to argue about entry by entry, not necessarily zero.
-const NAMED_COLOUR_BUDGET = 4373;
+const NAMED_COLOUR_BUDGET = 4043;
+// 4,373 → 4,043 on 24-09-2026: the income-tax module converted by ROLE (202
+// sites, 8 files), `StatCard` converted and its dead `gradient` prop deleted,
+// and `text-red-500` swept app-wide (101 sites, 66 files) because it was one
+// role — problem — wearing a value that fails WCAG 1.4.3 at 3.76:1, on the
+// glyph that is the only indication a field is mandatory.
+//
+// ⚠️ SIX SITES WENT BACK, AND THE NUMBER IS 4,043 RATHER THAN 4,037 BECAUSE OF
+// THEM. A module sweep can REVERSE a recorded decision as easily as it
+// continues one, and this one did, twice: four inline links became brand navy
+// although 1.3d deliberately left `text-blue-*` links alone ("a link in
+// #182350 reads as body text" — measurably so beside `ps.ink` #0D1635, and the
+// app-wide convention is still `text-blue-600` at 64 sites), and the AIS
+// badge's `explained` branch became a brand chip although the palette says in
+// its own words that a status rendered in the brand has spent the product's
+// one loud colour on a state. `explained` needs a word the set does not have —
+// settled by a human explanation, as distinct from `ready` ("Agreed", the
+// figures match) and from `done`, whose surface and ink are within a shade of
+// the `ps-muted`/`ps-label` pair the "Not reviewed" branch uses, so *settled*
+// and *nobody looked* would render alike. Left raw, the way 1.3c left
+// `waiting_client` and `queued`.
 // 392 → 289 on 24-09-2026, the auth family converted (see above). Lowered to
 // what is actually there each time, because a budget with slack in it is a
 // budget that permits a regression.

@@ -161,7 +161,7 @@ export function PurchaseCreditNoteViewDrawer({
         </div>
       ) : error || !pcn ? (
         <div className="p-8 text-center">
-          <AlertCircle size={28} className="mx-auto mb-3 text-red-500" />
+          <AlertCircle size={28} className="mx-auto mb-3 text-state-problem" />
           <p className="text-sm font-semibold text-ps-body">Couldn&apos;t load this credit note</p>
           <button onClick={load} className="mt-3 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">Retry</button>
         </div>

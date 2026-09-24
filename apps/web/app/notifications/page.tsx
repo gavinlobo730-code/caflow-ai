@@ -31,7 +31,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<{ success:
 }
 
 const SEVERITY_ICONS: Record<InsightSeverity, React.ReactNode> = {
-  critical: <AlertTriangle size={14} className="text-red-500" />,
+  critical: <AlertTriangle size={14} className="text-state-problem" />,
   high: <AlertTriangle size={14} className="text-orange-500" />,
   medium: <Clock size={14} className="text-amber-500" />,
   low: <Info size={14} className="text-blue-500" />,

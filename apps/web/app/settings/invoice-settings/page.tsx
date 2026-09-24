@@ -188,7 +188,7 @@ export default function InvoiceSettingsPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-medium text-ps-label block mb-1">Prefix <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-medium text-ps-label block mb-1">Prefix <span className="text-state-problem">*</span></label>
                     <input
                       type="text"
                       value={form.prefix}

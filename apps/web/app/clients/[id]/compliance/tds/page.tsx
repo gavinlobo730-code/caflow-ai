@@ -140,7 +140,7 @@ function TDSDashboard({ clientId }: { clientId: string }) {
   }, [clientId]);
 
   if (loading) return <DashboardSkeleton cards={4} />;
-  if (!summary) return <p className="text-sm text-red-500">Failed to load TDS dashboard.</p>;
+  if (!summary) return <p className="text-sm text-state-problem">Failed to load TDS dashboard.</p>;
 
   return (
     <div className="grid grid-cols-2 gap-4">

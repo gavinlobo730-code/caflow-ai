@@ -317,7 +317,7 @@ export default function Form26ASPage() {
               their TDS statement. */}
           {recon.unsupported_credit_paise > 0 && (
             <div className="flex items-start gap-2 bg-state-problem-surface border border-state-problem-border rounded-lg p-3">
-              <XCircle size={14} className="text-red-500 mt-px shrink-0" />
+              <XCircle size={14} className="text-state-problem mt-px shrink-0" />
               <p className="text-xs text-state-problem">
                 <span className="font-semibold">{paise(recon.unsupported_credit_paise)}</span>{" "}
                 of TDS credit in the books is not reported in 26AS. It cannot be claimed
@@ -401,7 +401,7 @@ export default function Form26ASPage() {
 
           {recon.ai_insight_triggered && (
             <div className="flex items-center gap-2 bg-state-problem-surface border border-red-100 rounded-lg p-3">
-              <XCircle size={14} className="text-red-500" />
+              <XCircle size={14} className="text-state-problem" />
               <p className="text-xs text-state-problem">
                 Flagged for review — the variance exceeds the 1% threshold, or credit in
                 the books is unreported in 26AS. Review before filing.

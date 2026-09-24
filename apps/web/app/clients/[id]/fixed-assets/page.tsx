@@ -1675,7 +1675,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
         </div>
       )}
       <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3 flex gap-2">
-        <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
+        <AlertCircle size={14} className="text-state-problem shrink-0 mt-0.5" />
         <div>
           <p className="text-xs font-semibold text-red-800">Asset Disposal — CA Review Required</p>
           <p className="text-2xs text-state-problem mt-0.5">

@@ -58,8 +58,8 @@ function statusBadge(status: NoticeStatus) {
   switch (status) {
     case "pending": return { cls: "text-state-problem bg-state-problem-surface", icon: AlertTriangle, label: "Pending" };
     case "responded": return { cls: "text-state-attention bg-state-attention-surface", icon: Clock, label: "Responded" };
-    case "closed": return { cls: "text-green-700 bg-green-50", icon: CheckCircle, label: "Closed" };
-    case "appeal": return { cls: "text-blue-700 bg-blue-50", icon: AlertTriangle, label: "In Appeal" };
+    case "closed": return { cls: "text-state-ready bg-state-ready-surface", icon: CheckCircle, label: "Closed" };
+    case "appeal": return { cls: "text-brand bg-brand-surface", icon: AlertTriangle, label: "In Appeal" };
   }
 }
 
@@ -269,7 +269,7 @@ function UploadDocButton({ noticeId, firmId, clientId, field, label, currentPath
         <>
           <input ref={fileRef} type="file" className="hidden" onChange={handleFile} accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" />
           <button onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="flex items-center gap-1 text-xs text-ps-label hover:text-blue-600 disabled:opacity-40">
+            className="flex items-center gap-1 text-xs text-ps-label hover:text-brand disabled:opacity-40">
             {uploading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
             {uploading ? "Uploading…" : label}
           </button>
@@ -354,8 +354,8 @@ export default function ITNoticesPage() {
 
       {urgentCount > 0 && (
         <div className="bg-state-problem-surface border border-state-problem-border rounded-xl px-5 py-3 flex items-center gap-3">
-          <AlertTriangle size={16} className="text-red-600 shrink-0" />
-          <p className="text-sm text-red-800 font-medium">{urgentCount} notice{urgentCount !== 1 ? "s" : ""} overdue — response date has passed</p>
+          <AlertTriangle size={16} className="text-state-problem shrink-0" />
+          <p className="text-sm text-state-problem font-medium">{urgentCount} notice{urgentCount !== 1 ? "s" : ""} overdue — response date has passed</p>
         </div>
       )}
 
@@ -390,7 +390,7 @@ export default function ITNoticesPage() {
         </select>
         {filtered.length > 0 && (
           <div className="ml-auto flex items-center text-sm text-ps-label">
-            Total demand: <span className="font-semibold ml-1 text-red-600">{formatPaise(totalDemand)}</span>
+            Total demand: <span className="font-semibold ml-1 text-state-problem">{formatPaise(totalDemand)}</span>
           </div>
         )}
       </div>
@@ -403,7 +403,7 @@ export default function ITNoticesPage() {
           <TableSkeleton cols={9} bare />
         ) : filtered.length === 0 ? (
           <div className="p-10 text-center text-ps-hint text-sm">
-            <FileText className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+            <FileText className="w-10 h-10 text-ps-disabled mx-auto mb-3" />
             {notices.length === 0 ? "No notices tracked yet. Add your first notice." : "No notices match filters."}
           </div>
         ) : (
@@ -433,7 +433,7 @@ export default function ITNoticesPage() {
                       <td className="px-3 py-3 text-sm">Sec. {n.notice_type}</td>
                       <td className="px-3 py-3 text-xs text-ps-label">{n.assessment_year}</td>
                       <td className="px-3 py-3 text-xs text-ps-label">{n.date_received}</td>
-                      <td className={`px-3 py-3 text-xs ${overdue ? "text-red-600 font-semibold" : "text-ps-label"}`}>
+                      <td className={`px-3 py-3 text-xs ${overdue ? "text-state-problem font-semibold" : "text-ps-label"}`}>
                         {n.response_due_date ?? "—"}
                         {overdue && " ⚠"}
                       </td>
@@ -469,18 +469,18 @@ export default function ITNoticesPage() {
                           )}
                           {n.status === "responded" && (
                             <button onClick={() => updateStatus(n.id, "closed")}
-                              className="text-xs px-2 py-1 bg-green-50 text-green-700 rounded hover:bg-green-100">
+                              className="text-xs px-2 py-1 bg-state-ready-surface text-state-ready rounded hover:bg-state-ready-hover">
                               Close
                             </button>
                           )}
                           {(n.status === "pending" || n.status === "responded") && (
                             <button onClick={() => updateStatus(n.id, "appeal")}
-                              className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">
+                              className="text-xs px-2 py-1 bg-brand-surface text-brand rounded hover:bg-brand-light">
                               Appeal
                             </button>
                           )}
                           <button onClick={() => deleteNotice(n.id)}
-                            className="p-1 text-ps-disabled hover:text-red-500">
+                            className="p-1 text-ps-disabled hover:text-state-problem">
                             <Trash2 size={13} />
                           </button>
                         </div>

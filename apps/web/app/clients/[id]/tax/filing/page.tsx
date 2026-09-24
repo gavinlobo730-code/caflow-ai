@@ -385,7 +385,7 @@ export default function ITRFilingPage() {
 
       {/* CA Review Banner */}
       <div className="flex items-center gap-2 bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">
-        <AlertTriangle size={13} className="text-red-500 flex-shrink-0" />
+        <AlertTriangle size={13} className="text-state-problem flex-shrink-0" />
         <p className="text-xs font-medium text-red-800">
           CA REVIEW REQUIRED — Partner review mandatory before Ready for Filing. DO NOT AUTO-SUBMIT.
         </p>

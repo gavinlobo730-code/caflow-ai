@@ -358,7 +358,7 @@ export default function ExecutiveDashboardPage() {
           {/* Churn Signals */}
           <div className="bg-white border border-ps-border rounded-xl p-5">
             <div className="flex items-center gap-2 mb-4">
-              <TrendingDown size={16} className="text-red-500" />
+              <TrendingDown size={16} className="text-state-problem" />
               <h3 className="font-semibold text-brand">Churn Signals</h3>
               <span className="ml-auto text-xs text-ps-hint">{churn_signals.length} detected</span>
             </div>

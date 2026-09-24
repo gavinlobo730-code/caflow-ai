@@ -159,7 +159,7 @@ function CategoryCard({ title, rows }: { title: string; rows: RiskRow[] }) {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
-          <AlertCircle size={16} className="text-red-500" />
+          <AlertCircle size={16} className="text-state-problem" />
           {title}
           <span className="ml-auto text-xs font-medium bg-state-problem-surface text-state-problem px-2 py-0.5 rounded-full">
             {rows.length}

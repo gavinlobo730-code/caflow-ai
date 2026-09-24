@@ -294,7 +294,7 @@ export default function PayrollPeoplePage() {
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertCircle size={18} className="text-red-500" />Couldn&apos;t load the roster
+              <AlertCircle size={18} className="text-state-problem" />Couldn&apos;t load the roster
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">

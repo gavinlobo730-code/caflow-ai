@@ -413,7 +413,7 @@ export default function AdvanceTaxPage() {
 
       {error && <Callout tone="problem">{error}</Callout>}
       {computeError && <Callout tone="problem">{computeError}</Callout>}
-      {saveMsg && <div className="bg-green-50 text-green-700 rounded-lg px-5 py-2 text-sm">{saveMsg}</div>}
+      {saveMsg && <div className="bg-state-ready-surface text-state-ready rounded-lg px-5 py-2 text-sm">{saveMsg}</div>}
 
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -437,7 +437,7 @@ export default function AdvanceTaxPage() {
         ].map(s => (
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">
-              <p className={`text-lg font-bold tabular-nums ${s.red ? "text-red-600" : "text-ps-ink"}`}>{s.value}</p>
+              <p className={`text-lg font-bold tabular-nums ${s.red ? "text-state-problem" : "text-ps-ink"}`}>{s.value}</p>
               <p className="text-xs text-ps-label mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
@@ -480,7 +480,7 @@ export default function AdvanceTaxPage() {
                   const status = dueDate ? rowStatus(dueDate, requiredPaise, paidPaise) : "upcoming";
 
                   const statusEl = status === "paid"
-                    ? <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full"><CheckCircle size={11} /> Paid</span>
+                    ? <span className="inline-flex items-center gap-1 text-xs text-state-ready bg-state-ready-surface px-2 py-0.5 rounded-full"><CheckCircle size={11} /> Paid</span>
                     : status === "overdue"
                     ? <span className="inline-flex items-center gap-1 text-xs text-state-problem bg-state-problem-surface px-2 py-0.5 rounded-full"><AlertTriangle size={11} /> Overdue</span>
                     : <span className="inline-flex items-center gap-1 text-xs text-ps-label bg-ps-muted px-2 py-0.5 rounded-full"><Clock size={11} /> Upcoming</span>;
@@ -512,7 +512,7 @@ export default function AdvanceTaxPage() {
                           placeholder="BSR/challan"
                           className="w-32 border border-ps-border rounded px-2 py-1 text-xs outline-none focus:border-brand" />
                       </td>
-                      <td className={`px-3 py-3 text-sm text-right tabular-nums ${interest > 0 ? "text-red-600 font-semibold" : "text-ps-hint"}`}>
+                      <td className={`px-3 py-3 text-sm text-right tabular-nums ${interest > 0 ? "text-state-problem font-semibold" : "text-ps-hint"}`}>
                         {interest > 0 ? formatPaise(interest) : "—"}
                       </td>
                       <td className="px-5 py-3">{statusEl}</td>
@@ -574,7 +574,7 @@ export default function AdvanceTaxPage() {
             </label>
           </div>
 
-          {lateError && <p className="text-xs text-red-600">{lateError}</p>}
+          {lateError && <p className="text-xs text-state-problem">{lateError}</p>}
 
           {!lateResult ? (
             <p className="text-xs text-ps-hint">
@@ -597,7 +597,7 @@ export default function AdvanceTaxPage() {
                     the §234A figure above is a FLOOR. Saying nothing would let a
                     CA read a floor as the answer. */}
                 {!lateResult.itr_due_date.decided && (
-                  <p className="text-2xs text-amber-600 flex items-start gap-1">
+                  <p className="text-2xs text-state-attention flex items-start gap-1">
                     <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />
                     The due date is not settled on what is recorded for this client, so the
                     earlier of the two was used and the §234A interest above is a floor.
@@ -804,7 +804,7 @@ function InterestBlock({ r }: { r: SectionInterestResult }) {
     <div className="rounded-lg border border-ps-muted p-3 space-y-1.5">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-xs font-semibold text-ps-body">{r.section}</span>
-        <span className={`text-base font-bold tabular-nums ${r.interest_paise > 0 ? "text-red-600" : "text-ps-ink"}`}>
+        <span className={`text-base font-bold tabular-nums ${r.interest_paise > 0 ? "text-state-problem" : "text-ps-ink"}`}>
           {formatPaise(r.interest_paise)}
         </span>
       </div>

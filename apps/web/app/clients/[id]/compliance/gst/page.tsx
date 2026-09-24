@@ -398,7 +398,7 @@ function GSTDashboard({ clientId }: { clientId: string }) {
   }, [clientId]);
 
   if (loading) return <DashboardSkeleton cards={4} />;
-  if (!data) return <p className="text-sm text-red-500">Failed to load GST dashboard.</p>;
+  if (!data) return <p className="text-sm text-state-problem">Failed to load GST dashboard.</p>;
 
   const quarterly = data.frequency === "quarterly";
 
@@ -1826,7 +1826,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
   if (loading) return <TableSkeleton cols={4} bare />;
   if (!data) return (
     <div className="text-center py-6 space-y-2">
-      <p className="text-sm text-red-500">{loadError ?? "Failed to load filing history."}</p>
+      <p className="text-sm text-state-problem">{loadError ?? "Failed to load filing history."}</p>
       <button onClick={load} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
     </div>
   );

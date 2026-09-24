@@ -82,7 +82,7 @@ function TaskRow({ task }: { task: Task }) {
           </Badge>
         )}
         {task.due_date && (
-          <p className={`text-2xs mt-0.5 ${isOverdue(task.due_date) ? "text-red-500 font-medium" : "text-ps-hint"}`}>
+          <p className={`text-2xs mt-0.5 ${isOverdue(task.due_date) ? "text-state-problem font-medium" : "text-ps-hint"}`}>
             {fmt(task.due_date)}
           </p>
         )}
@@ -254,7 +254,7 @@ export default function WorkPage() {
             <Card className={overdueTasks.length > 0 ? "border-red-100" : ""}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-1.5">
-                  <AlertTriangle size={13} className="text-red-500" /> Overdue
+                  <AlertTriangle size={13} className="text-state-problem" /> Overdue
                   {overdueTasks.length > 0 && (
                     <Badge className="ml-1 text-3xs px-1.5 py-0 bg-state-problem-surface text-state-problem">{overdueTasks.length}</Badge>
                   )}

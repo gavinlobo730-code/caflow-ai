@@ -282,7 +282,7 @@ function LockYearContent() {
                 <div key={fy.label} className="flex items-center justify-between px-5 py-4">
                   <div className="flex items-center gap-3">
                     {isLocked
-                      ? <Lock className="w-4 h-4 text-red-500" />
+                      ? <Lock className="w-4 h-4 text-state-problem" />
                       : <Unlock className="w-4 h-4 text-ps-disabled" />
                     }
                     <div>

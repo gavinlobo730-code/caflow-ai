@@ -263,7 +263,7 @@ export default function BrandingPage() {
                     <img src={branding.logo_url} alt="Logo" className="h-10 object-contain" />
                     <button
                       onClick={() => update("logo_url", null)}
-                      className="text-xs text-red-500 hover:text-state-problem"
+                      className="text-xs text-state-problem"
                     >
                       Remove
                     </button>

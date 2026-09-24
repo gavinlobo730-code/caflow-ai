@@ -969,7 +969,7 @@ export default function PayrollPage() {
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertCircle size={18} className="text-red-500" />
+              <AlertCircle size={18} className="text-state-problem" />
               Couldn&apos;t load payroll
             </CardTitle>
           </CardHeader>

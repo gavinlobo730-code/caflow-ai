@@ -131,7 +131,7 @@ export default function SignPage() {
 
         {!loading && error && (
           <div className="rounded-xl border border-state-problem-border bg-white p-8 text-center">
-            <AlertCircle size={32} className="mx-auto mb-3 text-red-500" />
+            <AlertCircle size={32} className="mx-auto mb-3 text-state-problem" />
             <h1 className="text-lg font-semibold text-slate-900">Link unavailable</h1>
             <p className="mt-1 text-sm text-slate-600">{error}</p>
           </div>
@@ -163,7 +163,7 @@ export default function SignPage() {
               )}
               {letter.status === "Rejected" && (
                 <div className="flex items-start gap-3 rounded-lg border border-state-problem-border bg-state-problem-surface px-4 py-3">
-                  <XCircle size={20} className="mt-0.5 shrink-0 text-red-500" />
+                  <XCircle size={20} className="mt-0.5 shrink-0 text-state-problem" />
                   <div>
                     <p className="text-sm font-semibold text-red-800">Engagement declined</p>
                     <p className="text-sm text-state-problem">

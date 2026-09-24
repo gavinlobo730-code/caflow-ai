@@ -412,9 +412,9 @@ export function JournalEditor({
                   {totalCredit > 0 ? `₹${rupeeInputFromPaise(totalCredit)}` : "—"}
                 </td>
                 <td colSpan={2} className="pt-2 pl-3">
-                  {hasUnparseable && <span className="text-red-500 text-3xs">Check the highlighted amounts</span>}
+                  {hasUnparseable && <span className="text-state-problem text-3xs">Check the highlighted amounts</span>}
                   {!hasUnparseable && totalDebit > 0 && totalDebit !== totalCredit && (
-                    <span className="text-red-500 text-3xs">
+                    <span className="text-state-problem text-3xs">
                       Difference: ₹{rupeeInputFromPaise(Math.abs(totalDebit - totalCredit))}
                     </span>
                   )}

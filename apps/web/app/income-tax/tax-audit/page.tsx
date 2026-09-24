@@ -69,9 +69,9 @@ function fmtDate(iso: string): string {
 function statusBadge(status: AuditStatus) {
   switch (status) {
     case "not_started": return { cls: "text-ps-label bg-ps-muted", icon: Clock, label: "Not Started" };
-    case "in_progress": return { cls: "text-blue-700 bg-blue-50", icon: Clock, label: "In Progress" };
+    case "in_progress": return { cls: "text-brand bg-brand-surface", icon: Clock, label: "In Progress" };
     case "completed": return { cls: "text-state-attention bg-state-attention-surface", icon: CheckCircle, label: "Completed" };
-    case "filed": return { cls: "text-green-700 bg-green-50", icon: CheckCircle, label: "Filed" };
+    case "filed": return { cls: "text-state-ready bg-state-ready-surface", icon: CheckCircle, label: "Filed" };
   }
 }
 
@@ -497,8 +497,8 @@ export default function TaxAuditPage() {
 
       {/* Notice */}
       <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-5 py-3 flex items-start gap-3">
-        <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-        <p className="text-sm text-amber-800">
+        <AlertTriangle size={16} className="text-state-attention shrink-0 mt-0.5" />
+        <p className="text-sm text-state-attention">
           §44AB(a) reaches a business and §44AB(b) a profession, on different figures —
           enter the turnover and say which, and the check below states the answer and
           what it rests on. UDIN required from the ICAI portal for every audit report.

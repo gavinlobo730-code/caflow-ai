@@ -96,7 +96,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
         <div className="px-6 py-4 space-y-4">
           {error && <Callout tone="problem">{error}</Callout>}
           <div>
-            <label className="text-xs font-medium text-ps-label block mb-1">Template Name <span className="text-red-500">*</span></label>
+            <label className="text-xs font-medium text-ps-label block mb-1">Template Name <span className="text-state-problem">*</span></label>
             <input
               autoFocus
               type="text"
@@ -215,7 +215,7 @@ function TemplateCard({
           </button>
         )}
         {!template.is_default && (
-          <button onClick={onDelete} className="flex items-center gap-1.5 px-3 py-1 text-xs text-red-500 border border-state-problem-border rounded-lg hover:bg-state-problem-hover transition-colors ml-auto">
+          <button onClick={onDelete} className="flex items-center gap-1.5 px-3 py-1 text-xs text-state-problem border border-state-problem-border rounded-lg hover:bg-state-problem-hover transition-colors ml-auto">
             <Trash2 size={11} /> Delete
           </button>
         )}

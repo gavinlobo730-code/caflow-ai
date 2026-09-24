@@ -242,7 +242,7 @@ function PracticeOverview() {
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <KpiCard label="Total Receivable" value={formatPaise(dash?.total_receivable_paise ?? 0)} icon={IndianRupee} tone="text-blue-500" />
-        <KpiCard label="Overdue" value={`${formatPaise(dash?.overdue_paise ?? 0)} (${dash?.overdue_count ?? 0})`} icon={AlertTriangle} tone="text-red-500" />
+        <KpiCard label="Overdue" value={`${formatPaise(dash?.overdue_paise ?? 0)} (${dash?.overdue_count ?? 0})`} icon={AlertTriangle} tone="text-state-problem" />
         <KpiCard label="TDS Receivable" value={formatPaise(dash?.tds_receivable_paise ?? 0)} icon={ReceiptText} tone="text-amber-500" />
         <KpiCard label="Collected (cash)" value={formatPaise(dash?.collected_cash_paise ?? 0)} icon={Wallet} tone="text-green-600" />
       </div>

@@ -146,7 +146,7 @@ function PaiseInput({ label, valuePaise, onChange, note }: {
       <div>
         <span className="text-sm text-ps-body">{label}</span>
         {note && <span className="block text-xs text-ps-hint">{note}</span>}
-        {bad && <span className="block text-xs text-red-600">Not an amount — enter rupees, like 150000 or 150000.50.</span>}
+        {bad && <span className="block text-xs text-state-problem">Not an amount — enter rupees, like 150000 or 150000.50.</span>}
       </div>
       <div className="flex items-center gap-1 shrink-0">
         <span className="text-sm text-ps-hint">₹</span>
@@ -158,7 +158,7 @@ function PaiseInput({ label, valuePaise, onChange, note }: {
             setBad(p === null);
             if (p !== null) onChange(p);
           }}
-          className={`w-28 border rounded px-2 py-1 text-sm text-right outline-none ${bad ? "border-red-400 focus:border-red-500" : "border-ps-border focus:border-brand"}`}
+          className={`w-28 border rounded px-2 py-1 text-sm text-right outline-none ${bad ? "border-state-problem" : "border-ps-border focus:border-brand"}`}
           placeholder="0"
         />
       </div>
@@ -178,7 +178,7 @@ function SectionCard({ title, children, eligible, limit, entered }: {
         <span className="font-medium text-ps-ink text-sm">{title}</span>
         <div className="flex items-center gap-3">
           {eligible !== undefined && (
-            <span className="text-xs text-green-600 font-medium">Eligible: {fmtP(eligible)}</span>
+            <span className="text-xs text-state-ready font-medium">Eligible: {fmtP(eligible)}</span>
           )}
           {open ? <ChevronUp size={15} className="text-ps-hint" /> : <ChevronDown size={15} className="text-ps-hint" />}
         </div>
@@ -190,7 +190,7 @@ function SectionCard({ title, children, eligible, limit, entered }: {
               {limit !== undefined && <span>Limit: {fmtP(limit)}</span>}
               {entered !== undefined && <span>Entered: {fmtP(entered)}</span>}
               {eligible !== undefined && limit !== undefined && (
-                <span className="text-blue-600">Remaining: {fmtP(Math.max(0, limit - eligible))}</span>
+                <span className="text-brand">Remaining: {fmtP(Math.max(0, limit - eligible))}</span>
               )}
             </div>
           )}
@@ -442,7 +442,7 @@ export default function DeductionsPage() {
       </div>
 
       {!ratesVerified && fy && (
-        <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 text-sm text-amber-800">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 text-sm text-state-attention">
           FY {fy} statutory rates are carried forward from the last verified year, pending confirmation
           against the official Finance Act / CBDT circulars for {fy}. Do not rely on these figures for
           filing until verified.
@@ -476,9 +476,9 @@ export default function DeductionsPage() {
       </div>
 
       {/* Standard Deduction */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center justify-between">
-        <span className="text-sm text-blue-800">Standard Deduction (New Regime, FY {fy || "—"})</span>
-        <span className="font-semibold text-blue-900">{fmtP(standardDed)}</span>
+      <div className="bg-brand-surface border border-brand-light rounded-xl px-4 py-3 flex items-center justify-between">
+        <span className="text-sm text-brand-dark">Standard Deduction (New Regime, FY {fy || "—"})</span>
+        <span className="font-semibold text-brand-dark">{fmtP(standardDed)}</span>
       </div>
 
       {/* 80C */}
@@ -614,7 +614,7 @@ export default function DeductionsPage() {
               </select>
               <button onClick={() => upd({ donations: state.donations.filter((_, j) => j !== i) })}
                 aria-label={`Remove donation ${i + 1}`}
-                className="text-red-600 hover:text-state-problem text-xs">✕</button>
+                className="text-ps-hint hover:text-state-problem text-xs">✕</button>
             </div>
           ))}
           <button onClick={() => upd({ donations: [...state.donations, { description: "", amountPaise: 0, deductionPct: 100, subjectToLimit: true, paidInCash: null }] })}
@@ -670,29 +670,29 @@ export default function DeductionsPage() {
       {/* Summary */}
       <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
         <h2 className="font-semibold text-ps-ink text-sm">Tax Summary</h2>
-        {computeError && <p className="text-xs text-red-600">{computeError}</p>}
+        {computeError && <p className="text-xs text-state-problem">{computeError}</p>}
         <div className="space-y-2 text-sm">
           <div className="flex justify-between"><span className="text-ps-label">Gross Total Income</span><span className="font-mono">{fmtP(state.grossIncomePaise)}</span></div>
-          <div className="flex justify-between"><span className="text-ps-label">Total Deductions (Old Regime)</span><span className="font-mono text-green-600">— {fmtP(totalDeductions)}</span></div>
+          <div className="flex justify-between"><span className="text-ps-label">Total Deductions (Old Regime)</span><span className="font-mono text-state-ready">— {fmtP(totalDeductions)}</span></div>
           <div className="flex justify-between border-t pt-2"><span className="font-medium">Net Taxable Income (Old Regime)</span><span className="font-mono font-semibold">{fmtP(netTaxableOld)}</span></div>
           <div className="flex justify-between border-t pt-2"><span className="font-medium">Net Taxable Income (New Regime)</span><span className="font-mono font-semibold">{fmtP(netTaxableNew)}</span></div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 mt-3">
-          <div className={`rounded-lg p-3 border-2 ${recommended === "new" ? "border-green-500 bg-green-50" : "border-ps-border bg-ps-bg"}`}>
+          <div className={`rounded-lg p-3 border-2 ${recommended === "new" ? "border-state-ready bg-state-ready-surface" : "border-ps-border bg-ps-bg"}`}>
             <p className="text-xs font-medium text-ps-label mb-1">New Regime Tax {recommended === "new" && "✓ Recommended"}</p>
             <p className="text-xl font-bold font-mono text-ps-ink">{fmtP(newRegimeTax)}</p>
             <p className="text-xs text-ps-label mt-1">Taxable: {fmtP(netTaxableNew)}</p>
-            {newResult && newRegimeTax === 0 && netTaxableNew > 0 && <p className="text-xs text-green-600 mt-1">Rebate u/s 87A — NIL tax</p>}
+            {newResult && newRegimeTax === 0 && netTaxableNew > 0 && <p className="text-xs text-state-ready mt-1">Rebate u/s 87A — NIL tax</p>}
           </div>
-          <div className={`rounded-lg p-3 border-2 ${recommended === "old" ? "border-green-500 bg-green-50" : "border-ps-border bg-ps-bg"}`}>
+          <div className={`rounded-lg p-3 border-2 ${recommended === "old" ? "border-state-ready bg-state-ready-surface" : "border-ps-border bg-ps-bg"}`}>
             <p className="text-xs font-medium text-ps-label mb-1">Old Regime Tax {recommended === "old" && "✓ Recommended"}</p>
             <p className="text-xl font-bold font-mono text-ps-ink">{fmtP(oldRegimeTax)}</p>
             <p className="text-xs text-ps-label mt-1">Taxable: {fmtP(netTaxableOld)}</p>
           </div>
         </div>
 
-        <div className={`rounded-lg px-4 py-3 text-sm font-medium ${recommended === "new" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>
+        <div className="rounded-lg px-4 py-3 text-sm font-medium bg-state-ready-surface text-state-ready">
           {computing
             ? "Computing…"
             : <>Recommendation: <strong>{recommended === "new" ? "New Regime" : "Old Regime"}</strong> saves {fmtP(Math.abs(newRegimeTax - oldRegimeTax))} more in taxes.</>}
@@ -709,7 +709,7 @@ export default function DeductionsPage() {
           className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark disabled:opacity-60">
           <Save size={15} /> {saving ? "Saving…" : "Save for Client"}
         </button>
-        {saveMsg && <p className="text-xs text-green-600">{saveMsg}</p>}
+        {saveMsg && <p className="text-xs text-state-ready">{saveMsg}</p>}
       </div>
     </div>
   );
