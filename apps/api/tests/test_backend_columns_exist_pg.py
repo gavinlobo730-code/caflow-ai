@@ -358,7 +358,28 @@ UNFIXED: dict[str, str] = {}
 # time a CA saves a verified amount. So the payload is genuinely dynamic and no
 # literal exists to read. That is the whole of the increase; the four columns
 # migrations 409 and 410 added are named literally everywhere else they appear.
-MAX_UNREADABLE = 459
+# 459 -> 463, all four in `services/hub_service.py`, and this is the first entry
+# where the whole increase is ONE DESIGN rather than one payload.
+#
+# The hub asks fifteen questions through one code path — `_count(table, …)` and
+# `_sum_paise(table, column, …)` — so `db.table(table)` is a VARIABLE by
+# construction and every filter hung off it is invisible to this scanner. That
+# is the point of the module: the alternative is fifteen near-identical
+# functions, which is fifteen places for a firm filter to be forgotten, and the
+# service-role key bypasses RLS so that filter is the primary isolation control.
+# Two arrived with the hub (`_count`'s `.select("id", count="exact")` and its
+# `.eq("firm_id", …)`); two are added here, because fixing `_sum_paise`'s call
+# to `fetch_all` moved the projection INTO the query, where it belongs — before,
+# it was passed as fetch_all's `key` argument and the query had no `.select()`
+# at all, which is exactly why those three money tiles were dead.
+#
+# ⚠️ THE COMPENSATING CONTROL IS STRONGER THAN THE ONE IT REPLACES, which is
+# why this is budgeted rather than refactored away.
+# `tests/test_the_hub_asks_the_right_table_pg.py` asserts every column the hub
+# filters on against the LIVE schema, and `..._table.py` pins each to the table
+# it belongs to — so the columns this scanner cannot read are checked by name
+# somewhere it can. A string scan would only have told us they parse.
+MAX_UNREADABLE = 463
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

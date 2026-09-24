@@ -2681,6 +2681,35 @@ failed**: `setRows(prev => [json.data, ...prev])` puts undefined in as an
 ELEMENT, so a row renders blank and the screen lives — a different defect with
 a different fix, and folding it in would make the count bigger and the claim
 weaker.
+⚠️ **AND THE GUARD COVERS THE ARRAY HALF ONLY, WHICH IS NOT THE HALF THAT
+CRASHED.** It matches `useState<…>([])` and says in its own comment that an
+object-typed `useState<X | null>(null)` "is a separate shape whose guard is
+`objectOrNull` at the read" — and no guard for that shape exists. **Both
+components named above are that shape**: `ExpiringEwayBills` held a `report`
+object and read `report.bills.length`, `FxRatesPanel` held one and read
+`types.find`. Measured 24-09-2026: **66 object-state
+variables are set from a payload and then read with a nested
+`.map`/`.length`/`.filter` without the setter passing through `objectOrNull`**,
+and `scripts/an-object-payload-is-not-its-fields-until-it-is-checked.test.ts`
+is the guard — a FROZEN LIST rather than a count, because a budget is one
+number somebody raises and a named list can only shrink, asserted as an
+EQUALITY so a fix that leaves its entry behind fails as loudly as a new
+offender. ⚠️ **The first sweep found 62 and was wrong, and its own negative
+control is what said so**: it matched `x.field.map` and not `x?.field.map`,
+and the optional-chained form is the DANGEROUS one — `?.` guards `x` being
+null and says nothing about `field` being absent, so it throws on `{}` exactly
+as the plain form does. A probe adding one passed against the narrow regex.
+A tranche of its own, and the one fixed so far is
+`components/inventory/ReorderPanel.tsx` — fixed because the
+`fetch_all` repair above made its success path reachable **for the first time
+ever**, so a latent crash became a live one in the same commit.
+**`objectOrNull` IS NECESSARY AND NOT SUFFICIENT**, which is the part to read
+before sweeping: it answers whether `data` is the right KIND of thing, so it
+converts `[]` and a scalar to `null` — and `{}` passes straight through it, so
+`report.groups.map` still throws. A nested list needs `arrayOrEmpty` at the
+READ as well as `objectOrNull` at the setter. And `if (!report ||
+report.items_considered === 0)` does not help: `undefined === 0` is false, so a
+payload missing the field walks past the guard into the map.
 
 ## The frontend's second data path
 
@@ -3206,6 +3235,42 @@ of the rule by moving to the shared helper. Two traps at the call site:
 applied to the rows it got BACK, never inside the paged query; and sort keys are
 coalesced, because a nullable column such as `fixed_assets.asset_code` raises
 `TypeError` in Python where the database sorted it happily.
+**AND ITS FIRST ARGUMENT IS A CALLABLE, WHICH TWO CALL SITES FORGOT.**
+`fetch_all(make_query, key="id", *, label, stats)` CALLS `make_query` once per
+page — it has to, because a builder is stateful and reusing one stacks each
+page's `.gt(key, cursor)` on the last — so the projection goes INSIDE a
+`def one_page(): return db.table(...).select(...)`. Handing it the builder
+raises `TypeError: '_Query' object is not callable` on page one, and a third
+positional argument raises before the body runs at all. Both happened, and
+**neither was visible from its own tests, for two different reasons** — which
+is what makes it a class rather than a pair.
+`services/reorder_service._catalogue` passed the builder, so the reorder report
+has never run against a
+database: `routers/inventory.reorder_report` catches it and answers "Unable to
+load the reorder report. Please try again.", which reads as transient, and the
+mock suite could not reach it because that router's `_USE_MOCK` branch passes
+`db=None` and `assess` short-circuits to an empty answer BEFORE the fetch.
+`services/hub_service._sum_paise` passed three positional arguments, and its
+three tiles are computed inside `_safely`, which swallows a tile's exception by
+design — so Sales, Purchases and TDS rendered "—" on the hub. One hidden by a
+router's broad `except`, one by a deliberate per-tile one.
+`tests/test_fetch_all_is_given_something_it_can_call.py` states the rule on the
+ARGUMENTS at every call site, so a module nobody thought of is covered the day
+it is written. **The durable half is the second reason: a service whose job is
+to FETCH needs a test that FETCHES.** A source scan cannot see an arity error,
+and a `db is None` mock branch is not the code that runs in production —
+`tests/test_the_reorder_report_runs_against_a_database.py` and
+`tests/test_the_hub_actually_answers.py` are the two that now do.
+⚠️ **The same test found a THIRD null with no exception behind it**, which is
+the `table_4a_gaps` discipline on a screen: the hub's payload defines
+`answerable: true` with a null signal as *the fetch for this tile failed*, and
+`Tile.no_firm_signal_because` had promised since it was written that the CLIENT
+hub answers Inventory — while `_signals` computed nothing for it at any scope.
+So a tile nobody had ASKED for was indistinguishable from one that had been
+asked and failed. A nil meaning "nothing to do", a nil meaning "nobody can
+tell" and a nil meaning "nobody looked" are three different things, and a
+payload with a three-state contract has to be exercised to find out which one
+it is emitting.
 
 **THE RULE IS ABOUT THE BROWSER TOO, and that is where it was still being
 broken.** Everything above is written for `apps/api`, and the frontend reaches

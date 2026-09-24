@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { toLocalISO, todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { api } from "@/lib/api";
 import { mapComplianceKpis } from "@/lib/dashboard/complianceKpis";
+import { Hub } from "@/components/hub/Hub";
 
 // ─── Welcome next-steps shown after onboarding completes ─────────────────────
 const NEXT_STEPS = [
@@ -380,6 +381,20 @@ export default function DashboardContent() {
           </div>
         </Link>
       </div>
+
+      {/* ── The hub — D1's fifteen tiles (Phase 2.2) ───────────────────────
+          COMPOSED WITH THIS PAGE RATHER THAN REPLACING IT, and that is a
+          decision. The plan said the hub replaces DashboardContent; reading
+          the page, the three panels below — Upcoming Deadlines, Recent
+          Clients, Pending Tasks — are each a tile's own destination shown in
+          detail, which is a reasonable thing to have UNDER the grid rather
+          than a thing to delete. The tiles go on top, nothing is lost, and
+          the smoke-walk diff is additive and legible.
+
+          What is still owed and is deliberately not in this change: those
+          three panels read four tables straight over PostgREST, unpaged.
+          Moving them onto the API is its own argument and its own guard. */}
+      <Hub />
 
       {/* ── Stats Strip ─────────────────────────────────────────────────── */}
       <div className="flex items-center gap-6 py-3 px-5 bg-white rounded-xl border border-ps-border flex-wrap">
