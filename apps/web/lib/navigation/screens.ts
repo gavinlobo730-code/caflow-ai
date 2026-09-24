@@ -102,7 +102,14 @@ export const SCREENS: Screen[] = [
   firm("/accounting/receivables", "Receivables", "Accounting", ["debtors", "ar", "outstanding", "ageing"]),
   firm("/accounting/recurring", "Recurring journals", "Accounting", ["repeating entry", "standing journal"]),
   firm("/accounting/retainer", "Retainers", "Accounting", ["retainer billing", "fixed fee"]),
-  firm("/accounting/schedule-iii", "Schedule III captions", "Accounting", ["schedule 3", "captions", "grouping"]),
+  // NOT "Schedule III captions" — that was wrong, and wrong in the way this
+  // list exists to prevent. This route renders the STATEMENTS (its own header:
+  // "Formats Balance Sheet and P&L as per Companies Act 2013, Schedule III");
+  // the caption mapping is `/accounting/schedule-iii-mapping` on the next line.
+  // So a CA typing "balance sheet" found nothing and one typing "captions"
+  // landed on the statements.
+  firm("/accounting/schedule-iii", "Schedule III statements", "Accounting",
+    ["schedule 3", "balance sheet", "profit and loss", "p&l", "section 129", "statements"]),
   firm("/accounting/schedule-iii-mapping", "Schedule III account mapping", "Accounting", ["map accounts", "schedule 3 mapping"]),
   firm("/accounting/suppliers", "Suppliers (firm)", "Accounting", ["vendors", "creditors"]),
   firm("/accounting/trial-balance-import", "Import trial balance", "Accounting", ["tb import", "opening tb"]),

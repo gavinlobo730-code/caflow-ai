@@ -25,15 +25,36 @@ function getRealPathname(): string {
   return window.location.pathname;
 }
 
+// Routes that render with NO shell, and the two kinds are not the same rule.
+//
+// A PREFIX entry strips the shell from a whole tree — every one of these is a
+// signed-out or non-staff surface (the client portal, the employee portal, an
+// invitation link), and a sub-route of one is the same kind of thing.
+//
+// `/onboarding` is EXACT, and that is a fix rather than a tidy-up. It is the
+// firm SIGNUP wizard, which legitimately has no sidebar because there is no
+// firm yet — but `/onboarding/checklist` is the CLIENT-onboarding workflow
+// tracker ("Client Onboarding" is its own heading), a staff screen that walks
+// a client through engagement setup. As a prefix it lost the rail, the panel
+// and ⌘K, so the one screen that tracks client onboarding had no navigation
+// at all and nothing in the product linked to it. It belongs to the Clients
+// workspace (see lib/workspace/routeOwnership.ts).
 const NO_SHELL_PREFIXES = [
   "/login",
   "/signup",
-  "/onboarding",
   "/join",
   "/auth",
   "/portal",
   "/sign",
 ];
+
+const NO_SHELL_EXACT = ["/onboarding"];
+
+/** `output: export` serves every route with a trailing slash, so an exact
+ *  match has to ignore one — `/onboarding/` is `/onboarding`. */
+function withoutTrailingSlash(path: string): string {
+  return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   // usePathname() is only a re-run trigger below — the real path always
@@ -44,9 +65,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const showShell = !NO_SHELL_PREFIXES.some(
-    (prefix) => realPathname === prefix || realPathname.startsWith(prefix + "/")
-  );
+  const showShell =
+    !NO_SHELL_PREFIXES.some(
+      (prefix) => realPathname === prefix || realPathname.startsWith(prefix + "/")
+    ) && !NO_SHELL_EXACT.includes(withoutTrailingSlash(realPathname));
   const isClientWorkspace = isClientWorkspacePath(realPathname);
 
   // Global ⌘K / Ctrl+K listener — opens the command palette from anywhere

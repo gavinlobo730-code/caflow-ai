@@ -12,48 +12,166 @@ import {
   Briefcase,
   ShieldCheck,
   DatabaseZap,
+  LayoutDashboard,
+  Users,
+  Clock,
+  Landmark,
+  FileText,
+  Target,
+  IndianRupee,
+  RefreshCw,
+  ClipboardCheck,
+  Scale,
+  Lock,
+  UserCog,
+  CalendarCheck,
+  FileSpreadsheet,
+  BarChart3,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { usePermissions } from "@/lib/auth/AuthContext";
+import { cn, isExactPath } from "@/lib/utils";
+import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
 
-// Firm administration only. Chart of Accounts, statements and cash flow now live
-// in the client workspace (Client → Accounting); the duplicate firm-level screens
-// were retired in the Phase 3 consolidation. Payroll & Fee Billing map to the
-// accounting workspace, so they are surfaced here.
-//
-// `requires` names the backend permission the page's own data calls need, read
-// off the endpoint rather than guessed, so a link disappears for anyone who
-// would only reach a 403. The four Chart-of-Accounts screens carry none: they
-// query Supabase directly (`sb.from("chart_of_accounts")`), so RLS governs them
-// and no entry in the rbac matrix applies. An absent `requires` means "no
-// FastAPI permission governs this page", never "nobody checked".
-const NAV_ITEMS: Array<{
+/**
+ * The Accounting workspace's browse surface.
+ *
+ * ⚠️ IT USED TO LIST FOUR OF THIS MODULE'S FOURTEEN SCREENS, AND
+ * `app/accounting/page.tsx` LISTED TEN — DISJOINT SETS. Not one screen
+ * appeared in both, so which half of their own module a CA could see depended
+ * on which surface they happened to navigate by: from the sidebar there was no
+ * Budgets, Loans, Receivables, MSME §43B(h), Retainers, Recurring Journals,
+ * Lock Financial Year, Schedule III Statements, Supplier Master or Trial
+ * Balance Import; from the landing page there was no Schedule III Mapping,
+ * Account Groups or COA import/export. And a CA standing ON one of those
+ * screens had no way back to its neighbour at all, because the landing page is
+ * not on the screen and this panel is.
+ *
+ * So the rule is: THE PANEL LISTS THE WHOLE MODULE. It is the surface present
+ * on every page of the workspace, which is what makes it the one that has to be
+ * complete; a landing page may additionally feature whatever it likes.
+ * `scripts/a-module-shows-all-of-itself.test.ts` holds it for every workspace.
+ *
+ * `requires` names the backend permission the page's own data calls need, READ
+ * OFF THE ENDPOINT rather than guessed — each one below was checked against the
+ * `rbac(...)` on the route it calls. An absent `requires` means "no FastAPI
+ * permission governs this page", never "nobody checked": the four Chart-of-
+ * Accounts screens and Loans and Receivables query Supabase directly, so RLS
+ * governs them and no entry in the rbac matrix applies.
+ *
+ * `partnerOnly` mirrors a page's OWN `RoleGuard allowed={["Partner"]}` and is
+ * used once, on Lock Financial Year. It is not a second permission system —
+ * `rbac()` remains the boundary — it stops the panel offering a link that can
+ * only bounce.
+ *
+ * Payroll and Fee Billing map to this workspace (see routeOwnership.ts), so
+ * their screens are grouped here rather than left unreachable from the rail.
+ */
+type NavItem = {
   label: string;
   href: string;
   icon: typeof GitBranch;
+  exact?: boolean;
   requires?: [resource: string, action: string];
-}> = [
-  { label: "Schedule III Mapping", href: "/accounting/schedule-iii-mapping", icon: GitBranch },
-  { label: "Account Groups",      href: "/accounting/account-groups",        icon: Layers },
-  { label: "Import COA",          href: "/accounting/coa-import",            icon: Upload },
-  { label: "Export COA",          href: "/accounting/coa-export",            icon: Download },
-  // billing.py is Partner-only throughout ("exposes fee economics").
-  { label: "Fee Billing",         href: "/billing",                          icon: Receipt,
-    requires: ["billing", "read"] },
-  // payroll.py: every endpoint the page calls is rbac("payroll", read|write).
-  { label: "Payroll",             href: "/payroll",                          icon: Briefcase,
-    requires: ["payroll", "read"] },
-  { label: "Payroll Statutory",   href: "/payroll/statutory",                icon: ShieldCheck },
-  // tally_migration.py list_jobs → rbac("accounting", "read"), which excludes
-  // Reviewer; the page's first call is that list, so it renders nothing for one.
-  { label: "Data Migration",      href: "/migration",                        icon: DatabaseZap,
-    requires: ["accounting", "read"] },
+  partnerOnly?: boolean;
+};
+
+const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
+  {
+    heading: null,
+    items: [
+      { label: "Overview", href: "/accounting", icon: LayoutDashboard, exact: true },
+    ],
+  },
+  {
+    heading: "Chart of accounts",
+    items: [
+      { label: "Schedule III Mapping", href: "/accounting/schedule-iii-mapping", icon: GitBranch },
+      { label: "Account Groups", href: "/accounting/account-groups", icon: Layers },
+      { label: "Import COA", href: "/accounting/coa-import", icon: Upload },
+      { label: "Export COA", href: "/accounting/coa-export", icon: Download },
+    ],
+  },
+  {
+    heading: "Registers",
+    items: [
+      // vendors.py list_vendors → rbac("client", "read").
+      { label: "Supplier Master", href: "/accounting/suppliers", icon: Users,
+        requires: ["client", "read"] },
+      { label: "Receivables Ageing", href: "/accounting/receivables", icon: Clock },
+      { label: "Loans & FD", href: "/accounting/loans", icon: Landmark },
+      // income_tax.py msme_section_43bh → rbac("income_tax", "compute").
+      { label: "MSME §43B(h)", href: "/accounting/msme-tracker", icon: FileText,
+        requires: ["income_tax", "compute"] },
+      // accounting.py get_budgets → rbac("accounting", "read").
+      { label: "Budget vs Actuals", href: "/accounting/budget", icon: Target,
+        requires: ["accounting", "read"] },
+      // billing.py is Partner-only throughout ("exposes fee economics"); the
+      // retainer screen's first call is api.billing.listSchedules.
+      { label: "Retainers", href: "/accounting/retainer", icon: IndianRupee,
+        requires: ["billing", "read"] },
+      // recurring_journals.py list → rbac("accounting", "read").
+      { label: "Recurring Journals", href: "/accounting/recurring", icon: RefreshCw,
+        requires: ["accounting", "read"] },
+    ],
+  },
+  {
+    heading: "Period close",
+    items: [
+      // accounting.py get_schedule_iii → rbac("accounting", "read").
+      { label: "Schedule III Statements", href: "/accounting/schedule-iii", icon: ClipboardCheck,
+        requires: ["accounting", "read"] },
+      // accounting.py import_trial_balance_endpoint → rbac("accounting", "write").
+      // The call is on submit rather than on load, so the gate is the write one:
+      // a Reviewer offered this link could only fill the form in and be refused.
+      { label: "Trial Balance Import", href: "/accounting/trial-balance-import", icon: Scale,
+        requires: ["accounting", "write"] },
+      { label: "Lock Financial Year", href: "/accounting/lock-year", icon: Lock,
+        partnerOnly: true },
+    ],
+  },
+  {
+    heading: "Payroll",
+    // payroll.py: every endpoint these five pages call is rbac("payroll", …).
+    items: [
+      { label: "Payroll Runs", href: "/payroll", icon: Briefcase, exact: true,
+        requires: ["payroll", "read"] },
+      { label: "Employees", href: "/payroll/people", icon: UserCog,
+        requires: ["payroll", "read"] },
+      { label: "Attendance", href: "/payroll/attendance", icon: CalendarCheck,
+        requires: ["payroll", "read"] },
+      { label: "Investment Declarations", href: "/payroll/declarations", icon: FileSpreadsheet,
+        requires: ["payroll", "read"] },
+      { label: "Payroll Reports", href: "/payroll/reports", icon: BarChart3,
+        requires: ["payroll", "read"] },
+      { label: "Payroll Statutory", href: "/payroll/statutory", icon: ShieldCheck,
+        requires: ["payroll", "read"] },
+    ],
+  },
+  {
+    heading: "Firm",
+    items: [
+      { label: "Fee Billing", href: "/billing", icon: Receipt,
+        requires: ["billing", "read"] },
+      // tally_migration.py list_jobs → rbac("accounting", "read"), which
+      // excludes Reviewer; the page's first call is that list.
+      { label: "Data Migration", href: "/migration", icon: DatabaseZap,
+        requires: ["accounting", "read"] },
+    ],
+  },
 ];
 
 export function AccountingPanel() {
   const pathname = usePathname();
   const { can } = usePermissions();
-  const items = NAV_ITEMS.filter((i) => !i.requires || can(i.requires[0], i.requires[1]));
+  const { userRole } = useAuth();
+
+  const groups = NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter(
+      (i) =>
+        (!i.requires || can(i.requires[0], i.requires[1])) &&
+        (!i.partnerOnly || userRole === "Partner"),
+    ),
+  })).filter((g) => g.items.length > 0);
 
   return (
     <div className="flex flex-col h-full text-brand">
@@ -68,26 +186,39 @@ export function AccountingPanel() {
         </div>
       </div>
 
-      {/* Nav items */}
+      {/* Nav items. Grouped because the whole module is 22 entries and an
+          ungrouped list of 22 is a wall — the headings are how it stays
+          scannable at the 220px the panel gets. */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        {items.map(({ label, href, icon: Icon }) => {
-          const isActive = pathname === href || pathname.startsWith(href + "/");
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors mb-0.5",
-                isActive
-                  ? "bg-brand text-white"
-                  : "text-gray-600 hover:text-brand hover:bg-ps-bg"
-              )}
-            >
-              <Icon size={13} className="shrink-0" />
-              {label}
-            </Link>
-          );
-        })}
+        {groups.map(({ heading, items }) => (
+          <div key={heading ?? "_"} className={heading ? "mt-3 first:mt-0" : ""}>
+            {heading && (
+              <p className="px-3 pb-1 text-3xs font-semibold uppercase tracking-wider text-ps-hint">
+                {heading}
+              </p>
+            )}
+            {items.map(({ label, href, icon: Icon, exact }) => {
+              const isActive = exact
+                ? isExactPath(pathname, href)
+                : pathname === href || pathname.startsWith(href + "/");
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors mb-0.5",
+                    isActive
+                      ? "bg-brand text-white"
+                      : "text-gray-600 hover:text-brand hover:bg-ps-bg"
+                  )}
+                >
+                  <Icon size={13} className="shrink-0" />
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
     </div>
   );

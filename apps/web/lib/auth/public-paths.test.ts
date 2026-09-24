@@ -25,7 +25,7 @@ test("pre-existing public paths still resolve correctly (no regression)", () => 
   assert.equal(isPublicPath("/login/"), true);
   assert.equal(isPublicPath("/signup"), true);
   assert.equal(isPublicPath("/onboarding"), true);
-  assert.equal(isPublicPath("/onboarding/step-2"), true);
+  assert.equal(isPublicPath("/onboarding/"), true);
   assert.equal(isPublicPath("/auth"), true);
   assert.equal(isPublicPath("/auth/callback"), true);
   assert.equal(isPublicPath("/portal"), true);
@@ -44,4 +44,13 @@ test("protected routes are NOT public (auth guard must still block these)", () =
   assert.equal(isPublicPath("/ai-assistant"), false);
   assert.equal(isPublicPath("/billing"), false);
   assert.equal(isPublicPath("/practice"), false);
+});
+
+test("/onboarding is EXACT — its sub-routes are staff screens", () => {
+  // `/onboarding/checklist` is the client-onboarding workflow tracker, a staff
+  // screen behind rbac(). As a public PREFIX it was handed to signed-out
+  // visitors instead of the login page. The wizard itself stays public because
+  // it has to run before a firm exists.
+  assert.equal(isPublicPath("/onboarding/checklist"), false);
+  assert.equal(isPublicPath("/onboarding/checklist/"), false);
 });
