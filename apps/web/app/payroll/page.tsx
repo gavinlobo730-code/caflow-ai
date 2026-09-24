@@ -948,7 +948,7 @@ export default function PayrollPage() {
       // for those five (api.payroll.runSummaries), for ONE client, and asks
       // WHEN IT OPENS: Radix unmounts an inactive TabsContent, so a tab nobody
       // visits costs nothing at all. CLAUDE.md's reporting rule.
-      const clientsRes = await (api.clients.list() as Promise<ApiResp<{ clients: Client[] }>>);
+      const clientsRes = await api.clients.list();
       setClients(clientsRes.data?.clients ?? []);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load payroll data.");

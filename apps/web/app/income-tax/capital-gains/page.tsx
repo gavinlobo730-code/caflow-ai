@@ -46,7 +46,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
-import { api, type ApiResp } from "@/lib/api";
+import { api } from "@/lib/api";
 import {
   computeCapitalGains, listCapitalGains, createCapitalGain, deleteCapitalGain, getCiiTable,
   type CapitalGainsAssetType, type CapitalGainsRegisterAssetType,
@@ -271,7 +271,7 @@ export default function CapitalGainsPage() {
   const [regLoadError, setRegLoadError] = useState<string | null>(null);
 
   const loadClients = useCallback(() => {
-    (api.clients.list() as Promise<ApiResp<{ clients: Client[] }>>).then(res => {
+    api.clients.list().then(res => {
       const cl = res.data?.clients ?? [];
       setClients(cl);
       if (cl.length > 0) setSelectedClientId(cl[0].id);

@@ -65,8 +65,15 @@ export default function MultiCurrencyPage() {
       // objectOrNull is the one place that knows an array is not an object.
       setFirmGates(ent.success ? objectOrNull<FirmGates>(ent.data) : null);
 
-      const cl = await api.clients.list() as { success: boolean; data?: ClientRow[] };
-      const clients = cl.success ? arrayOrEmpty<ClientRow>(cl.data) : [];
+      // `GET /api/clients` answers `{clients, total}`, NOT a bare array. The
+      // cast that used to sit here asserted the array, so `arrayOrEmpty` was
+      // handed an OBJECT and answered `[]` — correctly, by its own rule — and
+      // this screen listed no clients at all, for every firm, permanently.
+      // Following the payload rule is not enough on its own; it has to be
+      // applied to the right FIELD, which is what typing `api.clients.list()`
+      // now makes the compiler check.
+      const cl = await api.clients.list();
+      const clients = cl.success ? arrayOrEmpty<ClientRow>(cl.data?.clients) : [];
       const settled = await Promise.all(clients.map(async (c) => {
         try {
           const p = await api.currencies.policy({ client_id: c.id });
