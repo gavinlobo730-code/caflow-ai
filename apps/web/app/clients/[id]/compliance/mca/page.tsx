@@ -14,6 +14,7 @@ import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/Fili
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { panProblem } from "@/lib/identifiers/pan";
+import { dinProblem } from "@/lib/identifiers/din";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function getToken(): Promise<string> {
@@ -224,8 +225,14 @@ function DirectorsTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   async function saveNew() {
-    if (form.din && !/^\d{8}$/.test(form.din)) {
-      alert("DIN must be exactly 8 digits. IT Act / Companies Act 2013.");
+    // Companies Act 2013 §153, through the one browser identifier module,
+    // which reproduces `core/validators.validate_din` — including that a BLANK
+    // DIN is an error where a blank PAN is not, since a director without one is
+    // not a director. The raw-value test here also cited the IT Act, which does
+    // not allot a DIN.
+    const dinIssue = dinProblem(form.din);
+    if (dinIssue) {
+      alert(dinIssue);
       return;
     }
     // IT Act §139A, through the one browser rule, which normalises the way

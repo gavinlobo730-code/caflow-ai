@@ -24,6 +24,7 @@ import {
 } from "@/lib/invoices/shared";
 import { clearReports } from "@/lib/accounting/reportCache";
 import { panProblem, isValidPan as panIsValid } from "@/lib/identifiers/pan";
+import { tanProblem, isValidTan as tanIsValid } from "@/lib/identifiers/tan";
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import {
   PAYMENT_TERM_PRESETS, CUSTOM_TERM, termLabelForDays, daysForTermLabel,
@@ -56,8 +57,13 @@ export function isValidPan(pan: string): boolean {
  * Form 26AS identifies a deductor by TAN and nothing else, so without this the
  * 26AS reconciliation can only match on company name.
  */
+// RE-EXPORTED from `lib/identifiers/pan.ts`, the one browser identifier
+// module. The bare shape regex that used to be here tested the RAW value,
+// where `core/validators.validate_tan` strips and uppercases first — the same
+// defect the seven PAN copies had. The name is kept because callers import it
+// from this module.
 export function isValidTan(tan: string): boolean {
-  return /^[A-Z]{4}[0-9]{5}[A-Z]{1}$/.test(tan);
+  return tanIsValid(tan);
 }
 
 const inputCls = "w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
@@ -124,7 +130,8 @@ export function CustomerFormModal({
     if (gstinIssue) { fail(gstinIssue); return; }
     const panIssue = panProblem(pan);
     if (panIssue) { fail(panIssue); return; }
-    if (tan && !isValidTan(tan)) { fail("Invalid TAN format (e.g. MUMA12345B)"); return; }
+    const tanIssue = tanProblem(tan);
+    if (tanIssue) { fail(tanIssue); return; }
 
     setSaving(true); setLocalError(null);
     try {

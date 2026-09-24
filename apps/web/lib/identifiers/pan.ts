@@ -40,7 +40,7 @@
  * party has none — and `validate_pan` returns None for an empty value for the
  * same reason. Refusing blank is the caller's own `required` to impose.
  *
- * `apps/api/tests/test_one_pan_rule_in_the_browser.py` pins this to
+ * `apps/api/tests/test_one_identifier_rule_in_the_browser.py` pins this to
  * `core/validators.validate_pan` and holds the sweep.
  */
 

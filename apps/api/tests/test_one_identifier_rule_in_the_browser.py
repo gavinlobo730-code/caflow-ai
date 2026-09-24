@@ -1,4 +1,7 @@
-"""ONE PAN RULE IN THE BROWSER, AND IT NORMALISES THE WAY THE SERVER DOES.
+"""ONE RULE PER IDENTIFIER IN THE BROWSER, NORMALISED THE WAY THE SERVER DOES.
+
+PAN is the finding; TAN and DIN are the same defect in one copy each and are
+covered at the foot of this module.
 
 Seven screens each carried `/^[A-Z]{5}[0-9]{4}[A-Z]$/` and tested it against
 the RAW field value. `core/validators.validate_pan` — the authority the MCA,
@@ -36,11 +39,14 @@ import re
 
 import pytest
 
-from core.validators import validate_pan
+from core.validators import validate_din, validate_pan, validate_tan
 
 API = pathlib.Path(__file__).resolve().parent.parent
 WEB = API.parent / "web"
-PAN_MODULE = WEB / "lib" / "identifiers" / "pan.ts"
+IDENTIFIERS = WEB / "lib" / "identifiers"
+PAN_MODULE = IDENTIFIERS / "pan.ts"
+TAN_MODULE = IDENTIFIERS / "tan.ts"
+DIN_MODULE = IDENTIFIERS / "din.ts"
 
 _PAN_SHAPE_REGEX = re.compile(r"\[A-Z\]\{5\}\s*\[0-9\]\{4\}\s*\[A-Z\]")
 
@@ -174,4 +180,128 @@ def test_neither_side_tests_the_fourth_character():
     assert "Rule 114" in browser, (
         "lib/identifiers/pan.ts must keep the recorded reason for not testing "
         "the holder-type code, or the next reader will add it to one side"
+    )
+
+
+# ── TAN and DIN, the other two the browser validates ───────────────────────
+#
+# Each was a SINGLE private copy with the same defect: a shape regex over the
+# raw field value where the server's own validator normalises first. They are
+# here rather than fixed in place because a second copy of a rule is how the
+# first one drifts, and because two of the three differ from `panProblem` in a
+# way worth stating once — a TAN's shape is a PAN's reversed (four letters then
+# five digits), and a BLANK DIN is an error where a blank PAN is not.
+
+
+def _run_ts(module: pathlib.Path, fn: str, value: str):
+    import json
+    import subprocess
+
+    script = (
+        f"const m = await import({json.dumps(str(module))});\n"
+        f"process.stdout.write(JSON.stringify(m.{fn}({json.dumps(value)})));"
+    )
+    proc = subprocess.run(
+        ["node", "--input-type=module", "--experimental-strip-types", "-e", script],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        pytest.skip(f"node cannot run the TS module here: {proc.stderr.strip()[:200]}")
+    return json.loads(proc.stdout)
+
+
+_TAN_CASES = [
+    "MUMA12345B", "muma12345b", "  MUMA12345B  ", "\tMUMA12345B\n",
+    "", "MUMA12345", "MUM12345B", "MUMA12345BX", "AABCU9603R",
+]
+
+
+@pytest.mark.parametrize("value", _TAN_CASES)
+def test_the_browser_tan_rule_and_the_server_agree(value: str):
+    browser = _run_ts(TAN_MODULE, "tanProblem", value)
+    server = validate_tan(value)
+    assert (browser is None) == (server is None), (
+        f"{value!r}: browser {browser!r} vs server {server!r}"
+    )
+
+
+def test_a_tan_is_not_a_pan_reversed_by_accident():
+    """The two shapes are each other's mirror and a real PAN must fail the TAN
+    test, or a customer form would accept one in the other's box — and Form
+    26AS identifies a deductor by TAN and nothing else."""
+    assert _run_ts(TAN_MODULE, "tanProblem", "AABCU9603R") is not None
+    assert _run_ts(PAN_MODULE, "panProblem", "MUMA12345B") is not None
+
+
+_DIN_CASES = ["00012345", " 00012345 ", "", "   ", "0001234", "000123456", "0001234A"]
+
+
+@pytest.mark.parametrize("value", _DIN_CASES)
+def test_the_browser_din_rule_and_the_server_agree(value: str):
+    browser = _run_ts(DIN_MODULE, "dinProblem", value)
+    server = validate_din(value)
+    assert (browser is None) == (server is None), (
+        f"{value!r}: browser {browser!r} vs server {server!r}"
+    )
+
+
+def test_a_blank_din_is_refused_where_a_blank_pan_is_not():
+    """The asymmetry is the SERVER's — validate_din opens `if not value: return
+    "DIN is required…"` — and it is load-bearing: a director without a DIN is
+    not a director. A change that makes the three uniform breaks here."""
+    assert validate_din("") is not None and validate_pan("") is None
+    assert _run_ts(DIN_MODULE, "dinProblem", "") is not None
+    assert _run_ts(PAN_MODULE, "panProblem", "") is None
+
+
+def test_each_identifier_has_exactly_one_browser_module():
+    """One rule per file, and the two doors import from the right one — a file
+    named `pan.ts` that also exports `dinProblem` is what the next reader
+    misses."""
+    for module, owns, foreign in [
+        (PAN_MODULE, "panProblem", ("tanProblem", "dinProblem")),
+        (TAN_MODULE, "tanProblem", ("panProblem", "dinProblem")),
+        (DIN_MODULE, "dinProblem", ("panProblem", "tanProblem")),
+    ]:
+        src = module.read_text(encoding="utf-8")
+        assert f"export function {owns}" in src, f"{module.name} lost {owns}"
+        for other in foreign:
+            assert f"export function {other}" not in src, (
+                f"{module.name} exports {other} — one rule per file"
+            )
+
+    imports = {
+        "components/customers/CustomerFormModal.tsx": ("identifiers/pan", "identifiers/tan"),
+        "app/clients/[id]/compliance/mca/page.tsx": ("identifiers/pan", "identifiers/din"),
+    }
+    for rel, needed in imports.items():
+        code = "\n".join(
+            line.split("//", 1)[0]
+            for line in (WEB / rel).read_text(encoding="utf-8").splitlines()
+        )
+        for module_path in needed:
+            assert re.search(rf'from\s+"[^"]*{re.escape(module_path)}(?:\.ts)?"', code), (
+                f"{rel} must import {module_path}"
+            )
+
+
+def test_no_private_tan_or_din_pattern_survives():
+    tan_shape = re.compile(r"\[A-Z\]\{4\}\s*\[0-9\]\{5\}")
+    din_shape = re.compile(r"\^\\d\{8\}\$|\^\[0-9\]\{8\}\$")
+    offenders = []
+    for p in _SOURCES:
+        rel = str(p.relative_to(WEB))
+        if rel in ("lib/identifiers/tan.ts", "lib/identifiers/din.ts"):
+            continue
+        if p.name.endswith((".test.ts", ".test.tsx")):
+            continue
+        code = "\n".join(
+            line.split("//", 1)[0] for line in p.read_text(encoding="utf-8").splitlines()
+        )
+        if tan_shape.search(code):
+            offenders.append(f"{rel} (TAN)")
+        if din_shape.search(code):
+            offenders.append(f"{rel} (DIN)")
+    assert not offenders, (
+        "use lib/identifiers/tan or lib/identifiers/din:\n  " + "\n  ".join(offenders)
     )
