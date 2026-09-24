@@ -1427,7 +1427,7 @@ function EngagementsPageInner() {
   ], [handleBulkDeleteLetters, handleBulkSendLetters, letterColumns]);
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto space-y-5">
+    <div className="p-6 max-w-ps-data mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

@@ -1479,7 +1479,7 @@ export default function PayrollReportsPage() {
 
   return (
     <div className="min-h-screen bg-ps-bg p-8">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-ps-data mx-auto">
         <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">

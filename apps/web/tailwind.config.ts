@@ -226,6 +226,37 @@ const config: Config = {
         "3xs": "10px",
         "2xs": "11px",
       },
+      /* ── How wide a page is, decided by what it HOLDS (D11) ──────────────
+         59 pages rendered a DataTable or a <table> inside a centred container
+         and did it at NINE different widths — from `max-w-xl` (576px, the
+         payroll reports screen) to `max-w-[1400px]` — with `max-w-5xl` and
+         `max-w-7xl` both common. Nobody chose that spread; each page picked
+         one when it was written. A register squeezed into 576px on a 1440
+         screen scrolls sideways or truncates every column, which is the one
+         thing a CA reading a ledger cannot afford.
+
+         ONE TOKEN, NAMED FOR THE ROLE rather than the number, so the value
+         can move without 59 edits. 1600px is D11's own figure, and what it
+         BUYS depends on the monitor, which is worth knowing before reading a
+         screenshot: `AppShell`'s two rails take 272px and a page's own gutter
+         another 48, so a 1440 laptop leaves ~1120px of content — narrower
+         than `max-w-6xl` — and on that screen the change is invisible for
+         every page that was already 6xl or wider, and moves only the ones
+         that were 5xl (1024), 4xl (896) and 3xl (768). On a 1920 monitor the
+         token binds just barely, which is the point: fill the space, stop
+         before a row is too wide to track across.
+
+         THERE IS DELIBERATELY NO `ps-read` TOKEN. D11 has a second half —
+         prose, forms and single-column reads keep a 65-75 character measure —
+         and it is ALREADY TRUE here: of 102 pages that centre a container,
+         exactly ONE runs to a data width without holding data, and that one
+         renders its rows through a custom component rather than a table, so
+         it is a misreading of the scan rather than a defect. Declaring a
+         token nothing reads is the shape this file already refuses twice
+         below. */
+      maxWidth: {
+        "ps-data": "1600px",
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

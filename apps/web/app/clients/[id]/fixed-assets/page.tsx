@@ -347,7 +347,7 @@ function RegisterTab({ clientId, openDoc }:
   const totalWDV   = totalCost - totalAccum;
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         {[
@@ -1320,7 +1320,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
   const totalMonthly = rows.reduce((s, r) => s + r.monthly_depreciation_paise, 0);
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {/* Period + Post All */}
       <div className="bg-white rounded-xl border border-ps-border px-5 py-4 flex items-center justify-between">
         <div className="space-y-1">
@@ -1655,7 +1655,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div className="space-y-4 max-w-3xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {lastDisposal && (
         <div className="bg-white border border-ps-border rounded-xl px-4 py-3 space-y-1">
           <p className="text-xs font-semibold text-ps-ink">
@@ -1978,7 +1978,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
   // report is never mistaken for a client that genuinely holds no assets (M17).
   if (loadFailed) {
     return (
-      <div className="space-y-5 max-w-4xl mx-auto">
+      <div className="space-y-5 max-w-ps-data mx-auto">
         <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load the fixed-asset report — the request failed or timed out.</p>
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
@@ -1988,7 +1988,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
   }
 
   return (
-    <div className="space-y-5 max-w-4xl mx-auto">
+    <div className="space-y-5 max-w-ps-data mx-auto">
       {/* Summary — as at the CLOSE of the year being reported, not "now". */}
       <div className="grid grid-cols-4 gap-4">
         {[

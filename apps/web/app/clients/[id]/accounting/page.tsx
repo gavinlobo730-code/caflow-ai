@@ -470,7 +470,7 @@ function AccountingDashboard({
   const unknownIfFailed = (value: string) => (loadFailed ? "—" : value);
 
   if (loading) return (
-    <div className="space-y-3 max-w-4xl mx-auto">
+    <div className="space-y-3 max-w-ps-data mx-auto">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => <MetricCardSkeleton key={i} />)}
       </div>
@@ -481,7 +481,7 @@ function AccountingDashboard({
   );
 
   return (
-    <div className="space-y-5 max-w-4xl mx-auto">
+    <div className="space-y-5 max-w-ps-data mx-auto">
       {/* Every figure below is for one financial year, so the year is named
           and changeable here rather than assumed from elsewhere. */}
       <div className="flex items-center justify-end gap-2">
@@ -603,7 +603,7 @@ function ChartOfAccounts({ accounts, loading, error, onRefresh }: { accounts: Ac
   ];
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       <div className="flex items-center justify-between">
         <p className="text-xs text-ps-label">{accounts.length} accounts</p>
       </div>
@@ -1367,7 +1367,7 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
   const isBalanced = totals.balanced;
 
   return (
-    <div className={`space-y-4 mx-auto ${periodic ? "max-w-6xl" : "max-w-4xl"}`}>
+    <div className="space-y-4 mx-auto max-w-ps-data">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-ps-body">
           Trial Balance — {periodic ? `${periodStart} to ${asOf}` : `as at ${asOf}`}
@@ -1578,7 +1578,7 @@ function FXReports({ clientId, financialYear, onFinancialYearChange }: { clientI
   const currencyOptions = fxCurrencyOptions(view, data);
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex rounded border border-ps-border overflow-hidden text-xs">
           {FX_VIEWS.map((v) => (
@@ -2051,7 +2051,7 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
   const plExportDisabled = !loaded || unionAccounts.length === 0;
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-ps-body">Statement of Profit & Loss</p>
         <div className="flex items-center gap-2 flex-wrap">
@@ -2400,7 +2400,7 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
   const bsExportDisabled = !loaded || unionAccounts.length === 0;
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-ps-body">Balance Sheet</p>
         <div className="flex items-center gap-2 flex-wrap">
@@ -2859,7 +2859,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
   ];
 
   return (
-    <div className={`space-y-4 mx-auto ${columns.length > 1 ? "max-w-6xl" : "max-w-3xl"}`}>
+    <div className="space-y-4 mx-auto max-w-ps-data">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-ps-body">Cash Flow Statement — {overall.label}</p>
         <div className="flex items-center gap-2 flex-wrap">
@@ -3067,7 +3067,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex gap-1 bg-ps-muted p-1 rounded-lg w-fit">
           {([["draft", "Draft"], ["posted", "Posted"]] as const).map(([id, label]) => (
@@ -3242,7 +3242,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
   const resolvedFindings = findings.filter((f) => f.resolved_at);
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       <div className="bg-white rounded-xl border border-ps-muted p-5 flex items-center justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Verify Books</h3>
@@ -3586,7 +3586,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
   }
 
   return (
-    <div className="space-y-5 max-w-3xl mx-auto">
+    <div className="space-y-5 max-w-ps-data mx-auto">
       {/* ── Financial statements ── */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">

@@ -307,7 +307,7 @@ export default function AISPage() {
   const lines = statement?.records ?? [];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-ps-data mx-auto space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <Link href="/income-tax" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label mb-2 transition-colors">

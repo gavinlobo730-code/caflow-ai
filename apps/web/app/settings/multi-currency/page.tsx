@@ -117,7 +117,7 @@ export default function MultiCurrencyPage() {
 
   return (
     <RoleGuard allowed={["Partner"]}>
-      <div className="max-w-4xl mx-auto space-y-4 p-6">
+      <div className="max-w-ps-data mx-auto space-y-4 p-6">
         <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-label hover:text-ps-body">
           <ChevronLeft size={13} /> Settings
         </Link>
@@ -139,7 +139,7 @@ export default function MultiCurrencyPage() {
             {/* THE PLATFORM GATE — shown, never offered. It is an environment
                 variable so it can be turned off without a database. */}
             {!platformOn && (
-              <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 text-xs text-amber-900 space-y-1">
+              <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 text-xs text-amber-900 space-y-1 max-w-2xl">
                 <p className="font-semibold">Multi-currency is off for this deployment.</p>
                 <p>{firmGates?.platform.why ?? "MULTI_CURRENCY_ENABLED is not set."}</p>
                 <p>Nothing below takes effect until it is switched on in the environment.</p>
@@ -147,7 +147,12 @@ export default function MultiCurrencyPage() {
             )}
 
             {/* L2 — the firm. */}
-            <div className="bg-white rounded-xl border border-ps-muted px-5 py-4 flex items-center justify-between">
+            {/* The CLIENTS table below is the data and takes the page's width;
+                these two are a notice and a single switch, so they keep the
+                reading measure the paragraph above already uses. Without it the
+                switch sits a screen away from the label it governs — D11's own
+                second half, on the one page where the two shapes sit together. */}
+            <div className="bg-white rounded-xl border border-ps-muted px-5 py-4 flex items-center justify-between max-w-2xl">
               <div>
                 <p className="text-sm font-medium text-ps-ink">This firm</p>
                 <p className="text-xs text-ps-hint mt-0.5">

@@ -226,7 +226,7 @@ export default function GSTR3BPage() {
   const statusCfg = filingStatus ? STATUS_CONFIG[filingStatus] : null;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-6 max-w-ps-data mx-auto space-y-6">
 
       {/* Header */}
       <div className="flex items-center gap-3">

@@ -151,7 +151,7 @@ export default function StatutoryPage() {
 
   return (
     <div className="min-h-screen bg-ps-bg p-8">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-ps-data mx-auto">
         <div className="mb-6 flex items-center gap-3">
           <Link href="/payroll">
             <Button variant="outline" size="sm" className="flex items-center gap-1.5">

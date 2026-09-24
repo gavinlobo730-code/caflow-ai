@@ -889,7 +889,7 @@ export default function ReportsPage() {
         }
       `}</style>
 
-      <div className="p-6 max-w-5xl mx-auto space-y-6 report-print-root">
+      <div className="p-6 max-w-ps-data mx-auto space-y-6 report-print-root">
         <div className="print:hidden">
           <h1 className="text-xl font-semibold text-ps-ink">Reports</h1>
           <p className="text-sm text-ps-label mt-0.5">Generate and export practice reports</p>

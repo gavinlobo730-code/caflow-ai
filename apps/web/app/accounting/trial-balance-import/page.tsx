@@ -135,7 +135,7 @@ export default function TrialBalanceImportPage() {
 
   return (
     <div className="min-h-screen bg-ps-bg p-8">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-ps-data mx-auto">
         <h1 className="text-2xl font-bold text-ps-ink mb-2">Trial Balance Import</h1>
         <p className="text-sm text-ps-label mb-6">Universal importer — Tally, Busy, QuickBooks, Zoho, Excel (export as CSV)</p>
 

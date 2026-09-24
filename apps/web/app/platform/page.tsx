@@ -288,7 +288,7 @@ export default function PlatformAdminPage() {
   ] : [];
 
   return (
-    <div className="min-h-screen bg-ps-bg p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-ps-bg p-6 lg:p-8 max-w-ps-data mx-auto space-y-6">
       <div className="flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-lg bg-brand-dark flex items-center justify-center"><ShieldCheck size={16} className="text-white" /></div>
         <div>
