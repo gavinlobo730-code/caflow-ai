@@ -8,6 +8,7 @@ import type { CreateClientInput } from "@/lib/data/clients";
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
 import { Callout } from "@/components/ui/callout";
 import { gstinProblem } from "@/lib/gst/gstin";
+import { panProblem } from "@/lib/identifiers/pan";
 const ENTITY_TYPES = [
   "Proprietorship", "Partnership", "LLP", "Private Limited",
   "Public Limited", "Trust", "Society", "Individual",
@@ -79,9 +80,16 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
     e.preventDefault();
     setError(null);
 
-    // Validate PAN — IT Act format: AAAAA9999A
-    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(form.pan)) {
-      setError("Invalid PAN format. Expected: AAAAA9999A (e.g. ABCDE1234F)");
+    // IT Act §139A, through the one browser rule. PAN is REQUIRED on a client,
+    // so the blank case is refused here rather than inside `panProblem`, which
+    // treats blank as "not held" for the several forms where it is optional.
+    if (!form.pan.trim()) {
+      setError("PAN is required. IT Act §139A — e.g. AABCU9603R.");
+      return;
+    }
+    const panIssue = panProblem(form.pan);
+    if (panIssue) {
+      setError(panIssue);
       return;
     }
     // CGST Act §25, THROUGH THE ONE BROWSER AUTHORITY. This was a private

@@ -11,6 +11,7 @@ import { RoleGuard } from "@/components/RoleGuard";
 import { api, type FirmProfile } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
 import { isValidGstin } from "@/lib/gst/gstin";
+import { isValidPan } from "@/lib/identifiers/pan";
 
 // ─── Indian states list ────────────────────────────────────────────────────
 const INDIAN_STATES = [
@@ -62,9 +63,13 @@ function validateGSTIN(gstin: string): boolean {
 }
 
 // IT Act Section 139A — PAN format: 5 uppercase letters + 4 digits + 1 uppercase letter
+// IT Act §139A, THROUGH THE ONE BROWSER RULE. This tested the RAW field value
+// while `core/validators.validate_pan` on the server strips and uppercases
+// first — and the shared `Field` below does not uppercase what is typed, so a
+// CA entering their firm's own PAN in lower case, or pasting one with a space,
+// was refused here and would have been accepted there.
 function validatePAN(pan: string): boolean {
-  if (!pan) return true; // Optional field
-  return /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan);
+  return isValidPan(pan);
 }
 
 // ─── Financial year computation ────────────────────────────────────────────

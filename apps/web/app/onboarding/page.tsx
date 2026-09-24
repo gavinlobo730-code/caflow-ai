@@ -12,6 +12,7 @@ import CsvImportModal, { type ImportRow, type ImportResult } from "@/components/
 import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
 import { Callout } from "@/components/ui/callout";
 import { isValidGstin } from "@/lib/gst/gstin";
+import { isValidPan } from "@/lib/identifiers/pan";
 
 interface SignupStash { firmName?: string; fullName?: string }
 function readSignupStash(): SignupStash {
@@ -66,9 +67,12 @@ function validateGSTIN(gstin: string): boolean {
 }
 
 // IT Act Section 139A — PAN format: 5 uppercase letters + 4 digits + 1 uppercase letter
+// IT Act §139A, THROUGH THE ONE BROWSER RULE — see the same function in
+// app/settings/page.tsx. This is where a firm first types its own PAN, and the
+// `Field` it is typed into does not uppercase, so the raw-value test refused a
+// PAN the server accepts.
 function validatePAN(pan: string): boolean {
-  if (!pan) return true;
-  return /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan);
+  return isValidPan(pan);
 }
 
 // ─── Diagnostic trace for the password / reauthentication flow ──────────────

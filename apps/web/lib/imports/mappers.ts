@@ -16,6 +16,7 @@ import { paiseFromRupeeInput, bpsFromPercentInput, parseQuantity } from "../mone
 // imports this module directly — see the sibling import above.
 import { PAYMENT_MODES } from "../payments/modes.ts";
 import { gstinProblem } from "../gst/gstin.ts";
+import { panProblem } from "../identifiers/pan.ts";
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -26,8 +27,9 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // tests/fixtures/gstin.json. A private shape regex lived here and accepted
 // every transposition inside the PAN, which is the commonest wrong GSTIN and
 // exactly the one a spreadsheet import introduces.
-/** PAN: AAAAA9999A (IT Act §139A). */
-const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+// PAN — IT Act §139A, through `lib/identifiers/pan.panProblem`, which
+// normalises exactly as `core/validators.validate_pan` does. A private
+// shape regex here tested the raw cell.
 
 export interface ImportColumn { key: string; label: string; required: boolean; hint?: string; }
 
@@ -116,7 +118,8 @@ export function buildCustomers(rows: Record<string, string>[], clientId: string)
     const gstinIssue = gstinProblem(gstin);
     if (gstinIssue) { errors.push(`Row ${rowNo}: ${gstinIssue}`); return; }
     const pan = str(r.pan).toUpperCase() || undefined;
-    if (pan && !PAN_RE.test(pan)) { errors.push(`Row ${rowNo}: invalid PAN "${pan}"`); return; }
+    const panIssue = panProblem(pan);
+    if (panIssue) { errors.push(`Row ${rowNo}: ${panIssue}`); return; }
 
     const stateCode = str(r.state_code) || (gstin ? gstin.slice(0, 2) : undefined);
     const creditDaysRaw = str(r.credit_days);
@@ -208,7 +211,8 @@ export function buildVendors(rows: Record<string, string>[], clientId: string): 
     const gstinIssue = gstinProblem(gstin);
     if (gstinIssue) { errors.push(`Row ${rowNo}: ${gstinIssue}`); return; }
     const pan = str(r.pan).toUpperCase() || undefined;
-    if (pan && !PAN_RE.test(pan)) { errors.push(`Row ${rowNo}: invalid PAN "${pan}"`); return; }
+    const panIssue = panProblem(pan);
+    if (panIssue) { errors.push(`Row ${rowNo}: ${panIssue}`); return; }
 
     const tdsApplicable = toBool(r.tds_applicable);
     let tdsSection: string | undefined;

@@ -23,6 +23,7 @@ import {
   apiCall, getAuthToken, type Customer,
 } from "@/lib/invoices/shared";
 import { clearReports } from "@/lib/accounting/reportCache";
+import { panProblem, isValidPan as panIsValid } from "@/lib/identifiers/pan";
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import {
   PAYMENT_TERM_PRESETS, CUSTOM_TERM, termLabelForDays, daysForTermLabel,
@@ -39,8 +40,13 @@ import {
 export { isValidGstin } from "@/lib/gst/gstin";
 
 /** Validate PAN format: AAAAA9999A (IT Act §139A) */
+// RE-EXPORTED, not reimplemented — `lib/identifiers/pan.ts` is the one browser
+// PAN rule and it normalises the way `core/validators.validate_pan` does. The
+// bare shape regex that used to be here tested the RAW value, so it disagreed
+// with the server on every PAN merely typed in lower case. The name is kept
+// because callers import it from this module.
 export function isValidPan(pan: string): boolean {
-  return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan);
+  return panIsValid(pan);
 }
 
 /** Validate TAN format: AAAA99999A (IT Act §203A).
@@ -116,7 +122,8 @@ export function CustomerFormModal({
     if (!name.trim()) { fail("Name is required"); return; }
     const gstinIssue = gstinProblem(gstin);
     if (gstinIssue) { fail(gstinIssue); return; }
-    if (pan && !isValidPan(pan)) { fail("Invalid PAN format (e.g. ABCDE1234F)"); return; }
+    const panIssue = panProblem(pan);
+    if (panIssue) { fail(panIssue); return; }
     if (tan && !isValidTan(tan)) { fail("Invalid TAN format (e.g. MUMA12345B)"); return; }
 
     setSaving(true); setLocalError(null);
