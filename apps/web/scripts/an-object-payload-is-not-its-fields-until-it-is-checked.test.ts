@@ -175,18 +175,13 @@ const KNOWN_UNGUARDED: string[] = [
   "components/payroll/StatutoryHandoff.tsx::result",
   "components/portal/TdsProjectionTab.tsx::data",
   "components/purchases/BillsOfEntryTab.tsx::authorities",
-  "components/purchases/DebitNoteViewDrawer.tsx::dn",
   "components/purchases/LandedCostPanel.tsx::data",
-  "components/purchases/PurchaseBillViewDrawer.tsx::bill",
-  "components/purchases/PurchaseCreditNoteViewDrawer.tsx::pcn",
   "components/purchases/PurchaseCycleTab.tsx::matched",
   "components/purchases/PurchaseCycleTab.tsx::position",
   "components/purchases/RcmDocumentPanel.tsx::preview",
-  "components/sales/SalesCreditNoteViewDrawer.tsx::cn",
   "components/sales/SalesCycleTab.tsx::detail",
   "components/sales/SalesCycleTab.tsx::position",
   "components/sales/SalesCycleTab.tsx::vocab",
-  "components/sales/SalesDebitNoteViewDrawer.tsx::dn",
   "components/tax/RegimeElectionPanel.tsx::data",
 ];
 

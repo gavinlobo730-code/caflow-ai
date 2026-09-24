@@ -24,6 +24,7 @@ import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEdit
 import { FormSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 // Vendor-payment modes — must match the purchase_payments.payment_mode CHECK
 // constraint (migration 050, widened by 161: bank/cash/cheque/upi/neft/rtgs/
 // online). Identical to the sales-side receipt modes.
@@ -121,7 +122,12 @@ export function PurchaseBillViewDrawer({
         apiGet(`/api/timeline?client_id=${clientId}&limit=100`, token),
       ]);
       if (!d.success || !d.data) { setError(true); return; }
-      setBill(d.data as PurchaseBillDetail);
+      // The payload is not its fields until something checks: `objectOrNull`
+      // answers whether `data` is the right KIND of thing, and the nested list
+      // is narrowed HERE, once, rather than at each of its reads — `{}` passes
+      // straight through `objectOrNull`, so `bill.lines.map(...)` would still throw.
+      const parsed = objectOrNull<PurchaseBillDetail>(d.data);
+      setBill(parsed ? { ...parsed, lines: arrayOrEmpty<PurchaseBillDetail["lines"][number]>(parsed.lines) } : null);
       const events = (tl.data as TimelineEvent[]) ?? [];
       const items: ActivityItem[] = events
         .filter((e) => e.entity_type === "purchase_bill" && e.entity_id === billId)

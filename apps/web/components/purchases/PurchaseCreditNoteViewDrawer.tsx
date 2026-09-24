@@ -13,6 +13,7 @@ import { apiGet, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { formatDateTime } from "@/lib/services/formatting";
 import type { PurchaseCreditNoteDetail } from "@/components/purchases/PurchaseCreditNoteEditor";
 import { Skeleton, TableSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 
 const PCN_STATUS_BADGE: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
@@ -78,7 +79,12 @@ export function PurchaseCreditNoteViewDrawer({
         apiGet(`/api/timeline?client_id=${clientId}&limit=100`, token),
       ]);
       if (!d.success || !d.data) { setError(true); return; }
-      setPcn(d.data as PurchaseCreditNoteDetail);
+      // The payload is not its fields until something checks: `objectOrNull`
+      // answers whether `data` is the right KIND of thing, and the nested list
+      // is narrowed HERE, once, rather than at each of its reads — `{}` passes
+      // straight through `objectOrNull`, so `pcn.lines.map(...)` would still throw.
+      const parsed = objectOrNull<PurchaseCreditNoteDetail>(d.data);
+      setPcn(parsed ? { ...parsed, lines: arrayOrEmpty<PurchaseCreditNoteDetail["lines"][number]>(parsed.lines) } : null);
       const events = (tl.data as TimelineEvent[]) ?? [];
       const items: ActivityItem[] = events
         .filter((e) => e.entity_type === "purchase_credit_note" && e.entity_id === pcnId)

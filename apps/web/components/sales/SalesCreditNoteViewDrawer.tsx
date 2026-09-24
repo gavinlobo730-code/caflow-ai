@@ -14,6 +14,7 @@ import { apiGet, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { formatDateTime } from "@/lib/services/formatting";
 import type { SalesCreditNoteDetail } from "@/components/sales/SalesCreditNoteEditor";
 import { Skeleton, TableSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 
 const CN_STATUS_BADGE: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
@@ -83,7 +84,12 @@ export function SalesCreditNoteViewDrawer({
         apiGet(`/api/timeline?client_id=${clientId}&limit=100`, token),
       ]);
       if (!d.success || !d.data) { setError(true); return; }
-      setCn(d.data as SalesCreditNoteDetail);
+      // The payload is not its fields until something checks: `objectOrNull`
+      // answers whether `data` is the right KIND of thing, and the nested list
+      // is narrowed HERE, once, rather than at each of its reads — `{}` passes
+      // straight through `objectOrNull`, so `cn.lines.map(...)` would still throw.
+      const parsed = objectOrNull<SalesCreditNoteDetail>(d.data);
+      setCn(parsed ? { ...parsed, lines: arrayOrEmpty<SalesCreditNoteDetail["lines"][number]>(parsed.lines) } : null);
       const events = (tl.data as TimelineEvent[]) ?? [];
       const items: ActivityItem[] = events
         .filter((e) => e.entity_type === "credit_note" && e.entity_id === cnId)
