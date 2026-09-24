@@ -114,7 +114,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
         <div>
           <div className="flex items-center gap-2">
             <Scale size={14} className="text-blue-600" />
-            <h2 className="text-[13px] font-semibold text-ps-ink">
+            <h2 className="text-sm font-semibold text-ps-ink">
               Statutory bonus
             </h2>
           </div>
@@ -206,7 +206,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
             ].map(([label, value]) => (
               <div key={label} className="border border-ps-border rounded-lg bg-white px-3 py-2">
                 <p className="text-3xs text-ps-hint">{label}</p>
-                <p className="text-[13px] font-semibold text-ps-ink tabular-nums">{value}</p>
+                <p className="text-sm font-semibold text-ps-ink tabular-nums">{value}</p>
               </div>
             ))}
           </div>

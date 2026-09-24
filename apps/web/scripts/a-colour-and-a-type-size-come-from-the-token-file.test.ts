@@ -163,12 +163,25 @@ const HEX_BUDGET = 44;
 // a metric and the guard that enforces it must count the same population,
 // which this file's own history already records going wrong once.
 //
-// 289 → 277 in the next commit, that family converted to `text-xs`. It shows
-// on 90 of the 160 routes, which is what a shell change means, and the walk
-// was run before and after on all of them: the rail and the context panel come
-// out a shade tighter (Tailwind's 16px leading in place of the ~19px these
-// inherited) and nothing else moves.
-const PX_TEXT_BUDGET = 277;
+// 289 → 277, that family converted to `text-xs`. It shows on 90 of the 160
+// routes, which is what a shell change means, and the walk was run before and
+// after on all of them: the rail and the context panel come out a shade
+// tighter (Tailwind's 16px leading in place of the ~19px these inherited) and
+// nothing else moves.
+//
+// 277 → 187, PAYROLL — 90 sites in five files, the largest module left. Same
+// mapping as the auth family (12→xs, 13 and 14→sm), plus two one-offs decided
+// per site rather than by rounding: the page's `text-[15px]` h1 goes UP to
+// `text-base`, because `text-sm` would make the heading the same size as the
+// body under it; and the one `text-[9px]` chip takes `text-3xs`, the smallest
+// step there is, on T3-a's recorded decision that 9px gets no name of its own.
+//
+// ⚠️ ONLY ONE OF THE 160 ROUTES MOVED, AND THAT IS A LIMIT OF THE WALK RATHER
+// THAN OF THE CHANGE. 71 of the 90 sites are inside `EmployeeDrawer`,
+// `StatutoryHandoff` and `ApplyStructureModal`, which open on a click and on
+// data; the walk renders with neither. What the walk DID confirm is the
+// negative: 159 routes byte-identical, so nothing leaked out of the module.
+const PX_TEXT_BUDGET = 187;
 
 // ── THE SECOND WAY TO WRITE A COLOUR, WHICH THIS FILE COULD NOT SEE ─────────
 //
