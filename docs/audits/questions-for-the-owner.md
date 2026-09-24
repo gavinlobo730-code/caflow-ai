@@ -4,9 +4,10 @@
 research and take those decisions, and code questions you take those
 decisions."*
 
-So this file changed shape twice in one day. **Fifteen questions were open;
-twelve were compliance or code and became mine; you answered the last three that
-evening. Nothing is waiting on you.**
+So this file changed shape twice on 17 September. **Fifteen questions were
+open; twelve were compliance or code and became mine; you answered the last
+three that evening.** Four things have accumulated since — the block below says
+what they are, and none of them is a preference.
 
 Every decision appears below with its reasoning, so you can overrule any of them
 by saying so — a decision you cannot find is a decision nobody can revisit. Two
@@ -43,11 +44,43 @@ than a flagged gap. Search gives me fragments of those tables, not tables.
 
 ---
 
-# NOTHING IS WAITING ON YOU
+# WHAT IS WAITING ON YOU — as at 24 September 2026
 
-All three were answered on **17 September 2026** and all three are built. They
-are recorded below with what was built and what I decided inside them, because a
-decision you cannot find is a decision nobody can revisit.
+**That heading used to read "NOTHING IS WAITING ON YOU", and it was true on 17
+September.** Four things have accumulated since and the header did not move,
+which is the failure mode this whole file exists to avoid: a status line nobody
+re-reads is worse than no status line, because it is believed. This block is
+regenerated whenever an item is added or answered, and everything below it is
+the unchanged record of what was decided and why.
+
+**Nothing here blocks the code. Every one of the four is something this
+environment cannot do, not something waiting on a preference** — and where a
+default was defensible it has already been taken and recorded below.
+
+| § | what | what it costs you | what it unblocks |
+|---|---|---|---|
+| **N** | **One URL in a browser.** Does a Cloudflare Pages preview serve `/clients/anything/bank` by directory-index lookup? The preview is already deployed on every PR; the URL is in §N. | one click | **41 of the 98 redirect rules**, against a hard cap of 100 that fails SILENTLY. Two rules of headroom left; T6-a is blocked until this is known. |
+| **M** | **A font licence posture.** FreeSans carries U+20B9 and is a near-metric match for Helvetica (no column moves) but is GPLv3; DejaVu is permissive and 1.13–1.26× wider, which re-breaks the columns T5a-4b just fixed. Liberation Sans has no rupee glyph at all — checked. | one decision | Every PDF printing "Rs." instead of ₹. |
+| **L** | **Where a CA is told** a posting fell back to the firm's generic Bank ledger — the entry row, the posting confirmation, or a report. The fact is computed and reaches no caller. | one decision | ACC-03's remaining half. |
+| **#164** | **Six documents this environment cannot fetch.** Egress is refused at the proxy; search works, fetching does not. | six downloads | Listed in the table below. |
+
+### The six documents, and what each one settles
+
+| # | document | what stays refused without it |
+|---|---|---|
+| 3 | NSDL TDS **FVU/RPU file layout** | TDS-16 — the quarterly statement file. The engine computes every figure; nothing can write the file. |
+| 4 | **Finance Act** on §194I(a) / §194J(a), and **Form 3CD** | TDS-22's two clause rates (the module deliberately withholds at the parent's HIGHER rate and says so rather than stating 2% from memory); the tax-audit annexure. |
+| 5 | **GST offline utility** screens | The GSTR-9 filing demo. |
+| 6 | A bank's **salary upload format** | Nothing — `domain/payroll/bank_advice` is deliberately generic, because inventing one bank's layout produces a file that fails AT THE BANK rather than in front of the CA. Listed so the decision is visible, not because it blocks. |
+| 7 | **ITR JSON schemas** (per form, per AY, from incometax.gov.in) | The annual refresh. They cannot be inferred; this is the one item on the FY checklist that has to come from outside the repo. |
+| 8 | **State professional-tax slabs** (18 states) and **LWF** amounts | Eighteen states' payroll deductions. Currently reported as named gaps, which is the safe direction — a wrong deduction is worse than a flagged one, because the employee is short-paid and the employer still owes the right figure. |
+
+**Two of the eight are already done** — the CBIC late-fee notifications and
+§50(3) (document 1), and the e-invoice validation set (document 2). Both are
+committed under `docs/compliance/sources/`, and both changed real code: §50(3)
+turned out to be **24%, not the 18% three successive readings had settled on**,
+and the IRP's own `Document_Num` expression turned out to refuse `0001`, a
+number `sales_numbering_service` hands to a firm with an empty prefix.
 
 ---
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from repositories.base import BaseRepository
@@ -25,7 +25,18 @@ def _get_db():
 
 
 def _now() -> str:
-    return datetime.utcnow().isoformat()
+    """The instant, as an AWARE UTC string.
+
+    Two reasons it carries an offset rather than being a bare `utcnow()`.
+    `expires_at` is compared against this BOTH as a Python string (the mock
+    branch) and as a timestamptz (`.gt(...)` over PostgREST), and a string
+    comparison is only meaningful where both sides are written the same way —
+    the service now writes `expires_at` aware, so this must be too, or the two
+    differ by a suffix that sorts before a microsecond dot. And `utcnow()` is
+    deprecated from Python 3.12 precisely because it returns a NAIVE datetime
+    labelled UTC by convention alone.
+    """
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _uid() -> str:
@@ -573,7 +584,11 @@ ai_copilot_repo = AICopilotRepository()
 
 
 # ── Mock data ─────────────────────────────────────────────────────────────────
-_d = lambda days: (datetime.utcnow() - timedelta(days=days)).isoformat()
+# Aware UTC like everything else here: mock rows are compared against `_now()`
+# by the same string comparison the live rows are, so a different shape would
+# make mock mode disagree with production about what has expired.
+def _d(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
 MOCK_CONVERSATIONS: list[dict] = [
     {

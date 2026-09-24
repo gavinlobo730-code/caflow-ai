@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
-from core.ist_clock import ist_today
+from core.ist_clock import ist_now, ist_today
 
 _logger = logging.getLogger("caflow.ai_copilot")
 
@@ -207,7 +207,11 @@ class AICopilotService:
         """
         lines = [
             f"FIRM: {firm_id}",
-            f"DATE: {datetime.utcnow().strftime('%d %B %Y')}",
+            # The Indian day, not the UTC one. Between 00:00 and 05:30 IST the
+            # two are different dates, and this line is what the model reasons
+            # from when a CA asks what is due — "the 20th" against "the 19th"
+            # is the difference between due today and due tomorrow.
+            f"DATE: {ist_now().strftime('%d %B %Y')}",
             f"CONTEXT TYPE: {context_type}",
         ]
 
@@ -288,7 +292,10 @@ class AICopilotService:
                 wf_repo = _get_workflow_repo()
                 failures = wf_repo.list_failures(firm_id, resolved=False, limit=10)
                 approvals = wf_repo.list_approvals(firm_id, status="pending", limit=10)
-                now_iso = datetime.utcnow().isoformat()
+                # Aware UTC: `workflow_approvals.due_at` is TIMESTAMPTZ and
+                # comes back from PostgREST carrying an offset, so the two
+                # sides of this string comparison must be written the same way.
+                now_iso = datetime.now(timezone.utc).isoformat()
                 overdue_approvals = [
                     a for a in approvals
                     if a.get("due_at") and a["due_at"] < now_iso
@@ -407,7 +414,7 @@ class AICopilotService:
         if cached:
             return cached
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Fetch real client data before calling Groq
         client_name = client_id
@@ -565,7 +572,7 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
         if cached:
             return cached
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Fetch real compliance data
         overdue_tasks: list[dict] = []
@@ -595,7 +602,7 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
 
         prompt = f"""Analyse the firm's current compliance status and provide actionable insights.
 
-REAL DATA AS OF {now.strftime('%d %B %Y')}:
+REAL DATA AS OF {ist_now().strftime('%d %B %Y')}:
 - Total compliance tasks on record: {len(all_tasks)}
 - Overdue filings: {len(overdue_tasks)} (affecting {len(overdue_clients)} clients)
 - Filings due in next 14 days: {len(due_soon_tasks)}
@@ -668,7 +675,8 @@ Cite CGST Act / IT Act sections where relevant."""
             for a in analytics
             if a.get("avg_duration_ms") and a["avg_duration_ms"] > 3_600_000
         ]
-        now_iso = datetime.utcnow().isoformat()
+        # Aware UTC, for the reason above — `due_at` is TIMESTAMPTZ.
+        now_iso = datetime.now(timezone.utc).isoformat()
         overdue_approvals = [
             a for a in approvals
             if a.get("due_at") and a["due_at"] < now_iso
@@ -682,7 +690,7 @@ Cite CGST Act / IT Act sections where relevant."""
 
         prompt = f"""Analyse workflow automation performance and provide recommendations.
 
-REAL DATA AS OF {datetime.utcnow().strftime('%d %B %Y')}:
+REAL DATA AS OF {ist_now().strftime('%d %B %Y')}:
 - Total workflow types: {len(analytics)}
 - Failing workflows: {len(failing)} ({', '.join(a['template_name'] for a in failing[:3])})
 - Pending approvals: {len(approvals)} ({len(overdue_approvals)} overdue)
@@ -701,7 +709,7 @@ Provide:
             {"role": "user", "content": prompt},
         ]
         content, tokens = await self._call_groq(messages)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return {
             "firm_id": firm_id,
             "failing_workflows": failing[:5],
@@ -747,7 +755,7 @@ Provide:
 
         prompt = f"""Analyse cross-client relationship structures and identify risks.
 
-REAL DATA AS OF {datetime.utcnow().strftime('%d %B %Y')}:
+REAL DATA AS OF {ist_now().strftime('%d %B %Y')}:
 - Total clients: {len(clients)}
 - PANs appearing across multiple entities: {len(multi_entity_pans)} (potential related-party risk)
 - Shared corporate email domains: {len(duplicate_email_domains)} (possible group structures)
@@ -766,7 +774,7 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
             {"role": "user", "content": prompt},
         ]
         content, tokens = await self._call_groq(messages)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return {
             "firm_id": firm_id,
             # THE ONE PLACE SCOPING CHANGES WHAT THE ANSWER MEANS.
@@ -805,7 +813,7 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
         if cached:
             return cached
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # ── Gather real data ────────────────────────────────────────────────
         clients: list[dict] = []
@@ -894,7 +902,7 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
         summary_prompt = f"""Summarise this CA firm's current operational status for an executive in 3 concise sentences.
 Be specific with numbers. Highlight the most urgent issue first.
 
-Firm data as of {now.strftime('%d %B %Y')}:
+Firm data as of {ist_now().strftime('%d %B %Y')}:
 - Total clients: {len(clients)} | Critical: {critical} | At-risk: {at_risk} | Healthy: {healthy}
 - Overdue tasks: {tasks_overdue}
 - Workflow failures: {wf_failures} | Pending approvals: {pending_approvals}
@@ -991,7 +999,7 @@ Firm data as of {now.strftime('%d %B %Y')}:
         snooze_until = None
         if action == "snooze" and snooze_days:
             snooze_until = (
-                datetime.utcnow() + timedelta(days=snooze_days)
+                datetime.now(timezone.utc) + timedelta(days=snooze_days)
             ).isoformat()
             status = "snoozed"
         elif action == "accept":
