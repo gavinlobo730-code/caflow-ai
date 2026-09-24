@@ -588,6 +588,51 @@ commit; these are the **decisions left for you**, and nothing below is blocking
 
 ## G2. TWO AUTHORITIES DISAGREE BY A ROLE TIER ABOUT A FEE ENGAGEMENT, AND ITS STATE MACHINE HAS NO CALLER AT ALL  *(new, 24-09-2026)*
 
+> ### ✅ ANSWERED 24-09-2026 — *"I thought we were going to change the control from position to per individual right?"*
+>
+> That reframes the question rather than picking one of its two options, and it
+> is the right reframing: **the control is the per-person grid, and the tier is
+> only the template it falls back to.** Three things followed.
+>
+> **1. The two authorities now name the same resource — `billing`.** The row
+> carries the fee; migration 260's RLS read it that way and its comment says
+> so. **This removes nothing anybody can do today**, which is what made it
+> decidable rather than a second question: `apps/web` mentioned
+> `/api/engagements` NOWHERE, and the billing screen's own PostgREST insert was
+> already refused for a Manager by that RLS. No journey existed in which a
+> Manager created a fee engagement. Pointing the router at `engagement` was
+> pointing the grid at the wrong checkbox for this row.
+>
+> **2. The screen goes through the API and the state machine has a door.**
+> `lib/api` has an `engagements` namespace; six of the router's seven endpoints
+> now have a caller (the seventh is `generate-obligations`, which is
+> `compliance:write` and belongs on a compliance screen). Every step goes
+> through `POST /{id}/transition`, which validates and writes `audit_log` and
+> the client timeline.
+>
+> **3. A status the database cannot hold is gone.** The screen's own type said
+> `status: "Active" | "Paused"`, and **"Paused" is not one of the seven
+> migration 108's CHECK allows**. Building a Pause button would have written a
+> row Postgres rejects. The screen now offers exactly what the state machine
+> allows from the current status, and a test pins the browser's copy of that
+> map to the router's and both to the CHECK.
+>
+> ### ⛔ ONE STEP IS NOT DONE AND IT IS THE HALF THAT MAKES THE GRID REAL
+>
+> Migration 260's policies still ask `my_role_at_least(...)` and nothing else,
+> so a Partner who grants one Manager `billing:write` on the Team screen gets a
+> person who **passes `rbac()` and is then refused by Postgres** — the grid
+> vetoed by the control it replaced. The fix is a SQL twin of
+> `resolve_permission` (a row wins, no row means the role decides) and
+> re-pointing those nine policies at it. **I wrote it and could not save it:
+> creating a file under `apps/api/migrations/` needs a permission this session
+> does not have, and merging a migration applies it to production with no
+> review step in between — so that gate is doing its job.** Say the word and it
+> goes in as migration 415; it is about 200 lines and needs no data change (403
+> wrote no backfill, so with an empty `user_permissions` it reproduces today's
+> behaviour exactly).
+
+
 **The backlog item that led here said "fee engagements are created over
 PostgREST, so `rbac()` and the state machine never run". Both halves are true
 and neither is the defect.** Re-reading the code found something sharper under
@@ -609,14 +654,21 @@ This is not two write paths for one fact, which is the shape this codebase
 usually finds. It is **two answers to "which permission governs this row"**,
 one whole tier apart.
 
-A Manager can therefore create a fee-bearing engagement through the API — and
-with the service-role key the API path bypasses RLS entirely, so nothing
-catches it (`USE_USER_JWT`, `core/security_config.py`). The billing screen
-writes over PostgREST, where RLS **does** apply, so the same Manager is refused
-there. One person, two routes, two answers. And because the per-person grid
-(migration 403) resolves through `rbac()`, a firm can grant or deny
-`engagement:write` on this row and never `billing:write` — the grid is the
-authority and for this row it is pointed at the wrong resource.
+A Manager therefore passes the API's guard and is refused by Postgres.
+
+> ⚠️ **This paragraph said the opposite when it was written, and the owner
+> caught it.** It read *"with the service-role key the API path bypasses RLS
+> entirely, so nothing catches it"*. **`USE_USER_JWT` is TRUE in production** —
+> `render.yaml` records it in its own comment, `sync: false`, so no test can
+> see the value — which means the backend queries as `authenticated` and **RLS
+> is enforced on the API path too**. The disagreement is real and it resolves
+> the other way: the stricter authority wins everywhere, so a Manager cannot
+> create a fee engagement by any route.
+
+And because the per-person grid (migration 403) resolves through `rbac()`, a
+firm can grant or deny `engagement:write` on this row and never
+`billing:write` — the grid is the authority and for this row it was pointed at
+the wrong resource.
 
 > **The question:** is a fee engagement **billing** (Partner) or **engagement**
 > (Manager+)?
