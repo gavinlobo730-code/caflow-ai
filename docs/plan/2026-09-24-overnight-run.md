@@ -469,6 +469,44 @@ doing these sweeps by hand rather than by grep.
 | **Seven PAN validators tested the raw field** | Settings, onboarding, client form, two bulk imports, MCA, CSV mapper | `validate_pan` strips and uppercases first, so the browser refused what the server accepts — and the firm's own PAN field does not uppercase what is typed |
 | **An inactive icon at 2.56:1** | `app/workflows/page.tsx` | the exact value the token file records moving `ps.hint` OFF |
 
+## Phase 2 — 2.4, 2.5 and 2.6 ✅ **LANDED** (#602, #603, #604)
+
+Three things in this tranche were found by LOOKING at the product rather than
+by reading it, and none of them could have been found by a test.
+
+**2.5's premise was wrong and the real defect was bigger.** THE-PLAN's "39
+orphan screens" is unreproducible under any definition, and so is the 63 the
+24-09 re-measure offered. Only **two** named screens were absent from both the
+sidebar and their module's landing page. What is actually wrong is that every
+module has **two** navigation surfaces and they listed **disjoint** sets:
+`/accounting` 10 against 4 with no overlap, `/settings` 8 against 1, the four
+filing modules 11 on landing pages against a panel offering the module root.
+No count of "screens in no menu" can express that.
+
+**A grep for `signOut` settled 2.6's shape.** It appears in exactly one
+navigation surface in this product, and so does the only `href="/settings"`
+outside the settings screens — the rail, which was hidden inside the client
+workspace. A CA in a client could not sign out or reach Settings.
+
+**And the screenshots caught what no assertion would.** At 52px the rail was
+cutting "Relationships" to `elationship` and "Engagements" to `ngagement` on
+every firm screen.
+
+| what | where | why it matters |
+|---|---|---|
+| **`/onboarding/checklist` had no navigation and was PUBLIC** | `AppShell`, `lib/auth/public-paths.ts` | the client-onboarding tracker shares a path prefix with the firm SIGNUP wizard, so it matched both the no-shell list and `isPublicPath`: no rail, no panel, no ⌘K, and handed to signed-out visitors instead of the login page. Its API call still needs a token, so nothing leaked — it rendered empty at a URL that should have bounced. Both lists are EXACT on `/onboarding` now |
+| **`/accounting/schedule-iii` was named for the wrong screen** | `lib/navigation/screens.ts` | the ⌘K inventory called it "Schedule III captions"; it renders the STATEMENTS, and the caption mapping is `/accounting/schedule-iii-mapping`. So "balance sheet" found nothing and "captions" landed on the statements — wrong in exactly the way that list exists to prevent |
+| **The smoke walk has never seen the client workspace** | `scripts/smoke-walk.mjs` | `isClientWorkspacePath` requires a real UUID, and the walk's server serves `out/` as plain files, so a uuid path 404s and it could only ask for `/clients/_placeholder/…`. Every client screenshot it has ever taken wore the FIRM chrome — the half its own header says it exists for. `--real-client` mirrors Cloudflare's rewrite, and the first run of it walked 43 client routes with 0 crashes and 42 distinct bodies |
+| **`WorkspaceRail` labels were clipped mid-word** | `components/shell/WorkspaceRail.tsx` | two of twelve, on every firm screen. Widening to 64px fixed ten and left the other two ellipsised; the width that fits them whole is ~84px. They carry the same word with a U+200B in it instead |
+
+**A guard was deliberately reversed, and restated rather than deleted.**
+`one-mobile-menu-button.test.ts` asserted "nothing in AppShell's chrome renders
+inside the client workspace" — a SPELLING of its rule, in one named file, which
+2.6 reverses on purpose. It now states the rule that survives any
+restructuring: exactly one mobile trigger and one drawer in the product,
+counted on `md:hidden fixed` rather than on `<Menu>`. That is this run's fourth
+instance of the same lesson.
+
 ## Two lessons recorded in CLAUDE.md
 
 1. **A stored instant and `ist_today()` are not comparable until one of them
