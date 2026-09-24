@@ -516,3 +516,61 @@ instance of the same lesson.
    spelling, which is this repository's most-repeated lesson.
 2. **A metric and the guard that enforces it must count the same population**,
    or the metric reports a regression the guard cannot see and nobody can find.
+
+---
+
+# Phase 2 — 2.7a and 2.7b ✅ LANDED (#605, #606)
+
+## 2.7a — payroll is one place, and it is the thirteenth workspace
+
+PAY-28, which the plan had folded into 2.7 as item 2.9. Payroll's six screens
+sat across **three** top-level areas: `/payroll` and `/payroll/statutory` under
+Accounting, `/payroll/attendance` under **Team**, and `/payroll/people`,
+`/payroll/declarations` and `/payroll/reports` in no panel at all until 2.5 —
+which then left attendance in **both**, two clicks apart under two module
+headings, lighting a different rail icon depending on which one the CA had
+used. A bureau running payroll for a dozen clients — a service a practice
+*sells*, priced per employee per month — had no home for it.
+`docs/architecture/10-payroll.md` specifies the fix and specifies it as the
+13th top-level workspace.
+
+**Setup is a pointer, not a seventh screen.** The doc's `/payroll/setup` is
+state coverage, and that is already built at `/settings/statutory-values` —
+PAY-28's own verification pass established it. A second screen for one fact is
+the `/accounting/retainer` mistake.
+
+## 2.7b — D22 answers G3: the firm hub's dead tiles land on a worklist
+
+Five of D1's fifteen tiles had no firm-level destination and two of the five
+landed on a `MovedToClientWorkspace` **tombstone** — a page whose whole content
+is "this moved", which is worse than a 404 because it renders.
+
+**Reading the tombstone changed the answer.** It records a deliberate earlier
+decision: *"firm-level accounting screens have been retired; accounting flows
+exclusively through the client workspace."* So the answer is not five rebuilt
+firm-level registers — that is the duplicate those pages exist to prevent. It
+is the question a bureau actually asks on the 3rd: **which of my clients needs
+work in this module.** A queue, not a register, with every row opening that
+client's own section. `/accounting/fixed-assets` replaces its tombstone, whose
+message was already "choose a client".
+
+## The defects and near-misses this tranche turned up
+
+| what | where | why it matters |
+|---|---|---|
+| **`HomePanel` had no role filter at all** | `components/panels/HomePanel.tsx` | `/deadlines` is in `STAFF_HIDDEN_HREFS` and the `deadlines` and `work` **workspaces** are both hidden from delivery staff — so the rail hid them from an Executive, a Reviewer and a Client while Home offered both to everyone. Found by the new one-home guard on its first run, not by looking for it |
+| **`a-module-shows-all-of-itself` was vacuous for four screens** | `apps/web/scripts/` | it did not strip comments, and every panel that gives a screen up writes a comment naming it. A negative control that removed `/payroll/people` from `PayrollPanel` **passed**. Third instance of the same hazard in one day; the fourth was the Python tombstone check, which failed a page whose docstring explained what it replaced |
+| **The thirteenth rail tile fell off the bottom** | `components/shell/WorkspaceRail.tsx` | at the old 56px pitch the column is 13×56 + 56 + 24 + 130 = 938px against a 900px viewport, and the nav scrolls with the scrollbar hidden — so Engagements was there and nothing on screen said so. 2.6's "elationship" defect in the other axis, caught by the same means: looking at the shot |
+| **The worklist panel rendered a header over nothing** | `components/panels/PayrollPanel.tsx` | every entry carries a `requires` pair and `can()` fails closed while the permission map is in flight, so unlike every other panel — which has ungated entries and degrades to a partial list — this one degraded to a blank column. It waits for `resolved`, the same rule the rail applies to the tile that opens it |
+| **A fourth render state with no rendering** | `components/hub/ModuleWorklist.tsx` | `success` with an unreadable payload leaves `loading` false, `error` null and `data` null, and the first draft drew the heading over nothing. The first smoke shot of the screen caught it |
+| **The parity fixture disagreed with the database and both halves were "right"** | `tests/test_hub_client_worklist_parity_pg.py` | `bank_transactions.entry_state` is trigger-maintained (322) and `purchase_bills.outstanding_paise` is GENERATED (278). Seeding `entry_state` directly let the trigger recompute it, so the SQL saw one thing and the twin saw the fixture's claim. The twin is now fed rows **read back out of Postgres**: two fixtures can agree with each other while both disagree with the database |
+| **`scripts/screens.snapshot.json` is a THIRD route inventory** | `apps/web/scripts/` | `knownRoutes.generated.ts` regenerates on `next build` and is guarded; the smoke walk reads its own snapshot, which nothing regenerates automatically. Three new pages existed, built and passed every test while the walk silently never visited them. Refreshed by hand here; worth a guard |
+
+## One thing recovered rather than exempted
+
+`test_backend_columns_exist_pg` counts a `.select()` reached through a name as
+**unreadable** — its budget went 463 → 465 on the generic per-tile projection,
+and the failure message invites raising it. The coverage was recoverable, so
+the projections are written out per tile instead: four near-identical lines,
+the same trade `domain/tally/party_identifiers` records. Of all the reads to
+leave unchecked, four feeding a queue a CA works from is a poor choice.

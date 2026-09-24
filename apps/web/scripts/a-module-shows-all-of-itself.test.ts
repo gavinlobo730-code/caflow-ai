@@ -49,6 +49,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { SCREENS, ALL_SCREENS } from "../lib/navigation/screens.ts";
 import { getActiveWorkspaceForPathname } from "../lib/workspace/routeOwnership.ts";
+import { stripComments } from "./stripComments.ts";
 
 const WEB = join(import.meta.dirname, "..");
 
@@ -93,10 +94,20 @@ const NO_BROWSE_SURFACE: Record<string, string> = {
     "/onboarding/checklist, is a staff screen and is in ClientsPanel",
 };
 
+/**
+ * ⚠️ COMMENTS ARE STRIPPED, AND THIS GUARD WAS VACUOUS FOR FOUR SCREENS
+ * WITHOUT IT (found 24-09 by a negative control on `/payroll/people`). A panel
+ * that gives a screen up writes a comment saying so — `AccountingPanel` names
+ * the six payroll routes that left, `TeamPanel` names `/payroll/attendance` —
+ * and the quoted match below counts a backticked route in prose exactly like a
+ * declared `href`. So removing a screen from a panel whose comment mentions it
+ * left this green. It is the hazard `scripts/stripComments.ts` exists for, and
+ * the reason that helper is a module rather than a regex in each guard.
+ */
 function panelSource(component: string): string {
   const p = join(WEB, "components/panels", `${component}.tsx`);
   assert.ok(existsSync(p), `ContextPanel names <${component}/> and there is no such file`);
-  return readFileSync(p, "utf8");
+  return stripComments(readFileSync(p, "utf8"));
 }
 
 interface Unlisted { href: string; name: string; panel: string }

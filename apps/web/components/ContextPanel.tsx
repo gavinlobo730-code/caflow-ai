@@ -9,6 +9,7 @@ import { WorkPanel } from "@/components/panels/WorkPanel";
 import { TeamPanel } from "@/components/panels/TeamPanel";
 import { AIPanel } from "@/components/panels/AIPanel";
 import { AccountingPanel } from "@/components/panels/AccountingPanel";
+import { PayrollPanel } from "@/components/panels/PayrollPanel";
 import { RelationshipsPanel } from "@/components/panels/RelationshipsPanel";
 import { HealthPanel } from "@/components/panels/HealthPanel";
 import { PracticePanel } from "@/components/panels/PracticePanel";
@@ -50,6 +51,7 @@ export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
           {panelWorkspace === "team" && <TeamPanel />}
           {panelWorkspace === "ai" && <AIPanel />}
           {panelWorkspace === "accounting" && <AccountingPanel />}
+          {panelWorkspace === "payroll" && <PayrollPanel />}
           {panelWorkspace === "relationships" && <RelationshipsPanel />}
           {panelWorkspace === "health" && <HealthPanel />}
           {panelWorkspace === "practice" && <PracticePanel />}

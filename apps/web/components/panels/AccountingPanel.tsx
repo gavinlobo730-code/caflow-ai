@@ -9,8 +9,6 @@ import {
   Download,
   BookOpen,
   Receipt,
-  Briefcase,
-  ShieldCheck,
   DatabaseZap,
   LayoutDashboard,
   Users,
@@ -23,10 +21,10 @@ import {
   ClipboardCheck,
   Scale,
   Lock,
-  UserCog,
-  CalendarCheck,
-  FileSpreadsheet,
-  BarChart3,
+  Landmark as LandmarkIcon,
+  ShoppingCart,
+  Building2,
+  CalendarRange,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
 import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
@@ -62,8 +60,16 @@ import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
  * `rbac()` remains the boundary — it stops the panel offering a link that can
  * only bounce.
  *
- * Payroll and Fee Billing map to this workspace (see routeOwnership.ts), so
- * their screens are grouped here rather than left unreachable from the rail.
+ * Fee Billing and Data Migration map to this workspace (see routeOwnership.ts),
+ * so their screens are grouped here rather than left unreachable from the rail.
+ *
+ * ⚠️ PAYROLL LEFT ON 24-09 AND THAT IS PAY-28, not a deletion. Its six screens
+ * were listed here under a "Payroll" heading; payroll is now the thirteenth
+ * top-level workspace with its own panel (`PayrollPanel`), because a bureau
+ * running payroll for a dozen clients needs a home for the service rather than
+ * a sub-heading inside somebody else's module. `routeOwnership.ts` asks
+ * `/payroll` BEFORE `/accounting`, so nothing here owns those routes any more
+ * and re-adding one would put payroll in two places again.
  */
 type NavItem = {
   label: string;
@@ -114,6 +120,28 @@ const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
     ],
   },
   {
+    // D22 / question G3. Four of D1's fifteen hub tiles had no firm-level
+    // destination at all and two landed on a `MovedToClientWorkspace`
+    // tombstone; these are their worklists — one row per client that needs
+    // work, opening that client's own section. The REGISTER still lives only
+    // in the client workspace, which is what the tombstones' retirement
+    // decision settled; this is the queue in front of it.
+    heading: "Across clients",
+    items: [
+      // hub.py get_hub_worklist → rbac("client", "read"), the same guard the
+      // hub itself takes: a worklist is a breakdown of a figure that endpoint
+      // already serves to this caller.
+      { label: "Banking", href: "/accounting/banking", icon: LandmarkIcon,
+        requires: ["client", "read"] },
+      { label: "Purchases", href: "/accounting/purchases", icon: ShoppingCart,
+        requires: ["client", "read"] },
+      { label: "Fixed Assets", href: "/accounting/fixed-assets", icon: Building2,
+        requires: ["client", "read"] },
+      { label: "Year-End", href: "/accounting/year-end", icon: CalendarRange,
+        requires: ["client", "read"] },
+    ],
+  },
+  {
     heading: "Period close",
     items: [
       // accounting.py get_schedule_iii → rbac("accounting", "read").
@@ -126,24 +154,6 @@ const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
         requires: ["accounting", "write"] },
       { label: "Lock Financial Year", href: "/accounting/lock-year", icon: Lock,
         partnerOnly: true },
-    ],
-  },
-  {
-    heading: "Payroll",
-    // payroll.py: every endpoint these five pages call is rbac("payroll", …).
-    items: [
-      { label: "Payroll Runs", href: "/payroll", icon: Briefcase, exact: true,
-        requires: ["payroll", "read"] },
-      { label: "Employees", href: "/payroll/people", icon: UserCog,
-        requires: ["payroll", "read"] },
-      { label: "Attendance", href: "/payroll/attendance", icon: CalendarCheck,
-        requires: ["payroll", "read"] },
-      { label: "Investment Declarations", href: "/payroll/declarations", icon: FileSpreadsheet,
-        requires: ["payroll", "read"] },
-      { label: "Payroll Reports", href: "/payroll/reports", icon: BarChart3,
-        requires: ["payroll", "read"] },
-      { label: "Payroll Statutory", href: "/payroll/statutory", icon: ShieldCheck,
-        requires: ["payroll", "read"] },
     ],
   },
   {
@@ -186,9 +196,12 @@ export function AccountingPanel() {
         </div>
       </div>
 
-      {/* Nav items. Grouped because the whole module is 22 entries and an
-          ungrouped list of 22 is a wall — the headings are how it stays
-          scannable at the 220px the panel gets. */}
+      {/* Nav items. Grouped because the whole module is 21 entries and an
+          ungrouped list of 21 is a wall — the headings are how it stays
+          scannable at the 220px the panel gets. (It was 22 before payroll's
+          six moved out to their own workspace and the four firm-level
+          worklists arrived; grouping still earns its keep, and the headings
+          are the module's own shape rather than a length threshold.) */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
         {groups.map(({ heading, items }) => (
           <div key={heading ?? "_"} className={heading ? "mt-3 first:mt-0" : ""}>

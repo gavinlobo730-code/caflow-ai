@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from domain.hub import worklist
 from domain.hub.tiles import (
     BY_ID, LOWER_IS_BETTER, MODULES_WITH_NO_FIRM_SCREEN, TILES, Tile, Unit,
     describe, tiles_for_scope,
@@ -129,6 +130,25 @@ def test_a_client_hub_drops_only_the_firm_level_questions():
     assert {"compliance", "documents"} <= {t.id for t in client}
 
 
+def _without_comments(src: str) -> str:
+    """⚠️ A PAGE THAT REPLACED A TOMBSTONE SAYS SO, AND THIS GUARD READ THE
+    EXPLANATION AS THE DEED.
+
+    D22 put the fixed-asset WORKLIST at `/accounting/fixed-assets`, exactly
+    where the tombstone had been, and its docstring records what it replaced
+    and why — so a plain substring search found `MovedToClientWorkspace` in the
+    prose and failed a page that renders nothing of the sort. The same hazard
+    `apps/web/scripts/stripComments.ts` exists for, and the third instance of
+    it found on 24-09: a guard a warning against the defect makes fail is a
+    guard nobody can write the warning for.
+
+    Deliberately not a parser — `/* */` and `//` are all these pages carry, and
+    a page that RENDERS the component has to import and name it in code.
+    """
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    return re.sub(r"(?m)^\s*//.*$", "", src)
+
+
 @pytest.mark.parametrize("tile", TILES, ids=lambda t: t.id)
 def test_every_firm_href_is_a_real_screen_and_not_a_tombstone(tile: Tile):
     """A tile linking nowhere useful is worse than no tile — it reads as working.
@@ -154,7 +174,7 @@ def test_every_firm_href_is_a_real_screen_and_not_a_tombstone(tile: Tile):
     page = WEB_APP.joinpath(*[s for s in tile.firm_href.split("/") if s]) / "page.tsx"
     assert page.exists(), (
         f"{tile.id} links to {tile.firm_href}, which has no page.tsx")
-    assert "MovedToClientWorkspace" not in page.read_text(encoding="utf-8"), (
+    assert "MovedToClientWorkspace" not in _without_comments(page.read_text(encoding="utf-8")), (
         f"{tile.id} links to {tile.firm_href}, which is a tombstone — the whole "
         f"page says the feature moved to the client workspace")
 
@@ -175,10 +195,21 @@ def test_every_client_section_is_a_real_section(tile: Tile):
 
 
 def test_the_firm_level_gap_is_recorded_and_honest():
-    """Five of D1's fifteen have no firm-level screen. That is a real state of
-    the product, not a defect in this module — and it is put to the owner as
-    G3 rather than papered over with a link to the client list."""
-    assert len(MODULES_WITH_NO_FIRM_SCREEN) == 5
+    """A tile with no firm-level screen is RECORDED, with a reason somebody can
+    read — that is the rule, and it does not name a number.
+
+    ⚠️ IT USED TO ASSERT `len(...) == 5`, which was a SPELLING of the rule and
+    not the rule: D22 gave four of the five a worklist and that assertion
+    failed on a change that fixed the thing it cares about. The durable form is
+    a two-way identity against `domain/hub/worklist.NO_WORKLIST_BECAUSE` — the
+    module that holds the REASON is the same list as the module that holds the
+    absence, so a tile cannot lose its destination without somebody having to
+    write down why, and a reason cannot outlive the gap it explains.
+    """
+    assert set(MODULES_WITH_NO_FIRM_SCREEN) == set(worklist.NO_WORKLIST_BECAUSE), (
+        f"the tiles with no firm screen {sorted(MODULES_WITH_NO_FIRM_SCREEN)} and "
+        f"the tiles with a recorded reason {sorted(worklist.NO_WORKLIST_BECAUSE)} "
+        f"are different sets — an absence has to carry its argument")
     for tile_id in MODULES_WITH_NO_FIRM_SCREEN:
         assert tile_id in BY_ID, f"{tile_id} is not a tile"
         assert BY_ID[tile_id].firm_href is None, (

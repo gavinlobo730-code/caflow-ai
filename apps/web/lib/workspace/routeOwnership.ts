@@ -26,7 +26,7 @@
 
 export type WorkspaceId =
   | "home" | "clients" | "deadlines" | "work" | "team" | "ai"
-  | "accounting" | "relationships" | "health"
+  | "accounting" | "payroll" | "relationships" | "health"
   | "practice" | "knowledge" | "engagements";
 
 export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | null {
@@ -66,10 +66,23 @@ export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | n
   )
     return "deadlines";
 
+  // ⚠️ ASKED BEFORE ACCOUNTING, because `/payroll` used to fall into that
+  // branch and this is the change (PAY-28 / plan item 2.9). Payroll was a
+  // LINK inside the Accounting rail and its six screens sat across three
+  // top-level areas — `/payroll` and `/payroll/statutory` under Accounting,
+  // `/payroll/attendance` under Team, and `/payroll/people`, `/declarations`
+  // and `/reports` in no panel at all until 2.5. A bureau running payroll for
+  // a dozen clients had no home for the service it sells.
+  // `docs/architecture/10-payroll.md` specifies the 13th top-level workspace
+  // and this is it. Order is the whole mechanism: a prefix chain answers with
+  // the first branch that matches, so a narrower prefix has to be asked first
+  // or it is unreachable — the same reason `/onboarding/checklist` is at the
+  // top of this function.
+  if (pathname.startsWith("/payroll")) return "payroll";
+
   if (
     pathname.startsWith("/accounting") ||
     pathname.startsWith("/billing") ||
-    pathname.startsWith("/payroll") ||
     pathname.startsWith("/migration")
   )
     return "accounting";

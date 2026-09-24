@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Search, Settings, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth/AuthContext";
+import { useAuth, usePermissions } from "@/lib/auth/AuthContext";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace/workspaceConfig";
 import { canAccessWorkspace } from "@/lib/auth/permissions";
@@ -33,6 +33,7 @@ import { useNavShellCollapse } from "@/components/shell/NavShell";
 export function WorkspaceRail({ onOpenSearch }: { onOpenSearch: () => void }) {
   const { activeWorkspace, setWorkspace } = useWorkspace();
   const { user, userRole, signOut, fullName } = useAuth();
+  const { can, resolved } = usePermissions();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const pathname = usePathname();
   const isSettingsRoute = pathname.startsWith("/settings");
@@ -44,8 +45,24 @@ export function WorkspaceRail({ onOpenSearch }: { onOpenSearch: () => void }) {
     ? fullName.trim().split(" ").filter(Boolean).slice(0, 2).map((n) => n[0].toUpperCase()).join("")
     : user?.email?.slice(0, 2).toUpperCase() ?? "CA";
 
-  const visibleWorkspaces = WORKSPACE_CONFIGS.filter((ws) =>
-    canAccessWorkspace(ws.id, userRole)
+  // Two gates, and they answer different questions. `canAccessWorkspace` is the
+  // product's own role rule (Practice exposes fee economics; Deadlines and Work
+  // are hidden from delivery staff). `requires` is the backend's rbac pair, set
+  // only on a workspace whose every screen is governed by one — today just
+  // Payroll — so the rail does not offer a tile that opens an empty panel.
+  //
+  // ⚠️ IT HIDES ONLY ONCE `resolved`, which is deliberate and is the one place
+  // in this product that reads that flag. `can()` fails CLOSED while the
+  // permission map is still in flight, so gating on it alone would leave the
+  // Payroll tile absent on first paint for EVERYONE and pop it in a moment
+  // later — on the rail, which is the product's spine. Showing it until we
+  // know costs an Executive one frame of a tile they cannot use, and this is
+  // not a security boundary: `rbac()` is, on the server, and the screens
+  // behind it answer 403 either way.
+  const visibleWorkspaces = WORKSPACE_CONFIGS.filter(
+    (ws) =>
+      canAccessWorkspace(ws.id, userRole) &&
+      (!ws.requires || !resolved || can(ws.requires[0], ws.requires[1])),
   );
 
   return (
@@ -70,8 +87,18 @@ export function WorkspaceRail({ onOpenSearch }: { onOpenSearch: () => void }) {
       </div>
 
       {/* Workspace icons — scroll when they exceed the rail height (min-h-0 lets
-          this flex child shrink; scrollbar hidden to keep the rail clean) */}
-      <nav className="flex flex-col items-center gap-1.5 py-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          this flex child shrink; scrollbar hidden to keep the rail clean).
+          ⚠️ THE PITCH IS 52px AND WAS 56, AND THAT IS A MEASUREMENT, the same
+          kind 2.6 took on the label width. Payroll made this a THIRTEENTH tile
+          and the first smoke walk of it showed twelve: at 56px the column is
+          13×56 + 56 header + 24 padding + 130 of bottom utilities = 938 against
+          a 900px viewport, so Engagements fell off the end — scrollable, with
+          the scrollbar hidden, so nothing on screen said it was there. `gap-1`
+          and a 32px hit area buy back 76px and put all thirteen inside 880.
+          Thirteen is what D1's fifteen hub tiles and twelve workspaces have
+          converged on; a fourteenth needs the rail rethought, not another 4px.
+          A short viewport still scrolls, as it did at twelve. */}
+      <nav className="flex flex-col items-center gap-1 py-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {visibleWorkspaces.map((ws) => {
           const Icon = ws.icon;
           const isActive = ws.id === activeWorkspace;
@@ -81,7 +108,7 @@ export function WorkspaceRail({ onOpenSearch }: { onOpenSearch: () => void }) {
                 onClick={() => setWorkspace(ws.id)}
                 title={ws.description}
                 className={cn(
-                  "relative flex items-center justify-center w-9 h-9 rounded-[9px] transition-all duration-100 mx-auto",
+                  "relative flex items-center justify-center w-8 h-8 rounded-[9px] transition-all duration-100 mx-auto",
                   isActive ? "bg-brand" : "hover:bg-white/10"
                 )}
               >

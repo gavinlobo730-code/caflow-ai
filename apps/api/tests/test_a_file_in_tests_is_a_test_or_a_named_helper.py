@@ -87,6 +87,14 @@ HELPERS = {
     # second module that needed it.
     "_python_source.py",
     "uat_fixtures.py",
+    # D22. The narrowest PostgREST stand-in that RUNS
+    # `hub_worklist_service._python_twin` — a service whose job is to fetch
+    # needs a test that fetches, which is `test_the_hub_actually_answers`'s
+    # own lesson. It is shared deliberately: the mock guard and
+    # `test_hub_client_worklist_parity_pg` feed it the SAME rows, one from a
+    # fixture and one read back out of Postgres, and a second double would be
+    # two fixtures agreeing with each other rather than with the database.
+    "_hub_worklist_double.py",
 }
 
 _EXITS = {"exit", "quit", "_exit"}

@@ -51,9 +51,6 @@ const WEB = path.join(__dirname, "..");
  * a review; removing one when a screen gets a real link is the ratchet.
  */
 const UNLINKED: Record<string, string> = {
-  "/accounting/fixed-assets":
-    "a MovedToClientWorkspace stub kept so an old bookmark lands somewhere " +
-    "rather than 404ing — being unlinked is the point",
   "/accounting/invoices":
     "the same stub, for the Sales tab",
 

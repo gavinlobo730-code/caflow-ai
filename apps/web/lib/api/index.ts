@@ -86,6 +86,40 @@ export interface HubPayload {
   tiles: HubTile[];
 }
 
+/** One client's row on a firm-level module worklist, exactly as
+ *  `services/hub_worklist_service._with_names` serialises it.
+ *
+ *  `client_name` is null where the name could not be read. The row is STILL
+ *  listed — a queue that silently omits a client is the failure the screen
+ *  exists to prevent — so the screen shows the id rather than dropping it. */
+export interface HubWorklistRow {
+  client_id: string;
+  signal: number;
+  client_name: string | null;
+  entity_type?: string | null;
+}
+
+/** A firm-level module worklist: which clients need work on one hub tile.
+ *
+ *  `question`, `unit` and `label` come off the TILE (`domain/hub/tiles.py`),
+ *  never restated here, so a tile whose question is reworded cannot leave its
+ *  worklist describing the old one.
+ *
+ *  `clients_examined` is what makes an empty `rows` readable: zero rows over
+ *  forty clients is "nothing outstanding", zero rows over zero clients is
+ *  "you are assigned to no clients". Same three-state discipline the hub's own
+ *  tiles take. */
+export interface HubWorklistPayload {
+  tile: string;
+  label: string;
+  question: string;
+  unit: "count" | "paise";
+  column: string;
+  opens_section: string;
+  rows: HubWorklistRow[];
+  clients_examined: number;
+}
+
 /** One statutory settlement on the handoff screen, exactly as
  *  domain/payroll/handoff.py serialises it. Every string here is composed on
  *  the SERVER — render them, do not rebuild them: they carry statutory
@@ -2496,6 +2530,12 @@ export const api = {
     get: (clientId?: string) =>
       request<ApiResp<HubPayload>>(
         `/api/hub${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ""}`),
+    /** Which clients need work on one tile. The firm hub's answer to "7 assets
+     *  with depreciation outstanding" — WHICH seven. A tile with no firm-level
+     *  worklist answers 422 with the reason. */
+    worklist: (tile: string) =>
+      request<ApiResp<HubWorklistPayload>>(
+        `/api/hub/worklist?tile=${encodeURIComponent(tile)}`),
   },
 
   clients: {
