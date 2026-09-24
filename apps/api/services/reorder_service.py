@@ -32,12 +32,23 @@ def _catalogue(db, firm_id: str, client_id: str) -> list:
     # test_backend_columns_exist_pg.py parses every select list as a STRING and
     # a constant it has to resolve counts against the unreadable budget with
     # its columns unchecked.
-    return fetch_all(
-        db.table("service_catalogue")
-        .select("id, name, unit, kind, category, is_active, reorder_level_units, "
-                "alternate_unit, units_per_alternate")
-        .eq("firm_id", firm_id).eq("client_id", client_id).eq("kind", "good")
-    )
+    # `fetch_all` takes a CALLABLE returning a FRESH builder, and a builder
+    # handed in directly raises `TypeError: '_Query' object is not callable` on
+    # the first page. That is what this was, so `assess` could not run at all
+    # against a real database — `routers/inventory.reorder_report` caught it
+    # and answered "Unable to load the reorder report", and the whole feature
+    # was dead from the day it shipped. The mock suite could not see it: the
+    # router's `_USE_MOCK` branch passes `db=None`, which short-circuits to an
+    # empty answer before this function is reached.
+    def one_page():
+        return (
+            db.table("service_catalogue")
+            .select("id, name, unit, kind, category, is_active, reorder_level_units, "
+                    "alternate_unit, units_per_alternate")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("kind", "good")
+        )
+
+    return fetch_all(one_page, label="reorder:service_catalogue")
 
 
 def _positions(db, firm_id: str, client_id: str, as_of: Optional[str]) -> dict:

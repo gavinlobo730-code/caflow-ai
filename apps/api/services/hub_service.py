@@ -144,15 +144,19 @@ def _sum_paise(table: str, column: str, firm_id: str,
     """
     from core.db_paging import fetch_all
 
-    def build(q):
-        q = q.eq("firm_id", firm_id)
+    # `fetch_all` takes a CALLABLE that returns a FRESH builder — builders are
+    # stateful, so handing it one instance accumulates each page's filters on
+    # top of the last. The projection goes inside, and must carry `id` because
+    # that is the keyset cursor.
+    def one_page():
+        q = _db().table(table).select(f"id,{column}").eq("firm_id", firm_id)
         if client_ids is not None:
             q = q.in_("client_id", client_ids)
         if extra_is_null:
             q = q.is_(extra_is_null, "null")
         return q.gt(column, 0) if gt_zero else q
 
-    rows = fetch_all(_db().table(table), f"id,{column}", build)
+    rows = fetch_all(one_page, label=f"hub:{table}.{column}")
     return sum(int(r.get(column) or 0) for r in rows)
 
 
@@ -177,7 +181,7 @@ def hub(current_user: dict, client_id: Optional[str] = None) -> dict:
         # a scoping bug into a cross-client read if it is collapsed.
         scope = None if eff is None else sorted(eff)
 
-    signals = _signals(firm_id, scope)
+    signals = _signals(firm_id, scope, client_id)
     return {
         "scope": "client" if client_id else "firm",
         "client_id": client_id,
@@ -188,9 +192,17 @@ def hub(current_user: dict, client_id: Optional[str] = None) -> dict:
     }
 
 
-def _signals(firm_id: str, scope: Optional[list[str]]) -> dict[str, Optional[int]]:
+def _signals(firm_id: str, scope: Optional[list[str]],
+             client_id: Optional[str] = None) -> dict[str, Optional[int]]:
     """One figure per tile that has one at this scope. Each is independently
-    recoverable — see `_safely`."""
+    recoverable — see `_safely`.
+
+    `client_id` is taken rather than re-derived from `scope`, because the two
+    answer different questions: `scope` is the client filter (a Partner's is
+    None), and `client_id` is whether this is the CLIENT hub. A tile with a
+    figure at one scope and not the other — `inventory` is the only one —
+    needs the second, and reading it off the first would ask a Partner's firm
+    hub for a per-client figure the moment they had exactly one client."""
     out: dict[str, Optional[int]] = {
         "compliance": _safely("compliance", lambda: _count(
             "compliance_records", firm_id, scope,
@@ -237,4 +249,56 @@ def _signals(firm_id: str, scope: Optional[list[str]]) -> dict[str, Optional[int
         "documents": _safely("documents", lambda: _count(
             "documents", firm_id, scope, eq={"review_status": "pending_review"})),
     }
+    # ── The one tile with a figure at one scope and not the other ──────────
+    #
+    # `Tile.no_firm_signal_because` has always SAID the client hub answers
+    # this, and nothing computed it — so the payload carried `answerable:
+    # true` with a null signal, which `describe()` defines as *the fetch for
+    # this tile failed*. Nobody had asked. A null that misreports which KIND
+    # of null it is, on the hub's own three-state contract.
+    #
+    # It is the only tile that delegates instead of issuing its own query, and
+    # that is deliberate: what is at or below a reorder level is on-hand stock
+    # against a per-item level, `domain/inventory/reorder` owns both halves of
+    # that rule, and `service_catalogue.stock_qty_units` — the column a cheap
+    # COUNT would have to read — is documented by migration 188 as a CACHE
+    # whose authority is the ledger. A prompt to buy, computed off a drifted
+    # cache, is wrong in the direction that costs money.
+    #
+    # ⚠️ COST: `reorder_service.assess` reads one row per GOOD and one position
+    # per item, so it is proportional to the CATALOGUE and not to the ledger —
+    # which is what CLAUDE.md's reporting rule actually forbids. It is still
+    # the heaviest thing on this screen, for one integer. A
+    # `reorder_count_as_at` SQL function beside migration 363's
+    # `stock_position_as_at` would return that integer server-side; it is a
+    # migration, so it is named here rather than taken as a side effect of a
+    # hub. `_safely` already means a slow one costs this tile and no other.
+    #
+    # ⚠️ AND ITS FALLBACK IS LEDGER-PROPORTIONAL, which is named rather than
+    # hidden because an unnamed unbounded read is what the reporting rule
+    # exists to stop. `stock_position_service.position` tries migration 363's
+    # SQL aggregate and, if that RPC raises, falls back to the Python twin,
+    # which pages EVERY movement up to the date. The blast radius is bounded
+    # three ways — ONE client (the firm hub computes no inventory figure at
+    # all), only while the SQL function is broken, and contained by `_safely`
+    # — and the reorder report already takes that same fallback today. It is
+    # a degradation, not a wrong number. The `reorder_count_as_at` function
+    # above removes it.
+    if client_id is not None:
+        out["inventory"] = _safely("inventory", lambda: _reorder_count(
+            firm_id, client_id))
     return out
+
+
+def _reorder_count(firm_id: str, client_id: str) -> int:
+    """How many items are at or below their reorder level.
+
+    `to_reorder` is `domain/inventory/reorder.assess`'s own count, read rather
+    than re-derived from the groups: the rule that an ABSENT level is not zero
+    lives in that module, and counting the lines here would be a second,
+    quieter implementation of it that puts every item with no level recorded
+    into the buy list.
+    """
+    from services import reorder_service
+
+    return int(reorder_service.assess(_db(), firm_id, client_id).get("to_reorder") or 0)

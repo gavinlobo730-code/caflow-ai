@@ -3206,6 +3206,42 @@ of the rule by moving to the shared helper. Two traps at the call site:
 applied to the rows it got BACK, never inside the paged query; and sort keys are
 coalesced, because a nullable column such as `fixed_assets.asset_code` raises
 `TypeError` in Python where the database sorted it happily.
+**AND ITS FIRST ARGUMENT IS A CALLABLE, WHICH TWO CALL SITES FORGOT.**
+`fetch_all(make_query, key="id", *, label, stats)` CALLS `make_query` once per
+page — it has to, because a builder is stateful and reusing one stacks each
+page's `.gt(key, cursor)` on the last — so the projection goes INSIDE a
+`def one_page(): return db.table(...).select(...)`. Handing it the builder
+raises `TypeError: '_Query' object is not callable` on page one, and a third
+positional argument raises before the body runs at all. Both happened, and
+**neither was visible from its own tests, for two different reasons** — which
+is what makes it a class rather than a pair.
+`services/reorder_service._catalogue` passed the builder, so the reorder report
+has never run against a
+database: `routers/inventory.reorder_report` catches it and answers "Unable to
+load the reorder report. Please try again.", which reads as transient, and the
+mock suite could not reach it because that router's `_USE_MOCK` branch passes
+`db=None` and `assess` short-circuits to an empty answer BEFORE the fetch.
+`services/hub_service._sum_paise` passed three positional arguments, and its
+three tiles are computed inside `_safely`, which swallows a tile's exception by
+design — so Sales, Purchases and TDS rendered "—" on the hub. One hidden by a
+router's broad `except`, one by a deliberate per-tile one.
+`tests/test_fetch_all_is_given_something_it_can_call.py` states the rule on the
+ARGUMENTS at every call site, so a module nobody thought of is covered the day
+it is written. **The durable half is the second reason: a service whose job is
+to FETCH needs a test that FETCHES.** A source scan cannot see an arity error,
+and a `db is None` mock branch is not the code that runs in production —
+`tests/test_the_reorder_report_runs_against_a_database.py` and
+`tests/test_the_hub_actually_answers.py` are the two that now do.
+⚠️ **The same test found a THIRD null with no exception behind it**, which is
+the `table_4a_gaps` discipline on a screen: the hub's payload defines
+`answerable: true` with a null signal as *the fetch for this tile failed*, and
+`Tile.no_firm_signal_because` had promised since it was written that the CLIENT
+hub answers Inventory — while `_signals` computed nothing for it at any scope.
+So a tile nobody had ASKED for was indistinguishable from one that had been
+asked and failed. A nil meaning "nothing to do", a nil meaning "nobody can
+tell" and a nil meaning "nobody looked" are three different things, and a
+payload with a three-state contract has to be exercised to find out which one
+it is emitting.
 
 **THE RULE IS ABOUT THE BROWSER TOO, and that is where it was still being
 broken.** Everything above is written for `apps/api`, and the frontend reaches
