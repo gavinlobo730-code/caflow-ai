@@ -20,6 +20,7 @@ import { useCallback, useState } from "react";
 import { AlertTriangle, Check, Calculator } from "lucide-react";
 import { api, type GSTR9Working as Working } from "@/lib/api";
 import { Callout, GapList } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 const TABLE_TITLES: Record<string, string> = {
   "4": "Table 4 — supplies on which tax is payable",
@@ -48,7 +49,7 @@ export default function GSTR9Working({
     try {
       const r = await api.gstr9.compute(clientId, financialYear);
       if (!r.success || !r.data) throw new Error(r.error ?? "Couldn't consolidate the year.");
-      setWorking(r.data);
+      setWorking(objectWithLists<Working>(r.data, "hsn"));
     } catch (e) {
       setWorking(null);
       setError(e instanceof Error ? e.message : "Couldn't consolidate the year.");

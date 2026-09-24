@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { StatementSkeleton } from "@/components/ui/skeleton";
 
 import { fmt } from "@/components/banking/shared";
+import { objectWithLists } from "@/lib/api/shape";
 
 // ── Bank Reconciliation ────────────────────────────────────────────────────
 
@@ -307,7 +308,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
       try {
         const res = (await api.banking.reconciliations.preview(selectedId, selectionKey.split(","))) as
           { success: boolean; data: ReconPreview };
-        if (!cancelled && res.success) setProjection(res.data);
+        if (!cancelled && res.success) setProjection(objectWithLists<ReconPreview>(res.data, "ineligible_ids"));
       } catch {
         if (!cancelled) setProjection(null);   // non-blocking: the indicator just hides
       }
@@ -320,7 +321,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
     try {
       const res = (await api.banking.reconciliations.history(selectedId)) as
         { success: boolean; data: ReconHistory };
-      if (res.success) setHistory(res.data);
+      if (res.success) setHistory(objectWithLists<ReconHistory>(res.data, "superseded"));
     } catch { setHistory(null); }
   }, [selectedId]);
   useEffect(() => { if (showHistory) loadHistory(); }, [showHistory, loadHistory]);

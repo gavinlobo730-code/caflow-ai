@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { Callout, GapList } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 interface PlanRow {
   currency: string;
@@ -79,7 +80,7 @@ export default function FxRevaluationPanel({
         period_end: periodEnd,
         closing_rates: withRates,
       }) as { success: boolean; data: Plan | null; error?: string | null };
-      if (res && res.success && res.data) setPlan(res.data);
+      if (res && res.success && res.data) setPlan(objectWithLists<Plan>(res.data, "rows"));
       else { setPlan(null); setError(res?.error ?? null); }
     } catch {
       setPlan(null);

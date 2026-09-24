@@ -36,6 +36,7 @@ import { Hourglass, Info } from "lucide-react";
 import { api, type StockAgeing as Ageing } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { objectWithLists } from "@/lib/api/shape";
 
 /** The two oldest bands, which are what an obsolescence review is opened for.
  *  Presentational only — no figure is derived from this. */
@@ -62,7 +63,7 @@ export function StockAgeingPanel({ clientId, asOf }: { clientId: string; asOf: s
     try {
       const res = await api.inventory.stockAgeing({ client_id: clientId, as_of: asOf });
       if (!res.success || !res.data) throw new Error(res.error || "failed");
-      setData(res.data);
+      setData(objectWithLists<Ageing>(res.data, "bands", "items", "notes"));
     } catch {
       setData(null);
       setError("Couldn't load the stock ageing — the request failed or timed out.");

@@ -41,6 +41,7 @@ import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList, StatutoryNotes } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
+import { objectWithLists } from "@/lib/api/shape";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -120,7 +121,7 @@ export default function Section32Page() {
       const j = await request<ApiEnvelope<Section32Answer>>(
         `/api/income-tax/section-32?client_id=${encodeURIComponent(clientId)}&fy=${fy}`);
       if (!j.success || !j.data) throw new Error(j.error ?? "Could not compute §32 depreciation.");
-      setAnswer(j.data);
+      setAnswer(objectWithLists<Section32Answer>(j.data, "blocks", "unclassified_assets"));
     } catch (e) {
       setAnswer(null);
       setError(e instanceof Error ? e.message : "Could not compute §32 depreciation.");

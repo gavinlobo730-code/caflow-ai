@@ -17,6 +17,7 @@ import { CwipTab } from "@/components/fixed-assets/CwipTab";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 import { Callout, GapList } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
 // `credentials` carries a COOKIE — which this API does not read. core/auth.py
@@ -1600,7 +1601,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
       try {
         const j = await request<ApiEnvelope<DisposalPreview>>(
           `/api/fixed-assets/${selected.id}/disposal-preview?${q.toString()}`);
-        setPreview(j.success ? (j.data ?? null) : null);
+        setPreview(j.success ? (objectWithLists<DisposalPreview>(j.data, "depreciation_months_outstanding") ?? null) : null);
       } catch {
         // A failed preview must not block the disposal itself — the panel
         // falls back to the figures it can show without the server.
@@ -1946,7 +1947,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
       ]);
       if (!mv.success) throw new Error(mv.error ?? "Failed to load the movement");
       if (!list.success) throw new Error(list.error ?? "Failed to load");
-      setMovement(mv.data ?? null);
+      setMovement(objectWithLists<MovementResponse>(mv.data, "classes") ?? null);
       const rows = ((list.data ?? []) as Omit<Asset, "lifecycle">[]).map((a) => ({ ...a, lifecycle: assetLifecycle(a) }));
       setAssets(rows);
       setLoadFailed(false);

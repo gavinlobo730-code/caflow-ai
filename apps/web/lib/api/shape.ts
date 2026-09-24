@@ -47,3 +47,38 @@ export function objectOrNull<T>(data: unknown): T | null {
 export function arrayOrEmpty<T>(data: unknown): T[] {
   return Array.isArray(data) ? (data as T[]) : [];
 }
+
+/**
+ * An object payload whose named fields are guaranteed to be arrays.
+ *
+ * WHY THIS EXISTS. `objectOrNull` is necessary and NOT sufficient, which is
+ * the thing that keeps being got wrong: it answers whether `data` is the right
+ * KIND of thing, so it converts `[]`, `null` and a scalar to `null` — and `{}`
+ * passes straight through. A screen that then does `report.groups.map(...)`
+ * still throws, and its `if (!report)` guard does not see it coming because
+ * `{}` is truthy. Both components CLAUDE.md records as having crashed the
+ * 24-09-2026 smoke walk failed exactly there.
+ *
+ * So the two halves belong together, and doing them ONCE at the setter beats
+ * doing them at every read: a read added next year is covered without anybody
+ * remembering, and the fields that are lists are named in one visible place
+ * instead of implied by a `.map` somewhere in the JSX.
+ *
+ * DELIBERATELY NOT A VALIDATOR, for the reason the module header gives. It
+ * does not check that a field is PRESENT, or that its elements are the right
+ * shape — a per-field schema in the browser would be a second description of
+ * the backend's contract. It answers one question: could a `.map` on this
+ * field throw.
+ *
+ *     setData(objectWithLists<StockAgeing>(r.data, "bands", "items", "notes"))
+ */
+export function objectWithLists<T extends object>(
+  data: unknown,
+  ...listFields: (keyof T & string)[]
+): T | null {
+  const obj = objectOrNull<Record<string, unknown>>(data);
+  if (!obj) return null;
+  const out: Record<string, unknown> = { ...obj };
+  for (const f of listFields) out[f] = arrayOrEmpty(out[f]);
+  return out as T;
+}

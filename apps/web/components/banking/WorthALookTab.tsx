@@ -30,6 +30,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { fmt } from "@/components/banking/shared";
 import { toLocalISO } from "@/lib/dateMath";
 import { GapList } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 /** The previous whole month, on the LOCAL calendar — the period a partner
  *  reviews, and a complete one, since half of this month is not a review.
@@ -73,7 +74,7 @@ export function WorthALookTab({ clientId }: { clientId: string }) {
         client_id: clientId, from_date: from, to_date: to,
       });
       if (!res.success || !res.data) throw new Error(res.error ?? "failed");
-      setData(res.data);
+      setData(objectWithLists<WorthALook>(res.data, "flagged"));
     } catch {
       setData(null);
       setFailed(true);

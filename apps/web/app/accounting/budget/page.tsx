@@ -16,6 +16,7 @@ import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
+import { objectWithLists } from "@/lib/api/shape";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -79,7 +80,7 @@ export default function BudgetPage() {
     try {
       const res = await api.accounting.budgets(selectedClient, selectedFy);
       if (!res.success) throw new Error(res.error ?? "Failed to load");
-      setData(res.data);
+      setData(objectWithLists<BudgetVsActuals>(res.data, "quarters"));
     } catch (e) {
       setData(null);
       setError(e instanceof Error ? e.message : "Failed to load");

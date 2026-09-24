@@ -32,6 +32,7 @@ import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
 import { DrCr } from "@/components/ui/drcr";
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
+import { objectWithLists } from "@/lib/api/shape";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -1064,7 +1065,7 @@ function LedgerDrillDown({
         { force },
       )) as { success: boolean; data: LedgerView | null };
       if (res.success && res.data) {
-        setLedger(res.data);
+        setLedger(objectWithLists<LedgerView>(res.data, "lines"));
         setLoadFailed(false);
       } else {
         // res.success===false only ever comes from a backend error path — a

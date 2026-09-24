@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { apiGet, getAuthToken } from "@/lib/invoices/shared";
 import { formatPaise } from "@/lib/money/format";
+import { objectWithLists } from "@/lib/api/shape";
 
 /**
  * Cash Book — every Cash ledger in date order, and the one rule cash has.
@@ -95,7 +96,7 @@ export function CashRegister({ clientId }: { clientId: string }) {
         token,
       );
       if (!res.success) throw new Error(res.error ?? "Could not load the cash book");
-      setBook(res.data as CashBook);
+      setBook(objectWithLists<CashBook>(res.data, "accounts", "negative_days"));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the cash book");
     } finally {

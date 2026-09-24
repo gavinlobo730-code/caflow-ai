@@ -43,7 +43,13 @@ test("the panel asks the server and its ANSWER reaches the screen", () => {
   // using the answer.
   assert.match(PANEL, /const res = await api\.incomeTax\.regimeElection\(/,
     "the endpoint's answer must be captured");
-  assert.match(PANEL, /setData\(res\.data\)/,
+  // The captured answer must be what fills the state — stated as "res.data
+  // reaches setData", not as the exact call text. It was written
+  // `/setData\(res\.data\)/` and failed the day the payload was narrowed
+  // through `objectWithLists`, which does not change what the panel renders
+  // from; that is a guard naming a spelling of its own rule, the mistake
+  // CLAUDE.md records most often.
+  assert.match(PANEL, /setData\([^;]*\bres\.data\b/,
     "the captured answer must be what the panel renders from");
   assert.match(PANEL, /data\.reasons\.map\(/, "the server's sentences must be rendered");
   assert.match(PANEL, /\{r\}/, "each reason must reach the page");

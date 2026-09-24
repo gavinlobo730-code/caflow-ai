@@ -31,6 +31,7 @@ import { api } from "@/lib/api";
 import type { ApplyStructureResult } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/money/format";
+import { objectWithLists } from "@/lib/api/shape";
 
 type RosterEmployee = {
   id: string; name: string; basic_paise?: number; status?: string;
@@ -102,7 +103,7 @@ export default function ApplyStructureModal({
         assignments: assignments(),
       });
       if (!res?.success) throw new Error(res?.error ?? "That did not work.");
-      setResult(res.data);
+      setResult(objectWithLists<ApplyStructureResult>(res.data, "employees", "notes"));
       if (!preview) {
         onApplied(`${structureName} applied to ${res.data.applied} employee(s) `
           + `from ${effectiveFrom}.`);

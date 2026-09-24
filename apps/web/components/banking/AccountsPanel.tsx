@@ -27,6 +27,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 
 import { getBankStatements, getBankTransactions, BankStatement, BankTransaction } from "@/lib/data/bankStatements";
 import { fmt, BankAccount } from "@/components/banking/shared";
+import { objectWithLists } from "@/lib/api/shape";
 
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
@@ -785,7 +786,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       const form = baseForm();
       form.append("column_mapping", JSON.stringify(cleanMapping(mapping)));
       const res = (await api.banking.previewStatement(form)) as { success: boolean; data: StatementPreview };
-      setPreview(res.data);
+      setPreview(objectWithLists<StatementPreview>(res.data, "rows"));
     } catch (err) {
       setPreview(null);
       setError(err instanceof Error ? err.message : "Could not read the file with that mapping.");

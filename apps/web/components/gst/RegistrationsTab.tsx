@@ -22,7 +22,7 @@
  * /api/client-gst-registrations.
  */
 import { useCallback, useEffect, useState } from "react";
-import { arrayOrEmpty } from "@/lib/api/shape";
+import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { Plus, AlertTriangle, X, Info } from "lucide-react";
 import { api, type ClientGstRegistration, type GstRegistrationKinds,
          type ClientGstTurnover } from "@/lib/api";
@@ -95,7 +95,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
     try {
       const res = await api.clientGstRegistrations.turnover(clientId);
       if (res.success && res.data) {
-        setTurnover(res.data);
+        setTurnover(objectWithLists<ClientGstTurnover>(res.data, "years"));
         // Open on the year that GOVERNS, which is the one a CA is here to
         // record — not on "this year", whose figure is not known until it ends.
         setTvForm((f) => f.fy ? f : { ...f, fy: res.data!.governing_financial_year });
@@ -135,7 +135,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
   useEffect(() => {
     let alive = true;
     api.clientGstRegistrations.kinds()
-      .then((r) => { if (alive && r.success && r.data) setKinds(r.data); })
+      .then((r) => { if (alive && r.success && r.data) setKinds(objectWithLists<GstRegistrationKinds>(r.data, "registration_types")); })
       .catch(() => { /* the pickers fall back to what is already selected */ });
     return () => { alive = false; };
   }, []);

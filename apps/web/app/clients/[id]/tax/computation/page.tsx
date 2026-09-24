@@ -11,6 +11,7 @@ import { assessmentYearChoicesAround } from "@/lib/dates/periods";
 import RegimeElectionPanel from "@/components/tax/RegimeElectionPanel";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -727,7 +728,7 @@ export default function TaxComputationPage() {
         method: "POST", body: JSON.stringify(body),
       });
       if (!r.success) throw new Error(r.error ?? "Could not compute the presumptive income.");
-      setPresResult(r.data as PresumptiveResult);
+      setPresResult(objectWithLists<PresumptiveResult>(r.data, "reasons", "workings"));
     } catch (err) {
       setPresResult(null);
       setPresError(err instanceof Error ? err.message : "Could not compute the presumptive income.");
@@ -931,7 +932,7 @@ export default function TaxComputationPage() {
         setComputeError(refusals.join(" "));
         return;
       }
-      setComputeResult(computeRes.data);
+      setComputeResult(objectWithLists<ComputeResult>(computeRes.data, "warnings"));
 
       // 2. Save snapshot
 

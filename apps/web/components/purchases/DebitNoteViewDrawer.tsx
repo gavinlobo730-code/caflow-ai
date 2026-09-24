@@ -14,6 +14,7 @@ import { apiGet, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { formatDateTime } from "@/lib/services/formatting";
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
 import { Skeleton, TableSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 
 const DN_STATUS_BADGE: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
@@ -83,7 +84,12 @@ export function DebitNoteViewDrawer({
         apiGet(`/api/timeline?client_id=${clientId}&limit=100`, token),
       ]);
       if (!d.success || !d.data) { setError(true); return; }
-      setDn(d.data as DebitNoteDetail);
+      // The payload is not its fields until something checks: `objectOrNull`
+      // answers whether `data` is the right KIND of thing, and the nested list
+      // is narrowed HERE, once, rather than at each of its reads — `{}` passes
+      // straight through `objectOrNull`, so `dn.lines.map(...)` would still throw.
+      const parsed = objectOrNull<DebitNoteDetail>(d.data);
+      setDn(parsed ? { ...parsed, lines: arrayOrEmpty<DebitNoteDetail["lines"][number]>(parsed.lines) } : null);
       const events = (tl.data as TimelineEvent[]) ?? [];
       const items: ActivityItem[] = events
         .filter((e) => e.entity_type === "debit_note" && e.entity_id === dnId)

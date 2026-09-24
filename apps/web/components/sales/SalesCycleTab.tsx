@@ -17,7 +17,7 @@
  * `GET /api/sales-cycle/vocabulary` so no label lives here.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { arrayOrEmpty } from "@/lib/api/shape";
+import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { AlertTriangle, Clock, FileText, Info, Plus, Truck, X } from "lucide-react";
 import {
   api,
@@ -89,7 +89,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
         api.salesCycle.challans(clientId),
         api.customers.list(clientId),
       ]);
-      if (v.success && v.data) setVocab(v.data);
+      if (v.success && v.data) setVocab(objectWithLists<SalesCycleVocabulary>(v.data, "challan_reasons", "goods_kinds", "quote_kinds"));
       if (q.success && q.data) setQuotations(arrayOrEmpty(q.data));
       if (o.success && o.data) setOrders(arrayOrEmpty(o.data));
       if (c.success && c.data) setChallans(arrayOrEmpty(c.data));
@@ -599,7 +599,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             empty="No sales orders yet."
             onRow={(i) => {
               void api.salesCycle.orderPosition(orders[i].id, clientId)
-                .then((r) => { if (r.success && r.data) setPosition(r.data); });
+                .then((r) => { if (r.success && r.data) setPosition(objectWithLists<OrderPosition>(r.data, "gaps", "lines")); });
             }}
           />
           {position && (
@@ -641,7 +641,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             empty="No delivery challans yet."
             onRow={(i) => {
               void api.salesCycle.challan(challans[i].id, clientId)
-                .then((r) => { if (r.success && r.data) setDetail(r.data); });
+                .then((r) => { if (r.success && r.data) setDetail(objectWithLists<ChallanParticulars>(r.data, "copies", "missing", "particulars")); });
             }}
           />
 

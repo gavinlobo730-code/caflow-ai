@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { objectWithLists } from "@/lib/api/shape";
 
 interface Election {
   financial_year: string;
@@ -62,7 +63,7 @@ export default function RegimeElectionPanel({
         is_audit: isAudit,
         prior,
       }) as { success: boolean; data: Election | null; error?: string | null };
-      if (res && res.success && res.data) { setData(res.data); setError(null); }
+      if (res && res.success && res.data) { setData(objectWithLists<Election>(res.data, "reasons")); setError(null); }
       else { setData(null); setError(res?.error ?? null); }
     } catch {
       setData(null);

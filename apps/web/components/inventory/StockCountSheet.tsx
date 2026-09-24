@@ -23,6 +23,7 @@ import { api, type StockCountSheet as Sheet, type StockCountLine,
          type StockCountPostResult } from "@/lib/api";
 import { parseQuantity } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 export function StockCountSheetPanel({
   clientId, sessionId, onClose, onPosted,
@@ -46,7 +47,7 @@ export function StockCountSheetPanel({
     try {
       const res = await api.inventory.countSession(sessionId);
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't load the count sheet.");
-      setSheet(res.data);
+      setSheet(objectWithLists<Sheet>(res.data, "gaps", "lines"));
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load the count sheet.");
@@ -79,7 +80,7 @@ export function StockCountSheetPanel({
       if (!entries.length) { setBusy(false); return; }
       const res = await api.inventory.saveCountSession(sessionId, { client_id: clientId, entries });
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't save the sheet.");
-      setSheet(res.data);
+      setSheet(objectWithLists<Sheet>(res.data, "gaps", "lines"));
       setTyped({});
       setItc({});
       setError("");
@@ -95,7 +96,7 @@ export function StockCountSheetPanel({
     try {
       const res = await api.inventory.postCountSession(sessionId);
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't post the count.");
-      setResult(res.data);
+      setResult(objectWithLists<StockCountPostResult>(res.data, "failed"));
       await load();
       onPosted();
     } catch (e) {

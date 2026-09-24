@@ -71,6 +71,7 @@ import { StateLookup } from "@/components/lookups/StateLookup";
 import { DrCr, sideOf } from "@/components/ui/drcr";
 import { formatPaiseBare } from "@/lib/money/format";
 import { Callout } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements";
@@ -1117,7 +1118,7 @@ function Statements({ clientId }: { clientId: string }) {
     try {
       const token = await getAuthToken();
       const res = await apiGet(`/api/customer-statements?client_id=${clientId}&customer_id=${customerId}&start_date=${start}&end_date=${end}`, token);
-      if (res.success) { setStmt(res.data as StmtData); syncUrl(customerId, start, end); await loadCredit(customerId); }
+      if (res.success) { setStmt(objectWithLists<StmtData>(res.data, "transactions")); syncUrl(customerId, start, end); await loadCredit(customerId); }
       else setError(res.error ?? "Could not generate the statement.");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not generate the statement."); }
     finally { setLoading(false); }
@@ -2244,7 +2245,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
     try {
       const token = await getAuthToken();
       const res = await apiGet(`/api/payments?invoice_id=${invoice.id}`, token);
-      if (res.success) setHist(res.data as PaymentHistory);
+      if (res.success) setHist(objectWithLists<PaymentHistory>(res.data, "links", "payments"));
       else setMsg({ text: res.error ?? "Could not load payments", type: "error" });
     } catch {
       setMsg({ text: "Could not load payments", type: "error" });
