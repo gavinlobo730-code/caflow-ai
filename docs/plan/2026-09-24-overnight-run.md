@@ -658,3 +658,47 @@ same function that writes the snapshot, so the two cannot disagree about what a
 route looks like — with a vacuity floor so a broken tree walk cannot report a
 clean run over nothing. The snapshot keeps its own job. The first run after the
 change walked **164** screens where the snapshot had 160.
+
+## A measurement that disproved my own diagnosis (24-09-2026)
+
+`migration apply — real Postgres 16` took **15:40** on the commit that landed
+migration 416. The previous main commit took **27 seconds**, so I read that as a
+regression and attributed it to `tests/test_hub_client_worklist_parity_pg.py`
+cloning the migrated template once per test — fourteen clones for one seed.
+
+**Both halves of that were wrong, and the second one matters more.**
+
+The fixture *is* worth making module-scoped — every test in the file is
+read-only, so there is no state to leak, and one clone is obviously right where
+fourteen were. But the saving is what it is:
+
+| fixture scope | wall clock, 14 tests, local Postgres |
+|---|---|
+| function (13 extra clones) | 28.18s |
+| module | 23.42s |
+
+**~5 seconds.** A template clone costs about 0.37s, not a minute.
+
+And there was no regression to explain. The job's duration across the last
+twelve main commits is *bimodal*, not rising:
+
+```
+e7b5e9ed  0:15:40     150b7ce8  0:00:35     00d9d74f  0:00:28
+a5dae462  0:00:27     5786f68f  0:00:30     48276df1  0:16:22
+932bad6c  0:15:53     14d5d045  0:00:41     5272536f  0:15:35
+```
+
+Every ~30-second run is the `scope` job short-circuiting a **frontend-only**
+commit. Every backend commit costs ~15–16 minutes and has for at least four
+merges before this one. That is simply what the full `test_*_pg.py` suite costs
+against a real Postgres 16.
+
+⚠️ **The lesson is about the comparison, not the number.** I compared against
+the immediately preceding main commit without checking whether that commit ran
+the same work. A conditional job's "previous run" is not a baseline unless the
+condition held both times — and here the condition is exactly the thing that
+decides whether the job does anything at all. One extra data point (the commit
+before *that*) would have shown the alternation immediately.
+
+If the 15 minutes is ever worth attacking, the target is the suite, not this
+file: measure which `_pg` modules dominate it first.
