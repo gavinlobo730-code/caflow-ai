@@ -498,7 +498,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
             {t.parsed?.counterparty || t.description}
           </span>
           {t.parsed?.channel && (
-            <span className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-ps-muted text-ps-label">{t.parsed.channel}</span>
+            <span className="shrink-0 text-3xs px-1 py-0.5 rounded bg-ps-muted text-ps-label">{t.parsed.channel}</span>
           )}
           {(t.attachments?.length ?? 0) > 0 && (
             <Paperclip size={11} className="shrink-0 text-ps-hint"
@@ -514,7 +514,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
               PENDING only: a line somebody has already settled is not a
               question, and leaving the chip on would train the CA to ignore it.
 
-              `text-3xs` (10px), NOT the `text-[9px]` the channel chip beside
+              `text-3xs` (10px), NOT the `text-3xs` the channel chip beside
               it uses: the type ratchet refused the arbitrary value — correctly
               — and the fix is the token, not a raised budget. */}
           {tdsDecisionPending(t) && (

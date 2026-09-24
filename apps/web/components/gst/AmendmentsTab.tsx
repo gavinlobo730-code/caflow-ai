@@ -51,7 +51,7 @@ function money(paise?: number | null) {
 }
 
 const FIELD =
-  "border border-ps-border rounded-lg px-2 py-1.5 text-[13px] outline-none focus:border-blue-400";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-sm outline-none focus:border-blue-400";
 
 /** The §37(3)/§16(4) window, as the server graded it. Never recomputed here:
  *  the limit is 30 November following the FY OR the date GSTR-9 was furnished,
@@ -90,7 +90,7 @@ function DocList({ title, why, docs }: {
   if (!docs?.length) return null;
   return (
     <div className="rounded-xl border border-ps-border p-3">
-      <p className="text-[12px] font-semibold text-ps-ink">
+      <p className="text-xs font-semibold text-ps-ink">
         {title} <span className="text-ps-hint font-normal">· {docs.length}</span>
       </p>
       <p className="text-3xs text-ps-hint mt-0.5 max-w-[80ch]">{why}</p>
@@ -183,7 +183,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-ps-border bg-ps-bg p-3">
-        <p className="text-[12px] text-ps-body">
+        <p className="text-xs text-ps-body">
           A filed GSTR-1 can never be revised (CGST Act §37). A correction is
           declared in a later return&apos;s amendment tables — <b>9A</b> invoices,
           {" "}<b>9C</b> credit and debit notes, <b>10</b> B2C-others.
@@ -206,7 +206,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
           </label>
           <button onClick={() => run("exceptions", filedPeriod)}
             disabled={busy !== null || !isPeriod(filedPeriod)}
-            className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
+            className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
             {busy === "exceptions" ? "Comparing…" : "Compare books to the return"}
           </button>
           {isPeriod(filedPeriod) && (
@@ -218,7 +218,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
           <div className={`rounded-lg border p-3 ${
             exceptions.status === "payload_missing"
               ? "border-state-attention-border bg-state-attention-surface" : "border-ps-border bg-white"}`}>
-            <p className={`text-[12px] ${
+            <p className={`text-xs ${
               exceptions.status === "payload_missing" ? "text-amber-800" : "text-ps-label"}`}>
               {exceptions.message}
             </p>
@@ -227,13 +227,13 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
 
         {exceptions?.status === "ok" && (
           exceptions.clean ? (
-            <p className="text-[12px] px-3 py-2 rounded-lg bg-green-50 text-green-700">
+            <p className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700">
               The books still agree with the {periodLabel(exceptions.period)} return as filed
               {exceptions.arn ? ` (ARN ${exceptions.arn})` : ""}. Nothing to amend.
             </p>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 flex-wrap text-[12px]">
+              <div className="flex items-center gap-3 flex-wrap text-xs">
                 <span className="font-semibold text-ps-ink">
                   {exceptions.finding_count} finding{exceptions.finding_count === 1 ? "" : "s"}
                 </span>
@@ -266,7 +266,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
 
               {!!exceptions.b2cs?.changed?.length && (
                 <div className="rounded-xl border border-ps-border p-3">
-                  <p className="text-[12px] font-semibold text-ps-ink">
+                  <p className="text-xs font-semibold text-ps-ink">
                     B2C-others{" "}
                     <span className="text-ps-hint font-normal">
                       · {exceptions.b2cs.changed.length}
@@ -319,19 +319,19 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
           </label>
           <button onClick={() => run("amendments", targetPeriod)}
             disabled={busy !== null || !isPeriod(targetPeriod)}
-            className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
+            className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
             {busy === "amendments" ? "Checking…" : "What must this return carry?"}
           </button>
           <button onClick={() => run("build", targetPeriod)}
             disabled={busy !== null || !isPeriod(targetPeriod)}
-            className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
+            className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
             {busy === "build" ? "Building…" : "Build GSTR-1 with amendments"}
           </button>
         </div>
 
         {amendments && (
           <div className="space-y-3">
-            <p className="text-[12px] text-ps-body">
+            <p className="text-xs text-ps-body">
               {amendments.counts.amendments
                 ? <>Carrying <b>{amendments.counts.amendments}</b> amendment
                     {amendments.counts.amendments === 1 ? "" : "s"} from{" "}
@@ -404,7 +404,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
 
         {built && (
           <div className="rounded-xl border border-ps-border p-3 space-y-2">
-            <p className="text-[12px] font-semibold text-ps-ink">
+            <p className="text-xs font-semibold text-ps-ink">
               GSTR-1 for {periodLabel(targetPeriod)}, with amendments merged
             </p>
             <p className="text-2xs text-ps-label">
@@ -430,7 +430,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
+                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
                 Download the payload
               </button>
               <span className="text-3xs text-state-attention">

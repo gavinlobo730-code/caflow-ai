@@ -154,7 +154,7 @@ export default function AllocateReceiptModal({
         onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
           <div>
-            <p className="text-[14px] font-semibold text-ps-ink">
+            <p className="text-sm font-semibold text-ps-ink">
               Apply {receipt.receipt_no}
             </p>
             <p className="text-2xs text-ps-hint">
@@ -165,16 +165,16 @@ export default function AllocateReceiptModal({
             </p>
           </div>
           <button onClick={onClose}
-            className="text-[12px] text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
+            className="text-xs text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
             Close
           </button>
         </div>
 
         <div className="p-5 space-y-3">
-          {loading ? <p className="text-[12px] text-ps-hint">Loading open invoices…</p>
+          {loading ? <p className="text-xs text-ps-hint">Loading open invoices…</p>
             : loadFailed ? (
               <div className="flex items-center gap-3">
-                <p className="text-[12px] text-red-600">
+                <p className="text-xs text-red-600">
                   Couldn&apos;t load this customer&apos;s invoices — the request failed.
                 </p>
                 <button onClick={load}
@@ -183,7 +183,7 @@ export default function AllocateReceiptModal({
                 </button>
               </div>
             ) : invoices.length === 0 ? (
-              <p className="text-[12px] text-ps-hint py-6 text-center">
+              <p className="text-xs text-ps-hint py-6 text-center">
                 This customer has no open invoices. The receipt stays unallocated —
                 an advance against an invoice not yet raised.
               </p>
@@ -234,7 +234,7 @@ export default function AllocateReceiptModal({
               </table>
             )}
 
-          <div className="flex items-center justify-between border-t border-ps-border pt-3 text-[12px]">
+          <div className="flex items-center justify-between border-t border-ps-border pt-3 text-xs">
             <span className="text-ps-label">
               Applying <span className="font-mono text-ps-ink">{fmt(total)}</span> of{" "}
               <span className="font-mono">{fmt(settlement)}</span>
@@ -244,11 +244,11 @@ export default function AllocateReceiptModal({
             </span>
             <div className="flex gap-2">
               <button onClick={onClose}
-                className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
+                className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
                 Cancel
               </button>
               <button onClick={save} disabled={saving || !problems.ok || loading}
-                className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
+                className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
                 {saving ? "Applying…" : "Apply"}
               </button>
             </div>

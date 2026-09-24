@@ -242,7 +242,7 @@ export function HsnLookup(props: {
         return (
           <span className="inline-flex min-w-0 items-center gap-1.5">
             {badge && (
-              <span className={`flex-shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold ${BADGE_CLASS[badge]}`}>
+              <span className={`flex-shrink-0 rounded px-1 py-0.5 text-3xs font-semibold ${BADGE_CLASS[badge]}`}>
                 {badge}
               </span>
             )}
@@ -256,7 +256,7 @@ export function HsnLookup(props: {
         return (
           <span className="flex min-w-0 items-center gap-2">
             {badge && (
-              <span className={`flex-shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold ${BADGE_CLASS[badge]}`}>
+              <span className={`flex-shrink-0 rounded px-1 py-0.5 text-3xs font-semibold ${BADGE_CLASS[badge]}`}>
                 {badge}
               </span>
             )}

@@ -60,12 +60,12 @@ function Collections() {
           <Wallet size={18} className="text-brand" />
           <h1 className="text-lg font-semibold text-brand">Collections</h1>
         </div>
-        <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-brand">
+        <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
           <RefreshCw size={13} /> Refresh
         </button>
       </div>
 
-      {msg && <div className="mb-3 text-[12px] px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</div>}
+      {msg && <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</div>}
 
       <div className="grid grid-cols-3 gap-3 mb-5">
         <div className="bg-white rounded-xl border border-gray-200 p-4">

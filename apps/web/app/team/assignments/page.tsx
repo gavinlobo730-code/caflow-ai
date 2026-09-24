@@ -85,17 +85,17 @@ export default function AssignmentsPage() {
         <Link2 size={18} className="text-brand" />
         <h1 className="text-lg font-semibold text-brand">Client Assignments</h1>
       </div>
-      <p className="text-[12px] text-gray-500 mb-4">
+      <p className="text-xs text-gray-500 mb-4">
         Assign clients to staff. A user can only see, search, and be notified about clients assigned to them
         (Partners have firm-wide access and are not listed here).
       </p>
 
       {!canAssign && (
-        <div className="flex items-center gap-2 text-[12px] text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-4">
+        <div className="flex items-center gap-2 text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-4">
           <ShieldAlert size={14} /> View only — only a Partner can change assignments.
         </div>
       )}
-      {error && <div className="text-[12px] text-red-600 mb-3">{error}</div>}
+      {error && <div className="text-xs text-red-600 mb-3">{error}</div>}
 
       {loading ? (
         <PageLoader />
@@ -106,7 +106,7 @@ export default function AssignmentsPage() {
             <div className="px-3 py-2 border-b border-gray-100 text-2xs font-semibold uppercase tracking-wide text-gray-400">
               Staff
             </div>
-            {members.length === 0 && <p className="px-3 py-4 text-[12px] text-gray-400">No staff members.</p>}
+            {members.length === 0 && <p className="px-3 py-4 text-xs text-gray-400">No staff members.</p>}
             {members.map((m) => (
               <button
                 key={m.id}
@@ -115,7 +115,7 @@ export default function AssignmentsPage() {
                   selectedUser === m.id ? "bg-brand text-white" : "hover:bg-ps-bg"
                 }`}
               >
-                <p className="text-[13px] font-medium">{m.full_name || m.email || "—"}</p>
+                <p className="text-sm font-medium">{m.full_name || m.email || "—"}</p>
                 <p className={`text-2xs ${selectedUser === m.id ? "text-white/70" : "text-gray-400"}`}>{m.role}</p>
               </button>
             ))}
@@ -124,7 +124,7 @@ export default function AssignmentsPage() {
           {/* Client assignment grid */}
           <div className="bg-white border border-gray-200 rounded-xl">
             {!selectedUser ? (
-              <p className="px-4 py-10 text-center text-[12px] text-gray-400">Select a staff member to manage their clients.</p>
+              <p className="px-4 py-10 text-center text-xs text-gray-400">Select a staff member to manage their clients.</p>
             ) : (
               <>
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
@@ -148,7 +148,7 @@ export default function AssignmentsPage() {
                         className="w-full flex items-center justify-between px-4 py-2.5 border-b border-gray-50 hover:bg-ps-bg disabled:opacity-60"
                       >
                         <div className="text-left">
-                          <p className="text-[13px] text-brand">{c.client_name}</p>
+                          <p className="text-sm text-brand">{c.client_name}</p>
                           <p className="text-2xs text-gray-400">{c.entity_type}{c.gstin ? ` · ${c.gstin}` : ""}</p>
                         </div>
                         <span className={`flex items-center justify-center w-5 h-5 rounded border ${
@@ -159,7 +159,7 @@ export default function AssignmentsPage() {
                       </button>
                     );
                   })}
-                  {shownClients.length === 0 && <p className="px-4 py-6 text-[12px] text-gray-400">No clients.</p>}
+                  {shownClients.length === 0 && <p className="px-4 py-6 text-xs text-gray-400">No clients.</p>}
                 </div>
               </>
             )}

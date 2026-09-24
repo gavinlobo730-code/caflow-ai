@@ -115,22 +115,22 @@ function ComplianceDashboard() {
           <button onClick={() => act(() => api.complianceOps.generate(), (r) => {
             const d = (r as ApiResp<{ generated: number }>).data; return `${d?.generated ?? 0} obligation(s) generated.`;
           })} disabled={busy}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 text-brand hover:bg-ps-bg disabled:opacity-50">
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-brand hover:bg-ps-bg disabled:opacity-50">
             <PlayCircle size={13} /> Generate obligations
           </button>
           <button onClick={() => act(() => api.complianceOps.runEscalations(), (r) => {
             const d = (r as ApiResp<{ escalated: number }>).data; return `${d?.escalated ?? 0} escalation(s) sent (internal).`;
           })} disabled={busy}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-brand text-white disabled:opacity-50">
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white disabled:opacity-50">
             <Bell size={13} /> Run escalations
           </button>
-          <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-brand">
+          <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
             <RefreshCw size={13} /> Refresh
           </button>
         </div>
       </div>
 
-      {msg && <div className="mb-3 text-[12px] px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</div>}
+      {msg && <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</div>}
 
       {/* Summary */}
       <div className="grid grid-cols-5 gap-3 mb-6">
@@ -164,18 +164,18 @@ function ComplianceDashboard() {
           </div>
           <div className="flex gap-2">
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-[12px] border border-gray-200 rounded-lg px-2 py-1 text-gray-600">
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600">
               <option value="all">All statuses</option>
               {Object.keys(NEXT_STATUS).map((st) => <option key={st} value={st}>{st}</option>)}
             </select>
             <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
-              className="text-[12px] border border-gray-200 rounded-lg px-2 py-1 text-gray-600">
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600">
               <option value="all">All types</option>
               {types.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
             <button onClick={() => downloadCsv("compliance-queue.csv", toCsv(queue, QUEUE_EXPORT_COLUMNS))}
               disabled={queue.length === 0}
-              className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 text-brand hover:bg-ps-bg disabled:opacity-50">
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-brand hover:bg-ps-bg disabled:opacity-50">
               <Download size={13} /> Export
             </button>
           </div>
@@ -243,7 +243,7 @@ function WorkloadCard({ title, rows, emptyLabel }: { title: string; rows: Worklo
         <h2 className="text-sm font-semibold text-brand">{title}</h2>
       </div>
       {rows.length === 0 ? (
-        <p className="text-[12px] text-gray-400 text-center py-8">{emptyLabel}</p>
+        <p className="text-xs text-gray-400 text-center py-8">{emptyLabel}</p>
       ) : (
         <table className="w-full text-xs">
           <tbody className="divide-y divide-gray-50">

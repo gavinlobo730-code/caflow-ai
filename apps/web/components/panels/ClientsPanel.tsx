@@ -32,7 +32,7 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200 shrink-0">
-        <p className="text-[13px] font-semibold text-brand">Clients</p>
+        <p className="text-sm font-semibold text-brand">Clients</p>
         <p className="text-2xs text-gray-500 mt-0.5">Client management</p>
       </div>
 
@@ -40,7 +40,7 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
       <div className="px-2 py-2 border-b border-gray-200 shrink-0">
         <button
           onClick={onOpenSearch}
-          className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[7px] bg-ps-bg border border-gray-200 text-[12px] text-gray-500 hover:text-brand hover:bg-gray-100 transition-all duration-75"
+          className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[7px] bg-ps-bg border border-gray-200 text-xs text-gray-500 hover:text-brand hover:bg-gray-100 transition-all duration-75"
         >
           <Search size={12} className="shrink-0" />
           <span className="flex-1 text-left">Search clients...</span>

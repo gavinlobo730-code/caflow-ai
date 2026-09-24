@@ -323,7 +323,7 @@ export default function CopilotPage() {
               >
                 Insights
                 {recommendations.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center font-bold">
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-3xs rounded-full flex items-center justify-center font-bold">
                     {recommendations.length > 9 ? "9+" : recommendations.length}
                   </span>
                 )}

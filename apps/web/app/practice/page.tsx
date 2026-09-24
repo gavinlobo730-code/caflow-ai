@@ -236,7 +236,7 @@ function PracticeOverview() {
           <Building2 size={18} className="text-brand" />
           <h1 className="text-lg font-semibold text-brand">Practice — Revenue Overview</h1>
         </div>
-        <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-brand">
+        <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
           <RefreshCw size={13} /> Refresh
         </button>
       </div>

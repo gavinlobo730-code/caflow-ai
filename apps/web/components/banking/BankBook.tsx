@@ -196,7 +196,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
   const sortHead = (col: RegisterSort, label: string, align: keyof typeof ALIGN = "left") => (
     <th key={col} className={`px-3 py-2 font-medium ${ALIGN[align]} whitespace-nowrap`}>
       <button onClick={() => toggleSort(col)} className="inline-flex items-center gap-1 hover:text-ps-body">
-        {label}{sort === col && <span className="text-[9px]">{desc ? "▼" : "▲"}</span>}
+        {label}{sort === col && <span className="text-3xs">{desc ? "▼" : "▲"}</span>}
       </button>
     </th>
   );
@@ -387,10 +387,10 @@ export function BankRegister({ clientId }: { clientId: string }) {
                       <span className="text-ps-ink">{l.description}</span>
                       {l.reference_no && <span className="text-3xs text-ps-hint ml-1.5">{l.reference_no}</span>}
                       {!l.posted_journal_id && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-ps-muted text-ps-label ml-1.5">not posted</span>
+                        <span className="text-3xs px-1 py-0.5 rounded bg-ps-muted text-ps-label ml-1.5">not posted</span>
                       )}
                       {l.precedes_opening && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-700 ml-1.5">before opening</span>
+                        <span className="text-3xs px-1 py-0.5 rounded bg-blue-50 text-blue-700 ml-1.5">before opening</span>
                       )}
                     </td>
                     <td className="px-3 py-1.5 text-ps-label whitespace-nowrap">{l.category ?? "—"}</td>
@@ -414,7 +414,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
                       {fmt(l.balance_paise)}
                       {!!l.balance_delta_paise && (
                         <span title={`The statement said ${fmt(l.statement_balance_paise ?? 0)} here`}
-                              className="ml-1 text-[9px] text-amber-600">≠</span>
+                              className="ml-1 text-3xs text-amber-600">≠</span>
                       )}
                     </td>
                   </tr>

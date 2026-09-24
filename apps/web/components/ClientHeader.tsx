@@ -62,7 +62,7 @@ export function ClientHeader() {
       <Building2 size={15} className="text-gray-400 shrink-0" />
 
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <span className={cn("text-[13px] font-semibold truncate", clientLoadFailed ? "text-red-600" : "text-brand")}>
+        <span className={cn("text-sm font-semibold truncate", clientLoadFailed ? "text-red-600" : "text-brand")}>
           {client?.client_name ?? (clientLoadFailed ? "Couldn't load client" : "Loading…")}
         </span>
         {client?.entity_type && (

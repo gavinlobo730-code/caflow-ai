@@ -555,7 +555,7 @@ function UnbilledLine({ table, reviewedOn, onReview }: {
         </div>
       )}
       {paise !== null && reviewedOn && (
-        <p className="text-[9px] text-ps-disabled mt-1">
+        <p className="text-3xs text-ps-disabled mt-1">
           Chart of accounts reviewed {reviewedOn}
           {table.unbilled_accounts.length === 0 && " — no account holds unbilled dues"}
         </p>
@@ -667,7 +667,7 @@ function AdvancesPanel({ kind, section }: {
                   <td className="px-4 py-2 text-ps-body">
                     {a.document_no || "—"}
                     {a.txn_currency && (
-                      <span className="ml-1.5 text-[9px] text-ps-hint">{a.txn_currency}</span>
+                      <span className="ml-1.5 text-3xs text-ps-hint">{a.txn_currency}</span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-ps-label truncate max-w-[180px]">

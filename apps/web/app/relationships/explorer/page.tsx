@@ -159,7 +159,7 @@ export default function RelationshipExplorerPage() {
                 >
                   <p className="text-xs font-medium text-gray-800 truncate">{e.full_name}</p>
                   <div className="flex items-center gap-2 mt-1">
-                    <Badge className={`text-[9px] px-1.5 ${ENTITY_TYPE_COLORS[e.entity_type] ?? "bg-gray-100 text-gray-600"}`}>
+                    <Badge className={`text-3xs px-1.5 ${ENTITY_TYPE_COLORS[e.entity_type] ?? "bg-gray-100 text-gray-600"}`}>
                       {e.entity_type}
                     </Badge>
                     {e.pan && <span className="text-3xs text-gray-500 font-mono">{e.pan}</span>}

@@ -331,7 +331,7 @@ export default function ExecutiveDashboardPage() {
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <p className="text-xl font-bold text-brand">{capacity_insights.team_utilisation_percent}%</p>
-                  <p className="text-[9px] text-ps-hint">utilised</p>
+                  <p className="text-3xs text-ps-hint">utilised</p>
                 </div>
               </div>
             </div>

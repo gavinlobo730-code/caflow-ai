@@ -63,13 +63,13 @@ export default function ClientKnowledgePage() {
         <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()}
           placeholder="Search client articles…" className="flex-1 text-sm outline-none" />
       </div>
-      {error && <div className="text-[12px] text-red-600 mb-2">{error}</div>}
+      {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
       {loading ? <PageLoader /> : (
         <div className="space-y-2">
-          {articles.length === 0 && <p className="text-[12px] text-gray-400">No client-scoped articles.</p>}
+          {articles.length === 0 && <p className="text-xs text-gray-400">No client-scoped articles.</p>}
           {articles.map((a) => (
             <div key={a.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
-              <p className="text-[13px] font-medium text-brand">{a.title}</p>
+              <p className="text-sm font-medium text-brand">{a.title}</p>
               <p className="text-2xs text-gray-400 mt-0.5">v{a.current_version}{a.tags && a.tags.length ? ` · ${a.tags.join(", ")}` : ""}</p>
             </div>
           ))}

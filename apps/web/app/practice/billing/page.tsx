@@ -92,16 +92,16 @@ function Billing() {
           <h1 className="text-lg font-semibold text-brand">Billing Schedules</h1>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-brand text-white">
+          <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white">
             <Plus size={13} /> New schedule
           </button>
-          <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-brand">
+          <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
             <RefreshCw size={13} /> Refresh
           </button>
         </div>
       </div>
 
-      {msg && <div className="mb-3 text-[12px] px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</div>}
+      {msg && <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</div>}
 
       {showForm && (
         <form onSubmit={createSchedule} className="mb-4 bg-white border border-gray-200 rounded-xl p-4 grid grid-cols-2 gap-3 text-sm">
@@ -159,14 +159,14 @@ function Billing() {
                 <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(s.amount_paise)}</td>
                 <td className="px-4 py-2.5 text-gray-600">{s.next_run_date ?? "—"}</td>
                 <td className="px-4 py-2.5 text-right">
-                  <button disabled={rowBusy} onClick={() => generate(s.id)} className="text-[12px] text-blue-600 hover:underline">Generate draft</button>
+                  <button disabled={rowBusy} onClick={() => generate(s.id)} className="text-xs text-blue-600 hover:underline">Generate draft</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="text-[12px] text-gray-500 mt-3 flex items-center gap-1.5">
+      <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">
         <CheckCircle2 size={13} className="text-gray-400" />
         Generation creates a DRAFT only. Confirm &amp; issue each draft from the invoice (CA-confirm gate) before despatch.
       </p>

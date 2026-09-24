@@ -319,7 +319,7 @@ function AmountTable({ title, note, fys, series }: {
                     {/* Movement sits under the year it moved INTO, so the first
                         column has none — there is nothing before it. */}
                     {i > 0 && (
-                      <div className={`text-[9px] tabular-nums ${
+                      <div className={`text-3xs tabular-nums ${
                         movementTone(s.movement_bps[i - 1], s.higher_is_better)}`}>
                         <MovementIcon bps={s.movement_bps[i - 1]} />{" "}
                         {formatMovement(s.movement_bps[i - 1])}
@@ -380,7 +380,7 @@ function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[]
                         turnover up can be either. Colouring these would be the
                         page making a judgement it has no basis for. */}
                     {i > 0 && (
-                      <div className="text-[9px] tabular-nums text-ps-hint">
+                      <div className="text-3xs tabular-nums text-ps-hint">
                         {formatMovement(s.movement_bps[i - 1])}
                       </div>
                     )}

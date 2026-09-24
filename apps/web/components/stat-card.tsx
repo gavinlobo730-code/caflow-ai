@@ -36,9 +36,9 @@ export function StatCard({
       <p className={cn("text-3xl font-bold mt-4 tracking-tight", alert ? "text-red-600" : "text-ps-ink")}>
         {typeof value === "number" ? value.toLocaleString("en-IN") : value}
       </p>
-      <p className="text-[12px] text-ps-label mt-1 font-medium leading-tight">{label}</p>
+      <p className="text-xs text-ps-label mt-1 font-medium leading-tight">{label}</p>
       {trend && (
-        <div className={cn("flex items-center gap-1 mt-2 text-[12px] font-semibold", trend.up ? "text-emerald-600" : "text-red-500")}>
+        <div className={cn("flex items-center gap-1 mt-2 text-xs font-semibold", trend.up ? "text-emerald-600" : "text-red-500")}>
           {trend.up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
           {trend.value}
         </div>

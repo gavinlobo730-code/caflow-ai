@@ -165,7 +165,7 @@ export default function NotificationsPage() {
                 {n.title}
               </span>
             </span>
-            <span className="block text-[12px] text-ps-label mt-0.5 line-clamp-2">{n.body}</span>
+            <span className="block text-xs text-ps-label mt-0.5 line-clamp-2">{n.body}</span>
             {n.action_url && (
               <a
                 href={n.action_url}

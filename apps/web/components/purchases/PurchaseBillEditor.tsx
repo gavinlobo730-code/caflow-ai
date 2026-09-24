@@ -888,7 +888,7 @@ export function PurchaseBillEditor({
                     ["Total", "total_paise"],
                   ] as const).map(([label, key]) => (
                     <div key={key}>
-                      <span className="block text-[9px] uppercase tracking-wide text-ps-hint">{label}</span>
+                      <span className="block text-3xs uppercase tracking-wide text-ps-hint">{label}</span>
                       <span className="font-mono text-ps-body">
                         {fmt(Number(aiExtracted[key] ?? 0))}
                       </span>
@@ -1167,20 +1167,20 @@ export function PurchaseBillEditor({
                             blank line has hsnMatches === undefined and shows nothing. */}
                         {line.hsnMatches && line.hsnMatches.length > 1 && !line.service_catalogue_id && (
                           <div className="mt-1 flex flex-wrap gap-1 items-center">
-                            <span className="text-[9px] text-ps-hint">HSN {line.hsn_sac} matches:</span>
+                            <span className="text-3xs text-ps-hint">HSN {line.hsn_sac} matches:</span>
                             {line.hsnMatches.map((m) => (
                               <button key={m.id} type="button" onClick={() => onPickProduct(idx, m)}
-                                className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
+                                className="text-3xs px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
                                 {m.name}
                               </button>
                             ))}
                           </div>
                         )}
                         {line.hsnMatches && line.hsnMatches.length === 0 && line.hsn_sac.trim() && !line.service_catalogue_id && (
-                          <p className="mt-1 text-[9px] text-ps-disabled">No catalogue match for HSN {line.hsn_sac}</p>
+                          <p className="mt-1 text-3xs text-ps-disabled">No catalogue match for HSN {line.hsn_sac}</p>
                         )}
                         {line.hsnMatches?.length === 1 && line.service_catalogue_id === line.hsnMatches[0].id && (
-                          <p className="mt-1 text-[9px] text-emerald-600">✓ Auto-linked from catalogue</p>
+                          <p className="mt-1 text-3xs text-emerald-600">✓ Auto-linked from catalogue</p>
                         )}
                       </td>
                       <td className="py-1.5 pr-2">
@@ -1216,7 +1216,7 @@ export function PurchaseBillEditor({
                               ))}
                             </select>
                             {BLOCKED_CREDIT_REASONS.find((r) => r.code === line.blocked_credit_reason)?.note && (
-                              <p className="mt-0.5 text-[9px] text-ps-hint">
+                              <p className="mt-0.5 text-3xs text-ps-hint">
                                 {BLOCKED_CREDIT_REASONS.find((r) => r.code === line.blocked_credit_reason)!.note}
                               </p>
                             )}

@@ -159,21 +159,21 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
 
         <div className="grid grid-cols-4 gap-2 text-center">
           <div>
-            <p className="text-[18px] font-bold text-ps-ink">{member.active_tasks}</p>
+            <p className="text-lg font-bold text-ps-ink">{member.active_tasks}</p>
             <p className="text-3xs text-ps-hint">Active</p>
           </div>
           <div>
-            <p className={`text-[18px] font-bold ${member.overdue_tasks > 0 ? "text-red-600" : "text-ps-ink"}`}>
+            <p className={`text-lg font-bold ${member.overdue_tasks > 0 ? "text-red-600" : "text-ps-ink"}`}>
               {member.overdue_tasks}
             </p>
             <p className="text-3xs text-ps-hint">Overdue</p>
           </div>
           <div>
-            <p className="text-[18px] font-bold text-ps-ink">{member.due_this_week}</p>
+            <p className="text-lg font-bold text-ps-ink">{member.due_this_week}</p>
             <p className="text-3xs text-ps-hint">This Week</p>
           </div>
           <div>
-            <p className="text-[18px] font-bold text-green-600">{member.completed_this_week}</p>
+            <p className="text-lg font-bold text-green-600">{member.completed_this_week}</p>
             <p className="text-3xs text-ps-hint">Completed</p>
           </div>
         </div>

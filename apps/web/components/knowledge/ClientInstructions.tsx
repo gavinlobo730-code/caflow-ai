@@ -69,7 +69,7 @@ export function ClientInstructions({
   }
 
   const visible = pinnedOnly ? items.filter((i) => i.is_pinned) : items;
-  if (loading) return <div className="text-[12px] text-gray-400">Loading instructions…</div>;
+  if (loading) return <div className="text-xs text-gray-400">Loading instructions…</div>;
   if (pinnedOnly && visible.length === 0) return null;
 
   return (
@@ -81,18 +81,18 @@ export function ClientInstructions({
             <h2 className="text-sm font-semibold text-brand">Client Instructions</h2>
           </div>
           <div className="flex items-center gap-3">
-            {canWrite && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-lg bg-brand text-white"><Plus size={12} /> Add</button>}
+            {canWrite && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-brand text-white"><Plus size={12} /> Add</button>}
             <button onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={13} /></button>
           </div>
         </div>
       )}
-      {error && <div className="text-[12px] text-red-600 mb-2">{error}</div>}
+      {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
       {showForm && canWrite && (
         <form onSubmit={create} className="mb-3 bg-white border border-gray-200 rounded-lg p-3 space-y-2 text-sm">
           <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
           <textarea placeholder="Standing instruction…" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" rows={2} />
-          <label className="flex items-center gap-2 text-[12px] text-gray-600"><input type="checkbox" checked={form.is_pinned} onChange={(e) => setForm({ ...form, is_pinned: e.target.checked })} /> Pin to top</label>
-          <button type="submit" className="px-3 py-1.5 rounded-lg bg-brand text-white text-[12px]">Save</button>
+          <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={form.is_pinned} onChange={(e) => setForm({ ...form, is_pinned: e.target.checked })} /> Pin to top</label>
+          <button type="submit" className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs">Save</button>
         </form>
       )}
       <div className="space-y-2">
@@ -100,10 +100,10 @@ export function ClientInstructions({
           <div key={i.id} className="bg-white border border-gray-200 rounded-lg p-3">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-[13px] font-medium text-brand flex items-center gap-1.5">
+                <p className="text-sm font-medium text-brand flex items-center gap-1.5">
                   {i.is_pinned && <Pin size={11} className="text-amber-500" />}{i.title}
                 </p>
-                {i.body && <p className="text-[12px] text-gray-600 mt-0.5 whitespace-pre-wrap">{i.body}</p>}
+                {i.body && <p className="text-xs text-gray-600 mt-0.5 whitespace-pre-wrap">{i.body}</p>}
               </div>
               {!pinnedOnly && canWrite && (
                 <div className="flex items-center gap-2 shrink-0">
@@ -114,7 +114,7 @@ export function ClientInstructions({
             </div>
           </div>
         ))}
-        {!pinnedOnly && visible.length === 0 && <p className="text-[12px] text-gray-400">No instructions yet.</p>}
+        {!pinnedOnly && visible.length === 0 && <p className="text-xs text-gray-400">No instructions yet.</p>}
       </div>
     </div>
   );

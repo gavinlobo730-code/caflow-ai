@@ -89,10 +89,10 @@ function KnowledgeInner() {
         <div className="flex items-center gap-2">
           <Library size={18} className="text-brand" />
           <h1 className="text-lg font-semibold text-brand">Knowledge Base{scope ? ` — ${scope}` : ""}</h1>
-          {!loading && !error && <span className="text-[12px] text-gray-400">{articles.length} article{articles.length === 1 ? "" : "s"}</span>}
+          {!loading && !error && <span className="text-xs text-gray-400">{articles.length} article{articles.length === 1 ? "" : "s"}</span>}
         </div>
         <div className="flex items-center gap-3">
-          {canAuthor && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-brand text-white"><Plus size={13} /> New article</button>}
+          {canAuthor && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white"><Plus size={13} /> New article</button>}
           <button onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
         </div>
       </div>
@@ -105,7 +105,7 @@ function KnowledgeInner() {
         </div>
       </div>
 
-      {error && <div className="text-[12px] text-red-600 mb-2">{error}</div>}
+      {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
 
       {showForm && canAuthor && (
         <form onSubmit={createArticle} className="mb-4 bg-white border border-gray-200 rounded-xl p-4 space-y-2 text-sm">
@@ -118,18 +118,18 @@ function KnowledgeInner() {
           <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
           <textarea placeholder="Content…" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" rows={4} />
           <input placeholder="Tags (comma-separated)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
-          <button type="submit" className="px-3 py-1.5 rounded-lg bg-brand text-white text-[12px]">Create</button>
+          <button type="submit" className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs">Create</button>
         </form>
       )}
 
       {loading ? <PageLoader /> : (
         <div className="space-y-2">
-          {articles.length === 0 && <p className="text-[12px] text-gray-400">No articles found.</p>}
+          {articles.length === 0 && <p className="text-xs text-gray-400">No articles found.</p>}
           {articles.map((a) => (
             <div key={a.id} className="bg-white border border-gray-200 rounded-xl">
               <button disabled={rowBusy} onClick={() => open(a.id)} className="w-full flex items-center justify-between px-4 py-3 text-left">
                 <div>
-                  <p className="text-[13px] font-medium text-brand">{a.title}</p>
+                  <p className="text-sm font-medium text-brand">{a.title}</p>
                   <p className="text-2xs text-gray-400 mt-0.5">
                     {a.scope}{a.department ? ` · ${a.department}` : ""} · v{a.current_version}
                     {a.tags && a.tags.length > 0 ? ` · ${a.tags.join(", ")}` : ""}
@@ -139,11 +139,11 @@ function KnowledgeInner() {
               </button>
               {expanded === a.id && (
                 <div className="border-t border-gray-100 px-4 py-3">
-                  <p className="text-[13px] text-gray-700 whitespace-pre-wrap mb-3">{content || <span className="text-gray-400">No content.</span>}</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap mb-3">{content || <span className="text-gray-400">No content.</span>}</p>
                   <p className="text-2xs font-medium text-gray-500 uppercase mb-1">Version history</p>
                   <ul className="space-y-1">
                     {versions.map((v) => (
-                      <li key={v.version} className="flex items-center justify-between text-[12px] text-gray-600">
+                      <li key={v.version} className="flex items-center justify-between text-xs text-gray-600">
                         <span>v{v.version}{v.changed_at ? ` · ${v.changed_at.slice(0, 10)}` : ""}</span>
                         {canAuthor && v.version !== a.current_version && (
                           <button disabled={rowBusy} onClick={() => restore(a.id, v.version)} className="flex items-center gap-1 text-blue-600 hover:underline"><RotateCcw size={11} /> Restore</button>

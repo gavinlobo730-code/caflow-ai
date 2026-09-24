@@ -316,7 +316,7 @@ function TimelineEventRow({
         <Icon size={13} className="text-ps-hint shrink-0" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-medium text-ps-ink leading-snug">{event.title}</p>
+        <p className="text-xs font-medium text-ps-ink leading-snug">{event.title}</p>
         {event.description && (
           <p className="text-2xs text-ps-hint mt-0.5 leading-snug">{event.description}</p>
         )}

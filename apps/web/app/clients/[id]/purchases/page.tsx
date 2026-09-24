@@ -835,7 +835,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
       render: (b) => (
         <span className="text-ps-label inline-flex items-center gap-1">
           {b.bill_no ?? "—"}
-          {b.is_ai_extracted && <span className="text-[9px] bg-amber-100 text-amber-600 px-1 rounded">AI</span>}
+          {b.is_ai_extracted && <span className="text-3xs bg-amber-100 text-amber-600 px-1 rounded">AI</span>}
           {b.document_url && (
             <button
               onClick={(e) => { e.stopPropagation(); viewAttachment(b.id); }}

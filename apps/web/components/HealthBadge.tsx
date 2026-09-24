@@ -84,7 +84,7 @@ export function HealthBadge({ score, size = "sm", showLabel = false, trend, href
       <span>{score}</span>
       {showLabel && <span className="opacity-70">{label}</span>}
       {trend && (
-        <span className={cn("text-[9px]", TREND_COLOR[trend])} aria-hidden="true">
+        <span className={cn("text-3xs", TREND_COLOR[trend])} aria-hidden="true">
           {TREND_ARROW[trend]}
         </span>
       )}
