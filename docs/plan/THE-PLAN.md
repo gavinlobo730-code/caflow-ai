@@ -238,6 +238,29 @@ nothing. Moving from one client to another means going back out to a list.
 working endpoints have no screen that can reach them, most of which is Phase 3
 but some of which is simply that nothing links to the screen.
 
+**Re-measured 24-09-2026, because this file's own lesson is that an inventory
+goes stale as fast as an audit's.** **161 routes is exact.** The other two
+numbers need reading carefully, and the difference between them is what Phase 2
+is actually for:
+
+- **Six screens have no link ANYWHERE in the product**, not 39 — and
+  `apps/web/scripts/every-screen-has-a-way-in.test.ts` already asserts it, with
+  a recorded reason per entry and a staleness test that deletes an exemption
+  once the screen gets a real link. So **2.5's guard is built and green**; what
+  is left of 2.5 is placement, not reachability.
+- **"In no menu" is the softer and more useful number, and it depends on what
+  counts as a menu.** Against the shell, its panels and the client workspace nav
+  — the things a CA would call navigation — **63** routes are absent. Against
+  those plus each module's landing-page card grid, far fewer. The 39 sits
+  between the two, which is why it cannot be reproduced exactly: nobody wrote
+  down which definition it used.
+
+That ambiguity is itself an argument for the hub. **Once 2.2 exists, "is this
+screen in the hub" is a crisp test** and 2.5's guard tightens from *something
+links to it* to *the hub reaches it* — which is the assertion the DONE WHEN
+column has always asked for and that no shape of the current navigation can
+support.
+
 **The constraint D10 puts on all of it.** Cloudflare Pages silently ignores
 `_redirects` rules past position 100. There are 98. The owner checked the
 preview and the bare-path rules are load-bearing, so they cannot be collapsed.
