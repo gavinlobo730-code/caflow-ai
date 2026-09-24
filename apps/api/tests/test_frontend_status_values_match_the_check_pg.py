@@ -172,6 +172,32 @@ UNMEASURED: dict[str, set[str]] = {
 
 _SKIP_DIRS = {"node_modules", ".next", "out", ".vercel"}
 _FROM = re.compile(r'\.from\("([a-z_0-9]+)"\)')
+
+#: A SCREEN'S TABLES ARE THE ONES IT READS OVER PostgREST **OR THROUGH THE
+#: API**, and until 24-09-2026 this guard only knew the first.
+#:
+#: That is not a detail — it is the guard losing exactly the screens this
+#: programme is moving. `.from("t")` is the only signal `_scan` had, so a
+#: screen that stops reading a table in the browser and starts reading it
+#: through `lib/api` takes its status vocabulary with it: the values stay real
+#: writes, the CHECK stays real, and the association between them disappears.
+#: The docstring above already names the shape ("a file can leave KNOWN by
+#: losing its last measurable table instead of by being fixed") and `UNMEASURED`
+#: catches the case where a file goes blind ENTIRELY. This is the harder half:
+#: the billing screen still reads `fee_invoices` and `fee_receipts` over
+#: PostgREST, so its union is non-empty and `Active` — a perfectly good
+#: `fee_engagements` status — was reported as a value no table allows.
+#:
+#: So the namespace names the table. It is a second authority and a small one,
+#: and `test_every_api_namespace_names_a_real_table` holds it to the schema so
+#: a rename or a typo fails rather than silently measuring nothing. IT MUST
+#: GROW as screens move: a namespace absent here is a screen measured against
+#: only the tables it still reads in the browser.
+API_NAMESPACE_TABLES: dict[str, set[str]] = {
+    # G2 — routers/engagements.py, which writes fee_engagements.
+    "engagements": {"fee_engagements"},
+}
+_API_NS = re.compile(r'\bapi\.([a-zA-Z][a-zA-Z0-9]*)\.')
 _COMPARE = re.compile(r'\.status\s*(?:===|!==)\s*"([^"]+)"')
 #: `status: "submitted"` in an OBJECT LITERAL — a value the browser sends.
 #:
@@ -286,6 +312,8 @@ def _scan(allowed: dict[str, set[str]]) -> tuple[dict[str, set[str]], dict[str, 
             continue
         src = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
         tables = set(_FROM.findall(src))
+        for ns in set(_API_NS.findall(src)):
+            tables |= API_NAMESPACE_TABLES.get(ns, set())
         if not tables:
             continue                      # not a database screen; its status is its own
         used = {m.group(1) for m in _COMPARE.finditer(src)}
@@ -378,3 +406,38 @@ def test_the_scan_still_sees_the_files_it_is_meant_to_police(allowed_status):
                and '.from("' in p.read_text(encoding="utf-8", errors="ignore")]
     assert len(screens) >= 50, (
         f"only {len(screens)} files read a table — the scan has stopped matching")
+
+
+def test_every_api_namespace_names_a_real_table(allowed_status):
+    """A namespace pointing at nothing measures nothing, silently.
+
+    `allowed_status` is keyed by table for every `status` CHECK in the schema,
+    so a table that is missing here has either been renamed or lost its CHECK —
+    and either way the screens calling that namespace went back to being
+    measured against whatever they still read in the browser.
+    """
+    assert API_NAMESPACE_TABLES, "the namespace map is empty — _scan gained nothing"
+    for ns, tables in API_NAMESPACE_TABLES.items():
+        assert tables, f"api.{ns} names no table"
+        for t in tables:
+            assert t in allowed_status, (
+                f"api.{ns} names {t}, which has no `status` CHECK in the schema — "
+                f"a renamed table, or a CHECK that was dropped")
+
+
+def test_the_namespace_map_actually_reaches_a_screen():
+    """Not vacuous: at least one file must both call a mapped namespace and
+    carry a status value, or the map is documentation rather than a check."""
+    hits = []
+    for path in sorted(WEB.rglob("*.ts*")):
+        parts = set(path.relative_to(WEB).parts)
+        if parts & _SKIP_DIRS or path.name.endswith(".test.ts"):
+            continue
+        src = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
+        if not (set(_API_NS.findall(src)) & set(API_NAMESPACE_TABLES)):
+            continue
+        if _WRITE.search(src) or _COMPARE.search(src):
+            hits.append(str(path.relative_to(WEB)))
+    assert hits, (
+        "no screen both calls a mapped api.* namespace and carries a status "
+        "value — the map is inert")

@@ -375,7 +375,18 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     # the floor, and say which page) or a spread across many (fix the parser):
     #
     #   collections.Counter(path for path, _, _ in scan_writes(WEB))
-    assert len(scan_writes(WEB)) >= 214, "write scan found too little — parser likely broke"
+    # 214 -> 207 on 24-09-2026, and diagnosed the way the paragraph above says
+    # to. The billing screen INSERTed `fee_engagements` straight over PostgREST,
+    # so `rbac()` never ran and — the half that mattered — the engagement state
+    # machine had no door (G2). It posts to POST /api/engagements now. The
+    # per-file tally moved on precisely ONE page:
+    #
+    #   app/billing/page.tsx: 7 -> 0
+    #
+    # Seven columns in one payload: firm_id, client_id, service_type, fee_paise,
+    # billing_cycle, start_date, status. 207 + 7 = 214 exactly, which is the
+    # independent evidence that the browser really did lose the write.
+    assert len(scan_writes(WEB)) >= 207, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG
