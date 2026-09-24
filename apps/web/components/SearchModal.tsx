@@ -150,9 +150,24 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
           subtitle: sc.scope === "client" ? `${sc.section} · this client` : sc.section,
           href: href ?? "",
         };
-      }),
+      })
+      // `matchScreens` already withholds client screens when no client is
+      // open, so this cannot fire today. It is here because the alternative
+      // failure is a row that LOOKS like a destination and pushes "" — and a
+      // guard that depends on two functions agreeing is one edit from not
+      // holding.
+      .filter((r) => r.href !== ""),
     [query, clientId],
   );
+
+  // The highlighted row must exist. Screens re-match on every keystroke while
+  // `setSelectedIndex(0)` only runs after the debounce, so a list that SHRINKS
+  // under an arrowed-down selection would leave the index past the end —
+  // nothing highlighted, and Enter falling through to the full-search page
+  // instead of the row the CA is looking at.
+  useEffect(() => {
+    setSelectedIndex((i) => (i >= screenResults.length + results.length ? 0 : i));
+  }, [screenResults.length, results.length]);
 
   // `>` restricts to screens. Entity results are dropped rather than not
   // fetched, because the fetch is already in flight by the time the caret
