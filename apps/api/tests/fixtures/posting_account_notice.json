@@ -1,0 +1,28 @@
+{
+  "_what_this_is": "The vectors both implementations of the fallback-disclosure rule read. domain/accounting/payment_account.row_notice is the authority; apps/web/lib/accounting/postingAccountNotice.ts is the keystroke mirror, needed because the client Sales tab reads `receipts` straight over PostgREST and never sees the API's stamped answer.",
+  "_why_a_mirror_at_all": "The rule is a two-column predicate, not a computation, and the alternative is moving a working screen onto the API purely to render one sentence. The repository already takes this trade for GSTIN, UQC, invoice numbers and GST line tax: one authority, one mirror, one fixture both suites read.",
+  "notice": "No bank account was recorded on this document, so it posted to the firm's general Bank ledger. Set the account to attribute it.",
+  "cases": [
+    {"bank_account_id": null, "payment_mode": "neft", "notice": true, "why": "the common case — nothing named an account and the mode moves money through one"},
+    {"bank_account_id": null, "payment_mode": "cheque", "notice": true, "why": "a cheque is a BANK mode"},
+    {"bank_account_id": null, "payment_mode": "upi", "notice": true, "why": "so is UPI"},
+    {"bank_account_id": null, "payment_mode": "rtgs", "notice": true, "why": "and RTGS"},
+    {"bank_account_id": null, "payment_mode": "online", "notice": true, "why": "and online"},
+    {"bank_account_id": null, "payment_mode": null, "notice": true, "why": "no mode recorded either — still not attributable"},
+    {"bank_account_id": null, "payment_mode": "", "notice": true, "why": "empty string is no mode"},
+    {"bank_account_id": "b1", "payment_mode": "neft", "notice": false, "why": "the CA named the account"},
+    {"bank_account_id": "b1", "payment_mode": null, "notice": false, "why": "a stated account wins whatever the mode says"},
+    {"bank_account_id": null, "payment_mode": "cash", "notice": false, "why": "cash goes to Cash in Hand, which is a decision and not a fallback"},
+    {"bank_account_id": null, "payment_mode": "CASH", "notice": false, "why": "case is folded"},
+    {"bank_account_id": null, "payment_mode": "petty_cash", "notice": false, "why": "petty cash is cash"},
+    {"bank_account_id": null, "payment_mode": "petty cash", "notice": false, "why": "SPACE, the spelling a human types — a first version of the resolver normalised the hyphen on the input and the space on the constant, so this matched neither and was treated as a bank payment"},
+    {"bank_account_id": null, "payment_mode": "Petty-Cash", "notice": false, "why": "hyphen and mixed case together"},
+    {"bank_account_id": null, "payment_mode": "  cash  ", "notice": false, "why": "surrounding whitespace is stripped"},
+    {"bank_account_id": "", "payment_mode": "neft", "notice": true, "why": "an EMPTY account id is not an account — the column is nullable and a blank string reaches it from a form that cleared the picker"}
+  ],
+  "_two_cases_this_rule_deliberately_cannot_see": [
+    "A bank account that IS recorded but has no ledger of its own (`coa_account_id` null). It falls back, and the CA is told in the POSTING CONFIRMATION, where the resolver's own answer is to hand.",
+    "A cash payment at a client whose chart of accounts has no Cash in Hand ledger. Same: posting-time only.",
+    "Both are facts about the chart of accounts at the moment of posting, and seeing them from a list row would need a lookup PER ROW — the read-proportional-to-the-ledger shape CLAUDE.md forbids in a report. A silent row is not a claim that the posting was attributable."
+  ]
+}

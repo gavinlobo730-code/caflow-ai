@@ -19,7 +19,11 @@ from models.accounting import JournalReversalIn
 from core.exceptions import document_failure_detail
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
-from domain.accounting.payment_account import resolve_payment_account
+from domain.accounting.payment_account import (
+    resolve_payment_account,
+    stamp as _stamp_posting_account,
+    stamp_all as _stamp_posting_accounts,
+)
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
@@ -386,7 +390,7 @@ def list_purchase_payments(
             # gross overpayment.
             rows = [_with_allocated_to(r, purchase_bill_id, allocated_to_bill)
                     for r in rows]
-        return api_response(True, rows)
+        return api_response(True, _stamp_posting_accounts(rows))
     except Exception as e:
         _logger.error("list_purchase_payments error: %s", e)
         return api_response(False, None,
@@ -404,7 +408,7 @@ def get_purchase_payment(
 ):
     try:
         payment = _assert_payment_scope(current_user, payment_id)
-        return api_response(True, payment)
+        return api_response(True, _stamp_posting_account(payment))
     except HTTPException:
         raise
     except Exception as e:
@@ -511,7 +515,7 @@ def create_purchase_payment(
         if allocations:
             payment["allocations"] = [dict(a) for a in allocations]
         MOCK_PURCHASE_PAYMENTS.append(payment)
-        return api_response(True, payment)
+        return api_response(True, _stamp_posting_account(dict(payment)))
 
     try:
         db = _get_db()
@@ -538,13 +542,17 @@ def create_purchase_payment(
         # doing it here first keeps "this vendor is not part of this client's
         # books" a single sentence whichever shape the request took.
         if allocations:
-            return api_response(True, purchase_payment_service.create_payment_core(
+            _made = purchase_payment_service.create_payment_core(
                 firm_id, data,
                 {"id": current_user.get("id"),
                  "auth_user_id": current_user.get("auth_user_id"),
                  "email": current_user.get("email")},
                 db,
-            ))
+            )
+            # D14 — see the identical note in routers/receipts.create_receipt.
+            return api_response(
+                True,
+                _stamp_posting_account(_made) if isinstance(_made, dict) else _made)
         # ── Multi-Currency (Phase 4): a foreign payment runs a dedicated realized-FX
         # path — the bill is relieved at ITS booked rate, cash at the payment's rate,
         # and the difference posts to Realized FX Gain/Loss. INR path below unchanged.
@@ -704,7 +712,8 @@ def create_purchase_payment(
             actor_name=current_user.get("email"),
         )
 
-        return api_response(True, payment)
+        # D14 — the single-bill INR path's own confirmation.
+        return api_response(True, _stamp_posting_account(payment))
 
     except HTTPException:
         raise

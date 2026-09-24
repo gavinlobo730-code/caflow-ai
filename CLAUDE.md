@@ -2357,6 +2357,22 @@ change. The code is the authority; keep this file in step with it.
   `public.schedule_iii_ageing` (migration 303) are the authority and are pinned
   to each other by a parity test.
 - Never auto-submit anything to any government portal — always require explicit CA confirmation click
+- **AND THE PRODUCT WORDS THAT POSITION ONCE.** `domain/filing_posture.py` holds
+  the badge, the banner headline, its body, the one forward-looking sentence and
+  the long disclaimer; `services/filing_demo/common.envelope` serves them as
+  `posture` on every walk-through, and `apps/web/lib/filing/posture.ts` is a
+  FALLBACK for the redeploy window, pinned from the Python side by
+  `tests/test_one_filing_posture_and_the_browser_echoes_it.py`. It used to be
+  three voices — the payload's sentence, a DIFFERENT one hard-coded in
+  `FilingDemoWizard`, and a guard that pinned the second with
+  `assert.match(src, /DEMO — nothing is being filed/)`, a regex over the SOURCE
+  that could not tell a rendered banner from a commented-out one and failed on
+  any rewording. **What the wording may NOT claim is asserted**: no registration
+  has been applied for (D17), so "in progress", "applied for", "pending
+  approval" and "coming soon" are all forbidden and a test says so — a product
+  that overstates its regulatory standing is a different and worse kind of wrong
+  from one that overstates a feature. It says direct submission is **planned**
+  and names what grants it.
 
 `services/compliance_engine.py` is the single source for every due date above. If prose
 and that module disagree, the module wins and the prose gets fixed.
@@ -3989,10 +4005,34 @@ generic `%Bank%` ledger, so a line PASSED from the queue and the SAME line
 SETTLED against a document landed in two different ledgers — the defect that
 module's own docstring says it exists to end. The lookup returns None rather
 than raising, because a transaction with no statement must still settle and the
-resolver falls back exactly as before AND SAYS it fell back. ⚠️ `is_fallback`
-and `reason` still reach no caller: the resolver runs inside eight
-journal-line builders, so surfacing them is a refactor through the kernel's
-callers and WHERE a CA is told is an owner decision.
+resolver falls back exactly as before AND SAYS it fell back. **AND THE CA IS NOW TOLD, ON THE ROW AND IN THE CONFIRMATION** (D14,
+24-09-2026 — that used to read *"`is_fallback` and `reason` still reach no
+caller"*, and WHERE to tell them was the open owner decision). The row half is
+`payment_account.row_notice`, which ASKS `document_names_no_account` rather
+than restating branch 3's predicate — one rule, two callers, because a screen
+re-deriving "did this fall back" from its own reading of the columns is how a
+disclosure comes to disagree with the posting it describes. `stamp` /
+`stamp_all` put it on every receipt and purchase-payment response under
+`posting_account_notice`, **always present and null where the posting was
+attributable** (`journal_source`'s discipline: an absent key and a null key
+read the same to a screen and are different bugs).
+**A BROWSER MIRROR EXISTS AND IT IS NOT AN OVERSIGHT**:
+`apps/web/lib/accounting/postingAccountNotice.ts`, because the client Sales tab
+reads `receipts` STRAIGHT OVER POSTGREST and no API response reaches it —
+pinned by `tests/fixtures/posting_account_notice.json`, asserted from the
+Python side.
+**TWO OF THE THREE FALLBACKS ARE DELIBERATELY INVISIBLE ON A ROW**: a recorded
+bank account with no ledger of its own, and a cash payment at a client with no
+Cash in Hand, are facts about the chart of accounts at the moment of POSTING,
+and seeing them from a list would need a lookup per row. They reach the CA in
+the confirmation. A silent row is not a claim that the posting was
+attributable.
+⚠️ **And the unlinked-account branch was LYING.** It fell through to branch 3
+and came back *"No bank account was recorded on this document"* — false, and it
+sends the CA to set a field that is already set. `NOTICE_ACCOUNT_NOT_LINKED` is
+its own sentence now, and a test asserts the three are three. It was invisible
+for as long as nothing rendered them, which is the argument for rendering a
+computed disclosure rather than computing one nobody reads.
 **WHAT THE PARSER FOUND IN THE NARRATION IS BUILT ONCE**, by
 `domain/banking/narration.parsed_view`, because there were two identical dict
 literals — one per service — and BOTH omitted `cheque_no` (BANK-28), which

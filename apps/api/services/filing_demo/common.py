@@ -49,6 +49,8 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+from domain.filing_posture import POSTURE, posture_payload
+
 
 def filing_simulation_enabled() -> bool:
     """ON unless switched off — reversed from the original default, on the
@@ -267,10 +269,13 @@ def envelope(flow: str, title: str, subtitle: str, seed: str,
         "real_channel": real_channel,
         "when_this_is_real": when_this_is_real,
         "stages": stages,
-        "disclaimer": (
-            "SIMULATION — nothing was transmitted to any government system and "
-            "nothing has been filed. PracticeSync prepares this filing; "
-            "submission happens on the authority's own portal. No stored "
-            "status has changed."
-        ),
+        # BOTH come from domain.filing_posture, which is the one place this
+        # product words its filing position. `disclaimer` is the long form and
+        # is kept at its own key because every existing caller and test reads
+        # it there; `posture` is the same position broken into the pieces a
+        # screen needs — the badge, the banner headline, its body, and the one
+        # forward-looking sentence. The wizard used to hard-code a DIFFERENT
+        # banner sentence, so the product stated its own position two ways.
+        "disclaimer": POSTURE.disclaimer,
+        "posture": posture_payload(),
     }

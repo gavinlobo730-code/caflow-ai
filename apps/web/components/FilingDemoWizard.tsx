@@ -70,6 +70,8 @@ export async function fetchFilingDemoCapabilities(): Promise<{ enabled: boolean;
  * how to file for real, what changes when it is) always render.
  */
 
+import { FILING_POSTURE, type FilingPosture } from "@/lib/filing/posture";
+
 interface Figure { label: string; paise?: number; text?: string }
 interface Cell { text?: string; paise?: number }
 interface SignatureMethod { key: string; label: string; note: string; otp: boolean }
@@ -93,6 +95,11 @@ export interface FilingDemoScript {
    *  services/filing_demo/common.envelope. */
   when_this_is_real: string;
   stages: Stage[]; disclaimer: string;
+  /** The product's filing position, worded once in
+   *  `apps/api/domain/filing_posture.py` and served with every script.
+   *  Optional so a frontend ahead of its backend still renders — it falls
+   *  back to `lib/filing/posture`, which that module's own guard pins. */
+  posture?: FilingPosture;
 }
 
 function rupees(paise: number) {
@@ -153,6 +160,12 @@ export default function FilingDemoWizard({
   const stages = useMemo(() => script?.stages ?? [], [script]);
   const stage = stages[idx];
 
+  /** The served wording wins; `lib/filing/posture` is the fallback for the
+   *  redeploy window AND for the moment before the fetch returns — the banner
+   *  renders immediately and unconditionally, so there is no frame in which
+   *  this modal could be mistaken for a real filing. */
+  const posture = script?.posture ?? FILING_POSTURE;
+
   /** Next stage index, skipping the otp stage when the chosen method needs none. */
   function nextFrom(i: number, chosen: SignatureMethod | null): number {
     let n = i + 1;
@@ -187,11 +200,16 @@ export default function FilingDemoWizard({
         {/* Never scrolls away: whoever glances at this screen — including the
             person who did not watch it start — has to see what it is. */}
         <div className="sticky top-0 px-5 py-3 bg-amber-100 border-b-2 border-amber-400 z-10">
-          <p className="text-sm font-bold text-amber-900">DEMO — nothing is being filed</p>
-          <p className="text-xs text-amber-900 mt-0.5">
-            A walk-through of the real filing sequence. No data leaves PracticeSync
-            and no government system is contacted.
-          </p>
+          <p className="text-sm font-bold text-amber-900">{posture.headline}</p>
+          <p className="text-xs text-amber-900 mt-0.5">{posture.body}</p>
+          {/* The one forward-looking sentence, and the reason it is in the
+              banner rather than only at the end: a CA deciding whether to
+              trial this product asks "can it file?" before they finish the
+              walk-through, and an answer they have to reach the last stage to
+              read is an answer most of them never see. It states what is
+              planned and what gates it, and deliberately claims no
+              registration this product does not hold. */}
+          <p className="text-2xs text-amber-900/90 mt-1">{posture.roadmap}</p>
         </div>
 
         <div className="px-5 py-4 space-y-4">

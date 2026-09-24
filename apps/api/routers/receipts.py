@@ -20,6 +20,7 @@ from services import receipt_service
 from services import reversal_service
 # Re-exported for backward compat — collections_service and tests import these here.
 from services.receipt_service import MOCK_RECEIPTS, MOCK_RECEIPT_ALLOCATIONS
+from domain.accounting.payment_account import stamp as _stamp_posting_account, stamp_all as _stamp_posting_accounts
 from domain.money_text import rupees_paise
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -125,7 +126,7 @@ def list_receipts(
             if to_date:
                 result = [r for r in result if r.get("receipt_date", "") <= to_date]
             result = result[offset:offset + limit]
-            return api_response(True, result)
+            return api_response(True, _stamp_posting_accounts(result))
 
         from core.supabase_client import get_supabase
         db = get_supabase()
@@ -137,7 +138,7 @@ def list_receipts(
         if to_date:
             q = q.lte("receipt_date", to_date)
         resp = q.order("receipt_date", desc=True).range(offset, offset + limit - 1).execute()
-        return api_response(True, resp.data or [])
+        return api_response(True, _stamp_posting_accounts(resp.data or []))
     except Exception as e:
         _logger.error("list_receipts: %s", e)
         return api_response(False, None,
@@ -167,7 +168,12 @@ def create_receipt(
             actor=current_user,
             db=db,
         )
-        return api_response(True, result)
+        # D14, 24-09-2026: the CA is told HERE as well as on the row, because
+        # this is the moment it is cheapest to fix — the document is open, the
+        # account is one field away, and nothing has been reconciled against it
+        # yet. `PaymentAccount.is_fallback` and `.reason` have been computed
+        # since ACC-03 and reached no caller at all.
+        return api_response(True, _stamp_posting_account(result) if isinstance(result, dict) else result)
     except HTTPException:
         raise
     except Exception as e:
@@ -186,13 +192,13 @@ def get_receipt(
         receipt = _assert_receipt_scope(current_user, receipt_id)
         if _USE_MOCK:
             allocs = [a for a in MOCK_RECEIPT_ALLOCATIONS if a.get("receipt_id") == receipt_id]
-            return api_response(True, {**receipt, "allocations": allocs})
+            return api_response(True, _stamp_posting_account({**receipt, "allocations": allocs}))
 
         from core.supabase_client import get_supabase
         db = get_supabase()
         allocs_resp = db.table("receipt_allocations").select("*").eq("receipt_id", receipt_id).execute()
         receipt["allocations"] = allocs_resp.data or []
-        return api_response(True, receipt)
+        return api_response(True, _stamp_posting_account(receipt))
     except HTTPException:
         raise
     except Exception as e:
