@@ -617,20 +617,38 @@ commit; these are the **decisions left for you**, and nothing below is blocking
 > allows from the current status, and a test pins the browser's copy of that
 > map to the router's and both to the CHECK.
 >
-> ### ⛔ ONE STEP IS NOT DONE AND IT IS THE HALF THAT MAKES THE GRID REAL
+> ### ✅ AND THE STEP THAT MAKES THE GRID REAL — migration 415, approved and landed
 >
-> Migration 260's policies still ask `my_role_at_least(...)` and nothing else,
-> so a Partner who grants one Manager `billing:write` on the Team screen gets a
-> person who **passes `rbac()` and is then refused by Postgres** — the grid
-> vetoed by the control it replaced. The fix is a SQL twin of
-> `resolve_permission` (a row wins, no row means the role decides) and
-> re-pointing those nine policies at it. **I wrote it and could not save it:
-> creating a file under `apps/api/migrations/` needs a permission this session
-> does not have, and merging a migration applies it to production with no
-> review step in between — so that gate is doing its job.** Say the word and it
-> goes in as migration 415; it is about 200 lines and needs no data change (403
-> wrote no backfill, so with an empty `user_permissions` it reproduces today's
-> behaviour exactly).
+> Migration 260's policies asked `my_role_at_least(...)` and nothing else, so a
+> Partner who granted one Manager `billing:write` on the Team screen got a
+> person who **passed `rbac()` and was then refused by Postgres** — the grid
+> vetoed by the control it replaced, arriving as a save failure with no reason.
+> `public.my_permission(resource, action, minimum_role)` is the SQL twin of
+> `resolve_permission` and those nine policies now ask it.
+>
+> **No table's minimum ROLE moved**, which is what makes it safe: 403 wrote no
+> backfill, so against an empty `user_permissions` it reproduces today's
+> behaviour exactly, and that branch is the first thing the test file proves.
+>
+> **The guard found a lockout before it shipped.** The first draft asked
+> `billing:delete` for the DELETE policies on `fee_invoices` and
+> `fee_engagements` — and PERMISSIONS defines no such pair, which
+> `resolve_permission` treats as INERT and falls through to `can`, which fails
+> closed. Every fee invoice and fee engagement would have become permanently
+> undeletable, **for a Partner too**. The delete-action set is now asserted
+> against PERMISSIONS rather than trusted.
+>
+> **A second thing the real database settled**: a grant is a MODULE, not a
+> SCOPE. Migration 084's `<table>_assignment_scope` is an orthogonal
+> RESTRICTIVE policy, so granting a Manager `billing:write` does not hand them
+> a client they are not assigned to — which is exactly why 403 left the role
+> answering the SQL policies and left scope alone. Both directions are pinned.
+>
+> ⚠️ **One test in this file was vacuous on its first run and is worth
+> knowing**: a RESTRICTIVE policy's `USING` clause FILTERS the rows an UPDATE
+> can see, so a refused UPDATE is `UPDATE 0` and psql exits **0**. The
+> "a grant is one pair, not a tier" test asserted on the exit code and passed
+> whether the policy worked or not. It measures the row now.
 
 
 **The backlog item that led here said "fee engagements are created over
