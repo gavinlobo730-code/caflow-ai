@@ -38,6 +38,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripComments } from "./stripComments.ts";
 import { screenRoutes } from "./refresh-screen-snapshot.js";
+import { ALL_SCREENS } from "../lib/navigation/screens.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.join(__dirname, "..");
@@ -55,14 +56,9 @@ const UNLINKED: Record<string, string> = {
     "rather than 404ing — being unlinked is the point",
   "/accounting/invoices":
     "the same stub, for the Sales tab",
-  "/clients/:id/compliance/gst":
-    "reached from the compliance landing page's workspace cards, which push " +
-    "`/clients/${clientId}/compliance/${path}` from a config array — a real " +
-    "link this scan cannot see",
-  "/clients/:id/compliance/mca":
-    "same config array; offered only for a Companies Act company or an LLP",
-  "/clients/:id/compliance/tds":
-    "same config array",
+
+
+
   "/portal/employee/activate":
     "the landing page for the invite link emailed by " +
     "services/employee_portal_service.py::_send_invite_email — nothing in " +
@@ -75,7 +71,17 @@ function sourceBlob(): string {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(p);
-      else if (/\.tsx?$/.test(entry.name) && !entry.name.includes(".test."))
+      else if (
+        /\.tsx?$/.test(entry.name) &&
+        !entry.name.includes(".test.") &&
+        // The screen inventory is DATA, not links, and it holds path literals
+        // for both halves: the screens it NAMES (a real way in, counted below
+        // from ALL_SCREENS) and the routes it deliberately does NOT name, whose
+        // keys would otherwise read to this scan as links. That is the
+        // stripComments problem in another form — a file explaining why a
+        // screen is unreachable must not be what makes it look reachable.
+        p !== path.join(WEB, "lib", "navigation", "screens.ts")
+      )
         parts.push(stripComments(fs.readFileSync(p, "utf8")));
     }
   };
@@ -86,7 +92,14 @@ function sourceBlob(): string {
 const BLOB = sourceBlob();
 const ROUTES = screenRoutes(path.join(WEB, "app"));
 
+/** Routes the ⌘K inventory names. Typing a screen's name IS a way in — the
+ *  one that 2.5 exists to give the screens no menu reaches. */
+const NAMED = new Set(
+  ALL_SCREENS.map((s) => (s.scope === "firm" ? s.href : `/clients/:id/${s.href}`)),
+);
+
 function isReached(route: string): boolean {
+  if (NAMED.has(route)) return true;
   const chunks = route.split(/:[^/]+/);
   const escaped = chunks.map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   if (new RegExp(escaped.join("[^\\s\"'`]*?")).test(BLOB)) return true;

@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Search, Users, UserPlus, CheckSquare, FileText, Shield, ShieldCheck, X } from "lucide-react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Search, Users, UserPlus, CheckSquare, FileText, Shield, ShieldCheck, X, Compass } from "lucide-react";
 import { api } from "@/lib/api";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { matchScreens, screenHref, isScreensOnly, SCREENS_ONLY_PREFIX } from "@/lib/navigation/screens";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type SearchResult = {
   id: string;
   category:
+    | "screens"
     | "clients"
     | "tasks"
     | "compliance"
@@ -24,6 +26,7 @@ type SearchResult = {
 };
 
 const CATEGORY_ICONS = {
+  screens: Compass,
   clients: Users,
   tasks: CheckSquare,
   compliance: Shield,
@@ -36,6 +39,7 @@ const CATEGORY_ICONS = {
 };
 
 const CATEGORY_LABELS = {
+  screens: "Go to",
   clients: "Clients",
   tasks: "Tasks",
   compliance: "Compliance",
@@ -81,6 +85,14 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const pathname = usePathname() ?? "";
+  // The open client, read off the URL — the same segment
+  // `lib/workspace/clientPath` reads, so the palette and the switcher cannot
+  // disagree about which client is open.
+  const clientId =
+    pathname.match(
+      /^\/clients\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/|$)/i,
+    )?.[1] ?? null;
 
   useEffect(() => {
     if (open) {
@@ -117,11 +129,35 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
   }, []);
 
   useEffect(() => {
+    // A screens-only query never reaches /api/search: `>` is not a term, and
+    // sending it would run a round trip whose answer is thrown away.
+    if (isScreensOnly(query)) { setResults([]); setSearchError(null); return; }
     const t = setTimeout(() => search(query), 300);
     return () => clearTimeout(t);
   }, [query, search]);
 
-  const allResults = results;
+  // Screens match in the bundle, so they render on the FIRST keystroke while
+  // the entity search is still debounced. That difference in COST is the whole
+  // reason both can be shown at once instead of one hiding behind a prefix.
+  const screenResults: SearchResult[] = useMemo(
+    () =>
+      matchScreens(query, clientId).map((sc) => {
+        const href = screenHref(sc, clientId);
+        return {
+          id: `screen:${sc.scope}:${sc.href}`,
+          category: "screens" as const,
+          title: sc.name,
+          subtitle: sc.scope === "client" ? `${sc.section} · this client` : sc.section,
+          href: href ?? "",
+        };
+      }),
+    [query, clientId],
+  );
+
+  // `>` restricts to screens. Entity results are dropped rather than not
+  // fetched, because the fetch is already in flight by the time the caret
+  // reaches the second character.
+  const allResults = isScreensOnly(query) ? screenResults : [...screenResults, ...results];
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "ArrowDown") {
@@ -167,7 +203,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
             ref={inputRef}
             type="text"
             className="flex-1 text-base outline-none text-ps-ink placeholder:text-ps-hint bg-transparent"
-            placeholder="Search clients, tasks, filings, journals..."
+            placeholder={`Go to a screen, or find a client, task or journal… (${SCREENS_ONLY_PREFIX} for screens only)`}
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
