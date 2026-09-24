@@ -88,16 +88,16 @@ export default function LoginPage() {
         <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex items-center gap-3 px-10 py-10">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-[14px] font-bold text-white shadow-[0_0_20px_rgba(37,99,235,0.5)]">P</div>
-          <span className="text-[16px] font-bold text-white tracking-tight">PracticeSync AI</span>
+          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-sm font-bold text-white shadow-[0_0_20px_rgba(37,99,235,0.5)]">P</div>
+          <span className="text-base font-bold text-white tracking-tight">PracticeSync AI</span>
         </div>
 
         <div className="relative z-10 px-10 pb-4 space-y-8">
           <div>
-            <h1 className="text-[32px] font-bold text-white leading-tight tracking-tight">
+            <h1 className="text-3xl font-bold text-white leading-tight tracking-tight">
               The operating system<br />for modern CA firms
             </h1>
-            <p className="text-[14px] text-slate-400 mt-3 leading-relaxed">
+            <p className="text-sm text-slate-400 mt-3 leading-relaxed">
               Manage clients, compliance, accounting, payroll and documents from one workspace.
             </p>
           </div>
@@ -108,8 +108,8 @@ export default function LoginPage() {
                   <Icon size={16} className="text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-[13px] font-semibold text-slate-200">{label}</p>
-                  <p className="text-[12px] text-slate-500">{desc}</p>
+                  <p className="text-sm font-semibold text-slate-200">{label}</p>
+                  <p className="text-xs text-slate-500">{desc}</p>
                 </div>
               </div>
             ))}
@@ -126,15 +126,15 @@ export default function LoginPage() {
         <div className="w-full max-w-[380px]">
 
           <div className="lg:hidden flex items-center gap-2.5 justify-center mb-8">
-            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-[13px] font-bold text-white">P</div>
-            <span className="text-[16px] font-bold text-ps-ink">PracticeSync AI</span>
+            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-sm font-bold text-white">P</div>
+            <span className="text-base font-bold text-ps-ink">PracticeSync AI</span>
           </div>
 
           <div className="mb-8">
-            <h2 className="text-[26px] font-bold text-ps-ink tracking-tight">
+            <h2 className="text-2xl font-bold text-ps-ink tracking-tight">
               {mfaStep ? "Two-factor authentication" : "Sign in"}
             </h2>
-            <p className="text-[14px] text-ps-label mt-1">
+            <p className="text-sm text-ps-label mt-1">
               {mfaStep ? "Enter the 6-digit code from your authenticator app" : "Enter your credentials to continue"}
             </p>
           </div>
@@ -142,12 +142,12 @@ export default function LoginPage() {
           {mfaStep ? (
             <form onSubmit={handleMfaSubmit} className="space-y-5">
               <div className="space-y-1.5">
-                <label className="block text-[13px] font-semibold text-ps-ink">Authentication code</label>
+                <label className="block text-sm font-semibold text-ps-ink">Authentication code</label>
                 <input
                   autoFocus inputMode="numeric" value={mfaCode} maxLength={6}
                   onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   placeholder="123456"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-[18px] tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
                 />
               </div>
               {error && (
@@ -155,12 +155,12 @@ export default function LoginPage() {
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-red-500 text-3xs font-bold leading-none">!</span>
                   </div>
-                  <p className="text-[13px] text-red-600 leading-snug">{error}</p>
+                  <p className="text-sm text-red-600 leading-snug">{error}</p>
                 </div>
               )}
               <button
                 type="submit" disabled={loading || mfaCode.length < 6}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[14px] font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
               >
                 {loading ? (
                   <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Verifying…</>
@@ -172,24 +172,24 @@ export default function LoginPage() {
           ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="block text-[13px] font-semibold text-ps-ink">Email address</label>
+              <label className="block text-sm font-semibold text-ps-ink">Email address</label>
               <input
                 type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                 placeholder="ca@yourfirm.com"
-                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-[14px] text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
               />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="block text-[13px] font-semibold text-ps-ink">Password</label>
-                <Link href="/login/forgot-password" className="text-[12px] text-blue-600 hover:text-blue-700 font-medium transition-colors">
+                <label className="block text-sm font-semibold text-ps-ink">Password</label>
+                <Link href="/login/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
                   Forgot password?
                 </Link>
               </div>
               <input
                 type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-[14px] text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
               />
             </div>
 
@@ -198,13 +198,13 @@ export default function LoginPage() {
                 <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
                   <span className="text-red-500 text-3xs font-bold leading-none">!</span>
                 </div>
-                <p className="text-[13px] text-red-600 leading-snug">{error}</p>
+                <p className="text-sm text-red-600 leading-snug">{error}</p>
               </div>
             )}
 
             <button
               type="submit" disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[14px] font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+              className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
             >
               {loading ? (
                 <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Signing in…</>
@@ -215,7 +215,7 @@ export default function LoginPage() {
           </form>
           )}
 
-          <p className="text-center text-[13px] text-ps-hint mt-6">
+          <p className="text-center text-sm text-ps-hint mt-6">
             New to PracticeSync?{" "}
             <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
               Create your account →

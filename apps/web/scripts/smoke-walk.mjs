@@ -58,8 +58,11 @@
  *
  *   pnpm smoke:build && node scripts/smoke-walk.mjs
  *   node scripts/smoke-walk.mjs --only /clients --shots
+ *   node scripts/smoke-walk.mjs --only /login --shots --anon
  *
  * --only <prefix>  walk just the routes under a prefix
+ * --anon          do NOT sign in, so the sign-in screens render as
+ *                 themselves. Looking only — see `anon` below.
  * --shots          write a PNG per route to .smoke/ (the visual baseline —
  *                  NOT a regression gate; these are supposed to change)
  */
@@ -354,6 +357,26 @@ const EXPECTED_LANDINGS = {
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
 const shots = args.includes("--shots");
+/**
+ * THE SIX SCREENS EVERY USER SEES FIRST ARE THE SIX THIS WALK COULD NOT SEE.
+ *
+ * The walk signs in — `sessionScript()` puts a session in localStorage before
+ * the first paint — because that is what makes the other 154 routes render at
+ * all. The cost is exactly the signed-OUT surface: `/login` and
+ * `/login/forgot-password` bounce to `/`, so their shots are pictures of the
+ * dashboard, and EXPECTED_LANDINGS pins that bounce as correct. Found while
+ * converting the auth family's type sizes (D12): four of its six screens could
+ * be photographed and two could not, and those two are the product's front
+ * door.
+ *
+ * `--anon` skips the session. It is for LOOKING, not for gating: signed out,
+ * every protected route redirects to the same sign-in page, so the landing
+ * pins and the duplicate-body check are both meaningless and are SKIPPED
+ * rather than quietly satisfied — a run that reported "150 distinct bodies"
+ * while photographing one page 154 times would be worse than no run. Use it
+ * with `--only`, and the run says so if you do not.
+ */
+const anon = args.includes("--anon");
 
 const routes = JSON.parse(fs.readFileSync(path.join(__dirname, "screens.snapshot.json"), "utf8"))
   .map((r) => r.replace(/:[^/]+/g, "_placeholder"))
@@ -391,7 +414,13 @@ const server = await serve(OUT);
 const chromium = await loadChromium();
 const browser = await chromium.launch({ executablePath: installedChromium() });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-await context.addInitScript(sessionScript());
+if (!anon) await context.addInitScript(sessionScript());
+if (anon) {
+  console.log("--anon: signed out. Landing pins and the duplicate-body check " +
+              "are skipped — see the comment on `anon`." +
+              (only ? "" : "  NO --only: every protected route will redirect " +
+               "to the sign-in page, which is not a walk of anything."));
+}
 if (shots) fs.mkdirSync(SHOT_DIR, { recursive: true });
 
 const broken = [];
@@ -418,7 +447,10 @@ for (const route of routes) {
     // perfectly good page on screen — somebody else's.
     const landed = trim(new URL(page.url()).pathname);
     const expected = EXPECTED_LANDINGS[route];
-    if (landed !== trim(new URL(url).pathname)) {
+    // Signed out, every pin in that map describes a redirect that only holds
+    // for a signed-IN visitor. Asserting them here would fail the run for
+    // behaving correctly.
+    if (!anon && landed !== trim(new URL(url).pathname)) {
       if (expected === undefined) {
         errors.push(`landed on ${landed}, not the route asked for`);
       } else if (landed !== trim(expected)) {
@@ -525,4 +557,4 @@ if (shots) {
     `Click a card for the full page.</p><div class="grid">${cards}</div>`);
   console.log(`\n${captured.length} screenshots and a contact sheet in ${SHOT_DIR}`);
 }
-process.exit(broken.length || herds.length ? 1 : 0);
+process.exit(broken.length || (!anon && herds.length) ? 1 : 0);

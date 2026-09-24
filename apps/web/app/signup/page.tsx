@@ -47,8 +47,8 @@ export default function SignupPage() {
       <div className="w-full max-w-[420px]">
 
         <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-[13px] font-bold text-white">P</div>
-          <span className="text-[16px] font-bold text-ps-ink">PracticeSync AI</span>
+          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-sm font-bold text-white">P</div>
+          <span className="text-base font-bold text-ps-ink">PracticeSync AI</span>
         </div>
 
         <div className="bg-white rounded-2xl border border-ps-border shadow-sm p-8">
@@ -58,18 +58,18 @@ export default function SignupPage() {
                 <Mail size={22} className="text-emerald-600" />
               </div>
               <div>
-                <h2 className="text-[18px] font-bold text-ps-ink">Check your inbox</h2>
-                <p className="text-[14px] text-ps-label mt-2 leading-relaxed">
+                <h2 className="text-lg font-bold text-ps-ink">Check your inbox</h2>
+                <p className="text-sm text-ps-label mt-2 leading-relaxed">
                   We sent a magic link to <span className="text-ps-ink font-medium">{email}</span>. Click it to finish setting up your firm.
                 </p>
-                <p className="text-[12px] text-ps-hint mt-3">Didn&apos;t receive it? Check your spam folder.</p>
+                <p className="text-xs text-ps-hint mt-3">Didn&apos;t receive it? Check your spam folder.</p>
               </div>
             </div>
           ) : (
             <>
               <div className="mb-6">
-                <h2 className="text-[22px] font-bold text-ps-ink tracking-tight">Create your firm</h2>
-                <p className="text-[14px] text-ps-label mt-1">Get started in minutes — no credit card required</p>
+                <h2 className="text-xl font-bold text-ps-ink tracking-tight">Create your firm</h2>
+                <p className="text-sm text-ps-label mt-1">Get started in minutes — no credit card required</p>
               </div>
 
               {error && (
@@ -77,7 +77,7 @@ export default function SignupPage() {
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-red-500 text-3xs font-bold leading-none">!</span>
                   </div>
-                  <p className="text-[13px] text-red-600 leading-snug">{error}</p>
+                  <p className="text-sm text-red-600 leading-snug">{error}</p>
                 </div>
               )}
 
@@ -88,17 +88,17 @@ export default function SignupPage() {
                   { label: "Email Address", value: email, setter: setEmail, placeholder: "you@example.com", type: "email" },
                 ].map(({ label, value, setter, placeholder, type }) => (
                   <div key={label} className="space-y-1.5">
-                    <label className="block text-[13px] font-semibold text-ps-ink">{label}</label>
+                    <label className="block text-sm font-semibold text-ps-ink">{label}</label>
                     <input
                       type={type} value={value} onChange={(e) => setter(e.target.value)}
                       placeholder={placeholder} required
-                      className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-[14px] text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                      className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
                     />
                   </div>
                 ))}
                 <button
                   type="submit" disabled={loading}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[14px] font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm mt-2"
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm mt-2"
                 >
                   {loading ? (
                     <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
@@ -108,7 +108,7 @@ export default function SignupPage() {
                 </button>
               </form>
 
-              <p className="text-center text-[13px] text-ps-hint mt-5">
+              <p className="text-center text-sm text-ps-hint mt-5">
                 Already have an account?{" "}
                 <Link href="/login" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
                   Sign in →
