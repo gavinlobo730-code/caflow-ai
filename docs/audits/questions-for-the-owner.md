@@ -586,11 +586,67 @@ Five slices landed overnight (PRs #560–#563). Each is described in its own
 commit; these are the **decisions left for you**, and nothing below is blocking
 — the work went round them.
 
+## G0. THE PRODUCT HAS THREE PRIMARY COLOURS AND THE BRAND IS THE SMALLEST — 547 sites  *(new, 24-09-2026)*
+
+**This is G's question at ten times the size, and it was found by measuring
+rather than by reading.** `tailwind.config.ts` says, in its own comment:
+
+> *"there was no single primary, so three were in use at once — brand navy
+> here, indigo #4338CA in banking, blue-700 on the Team screen. **What follows
+> closes all three.**"*
+
+It did not. The token was added; the sites were never converted. Measured on
+24 September:
+
+| what paints a primary button | sites |
+|---|---|
+| `bg-blue-600` | **303** |
+| `bg-blue-700` | **244** |
+| `bg-brand` + `bg-brand-dark` (the navy, #182350) | 200 |
+| indigo (`bg-indigo-600` and its family) | 92 |
+
+So **Tailwind blue is the product's de-facto primary, 547 to 200**, and the
+brand navy the token file calls "the brand" is in the minority. A CA moving
+between two screens sees the Save button in two different colours.
+
+**I have NOT touched this and will not without you.** Every other colour slice
+this week has been a tokenisation — naming a value already in use, so nothing
+looks different (`state.problem-hover` is literally the `red-100` the code was
+already writing). This one cannot be: whichever way it goes, **hundreds of
+buttons change colour**, which is precisely the risk you named — *"there might
+be a risk of some screens looking odd."* And D15 puts the redesign after
+navigation, so it is not this phase's to decide alone.
+
+> **The question, and it is one word:**
+>
+> **(a) NAVY** — the brand wins. 547 blue sites become `bg-brand`. The product
+> looks like PracticeSync everywhere. Biggest visible change in the codebase,
+> and the one most likely to need a screen-by-screen read afterwards.
+>
+> **(b) BLUE** — name what is in use. `blue-600` becomes the primary action
+> token, the navy stays for the logo, the masthead and the marketing site.
+> Nothing looks different; the vocabulary closes; the token file's claim
+> becomes true.
+>
+> **(c) LATER** — leave it to Phase 2's redesign, where the whole screen is
+> being looked at anyway.
+
+**My recommendation is (b) or (c), not (a).** (a) is a rebrand dressed as a
+refactor. (b) is the same method that has worked three times this week and
+carries no visual risk. (c) costs nothing now and is the safest if the
+navigation work is going to move these screens anyway.
+
+Either way **the indigo (G, below) folds into whichever wins** — it is nobody's
+brand and has no argument for it.
+
 ## G. The rival indigo — one decision, 55 sites
 
 `#4338CA` (18), `#C7D2FE` (12), `#EEF2FF` (8), `#3730A3` (7), `#E0E7FF` (5),
 `#6366F1` (5) — **55 sites across 7 files** on an indigo that is not `brand`.
-The plan has called this "~40 sites" since T3-a; it is 55, measured 19 Sep.
+The plan has called this "~40 sites" since T3-a; it was 55, measured 19 Sep —
+and **92 on 24 Sep**, counted as Tailwind `indigo-*` utilities rather than as
+hex literals, which is the same drift in a second spelling. See G0 above: this
+is the small half of a 547-site question.
 
 Folding them into `brand` (`#182350`) changes what the **executive dashboard,
 copilot and workflows** screens look like. That is a visible change on three
