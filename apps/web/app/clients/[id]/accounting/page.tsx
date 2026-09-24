@@ -11,7 +11,6 @@ import { DataTable, downloadCsv, exportSelectedAction } from "@/components/ui/da
 import { toCsv } from "@/lib/table/process";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
-import { getFirmId } from "@/lib/data/getFirmId";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { api, type ReconciliationRun, type ReconciliationFinding } from "@/lib/api";
@@ -3520,56 +3519,41 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     }
   }
 
-  // WHAT THE TABLE CALLS EACH REPORT. `shared_reports.report_type` is CHECKed
-  // (migration 032, widened by 412) and this screen's own ids are not those
-  // values, so the two have to be mapped — the conditional that used to do it
-  // handled "bs" and passed "trial" STRAIGHT THROUGH, which the constraint has
-  // always refused. Sharing a Trial Balance therefore never once worked, and it
-  // failed in the worst order: the workbook uploads first, so each press left an
-  // orphaned file in storage and put a raw Postgres message in an alert().
-  //
-  // Spelled as a total map so a fourth report cannot be added without deciding
-  // what the table calls it. tests/test_a_shared_report_names_a_type_the_table_allows.py
-  // reads THIS object and the migration's CHECK and holds the two together.
-  const SHARED_REPORT_TYPE: Record<"pl" | "bs" | "trial", string> = {
-    pl: "pl",
-    bs: "balance_sheet",
-    trial: "trial_balance",
-  };
-
   async function shareToPortal(reportType: "pl" | "bs" | "trial") {
     setSharing(reportType);
     try {
       const XLSX = (await import("xlsx")).default;
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
       const labelMap = { pl: "Profit & Loss", bs: "Balance Sheet", trial: "Trial Balance" };
       const label = `${labelMap[reportType]} (${basisLabel}) — FY ${financialYear}`;
       const fileName = `${reportType}-${basis}-FY${financialYear}-${Date.now()}.xlsx`;
 
       // Same backend-sourced report as the on-screen view and the XLSX export.
+      // Building the workbook here is FORMATTING of figures the server already
+      // computed; what the browser must not hold is the ability to write to a
+      // storage bucket and insert a row saying a client may read it.
       const { rows, sheetName, moneyColumns } = await buildReportSheet(reportType);
       const wb = buildWorkbook(XLSX, { rows, moneyColumns, sheetName });
       const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
       const file = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 
-      const storagePath = `shared_reports/${clientId}/${fileName}`;
-      const { error: uploadErr } = await supabase.storage
-        .from("Documents")
-        .upload(storagePath, file, { contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      if (uploadErr) throw new Error(uploadErr.message);
-
-      const { error: dbErr } = await supabase.from("shared_reports").insert({
-        firm_id: firmId,
-        client_id: clientId,
-        report_type: SHARED_REPORT_TYPE[reportType],
-        report_label: label,
-        financial_year: financialYear,
-        storage_path: storagePath,
-        file_name: fileName,
-        file_size_bytes: file.size,
-      });
-      if (dbErr) throw new Error(dbErr.message);
+      // BOTH PRIVILEGED WRITES ARE THE SERVER'S. This screen used to upload to
+      // Supabase Storage and insert into `shared_reports` over PostgREST, so
+      // rbac() ran on neither and RLS was the only control on publishing a
+      // client's statements to that client's own portal. It also did them in
+      // the worst order with no cleanup — the upload first — so every refused
+      // insert left an orphaned file, which is every Trial Balance share ever
+      // attempted: the report_type the browser sent fell through a conditional
+      // that translated only "bs", and the CHECK has always refused "trial".
+      // What the table calls each report now lives in
+      // `domain/reporting/shared_report.py`, so the browser names none of it.
+      const form = new FormData();
+      form.append("file", file, fileName);
+      form.append("client_id", clientId);
+      form.append("report_id", reportType);
+      form.append("report_label", label);
+      form.append("financial_year", financialYear);
+      const res = await api.accounting.shareReport(form);
+      if (!res?.success) throw new Error(res?.error || "Share failed");
 
       setShareSuccess(reportType);
       setTimeout(() => setShareSuccess(null), 3000);

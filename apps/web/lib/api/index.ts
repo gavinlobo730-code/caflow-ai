@@ -2664,6 +2664,35 @@ export const api = {
     balanceSheet: (params?: Record<string, string>) => request(`/api/accounting/balance-sheet${params ? "?" + new URLSearchParams(params) : ""}`),
     scheduleIii: (params?: Record<string, string>) => request(`/api/accounting/schedule-iii${params ? "?" + new URLSearchParams(params) : ""}`),
     /**
+     * PUBLISH ONE STATEMENT TO A CLIENT'S PORTAL.
+     *
+     * The screen used to do both privileged writes itself — upload the workbook
+     * to Supabase Storage and insert into `shared_reports` over PostgREST — so
+     * `rbac()` ran on neither, and what it publishes is a client's P&L, Balance
+     * Sheet or Trial Balance to that client's own portal. Both writes are the
+     * server's now; the browser still BUILDS the workbook, which is formatting
+     * of figures the server already computed.
+     *
+     * `report_id` is this screen's own id (pl / bs / trial). What the table
+     * calls it is resolved in `domain/reporting/shared_report.py`, so the
+     * browser cannot post a value the CHECK refuses — which is exactly what
+     * made the Trial Balance button fail for as long as it existed.
+     */
+    shareReport: async (form: FormData) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(`${BASE_URL}/api/accounting/shared-reports`, {
+        method: "POST",
+        // No Content-Type — the browser sets the multipart boundary.
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      // A 422 is a sentence written for the CA (an unknown report, an empty or
+      // oversized workbook), so surface it rather than the status line.
+      if (!res.ok) throw new Error(await errorMessage(res));
+      return res.json();
+    },
+    /**
      * The Schedule III ageing schedules — the notes to the balance sheet added
      * by MCA Notification G.S.R. 207(E) of 24 March 2021. Twenty-four figures,
      * computed by public.schedule_iii_ageing (migration 303) rather than by
