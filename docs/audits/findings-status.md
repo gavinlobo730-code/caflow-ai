@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **262** | re-read against the code. The defect is gone. |
-| partial | **9** | part of the finding is answered, part is not. Each says which. |
+| closed | **265** | re-read against the code. The defect is gone. |
+| partial | **6** | part of the finding is answered, part is not. Each says which. |
 | open | **2** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 11 items — 2 open and 9 partial — not 254.**
+**The work left is 8 items — 2 open and 6 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -39,15 +39,12 @@ is left as "unknown".
 
 | severity | finding | what it is |
 |---|---|---|
-| high | **ACC-03** | Every receipt and vendor payment posts to one generic "Bank Account" ledger, while bank-statemen |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
 | medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
-| medium | **SALES-28** | E-invoice and e-way bill are record-keeping ledgers only — no JSON is produced, no applicability |
-| low | **INV-09** | Stock quantity is NUMERIC(10,3) with no unit conversion, so high-count or fine-grained items bre |
 
 
 ## Not a defect as stated
@@ -92,6 +89,7 @@ is left as "unknown".
 | critical | **TDS-01** | Annual-aggregate thresholds are not modelled for §194J, §194H, §194A, §194D, §194G or §194Q — th |
 | critical | **TDS-02** | §194Q withholds 0.1% of the whole invoice instead of 0.1% of the sum exceeding ₹50 lakh — a six- |
 | high | **ACC-02** | Cash receipts and cash vendor payments are posted to the Bank ledger — Cash in Hand never moves |
+| high | **ACC-03** | Every receipt and vendor payment posts to one generic "Bank Account" ledger, while bank-statemen |
 | high | **ACC-05** | A client's financial year, once locked by finalising the year-end engagement, can never be reope |
 | high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **ACC-07** | The Audit Log screen shows only the 200 most recent firm-wide rows and cannot show one entry's e |
@@ -285,6 +283,7 @@ is left as "unknown".
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
 | medium | **SALES-26** | Nowhere in the sales screens can a CA see what a single invoice still owes |
 | medium | **SALES-27** | A line with no HSN/SAC silently prints 998211 — the CA-services SAC — on any invoice, including  |
+| medium | **SALES-28** | E-invoice and e-way bill are record-keeping ledgers only — no JSON is produced, no applicability |
 | medium | **SALES-29** | An invoice can be created and issued with no place of supply, and only the GSTR-1 build discover |
 | medium | **TDS-08** | No §201(1A) interest and no §234E late fee are computed anywhere a CA can use them |
 | medium | **TDS-12** | The compliance calendar has no 24Q filing deadline and no monthly non-salary TDS deposit deadlin |
@@ -310,6 +309,7 @@ is left as "unknown".
 | low | **BANK-29** | A statement's opening/closing-balance row becomes a zero-amount bank line that clogs the queue a |
 | low | **FA-17** | The Add Asset form's Asset Code field is silently discarded |
 | low | **GST-23** | GSTR-1 has no way to record the real ARN and filing date from the client workspace, so its perio |
+| low | **INV-09** | Stock quantity is NUMERIC(10,3) with no unit conversion, so high-count or fine-grained items bre |
 | low | **INV-10** | Stock adjustments and NRV write-downs are reachable only two clicks deep, from inside one item's |
 | low | **IT-07** | AMT surcharge for an individual or HUF uses the partnership firm's 12%-above-₹1-crore ladder ins |
 | low | **IT-21** | AMT is charged without the §115JC(5) carve-out for a person who has opted into §115BAC — which i |

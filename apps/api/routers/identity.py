@@ -76,7 +76,7 @@ def create_user(body: CreateUserBody, current_user: dict = Depends(rbac("team", 
         "invite_expires_at": (datetime.now(timezone.utc) + _INVITE_TTL).isoformat(),
     })
     log_event(firm_id, "user", str(created.get("id", "")), "create",
-              actor_id=current_user.get("id"), actor_email=current_user.get("email"),
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               new_data={"email": body.email, "role": body.role})
     return api_response(True, {**created, "invite_token": invite_token})
 
@@ -131,7 +131,7 @@ def change_role(user_id: str, body: RoleBody, current_user: dict = Depends(rbac(
     old = member.get("role")
     updated = user_repo.update(user_id, {"role": body.role})
     log_event(current_user["firm_id"], "user_role", user_id, "update",
-              actor_id=current_user.get("id"), actor_email=current_user.get("email"),
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               old_data={"role": old}, new_data={"role": body.role})
     return api_response(True, updated)
 
@@ -142,7 +142,7 @@ def suspend_user(user_id: str, current_user: dict = Depends(rbac("team", "write"
     # Disable AND revoke sessions so any existing JWT is rejected immediately.
     updated = user_repo.update(user_id, {"is_active": False, "sessions_revoked_at": _now()})
     log_event(current_user["firm_id"], "user", user_id, "suspend",
-              actor_id=current_user.get("id"), actor_email=current_user.get("email"))
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
     login_events_repo.record(current_user["firm_id"], user_id, member.get("email"), "suspended")
     return api_response(True, updated)
 
@@ -152,7 +152,7 @@ def reactivate_user(user_id: str, current_user: dict = Depends(rbac("team", "wri
     _get_member(user_id, current_user["firm_id"])
     updated = user_repo.update(user_id, {"is_active": True})
     log_event(current_user["firm_id"], "user", user_id, "reactivate",
-              actor_id=current_user.get("id"), actor_email=current_user.get("email"))
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
     return api_response(True, updated)
 
 
@@ -161,7 +161,7 @@ def force_logout(user_id: str, current_user: dict = Depends(rbac("team", "write"
     member = _get_member(user_id, current_user["firm_id"])
     updated = user_repo.update(user_id, {"sessions_revoked_at": _now()})
     log_event(current_user["firm_id"], "user", user_id, "force_logout",
-              actor_id=current_user.get("id"), actor_email=current_user.get("email"))
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
     login_events_repo.record(current_user["firm_id"], user_id, member.get("email"), "forced_logout")
     return api_response(True, updated)
 
@@ -176,7 +176,7 @@ def force_logout_all(current_user: dict = Depends(rbac("team", "write"))):
         user_repo.update(m["id"], {"sessions_revoked_at": now})
         count += 1
     log_event(firm_id, "firm", firm_id, "force_logout_all",
-              actor_id=current_user.get("id"), actor_email=current_user.get("email"),
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               metadata={"users_affected": count})
     return api_response(True, {"users_affected": count})
 
@@ -305,7 +305,7 @@ def set_member_permissions(user_id: str, body: PermissionChangesBody,
     # Audited like every other mutation in this router, and for a stronger
     # reason: who may do what is the record an ICAI peer review asks for.
     log_event(current_user["firm_id"], "user_permissions", user_id, "update",
-              actor_id=current_user.get("id"), actor_email=current_user.get("email"),
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               new_data={"changes": {k: v for k, v in body.changes.items()}})
     return api_response(True, grid)
 
@@ -383,7 +383,7 @@ def update_my_profile(body: MyProfileBody,
     # person is identified in approvals and audit trails, so a change to it is
     # worth a record.
     log_event(current_user.get("firm_id"), "user", str(current_user["id"]), "profile_update",
-              actor_id=current_user.get("id"), actor_email=current_user.get("email"),
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               new_data={"full_name": name})
     return api_response(True, updated)
 

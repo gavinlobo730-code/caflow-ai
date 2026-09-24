@@ -2898,6 +2898,18 @@ export const api = {
     expiring: (withinDays = 2) =>
       request<ApiResp<ExpiringEwayBills>>(
         `/api/eway-bill/expiring?within_days=${withinDays}`),
+    /** RECORD an extension obtained on the NIC portal — this product reaches
+     *  no portal. The endpoint has existed since the module was written and
+     *  had no caller until 24-09-2026, so the one action the expiring panel
+     *  exists to prompt could not be taken anywhere in the product.
+     *
+     *  The server refuses a date that does not extend the bill's own current
+     *  validity, so this is not the place to re-check it. */
+    extend: (recordId: string, newValidUpto: string, reason: string) =>
+      request(`/api/eway-bill/records/${recordId}/extend`, {
+        method: "POST",
+        body: JSON.stringify({ new_valid_upto: newValidUpto, extension_reason: reason }),
+      }),
   },
 
   inventory: {

@@ -210,7 +210,7 @@ def extract_notice(
             db.table("government_notices").insert(record).execute()
 
         log_event(firm_id, "government_notice", record["id"], "create",
-                  actor_id=current_user.get("id"), new_data=record)
+                  actor_id=current_user.get("auth_user_id"), new_data=record)
         timeline_service.log_timeline_event(
             client_id=body.client_id, firm_id=firm_id,
             financial_year="", category="compliance",
@@ -338,7 +338,7 @@ def update_notice_status(
             rec = rows[0] if rows else {}
 
         log_event(firm_id, "government_notice", notice_id, "status_change",
-                  actor_id=current_user.get("id"), new_data=updates)
+                  actor_id=current_user.get("auth_user_id"), new_data=updates)
         return api_response(True, rec)
     except Exception as e:
         return api_response(False, None, "Unable to complete document processing. Please try again.")
@@ -379,7 +379,7 @@ def approve_notice(
             rec = rows[0] if rows else {}
 
         log_event(firm_id, "government_notice", notice_id, "ca_approved",
-                  actor_id=current_user.get("id"), new_data=updates)
+                  actor_id=current_user.get("auth_user_id"), new_data=updates)
         timeline_service.log_timeline_event(
             client_id=rec.get("client_id", ""),
             firm_id=firm_id,

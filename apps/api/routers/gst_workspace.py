@@ -475,7 +475,7 @@ def save_gstr1(
                 sb.table("gstr1_returns").insert(record).execute()
 
         log_event(firm_id, "gstr1_return", record["id"], "create",
-                  actor_id=current_user.get("id"), new_data=record)
+                  actor_id=current_user.get("auth_user_id"), new_data=record)
         timeline_service.log_timeline_event(
             client_id=body.client_id, firm_id=firm_id,
             financial_year="", category="gst", event_type="gstr1_draft_saved",
@@ -595,7 +595,7 @@ def update_gstr1_status(
                     "not cover this return", FILING_TYPE_GSTR1, rec.get("client_id"), rec.get("period"))
 
         log_event(firm_id, "gstr1_return", return_id, "status_change",
-                  actor_id=current_user.get("id"), new_data={"status": body.status})
+                  actor_id=current_user.get("auth_user_id"), new_data={"status": body.status})
         if body.status == "submitted":
             timeline_service.log_timeline_event(
                 client_id=rec.get("client_id", ""), firm_id=firm_id,
@@ -682,7 +682,7 @@ def save_gstr3b(
                 sb.table("gstr3b_returns").insert(record).execute()
 
         log_event(firm_id, "gstr3b_return", record["id"], "create",
-                  actor_id=current_user.get("id"), new_data=record)
+                  actor_id=current_user.get("auth_user_id"), new_data=record)
         return api_response(True, record)
     except HTTPException:
         # period_validation_service's locked-FY rejection (CGST §39) carries a real,
@@ -840,7 +840,7 @@ def update_gstr3b_status(
                 return_id, stale_state["differences"])
 
         log_event(firm_id, "gstr3b_return", return_id, "status_change",
-                  actor_id=current_user.get("id"),
+                  actor_id=current_user.get("auth_user_id"),
                   new_data={"status": body.status},
                   metadata=({"stale_at_submission": stale_state["differences"]}
                             if submitted_stale else None))
@@ -1698,7 +1698,7 @@ def _delete_return(current_user: dict, table: str, mock_store: dict,
     # recoverable from the log rather than merely noted as having happened.
     log_event(
         firm_id=firm_id, entity_type=table, entity_id=return_id,
-        action="delete", actor_id=current_user.get("id"),
+        action="delete", actor_id=current_user.get("auth_user_id"),
         actor_email=current_user.get("email"), old_data=rec,
         metadata={"period": rec.get("period"), "status": status,
                   "reason": "unfiled return deleted by user"},
@@ -1869,7 +1869,7 @@ def recompute_gstr3b(return_id: str,
     written = {k: int(fresh.get(k) or 0) for k in _COMPARED}
     log_event(
         firm_id=current_user["firm_id"], entity_type="gstr3b_returns",
-        entity_id=return_id, action="recompute", actor_id=current_user.get("id"),
+        entity_id=return_id, action="recompute", actor_id=current_user.get("auth_user_id"),
         actor_email=current_user.get("email"),
         old_data={k: rec.get(k) for k in _COMPARED},
         new_data=written,

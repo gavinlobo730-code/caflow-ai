@@ -15,6 +15,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { api, type RecurringJournalTemplate, type RecurringJournalRun } from "@/lib/api";
 import { todayLocalISO } from "@/lib/dateMath";
@@ -103,6 +104,13 @@ export default function RecurringPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
+  /** The next few dates this template will generate on, from
+   *  `GET /{id}/preview`. `domain/recurrence` is the one cadence engine and
+   *  its month-end clamp is against the ORIGINAL day, so a 31 January
+   *  template runs 31 Jan, 28 Feb, 31 Mar — which is exactly the thing a CA
+   *  wants to see before trusting a template, and which nothing in the
+   *  product showed: the endpoint had no caller. Never derived here. */
+  const [upcoming, setUpcoming] = useState<string[]>([]);
   const [runs, setRuns] = useState<RecurringJournalRun[]>([]);
 
   const accountName = useCallback(
@@ -305,6 +313,7 @@ export default function RecurringPage() {
   async function openHistory(t: RecurringJournalTemplate) {
     setHistoryFor(t.id);
     setRuns([]);
+    setUpcoming([]);
     // Disabled while in flight like every other server call on this screen.
     // A read, so a second click costs only a wasted round trip — but the rule
     // `scripts/concurrent-actions.test.ts` states is about the BUTTON, not
@@ -312,8 +321,15 @@ export default function RecurringPage() {
     // is how the next Delete slips through.
     setBusyId(t.id);
     try {
-      const res = await api.recurringJournals.history(t.id);
+      const [res, prev] = await Promise.all([
+        api.recurringJournals.history(t.id),
+        api.recurringJournals.preview(t.id, 6),
+      ]);
       if (res.success) setRuns(res.data ?? []);
+      // `arrayOrEmpty` rather than a cast: state replaced from a payload, and
+      // `useState<string[]>([])` satisfies TypeScript however absent the key
+      // is at runtime.
+      if (prev.success) setUpcoming(arrayOrEmpty<string>(prev.data?.occurrences));
     } catch {
       /* the panel shows nothing rather than breaking the page */
     } finally {
@@ -505,6 +521,29 @@ export default function RecurringPage() {
             </button>
           </div>
           <CardContent className="p-0">
+            {/* WHAT IS COMING, beside what has happened. The dates are the
+                server's — one cadence engine, shared with recurring invoices
+                and recurring purchase bills — and a template whose next six
+                occurrences look wrong is one to fix before it posts, not
+                after. An empty list is a real answer for a paused or ended
+                template, so it says so rather than rendering nothing. */}
+            <div className="px-5 py-3 border-b border-ps-muted">
+              <p className="text-xs text-ps-hint mb-1">Next occurrences</p>
+              {upcoming.length === 0 ? (
+                <p className="text-xs text-ps-disabled">
+                  None — the template is paused, ended, or has no further dates.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {upcoming.map(d => (
+                    <span key={d}
+                      className="text-xs px-2 py-0.5 rounded-md bg-ps-bg text-ps-label tabular-nums">
+                      {d}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
             {runs.length === 0 ? (
               <p className="px-5 py-6 text-sm text-ps-hint">Nothing generated yet.</p>
             ) : (

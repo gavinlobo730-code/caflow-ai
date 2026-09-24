@@ -112,11 +112,26 @@ BUDGET: dict[str, int] = {
     "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 2,
     "/api/approvals": 1, "/api/customer-statements": 1,
     "/api/document-intelligence-v2": 1, "/api/documents": 1,
-    "/api/eway-bill": 1, "/api/knowledge": 1, "/api/payments": 1,
-    "/api/practice": 1, "/api/purchase-bills": 1, "/api/purchase-payments": 1,
-    "/api/rcm-documents": 1, "/api/recurring-journals": 1,
-    "/api/tally-migration": 1, "/api/tds-workspace": 1, "/api/team": 1,
+    "/api/knowledge": 1, "/api/payments": 1,
+    "/api/purchase-bills": 1, "/api/purchase-payments": 1,
+    "/api/rcm-documents": 1,
+    "/api/tally-migration": 1, "/api/tds-workspace": 1,
     "/api/time-entries": 1,
+    # GONE on 24-09-2026, four prefixes at once — the first sweep through this
+    # list's own tail rather than through a module:
+    #   /api/eway-bill        POST /records/{id}/extend now has the button the
+    #                         expiring-bills panel exists to prompt. Rule
+    #                         138(10)'s proviso is the one action on a bill
+    #                         about to lapse and it was unreachable.
+    #   /api/practice         PATCH /identity — the firm's own PAN and GSTIN on
+    #                         the client it raises its fee invoices from,
+    #                         frozen at whatever provisioning copied.
+    #   /api/recurring-journals  GET /{id}/preview — the next occurrences,
+    #                         beside the history that was already shown.
+    #   /api/team             PATCH /{user_id}/role DELETED rather than wired:
+    #                         a second write path for a fact
+    #                         PATCH /api/identity/users/{id}/role already owns
+    #                         and the Team screen already calls.
 }
 
 # ---------------------------------------------------------------------------
@@ -146,7 +161,9 @@ BUDGET: dict[str, int] = {
 # /api/income-tax/interest/234ab, so a CA sees s.234A and s.234B beside the
 # s.234C it has always shown (IT-13). The engine and the endpoint were
 # already there; nothing called them.
-TOTAL_BUDGET = 238
+# 238 -> 231 on 24-09-2026: the four prefixes named at the foot of BUDGET, plus
+# the three the tree had already shed since the last measurement.
+TOTAL_BUDGET = 231
 
 
 # ---------------------------------------------------------------------------

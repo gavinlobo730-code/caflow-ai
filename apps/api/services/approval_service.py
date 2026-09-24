@@ -114,8 +114,11 @@ REQUEST_TYPES = tuple(_SPECS.keys())
 
 
 def _audit(firm_id: str, req: dict, action: str, actor: dict, **extra) -> None:
+    # `actor` is a current_user, and audit_log.actor_id takes the SUPABASE AUTH
+    # id — the same key migration 111's trigger writes as auth.uid(). See
+    # tests/test_the_audit_log_names_one_kind_of_actor.py.
     log_event(firm_id, "approval_request", req.get("id", ""), action,
-              actor_id=actor.get("id"), actor_email=actor.get("email"),
+              actor_id=actor.get("auth_user_id"), actor_email=actor.get("email"),
               metadata={"request_type": req.get("request_type"), **extra})
 
 

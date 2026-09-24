@@ -156,7 +156,7 @@ def share_report_to_portal(
     log_event(
         firm_id, "shared_report",
         (saved or [{}])[0].get("id") or plan.storage_path, "create",
-        actor_id=current_user.get("id"),
+        actor_id=current_user.get("auth_user_id"),
         actor_email=current_user.get("email"),
         new_data=row,
     )

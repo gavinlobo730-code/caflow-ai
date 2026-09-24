@@ -60,9 +60,22 @@ on any of them — I have kept working around all four.
 | **D** | **Extra-shift depreciation.** FA-11's remaining half, and it is BLOCKED ON A DOCUMENT rather than on you: Schedule II Part C in `domain/fixed_assets/schedule_ii.py` holds the useful LIVES and **not the NESD markings**, and extra-shift depreciation applies only to classes that are not marked NESD | Not a decision — a fact nobody here holds. Reading it from memory would charge 50% or 100% extra depreciation on asset classes the Schedule exempts | Add it to the reading list as **document #9**, beside the ITR schemas and the PT slabs |
 
 Everything else that had accumulated before today was put to you this morning
-and answered. The answers are recorded as **D10–D19** in
+and answered. The answers are recorded as **D10–D21** in
 `docs/plan/THE-PLAN.md` — that file is the authority; this one keeps the
 reasoning behind each.
+
+**Two more were taken by me later the same day under the 17 September
+instruction, and both are written up in full as decisions rather than buried
+in a commit, so you can overrule either in one sentence:** **D20**, the
+customer credit limit (warn by default, refuse only where a firm switches it
+on, never on an opening document — migration 414), and **D21**, a dead API
+endpoint that duplicates a live one. D21 is the one worth a glance, because it
+is a DELETION: `PATCH /api/team/{user_id}/role` and `PATCH
+/api/identity/users/{user_id}/role` both changed a member's role, the Team
+screen has always called the second, nothing anywhere called the first, and
+the two validated against different role lists. Restoring it is a revert. The
+other three unreachable endpoints found in the same pass were wired up rather
+than removed, because each was the only way to do something a CA needs.
 
 ---
 

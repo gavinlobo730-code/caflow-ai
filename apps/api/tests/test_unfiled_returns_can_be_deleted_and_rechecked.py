@@ -86,7 +86,13 @@ def store(monkeypatch):
     return gw._MOCK_GSTR3B
 
 
-CALLER = {"firm_id": "F1", "id": "u1", "email": "ca@f.test", "role": "Partner"}
+# BOTH IDS, because `core.auth` always sets both and they are different keys
+# for different jobs: `id` is public.users.id (what a users-FK column takes)
+# and `auth_user_id` is the Supabase auth id — which is what `audit_log.actor_id`
+# holds, matching migration 111's trigger. See
+# tests/test_the_audit_log_names_one_kind_of_actor.py.
+CALLER = {"firm_id": "F1", "id": "u1", "auth_user_id": "auth-u1",
+          "email": "ca@f.test", "role": "Partner"}
 
 
 def _seed(store, status):
@@ -133,7 +139,7 @@ def test_the_whole_row_is_written_to_the_audit_log_before_it_goes(monkeypatch, s
     assert logged["action"] == "delete"
     assert logged["old_data"]["period"] == "042026"
     assert logged["old_data"]["tax_liability_paise"] == 100
-    assert logged["actor_id"] == "u1"
+    assert logged["actor_id"] == "auth-u1"
 
 
 def test_deleting_something_that_is_not_there_is_a_clean_not_found(monkeypatch, store):

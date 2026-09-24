@@ -33,15 +33,15 @@ critical path is blocked on anybody but me.
 
 | what | now | was | how it was measured |
 |---|---|---|---|
-| Audit findings closed | **259 of 279** (92.8%) | 0 of 278 on 7 Sep | `docs/audits/findings-status.json` |
-| — still partial | 12 | | each one's remaining half is listed in Phase 1.6 |
+| Audit findings closed | **265 of 279** (95.0%) | 0 of 278 on 7 Sep | `docs/audits/findings-status.json` |
+| — still partial | 6 | | each one's remaining half is listed in Phase 1.6 |
 | — still open | 2 | | TDS-16 (blocked on a document), GST-25 (blocked on forms) |
 | Migrations applied | **412** | 348 on 7 Sep | `ls apps/api/migrations/` |
 | Backend tests | ~7,000, green | | `pytest tests/` |
 | Routes in the app | **161** | | `find apps/web/app -name page.tsx \| wc -l` |
 | Smoke screenshots, distinct | **154 of 160** | 11 on 12 Sep | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` |
-| Endpoints a screen can reach | **829 of 1,064** | 797 of ~1,040 | the reachability test's own `_sources()` |
-| — unreachable | **235** | | Phase 3 is largely about these |
+| Endpoints a screen can reach | **832 of 1,063** | 829 of 1,064 | the reachability test's own `_sources()` |
+| — unreachable | **231** | was 235 | Phase 3 is largely about these |
 | Error boundaries | **65** | 0 | `find apps/web/app -name error.tsx \| wc -l` |
 | Hardcoded hex colours | **70** | 10,146 | `grep -rEoh '#[0-9a-fA-F]{6}' apps/web/app apps/web/components \| wc -l` |
 | Arbitrary font sizes | **379** | 2,265 | `grep -rEoh 'text-\[[0-9]+px\]' apps/web/app apps/web/components \| wc -l` |
@@ -91,6 +91,7 @@ budgeted 3–4 days for perhaps one.
 | **D18** | The six documents this environment cannot fetch | **The owner will get all six — later. Tracked, not blocking** | Every one is already a NAMED gap in the product rather than a wrong number, which is the safe direction |
 | **D19** | May a TRUSTED bank rule — one that posts with nobody watching — decide a TDS treatment? | **No. It posts the payment and FLAGS the line for a TDS decision** | The middle option, and the owner took it. A trusted rule already decides account, split and party, and rent, fees and contractor payments are exactly the recurring lines it is for — so leaving TDS out entirely means revisiting every one of them. But an under-deduction disallows the **whole expenditure** under §40(a)(ia), puts the tax on the client under §201(1) with §201(1A) interest, and is INVISIBLE: the entry posts, the books balance, and it surfaces in an assessment order two years later. A flagged line is visible; a wrong deduction is not |
 | **D20** | Should a customer credit limit WARN, or REFUSE the invoice? | **Warn by default; refuse only where the firm switches it on**, and never on an opening document | Taken by me on 24-09 under your standing instruction that code decisions are mine — raised as a question first, then withdrawn, because the finding already specifies the default and nothing is refused unless a firm deliberately asks. A block stops a CA recording a supply **that has already happened**: the goods went out, CGST §31 makes the invoice due, and a document this product refuses gets recorded somewhere it cannot see. An opening document is exempt whatever the switch says — ACC-14's reasoning, and it is exactly the document that pushes a customer past a limit somebody has just typed in. Migration 414. Overrule by saying so |
+| **D21** | A dead API endpoint that duplicates a live one — wire it up, or delete it? | **Delete it**, where nothing calls it and another endpoint already owns the fact | Taken by me on 24-09 under the same standing instruction as D20. `PATCH /api/team/{user_id}/role` and `PATCH /api/identity/users/{user_id}/role` both changed a member's role; the Team screen calls the second, the first had no caller in either frontend, and the two validated against different role lists. Two write paths for one fact is what this codebase refuses everywhere else, and the one nobody could reach is the one with no users to break. Nothing else in that batch is a deletion — the other three unreachable endpoints were WIRED UP, because each was the only way to do something a CA needs (extend an e-way bill under the proviso to Rule 138(10), correct the firm's own GSTIN on the client it bills from, see what a recurring journal will post next). Overrule by saying so; restoring it is a revert |
 
 ---
 
@@ -122,7 +123,7 @@ Phase 2 starts on a clean base.
 | **1.3** | **The named-colour judgement pass (T4-b).** 8,234 Tailwind utilities like `text-amber-600`. Status colours resolve to the semantic tokens; decorative ones stay | 2–3d | `amber`/`red`/`green` on a STATUS element resolve to `state.*`, asserted by a guard |
 | **1.4** ✅ | **LANDED 24-09.** **The generic-Bank-ledger disclosure (D14).** `PaymentAccount.is_fallback` and `.reason` are computed and reach no caller. Surface on the entry row and in the posting confirmation. This is a refactor through eight journal-line builders | 1d | Posting a payment with no resolvable bank account shows the sentence in both places; a test asserts both |
 | **1.5** ✅ | **LANDED 24-09.** **The filing-simulation wording (D17).** Every demo flow already carries an honest `SIM-NOT-FILED` reference and a "what changes when this is real" sentence. Rewrite those to read as a professional product statement — *"Preview only. PracticeSync does not transmit to the portal. Direct filing is in development"* — consistent across all flows, and visible on the screen rather than only in the response | 0.5d | One wording, one place it is defined, rendered by every flow; a guard asserts no flow renders its own |
-| **1.6** | **The twelve partial findings' remaining halves.** Listed below | 1–2d | Each moves to `closed` in `findings-status.json` in the same commit |
+| **1.6** | **The twelve partial findings' remaining halves.** Listed below. **Three more closed 24-09 — ACC-03, INV-09, SALES-28 — leaving six partial and two open, every one of them waiting on the owner or on a document** | 1–2d | Each moves to `closed` in `findings-status.json` in the same commit |
 
 ### 1.6 — the twelve partials, and what is actually left of each
 
@@ -134,11 +135,11 @@ Phase 2 starts on a clean base.
 | SALES-23 reminders | the bulk Remind, and migration 405 stopped the counter | the sweep SENDS nothing — and whether it should is **owner question A** | **owner** |
 | BANK-11 rules | priority, match field, operator, patterns, party, **and D19's TDS flag** ✅ | **nothing — closed 24-09** | — |
 | SALES-25 credit notes | the §34(2) window (half a) **and the customer credit limit** ✅ | **nothing — closed 24-09.** Migration 414, warn by default, block only where the firm asks | — |
-| ACC-03 bank ledger | all three — **1.4 landed 24-09** | nothing | — |
+| ACC-03 bank ledger | all three — **1.4 landed 24-09** | **nothing — closed 24-09** | — |
 | ACC-13 day book | day book built | **cost centres** — a dimension on `journal_lines`, **owner question C** | **owner** |
 | GST-25 returns | GSTR-9 computed; 3.1.1 named as underivable | composition (CMP-08/GSTR-4), TCS on GSTR-8, GSTR-9C | needs document #5 |
-| INV-09 quantities | the three-decimal rule at every door, and the alternate unit (migration 409) | part 2 is the COLUMN WIDTH, and `NUMERIC(10,3)` holds 9,999,999.999 units — ample. Recommend closing with that reasoning rather than widening 22 migrations | no |
-| SALES-28 e-way | applicability, validity, the expiring-bill panel AND `POST /records/{id}/extend` | only the JSON payload, refused under GST-32 | — |
+| INV-09 quantities | the three-decimal rule at every door, and the alternate unit (migration 409) | **nothing — closed 24-09** on part 2, with the reasoning rather than a widening: `NUMERIC(10,3)` holds 9,999,999.999 units of one item on one movement, and the alternate unit relieves the case that comes closest | no |
+| SALES-28 e-way | applicability, validity, the expiring-bill panel, and **the extension is now RECORDABLE (24-09)** — the endpoint existed from the first day and no screen called it | **nothing — closed 24-09.** The JSON payload is GST-32's refusal, not this finding's | — |
 | TDS-22 clause rates | both clauses recordable, (b) limbs complete | **two numbers** for the (a) limbs | needs document #4 |
 | FA-11 CWIP | capital work-in-progress complete | shift working is **blocked on a document** — Part C here holds the LIVES and not the NESD markings (**question D**); revaluation and component accounting are unstarted | needs document #9 |
 | TDS-16 (open) | every figure computed | **the FVU/RPU file writer** | needs document #3 |
@@ -295,7 +296,7 @@ No new engines. Screens for what is already computed and tested.
 | 3a-6 | `ai_insights` — wire the **writer** | Today a screen reads a table nothing reachable populates |
 | 3a-7 | Give the copilot the client's own data | The 8 unreached copilot endpoints reached; the static prompt replaced by one that loads the client context |
 
-**Target: the 235 unreachable endpoints fall below 120.**
+**Target: the 231 unreachable endpoints fall below 120.**
 
 ### 3b — repoint the intelligence at the ledger · 6–10 days
 

@@ -12,6 +12,7 @@ by Guardrail G2 (clients_external + repository/router exclusions).
 """
 import os
 import logging
+from typing import Optional
 from fastapi import APIRouter, Depends
 from domain.firm import identity as firm_identity
 from models.common import api_response
@@ -38,14 +39,30 @@ def get_practice(current_user: dict = Depends(rbac("practice", "read"))):
     firm_id = current_user.get("firm_id")
     internal_client_id = get_internal_client_id(firm_id)
     firm_has_pan = False
+    # THE IDENTITY IS SERVED, NOT RE-TYPED — `domain/tds/deductor`'s shape.
+    # `PATCH /identity` existed from Phase 3.3A and no screen called it, so the
+    # practice client's own PAN and GSTIN were frozen at whatever provisioning
+    # copied off the firm: a firm that corrected its GSTIN in Settings (which
+    # writes `firms`, migration 399) left the client it raises its OWN fee
+    # invoices from carrying the old one, and CGST Rule 46(a) puts the
+    # supplier's GSTIN on every one of them. Always present, `None` where
+    # nothing is provisioned — an absent key and a null key read the same to a
+    # screen and are different bugs.
+    identity: Optional[dict] = None
     if not _USE_MOCK and firm_id:
         firm = _db().table("firms").select("pan").eq("id", firm_id).maybe_single().execute().data
         firm_has_pan = bool(firm and firm.get("pan"))
+        if internal_client_id:
+            identity = (_db().table("clients")
+                        .select("pan, gstin, state, state_code")
+                        .eq("id", internal_client_id).eq("firm_id", firm_id)
+                        .eq("is_internal", True).maybe_single().execute().data)
     return api_response(True, {
         "internal_client_id": internal_client_id,
         "provisioned": bool(internal_client_id),
         "firm_has_pan": firm_has_pan,
         "can_provision": firm_has_pan and not internal_client_id,
+        "identity": identity,
     })
 
 
