@@ -100,6 +100,18 @@ export const SCREENS: Screen[] = [
   firm("/accounting/lock-year", "Lock financial year", "Accounting", ["close year", "freeze", "year end lock"]),
   firm("/accounting/msme-tracker", "MSME payments", "Accounting", ["43b(h)", "43bh", "micro small", "msmed", "section 43b"]),
   firm("/accounting/receivables", "Receivables", "Accounting", ["debtors", "ar", "outstanding", "ageing"]),
+  // The four firm-level WORKLISTS (D22, G3) — which clients need work in a
+  // module whose register lives only in the client workspace. Named with the
+  // words a CA would type for the QUESTION, not for the module: somebody
+  // looking for "which clients" is not looking for the register.
+  firm("/accounting/banking", "Banking worklist", "Accounting",
+    ["bank lines", "unpassed", "which clients", "reconcile", "statement queue"]),
+  firm("/accounting/purchases", "Purchases worklist", "Accounting",
+    ["creditors", "ap", "overdue to suppliers", "which clients", "payables"]),
+  firm("/accounting/fixed-assets", "Fixed assets worklist", "Accounting",
+    ["depreciation due", "which clients", "schedule ii", "wdv", "asset register"]),
+  firm("/accounting/year-end", "Year-end worklist", "Accounting",
+    ["finalisation", "which clients", "closing", "statements", "schedule iii"]),
   firm("/accounting/recurring", "Recurring journals", "Accounting", ["repeating entry", "standing journal"]),
   firm("/accounting/retainer", "Retainers", "Accounting", ["retainer billing", "fixed fee"]),
   // NOT "Schedule III captions" — that was wrong, and wrong in the way this
@@ -244,9 +256,11 @@ export const ALL_SCREENS: Screen[] = [...SCREENS, ...CLIENT_SUBSCREENS];
  * A route in neither list fails the guard, so silence is never the reason.
  */
 export const UNLISTED: Record<string, string> = {
-  "/accounting/fixed-assets":
-    "a MovedToClientWorkspace TOMBSTONE. Naming it would let a CA type\n     \"fixed assets\" and land on a page whose whole content is \"this moved\" —\n     worse than a dead link, because the name says it works. 2.2b's hub\n     refuses these for the same reason; see question G3",
-  "/accounting/invoices": "the same tombstone, for the Sales tab — see G3",
+  // `/accounting/fixed-assets` LEFT THIS LIST ON 24-09 (D22). It was the
+  // tombstone this entry describes; it is the fixed-asset WORKLIST now and is
+  // named above. `/accounting/invoices` is still one.
+  "/accounting/invoices":
+    "a MovedToClientWorkspace TOMBSTONE, the Sales half of the pair. Naming\n     it would let a CA type \"invoices\" and land on a page whose whole content\n     is \"this moved\" — worse than a dead link, because the name says it\n     works. Its worklist question is already answered by\n     /accounting/receivables, which is the Sales tile's own firm href, so it\n     did not get a worklist of its own; see D22 and question G3",
   "/login": "signed-out — a palette is for somebody already inside the product",
   "/login/forgot-password": "signed-out",
   "/signup": "signed-out",

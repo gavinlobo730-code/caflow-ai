@@ -72,8 +72,11 @@ class Tile:
 
     id: str
     label: str
-    #: The FIRM-level screen, or None where this module has none. Five of D1's
-    #: fifteen are None today — see MODULES_WITH_NO_FIRM_SCREEN.
+    #: The FIRM-level screen, or None where this module has none. Four of the
+    #: five that had none now hold a WORKLIST — one row per client with this
+    #: tile's own figure beside it; `domain/hub/worklist.py` is the authority
+    #: for which, and why `inventory` is still None. See
+    #: MODULES_WITH_NO_FIRM_SCREEN.
     firm_href: Optional[str]
     #: The first segment under `/clients/:id/`, or None for a firm-only tile.
     #: The client href is DERIVED from it rather than stored, the same rule
@@ -117,10 +120,12 @@ class Tile:
         """Where this tile goes at this scope, or None if nowhere yet.
 
         A firm hub's tile for a client-only module answers None rather than
-        linking to `/accounting/fixed-assets`, which is a `MovedToClientWorkspace`
-        TOMBSTONE — a page whose whole content is "this moved". Sending a CA
-        there from a tile showing a real number is worse than a dead link: the
-        number says the tile works.
+        linking to a `MovedToClientWorkspace` TOMBSTONE — a page whose whole
+        content is "this moved". Sending a CA there from a tile showing a real
+        number is worse than a dead link: the number says the tile works.
+        `/accounting/fixed-assets` WAS one of those and is now the fixed-asset
+        worklist; `inventory` is the one tile still answering None here, with
+        `worklist.NO_WORKLIST_BECAUSE` giving the reason.
         """
         if client_id is None:
             return self.firm_href
@@ -163,7 +168,7 @@ TILES: tuple[Tile, ...] = (
     Tile(
         id="banking",
         label="Banking",
-        firm_href=None,
+        firm_href="/accounting/banking",
         client_section="bank",
         question="Statement lines not yet passed",
         unit=Unit.COUNT,
@@ -187,7 +192,7 @@ TILES: tuple[Tile, ...] = (
     Tile(
         id="purchases",
         label="Purchases",
-        firm_href=None,
+        firm_href="/accounting/purchases",
         client_section="purchases",
         question="Overdue to suppliers",
         unit=Unit.PAISE,
@@ -219,7 +224,7 @@ TILES: tuple[Tile, ...] = (
     Tile(
         id="fixed_assets",
         label="Fixed Assets",
-        firm_href=None,
+        firm_href="/accounting/fixed-assets",
         client_section="fixed-assets",
         question="Assets with depreciation outstanding",
         unit=Unit.COUNT,
@@ -240,7 +245,7 @@ TILES: tuple[Tile, ...] = (
     Tile(
         id="year_end",
         label="Year-End",
-        firm_href=None,
+        firm_href="/accounting/year-end",
         client_section="year-end",
         question="Engagements not yet finalised",
         unit=Unit.COUNT,
@@ -270,20 +275,21 @@ TILES: tuple[Tile, ...] = (
 )
 
 
-#: Modules with NO firm-level screen, measured 24-09-2026 while writing the
-#: href guard. `/accounting/fixed-assets` and `/accounting/invoices` exist and
-#: are `MovedToClientWorkspace` TOMBSTONES, which is worse than absent: a tile
+#: Modules with NO firm-level screen. It was FIVE when it was measured on
+#: 24-09-2026 while writing the href guard — Banking, Purchases, Fixed Assets,
+#: Inventory and Year-End — with two of them landing on a
+#: `MovedToClientWorkspace` TOMBSTONE, which is worse than absent: a tile
 #: showing a real number and landing on "this moved" reads as a working
-#: destination. Recorded here rather than papered over, and put to the owner as
-#: question G3 — whether Phase 2 builds five firm-level roll-ups or the firm
-#: hub sends these tiles to the client picker.
+#: destination. That was question G3, and D22 answers it: four of the five got
+#: a firm-level WORKLIST (one row per client, this tile's own figure beside
+#: it), taking the recommendation's own shape — a roll-up rather than a
+#: rebuilt register, which is what the tombstones' retirement decision allows.
+#: A firm-level route is STATIC, so all four cost ZERO of D10's dynamic
+#: redirect rules.
 #:
-#: Worth knowing before that is decided: a firm-level route is STATIC, so it
-#: costs ZERO of D10's dynamic redirect rules. The constraint that forbids new
-#: routes under `/clients/[id]` does not reach these.
-MODULES_WITH_NO_FIRM_SCREEN: tuple[str, ...] = (
-    "banking", "purchases", "fixed_assets", "inventory", "year_end",
-)
+#: `inventory` remains, and `domain/hub/worklist.NO_WORKLIST_BECAUSE` holds the
+#: reason: there is no firm-wide figure to rank clients by.
+MODULES_WITH_NO_FIRM_SCREEN: tuple[str, ...] = ("inventory",)
 
 BY_ID: dict[str, Tile] = {t.id: t for t in TILES}
 

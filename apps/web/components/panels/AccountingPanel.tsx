@@ -21,6 +21,10 @@ import {
   ClipboardCheck,
   Scale,
   Lock,
+  Landmark as LandmarkIcon,
+  ShoppingCart,
+  Building2,
+  CalendarRange,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
 import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
@@ -116,6 +120,28 @@ const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
     ],
   },
   {
+    // D22 / question G3. Four of D1's fifteen hub tiles had no firm-level
+    // destination at all and two landed on a `MovedToClientWorkspace`
+    // tombstone; these are their worklists — one row per client that needs
+    // work, opening that client's own section. The REGISTER still lives only
+    // in the client workspace, which is what the tombstones' retirement
+    // decision settled; this is the queue in front of it.
+    heading: "Across clients",
+    items: [
+      // hub.py get_hub_worklist → rbac("client", "read"), the same guard the
+      // hub itself takes: a worklist is a breakdown of a figure that endpoint
+      // already serves to this caller.
+      { label: "Banking", href: "/accounting/banking", icon: LandmarkIcon,
+        requires: ["client", "read"] },
+      { label: "Purchases", href: "/accounting/purchases", icon: ShoppingCart,
+        requires: ["client", "read"] },
+      { label: "Fixed Assets", href: "/accounting/fixed-assets", icon: Building2,
+        requires: ["client", "read"] },
+      { label: "Year-End", href: "/accounting/year-end", icon: CalendarRange,
+        requires: ["client", "read"] },
+    ],
+  },
+  {
     heading: "Period close",
     items: [
       // accounting.py get_schedule_iii → rbac("accounting", "read").
@@ -170,12 +196,12 @@ export function AccountingPanel() {
         </div>
       </div>
 
-      {/* Nav items. Grouped because the whole module is 17 entries and an
-          ungrouped list of 17 is a wall — the headings are how it stays
+      {/* Nav items. Grouped because the whole module is 21 entries and an
+          ungrouped list of 21 is a wall — the headings are how it stays
           scannable at the 220px the panel gets. (It was 22 before payroll's
-          six moved out to their own workspace; grouping still earns its
-          keep, and the headings are the module's own shape rather than a
-          length threshold.) */}
+          six moved out to their own workspace and the four firm-level
+          worklists arrived; grouping still earns its keep, and the headings
+          are the module's own shape rather than a length threshold.) */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
         {groups.map(({ heading, items }) => (
           <div key={heading ?? "_"} className={heading ? "mt-3 first:mt-0" : ""}>
