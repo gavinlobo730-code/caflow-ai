@@ -8,12 +8,21 @@ import {
   ExternalLink,
   FolderOpen,
   Search,
+  ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const CLIENTS_ITEMS = [
   { href: "/clients", label: "All Clients", icon: Users },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
+  // ⚠️ THE CLIENT-ONBOARDING TRACKER, WHICH NOTHING IN THE PRODUCT LINKED TO
+  // and which rendered with NO shell at all. It sits at /onboarding/checklist
+  // and so matched `AppShell`'s NO_SHELL entry for the firm SIGNUP wizard —
+  // a different thing entirely, sharing a path prefix. Both that entry and the
+  // public-path one are exact now (see lib/auth/public-paths.ts), and
+  // lib/workspace/routeOwnership.ts gives this route to Clients, which is
+  // whose onboarding it tracks.
+  { href: "/onboarding/checklist", label: "Client Onboarding", icon: ListChecks },
   { href: "/client-portal", label: "Client Portal", icon: ExternalLink },
   // Two distinct document surfaces: /documents is the OCR/intelligence
   // pipeline; /clients/documents is expiry-tracked Storage-backed vault.

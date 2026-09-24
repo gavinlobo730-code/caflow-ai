@@ -2,15 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles, ShieldAlert, BarChart3, MessageSquare, Brain } from "lucide-react";
+import { Sparkles, ShieldAlert, BarChart3, MessageSquare, Brain, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// `/reports/cash-flow` was on the Reports landing page and nowhere else, so
+// from inside it there was no way back to any sibling — the rule in
+// `components/panels/AccountingPanel.tsx`'s header, held by
+// `scripts/a-module-shows-all-of-itself.test.ts`. It reads the ledger straight
+// over PostgREST (RLS, not rbac()), so there is no permission to gate it on.
 const AI_ITEMS = [
   { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
   { href: "/copilot", label: "AI Copilot", icon: MessageSquare },
   { href: "/memory", label: "Memory & Signals", icon: Brain },
   { href: "/risks", label: "Risk Intelligence", icon: ShieldAlert },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/reports/cash-flow", label: "Cash Flow Forecast", icon: TrendingUp },
 ];
 
 export function AIPanel() {

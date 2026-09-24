@@ -14,10 +14,12 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type WorkspaceId =
-  | "home" | "clients" | "deadlines" | "work" | "team" | "ai"
-  | "accounting" | "relationships" | "health"
-  | "practice" | "knowledge" | "engagements";
+// The workspace vocabulary and the pathname→workspace chain both live in
+// `routeOwnership.ts`, which has NO imports so a node --test guard can load it
+// (see its header). Re-exported here so every existing importer is untouched.
+export type { WorkspaceId } from "./routeOwnership";
+export { getActiveWorkspaceForPathname } from "./routeOwnership";
+import type { WorkspaceId } from "./routeOwnership";
 
 export interface WorkspaceConfig {
   id: WorkspaceId;
@@ -131,89 +133,3 @@ export const DEFAULT_WORKSPACE_ROUTES: Record<WorkspaceId, string> = {
   engagements: "/engagements",
 };
 
-/**
- * Maps the current pathname to the workspace whose rail icon should be lit
- * and whose lastRoute should be updated. Returns null for routes that are
- * NOT part of any workspace — /settings (its own gear icon lights instead,
- * see ActivityRail), /platform (the super-admin console, which sits above
- * the firm workspace model entirely and is never linked from any panel),
- * and /search (the global command-palette's results page, a cross-cutting
- * utility owned by no single workspace) — plus any route this mapping
- * doesn't yet recognize. null must NEVER be coerced to "home" here; the
- * "home" panel is a separate, deliberate content fallback applied only by
- * consumers that need to render *something* (see ContextPanel).
- */
-export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | null {
-  if (
-    pathname === "/" ||
-    pathname.startsWith("/calendar") ||
-    pathname.startsWith("/notifications")
-  )
-    return "home";
-
-  if (
-    pathname.startsWith("/clients") ||
-    pathname.startsWith("/pipeline") ||
-    pathname.startsWith("/client-portal") ||
-    pathname.startsWith("/documents")
-  )
-    return "clients";
-
-  if (
-    pathname.startsWith("/compliance") ||
-    pathname.startsWith("/deadlines") ||
-    pathname.startsWith("/gst") ||
-    pathname.startsWith("/income-tax") ||
-    pathname.startsWith("/tds") ||
-    pathname.startsWith("/mca") ||
-    pathname.startsWith("/einvoice")
-  )
-    return "deadlines";
-
-  if (
-    pathname.startsWith("/accounting") ||
-    pathname.startsWith("/billing") ||
-    pathname.startsWith("/payroll") ||
-    pathname.startsWith("/migration")
-  )
-    return "accounting";
-
-  if (pathname.startsWith("/relationships"))
-    return "relationships";
-
-  if (pathname.startsWith("/health"))
-    return "health";
-
-  if (pathname.startsWith("/practice") || pathname.startsWith("/executive-dashboard"))
-    return "practice";
-
-  if (pathname.startsWith("/knowledge"))
-    return "knowledge";
-
-  if (pathname.startsWith("/engagements"))
-    return "engagements";
-
-  if (
-    pathname.startsWith("/work") ||
-    pathname.startsWith("/tasks") ||
-    pathname.startsWith("/time")
-  )
-    return "work";
-
-  if (pathname.startsWith("/team") || pathname.startsWith("/approvals"))
-    return "team";
-
-  if (
-    pathname.startsWith("/ai-assistant") ||
-    pathname.startsWith("/assistant") ||
-    pathname.startsWith("/risks") ||
-    pathname.startsWith("/reports") ||
-    pathname.startsWith("/copilot") ||
-    pathname.startsWith("/memory")
-  )
-    return "ai";
-
-  // /settings, /platform, /search, and anything else unrecognized: no
-  // workspace owns this route.
-  return null;
-}
