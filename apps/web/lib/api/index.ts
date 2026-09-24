@@ -4528,6 +4528,29 @@ export const api = {
         `/api/receipts/${receiptId}/allocate`,
         { method: "PATCH", body: JSON.stringify({ allocations }) }),
   },
+  purchasePayments: {
+    /** APPLY A STRANDED VENDOR ADVANCE TO BILLS — the AP mirror of SALES-14.
+     *
+     *  `PATCH /api/purchase-payments/{id}/allocate` was written at the same
+     *  time as the AR one — `update_allocations_core`'s own docstring calls
+     *  itself "the AP mirror of receipts.py" — and no screen called it either.
+     *  It exists for two cases the service names: an advance left over by a
+     *  bank-match settlement that exceeded the bills it was told about, and a
+     *  payment recorded before the bill it is meant for existed. Neither could
+     *  be resolved anywhere in the product.
+     *
+     *  It REPLACES the payment's whole allocation set; send every line, not
+     *  just the new one. The server reverses the prior allocations first, so a
+     *  bill this payment already cleared still has room for it.
+     */
+    allocate: (paymentId: string, allocations: {
+      purchase_bill_id: string; allocated_paise: number;
+    }[]) =>
+      request<{ success: boolean; data: { payment_id: string; unallocated_paise?: number };
+                error: string | null }>(
+        `/api/purchase-payments/${paymentId}/allocate`,
+        { method: "PATCH", body: JSON.stringify({ allocations }) }),
+  },
   knowledge: {
     listArticles: (params?: Record<string, string>) =>
       request(`/api/knowledge/articles${params ? "?" + new URLSearchParams(params) : ""}`),

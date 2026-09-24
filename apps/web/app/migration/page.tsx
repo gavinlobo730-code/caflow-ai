@@ -5,6 +5,7 @@ import { Plus, Loader2, AlertTriangle, Database, CheckCircle, XCircle } from "lu
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { Can } from "@/components/Can";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 
@@ -110,6 +111,11 @@ export default function MigrationPage() {
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [isDryRun, setIsDryRun] = useState(true);
+  /** Which job is rolling back, and what went wrong if it did. Separate from
+   *  `loadFailed`, which is about the LIST: a rollback that fails must not
+   *  make the jobs look unloadable. */
+  const [busyJob, setBusyJob] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -124,6 +130,57 @@ export default function MigrationPage() {
       setLoadFailed(true);
     } finally {
       setLoading(false);
+    }
+  }
+
+  /** UNDO AN IMPORT (24-09-2026).
+   *
+   *  `POST /api/tally-migration/jobs/{id}/rollback` has existed since the
+   *  module was written and NO SCREEN CALLED IT, so a Tally import that
+   *  brought in two thousand wrong customers could only be unpicked by hand,
+   *  row by row — which is precisely the situation somebody migrating from
+   *  Tally is least equipped for.
+   *
+   *  It deletes only the `customers` and `vendors` rows THIS job created —
+   *  the service holds that set explicitly rather than trusting a
+   *  caller-supplied table name — checks the job belongs to this firm before
+   *  touching anything, and pages the item read, because an unpaged one
+   *  stopped after 1000 deletions and reported done.
+   *
+   *  Destructive and irreversible, so it is confirmed and it says what it will
+   *  remove. It is `rbac("accounting", "approve")` on the server; the button
+   *  is offered on an IMPORTED job only, because there is nothing to roll back
+   *  before that and nothing left after a previous rollback.
+   */
+  async function rollback(j: MigrationJob) {
+    const ok = await confirmDialog({
+      title: `Roll back ${j.name}?`,
+      message:
+        `This permanently deletes the ${j.imported_items} customer and vendor ` +
+        `records this import created. Anything you have since posted against ` +
+        `them is not touched and will be left pointing at nothing. It cannot ` +
+        `be undone.`,
+      confirmLabel: "Roll back import",
+      danger: true,
+    });
+    if (!ok) return;
+    setBusyJob(j.id);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/tally-migration/jobs/${j.id}/rollback`, {
+        method: "POST",
+      });
+      // This router answers a refusal as HTTP 200 with {success: false}; an
+      // unchecked call would report a rollback the server declined.
+      if (!res?.success) {
+        setError(res?.error ?? "Couldn't roll the import back.");
+        return;
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't roll the import back.");
+    } finally {
+      setBusyJob(null);
     }
   }
 
@@ -380,6 +437,14 @@ export default function MigrationPage() {
         </div>
       )}
 
+      {error && (
+        <div role="alert" className="bg-state-problem-surface border border-red-100 rounded-lg px-4 py-3 flex items-start gap-2 text-xs text-red-600">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">Dismiss</button>
+        </div>
+      )}
+
       {/* Job List */}
       {loading ? (
         <TransactionListSkeleton rows={3} />
@@ -411,6 +476,12 @@ export default function MigrationPage() {
               <span className={`text-3xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[j.status]}`}>
                 {j.status.replace(/_/g, " ")}
               </span>
+              {j.status === "imported" && !j.is_dry_run && (
+                <button onClick={() => rollback(j)} disabled={busyJob === j.id}
+                  className="text-3xs px-2 py-1 rounded-lg border border-ps-border text-red-600 hover:bg-red-50 disabled:opacity-40 flex-shrink-0">
+                  {busyJob === j.id ? "Rolling back…" : "Roll back"}
+                </button>
+              )}
             </div>
           ))}
         </div>

@@ -66,7 +66,7 @@ test("another receipt's allocation is NOT added back", () => {
 
 test("an allocation over the invoice's ceiling is refused", () => {
   const p = allocationProblems(
-    [{ invoiceId: "I1", paise: 60_000_00, ceiling: 50_000_00 }], L);
+    [{ documentId: "I1", paise: 60_000_00, ceiling: 50_000_00 }], L);
   assert.equal(p.ok, false);
   assert.equal(p.perLine.length, 1);
   assert.match(p.perLine[0].message, /still owes/);
@@ -74,8 +74,8 @@ test("an allocation over the invoice's ceiling is refused", () => {
 
 test("a total over what the receipt settles is refused", () => {
   const p = allocationProblems([
-    { invoiceId: "I1", paise: 60_000_00, ceiling: L },
-    { invoiceId: "I2", paise: 60_000_00, ceiling: L },
+    { documentId: "I1", paise: 60_000_00, ceiling: L },
+    { documentId: "I2", paise: 60_000_00, ceiling: L },
   ], L);
   assert.equal(p.overRun, true);
   assert.equal(p.ok, false);
@@ -86,7 +86,7 @@ test("a total over what the receipt settles is refused", () => {
 test("a negative allocation is refused rather than treated as a refund", () => {
   // It would drive the invoice's paid_paise DOWN and reopen an invoice this
   // receipt never touched.
-  const p = allocationProblems([{ invoiceId: "I1", paise: -1000, ceiling: L }], L);
+  const p = allocationProblems([{ documentId: "I1", paise: -1000, ceiling: L }], L);
   assert.equal(p.ok, false);
   assert.match(p.perLine[0].message, /negative/i);
   assert.equal(p.total, 0, "a refused line contributes nothing to the total");
@@ -95,22 +95,22 @@ test("a negative allocation is refused rather than treated as a refund", () => {
 test("what is not an amount at all is refused, not coerced", () => {
   // `paise: null` is what lib/money/rupeeInput returns for "1,25,000" and
   // "12abc". The old parseFloat form would have made the first ₹1.
-  const p = allocationProblems([{ invoiceId: "I1", paise: null, ceiling: L }], L);
+  const p = allocationProblems([{ documentId: "I1", paise: null, ceiling: L }], L);
   assert.equal(p.ok, false);
   assert.match(p.perLine[0].message, /Not an amount/);
 });
 
 test("leaving part of the receipt unapplied is fine", () => {
   // A customer may genuinely have paid ahead of an invoice not yet raised.
-  const p = allocationProblems([{ invoiceId: "I1", paise: 40_000_00, ceiling: L }], L);
+  const p = allocationProblems([{ documentId: "I1", paise: 40_000_00, ceiling: L }], L);
   assert.equal(p.ok, true);
   assert.equal(p.total, 40_000_00);
 });
 
 test("applying the whole receipt across several invoices is fine", () => {
   const p = allocationProblems([
-    { invoiceId: "I1", paise: 30_000_00, ceiling: 30_000_00 },
-    { invoiceId: "I2", paise: 70_000_00, ceiling: 80_000_00 },
+    { documentId: "I1", paise: 30_000_00, ceiling: 30_000_00 },
+    { documentId: "I2", paise: 70_000_00, ceiling: 80_000_00 },
   ], L);
   assert.equal(p.ok, true);
   assert.equal(p.total, L);
@@ -119,7 +119,7 @@ test("applying the whole receipt across several invoices is fine", () => {
 test("allocating nothing is allowed — it un-applies the receipt", () => {
   // The endpoint replaces the whole set, so an empty one is how a CA takes a
   // receipt back off the invoices it was wrongly put on.
-  const p = allocationProblems([{ invoiceId: "I1", paise: 0, ceiling: L }], L);
+  const p = allocationProblems([{ documentId: "I1", paise: 0, ceiling: L }], L);
   assert.equal(p.ok, true);
   assert.equal(p.total, 0);
 });
