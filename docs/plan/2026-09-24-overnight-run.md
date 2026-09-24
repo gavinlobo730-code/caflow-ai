@@ -232,6 +232,21 @@ whichever way the full-scope question is eventually answered.
 
 ---
 
+## Four probes that came back CLEAN, recorded so nobody re-derives them
+
+Each of these looked like a defect class worth sweeping, was measured, and was
+not one. A negative result nobody wrote down is a negative result somebody will
+pay for again.
+
+| probe | what was measured | why it is not a defect |
+|---|---|---|
+| **A read filtered on `client_id` without `firm_id`** | 11 statements, on tables that DO carry `firm_id` | `clients.id` is a globally unique UUID and `can_access_client` checks `_client_belongs_to_firm` before any of them run (the F1 fix), so a client id from another firm never reaches them. Defence-in-depth loss, not a cross-tenant read. Not "fixed" opportunistically: 11 untested query changes for no behaviour change is the wrong trade. |
+| **A write whose `{success:false}` nobody checks** | 9 unchecked write calls across `app/` and `components/` | `request()` throws only on `!res.ok`, so a **200 with `success:false`** does pass through — the failure mode CLAUDE.md records for the GST workspace. But of the six routers those nine reach, only `payroll` answers 200+false at all, on `finalize_run` and `disburse_run`, and **both of those callers check** (`page.tsx:1066`, `DisburseModal.tsx:66`). A guard was considered and rejected: it would have to map a browser call to a Python endpoint across two languages, and a fragile guard is worse than the finding. |
+| **Western grouping in the BROWSER** | 60 `toLocaleString`, 47 `toLocaleDateString` | 57 and 45 respectively already name `en-IN`. The three exceptions format a MONTH NAME, and the one date exception is `en-CA` with `timeZone: "Asia/Kolkata"` — the idiomatic ISO-date trick, deliberate and correct. |
+| **The marketing site overclaiming** | every `file` / `auto-submit` / `GSTR-*` string in `apps/marketing` | It is honest, explicitly: *"You upload and sign on the government portal"*, *"PracticeSync prepares the return; a CA files it on the portal. The software never transmits anything"*, and a section headed *"Never auto-submit — the principle at the heart of the platform."* |
+
+---
+
 ## Two measurements of mine that were wrong, and the same mistake both times
 
 Recorded because the mistake is the one CLAUDE.md now states as a rule — *a
