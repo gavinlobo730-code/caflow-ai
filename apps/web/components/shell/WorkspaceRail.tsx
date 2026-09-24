@@ -23,9 +23,12 @@ import { useNavShellCollapse } from "@/components/shell/NavShell";
  * this label size, "Relationships" (~60px) and "Engagements" (~51px) did not
  * fit and were cut off mid-word — they rendered as "elationship" and
  * "ngagement" on every firm screen, which the 24-09 smoke shots show. 64px
- * fits every one of the twelve. `truncate` is the BACKSTOP rather than the
- * fix: it degrades a longer label added later to an ellipsis instead of
- * letting it spill over the panel beside it.
+ * fits ten of the twelve outright. The last two carry a `railLabel` — the
+ * SAME WORD with a U+200B in it, so the browser breaks it where a person
+ * would ("Relation / ships") rather than showing an abbreviation somebody has
+ * to learn; the width that would fit them on one line is about 84px, which is
+ * not an icon rail any more. `overflow-x-hidden` on the aside is the backstop
+ * for a label that still cannot fit.
  */
 export function WorkspaceRail({ onOpenSearch }: { onOpenSearch: () => void }) {
   const { activeWorkspace, setWorkspace } = useWorkspace();
@@ -93,13 +96,17 @@ export function WorkspaceRail({ onOpenSearch }: { onOpenSearch: () => void }) {
                   )}
                 />
               </button>
+              {/* `break-words`, NOT `truncate`: truncate sets white-space:nowrap,
+                  which would block the U+200B break `railLabel` exists for and
+                  put the ellipsis back. `overflow-x-hidden` on the aside is the
+                  backstop for a label that still cannot fit. */}
               <span
                 className={cn(
-                  "w-full text-center truncate text-3xs font-medium leading-none select-none",
+                  "w-full text-center break-words text-3xs font-medium leading-tight select-none",
                   isActive ? "text-white" : "text-slate-500"
                 )}
               >
-                {ws.label}
+                {ws.railLabel ?? ws.label}
               </span>
             </div>
           );

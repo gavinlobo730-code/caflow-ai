@@ -57,7 +57,7 @@
  * to be run BEFORE and AFTER converting a module, by the person converting it.
  *
  *   pnpm smoke:build && node scripts/smoke-walk.mjs
- *   node scripts/smoke-walk.mjs --only /clients --shots
+ *   node scripts/smoke-walk.mjs --only /clients --real-client --shots
  *   node scripts/smoke-walk.mjs --only /login --shots --anon
  *
  * --only <prefix>  walk just the routes under a prefix
@@ -65,6 +65,10 @@
  *                 themselves. Looking only — see `anon` below.
  * --shots          write a PNG per route to .smoke/ (the visual baseline —
  *                  NOT a regression gate; these are supposed to change)
+ * --real-client    put a UUID in /clients/:id instead of the static-export
+ *                  placeholder, so the CLIENT WORKSPACE renders its own shell.
+ *                  Without it every client screen wears the firm chrome and
+ *                  this walk cannot see the workspace at all — see `realClient`
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -243,7 +247,15 @@ function serve(root) {
         return sendJson(res, { success: true, data: [], error: null });
       }
 
-      let file = path.join(root, url);
+      // Cloudflare serves EVERY /clients/<uuid>/… from the one _placeholder
+      // build (that rewrite is what D10's redirect budget pays for), and this
+      // server did not — so a uuid URL 404'd and the walk could only ever ask
+      // for /clients/_placeholder/…, which `isClientWorkspacePath` deliberately
+      // rejects. The consequence is worth spelling out: for the whole life of
+      // this tool it rendered the FIRM chrome over every client screen and so
+      // could not see the client workspace at all — the half its own header
+      // says it exists for. Mirroring the rewrite is what `--real-client` needs.
+      let file = path.join(root, url.replace(CLIENT_UUID_SEG, "/clients/_placeholder/"));
       if (!path.extname(file)) file = path.join(file, "index.html");
       if (!file.startsWith(root) || !fs.existsSync(file)) {
         res.writeHead(404, { "content-type": "text/plain" });
@@ -378,9 +390,32 @@ const shots = args.includes("--shots");
  */
 const anon = args.includes("--anon");
 
+/**
+ * `--real-client` walks the client workspace AS A CA SEES IT.
+ *
+ * `isClientWorkspacePath` requires a real UUID, precisely so the static-export
+ * placeholder cannot be mistaken for a workspace — so at
+ * /clients/_placeholder/… the shell renders the FIRM panel, and every client
+ * screen this walk has ever photographed was wearing the wrong chrome. With a
+ * UUID in the URL the shell renders the client's own sections, which is what
+ * needs looking at whenever the workspace changes.
+ *
+ * Only the CLIENT id becomes a uuid. Every other dynamic segment stays
+ * `_placeholder`, because those are record ids (an invoice, a journal entry)
+ * and the build has one page per shape, not per record.
+ */
+const realClient = args.includes("--real-client");
+const CLIENT_UUID = "00000000-0000-4000-8000-000000000001";
+
 const routes = JSON.parse(fs.readFileSync(path.join(__dirname, "screens.snapshot.json"), "utf8"))
+  .map((r) => (realClient ? r.replace("/clients/:id", `/clients/${CLIENT_UUID}`) : r))
   .map((r) => r.replace(/:[^/]+/g, "_placeholder"))
   .filter((r) => (only ? r.startsWith(only) : true));
+
+/** Any /clients/<uuid>/ prefix, which the server rewrites to the one built
+ *  _placeholder page exactly as Cloudflare does. */
+const CLIENT_UUID_SEG =
+  /^\/clients\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//i;
 
 const escaped = new Set();
 const captured = [];
