@@ -14,7 +14,7 @@ import logging
 from datetime import date, datetime, time, timezone
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from core.permissions import rbac
 from domain.gst import eway_validity
 from core.authz import assert_client_access, can_access_client, effective_client_ids
@@ -71,8 +71,34 @@ class RecordEWBGeneratedRequest(BaseModel):
 
 
 class ExtendEWBRequest(BaseModel):
-    new_valid_upto: str
-    extension_reason: str
+    """What the CA read off the NIC portal after extending there.
+
+    THIS PRODUCT EXTENDS NOTHING. The proviso to Rule 138(10) lets the
+    transporter extend a bill in transit by updating Part B on the portal;
+    what is recorded here is the NEW validity that came back from it, which
+    is why `source` on the expiry report then reads "recorded" — the
+    authoritative claim — rather than "computed".
+
+    Both fields were bare `str` and validated nothing until 24-09-2026, on the
+    one write that moves a date the §129 detention question turns on.
+    """
+    new_valid_upto: str = Field(..., description="ISO date, YYYY-MM-DD")
+    extension_reason: str = Field(..., min_length=1)
+
+    @field_validator("new_valid_upto")
+    @classmethod
+    def _a_date(cls, v: str) -> str:
+        try:
+            return date.fromisoformat(str(v)[:10]).isoformat()
+        except ValueError:
+            raise ValueError("new_valid_upto must be an ISO date (YYYY-MM-DD)")
+
+    @field_validator("extension_reason")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        if not str(v).strip():
+            raise ValueError("extension_reason is required")
+        return str(v).strip()
 
 
 class CancelEWBRequest(BaseModel):
@@ -276,7 +302,26 @@ def extend_ewb(
     req: ExtendEWBRequest,
     current_user: dict = Depends(rbac("gst", "approve")),
 ):
-    _assert_ewb_scope(current_user, record_id)
+    """Record an extension the CA obtained on the NIC portal.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to NIC portal
+    """
+    rec = _assert_ewb_scope(current_user, record_id)
+
+    # AN EXTENSION MOVES THE DATE FORWARD, and the check is against the
+    # RECORD's own validity rather than against today: a CA who extended on
+    # the 20th and gets round to recording it on the 23rd is recording a real
+    # extension, and refusing that would push the record outside the product.
+    # What is refused is a date that does not extend anything — which would
+    # SHORTEN the window this screen exists to watch, and would flip `source`
+    # to "recorded" (the authoritative claim) while doing it.
+    current = str(rec.get("ewb_valid_upto") or "")[:10]
+    if current and req.new_valid_upto <= current:
+        raise HTTPException(
+            422,
+            detail=(f"This bill is already valid upto {current}. An extension "
+                    f"has to be later than that; {req.new_valid_upto} is not."))
+
     from domain.income_tax.eway_service import record_ewb_extended
     try:
         result = record_ewb_extended(

@@ -916,7 +916,7 @@ def create_challan(
             get_supabase().table("tds_challans").insert(record).execute()
 
         log_event(firm_id, "tds_challan", record["id"], "create",
-                  actor_id=current_user.get("id"), new_data=record)
+                  actor_id=current_user.get("auth_user_id"), new_data=record)
         timeline_service.log_timeline_event(
             client_id=body.client_id, firm_id=firm_id,
             financial_year=body.financial_year, category="tds",
@@ -1035,7 +1035,7 @@ def create_return(
             get_supabase().table("tds_returns").insert(record).execute()
 
         log_event(firm_id, "tds_return", record["id"], "create",
-                  actor_id=current_user.get("id"), new_data=record)
+                  actor_id=current_user.get("auth_user_id"), new_data=record)
         return api_response(True, record)
     except HTTPException:
         raise
@@ -1120,7 +1120,7 @@ def update_return_status(
             rec = rows[0] if rows else {}
 
         log_event(firm_id, "tds_return", return_id, "status_change",
-                  actor_id=current_user.get("id"), new_data={"status": body.status})
+                  actor_id=current_user.get("auth_user_id"), new_data={"status": body.status})
         if body.status == "filed":
             timeline_service.log_timeline_event(
                 client_id=rec.get("client_id", ""), firm_id=firm_id,
@@ -1221,7 +1221,7 @@ def create_certificate(
             get_supabase().table("tds_certificates").insert(record).execute()
 
         log_event(firm_id, "tds_certificate", record["id"], "create",
-                  actor_id=current_user.get("id"), new_data=record)
+                  actor_id=current_user.get("auth_user_id"), new_data=record)
         return api_response(True, {**record, **display})
     except HTTPException:
         raise
@@ -1454,7 +1454,7 @@ def upload_form26as(
             get_supabase().table("form_26as_uploads").insert(record).execute()
 
         log_event(firm_id, "form_26as_upload", record["id"], "create",
-                  actor_id=current_user.get("id"))
+                  actor_id=current_user.get("auth_user_id"))
         return api_response(True, record)
     except HTTPException:
         raise

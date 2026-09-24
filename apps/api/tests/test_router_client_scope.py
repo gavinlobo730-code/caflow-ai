@@ -1596,12 +1596,11 @@ EXEMPT: dict[str, str] = {
         "member can work is a property of that person, not of any client's "
         "book. Covers GET (list_capacity) and PUT (set_capacity), which "
         "share this path.",
-    # team.py — the role change.
     # analytics.py — the two routes that aggregate over STAFF, not clients.
     "/api/analytics/team":
         "per-EMPLOYEE task counts and hours (users joined to tasks by "
         "assigned_to/assignee_id). Names staff, never a client — the same "
-        "reasoning as /api/workload/capacity and /api/team/{user_id}/role.",
+        "reasoning as /api/workload/capacity.",
     "/api/analytics/firm":
         "firm-level totals only — task counts, active-client COUNT, revenue "
         "sum, hours. No client is named and no per-client figure is returned, "
@@ -1715,10 +1714,6 @@ EXEMPT: dict[str, str] = {
         "Partner-only through rbac('settings', 'write') and stamps created_by, "
         "and the screen says the rate is shared. The GET stays open because "
         "every screen showing a foreign amount needs the rate behind it.",
-    "/api/team/{user_id}/role":
-        "users has a firm_id and NO client_id column (migration 003) — "
-        "addressed by a STAFF user_id, and already firm-membership checked. "
-        "Same reasoning as every /api/identity route, all exempt above.",
     # tds.py — the firm's own reading of the DTAA articles it withholds under.
     "/api/tds/treaty-rates":
         "dtaa_treaty_rates has firm_id and NO client_id (migration 310), and "
@@ -1788,7 +1783,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/document-intelligence-v2": 5, "/api/payments": 6,
               "/api/insights": 2, "/api/assignments": 5, "/api/risks": 5,
               "/api/notifications": 7, "/api/documents": 5, "/api/workload": 4,
-              "/api/team": 2, "/api/ai-copilot": 3,
+              "/api/team": 1, "/api/ai-copilot": 3,
               "/api/einvoice": 4, "/api/form-26as": 6, "/api/fixed-assets": 5,
               "/api/analytics": 5, "/api/intelligence": 6, "/api/hsn": 1,
               "/api/fx-reports": 5, "/api/currencies": 4,

@@ -315,7 +315,7 @@ def _emit_article_event(current_user: dict, art: dict, event_type: str, title: s
         else:
             from services.audit_service import log_event
             log_event(current_user.get("firm_id", ""), "knowledge_article", str(art.get("id", "")),
-                      event_type, actor_id=current_user.get("id"),
+                      event_type, actor_id=current_user.get("auth_user_id"),
                       actor_email=current_user.get("email"), new_data={"title": art.get("title")})
     except Exception:  # pragma: no cover - non-fatal
         pass

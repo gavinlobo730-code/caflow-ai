@@ -78,7 +78,7 @@ def create_assignment(body: AssignmentBody, current_user: dict = Depends(rbac("a
     assert_client_access(current_user, body.client_id)
     row = assignment_repo.create(firm_id, body.user_id, body.client_id)
     log_event(firm_id, "user_client_assignment", body.client_id, "create",
-              actor_id=current_user.get("id"), actor_email=current_user.get("email"),
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               new_data={"user_id": body.user_id, "client_id": body.client_id})
     return api_response(True, row)
 
@@ -93,7 +93,7 @@ def create_bulk(body: BulkAssignmentBody, current_user: dict = Depends(rbac("ass
         assert_client_access(current_user, cid)
         created.append(assignment_repo.create(firm_id, body.user_id, cid))
     log_event(firm_id, "user_client_assignment", body.user_id, "create",
-              actor_id=current_user.get("id"), actor_email=current_user.get("email"),
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               new_data={"user_id": body.user_id, "client_ids": body.client_ids})
     return api_response(True, {"created": created, "count": len(created)})
 
@@ -110,7 +110,7 @@ def remove_assignment(
     if not removed:
         return api_response(False, None, "Assignment not found")
     log_event(firm_id, "user_client_assignment", client_id, "delete",
-              actor_id=current_user.get("id"), actor_email=current_user.get("email"),
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               old_data={"user_id": user_id, "client_id": client_id})
     return api_response(True, {"user_id": user_id, "client_id": client_id, "removed": True})
 

@@ -6,8 +6,16 @@
  * `eway_validity` has computed the expiry since SALES-28's first half and
  * `/records/{id}/validity` served it — but only to somebody who had already
  * opened that one record. A bill that lapses while the lorry is still moving
- * exposes the consignment to detention and seizure under CGST §129, and the
- * extension path has existed the whole time with nothing to prompt it.
+ * exposes the consignment to detention and seizure under CGST §129.
+ *
+ * AND THE EXTENSION IS RECORDABLE FROM HERE SINCE 24-09-2026.
+ * `POST /records/{id}/extend` existed from the day the module was written and
+ * had NO caller in either frontend — the reachability ratchet had it as the
+ * one unreachable route on this prefix — so the single action this panel
+ * exists to prompt could not be taken anywhere in the product. It is
+ * PREPARE-ONLY like everything else here: the CA extends on the NIC portal
+ * under the proviso to Rule 138(10) and records the validity that came back,
+ * which is what moves the row's source from "Computed" to "Portal".
  *
  * IT IS NOT A COMPLIANCE ROW AND IS DELIBERATELY NOT RENDERED AS ONE. The
  * table below it holds `ComplianceEntry` rows, each with a filing status and a
@@ -25,9 +33,10 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Clock, HelpCircle, Truck } from "lucide-react";
+import { AlertTriangle, Clock, HelpCircle, Loader2, Truck } from "lucide-react";
 import { api, type ExpiringEwayBill, type ExpiringEwayBills as Report } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
+import { Can } from "@/components/Can";
 
 const STATE_LABEL: Record<ExpiringEwayBill["state"], string> = {
   expired: "Expired",
@@ -41,6 +50,74 @@ function daysText(b: ExpiringEwayBill): string {
   if (b.days_left < 0) return `${Math.abs(b.days_left)}d ago`;
   if (b.days_left === 0) return "today";
   return `in ${b.days_left}d`;
+}
+
+/** Recording an extension on ONE bill. Inline rather than a modal: the CA is
+ *  reading a list of lorries and acting on one row, and a dialog would hide
+ *  the rest of the list at exactly the moment it matters. */
+function RecordExtension({ bill, onDone }: { bill: ExpiringEwayBill; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [validUpto, setValidUpto] = useState("");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await api.ewayBill.extend(bill.record_id, validUpto, reason);
+      // The GST workspace routers answer a refusal as HTTP 200 with
+      // {success: false}, so an unchecked call would show "recorded" for a
+      // request the server declined — the same defect lib/data/gst.ts had
+      // about a filed return.
+      if (!r || (r as { success?: boolean }).success === false) {
+        setError((r as { error?: string })?.error ?? "Couldn't record the extension.");
+        return;
+      }
+      setOpen(false);
+      setValidUpto("");
+      setReason("");
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't record the extension.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="text-xs px-2 py-1 rounded-md border border-ps-border text-ps-label hover:bg-ps-bg">
+        Record extension
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5 min-w-[200px]">
+      <label className="block">
+        <span className="sr-only">New valid upto</span>
+        <input type="date" value={validUpto} onChange={(e) => setValidUpto(e.target.value)}
+          className="w-full text-xs px-2 py-1 rounded-md border border-ps-border bg-ps-surface text-ps-ink" />
+      </label>
+      <input type="text" value={reason} placeholder="Reason recorded on the portal"
+        onChange={(e) => setReason(e.target.value)}
+        className="w-full text-xs px-2 py-1 rounded-md border border-ps-border bg-ps-surface text-ps-ink" />
+      {error && <p className="text-xs text-state-problem">{error}</p>}
+      <div className="flex gap-1.5">
+        <button onClick={submit} disabled={saving || !validUpto || !reason.trim()}
+          className="text-xs px-2 py-1 rounded-md font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 inline-flex items-center gap-1">
+          {saving && <Loader2 size={11} className="animate-spin" />}Save
+        </button>
+        <button onClick={() => { setOpen(false); setError(null); }}
+          className="text-xs px-2 py-1 rounded-md border border-ps-border text-ps-label hover:bg-ps-bg">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function ExpiringEwayBills() {
@@ -104,6 +181,7 @@ export function ExpiringEwayBills() {
             <th className="text-left font-medium px-5 py-2">Source</th>
             <th className="text-right font-medium px-5 py-2">When</th>
             <th className="text-left font-medium px-5 py-2">State</th>
+            <th className="text-right font-medium px-5 py-2">Extension</th>
           </tr>
         </thead>
         <tbody>
@@ -134,12 +212,30 @@ export function ExpiringEwayBills() {
                 </span>
                 {b.gap && <p className="text-xs text-ps-hint mt-0.5">{b.gap}</p>}
               </td>
+              <td className="px-5 py-2 text-right">
+                {/* rbac("gst", "approve") guards the endpoint; this stops the
+                    control being offered to somebody it would 403. */}
+                <div className="inline-flex justify-end">
+                  <Can resource="gst" action="approve">
+                    <RecordExtension bill={b} onDone={load} />
+                  </Can>
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
 
       <div className="px-5 py-3 border-t border-ps-border bg-ps-bg space-y-1">
+        {/* PREPARE-ONLY, said where the button is rather than in a banner
+            somewhere else. Extending happens on the NIC portal under the
+            proviso to Rule 138(10); what is recorded here is the validity
+            that came back from it, which is also why doing so moves the row's
+            source from "Computed" to "Portal". */}
+        <p className="text-xs text-ps-hint">
+          PracticeSync does not reach the NIC portal. Extend the bill there
+          under the proviso to Rule 138(10), then record the new validity here.
+        </p>
         {caveats.map((c, i) => (
           <p key={i} className="text-xs text-ps-hint">{c}</p>
         ))}

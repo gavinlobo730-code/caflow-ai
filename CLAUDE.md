@@ -172,7 +172,24 @@ change. The code is the authority; keep this file in step with it.
   face value IS the open figure, which is true of the three candidate kinds that
   carry no such column.
 - `created_by` / `posted_by` FK to `public.users.id` (the internal user id), **not** the
-  Supabase auth id.
+  Supabase auth id. **`audit_log.actor_id` IS THE MIRROR IMAGE AND TAKES THE AUTH
+  ID**, because migration 111's trigger — which writes the great majority of that
+  table's rows, on every firm-scoped table — reads `auth.uid()` into it and looks
+  the email up `WHERE u.auth_user_id = v_actor`. The column has **no FK** (082
+  declares a bare `actor_id UUID`), so nothing refused the other one: on
+  24-09-2026, 157 `audit_service.log_event` calls passed the auth id and **37
+  passed `current_user.get("id")`**, and `GET /api/audit?actor_id=` filters
+  `.eq()` on it, so "everything this person did" returned whichever HALF shared
+  the flavour of id that was asked for — silently, on this product's Companies
+  (Accounts) Rules 2014 Rule 3(1) edit log and its DPDP Rule 6 access log.
+  `tests/test_the_audit_log_names_one_kind_of_actor.py` is the rule.
+  ⚠️ **THERE ARE TWO FUNCTIONS CALLED `log_event`** —
+  `services/audit_service.log_event` → `public.audit_log`, and
+  `task_extras_repo.log_event` → `public.task_timeline`, whose `actor_id` is
+  `TEXT` (migration 063) and correctly holds the INTERNAL id. A sweep matching on
+  the NAME rewrote four of the second one's call sites before the diff was read;
+  the guard tells them apart on the CALL SHAPE (a bare `Name` against an
+  `Attribute` on a repository), never on a list of files.
 - Money crosses the API as raw integer `*_paise`. The frontend formats to ₹. Rupee
   conversion happens only at the statutory payload boundary — see
   `domain/gst/money.py`: 2-decimal rupees for GSTR-1, whole rupees for GSTR-3B

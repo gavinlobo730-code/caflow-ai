@@ -216,7 +216,7 @@ def create_company(
             get_supabase().table("mca_companies").insert(record).execute()
 
         log_event(firm_id, "mca_company", record["id"], "create",
-                  actor_id=current_user.get("id"), new_data=record)
+                  actor_id=current_user.get("auth_user_id"), new_data=record)
         return api_response(True, record)
     except HTTPException:
         # A CIN-format rejection carries a real, actionable message — collapsing
@@ -311,7 +311,7 @@ def create_director(
             get_supabase().table("mca_directors").insert(record).execute()
 
         log_event(firm_id, "mca_director", record["id"], "create",
-                  actor_id=current_user.get("id"), new_data=record)
+                  actor_id=current_user.get("auth_user_id"), new_data=record)
         return api_response(True, record)
     except HTTPException:
         # A DIN/PAN-format rejection carries a real, actionable message —
@@ -350,7 +350,7 @@ def update_director(
             rec = rows[0] if rows else {}
 
         log_event(firm_id, "mca_director", director_id, "update",
-                  actor_id=current_user.get("id"), new_data=updates)
+                  actor_id=current_user.get("auth_user_id"), new_data=updates)
         return api_response(True, rec)
     except Exception as e:
         return api_response(False, None, "Unable to complete MCA operation. Please try again.")
@@ -445,7 +445,7 @@ def create_filing(
             get_supabase().table("mca_filings").insert(record).execute()
 
         log_event(firm_id, "mca_filing", record["id"], "create",
-                  actor_id=current_user.get("id"), new_data=record)
+                  actor_id=current_user.get("auth_user_id"), new_data=record)
         return api_response(True, record)
     except HTTPException:
         raise
@@ -507,7 +507,7 @@ def update_filing_status(
             rec = rows[0] if rows else {}
 
         log_event(firm_id, "mca_filing", filing_id, "status_change",
-                  actor_id=current_user.get("id"), new_data=updates)
+                  actor_id=current_user.get("auth_user_id"), new_data=updates)
         if body.status == "filed":
             timeline_service.log_timeline_event(
                 client_id=rec.get("client_id", ""), firm_id=firm_id,

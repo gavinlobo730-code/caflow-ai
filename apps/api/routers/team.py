@@ -1,21 +1,30 @@
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from typing import Optional
+"""The firm's staff list, with each member's live task workload.
+
+ONE ROUTE, AND THE SECOND ONE WAS DELETED ON 24-09-2026.
+
+`PATCH /api/team/{user_id}/role` lived here and was a SECOND WRITE PATH for a
+member's role: `PATCH /api/identity/users/{user_id}/role` is the other, it is
+what `app/team/page.tsx` calls through `api.identity.changeRole`, and it sits
+beside the suspend, reactivate and force-logout routes that make up the rest of
+that lifecycle. Nothing in either frontend ever called this one — the
+reachability ratchet had it as the single unreachable route on this prefix —
+so the two never had to agree, and they did not: this copy validated against a
+local `VALID_ROLES` set while identity.py validates against `_CANONICAL`, and
+only identity.py's route is part of the state machine the Team screen drives.
+
+Two write paths for one fact is the shape this codebase refuses everywhere
+else (one posting kernel, one supplier master, one filing demo). The one that
+no screen could reach is the one that goes.
+"""
+from fastapi import APIRouter, Depends
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import filter_by_client
 from repositories.user_repository import user_repo
 from repositories.task_repository import task_repo
 from services.task_service import compute_team_workload
-from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/team", tags=["team"])
-
-VALID_ROLES = {"Partner", "Manager", "Executive", "Reviewer", "Client"}
-
-
-class RoleUpdate(BaseModel):
-    role: str
 
 
 @router.get("")
@@ -28,28 +37,3 @@ def list_team(current_user: dict = Depends(rbac("team", "read"))):
     tasks = filter_by_client(current_user, task_repo.find_all(firm_id=firm_id))
     workload = compute_team_workload(tasks, members)
     return api_response(True, {"team": workload, "total": len(workload)})
-
-
-@router.patch("/{user_id}/role")
-def update_user_role(
-    user_id: str,
-    body: RoleUpdate,
-    current_user: dict = Depends(rbac("team", "write")),
-):
-    """Update a team member's role — Partners only."""
-    if body.role not in VALID_ROLES:
-        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(VALID_ROLES)}")
-
-    firm_id = current_user.get("firm_id")
-    member = user_repo.find_by_id(user_id)
-    if not member or member.get("firm_id") != firm_id:
-        raise HTTPException(status_code=404, detail="Team member not found")
-
-    old_role = member.get("role")
-    updated = user_repo.update(user_id, {"role": body.role})
-    log_event(
-        firm_id, "user_role", user_id, "update",
-        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
-        old_data={"role": old_role}, new_data={"role": body.role},
-    )
-    return api_response(True, {"user": updated})
