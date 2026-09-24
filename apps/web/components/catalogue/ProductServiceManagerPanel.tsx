@@ -253,7 +253,7 @@ export function ProductServiceManagerPanel({
         <div>
           <p className="font-medium text-ps-ink">
             {s.name}
-            <span className="ml-2 text-[9px] uppercase tracking-wide text-ps-hint">{formatServiceKind(s.kind)}</span>
+            <span className="ml-2 text-3xs uppercase tracking-wide text-ps-hint">{formatServiceKind(s.kind)}</span>
             {!s.is_active && <span className="ml-2 text-3xs uppercase tracking-wide text-ps-hint">archived</span>}
           </p>
           {s.description && <p className="text-2xs text-ps-hint truncate max-w-[280px]">{s.description}</p>}

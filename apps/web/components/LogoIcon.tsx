@@ -49,7 +49,7 @@ export function LogoWordmark({ size = "md" }: { size?: "sm" | "md" }) {
   return (
     <div className="flex items-center gap-2.5">
       <LogoIcon size={size} />
-      <span className={`font-bold tracking-tight text-white ${size === "sm" ? "text-[13px]" : "text-base"}`}>
+      <span className={`font-bold tracking-tight text-white ${size === "sm" ? "text-sm" : "text-base"}`}>
         PracticeSync
       </span>
     </div>

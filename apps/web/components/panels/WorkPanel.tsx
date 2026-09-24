@@ -25,7 +25,7 @@ export function WorkPanel() {
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 py-3 border-b border-gray-200 shrink-0">
-        <p className="text-[13px] font-semibold text-brand">Work</p>
+        <p className="text-sm font-semibold text-brand">Work</p>
         <p className="text-2xs text-gray-500 mt-0.5">Personal execution</p>
       </div>
 

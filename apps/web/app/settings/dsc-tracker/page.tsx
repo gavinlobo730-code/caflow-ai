@@ -143,13 +143,13 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
     } finally { setSaving(false); }
   }
 
-  const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[13px] outline-none focus:border-blue-400";
+  const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-blue-400";
   return (
     <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-md p-5 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[15px] font-semibold text-ps-ink">Renew this DSC</p>
+            <p className="text-base font-semibold text-ps-ink">Renew this DSC</p>
             <p className="text-2xs text-ps-label mt-0.5">
               {record.holder_name} · {record.dsc_type} · expires {record.expiry_date}
             </p>
@@ -194,11 +194,11 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
 
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose}
-            className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
+            className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
             Cancel
           </button>
           <button onClick={submit} disabled={saving}
-            className="px-3 py-1.5 text-[12px] bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+            className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
             {saving ? "Saving…" : "Record the renewal"}
           </button>
         </div>
@@ -260,13 +260,13 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
     } finally { setSaving(false); }
   }
 
-  const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[13px] outline-none focus:border-blue-400";
+  const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-blue-400";
   return (
     <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-md p-5 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[15px] font-semibold text-ps-ink">Correct this record</p>
+            <p className="text-base font-semibold text-ps-ink">Correct this record</p>
             <p className="text-2xs text-ps-label mt-0.5">
               For something keyed wrongly. To record a NEW certificate for the
               same holder, use Renew.
@@ -304,11 +304,11 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
 
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose}
-            className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
+            className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
             Cancel
           </button>
           <button onClick={submit} disabled={saving}
-            className="px-3 py-1.5 text-[12px] bg-brand-dark text-white rounded-lg disabled:opacity-40">
+            className="px-3 py-1.5 text-xs bg-brand-dark text-white rounded-lg disabled:opacity-40">
             {saving ? "Saving…" : "Save the correction"}
           </button>
         </div>

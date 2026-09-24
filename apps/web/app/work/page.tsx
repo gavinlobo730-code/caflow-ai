@@ -175,8 +175,8 @@ export default function WorkPage() {
             <InboxIcon size={20} className="text-ps-hint" />
           </div>
           <div>
-            <p className="text-[14px] font-medium text-ps-body">No tasks assigned to you</p>
-            <p className="text-[12px] text-ps-hint mt-1">Tasks assigned to you will appear here.</p>
+            <p className="text-sm font-medium text-ps-body">No tasks assigned to you</p>
+            <p className="text-xs text-ps-hint mt-1">Tasks assigned to you will appear here.</p>
           </div>
           <Link href="/tasks">
             <Button variant="outline" size="sm" className="gap-1.5 text-xs mt-1">

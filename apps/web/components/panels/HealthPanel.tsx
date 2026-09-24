@@ -31,7 +31,7 @@ export function HealthPanel() {
           <Activity size={12} className="text-emerald-600" />
         </div>
         <div>
-          <p className="text-[12px] font-semibold text-brand leading-none">Health</p>
+          <p className="text-xs font-semibold text-brand leading-none">Health</p>
           <p className="text-3xs text-gray-500 mt-0.5 leading-none">Client health monitor</p>
         </div>
       </div>
@@ -48,7 +48,7 @@ export function HealthPanel() {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium transition-colors mb-0.5",
+                "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors mb-0.5",
                 isActive
                   ? "bg-brand text-white"
                   : "text-gray-600 hover:text-brand hover:bg-ps-bg"

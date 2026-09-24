@@ -50,7 +50,7 @@ function money(paise?: number | null) {
 }
 
 const FIELD =
-  "border border-ps-border rounded-lg px-2 py-1.5 text-[13px] outline-none focus:border-blue-400";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-sm outline-none focus:border-blue-400";
 
 /** The reclaimable reasons, and ONLY those. Kept in step with
  *  services/itc_register_service.RECLAIMABLE_REASONS — a reason this list
@@ -89,7 +89,7 @@ function RegisterTable({ rows, title, table, empty }: {
 }) {
   return (
     <div className="rounded-xl border border-ps-border p-3">
-      <p className="text-[12px] font-semibold text-ps-ink">
+      <p className="text-xs font-semibold text-ps-ink">
         {title} <span className="text-ps-hint font-normal">· Table {table}</span>
       </p>
       {rows.length === 0 ? (
@@ -213,7 +213,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-ps-border bg-ps-bg p-3">
-        <p className="text-[12px] text-ps-body">
+        <p className="text-xs text-ps-body">
           Reclaimable ITC reversals (Table <b>4(B)(2)</b>) and the reclaims that
           bring them back (Table <b>4(D)(1)</b>).
         </p>
@@ -235,7 +235,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
         </label>
         <button onClick={() => load(period)}
           disabled={busy !== null || !isGstPeriod(period)}
-          className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
+          className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
           {busy === "load" ? "Loading…" : "Load the register"}
         </button>
         {isGstPeriod(period) && (
@@ -244,7 +244,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
       </div>
 
       {err && <Callout tone="problem">{err}</Callout>}
-      {ok && <p className="text-[12px] px-3 py-2 rounded-lg bg-green-50 text-green-700">{ok}</p>}
+      {ok && <p className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700">{ok}</p>}
 
       {register && (
         <div className="space-y-3">
@@ -272,7 +272,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
           <div className="flex items-center gap-2">
             {(["reversal", "reclaim"] as const).map((k) => (
               <button key={k} onClick={() => { setKind(k); setErr(null); setOk(null); }}
-                className={`px-2.5 py-1 text-[12px] rounded-lg border ${
+                className={`px-2.5 py-1 text-xs rounded-lg border ${
                   kind === k ? "bg-brand-dark text-white border-brand-dark"
                              : "border-ps-border text-ps-label hover:bg-ps-bg"}`}>
                 {k === "reversal" ? "Record a reversal" : "Record a reclaim"}
@@ -368,7 +368,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
               )}
             </span>
             <button onClick={record} disabled={busy !== null || !canRecord}
-              className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
+              className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
               {busy === "record" ? "Recording…" : "Record"}
             </button>
           </div>
@@ -378,7 +378,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
       {/* ── Table 11 advances ────────────────────────────────────────────── */}
       {advances && (
         <div className="rounded-xl border border-ps-border p-3 space-y-2 border-t">
-          <p className="text-[12px] font-semibold text-ps-ink">
+          <p className="text-xs font-semibold text-ps-ink">
             Advances against no invoice — GSTR-1 Table 11
             <span className="text-ps-hint font-normal"> · {advances.count}</span>
           </p>

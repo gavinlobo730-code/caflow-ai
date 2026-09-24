@@ -72,39 +72,39 @@ export default function LoginHistoryPage() {
           <History size={18} className="text-brand" />
           <h1 className="text-lg font-semibold text-brand">Login History</h1>
           {!loading && (
-            <span className="text-[12px] text-gray-400">
+            <span className="text-xs text-gray-400">
               {events.length}{capped ? "+" : ""} event{events.length === 1 ? "" : "s"}
             </span>
           )}
         </div>
         {canForceLogout && (
           <button onClick={forceLogoutAll} disabled={busy}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-state-problem-surface disabled:opacity-60">
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-state-problem-surface disabled:opacity-60">
             {busy ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />} Sign out all users
           </button>
         )}
       </div>
-      <p className="text-[12px] text-gray-500 mb-4">
+      <p className="text-xs text-gray-500 mb-4">
         Login, logout, and forced-logout events for your firm (audited).
         {capped && ` Showing the most recent ${LOGIN_HISTORY_DEFAULT_LIMIT} events.`}
       </p>
 
       {!canViewHistory && (
-        <div className="flex items-center gap-2 text-[12px] text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-3">
+        <div className="flex items-center gap-2 text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-3">
           <ShieldAlert size={14} /> Login history is visible to Managers and Partners only.
         </div>
       )}
-      {error && <div className="text-[12px] text-red-600 mb-2">{error}</div>}
-      {notice && <div className="text-[12px] text-emerald-700 mb-2">{notice}</div>}
+      {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
+      {notice && <div className="text-xs text-emerald-700 mb-2">{notice}</div>}
 
       {loading ? (
         <PageLoader />
       ) : events.length === 0 ? (
-        <div className="py-12 text-center text-[12px] text-gray-400">No login events recorded yet.</div>
+        <div className="py-12 text-center text-xs text-gray-400">No login events recorded yet.</div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           {events.map((e) => (
-            <div key={e.id} className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50 text-[12px]">
+            <div key={e.id} className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50 text-xs">
               <div className="min-w-0">
                 <span className="text-brand font-medium">{e.email || e.user_id || "—"}</span>
                 {e.ip ? <span className="text-gray-400"> · {e.ip}</span> : null}

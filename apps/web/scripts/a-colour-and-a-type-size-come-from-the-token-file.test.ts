@@ -181,7 +181,29 @@ const HEX_BUDGET = 44;
 // `StatutoryHandoff` and `ApplyStructureModal`, which open on a click and on
 // data; the walk renders with neither. What the walk DID confirm is the
 // negative: 159 routes byte-identical, so nothing leaked out of the module.
-const PX_TEXT_BUDGET = 187;
+//
+// **187 → 0 on 24-09-2026. D12 IS DONE AND THE BUDGET IS NOW A BAN.** The tail
+// was 54 files with nothing left to group: 113 × 12px, 35 × 13px, 29 × 9px,
+// 4 × 18px, 3 × 14px, 2 × 15px and the dashboard's one 22px greeting. The 29
+// nine-pixel sites — chips, badges and micro-labels — take `text-3xs` (10px)
+// rather than a token of their own, because naming 9px is the one thing T3-a
+// decided against and it gave the reason: below that the remaining steps stop
+// being distinguishable. The two 15px modal titles go UP to `text-base` for
+// the payroll h1's reason.
+//
+// 149 of the 160 routes moved, which is what "the tail" means, and the eleven
+// that did not are the ones with no arbitrary size left to convert. The
+// biggest movers were read: the dashboard (greeting 22→20, card headings and
+// deadline names 13→14, so the names read more clearly against their dates)
+// and `/practice/compliance` (labels a shade larger, everything shifted a few
+// pixels up, layout unchanged). Nothing needed a hand-set `leading-*`.
+//
+// A ZERO BUDGET IS A DIFFERENT THING FROM A SMALL ONE: there is no longer a
+// number to raise. If a size is genuinely needed that the scale does not
+// carry, the answer is a token in `tailwind.config.ts` with the reason beside
+// it — which is how `3xs` and `2xs` came to exist — not an arbitrary value
+// and a bigger budget here.
+const PX_TEXT_BUDGET = 0;
 
 // ── THE SECOND WAY TO WRITE A COLOUR, WHICH THIS FILE COULD NOT SEE ─────────
 //
@@ -301,9 +323,11 @@ test("a font size is not written as an arbitrary pixel value", () => {
   const worst = [...byFile.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
   assert.ok(
     total <= PX_TEXT_BUDGET,
-    `${total} arbitrary font sizes, budget ${PX_TEXT_BUDGET}. The scale now ` +
-      `reaches below Tailwind's smallest: text-3xs is 10px and text-2xs is ` +
-      `11px.\n  worst: ` +
+    `${total} arbitrary font sizes, and the budget is ${PX_TEXT_BUDGET}: the ` +
+      `scale carries every size this product uses. It reaches below ` +
+      `Tailwind's smallest — text-3xs is 10px, text-2xs is 11px — and if a ` +
+      `step is genuinely missing, add a token in tailwind.config.ts with the ` +
+      `reason, do not raise this number.\n  worst: ` +
       worst.map(([f, n]) => `${f} (${n})`).join("\n         "),
   );
 });

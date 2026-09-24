@@ -49,7 +49,7 @@ function ARDashboard() {
           <ClipboardList size={18} className="text-brand" />
           <h1 className="text-lg font-semibold text-brand">AR Aging</h1>
         </div>
-        <button onClick={load} className="flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-brand">
+        <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
           <RefreshCw size={13} /> Refresh
         </button>
       </div>
@@ -80,7 +80,7 @@ function ARDashboard() {
           </tfoot>
         </table>
       </div>
-      <p className="text-[12px] text-gray-500 mt-3">
+      <p className="text-xs text-gray-500 mt-3">
         Overdue: <span className="font-medium text-red-600">{formatPaise(aging?.overdue_paise ?? 0)}</span>
         {" "}across {aging?.overdue_count ?? 0} invoice(s). Aging is due-date based, computed server-side.
       </p>

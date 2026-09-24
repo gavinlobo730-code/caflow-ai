@@ -531,7 +531,7 @@ export default function ITRFilingPage() {
                       says nothing, and the original is what a row without one
                       has always been. */}
                   {(f.return_type ?? "original") !== "original" && (
-                    <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                    <span className="text-3xs font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
                       {KIND_LABEL[f.return_type as string] ?? f.return_type}
                     </span>
                   )}
@@ -573,7 +573,7 @@ export default function ITRFilingPage() {
           </div>
           <div className="flex justify-between">
             {STATUS_ORDER.map(s => (
-              <span key={s} className="text-[9px] text-ps-hint">{STATUS_LABEL[s]}</span>
+              <span key={s} className="text-3xs text-ps-hint">{STATUS_LABEL[s]}</span>
             ))}
           </div>
 

@@ -25,7 +25,7 @@ export function KnowledgePanel() {
           <Library size={12} className="text-brand" />
         </div>
         <div>
-          <p className="text-[12px] font-semibold text-brand leading-none">Knowledge</p>
+          <p className="text-xs font-semibold text-brand leading-none">Knowledge</p>
           <p className="text-3xs text-gray-500 mt-0.5 leading-none">Firm SOPs &amp; policies</p>
         </div>
       </div>
@@ -38,7 +38,7 @@ export function KnowledgePanel() {
               key={label}
               href={href}
               className={cn(
-                "flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium transition-colors mb-0.5",
+                "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors mb-0.5",
                 isActive ? "bg-brand text-white" : "text-gray-600 hover:text-brand hover:bg-ps-bg"
               )}
             >

@@ -305,12 +305,12 @@ export default function DashboardContent() {
       {loadFailed && (
         <div role="alert" className="flex items-center gap-3 rounded-xl border border-state-problem-border bg-state-problem-surface px-4 py-3">
           <AlertTriangle size={16} className="text-red-600 shrink-0" />
-          <p className="text-[13px] text-state-problem flex-1">
+          <p className="text-sm text-state-problem flex-1">
             Couldn&apos;t load your dashboard — please retry. The figures below may be stale.
           </p>
           <button
             onClick={() => setReloadKey((k) => k + 1)}
-            className="text-[12px] font-medium text-state-problem underline shrink-0"
+            className="text-xs font-medium text-state-problem underline shrink-0"
           >
             Retry
           </button>
@@ -354,7 +354,7 @@ export default function DashboardContent() {
                     <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", step.color)}>
                       <Icon size={15} />
                     </div>
-                    <p className="text-[13px] font-semibold text-white leading-tight">{step.title}</p>
+                    <p className="text-sm font-semibold text-white leading-tight">{step.title}</p>
                     <p className="text-2xs text-blue-200 leading-snug flex-1">{step.desc}</p>
                     <div className="flex items-center gap-1 text-2xs text-white/70 group-hover:text-white/90 transition-colors mt-auto pt-1">
                       Go <ArrowRight size={10} />
@@ -370,11 +370,11 @@ export default function DashboardContent() {
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-[22px] font-semibold text-ps-ink tracking-tight">{greeting}</h1>
-          <p className="text-[13px] text-ps-hint mt-1">{dateLabel}</p>
+          <h1 className="text-xl font-semibold text-ps-ink tracking-tight">{greeting}</h1>
+          <p className="text-sm text-ps-hint mt-1">{dateLabel}</p>
         </div>
         <Link href="/ai-assistant">
-          <div className="hidden sm:flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-[13px] font-medium px-3.5 py-2 rounded-lg shadow-[0_4px_12px_rgba(59,130,246,0.2)] transition-colors">
+          <div className="hidden sm:flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium px-3.5 py-2 rounded-lg shadow-[0_4px_12px_rgba(59,130,246,0.2)] transition-colors">
             <Sparkles size={14} />
             Ask AI
           </div>
@@ -445,9 +445,9 @@ export default function DashboardContent() {
               <div className="w-7 h-7 rounded-lg bg-state-attention-surface flex items-center justify-center">
                 <Calendar size={14} className="text-amber-600" />
               </div>
-              <h2 className="text-[13px] font-semibold text-ps-ink">Upcoming Deadlines</h2>
+              <h2 className="text-sm font-semibold text-ps-ink">Upcoming Deadlines</h2>
             </div>
-            <Link href="/deadlines" className="text-[12px] text-blue-600 hover:text-blue-500 font-medium flex items-center gap-1 transition-colors">
+            <Link href="/deadlines" className="text-xs text-blue-600 hover:text-blue-500 font-medium flex items-center gap-1 transition-colors">
               View all <ChevronRight size={12} />
             </Link>
           </div>
@@ -464,7 +464,7 @@ export default function DashboardContent() {
                       "bg-emerald-400"
                     )} />
                     <div className="min-w-0">
-                      <p className="text-[13px] text-ps-ink font-medium truncate">{d.name}</p>
+                      <p className="text-sm text-ps-ink font-medium truncate">{d.name}</p>
                       <p className="text-2xs text-ps-hint mt-0.5">
                         {new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                       </p>
@@ -484,9 +484,9 @@ export default function DashboardContent() {
               <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
                 <Users size={14} className="text-blue-600" />
               </div>
-              <h2 className="text-[13px] font-semibold text-ps-ink">Recent Clients</h2>
+              <h2 className="text-sm font-semibold text-ps-ink">Recent Clients</h2>
             </div>
-            <Link href="/clients" className="text-[12px] text-blue-600 hover:text-blue-500 font-medium flex items-center gap-1 transition-colors">
+            <Link href="/clients" className="text-xs text-blue-600 hover:text-blue-500 font-medium flex items-center gap-1 transition-colors">
               View all <ChevronRight size={12} />
             </Link>
           </div>
@@ -509,7 +509,7 @@ export default function DashboardContent() {
                       {c.client_name.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-semibold text-ps-ink truncate">{c.client_name}</p>
+                      <p className="text-sm font-semibold text-ps-ink truncate">{c.client_name}</p>
                       {c.gstin && <p className="text-2xs text-ps-hint font-mono">{c.gstin}</p>}
                     </div>
                     {c.entity_type && (
@@ -523,8 +523,8 @@ export default function DashboardContent() {
             ) : (
               <div className="px-5 py-10 text-center">
                 <Users size={24} className="text-gray-300 mx-auto mb-2" />
-                <p className="text-[13px] text-ps-hint">No clients yet</p>
-                <Link href="/clients" className="text-[12px] text-blue-600 font-medium mt-1 inline-block">Add your first client →</Link>
+                <p className="text-sm text-ps-hint">No clients yet</p>
+                <Link href="/clients" className="text-xs text-blue-600 font-medium mt-1 inline-block">Add your first client →</Link>
               </div>
             )}
           </div>
@@ -537,9 +537,9 @@ export default function DashboardContent() {
               <div className="w-7 h-7 rounded-lg bg-state-attention-surface flex items-center justify-center">
                 <Clock size={14} className="text-amber-600" />
               </div>
-              <h2 className="text-[13px] font-semibold text-ps-ink">Pending Tasks</h2>
+              <h2 className="text-sm font-semibold text-ps-ink">Pending Tasks</h2>
             </div>
-            <Link href="/work" className="text-[12px] text-blue-600 hover:text-blue-500 font-medium flex items-center gap-1 transition-colors">
+            <Link href="/work" className="text-xs text-blue-600 hover:text-blue-500 font-medium flex items-center gap-1 transition-colors">
               View all <ChevronRight size={12} />
             </Link>
           </div>
@@ -566,7 +566,7 @@ export default function DashboardContent() {
                     "bg-gray-300"
                   )} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium text-ps-ink truncate">{t.title}</p>
+                    <p className="text-sm font-medium text-ps-ink truncate">{t.title}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {t.client_name && <span className="text-2xs text-ps-hint truncate">{t.client_name}</span>}
                       {t.due_date && (
@@ -582,8 +582,8 @@ export default function DashboardContent() {
             ) : (
               <div className="px-5 py-10 text-center">
                 <CheckCircle2 size={24} className="text-gray-300 mx-auto mb-2" />
-                <p className="text-[13px] text-ps-hint">All caught up</p>
-                <Link href="/work" className="text-[12px] text-blue-600 font-medium mt-1 inline-block">View work queue →</Link>
+                <p className="text-sm text-ps-hint">All caught up</p>
+                <Link href="/work" className="text-xs text-blue-600 font-medium mt-1 inline-block">View work queue →</Link>
               </div>
             )}
           </div>

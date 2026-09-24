@@ -31,7 +31,7 @@ export function SettingsPanel() {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-colors",
+                "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors",
                 isActive
                   ? "bg-blue-50 text-blue-700 font-medium"
                   : "text-ps-label hover:bg-ps-bg"

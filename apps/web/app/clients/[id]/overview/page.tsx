@@ -208,7 +208,7 @@ export default function OverviewPage() {
           <p className="text-3xs font-semibold uppercase tracking-widest text-ps-hint">
             Client
           </p>
-          <p className="text-[13px] font-semibold text-ps-ink leading-snug">{client.client_name}</p>
+          <p className="text-sm font-semibold text-ps-ink leading-snug">{client.client_name}</p>
           <p className="text-3xs text-ps-hint">
             {ENTITY_TYPE_LABELS[client.entity_type] ?? client.entity_type}
           </p>
@@ -328,7 +328,7 @@ function ScoreRow({ label, value }: { label: string; value: number }) {
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start gap-1.5">
-      <span className="text-[9px] text-ps-hint mt-0.5 shrink-0 w-10">{label}</span>
+      <span className="text-3xs text-ps-hint mt-0.5 shrink-0 w-10">{label}</span>
       <span className={`text-2xs text-ps-label break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );

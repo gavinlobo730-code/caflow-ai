@@ -274,7 +274,7 @@ export default function MigrationPage() {
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-[9px] text-ps-hint">
+          <div className="flex justify-between text-3xs text-ps-hint">
             {["Create Job", "Parse XML", "Preview", "Import"].map(l => <span key={l}>{l}</span>)}
           </div>
 

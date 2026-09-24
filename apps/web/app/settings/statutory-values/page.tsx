@@ -371,7 +371,7 @@ export default function StatutoryValuesPage() {
                 <div>
                   <label className="block text-2xs text-ps-label mb-1">Read against</label>
                   <select value={basis} onChange={e => setBasis(e.target.value)}
-                    className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400">
+                    className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-400">
                     <option value="monthly">The month&apos;s gross</option>
                     <option value="half_yearly">Six months&apos; gross (half-yearly levy)</option>
                   </select>
@@ -409,13 +409,13 @@ export default function StatutoryValuesPage() {
                       <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-1.5 items-center">
                         <input value={band.from} placeholder="From ₹"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, from: e.target.value } : x))}
-                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400" />
+                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-400" />
                         <input value={band.to} placeholder="To ₹ (blank = and above)"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, to: e.target.value } : x))}
-                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400" />
+                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-400" />
                         <input value={band.amount} placeholder="Tax ₹"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
-                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400" />
+                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-400" />
                         <button type="button" disabled={bands.length === 1}
                           onClick={() => setBands(b => b.filter((_, j) => j !== i))}
                           className="text-ps-hint hover:text-red-600 disabled:opacity-30">
@@ -454,7 +454,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }: {
       <label className="block text-2xs text-ps-label mb-1">{label}</label>
       <input type={type} value={value} placeholder={placeholder}
         onChange={e => onChange(e.target.value)}
-        className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-indigo-400" />
+        className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-indigo-400" />
     </div>
   );
 }

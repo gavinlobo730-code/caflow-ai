@@ -69,7 +69,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
               </button>
               <span
                 className={cn(
-                  "text-[9px] font-medium leading-none select-none",
+                  "text-3xs font-medium leading-none select-none",
                   isActive ? "text-white" : "text-slate-500"
                 )}
               >
@@ -124,7 +124,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
               {/* Popover */}
               <div className="absolute left-full bottom-0 ml-2 z-30 w-48 bg-[#1e2d5e] border border-white/10 rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] p-1.5">
                 <div className="px-3 py-2 border-b border-white/10 mb-1">
-                  <p className="text-[12px] font-semibold text-white truncate">
+                  <p className="text-xs font-semibold text-white truncate">
                     {user?.email ?? "user@firm.com"}
                   </p>
                   <p className="text-3xs text-slate-500 truncate mt-0.5">
