@@ -17,6 +17,7 @@ from models.common import api_response
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from domain.gst import discount as gst_discount
 from domain.sales.line_tax import compute_line_gst
+from domain.sales import credit_limit
 from domain.gst import compensation_cess
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
@@ -358,6 +359,49 @@ def get_outstanding(
     except Exception as e:
         _logger.error("get_outstanding: %s", e)
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
+
+
+@router.get("/credit-position")
+def credit_position(
+    client_id: str = Query(...),
+    customer_id: str = Query(...),
+    invoice_paise: int = Query(0, ge=0),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Where one prospective invoice would leave a customer against their
+    recorded credit limit (SALES-25 b).
+
+    NOT STATUTORY. A credit limit is a commercial term between the client and
+    their customer; no Act sets it and it changes no figure on the invoice, its
+    tax or its journal. `domain/sales/credit_limit.py` says so on every answer.
+
+    Served so the invoice FORM can warn while the CA is typing rather than
+    only at save. The same module and the same three inputs decide both, so a
+    warning shown here and a refusal at save cannot disagree — the shape a
+    screen must never be allowed to get wrong is being invited to type
+    something the server will refuse.
+
+    `invoice_paise` defaults to 0, which answers "what does this customer owe
+    against their limit right now" — a useful question on its own, and the one
+    a customer list would ask.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, credit_limit.assess(
+            limit_paise=None, outstanding_paise=0,
+            invoice_paise=invoice_paise).as_dict())
+    from core.supabase_client import get_supabase
+    from services import customer_credit_service as _credit
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    cust = (db.table("customers").select("credit_limit_paise")
+            .eq("id", customer_id).eq("firm_id", firm_id)
+            .eq("client_id", client_id).limit(1).execute().data) or []
+    if not cust:
+        raise HTTPException(status_code=404, detail="Customer not found.")
+    return api_response(True, _credit.assess_invoice(
+        db, firm_id, client_id, customer_id, invoice_paise,
+        customer=cust[0]).as_dict())
 
 
 @router.get("/next-number")
@@ -714,7 +758,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             # state_code/gstin/credit_days).
             cust_resp = (
                 db.table("customers")
-                .select("state_code, gstin, credit_days, is_active")
+                .select("state_code, gstin, credit_days, is_active, credit_limit_paise")
                 .eq("id", data["customer_id"])
                 .eq("firm_id", firm_id)
                 .eq("client_id", client_id)
@@ -1135,7 +1179,32 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         # Advisory only, and never stored: there is no column for it and there
         # should not be. It describes the moment the number was chosen.
         invoice["numbering_warning"] = numbering_warning
+        # Mock mode has no customers table, so there is no limit to read and
+        # the answer is `not_set` — the SAME SHAPE the real branch returns, so
+        # a screen written against one works against the other.
+        invoice["credit_limit"] = credit_limit.assess(
+            limit_paise=None, outstanding_paise=0,
+            invoice_paise=total_paise).as_dict()
         return invoice
+
+    # ── The customer's credit position (SALES-25 b, migration 414) ──────────
+    #
+    # ASSESSED BEFORE THE INSERT and never after: a block has to happen while
+    # there is still nothing to undo. It is a COMMERCIAL term and not a
+    # statutory one — it changes no figure on this invoice, its tax or its
+    # journal — so it is computed here, attached to the response, and refuses
+    # only where the firm asked for a refusal.
+    #
+    # An OPENING document is never refused whatever the switch says: it records
+    # a balance the client arrived with, and refusing it would make a migration
+    # impossible for the clients who most need one (ACC-14's reasoning), on the
+    # very documents that push a customer past a limit somebody just typed in.
+    from services import customer_credit_service as _credit
+    credit_assessment = _credit.assess_invoice(
+        db, firm_id, client_id, data["customer_id"], total_paise,
+        customer=customer, is_opening=bool(data.get("is_opening")))
+    if credit_assessment.blocks:
+        raise HTTPException(status_code=422, detail=credit_assessment.message)
 
     invoice_payload = {
         "firm_id":               firm_id,
@@ -1256,6 +1325,10 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         )
     # Advisory only, and never stored — see the mock branch above.
     invoice["numbering_warning"] = numbering_warning
+    # ALWAYS PRESENT, even when nobody recorded a limit. A key that appears
+    # only on a breach is a key a screen has to guess the meaning of, and
+    # `state: "not_set"` is a different answer from "there is no problem".
+    invoice["credit_limit"] = credit_assessment.as_dict()
     return invoice
 
 
@@ -1320,7 +1393,8 @@ def bulk_create_invoices(
             # resolve a customer belonging to a DIFFERENT client of the same
             # firm — keyed by (client_id, customer_id), the same compound key
             # _create_invoice_core now requires for the single-invoice path.
-            resp = (db.table("customers").select("id, client_id, state_code, gstin, credit_days, is_active")
+            resp = (db.table("customers")
+                    .select("id, client_id, state_code, gstin, credit_days, is_active, credit_limit_paise")
                     .eq("firm_id", firm_id).in_("id", chunk).in_("client_id", client_ids).execute())
             for r in (resp.data or []):
                 customers_by_id[(r["client_id"], r["id"])] = r

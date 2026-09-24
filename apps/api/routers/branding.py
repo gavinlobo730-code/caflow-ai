@@ -64,6 +64,13 @@ class InvoiceSettingsUpdate(BaseModel):
     upi_id: Optional[str] = None
     upi_qr_url: Optional[str] = None
     footer_text: Optional[str] = None
+    # SALES-25 (b), migration 414. When true, an invoice that would take a
+    # customer past their recorded credit limit is REFUSED rather than warned
+    # about. Off by default and deliberately: a block stops a CA recording a
+    # supply that has already happened, and a supply that cannot be recorded
+    # here gets recorded somewhere this product cannot see. The limit itself is
+    # per CUSTOMER; this is the firm's one choice about what it DOES.
+    credit_limit_blocks: Optional[bool] = None
 
 
 class InvoiceTemplateCreate(BaseModel):

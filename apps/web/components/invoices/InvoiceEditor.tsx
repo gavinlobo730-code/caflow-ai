@@ -47,6 +47,7 @@ import {
   type Customer, type InvoiceDetail, type InvoiceLine, type CurrencyOption,
 } from "@/lib/invoices/shared";
 import { Callout } from "@/components/ui/callout";
+import { formatPaise } from "@/lib/money/format";
 
 type SaveAction = "draft" | "issue" | "send";
 
@@ -419,6 +420,38 @@ export function InvoiceEditor({
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && saving === null, undefined, confirmDialog);
 
+  // ── The customer's credit position (SALES-25 b) ─────────────────────────
+  //
+  // ASKED AS THE CUSTOMER IS CHOSEN, not only at save. The server assesses the
+  // same three inputs through the same module either way, so a warning here
+  // and a refusal at save cannot disagree — a screen must never invite a CA to
+  // type something the server will refuse.
+  //
+  // `invoice_paise: 0` deliberately: this answers "what does this customer owe
+  // against their limit", which is the useful question BEFORE the lines are
+  // typed. What THIS invoice does to that figure is assessed at save, where
+  // the total is final.
+  const [creditPosition, setCreditPosition] = useState<
+    { state?: string; limit_paise?: number | null; outstanding_paise?: number } | null>(null);
+  useEffect(() => {
+    if (!clientId || !customerId) { setCreditPosition(null); return; }
+    let live = true;
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        const q = new URLSearchParams({ client_id: clientId, customer_id: customerId });
+        const res = await apiGet(`/api/sales-invoices/credit-position?${q}`, token);
+        if (live) setCreditPosition(res.success ? (res.data as typeof creditPosition) : null);
+      } catch {
+        // Never fatal: a credit limit is a commercial nicety and the invoice
+        // is the statutory document. A failed lookup shows nothing rather than
+        // blocking the form.
+        if (live) setCreditPosition(null);
+      }
+    })();
+    return () => { live = false; };
+  }, [clientId, customerId]);
+
   // ── Live preview totals + validation ────────────────────────────────────────
   // The typed document discount, in the units the API takes. Both go through
   // lib/money/rupeeInput — the one parser — which REFUSES anything that is not
@@ -611,6 +644,7 @@ export function InvoiceEditor({
     try {
       const token = await getAuthToken();
       let invoiceId = existing?.id ?? "";
+      let creditWarning: string | null = null;
       const trimmedInvoiceNo = invoiceNo.trim();
 
       if (isEdit && existing) {
@@ -687,8 +721,20 @@ export function InvoiceEditor({
           exchange_rate: isForeign ? exchangeRate : undefined,
         }, token);
         if (!created.success) throw new Error(created.error ?? "Failed to create invoice");
-        const inv = created.data as { id: string; invoice_no: string };
+        const inv = created.data as {
+          id: string; invoice_no: string;
+          // SALES-25 (b). ALWAYS present, and `state: "not_set"` is a
+          // different answer from "there is no problem" — see
+          // domain/sales/credit_limit.py.
+          credit_limit?: { state?: string; message?: string | null };
+        };
         invoiceId = inv?.id ?? "";
+        // A firm that switched BLOCKING on never reaches here — the server
+        // 422s and the catch below shows the same sentence. This is the
+        // warning case, which is the default: the invoice IS saved, as a
+        // draft, so the CA can still change it.
+        creditWarning = inv?.credit_limit?.state === "would_exceed"
+          ? (inv.credit_limit.message ?? null) : null;
       }
 
       if (action === "issue" || action === "send") {
@@ -708,11 +754,13 @@ export function InvoiceEditor({
       }
 
       const label = trimmedInvoiceNo || "Invoice";
-      onDone(
-        action === "draft" ? `${label} saved as draft`
+      const saved = action === "draft" ? `${label} saved as draft`
         : action === "send" ? `${label} issued and emailed`
-        : `${label} issued`,
-      );
+        : `${label} issued`;
+      // The credit-limit sentence rides on the SAME message rather than a
+      // second toast: two notices about one save is how a CA learns to dismiss
+      // both, and this one names four figures they would otherwise look up.
+      onDone(creditWarning ? `${saved}. ${creditWarning}` : saved);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save invoice");
     } finally {
@@ -899,6 +947,20 @@ export function InvoiceEditor({
               <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
               <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isLocked} />
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Customer can&apos;t be changed once issued — issue a Credit Note to correct (CGST Act §34).</p>}
+              {/* Shown only where a limit is RECORDED. `state: "not_set"` is
+                  the answer for every customer nobody has set one for, and a
+                  line saying "no limit" on all of them is a line the CA stops
+                  reading. */}
+              {creditPosition && creditPosition.state !== "not_set"
+                && creditPosition.limit_paise != null && (
+                <p className="mt-1 text-3xs text-ps-hint">
+                  {/* `formatPaise`, not the local `fmt` — that renders 0 as an
+                      em dash, and "Credit limit —" reads as no limit when it
+                      is a limit of zero, which means cash only. */}
+                  Credit limit {formatPaise(creditPosition.limit_paise)}
+                  {" · "}{formatPaise(creditPosition.outstanding_paise ?? 0)} already open
+                </p>
+              )}
               {fieldErr(validation.errors.customer)}
             </div>
             <div>

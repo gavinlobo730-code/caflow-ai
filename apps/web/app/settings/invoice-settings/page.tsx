@@ -15,6 +15,8 @@ interface InvoiceSettings {
   sequence_length: number;
   starting_number: number;
   manual_override_allowed: boolean;
+  /** SALES-25 (b), migration 414. See the toggle for why it is off. */
+  credit_limit_blocks: boolean;
   bank_name: string;
   account_number: string;
   account_holder: string;
@@ -30,6 +32,7 @@ const DEFAULT: InvoiceSettings = {
   sequence_length: 3,
   starting_number: 1,
   manual_override_allowed: false,
+  credit_limit_blocks: false,
   bank_name: "",
   account_number: "",
   account_holder: "",
@@ -129,6 +132,7 @@ export default function InvoiceSettingsPage() {
         sequence_length: form.sequence_length,
         starting_number: form.starting_number,
         manual_override_allowed: form.manual_override_allowed,
+        credit_limit_blocks: form.credit_limit_blocks,
         bank_name: form.bank_name.trim() || null,
         account_number: form.account_number.trim() || null,
         account_holder: form.account_holder.trim() || null,
@@ -251,6 +255,35 @@ export default function InvoiceSettingsPage() {
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
                       form.manual_override_allowed ? "translate-x-4.5" : "translate-x-0.5"
+                    }`} />
+                  </button>
+                </div>
+
+                {/* SALES-25 (b). OFF by default, and the wording says what
+                    turning it on costs rather than only what it does: a block
+                    stops a CA recording a supply that has already happened,
+                    and a supply that cannot be recorded here gets recorded
+                    somewhere this product cannot see. */}
+                <div className="flex items-center justify-between py-2 border-t border-ps-muted">
+                  <div className="pr-4">
+                    <p className="text-sm text-ps-body">Refuse an invoice over a customer&apos;s credit limit</p>
+                    <p className="text-xs text-ps-hint">
+                      Off, an invoice that would take a customer past their
+                      recorded limit is flagged and still saved. On, it is
+                      refused — which also stops a CA recording a supply that
+                      has already been made. An opening balance is never
+                      refused either way.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => update("credit_limit_blocks", !form.credit_limit_blocks)}
+                    aria-pressed={form.credit_limit_blocks}
+                    className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      form.credit_limit_blocks ? "bg-blue-600" : "bg-ps-border-strong"
+                    }`}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                      form.credit_limit_blocks ? "translate-x-4.5" : "translate-x-0.5"
                     }`} />
                   </button>
                 </div>
