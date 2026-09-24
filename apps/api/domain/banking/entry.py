@@ -93,6 +93,14 @@ class Draft:
     # the recorded party alone.
     payee_type: Optional[str] = None
     payee_id: Optional[str] = None
+    # D19, migration 413. The PROPOSAL that a human must decide the withholding
+    # on this line. Cleared with every other draft_* column when the line is
+    # re-drafted, which is the point of it being a draft_* column at all: the
+    # RECORDED fact is `bank_transactions.tds_decision_needed`, stamped when
+    # the line was actually passed. Migration 382's split between
+    # `draft_gst_rate_bps` and `gst_rate_bps`, for the same reason — a rejected
+    # proposal must not read as a recorded one.
+    flags_tds_decision: bool = False
 
     def as_columns(self) -> dict:
         """The bank_transactions columns this draft is stored in."""
@@ -106,6 +114,7 @@ class Draft:
             "draft_is_interstate": bool(self.is_interstate),
             "draft_payee_type": self.payee_type,
             "draft_payee_id": self.payee_id,
+            "draft_flags_tds_decision": bool(self.flags_tds_decision),
         }
 
 
@@ -115,6 +124,9 @@ EMPTY_DRAFT_COLUMNS: dict = {
     "draft_entity_type": None, "draft_entity_id": None, "draft_rule_id": None,
     "draft_gst_rate_bps": None, "draft_is_interstate": False,
     "draft_payee_type": None, "draft_payee_id": None,
+    # FALSE, not None — the column is NOT NULL DEFAULT false, and clearing a
+    # draft must put the row back to "nothing proposed", not to NULL.
+    "draft_flags_tds_decision": False,
 }
 
 
@@ -183,6 +195,7 @@ def from_rule(hit: Optional[RuleSuggestion], account_name: Optional[str]) -> Opt
         account_id=hit.account_id, category=hit.category, rule_id=hit.rule_id,
         gst_rate_bps=hit.gst_rate_bps, is_interstate=bool(hit.is_interstate),
         payee_type=hit.payee_type, payee_id=hit.payee_id,
+        flags_tds_decision=bool(hit.flags_tds_decision),
     )
 
 
@@ -283,8 +296,17 @@ def draft_changed(row: dict, draft: Optional[Draft]) -> bool:
     want = draft.as_columns() if draft else EMPTY_DRAFT_COLUMNS
     for k, v in want.items():
         have = row.get(k)
-        if k == "draft_is_interstate":
-            have = bool(have)          # NOT NULL DEFAULT false; a missing key is false
+        # EVERY boolean draft column is compared as a boolean, stated as the
+        # rule rather than as a list of column names. It used to read
+        # `if k == "draft_is_interstate"`, and the second such column (D19's
+        # `draft_flags_tds_decision`) broke three tests the day it was added:
+        # those columns are NOT NULL DEFAULT false, so a row read with a narrow
+        # projection has no key at all, `None != False`, and every steady-state
+        # pass would rewrite all three thousand open lines it was written to
+        # leave alone. Keyed off the EMPTY map's own type, so a third boolean
+        # needs nothing here.
+        if isinstance(EMPTY_DRAFT_COLUMNS.get(k), bool):
+            have = bool(have)
         if have != v:
             return True
     return False

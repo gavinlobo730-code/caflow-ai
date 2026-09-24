@@ -488,13 +488,18 @@ def test_a_monthly_gstr1_owes_neither_sentence(monkeypatch):
     assert "QRMP quarter" not in reasons
 
 
-def test_the_two_refusals_are_different_sentences():
+def test_the_two_sentences_are_different_sentences():
     """A shared paragraph would say the wrong thing about one of them: one is
     about the field this return files under, the other about a return it does
-    not replace."""
+    not replace.
+
+    The second stopped being a REFUSAL when `domain/gst/iff.py` was written —
+    it now says the facility is available and where to prepare it — so this
+    asserts the pair are distinct rather than that either declines anything.
+    """
     assert (return_period.PAYLOAD_PERIOD_CAVEAT.format(key=APRIL)
-            != return_period.IFF_NOT_BUILT)
-    assert "Rule 59(2)" in return_period.IFF_NOT_BUILT
+            != return_period.IFF_AVAILABLE)
+    assert "Rule 59(2)" in return_period.IFF_AVAILABLE
     assert "61A" in return_period.PAYLOAD_PERIOD_CAVEAT
 
 

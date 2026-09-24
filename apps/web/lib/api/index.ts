@@ -1486,6 +1486,43 @@ export type BillOfEntryAuthorities = {
 // furnished. `domain/gst/gstr9_builder.py` decides which figure belongs on
 // which row and which rows it could not derive; this carries shapes only.
 
+/** One month's Invoice Furnishing Facility — CGST Rule 59(2), GST-11.
+ *
+ *  `domain/gst/iff.py` decides every one of these; this carries shapes only.
+ *  `available` is false for the THIRD month of a quarter, which has no
+ *  facility because its documents are in the quarterly GSTR-1 itself — a
+ *  refusal with a sentence, not an error. */
+export type IffWorking = {
+  period: string;
+  gstin?: string;
+  available: boolean;
+  /** Present only when `available` is false. */
+  reason?: string;
+  month_in_quarter?: number;
+  due_date?: string | null;
+  window_opens_day?: number;
+  window_closes_day?: number;
+  payload: Record<string, unknown>;
+  summary?: {
+    counts?: { b2b?: number; credit_notes_registered?: number };
+    cumulative_value_rupees?: number;
+    cap_rupees?: number;
+  };
+  document_count: number;
+  cumulative_value_paise?: number;
+  cap_paise?: number;
+  /** Reported, never enforced: Rule 59(2) lets the supplier furnish "as he may
+   *  consider necessary", so WHICH documents fit is the CA's choice and
+   *  nothing is trimmed. */
+  cap_exceeded: boolean;
+  excess_paise?: number;
+  /** A GSTR-1 section this facility does not carry, with the reason — or a
+   *  single document held out of one, which carries a `reference_no` too. */
+  not_carried: { section: string; reason: string; reference_no?: string }[];
+  notes: string[];
+  verified?: boolean;
+};
+
 export type GSTR9Row = {
   code: string;
   label: string;
@@ -3082,7 +3119,13 @@ export const api = {
     entries: {
       /** One page of lines in a state, with the total. */
       list: (params: { client_id: string; state?: EntryListState; bank_account_id?: string;
-                       limit?: string; offset?: string; q?: string }) =>
+                       limit?: string; offset?: string; q?: string;
+                       /** D19 — lines a rule flagged for a withholding decision that
+                        *  nobody has answered. It REPLACES `state` rather than
+                        *  narrowing it: a flagged line is always `passed`, so ANDing
+                        *  the two would answer empty for every client. The server
+                        *  decides that, not the caller. */
+                       tds_pending?: string }) =>
         request(`/api/banking/entries?${new URLSearchParams(params as Record<string, string>)}`),
       /** One number per state, plus undrafted (redraft while non-zero) and
        *  trusted_pending (pass these with a progress bar). SQL counts. */
@@ -3102,6 +3145,12 @@ export const api = {
       /** Pass ONE line — the click is the CA accepting its draft. A refusal is a 422. */
       pass: (txnId: string, data?: { gst_rate_bps?: number | null; is_interstate?: boolean }) =>
         request(`/api/banking/transactions/${txnId}/pass`, { method: "POST", body: JSON.stringify(data ?? {}) }),
+      /** D19 — record that a person answered the withholding question on this
+       *  line. NO BODY, deliberately: it records that somebody LOOKED, never
+       *  what they decided. A section or a rate here would undo migration
+       *  404's refusal to let a rule carry a TDS treatment. */
+      resolveTdsDecision: (txnId: string) =>
+        request(`/api/banking/transactions/${txnId}/tds-decision/resolve`, { method: "POST" }),
     },
     suggestions: (txnId: string) => request(`/api/banking/transactions/${txnId}/suggestions`),
     // B.1.6 — "Find other matches". suggestions() ranks the best five WITHIN an
@@ -4696,6 +4745,19 @@ export const api = {
     update: (id: string, body: VendorWrite) =>
       request<ApiResp<Vendor>>(`/api/vendors/${id}`,
         { method: "PATCH", body: JSON.stringify(body) }),
+  },
+
+  /** One month's Invoice Furnishing Facility — CGST Rule 59(2), GST-11.
+   *
+   *  `period` is a CALENDAR MONTH (MMYYYY) and never the return period: a
+   *  QRMP client's GSTR-1 period is the QUARTER, and the whole point of this
+   *  facility is to furnish one month of it early. */
+  iff: {
+    compute: (clientId: string, period: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, period });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<IffWorking>>(`/api/gst-workspace/iff/compute?${q}`);
+    },
   },
 
   /** The annual return's working (GST-10). */

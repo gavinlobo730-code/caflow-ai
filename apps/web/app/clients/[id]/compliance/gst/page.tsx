@@ -12,6 +12,7 @@ import RegistrationsTab from "@/components/gst/RegistrationsTab";
 import { todayLocalISO } from "@/lib/dateMath";
 import GSTR9Working from "@/components/gst/GSTR9Working";
 import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
+import { IffPanel } from "@/components/gst/IffPanel";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
 import type { GLReconciliation, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";
@@ -709,6 +710,24 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   gaps={(computeResult.payload_gaps ?? []) as PayloadGap[]}
                   compact
                 />
+                {/* THE INVOICE FURNISHING FACILITY (GST-11). This return's own
+                    caveats already say the two interim months' customers are
+                    waiting on it — `return_period.IFF_AVAILABLE` — and the
+                    panel is what lets the CA act on that sentence rather than
+                    read it. It renders NOTHING for a monthly filer, so nothing
+                    changes on the screen most clients see. */}
+                {(() => {
+                  const w = computeResult.period_window as
+                    { frequency?: string; months?: string[] } | null | undefined;
+                  return (
+                    <IffPanel
+                      clientId={clientId}
+                      months={w?.months ?? []}
+                      isQuarter={w?.frequency === "quarterly"}
+                      gstin={(computeResult.gstin as string) || undefined}
+                    />
+                  );
+                })()}
                 <button onClick={saveComputed} disabled={actionInFlight}
                   className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}

@@ -337,6 +337,15 @@ def test_what_a_rule_may_propose_is_exactly_this():
     assert {f.name for f in dataclass_fields(RuleSuggestion)} == {
         "rule_id", "rule_name", "category", "account_id", "narration",
         "gst_rate_bps", "is_interstate", "payee_type", "payee_id",
+        # UPDATED AGAIN ON 24-09-2026 for D19, and it is the second and only
+        # other time this set has moved. `flags_tds_decision` is not a
+        # withholding — it carries no section, no rate, no base and no amount —
+        # it ROUTES the line to a human worklist. The property that makes it
+        # safe is one step STRONGER than the party's: the party labels the
+        # transaction, and this does not even do that. It can only ADD a
+        # person's review and can never remove one, which is asserted below
+        # rather than trusted from this sentence.
+        "flags_tds_decision",
     }
 
 
@@ -348,6 +357,11 @@ def test_a_tds_treatment_and_a_split_leg_are_still_refused():
     from dataclasses import fields as dataclass_fields
     from domain.banking.rules import RuleSuggestion
     names = {f.name for f in dataclass_fields(RuleSuggestion)}
+    # `tds_applicable` stays forbidden and `flags_tds_decision` is allowed,
+    # and the two names are close enough that the difference has to be said:
+    # the first ASSERTS that tax is due on this line, which is a withholding
+    # decision; the second says a person must make that decision. One replaces
+    # a human, the other summons one.
     for forbidden in ("tds_section", "tds_rate_bps", "tds_applicable",
                       "splits", "split_legs", "split_percentages"):
         assert forbidden not in names, (
@@ -473,3 +487,105 @@ def test_the_party_is_applied_through_the_human_door():
               if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
     assert "set_payee" in called
     assert "update" not in called, "apply_rule_party must not write the row itself"
+
+
+def test_the_tds_flag_can_only_summon_a_human_never_dismiss_one():
+    """D19's safety property, asserted on the CODE rather than on a docstring.
+
+    A trusted rule posts with nobody watching, so the question for anything it
+    may carry is "what is the worst this does unattended". For the party
+    (migration 404) the answer was "mislabels a transaction, moves no figure".
+    For this flag the answer is smaller still: it adds a line to a worklist.
+
+    THAT HOLDS ONLY WHILE THE WRITE IS ONE-WAY. If a rule could CLEAR
+    `tds_decision_needed`, a broad rule written in April would silently
+    dismiss the outstanding withholding questions on every line it matched —
+    and an under-deduction disallows the whole expenditure under s.40(a)(ia),
+    puts the tax on the client under s.201(1), and shows up in an assessment
+    order rather than on any screen.
+
+    So the service may only ever set it TRUE. Resolution is a different column
+    that a person writes.
+
+    THE TWO HALVES ARE ASSERTED PER FUNCTION, not over the module's text. The
+    first draft of this guard read `"tds_decision_resolved_at" not in src` —
+    true while nothing could resolve, and a spelling of the rule rather than
+    the rule: it failed the day `resolve_tds_decision` was added beside the
+    pass path, on a change that does exactly what the docstring above asks
+    for. Write the rule, not a spelling of it.
+    """
+    import ast
+    import pathlib as _p
+    api = _p.Path(__file__).resolve().parents[1]
+    src = (api / "services/bank_entry_service.py").read_text()
+    tree = ast.parse(src)
+
+    def columns_written(name: str) -> set:
+        """Every column this function can write.
+
+        A write here is a dict literal handed to `.update(...)`, directly or
+        through a local — so the KEYS of every dict literal in the body are
+        the columns it can reach. Asserted on keys rather than on the text,
+        because a docstring naming a column, and a `.get()` READING one, are
+        neither of them writes; the first draft of this guard matched both and
+        failed on correct code.
+        """
+        fn = next((n for n in ast.walk(tree)
+                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name),
+                  None)
+        assert fn is not None, f"{name} is gone — this guard is asserting nothing"
+        out = set()
+        for d in ast.walk(fn):
+            if isinstance(d, ast.Dict):
+                out |= {k.value for k in d.keys
+                        if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+        return out
+
+    # ── the RULE path: sets the flag, and cannot reach the resolution ──
+    rule_path = columns_written("_apply_draft")
+    assert "tds_decision_needed" in rule_path, "the pass path no longer stamps the flag"
+    assert not {c for c in rule_path if c.startswith("tds_decision_resolved")}, (
+        "the pass path writes a RESOLUTION column. Resolving is a person's act; "
+        "a rule that resolves its own flag has made the flag decorative")
+
+    # And it sets it TRUE. The one other writer is `_unapply`, which restores
+    # the pre-pass snapshot — the value there is `before[...]`, not a literal,
+    # which is why this limb is on the pass path alone.
+    fn_src = ast.get_source_segment(src, next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_apply_draft")) or ""
+    flag_lines = [ln for ln in fn_src.split("\n")
+                  if "\"tds_decision_needed\"" in ln]
+    assert flag_lines and all("True" in ln for ln in flag_lines), (
+        "the pass path writes tds_decision_needed to something other than True — "
+        "a rule that can clear the flag can dismiss a withholding question "
+        "nobody has answered")
+
+    # ── the PERSON path: stamps the resolution, and cannot reach the flag ──
+    person_path = columns_written("resolve_tds_decision")
+    assert "tds_decision_resolved_at" in person_path, (
+        "resolve_tds_decision no longer stamps the resolution")
+    assert "tds_decision_needed" not in person_path, (
+        "resolve_tds_decision writes tds_decision_needed. It must not: three "
+        "states, not two — clearing the flag loses the difference between a "
+        "line nobody ever asked about and one somebody answered, which is the "
+        "question a s.201 proceeding asks")
+
+
+def test_the_flag_alone_is_not_a_proposal():
+    """`is_empty` must not count it, for `gst_rate_bps`' reason a third time.
+
+    A rule that ONLY flags proposes no posting. Counting it would let that rule
+    win precedence over a later one that actually codes the line, and the CA
+    would get a transaction marked "needs a TDS decision" still sitting uncoded
+    in the queue — the worst of both.
+    """
+    from domain.banking.rules import RuleSuggestion
+    only_flag = RuleSuggestion(rule_id="r", rule_name="n", category=None,
+                               account_id=None, narration=None,
+                               flags_tds_decision=True)
+    assert only_flag.is_empty()
+    codes_and_flags = RuleSuggestion(rule_id="r", rule_name="n", category=None,
+                                     account_id="acc", narration=None,
+                                     flags_tds_decision=True)
+    assert not codes_and_flags.is_empty()

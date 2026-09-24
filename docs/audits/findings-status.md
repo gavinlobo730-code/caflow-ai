@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **259** | re-read against the code. The defect is gone. |
-| partial | **12** | part of the finding is answered, part is not. Each says which. |
+| closed | **261** | re-read against the code. The defect is gone. |
+| partial | **10** | part of the finding is answered, part is not. Each says which. |
 | open | **2** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 14 items — 2 open and 12 partial — not 254.**
+**The work left is 12 items — 2 open and 10 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -40,11 +40,9 @@ is left as "unknown".
 | severity | finding | what it is |
 |---|---|---|
 | high | **ACC-03** | Every receipt and vendor payment posts to one generic "Bank Account" ledger, while bank-statemen |
-| high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
-| medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
 | medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
@@ -119,6 +117,7 @@ is left as "unknown".
 | high | **GST-07** | Deemed exports and SEZ supplies are filed as physical exports in Table 6A, losing the recipient' |
 | high | **GST-08** | GSTR-1 Table 7 (B2CS) uses a blended rate inferred from the whole invoice, producing rates that  |
 | high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
+| high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-12** | The "Add GST Filing" modal on /gst throws on every save — the period is "MMM YYYY" and is parsed |
 | high | **GST-13** | The module's most differentiating backend work — amendments, exception report, ITC register, adv |
 | high | **GST-14** | Two contradictory "filed" states: /gst marks filings in compliance_calendar over PostgREST and n |
@@ -194,6 +193,7 @@ is left as "unknown".
 | medium | **ACC-27** | entry_date is an unvalidated string on the journal models, so a malformed date reaches the datab |
 | medium | **BANK-03** | A foreign-currency bank account can be created, and its statement imports and posts to the ledge |
 | medium | **BANK-10** | Auto-match never suggests a part payment against a partially-paid invoice, because the amount ba |
+| medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **BANK-13** | The exception-rules engine — materiality, duplicates, cash withdrawals, new payees — is complete |
 | medium | **BANK-14** | A PDF whose first page has ruled table lines and whose later pages do not silently loses the lat |
 | medium | **BANK-15** | Transfer detection scans only the newest 1,000 lines, and is re-run from scratch for every 100-l |

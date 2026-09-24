@@ -17,6 +17,7 @@ Integer paise throughout. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Optional
 
@@ -39,6 +40,7 @@ import domain.gst.rule_36_4 as rule_36_4
 from domain.gst import gstr1_builder
 from domain.gst.gstr1_builder import CancelledDocument, InvoiceForGSTR1, build_gstr1
 import domain.gst.return_period as return_period
+import domain.gst.iff as iff
 from domain.gst.classifier import classify_transaction, TransactionForClassification
 from domain.gst.validator import GSTValidator, InvoiceToValidate
 
@@ -2123,29 +2125,43 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     }
 
 
-def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
-                     aggregate_turnover_paise: Optional[int] = None,
-                     frequency: Optional[str] = None) -> dict:
-    """Build GSTR-1 from posted sales invoices + issued credit/debit notes, and
-    reconcile the total output tax to the General Ledger GST-output control
-    accounts.
+@dataclass
+class ClassifiedSales:
+    """One window's outward documents, classified, plus the raw rows behind
+    them.
 
-    `aggregate_turnover_paise` is the client's CGST §2(6) aggregate turnover for
-    the PRECEDING financial year — what Notification 78/2020-Central Tax reads
-    on for Table 12's HSN digits. **None means nobody recorded it**, which the
-    return reports as a gap; it used to default to `0`, a real turnover meaning
-    "below every threshold", so every client was silently told HSN was optional
-    (GST-17).
-
-    `frequency` is the REGISTRATION'S OWN (GST-11). Rule 59(2) with Rule 61A
-    lets a QRMP filer furnish this return QUARTERLY, so the window is the whole
-    quarter and the return is keyed on its first month. Omitting it means
-    monthly. The two interim months' INVOICE FURNISHING FACILITY is not built
-    and the return says so — see `return_period.IFF_NOT_BUILT`.
+    The RAW rows travel with the classified ones because the GSTR-1 path
+    reconciles against them — a GL comparison and the note-cess gaps read
+    per-head paise off the stored row, which `InvoiceForGSTR1` has already
+    folded into its own shape. Re-fetching them beside the classified list
+    would be a second read of the same three tables, and re-deriving them from
+    the classified list would be a second definition of what the row said.
     """
-    window = return_period.resolve(period, frequency)
-    period, start, end = window.key, window.start, window.end
+    invoices: list[InvoiceForGSTR1]
+    invoices_raw: list[dict]
+    cns_raw: list[dict]
+    sdns_raw: list[dict]
+    note_parents: dict
 
+
+def _classified_sales_documents(db, firm_id: str, client_id: str,
+                                start: str, end: str) -> "ClassifiedSales":
+    """Every outward document of a window, classified, ready for a builder.
+
+    EXTRACTED RATHER THAN COPIED, and that is the point. `gstr1_from_books`
+    held this inline, and the Invoice Furnishing Facility (CGST Rule 59(2))
+    needs the SAME documents for one month of a quarter. Two fetch-and-classify
+    paths would be two answers to "what did this client supply in March", and
+    the IFF's whole value rests on furnishing exactly what the quarterly return
+    will later declare — a document furnished early under one classification
+    and declared later under another is worse for the recipient than not
+    furnishing it at all.
+
+    The window is a (start, end) pair rather than a period key because
+    `return_period.resolve` has already decided what the period means by the
+    time a caller gets here; resolving it twice is how the two would disagree
+    about a quarter.
+    """
     invoices_raw = _posted_sales(db, firm_id, client_id, start, end)
     cns_raw = _issued_credit_notes(db, firm_id, client_id, start, end)
     # Sales debit notes (sales_debit_notes) belong in Table 9B (CDNR/CDNUR) same
@@ -2273,6 +2289,115 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     invoices = ([_to_gstr1(r, "sales_invoice") for r in invoices_raw]
                 + [_to_gstr1(r, "credit_note") for r in cns_raw]
                 + [_to_gstr1(r, "debit_note") for r in sdns_raw])
+    return ClassifiedSales(invoices=invoices, invoices_raw=invoices_raw,
+                           cns_raw=cns_raw, sdns_raw=sdns_raw,
+                           note_parents=note_parents)
+
+
+def iff_from_books(db, firm_id: str, client_id: str, period: str,
+                   gstin: str) -> dict:
+    """One month's Invoice Furnishing Facility (CGST Rule 59(2)) from the books.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+
+    `period` is the MMYYYY of the CALENDAR MONTH being furnished for, and it is
+    resolved MONTHLY however the registration files. That is the one place this
+    differs from every other reader in this module: `return_period.resolve`
+    would widen a QRMP client's March to the whole of Q4, which is exactly what
+    the facility exists to avoid — the point is to furnish ONE month early.
+
+    IT READS THE SAME DOCUMENTS THE QUARTERLY RETURN WILL. Both go through
+    `_classified_sales_documents`, so a document furnished here and the same
+    document declared in the quarter three weeks later cannot be classified
+    differently. Two fetch paths would make that possible, and a recipient
+    whose 2B shows one figure early and another later is worse off than one who
+    simply waited.
+
+    Nothing is stored and nothing is transmitted. The facility has no row of
+    its own: `gstr1_returns` is keyed on (client, period, gstin) and a month of
+    a quarter is not a return period — writing one would collide with the
+    quarter it belongs to, which is migration 390's key doing its job.
+    """
+    # Imported HERE rather than at module scope, the way the s.50(1) clock
+    # above already imports its own dates: `services.compliance_engine` is
+    # reached from a service, and this module is imported by it in turn.
+    from services.compliance_engine import (
+        gst_period_month_in_quarter, iff_due_date)
+    from domain.gst.registrations import MONTHLY
+
+    window = return_period.resolve(period, MONTHLY)
+    period, start, end = window.key, window.start, window.end
+
+    classified = _classified_sales_documents(db, firm_id, client_id, start, end)
+
+    # WHERE THIS MONTH SITS IN ITS QUARTER decides whether the facility exists
+    # for it at all — the third month has none — and that is derived here from
+    # the one authority rather than counted locally.
+    month_number = int(period[:2])
+    position = gst_period_month_in_quarter(month_number)
+
+    try:
+        built = iff.build_iff(classified.invoices, gstin, period,
+                              month_in_quarter=position)
+    except ValueError as e:
+        # A refusal, not a failure: the third month of a quarter is a real
+        # month a CA may well ask about, and the answer is a sentence rather
+        # than a 500.
+        return {"period": period, "gstin": gstin, "available": False,
+                "reason": str(e), "month_in_quarter": position,
+                "payload": {}, "not_carried": [], "notes": []}
+
+    due = iff_due_date(int(period[2:]), month_number)
+    return {
+        "period": period,
+        "gstin": gstin,
+        "available": True,
+        "month_in_quarter": position,
+        "due_date": due.isoformat() if due else None,
+        "window_opens_day": iff.WINDOW_OPENS_DAY,
+        "window_closes_day": iff.WINDOW_CLOSES_DAY,
+        "payload": built.payload,
+        "summary": built.summary,
+        "document_count": built.document_count,
+        "cumulative_value_paise": built.cumulative_value_paise,
+        "cap_paise": built.cap_paise,
+        "cap_exceeded": built.cap_exceeded,
+        "excess_paise": built.excess_paise,
+        "not_carried": built.not_carried,
+        "notes": built.notes,
+        "verified": iff.VERIFIED,
+    }
+
+
+def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
+                     aggregate_turnover_paise: Optional[int] = None,
+                     frequency: Optional[str] = None) -> dict:
+    """Build GSTR-1 from posted sales invoices + issued credit/debit notes, and
+    reconcile the total output tax to the General Ledger GST-output control
+    accounts.
+
+    `aggregate_turnover_paise` is the client's CGST §2(6) aggregate turnover for
+    the PRECEDING financial year — what Notification 78/2020-Central Tax reads
+    on for Table 12's HSN digits. **None means nobody recorded it**, which the
+    return reports as a gap; it used to default to `0`, a real turnover meaning
+    "below every threshold", so every client was silently told HSN was optional
+    (GST-17).
+
+    `frequency` is the REGISTRATION'S OWN (GST-11). Rule 59(2) with Rule 61A
+    lets a QRMP filer furnish this return QUARTERLY, so the window is the whole
+    quarter and the return is keyed on its first month. Omitting it means
+    monthly. The two interim months' INVOICE FURNISHING FACILITY is not built
+    for the two interim months is built by `iff_from_books` above, and this
+    return names it — see `return_period.IFF_AVAILABLE`.
+    """
+    window = return_period.resolve(period, frequency)
+    period, start, end = window.key, window.start, window.end
+
+    classified = _classified_sales_documents(db, firm_id, client_id, start, end)
+    invoices = classified.invoices
+    invoices_raw, cns_raw, sdns_raw = (classified.invoices_raw, classified.cns_raw,
+                                       classified.sdns_raw)
+    note_parents = classified.note_parents
 
     # THE VALIDATOR RUNS HERE, on the path a CA actually uses.
     #
@@ -2390,7 +2515,7 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         payload.gaps.append({
             "kind": gstr1_builder.GAP_RETURN_CAVEAT,
             "reference_no": window.key,
-            "reason": return_period.IFF_NOT_BUILT,
+            "reason": return_period.IFF_AVAILABLE,
         })
 
     # Reconcile output tax to the GL. GSTR-1 tax total is gross (before credit

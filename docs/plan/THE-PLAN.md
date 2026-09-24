@@ -127,26 +127,98 @@ Phase 2 starts on a clean base.
 
 | finding | what is done | what remains | blocked? |
 |---|---|---|---|
-| GST-11 QRMP | the whole return engine | nothing material — re-read and close | no |
+| GST-11 QRMP | the whole return engine **and the Rule 59(2) facility** ✅ | **nothing — closed 24-09** | — |
 | PAY-27 payroll reports | variance, department cost, bank advice | three more report shapes, if wanted | no |
 | IT-11 tax audit | §44AB applicability decided and served | **Form 3CD itself** — a clause workspace, needs a migration | needs document #4 |
-| SALES-23 reminders | the bulk Remind | the nightly sweep still advances a counter and sends nothing | no |
-| BANK-11 rules | priority, match field, operator, patterns, party | step 3's remaining half — what else a trusted rule may propose | **owner decision, see below** |
-| SALES-25 credit notes | the §34(2) window | half (b) — the post-window commercial note path | no |
-| ACC-03 bank ledger | two of three halves | the third is **1.4** above | no |
-| ACC-13 day book | day book built | **cost centres** — absent entirely, a real build | no |
+| SALES-23 reminders | the bulk Remind, and migration 405 stopped the counter | the sweep SENDS nothing — and whether it should is **owner question A** | **owner** |
+| BANK-11 rules | priority, match field, operator, patterns, party, **and D19's TDS flag** ✅ | **nothing — closed 24-09** | — |
+| SALES-25 credit notes | the §34(2) window (half a) | half (b) is the **customer credit limit**, not a note path — `customers` has no such column. Warn-or-block is **owner question B** | **owner** |
+| ACC-03 bank ledger | all three — **1.4 landed 24-09** | nothing | — |
+| ACC-13 day book | day book built | **cost centres** — a dimension on `journal_lines`, **owner question C** | **owner** |
 | GST-25 returns | GSTR-9 computed; 3.1.1 named as underivable | composition (CMP-08/GSTR-4), TCS on GSTR-8, GSTR-9C | needs document #5 |
-| INV-09 quantities | the three-decimal rule at every door | parts 2–3, small | no |
-| SALES-28 e-way | expiring-bill panel | the validity/extension write path | no |
+| INV-09 quantities | the three-decimal rule at every door, and the alternate unit (migration 409) | part 2 is the COLUMN WIDTH, and `NUMERIC(10,3)` holds 9,999,999.999 units — ample. Recommend closing with that reasoning rather than widening 22 migrations | no |
+| SALES-28 e-way | applicability, validity, the expiring-bill panel AND `POST /records/{id}/extend` | only the JSON payload, refused under GST-32 | — |
 | TDS-22 clause rates | both clauses recordable, (b) limbs complete | **two numbers** for the (a) limbs | needs document #4 |
-| FA-11 CWIP | capital work-in-progress complete | the rest of FA-11's sub-features | no |
+| FA-11 CWIP | capital work-in-progress complete | shift working is **blocked on a document** — Part C here holds the LIVES and not the NESD markings (**question D**); revaluation and component accounting are unstarted | needs document #9 |
 | TDS-16 (open) | every figure computed | **the FVU/RPU file writer** | needs document #3 |
 
-**BANK-11 step 3 was the one open judgement call and it is now answered
-(D19).** A trusted rule posts the payment and **flags the line for a TDS
-decision** rather than deciding one. That is its own small build — a flag on
-the transaction, a filter on the queue, and a sentence — and it belongs in
-Phase 1.6 rather than in the redesign.
+**The 1.6 table above was RE-READ against the code on 24-09-2026, and five of
+its rows were wrong.** SALES-23's counter defect was fixed by migration 405;
+SALES-28's extension write path exists; ACC-03's third half landed the same
+morning; SALES-25's remaining half is a CUSTOMER CREDIT LIMIT and not a credit
+note path; and INV-09's part 3 landed with migration 409. That is the staleness
+this file's own header warns about, one level down — **a plan's inventory goes
+stale exactly as fast as an audit's does, and only re-reading fixes it.**
+
+Four of the rows now say **owner**. They are written up in full, with what I
+would do about each, in `docs/audits/questions-for-the-owner.md` under *WHAT IS
+WAITING ON YOU*: whether the nightly sweep may EMAIL a client's customers (A),
+whether a customer credit limit warns or blocks (B), cost centres (C), and
+extra-shift depreciation, which is blocked on a document rather than on a
+decision (D).
+
+---
+
+**BANK-11 step 3 (D19) — landed whole, 24-09-2026. ✅**
+
+The backend: migration 413 (`bank_matching_rules.flags_tds_decision`, and on
+`bank_transactions` the `draft_flags_tds_decision` proposal beside the
+`tds_decision_needed` recorded fact — migration 382's split, so a REJECTED
+proposal cannot read as a recorded one); the flag on both rule doors; the
+draft carrying it; the stamp at pass time; and a guard holding it **one-way** —
+a rule may only ever set it true, because a rule that could CLEAR it would
+silently dismiss the outstanding withholding question on every line it matched.
+
+The screen, which is what stopped this being the `capital_wip` shape: the
+checkbox in the rule editor, a **TDS?** chip on the flagged line, a count and
+filter above the queue, and **TDS decided** as a bulk action writing
+`tds_decision_resolved_at`/`_by`.
+
+Three shapes in it are worth keeping:
+
+- **Pending is TWO columns.** Answering never clears the flag — three states,
+  not two: never flagged, flagged and waiting, flagged and answered. The third
+  is the audit answer to *did anyone look at the withholding on this line*,
+  which is what a §201 proceeding asks, and clearing the boolean loses it.
+  `domain`-side that predicate is `_tds_pending`, migration 413's partial index
+  and `lib/banking/tdsDecision.ts`, all three the same two-column test.
+- **The filter REPLACES the state rather than narrowing it.** A flagged line is
+  stamped when it is PASSED, so ANDing the flag with the default `to_do` would
+  answer zero rows for every client, every time, with nothing on screen to say
+  why. The service decides that, not the caller, so no caller can get that
+  confidently empty answer.
+- **Resolving takes NO body.** It records that somebody looked and nothing
+  about what they concluded. A section or a rate on that endpoint would be
+  migration 404's refusal — a rule may not carry a TDS treatment — undone at
+  the other end of the same flow.
+
+**GST-11 (the Invoice Furnishing Facility) — landed 24-09-2026. ✅**
+
+CGST Rule 59(2). A QRMP filer's GSTR-1 covers a quarter, so their customer's
+input tax credit — which rests on §16(2)(aa), the SUPPLIER's furnished invoice
+as communicated in GSTR-2B — waited up to three months. The facility furnishes
+months 1 and 2 to registered customers by the 13th of the following month.
+`domain/gst/iff.py`, `iff_from_books`, `GET /api/gst-workspace/iff/compute`, and
+one panel on BOTH GSTR-1 screens.
+
+Three shapes worth keeping:
+
+- **What it carries is derived from the rule's own words**, not from a
+  remembered list of portal tiles: *"outward supplies … to a REGISTERED
+  person"*. That sentence puts SEZ and deemed export IN (both recipients are
+  registered) and exports OUT, and it is why the finding's own suggested fix —
+  which named `cdnur` among the sections — is wrong.
+- **The ₹50 lakh cap REPORTS and never truncates.** The rule lets the supplier
+  furnish *"as he may consider necessary"*, so which documents fit is the CA's
+  choice; a set this product had silently trimmed would not match the sales
+  register with nothing on screen saying what was left out.
+- **The classify step was EXTRACTED, not copied.** Two fetch-and-classify paths
+  would be two answers to "what did this client supply in March", and the
+  facility's whole value rests on furnishing exactly what the quarter will later
+  declare.
+
+Amendments and the payload envelope are NAMED as not built, each with its own
+reason; the first is settled by document #5.
 
 ---
 
@@ -352,8 +424,9 @@ Not a phase. These recur, and each has a named home so nobody rediscovers them.
 | 6 | A bank's **salary upload format** | Nothing. `domain/payroll/bank_advice` is deliberately generic — inventing one bank's layout produces a file that fails AT THE BANK rather than in front of the CA. Listed so the decision is visible |
 | 7 | **ITR JSON schemas** per form per AY | The annual refresh |
 | 8 | **State professional-tax slabs** (18 states) and **LWF** | Eighteen states' payroll deductions. Today reported as named gaps, which is the safe direction: a wrong deduction short-pays the employee AND leaves the employer owing the right figure, so a flagged gap beats a half-right table |
+| 9 | **Schedule II Part C's NESD markings** | FA-11's shift working. Part C here holds the useful LIVES and not which classes are marked NESD, and extra-shift depreciation reaches only the classes that are NOT. Charging 50% or 100% extra on an exempted class is a wrong profit, so it is refused rather than guessed |
 
-**Two of the eight are already done** and both changed real code: the CBIC
+**Two of the nine are already done** — #9 was added on 24-09 when FA-11's shift working was re-read and found blocked on data rather than on a decision — and both changed real code: the CBIC
 late-fee notifications and §50(3) — which turned out to be **24%, not the 18%
 three successive readings had settled on** — and the e-invoice validation set,
 which turned out to refuse `0001`, a number this product's own numbering
