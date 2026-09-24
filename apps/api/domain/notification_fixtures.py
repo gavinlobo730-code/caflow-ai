@@ -35,7 +35,11 @@ from typing import Optional
 import uuid
 from core.ist_clock import ist_today
 
-today = ist_today()
+# THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. `ist_today()` at
+# module level is evaluated ONCE, at import, so on the long-lived uvicorn
+# process `apps/api` runs it is the DEPLOY date for the life of that process.
+# The name says which moment it is, so nothing reads it as the current day.
+_FIXTURES_BUILT_ON = ist_today()
 
 MOCK_NOTIFICATIONS: list[dict] = [
     {
@@ -48,7 +52,7 @@ MOCK_NOTIFICATIONS: list[dict] = [
         "client_id": "c-005",
         "user_id": "tm-001",
         "action_url": "/risks",
-        "created_at": (today - timedelta(days=10)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
     },
     {
         "id": "notif-002",
@@ -60,7 +64,7 @@ MOCK_NOTIFICATIONS: list[dict] = [
         "client_id": "c-003",
         "user_id": "tm-001",
         "action_url": "/compliance",
-        "created_at": (today - timedelta(days=10)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
     },
     {
         "id": "notif-003",
@@ -72,7 +76,7 @@ MOCK_NOTIFICATIONS: list[dict] = [
         "client_id": "c-001",
         "user_id": "tm-001",
         "action_url": "/tasks",
-        "created_at": (today - timedelta(days=3)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=3)).isoformat(),
     },
     {
         "id": "notif-004",
@@ -84,7 +88,7 @@ MOCK_NOTIFICATIONS: list[dict] = [
         "client_id": "c-005",
         "user_id": "tm-001",
         "action_url": "/documents",
-        "created_at": (today - timedelta(days=10)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
     },
     {
         "id": "notif-005",
@@ -96,19 +100,19 @@ MOCK_NOTIFICATIONS: list[dict] = [
         "client_id": "c-005",
         "user_id": "tm-001",
         "action_url": "/ai-assistant",
-        "created_at": (today - timedelta(days=15)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=15)).isoformat(),
     },
     {
         "id": "notif-006",
         "type": "compliance_due",
         "title": "GSTR-1 Due in 3 Days — Sharma Enterprises",
-        "body": "GSTR-1 due " + (today + timedelta(days=3)).strftime("%d %b %Y") + ". Preparation not started.",
+        "body": "GSTR-1 due " + (_FIXTURES_BUILT_ON + timedelta(days=3)).strftime("%d %b %Y") + ". Preparation not started.",
         "severity": "high",
         "is_read": False,
         "client_id": "c-001",
         "user_id": "tm-001",
         "action_url": "/compliance",
-        "created_at": today.isoformat(),
+        "created_at": _FIXTURES_BUILT_ON.isoformat(),
     },
     {
         "id": "notif-007",
@@ -120,7 +124,7 @@ MOCK_NOTIFICATIONS: list[dict] = [
         "client_id": "c-002",
         "user_id": "tm-001",
         "action_url": "/documents",
-        "created_at": (today - timedelta(days=3)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=3)).isoformat(),
     },
     {
         "id": "notif-008",
@@ -132,7 +136,7 @@ MOCK_NOTIFICATIONS: list[dict] = [
         "client_id": "c-004",
         "user_id": "tm-001",
         "action_url": "/compliance",
-        "created_at": (today - timedelta(days=11)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=11)).isoformat(),
     },
     {
         "id": "notif-009",
@@ -144,7 +148,7 @@ MOCK_NOTIFICATIONS: list[dict] = [
         "client_id": None,
         "user_id": "tm-001",
         "action_url": "/ai-assistant",
-        "created_at": (today - timedelta(days=1)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=1)).isoformat(),
     },
     {
         "id": "notif-010",
@@ -156,7 +160,7 @@ MOCK_NOTIFICATIONS: list[dict] = [
         "client_id": "c-001",
         "user_id": "tm-001",
         "action_url": "/tasks",
-        "created_at": (today - timedelta(days=1)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=1)).isoformat(),
     },
     {
         "id": "notif-011",
@@ -168,7 +172,7 @@ MOCK_NOTIFICATIONS: list[dict] = [
         "client_id": "c-003",
         "user_id": "tm-001",
         "action_url": "/risks",
-        "created_at": (today - timedelta(days=7)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=7)).isoformat(),
     },
     {
         "id": "notif-012",
@@ -180,7 +184,7 @@ MOCK_NOTIFICATIONS: list[dict] = [
         "client_id": "c-004",
         "user_id": "tm-001",
         "action_url": "/compliance",
-        "created_at": (today - timedelta(days=2)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=2)).isoformat(),
     },
 ]
 
