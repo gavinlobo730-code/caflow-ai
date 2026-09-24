@@ -504,6 +504,16 @@ class MatchingRuleIn(BaseModel):
     # are still refused; see domain/banking/rules.
     payee_type: Optional[str] = None
     payee_id: Optional[str] = None
+    # D19, migration 413 — the CA marks this rule as covering payments that may
+    # attract TDS. It is NOT a withholding: no section, no rate, no base, no
+    # amount, and no figure in any journal moves. A line this rule passes is
+    # ROUTED to a human worklist, which is the one kind of thing a trusted rule
+    # may add — it can only ADD review and never remove one. Migration 404
+    # refused a TDS TREATMENT and still does.
+    #
+    # ON BOTH DOORS, for the reason two lines above: a validator only at create
+    # is one PATCH from being none.
+    flags_tds_decision: Optional[bool] = None
     is_active: bool = True
 
     @field_validator("rule_name")
@@ -574,6 +584,16 @@ class MatchingRuleUpdateIn(BaseModel):
     # PATCH from being none.
     payee_type: Optional[str] = None
     payee_id: Optional[str] = None
+    # D19, migration 413 — the CA marks this rule as covering payments that may
+    # attract TDS. It is NOT a withholding: no section, no rate, no base, no
+    # amount, and no figure in any journal moves. A line this rule passes is
+    # ROUTED to a human worklist, which is the one kind of thing a trusted rule
+    # may add — it can only ADD review and never remove one. Migration 404
+    # refused a TDS TREATMENT and still does.
+    #
+    # ON BOTH DOORS, for the reason two lines above: a validator only at create
+    # is one PATCH from being none.
+    flags_tds_decision: Optional[bool] = None
     is_active: Optional[bool] = None
     # Migration 322 — promote to TRUSTED (posts with no click) or demote. The
     # router gates promotion on banking.approve and records who did it; the

@@ -142,11 +142,24 @@ Phase 2 starts on a clean base.
 | FA-11 CWIP | capital work-in-progress complete | the rest of FA-11's sub-features | no |
 | TDS-16 (open) | every figure computed | **the FVU/RPU file writer** | needs document #3 |
 
-**BANK-11 step 3 was the one open judgement call and it is now answered
-(D19).** A trusted rule posts the payment and **flags the line for a TDS
-decision** rather than deciding one. That is its own small build — a flag on
-the transaction, a filter on the queue, and a sentence — and it belongs in
-Phase 1.6 rather than in the redesign.
+**BANK-11 step 3 (D19) — the BACKEND landed 24-09-2026; the SCREEN is the
+remaining half and it is named here rather than assumed.**
+
+Built: migration 413 (`bank_matching_rules.flags_tds_decision`, and on
+`bank_transactions` the `draft_flags_tds_decision` proposal beside the
+`tds_decision_needed` recorded fact — migration 382's split, so a REJECTED
+proposal cannot read as a recorded one); the flag on both rule doors; the
+draft carrying it; the stamp at pass time; and a guard holding it **one-way** —
+a rule may only ever set it true, because a rule that could CLEAR it would
+silently dismiss the outstanding withholding question on every line it matched.
+
+**Still to do, and until it is done the flag is settable but not visible:** the
+Entries queue must show a "TDS decision needed" chip and filter on it, the rule
+editor needs the checkbox, and a resolve action must write
+`tds_decision_resolved_at`/`_by`. The columns are inert until then — every
+default is false and nothing back-filled — so landing the migration early costs
+nothing, but **this is the `capital_wip` shape and it is not finished until the
+CA can see it.**
 
 ---
 

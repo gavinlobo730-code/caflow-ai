@@ -19,10 +19,20 @@ WHAT A RULE CAN MATCH ON (migration 380, BANK-11)
     matched at all. `match_field`, `match_operator` and `description_patterns`
     answer those; every default reproduces the old behaviour exactly.
 
-    WHAT A RULE MAY PROPOSE IS UNCHANGED, and that is the line. A trusted rule
-    posts unattended, so widening the PAYLOAD — split legs, a party, a TDS
-    treatment — widens what happens with nobody watching. That is BANK-11's
-    step 3 and is an owner decision, not a side effect of better matching.
+    WHAT A RULE MAY PROPOSE IS THE LINE, and it has moved exactly twice, both
+    times as an owner decision rather than as a side effect of better matching.
+    A trusted rule posts unattended, so widening the PAYLOAD widens what
+    happens with nobody watching. The PARTY was allowed (migration 404) because
+    it labels the transaction and moves no figure. The TDS FLAG was allowed
+    (D19, migration 413) because it does not even label — it routes the line to
+    a human worklist, so it can only ADD review, never remove it.
+
+    A TDS TREATMENT IS STILL REFUSED and the distinction is the whole point: no
+    section, no rate, no base, no amount. A withholding decides a statutory
+    liability under s.201 and belongs in front of a person however trusted the
+    rule. A SPLIT LEG is still refused too, and for a different reason — a rule
+    cannot know a future amount, so percentages are the only form that
+    generalises and that is a feature nobody has specified.
 
 WHAT A RULE CAN SUGGEST
     A rule carries three payload fields, all optional and all stored since
@@ -66,6 +76,18 @@ class RuleSuggestion:
     # refused — see the module header.
     payee_type: Optional[str] = None
     payee_id: Optional[str] = None
+    # D19, migration 413 — the OTHER half of BANK-11 step 3, and the one
+    # migration 404 refused. It is NOT a TDS treatment: there is no section,
+    # no rate, no base and no amount here, and a trusted rule still cannot
+    # decide a withholding. It says "a human must look at this one", which is
+    # the opposite kind of thing — it can only ADD work for a person, never
+    # remove it, and it moves no figure in any journal.
+    #
+    # The safety property is the party's, one step stronger. The party LABELS
+    # the transaction; this does not even do that — it routes the line to a
+    # worklist. A test asserts the posting map, the settlement and the reversal
+    # never read it.
+    flags_tds_decision: bool = False
 
     def is_empty(self) -> bool:
         # gst_rate_bps is deliberately NOT counted. It is a modifier on how the
@@ -79,6 +101,13 @@ class RuleSuggestion:
         # precedence over a later rule that does code the line — and the CA
         # would get a tagged transaction still sitting in the queue. A rule
         # that codes AND tags carries both.
+        #
+        # NOR IS THE TDS FLAG (D19), for the same reason a third time, and here
+        # the consequence is sharper: a rule that ONLY flags proposes no posting,
+        # so counting it would let it win precedence over a later rule that
+        # actually codes the line — and the CA would get a line marked "needs a
+        # TDS decision" still sitting uncoded in the queue, which is the worst
+        # of both. A rule that codes AND flags carries both.
         return not (self.category or self.account_id or self.narration)
 
 

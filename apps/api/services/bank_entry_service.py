@@ -62,7 +62,14 @@ _TRANSFER_TYPE = "bank_transaction"
 # exists to prevent (BANK-11 step 3).
 _CODING_COLS = ("account_id", "category", "match_status", "matched_entity_type",
                 "matched_entity_id", "matched_by", "matched_at", "needs_review",
-                "payee_name", "payee_type", "payee_id")
+                "payee_name", "payee_type", "payee_id",
+                # D19 — snapshot it so a pass that fails LATER does not leave a
+                # line marked "a human must decide the withholding" when
+                # nothing was posted. The direction is benign either way (a
+                # stale flag only asks somebody to look and find nothing), but
+                # a marker whose reason has been rolled out from under it is
+                # the party tag's own defect, and the fix costs one column.
+                "tds_decision_needed")
 
 
 def _now() -> str:
@@ -630,7 +637,12 @@ class BankEntryService:
                     # dangling id with no name — the state that method's own
                     # clearing branch exists to prevent.
                     "payee_name": before["payee_name"], "payee_type": before["payee_type"],
-                    "payee_id": before["payee_id"], "updated_at": _now(),
+                    "payee_id": before["payee_id"],
+                    # Restored to what it was, NOT to false: a line already
+                    # flagged by an earlier pass keeps its outstanding
+                    # decision, and one that was not stays unflagged.
+                    "tds_decision_needed": before.get("tds_decision_needed", False),
+                    "updated_at": _now(),
                 }).eq("id", txn["id"]).eq("firm_id", firm_id).execute())
         except Exception as e:  # pragma: no cover - the refusal is still reported
             _logger.warning("could not restore bank line %s after a failed pass: %s", txn["id"], e)
@@ -668,6 +680,31 @@ class BankEntryService:
                 except Exception as e:
                     from core.observability import capture_soft_failure
                     capture_soft_failure(e, operation="bank_entries.rule_party",
+                                         transaction_id=str(txn_id))
+            # D19, migration 413 — the PROPOSAL becomes the RECORDED fact at
+            # the moment the line is passed, which is the only moment at which
+            # "an unattended rule posted this and nobody has looked at the
+            # withholding" is true.
+            #
+            # A ONE-WAY WRITE, and that is the safety property. It is only ever
+            # set to true, never cleared here, and the resolution is a separate
+            # column somebody has to write: a rule may ADD a human's review and
+            # can never remove one. That is the whole difference between this
+            # and the TDS TREATMENT migration 404 refused — no section, no
+            # rate, no base, no amount, and no figure in any journal moves.
+            if txn.get("draft_flags_tds_decision"):
+                try:
+                    (db.table("bank_transactions")
+                       .update({"tds_decision_needed": True})
+                       .eq("id", txn_id).eq("firm_id", firm_id).execute())
+                except Exception as e:
+                    # NOT fatal, the party tag's reasoning: the CA asked for the
+                    # line to be coded and posted, and losing the flag must not
+                    # lose that. It is captured rather than swallowed, because a
+                    # flag that silently failed to land is a review nobody knows
+                    # is missing.
+                    from core.observability import capture_soft_failure
+                    capture_soft_failure(e, operation="bank_entries.tds_decision_flag",
                                          transaction_id=str(txn_id))
             return txn_id, txn.get("draft_gst_rate_bps"), bool(txn.get("draft_is_interstate"))
         if source == E.SOURCE_DOCUMENT:

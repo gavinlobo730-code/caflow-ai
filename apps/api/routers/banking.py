@@ -2603,7 +2603,11 @@ def update_rule(
                                  "txn_type", "priority", "match_field", "match_operator",
                                  "suggested_account_id", "suggested_category",
                                  "suggested_gst_rate_bps", "suggested_is_interstate",
-                                 "payee_type", "payee_id", "is_active")):
+                                 "payee_type", "payee_id", "is_active",
+                                 # D19 — the flag travels on the draft, so
+                                 # turning it on or off changes what the CA is
+                                 # shown and has to re-propose like the party.
+                                 "flags_tds_decision")):
         bank_entry_service.mark_stale(db, current_user["firm_id"], rule["client_id"])
     return api_response(True, (row.data or [{}])[0])
 
