@@ -586,6 +586,70 @@ Five slices landed overnight (PRs #560–#563). Each is described in its own
 commit; these are the **decisions left for you**, and nothing below is blocking
 — the work went round them.
 
+## G2. TWO AUTHORITIES DISAGREE BY A ROLE TIER ABOUT A FEE ENGAGEMENT, AND ITS STATE MACHINE HAS NO CALLER AT ALL  *(new, 24-09-2026)*
+
+**The backlog item that led here said "fee engagements are created over
+PostgREST, so `rbac()` and the state machine never run". Both halves are true
+and neither is the defect.** Re-reading the code found something sharper under
+each.
+
+### 1. The same row is Partner-only in the database and Manager+ at the API
+
+A fee engagement is a row in `fee_engagements` carrying `fee_paise` — what the
+practice charges that client. Four facts, each read off the code today:
+
+| | says | tier |
+|---|---|---|
+| `core/permissions.py` | `billing:write` | **Partner only** — its own comment: *"exposes fee economics"* |
+| `core/permissions.py` | `engagement:write` | **Manager+** |
+| migration 260 | RLS on `fee_engagements` | **Partner**, and its comment cites `billing` |
+| `POST /api/engagements` | `rbac("engagement", "write")` | **Manager+** — and it inserts into `fee_engagements` |
+
+This is not two write paths for one fact, which is the shape this codebase
+usually finds. It is **two answers to "which permission governs this row"**,
+one whole tier apart.
+
+A Manager can therefore create a fee-bearing engagement through the API — and
+with the service-role key the API path bypasses RLS entirely, so nothing
+catches it (`USE_USER_JWT`, `core/security_config.py`). The billing screen
+writes over PostgREST, where RLS **does** apply, so the same Manager is refused
+there. One person, two routes, two answers. And because the per-person grid
+(migration 403) resolves through `rbac()`, a firm can grant or deny
+`engagement:write` on this row and never `billing:write` — the grid is the
+authority and for this row it is pointed at the wrong resource.
+
+> **The question:** is a fee engagement **billing** (Partner) or **engagement**
+> (Manager+)?
+>
+> My reading is **billing** — the row carries the fee, and the matrix says
+> Partner *because of* that. That means tightening `POST /api/engagements` to
+> `billing:write`, which **removes** access Managers have today; "who may work"
+> is the area you already decided person-wise, so it is yours. The alternative,
+> loosening migration 260 to Manager, widens who can see and set fee economics,
+> and I would not do that without you saying so.
+
+### 2. The state machine is not bypassed — nothing can reach it
+
+`lib/api/index.ts` has **no `engagements` namespace at all**, and no file under
+`apps/web` mentions `/api/engagements`. The whole router — seven endpoints — is
+unreachable from the browser. The billing screen only INSERTs and SELECTs.
+
+So `POST /api/engagements/{id}/transition`, which validates against
+`ENGAGEMENT_TRANSITIONS` and writes both `audit_log` and the client timeline,
+**has never been called.** An engagement is created `Active` and can never
+change: there is no Pause, no Complete, no Cancel. The screen's own type says
+`status: "Active" | "Paused"` and nothing in the product can produce `"Paused"`.
+
+That is the `capital_wip` shape again — a built, guarded, audited path with no
+door — and it is why the status-change audit entries do not exist.
+
+### What I have NOT done, and why
+
+Pointing the screen at the API is the small half. I have not done it, because
+until the tier above is settled it would hard-code the wrong answer into a
+screen, and because adding Pause/Complete is a real (small) build rather than a
+rewire. Say the word on the tier and both halves go in together.
+
 ## G1. THE STATE VOCABULARY IS MISSING A STEP, AND THAT IS WHY BLUE IS EVERYWHERE  *(new, 24-09-2026)*
 
 **This reframes T4-b from ~5,840 judgements into two decisions and a codemod,
