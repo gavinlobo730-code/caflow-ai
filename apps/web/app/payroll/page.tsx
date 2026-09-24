@@ -986,7 +986,7 @@ export default function PayrollPage() {
     <div className="min-h-screen bg-ps-bg p-8">
       {viewSlip && <PayslipModal slip={viewSlip} onClose={() => setViewSlip(null)} />}
 
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-ps-data mx-auto">
         <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold text-ps-ink">Payroll</h1>

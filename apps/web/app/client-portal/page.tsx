@@ -426,7 +426,7 @@ export default function ClientPortalPage() {
   const unpaidInvoices = transactions.filter((t) => t.status !== "posted");
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Page Header */}
       <div className="flex items-start justify-between">
         <div>

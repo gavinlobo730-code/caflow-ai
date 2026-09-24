@@ -973,7 +973,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   ];
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {msg && (
         <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
@@ -1756,7 +1756,7 @@ function Vendors({ clientId }: { clientId: string }) {
   ], [bulkDeactivateVendors, bulkDeletePermanentVendors, vendorColumns]);
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {msg && (
         <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
@@ -2696,7 +2696,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
   ], [vendors]);
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {msg && (
         <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
@@ -3302,7 +3302,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
   ], [handleBulkIssue, handleBulkDelete, columns]);
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {msg && (
         <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
@@ -3767,7 +3767,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
   ], [handleBulkIssue, handleBulkDelete, columns]);
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {msg && (
         <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}

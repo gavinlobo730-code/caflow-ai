@@ -169,7 +169,7 @@ export default function TDSReturnsPage() {
   const statusCfg = filingStatus ? STATUS_CONFIG[filingStatus] : STATUS_CONFIG.pending;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+    <div className="max-w-ps-data mx-auto px-4 py-6 space-y-5">
       {showDemo && returnId && clientId && (
         <FilingDemoWizard
           flow="tds"

@@ -209,7 +209,7 @@ export default function AccountGroupsPage() {
   }, [reloadKey]);
 
   if (loading) return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
+    <div className="p-6 max-w-ps-data mx-auto space-y-4">
       <TableSkeleton cols={4} rows={4} />
       <TableSkeleton cols={4} rows={4} />
       <TableSkeleton cols={4} rows={4} />
@@ -257,7 +257,7 @@ export default function AccountGroupsPage() {
   const parentGroups = Object.keys(grouped).sort();
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-5">
+    <div className="p-6 max-w-ps-data mx-auto space-y-5">
       <div className="flex items-center gap-3">
         <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft size={18} />

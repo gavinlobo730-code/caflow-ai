@@ -132,7 +132,7 @@ export default function BookToTaxBridgePage() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-6 max-w-ps-data mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/income-tax" className="text-ps-hint hover:text-ps-body"><ChevronLeft size={18} /></Link>
         <div className="flex-1">

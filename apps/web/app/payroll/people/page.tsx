@@ -302,7 +302,7 @@ export default function PayrollPeoplePage() {
 
   return (
     <div className="min-h-screen bg-ps-bg p-8">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-ps-data mx-auto">
         <div className="mb-6">
           <Link href="/payroll">
             <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-ps-label hover:text-ps-ink -ml-2">

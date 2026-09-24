@@ -217,7 +217,7 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
+    <div className="p-6 max-w-ps-data mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-ps-body">
           Documents ({loading ? "…" : documents.length})

@@ -827,7 +827,7 @@ export default function TeamPage() {
   ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

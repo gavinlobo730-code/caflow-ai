@@ -328,7 +328,7 @@ export default function ClientAgeingSchedulePage() {
   const unclassified = schedule?.payables.unclassified_vendors ?? [];
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-5">
+    <div className="p-6 max-w-ps-data mx-auto space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <button

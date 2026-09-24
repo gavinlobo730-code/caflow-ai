@@ -116,7 +116,7 @@ export default function MSME43BHPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-ps-data mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/accounting" className="text-ps-hint hover:text-ps-label"><ChevronLeft size={18} /></Link>
         <div className="flex-1">

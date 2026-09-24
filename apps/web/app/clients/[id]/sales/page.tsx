@@ -472,7 +472,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       {editor && (
@@ -1153,7 +1153,7 @@ function Statements({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
@@ -1934,7 +1934,7 @@ function SalesInvoices({
   ], []);
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       {sendModal && (
@@ -3004,7 +3004,7 @@ function Customers({
   ], []);
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -3458,7 +3458,7 @@ function Receipts({
   ], []);
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">
@@ -4373,7 +4373,7 @@ function CreditNotes({
   ], []);
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">
@@ -4803,7 +4803,7 @@ function SalesDebitNotes({
   ], []);
 
   return (
-    <div className="space-y-4 max-w-screen-2xl mx-auto">
+    <div className="space-y-4 max-w-ps-data mx-auto">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       <div className="flex items-center justify-between">

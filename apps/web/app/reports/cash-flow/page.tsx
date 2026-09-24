@@ -194,7 +194,7 @@ export default function CashFlowForecastPage() {
     : 1;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-5">
+    <div className="p-6 max-w-ps-data mx-auto space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/reports" className="text-ps-hint hover:text-ps-label">

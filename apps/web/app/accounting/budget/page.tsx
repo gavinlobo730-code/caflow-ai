@@ -195,7 +195,7 @@ export default function BudgetPage() {
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-5">
+    <div className="p-6 max-w-ps-data mx-auto space-y-5">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <Link href="/accounting" className="text-ps-hint hover:text-ps-label">

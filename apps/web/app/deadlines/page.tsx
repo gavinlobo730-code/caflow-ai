@@ -80,7 +80,7 @@ const ALL_STATUSES = ["pending", "in_progress", "filed", "overdue", "na"];
 
 function LoadingSpinner() {
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-ps-data mx-auto space-y-6">
       <div className="space-y-2">
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-3 w-72" />
@@ -363,14 +363,14 @@ function DeadlinesContent() {
   if (loading) return <LoadingSpinner />;
   if (error) {
     return (
-      <div className="p-6 max-w-7xl mx-auto">
+      <div className="p-6 max-w-ps-data mx-auto">
         <div className="bg-state-problem-surface text-state-problem rounded-lg px-5 py-4 text-sm">{error}</div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-ps-data mx-auto space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-ps-ink">{pageTitle}</h1>
         <p className="text-sm text-ps-label mt-0.5">

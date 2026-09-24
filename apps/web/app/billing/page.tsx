@@ -515,7 +515,7 @@ export default function BillingPage() {
   ];
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
+    <div className="p-4 md:p-6 max-w-ps-data mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg md:text-xl font-semibold text-ps-ink">Fee Billing</h1>

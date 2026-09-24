@@ -239,7 +239,7 @@ export default function FirmHsnLibraryPage() {
 
   return (
     <RoleGuard allowed={["Partner", "Manager"]}>
-      <div className="p-6 max-w-4xl mx-auto space-y-5">
+      <div className="p-6 max-w-ps-data mx-auto space-y-5">
         {toast && (
           <div className={`fixed top-4 right-4 z-[70] px-4 py-2 rounded-lg text-sm shadow-lg ${toast.kind === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
             {toast.msg}

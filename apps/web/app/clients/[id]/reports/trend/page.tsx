@@ -149,7 +149,7 @@ export default function ClientTrendPage() {
   }, [trend]);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-5">
+    <div className="p-6 max-w-ps-data mx-auto space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <button

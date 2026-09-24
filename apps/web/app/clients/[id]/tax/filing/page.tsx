@@ -360,7 +360,7 @@ export default function ITRFilingPage() {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-4">
+    <div className="p-6 max-w-ps-data mx-auto space-y-4">
       {demo && (
         <FilingDemoWizard
           flow="itr"

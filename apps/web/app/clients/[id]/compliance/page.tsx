@@ -370,7 +370,7 @@ export default function CompliancePage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
+    <div className="p-6 max-w-ps-data mx-auto space-y-4">
       {/* Workspace Navigation Cards */}
       <div className="grid grid-cols-3 gap-4">
         {[

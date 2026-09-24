@@ -206,7 +206,7 @@ export default function StatutoryValuesPage() {
   // deducts from every client of the firm with staff in that state.
   return (
     <RoleGuard allowed={["Partner", "Manager"]}>
-      <div className="p-6 max-w-5xl mx-auto">
+      <div className="p-6 max-w-ps-data mx-auto">
         <Link href="/settings" className="inline-flex items-center gap-1 text-sm text-ps-label hover:text-ps-ink mb-4">
           <ChevronLeft size={15} />Settings
         </Link>

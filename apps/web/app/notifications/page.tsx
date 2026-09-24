@@ -266,7 +266,7 @@ export default function NotificationsPage() {
   ], [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="p-6 space-y-5 max-w-5xl mx-auto">
+    <div className="p-6 space-y-5 max-w-ps-data mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <Bell size={18} className="text-ps-body" />

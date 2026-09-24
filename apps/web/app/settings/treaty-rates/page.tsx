@@ -143,7 +143,7 @@ export default function TreatyRatesPage() {
 
   return (
     <RoleGuard allowed={["Partner", "Manager"]}>
-      <div className="p-6 max-w-5xl mx-auto space-y-5">
+      <div className="p-6 max-w-ps-data mx-auto space-y-5">
         <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-label hover:text-ps-ink">
           <ChevronLeft size={14} /> Settings
         </Link>
