@@ -38,6 +38,7 @@ import { financialYearOfMonth } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
+import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 
 export type DrawerEmployee = {
   id: string;
@@ -239,7 +240,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
     try {
       const res = await api.payroll.previewSettlement(employee.id, body());
       if (!res?.success) throw new Error(res?.error ?? "That did not compute.");
-      setResult(res.data);
+      setResult(objectWithLists<SettlementResult>(res.data, "components", "deductions"));
     } catch (e) {
       setResult(null);
       setErr(e instanceof Error ? e.message : "That did not compute.");
@@ -254,7 +255,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
         payment_date: paymentDate || undefined,
       });
       if (!res?.success) throw new Error(res?.error ?? "That did not record.");
-      setResult(res.data);
+      setResult(objectWithLists<SettlementResult>(res.data, "components", "deductions"));
       setDone(`Settlement recorded. ${employee.name} is now ${newStatus}, the `
         + "withholding is on the year and the ledger entry is posted.");
       setConfirming(false);
@@ -742,7 +743,7 @@ function PerquisitesSection({ employee, clientId }: {
         gifts_total_paise: paiseFromRupeeInput(gifts) ?? 0,
       });
       if (!res?.success) throw new Error(res?.error ?? "That did not compute.");
-      setResult(res.data);
+      setResult(objectWithLists<PerquisiteResult>(res.data, "items"));
     } catch (e) {
       setResult(null);
       setErr(e instanceof Error ? e.message : "That did not compute.");
@@ -964,7 +965,7 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
           })),
       });
       if (!res?.success) throw new Error(res?.error ?? "That did not compute.");
-      setResult(res.data);
+      setResult(objectOrNull<ArrearsReliefResult>(res.data));
     } catch (e) {
       setResult(null);
       setErr(e instanceof Error ? e.message : "That did not compute.");

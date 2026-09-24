@@ -48,6 +48,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { todayLocalISO } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
 import { Callout } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 type PayrollRun = { id: string; month: string; status: string };
 
@@ -309,7 +310,11 @@ function MappedIpCheck({ runId }: { runId: string }) {
     try {
       const res = await api.payroll.esicMappedIpCheck(runId, pasted);
       if (!res?.success) throw new Error(res?.error ?? "That did not check.");
-      setResult(res.data?.reconciliation ?? null);
+      // The narrowing goes round the WHOLE expression: `reconciliation` is a
+      // field of the payload, not of the check, so wrapping `res.data` alone
+      // would read it off the narrowed value and lose it.
+      setResult(objectWithLists<EsicMappedIpCheck>(
+        res.data?.reconciliation, "missing_from_file", "not_mapped_at_esic"));
     } catch (e) {
       setResult(null);
       setErr(e instanceof Error ? e.message : "That did not check.");
@@ -821,7 +826,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
     try {
       const res = await api.payroll.runHandoff(runId);
       if (!res?.success) throw new Error(res?.error ?? "That did not load.");
-      setHandoff(res.data);
+      setHandoff(objectWithLists<Handoff>(res.data, "obligations"));
     } catch (e) {
       setHandoff(null);
       setErr(e instanceof Error ? e.message : "That did not load.");

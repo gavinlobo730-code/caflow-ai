@@ -31,6 +31,7 @@ import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
+import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -956,7 +957,7 @@ function StatutoryTab({ clientId }: { clientId: string }) {
     try {
       const res = await apiFetch<StatutoryData>(`/api/payroll/reports/statutory-summary?client_id=${clientId}&month=${month}`);
       if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setData(null); return; }
-      setData(res.data);
+      setData(objectOrNull<StatutoryData>(res.data));
     } catch {
       setLoadFailed(true); setData(null);
     } finally {
@@ -1222,7 +1223,7 @@ function OutputsTab({ clientId }: { clientId: string }) {
   const loadSequence = useCallback(async () => {
     try {
       const res = (await api.payroll.ecrSequence(clientId)) as { data?: ECRSequence };
-      setEcrSeq(res?.data ?? null);
+      setEcrSeq(objectWithLists<ECRSequence>(res?.data, "filings", "outstanding"));
     } catch { /* the panel simply does not render */ }
   }, [clientId]);
 
@@ -1386,7 +1387,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
     try {
       const res = await api.payroll.annexureII(clientId, fy);
       if (!res?.success) throw new Error(res?.error ?? "That did not load.");
-      setData(res.data);
+      setData(objectWithLists<AnnexureIIResponse>(res.data, "problems"));
     } catch (e) {
       setData(null);
       setErr(e instanceof Error ? e.message : "That did not load.");
@@ -2082,7 +2083,7 @@ function ReportsTab({ clientId }: { clientId: string }) {
     try {
       const res = await apiFetch<SalaryRegister>(`/api/payroll/reports/salary-register?client_id=${clientId}&month=${month}`);
       if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); setData(null); return; }
-      setData(res.data);
+      setData(objectWithLists<SalaryRegister>(res.data, "slips"));
     } catch {
       setLoadFailed(true); setData(null);
     } finally {

@@ -209,7 +209,11 @@ export default function PlatformAdminPage() {
     setRowBusy(true);
     try {
     const u = await api.platform.firmUsers(f.id);
-    setDetail({ firm: f, users: u.data });
+    // `detail` is built HERE from a row already in hand plus one payload, so
+    // the object is not the thing that needs a kind-check — the LIST is.
+    // `arrayOrEmpty` is the whole of the fix; `objectWithLists` would be
+    // narrowing an object this screen just constructed.
+    setDetail({ firm: f, users: arrayOrEmpty<FirmUser>(u.data) });
   } finally { setRowBusy(false); }
   }
 

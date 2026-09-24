@@ -25,14 +25,19 @@
  * (or `?? []`) at the READ. `components/inventory/ReorderPanel.tsx` is the
  * worked example and does both.
  *
- * WHY A FROZEN LIST RATHER THAN A COUNT. 66 sites were live when this was
- * written — 62 by the first, narrower regex, and four more once `?.` was
- * taken (see the sweep). A budget is one number somebody raises, which CLAUDE.md records as
- * how a budget comes to mean nothing; a named list can only shrink, and a new
- * offender cannot join it without an edit a reviewer sees. The list is
- * asserted EXACTLY — fixing one fails until its entry is removed, which is
- * what makes the ratchet run in both directions instead of quietly tolerating
- * a fix nobody recorded.
+ * THE LIST IS EMPTY, AND IT GOT THERE BY BEING A LIST. 66 sites were live
+ * when this was written — 62 by a first, narrower regex, and four more once
+ * `?.` was taken, which a negative control found by PASSING against the narrow
+ * one. A budget is one number somebody raises, which CLAUDE.md records as how
+ * a budget comes to mean nothing; a named list can only shrink, and a new
+ * offender cannot join it without an edit a reviewer sees. It is asserted
+ * EXACTLY in both directions, so fixing a site failed until its line came out
+ * — which is what drove 66 to 0 rather than to "mostly".
+ *
+ * Empty, it is simply the rule: no screen may read an object payload's fields
+ * unchecked. Keep it that way. If a site ever has to be exempted, add it here
+ * with its reason rather than widening the sweep — a sweep that stops seeing
+ * something is a guard nobody can read.
  *
  * WHAT THIS DOES NOT CLAIM. It does not prove the fields a screen reads are
  * the fields the endpoint sends — a per-field schema in the browser would be a
@@ -93,7 +98,12 @@ function sweep(): Site[] {
         .map((c) => c[1])
         .filter((a) => /\.data\b/.test(a));
       if (!sets.length) continue;
-      if (sets.every((a) => /objectOrNull|objectWithLists/.test(a))) continue;
+      // `arrayOrEmpty` counts as well, for the case where the object is BUILT
+      // by the screen from a row it already holds plus one payload — there the
+      // object is not what needs a kind-check and the list is the whole of it
+      // (`app/platform/page.tsx` is the one). Narrowing anything in the
+      // expression is the signal; what it must narrow is the reader's call.
+      if (sets.every((a) => /objectOrNull|objectWithLists|arrayOrEmpty/.test(a))) continue;
 
       // ... and read with a nested array access somewhere in the file.
       // `\\??\\.` on BOTH hops, and that is not cosmetic: `x?.rows.map(...)`
@@ -144,12 +154,7 @@ const key = (s: Site) => `${s.file}::${s.state}`;
  * so a fix that leaves its entry here fails just as loudly as a new offender.
  */
 const KNOWN_UNGUARDED: string[] = [
-  "app/clients/[id]/payroll/page.tsx::data",
-  "app/clients/[id]/payroll/page.tsx::ecrSeq",
-  "app/platform/page.tsx::detail",
-  "components/payroll/EmployeeDrawer.tsx::result",
-  "components/payroll/StatutoryHandoff.tsx::handoff",
-  "components/payroll/StatutoryHandoff.tsx::result",
+
 ];
 
 test("the sweep still finds object state at all", () => {
