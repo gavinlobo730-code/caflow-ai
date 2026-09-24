@@ -1,0 +1,67 @@
+{
+  "_why": [
+    "WHICH ENTITY TYPES ARE COMPANIES ACT 2013 COMPANIES, run through BOTH",
+    "implementations on the same strings.",
+    "",
+    "`services/compliance_obligation_service.is_companies_act_company` decides the",
+    "ITR due date (Explanation 2(a)(i) to s.139(1) gives a company 31 October",
+    "unconditionally) and drives `_roc_obligations`, which puts AOC-4, MGT-7 and",
+    "ADT-1 on the compliance calendar. `lib/entityObligations.mcaRegime` decides",
+    "whether the MCA workspace is OFFERED at all and whether Year End may call a",
+    "set of statements Schedule III.",
+    "",
+    "The two SETS were identical and held together by a comment in each file. The",
+    "two NORMALISATIONS were not: Python folds runs of whitespace AND UNDERSCORES,",
+    "the browser folded whitespace only. So `private_limited` was a Companies Act",
+    "company on the server and not in the browser — the calendar generated AOC-4",
+    "and MGT-7 for a client whose MCA workspace the product refused to show."
+  ],
+  "_the_underscore_is_not_hypothetical": [
+    "`normalise_entity_type`'s own docstring records why the fold is there: the",
+    "income-tax page renders entity types with `.replace(/_/g, \" \")`, so",
+    "underscored spellings have been seen in this data, and the bug it replaced",
+    "was a title-case value tested against an underscored constant. The same",
+    "defect had simply never been swept out of apps/web."
+  ],
+  "_llp_is_the_browsers_alone_and_that_is_right": [
+    "`mcaRegime` has a third answer, `llp-act`: an LLP IS on the MCA portal but",
+    "files Form 11 (s.35) and Form 8 (s.34) under the LLP Act 2008, not AOC-4 and",
+    "not MGT-7. Python has no LLP set because the only question it asks is the ITR",
+    "due date, which an LLP does not settle on entity type alone (LLP Act s.34(4)",
+    "with Rule 24(8) is a different test, and `itr_due_date_for_client` REFUSES).",
+    "So this fixture pins the Companies Act limb, which both sides answer, and",
+    "says here that the LLP limb is deliberately one-sided."
+  ],
+  "companies_act": [
+    "Private Limited",
+    "private limited",
+    "PRIVATE LIMITED",
+    "Public  Limited",
+    "  Private Limited  ",
+    "private_limited",
+    "PRIVATE_LIMITED",
+    "Public_Limited",
+    "One Person Company",
+    "one_person_company",
+    "OPC",
+    "opc",
+    "Section 8",
+    "section_8",
+    "Section 8 Company",
+    "section_8_company"
+  ],
+  "not_companies_act": [
+    "Proprietorship",
+    "Partnership",
+    "LLP",
+    "llp",
+    "Limited Liability Partnership",
+    "Trust",
+    "Society",
+    "Individual",
+    "",
+    "   ",
+    "Private Limited Partnership",
+    "Ltd"
+  ]
+}

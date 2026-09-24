@@ -286,6 +286,105 @@ for a symptom, which is the argument for doing these passes by hand.
       failed on its own explanation before comments were stripped.
 
 
+## Batch 7 — the risk register was derived in the browser ✅ **LANDED** (#576)
+
+- [x] **7.1** ✅ `app/risks/page.tsx` was 856 lines that made six PostgREST
+      reads of their own and derived NINE kinds of statutory risk in the
+      browser, citing CGST §47, IT §200A, §201(1A), §234B/C, §139A and §194A.
+      `rbac()` ran on none of the six and neither did the assignment scope. The
+      advance-tax dates were four hardcoded strings against
+      `compliance_engine.advance_tax_due_dates`. And the FD row advised "TDS
+      applicable u/s 194A if interest > ₹40,000", a figure NOTHING here can
+      establish — §194A(3)(i) has three limbs and `section_rates` holds one,
+      which its own docstring names as the general one.
+      `domain/risk/register.py` decides, `services/risk_register_service.py`
+      fetches and pages, `GET /api/risks/register` serves. The browser holds no
+      per-kind knowledge: the server sends a `particulars` map in display order
+      and one renderer replaces nine hand-written tables. 858 → 420 lines.
+      ⚠️ **The first draft misread 1000000 paise as ₹1,00,000** — it is ₹10,000
+      — and would have quoted the general limb as the bank one. Third miscount
+      of an Indian figure in this run; recorded in the module.
+
+## Batch 8 — two files claimed another agreed with them ✅ **LANDED** (#577)
+
+- [x] **8.1** ✅ **`private_limited` was a Companies Act company on the server
+      and not in the browser.** The two SETS were identical; the two
+      NORMALISATIONS were not — Python folds `[\s_]+`, the browser folded
+      `\s+` — so the compliance calendar generated AOC-4, MGT-7 and ADT-1 for
+      a client whose MCA workspace the product then refused to show, and Year
+      End declined to call their statements Schedule III. The underscore is not
+      hypothetical: `normalise_entity_type`'s docstring records that the
+      income-tax page renders entity types with `.replace(/_/g, " ")` and that
+      *the bug it replaced was a title-case value tested against an underscored
+      constant*. The same defect had never been swept out of `apps/web`.
+      `shared/entity-type-vectors.json` runs both implementations over the same
+      28 strings.
+
+- [x] **8.2** ✅ **T8-c, the marketing brand parity test.** Nine of ten colours
+      agreed to the character; `brand.hover: #0F1A3D` existed there and nowhere
+      in the product, for a role `apps/web` expresses as `brand-dark` at
+      fifteen sites. Three dead `boxShadow` tokens went too — the same three
+      T3-a deleted, and `grep -r "shadow-card"` over `apps/marketing` was
+      empty.
+
+---
+
+## ⚠️ T4-c IS NOT A MECHANICAL CODEMOD, AND THE PLAN ROW READS AS THOUGH IT IS
+
+Measured before starting it, and NOT started. THE-PLAN gives T4-c one day to
+"codemod over 13 arbitrary px values" toward a target of ~130. The tree owes
+**379** today, in ten distinct sizes:
+
+| size | count | Tailwind built-in |
+|---|---|---|
+| `text-[12px]` | 189 | `text-xs` — **same size** |
+| `text-[13px]` | 88 | none |
+| `text-[14px]` | 40 | `text-sm` — **same size** |
+| `text-[9px]` | 29 | none (`3xs` is 10px) |
+| `text-[18px]` | 8 | `text-lg` — **same size** |
+| `text-[16px]` | 7 | `text-base` — **same size** |
+| `text-[22px]`, `[26px]`, `[15px]`, `[32px]` | 18 | none |
+
+So 244 of the 379 look like a find-and-replace and **are not**, because a
+Tailwind size token carries a LINE HEIGHT and an arbitrary value does not:
+
+```
+xs   ["0.75rem",  {"lineHeight":"1rem"}]
+sm   ["0.875rem", {"lineHeight":"1.25rem"}]
+base ["1rem",     {"lineHeight":"1.5rem"}]
+lg   ["1.125rem", {"lineHeight":"1.75rem"}]
+```
+
+Only **7 of the 167** `class="…text-[12px]…"` sites also set a `leading-`, so
+converting would silently give 160 elements a 16px line height they do not have
+today. The config's own custom steps (`3xs`, `2xs`) are declared as bare
+strings precisely to avoid that — which means the honest conversion is to add
+size-only steps, and **adding a size-only `xs` would override Tailwind's own
+`text-xs` and change the line height of every element already using it**, in
+the other direction.
+
+**That is a typographic decision across the product, not a codemod**, and it is
+the one thing on this list that cannot be verified without looking at the
+result. Left for the owner with the measurement above; the remaining 135 are
+genuinely off-scale and need scale steps chosen anyway.
+
+
+## A THIRD METRIC COUNTING A DIFFERENT POPULATION FROM ITS GUARD
+
+This run opened by correcting one of these and has now found two more. The
+lesson is already in CLAUDE.md; what is new is that it keeps happening to
+metrics written as `grep … | wc -l` beside a guard that checks the property.
+
+| metric | what it counts | what the guard checks |
+|---|---|---|
+| hex literals (corrected at the top of this file) | every `#RRGGBB` in `app/` + `components/`, comments included | three populations, comments stripped, with an allowlist |
+| **T5b "browser-side Excel writers: 7 → 0"** | `XLSX.write` call sites | that there is ONE writer and a money cell is a NUMBER. **Six of the seven already go through `buildWorkbook`; the seventh builds an empty import TEMPLATE with no money in it and is allowlisted with that reason.** The property is held and guarded; the count is a spelling of it |
+| **T4-c "codemod 13 arbitrary px values"** | `text-[Npx]` occurrences | nothing — and the conversion is a LINE-HEIGHT change, see above |
+
+None of the three was a regression. All three would have sent somebody hunting
+one.
+
+
 ---
 
 ## Four probes that came back CLEAN, recorded so nobody re-derives them
@@ -299,6 +398,10 @@ pay for again.
 | **A read filtered on `client_id` without `firm_id`** | 11 statements, on tables that DO carry `firm_id` | `clients.id` is a globally unique UUID and `can_access_client` checks `_client_belongs_to_firm` before any of them run (the F1 fix), so a client id from another firm never reaches them. Defence-in-depth loss, not a cross-tenant read. Not "fixed" opportunistically: 11 untested query changes for no behaviour change is the wrong trade. |
 | **A write whose `{success:false}` nobody checks** | 9 unchecked write calls across `app/` and `components/` | `request()` throws only on `!res.ok`, so a **200 with `success:false`** does pass through — the failure mode CLAUDE.md records for the GST workspace. But of the six routers those nine reach, only `payroll` answers 200+false at all, on `finalize_run` and `disburse_run`, and **both of those callers check** (`page.tsx:1066`, `DisburseModal.tsx:66`). A guard was considered and rejected: it would have to map a browser call to a Python endpoint across two languages, and a fragile guard is worse than the finding. |
 | **Western grouping in the BROWSER** | 60 `toLocaleString`, 47 `toLocaleDateString` | 57 and 45 respectively already name `en-IN`. The three exceptions format a MONTH NAME, and the one date exception is `en-CA` with `timeZone: "Asia/Kolkata"` — the idiomatic ISO-date trick, deliberate and correct. |
+| **Health scores rebuilt from raw rows** (T7-L1-d's premise) | `app/health/page.tsx`, `/at-risk`, `/critical` | All three READ the stored `health_scores` table; none recomputes. The plan row's premise is stale for these three |
+| **`lib/purchases/billEditor.ts`**, 403 lines citing §17(5) thirty-four times | the heuristic, the clause list, the GST maths | Honestly built: the keyword heuristic disclaims itself in its own comment ("NOT a legal determination … never blocks the save"), the decision is the CA's `itc_eligible` boolean, and the money delegates to `dnLineGst`, which mirrors the backend. The clause list is free text by migration 240 and has one reader |
+| **`lib/sales/receiptAllocation.ts`** | the allocation caps | Its docstring states the rule it follows — "Nothing here decides anything the server does not re-decide" — and it prefers the SERVER's `unallocated_paise` over any subtraction. A drift shows as a refused save, not a wrong number |
+| **A day book** (ACC-13's first limb) | `app/clients/[id]/accounting` | Already built, as `mode === "day_book"` on the journal tab — "Day Book — every posting in this period". The finding's own wording ("no day book") is stale |
 | **The marketing site overclaiming** | every `file` / `auto-submit` / `GSTR-*` string in `apps/marketing` | It is honest, explicitly: *"You upload and sign on the government portal"*, *"PracticeSync prepares the return; a CA files it on the portal. The software never transmits anything"*, and a section headed *"Never auto-submit — the principle at the heart of the platform."* |
 
 ---

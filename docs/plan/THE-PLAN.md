@@ -347,7 +347,7 @@ replacement sites, and the work does not vanish.
 |---|---|---|---|
 | T4-a | Codemod the 66 hex values | 2d | Zero `#RRGGBB` literals in `app/` and `components/` |
 | T4-b | Judgement pass over 8,234 Tailwind named-colour utilities | 3–4d | `amber`/`red` resolve to semantic status tokens, not raw colours |
-| T4-c | Type-size codemod over 13 arbitrary px values (2,171 uses) | 1d | Every size on the scale |
+| T4-c | ⚠️ **NOT A CODEMOD — measured 24-09-2026 and deliberately not started.** 379 uses in ten sizes; 244 of them (12px, 14px, 16px, 18px) have a same-size Tailwind built-in and converting them is still a **line-height change**, because a size token carries one and an arbitrary value does not — only 7 of the 167 `text-[12px]` sites set a `leading-`. Adding a size-only `xs` instead would change the line height of every element already using `text-xs`, in the other direction. A typographic decision across the product, and the one item on this list that cannot be verified without looking. The remaining 135 (13px×88, 9px×29, 22px, 26px, 15px, 32px) are off-scale and need steps chosen anyway. Full measurement in `docs/plan/2026-09-24-overnight-run.md`. | 1d | Every size on the scale |
 | T4-d | Width sweep over the 95 pages that centre their own container | 1d | Tables full-width; prose keeps its measure |
 
 **Must land before the second module in T6**, or module two re-litigates
@@ -709,7 +709,14 @@ grep -v '^#' apps/web/public/_redirects | grep -c '200$'
 grep -rEoh 'text-\[[0-9]+px\]' apps/web/app apps/web/components apps/web/lib | wc -l
 grep -rEoh '#[0-9a-fA-F]{6}' apps/web/app apps/web/components | wc -l
 
-# T5b       browser-side Excel writers            now 7       target 0
+# T5b  browser-side Excel writers            7, and the target of 0 counts the
+#      wrong population — measured 24-09-2026. SIX of the seven go through the
+#      one writer, `lib/export/xlsx.buildWorkbook`, which is what makes a money
+#      cell a NUMBER (T5b-2); the seventh, CsvImportModal, builds an empty
+#      IMPORT TEMPLATE with no money in it and is allowlisted with that reason
+#      in scripts/a-money-cell-in-a-spreadsheet-is-a-number.test.ts. The
+#      PROPERTY this row wanted is already held and already guarded; the count
+#      is of `XLSX.write` call sites, which is a spelling of it. Use the guard.
 grep -rl 'XLSX.write' apps/web/app apps/web/components | wc -l
 
 # T9        backlog: open + partial               now 49      target <=10 (rest blocked)

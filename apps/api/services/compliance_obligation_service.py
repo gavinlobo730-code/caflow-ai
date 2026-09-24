@@ -498,7 +498,13 @@ CLIENT_ENTITY_TYPES: tuple[str, ...] = (
 # either to the CHECK cannot silently drop a real company back to 31 July;
 # 'opc' is the short code mca_companies.company_type uses, and
 # apps/web/lib/entityObligations.ts recognises the identical set for the MCA
-# gate.
+# gate — a claim that was TRUE of the sets and FALSE of the normalisations
+# until 24-09-2026: that copy folded whitespace alone, so `private_limited` was
+# a company here and not there, and this calendar generated AOC-4 and MGT-7 for
+# a client whose MCA workspace the product refused to show.
+# `shared/entity-type-vectors.json` runs both implementations over the same
+# strings now, from
+# `tests/test_which_entities_are_companies_act_companies.py`.
 _COMPANIES_ACT_COMPANY = frozenset({
     "private limited",
     "public limited",
