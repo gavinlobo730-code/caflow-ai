@@ -637,11 +637,10 @@
       "reread_on": "2026-09-17"
     },
     "SALES-25": {
-      "status": "partial",
-      "verified_on": "2026-09-17",
-      "why": "half (a) is closed — routers/credit_notes._section_34_2_warning delegates to domain/gst/credit_note_window.late_credit_note (the window measured from the ORIGINAL supply's FY) and stamps the warning on create, read, list and issue, rendered on the view drawer",
-      "reread_on": "2026-09-17",
-      "what_is_left": "half (b), the customer credit limit: no migration adds credit_limit_paise to public.customers (only 030's suppliers/clients and 378's vendors), CustomerIn/CustomerUpdateIn have credit_days and no limit, and _create_invoice_core reads no exposure. ⚠️ migration 378's own column comment records the vendor limit as RECORDED, NOT ENFORCED — so the ENFORCEMENT half of the suggested fix runs against the house position even though the RECORDING half is genuinely absent"
+      "status": "closed",
+      "verified_on": "2026-09-24",
+      "why": "Half (a) — the CGST s.34(2) window, measured from the ORIGINAL SUPPLY's financial year rather than the note's own period — landed earlier. Half (b) is the CUSTOMER CREDIT LIMIT, and the plan's own inventory had it wrong as 'the post-window commercial note path'. Migration 414 adds `customers.credit_limit_paise` and `invoice_settings.credit_limit_blocks`; `domain/sales/credit_limit.py` is the rule; the sales-invoice create path assesses before the insert; the invoice editor asks BEFORE the save through GET /api/sales-invoices/credit-position.",
+      "what_is_left": "Nothing of the finding. Three shapes are deliberate and recorded: NULL is not zero (zero is a real limit meaning cash only, so the column is nullable with no default and no backfill), it WARNS by default and refuses only where the firm switched it on, and an OPENING document is never refused whatever the switch says — ACC-14's reasoning, on the very documents that push a customer past a limit somebody has just typed in."
     },
     "ACC-02": {
       "status": "closed",

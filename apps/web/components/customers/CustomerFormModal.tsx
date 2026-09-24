@@ -93,6 +93,13 @@ export function CustomerFormModal({
     existing ? (existing.opening_balance_paise / 100).toFixed(2) : "",
   );
   const [creditDays, setCreditDays] = useState(String(existing?.credit_days ?? 30));
+  // SALES-25 (b). BLANK means no recorded limit, and "0" is a real limit
+  // meaning cash only — so the empty string is carried as `null` and never
+  // coerced to 0, which would put this customer on the strictest possible
+  // terms by accident.
+  const [creditLimit, setCreditLimit] = useState(
+    existing?.credit_limit_paise == null
+      ? "" : (existing.credit_limit_paise / 100).toFixed(2));
   // Payment Terms = a label over credit days (the default for this customer's
   // future invoices). "Custom" reveals a free credit-days input.
   const [termCustom, setTermCustom] = useState<boolean>(
@@ -146,6 +153,18 @@ export function CustomerFormModal({
         setSaving(false);
         return;
       }
+      // Through the same exact parser, for the same reason — and BLANK is
+      // carried through as `null` rather than parsed, because "no limit
+      // recorded" and "a limit of zero" are different answers and the column
+      // is nullable precisely so they can be told apart.
+      const creditLimitPaise = creditLimit.trim() === ""
+        ? null : paiseFromRupeeInput(creditLimit);
+      if (creditLimit.trim() !== "" && creditLimitPaise === null) {
+        fail("Credit limit must be an amount in rupees, e.g. 200000 — without "
+             + "commas. Leave it blank for no limit; 0 means cash only.");
+        setSaving(false);
+        return;
+      }
       const token = await getAuthToken();
 
       const result = existing
@@ -164,6 +183,7 @@ export function CustomerFormModal({
             state: state.trim(),
             opening_balance_paise: openingBalancePaise,
             credit_days: parseInt(creditDays) || 30,
+            credit_limit_paise: creditLimitPaise,
             is_active: true,
           }, token)
         : await apiCall("/api/customers/", "POST", {
@@ -179,6 +199,7 @@ export function CustomerFormModal({
             state: state.trim() || undefined,
             opening_balance_paise: openingBalancePaise,
             credit_days: parseInt(creditDays) || 30,
+            credit_limit_paise: creditLimitPaise,
           }, token);
       if (!result.success || !result.data) throw new Error(result.error ?? "Failed to save customer");
       // The backend may have auto-posted/updated the opening-balance journal, so
@@ -296,6 +317,22 @@ export function CustomerFormModal({
               placeholder="Credit days" aria-label="Custom credit days" className={`mt-1 ${inputCls}`} />
           )}
           <p className="mt-1 text-3xs text-ps-hint">Default terms for this customer&apos;s new invoices.</p>
+        </div>
+        {/* SALES-25 (b). A COMMERCIAL term, not a statutory one: no Act sets
+            it and it changes no figure on any invoice. Blank and 0 are
+            different answers and the hint says which is which — a default of
+            0 would put the customer on the strictest possible terms. */}
+        <div>
+          <label className="block text-xs font-medium text-ps-label mb-1">Credit Limit (₹)</label>
+          <input type="text" inputMode="decimal" value={creditLimit}
+            onChange={(e) => setCreditLimit(e.target.value)}
+            placeholder="No limit" className={`${inputCls} text-right font-mono`} />
+          <p className="mt-1 text-3xs text-ps-hint">
+            The most this customer may owe at once. Leave blank for no limit;
+            0 means cash only. An invoice that would take them past it is
+            flagged — and refused only if your firm has switched that on in
+            Invoice Settings.
+          </p>
         </div>
       </div>
 

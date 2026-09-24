@@ -104,6 +104,13 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("service_catalogue", "reorder_level_units"): "migration 409",
     ("payroll_it_declaration_items", "proof_attachments"): "migration 410",
     ("client_sales_invoice_lines", "is_service"): "migration 411",
+    ("bank_matching_rules", "flags_tds_decision"): "migration 413",
+    ("bank_transactions", "draft_flags_tds_decision"): "migration 413",
+    ("bank_transactions", "tds_decision_needed"): "migration 413",
+    ("bank_transactions", "tds_decision_resolved_at"): "migration 413",
+    ("bank_transactions", "tds_decision_resolved_by"): "migration 413",
+    ("customers", "credit_limit_paise"): "migration 414",
+    ("invoice_settings", "credit_limit_blocks"): "migration 414",
     # public.capital_gain_reinvestments (385), public.stock_count_sessions and
     # public.stock_count_lines (387), public.rcm_documents (388),
     # public.bills_of_entry (389), public.client_gst_registrations (390) and

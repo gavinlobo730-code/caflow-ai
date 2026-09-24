@@ -205,39 +205,59 @@ def test_the_column_comment_does_not_claim_a_control_that_does_not_exist():
     assert "RECORDED, NOT ENFORCED" in stored
 
 
-def test_nothing_enforces_a_credit_limit_yet():
+def test_nothing_enforces_a_VENDORS_credit_limit_yet():
     """The premise of the comment above, asserted so it cannot go stale
-    silently. If a limit ever IS enforced, this test fails and the comment gets
-    corrected in the same change."""
-    readers = []
-    for path, text in _files():
-        if text.endswith("tests/test_one_supplier_master.py"):
-            continue
-        if any(text.startswith(prefix) for prefix in _ALLOWED_PREFIXES):
-            continue
-        if text.endswith(".sql"):
-            continue          # the column has to be declared somewhere
-        try:
-            body = path.read_text(errors="ignore")
-        except OSError:
-            continue
-        if "credit_limit_paise" in _strip_comments(body, path.suffix):
-            readers.append(text)
-    # The vendor models declare it, the api client types it and the screen
-    # renders it. None of those is an enforcement.
-    #
-    # `tests/production_types.py` was a fourth entry and is gone, exactly as
-    # the note it carried predicted: it named the column as added after the
-    # snapshot, and the snapshot was refreshed to migration 381 on the evening
-    # of 13 September 2026, so the entry went with it.
-    assert sorted(readers) == [
-        "../web/app/accounting/suppliers/page.tsx",
-        "../web/lib/api/index.ts",
-        "models/parties.py",
-    ], (
-        "something new touches credit_limit_paise. If a bill is now blocked or "
-        "flagged by it, migration 378's column comment says RECORDED, NOT "
-        f"ENFORCED and has to be corrected: {sorted(readers)}")
+    silently. If a SUPPLIER's limit ever IS enforced, this fails and the
+    comment gets corrected in the same change.
+
+    RESTATED ON 24-09-2026, AND THE RESTATEMENT IS THE POINT. It used to grep
+    the whole repository for the string `credit_limit_paise` and hold the
+    answer to a three-file list — which is a spelling of the rule, not the
+    rule. Migration 414 gave CUSTOMERS a limit that IS enforced (SALES-25 b),
+    the string is now shared by two different columns on two different tables,
+    and the guard failed on a change that does not touch a supplier at all.
+
+    The rule is about the PURCHASE side: no path that creates, receives or
+    pays a purchase bill may block or warn on a supplier's credit limit. That
+    is what is asserted, by looking at those paths rather than at every file
+    that happens to name the column.
+    """
+    api = Path(__file__).resolve().parents[1]
+    purchase_paths = sorted(
+        p for p in api.rglob("*.py")
+        if "purchase" in p.name
+        and "tests" not in p.parts
+        and "__pycache__" not in p.parts
+    )
+    assert len(purchase_paths) >= 4, (
+        f"only {len(purchase_paths)} purchase modules found — this guard is "
+        "asserting almost nothing")
+    offenders = [
+        str(p.relative_to(api)) for p in purchase_paths
+        if "credit_limit" in _strip_comments(p.read_text(errors="ignore"), ".py")
+    ]
+    assert not offenders, (
+        "a purchase path now reads a credit limit. Migration 378's column "
+        f"comment says RECORDED, NOT ENFORCED and has to be corrected: {offenders}")
+
+
+def test_the_customer_limit_IS_enforced_and_is_a_different_column():
+    """The other half, so the pair cannot drift into meaning the same thing.
+
+    `vendors.credit_limit_paise` (378) is recorded and not enforced;
+    `customers.credit_limit_paise` (414) is enforced — warned by default,
+    refused where the firm asked. Two columns, one name, opposite postures, and
+    a reader who finds only one of these tests would reasonably conclude the
+    wrong thing about the other.
+    """
+    api = Path(__file__).resolve().parents[1]
+    rule = api / "domain/sales/credit_limit.py"
+    assert rule.exists(), "the customer-side rule is gone"
+    creator = (api / "routers/sales_invoices.py").read_text()
+    assert "credit_assessment.blocks" in creator, (
+        "the sales-invoice create path no longer asks the customer's limit")
+    m414 = next(api.glob("migrations/414_*.sql"), None)
+    assert m414 is not None and "credit_limit_blocks" in m414.read_text()
 
 
 # ── 3. The models carry it, and refuse a negative ────────────────────────────

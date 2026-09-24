@@ -226,6 +226,12 @@ class CustomerIn(BaseModel):
     # overriding the DB's own DEFAULT. See VendorIn.credit_days for the
     # identical bug that left every existing vendor at 0 instead of 30.
     credit_days: int = 30
+    # SALES-25 (b), migration 414. What this client will let this customer owe
+    # at once, integer paise. NULL means nobody has recorded one and nothing is
+    # assessed; ZERO is a real limit and means cash only, which is why there is
+    # no default here and none in the column. Commercial, not statutory —
+    # `domain/sales/credit_limit.py` says so on every answer it gives.
+    credit_limit_paise: Optional[int] = None
 
     @field_validator("name")
     @classmethod
@@ -234,6 +240,11 @@ class CustomerIn(BaseModel):
         if not v:
             raise ValueError("Customer name cannot be blank.")
         return v
+
+    @field_validator("credit_limit_paise")
+    @classmethod
+    def _credit_limit_not_negative(cls, v):
+        return _reject_negative_credit_limit(v)
 
     @model_validator(mode="after")
     def validate_identifiers(self) -> "CustomerIn":
@@ -297,7 +308,13 @@ class CustomerUpdateIn(BaseModel):
     opening_balance_paise: Optional[int] = None
     opening_balance_date: Optional[str] = None
     credit_days: Optional[int] = None
+    credit_limit_paise: Optional[int] = None   # see CustomerIn
     is_active: Optional[bool] = None
+
+    @field_validator("credit_limit_paise")
+    @classmethod
+    def _credit_limit_not_negative(cls, v):
+        return _reject_negative_credit_limit(v)
 
     @model_validator(mode="after")
     def validate_identifiers(self) -> "CustomerUpdateIn":
@@ -359,9 +376,13 @@ class CustomerUpdateIn(BaseModel):
 
 
 def _reject_negative_credit_limit(value):
-    """The DB CHECK (migration 378) refuses a negative credit limit; mock mode
-    has no CHECK, so without this the two disagree about what is acceptable and
-    a test written in mock mode passes against a request production rejects."""
+    """The DB CHECK refuses a negative credit limit — migration 378 on
+    `vendors`, 414 on `customers` — and mock mode has no CHECK, so without this
+    the two disagree about what is acceptable and a test written in mock mode
+    passes against a request production rejects.
+
+    SHARED BY BOTH PARTIES, and by both doors of each: a validator on the
+    create door alone is one PATCH away from being none."""
     if value is not None and value < 0:
         raise ValueError("Credit limit cannot be negative. Leave it blank for "
                          "no recorded limit; 0 means no credit at all.")

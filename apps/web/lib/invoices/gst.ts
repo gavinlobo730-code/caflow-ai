@@ -38,6 +38,14 @@ export interface Customer {
   state: string | null;
   opening_balance_paise: number;
   credit_days: number;
+  /** SALES-25 (b), migration 414. The most this customer may owe at once.
+   *  `null` means nobody recorded one and nothing is assessed; ZERO is a real
+   *  limit and means cash only, which is why this is nullable rather than
+   *  defaulted. A COMMERCIAL term — no Act sets it and it changes no figure on
+   *  any invoice. Optional here, not required, because the column is new: a
+   *  browser deployed ahead of its backend must read the absence as "not
+   *  recorded" rather than crash. */
+  credit_limit_paise?: number | null;
   is_active: boolean;
 }
 

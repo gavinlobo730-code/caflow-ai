@@ -46,7 +46,8 @@ than a flagged gap. Search gives me fragments of those tables, not tables.
 
 # WHAT IS WAITING ON YOU — as at 24 September 2026, 14:05 IST
 
-**FOUR THINGS, all raised during the afternoon's work and none of them urgent.**
+**THREE THINGS, all raised during the afternoon's work and none of them urgent.**
+(A fourth, B, was raised and then decided — it is struck through below with the reason.)
 Each is here because it is a decision about SCOPE or about reaching real people,
 which your instruction of 17 September does not hand to me. Nothing is blocked
 on any of them — I have kept working around all four.
@@ -54,7 +55,7 @@ on any of them — I have kept working around all four.
 | # | the question | why it is yours and not mine | what I would do |
 |---|---|---|---|
 | **A** | **Should the nightly sweep EMAIL a client's customers a payment reminder?** SALES-23's remaining half. The manual bulk Remind is built and the sweep flags overdue invoices internally; what it does not do is send anything. Migration 405 deliberately stopped it advancing the "reminder sent" counter, because it sends nothing | It is the product sending mail, unprompted, to somebody who is not our user and did not sign up — a client's customer. That is a posture decision, not a code one, and it is the one thing in the sales module that reaches a stranger | Build it **opt-in per client**, with a cadence the CA sets and a first run that shows exactly what would go out and to whom. Not on by default, ever |
-| **B** | **A customer credit limit — warn, or block?** SALES-25's remaining half (b). `vendors.credit_limit_paise` exists as RECORDED, NOT ENFORCED (migration 378); `customers` has no such column at all | The finding specifies "a warning by default and a block when the firm turns that on", which is a reasonable default — but a BLOCK stops a CA raising an invoice, and whether this product ever refuses a document over a commercial limit is your call | Build it as the finding says: migration, warn by default, an explicit firm switch to make it a block. Half a day |
+| ~~**B**~~ | ~~A customer credit limit — warn, or block?~~ **BUILT the same afternoon — see D20 below.** I raised it and then took it back: your instruction of 17 September hands me code decisions, the finding already specifies the default, and nothing is refused unless a firm deliberately switches it on | — | Migration 414 landed. Overrule it by saying so |
 | **C** | **Cost centres.** ACC-13's remaining half — a dimension column on `journal_lines` and a picker on every posting path | Structural. The finding itself says it "belongs in a planned phase, not a side effect of another task", and it touches the posting kernel's own table | Not now. It is a Phase 3 (analytics) item, and it wants the redesign's navigation first |
 | **D** | **Extra-shift depreciation.** FA-11's remaining half, and it is BLOCKED ON A DOCUMENT rather than on you: Schedule II Part C in `domain/fixed_assets/schedule_ii.py` holds the useful LIVES and **not the NESD markings**, and extra-shift depreciation applies only to classes that are not marked NESD | Not a decision — a fact nobody here holds. Reading it from memory would charge 50% or 100% extra depreciation on asset classes the Schedule exempts | Add it to the reading list as **document #9**, beside the ITR schemas and the PT slabs |
 

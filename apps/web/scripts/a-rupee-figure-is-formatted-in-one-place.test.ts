@@ -125,11 +125,28 @@ test("the multi-currency formatter is NOT this rule", () => {
 //   module's own exports and its tests, which is right: they are formatters)
 //   18 Sep 2026, after the four Intl strays were delegated: unchanged — the
 //   spread is in the per-screen `fmt()` helpers, and moving those is T4.
+//   24 Sep 2026: 257 -> 115, and NOT because anything moved. The `const` limb
+//   was matching any VALUE whose name ends in `Paise` — including
+//   `const openingBalancePaise = paiseFromRupeeInput(...)`, which is a parsed
+//   value produced by the very authority this file pushes people towards, and
+//   is the opposite of a per-screen formatter. 142 of the 257 were that. The
+//   matcher now requires the right-hand side to BE a function, and the budget
+//   is the real figure. Lowering it on a corrected measurement is the ratchet
+//   working; raising it is not.
 // Non-global for the same reason; `moneyFormatters` makes its own copy.
+// A FUNCTION, not any value whose name ends in `Paise`.
+//
+// The `const` limb used to match a bare assignment, so
+// `const creditLimitPaise = paiseFromRupeeInput(input)` — a PARSED VALUE, the
+// opposite of a per-screen formatter, and produced by the one authority this
+// file exists to push people towards — counted as a formatter and pushed the
+// total over budget. The rule is "a function whose name says it renders
+// money"; this now says that, by requiring the right-hand side to BE a
+// function (`(args) =>`, `arg =>`, `function`, or `async` either way).
 const MONEY_FN =
-  /(?:export\s+)?(?:function\s+(\w*(?:fmt|format|rupee|money|inr|paise|currency)\w*)\s*\(|const\s+(\w*(?:fmt|format|rupee|money|inr|paise|currency)\w*)\s*=)/i;
+  /(?:export\s+)?(?:function\s+(\w*(?:fmt|format|rupee|money|inr|paise|currency)\w*)\s*\(|const\s+(\w*(?:fmt|format|rupee|money|inr|paise|currency)\w*)\s*=\s*(?:async\s+)?(?:function\b|\(|[A-Za-z_$][\w$]*\s*=>))/i;
 const NOT_MONEY = /date|day|time|period|label|name|qty|quantity|percent|pct|bps|size|dur/i;
-const FORMATTER_BUDGET = 257;
+const FORMATTER_BUDGET = 115;
 
 function moneyFormatters(): string[] {
   const found: string[] = [];
@@ -150,7 +167,7 @@ test("the number of money formatters does not grow", () => {
   assert.ok(
     found.length <= FORMATTER_BUDGET,
     `${found.length} money formatters, budget ${FORMATTER_BUDGET}. 26 ` +
-      `different behaviours is what 248 of them produced. Import from ` +
+      `different behaviours is what a set this size produced. Import from ` +
       `lib/money/format rather than writing a per-screen fmt().`,
   );
 });
