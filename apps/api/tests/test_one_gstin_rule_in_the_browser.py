@@ -127,8 +127,14 @@ def test_each_exemption_still_describes_a_real_file(rel: str):
 def test_the_seven_doors_ask_the_authority():
     """Behaviour, not a count: every place a human types or an importer reads a
     GSTIN must import the authority by name."""
+    # `app/risks/page.tsx` LEFT this list on 24-09-2026 and that is the fix
+    # working, not a regression: its GSTIN Mismatch section — the reason this
+    # finding named that screen first — is now derived in
+    # `domain/risk/register.invalid_gstins`, which asks
+    # `domain/gst/gstin.problem_with` directly. The browser validates no GSTIN
+    # there any more, so requiring it to import the browser authority would
+    # require it to keep a check it no longer makes.
     doors = [
-        "app/risks/page.tsx",
         "app/settings/page.tsx",
         "app/onboarding/page.tsx",
         "app/clients/page.tsx",

@@ -785,8 +785,14 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # + _assert_risk_scope resolver in the router (can_access_client, one
     # fixed "Risk not found" message — already the pre-existing text) closes
     # it. risk_stats and firm_score are EXEMPT below.
+    # GET /register is a LIST across the caller's whole book rather than a row
+    # addressed by a named client_id, so it narrows with `effective_client_ids`
+    # the way the reporting endpoints and /api/mca-workspace/calendar/firm do
+    # (ACC-17) instead of asserting access to one id it was handed. None means
+    # firm-wide and an EMPTY set means nothing — never "no filter".
     "/api/risks": (
         "assert_client_access", "filter_by_client", "_assert_risk_scope",
+        "effective_client_ids",
     ),
     # notifications.py — the in-app notification feed. notifications.client_id
     # is nullable (migration 004): a notification is EITHER about a client or

@@ -71,3 +71,34 @@ def update_risk_status(risk_id: str, resolution_status: str = "resolved", curren
     if risk is None:
         return api_response(False, None, "Risk not found")
     return api_response(True, risk)
+
+
+@router.get("/register")
+def risk_register(current_user: dict = Depends(rbac("risk", "read"))):
+    """The firm-wide statutory risk register.
+
+    A SEPARATE ENDPOINT FROM `GET /api/risks`, deliberately. That one reads
+    `document_risks` — risks a human or the document intelligence recorded
+    against a document — and derives one more from an overdue compliance
+    RECORD. This one derives nine kinds from the compliance CALENDAR, the
+    client master, the DSC register, loans and fixed deposits. They are
+    different populations answering the same question, and folding them
+    together would leave a caller unable to say which it asked for.
+
+    `apps/web/app/risks/page.tsx` used to derive all nine in the browser from
+    six PostgREST reads, so `rbac()` ran on none of them and neither did
+    `core.authz`'s assignment scope. `effective_client_ids` supplies that scope
+    here: None means firm-wide, and an EMPTY set means nothing rather than
+    everything.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Reports only; writes nothing.
+    """
+    from core.authz import effective_client_ids
+    from core.supabase_client import get_supabase
+    from services.risk_register_service import build_register
+
+    firm_id = current_user.get("firm_id")
+    return api_response(
+        True,
+        build_register(get_supabase(), firm_id, effective_client_ids(current_user)),
+    )

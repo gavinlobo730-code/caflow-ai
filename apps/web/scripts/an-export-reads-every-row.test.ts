@@ -97,12 +97,18 @@ function loopBody(src: string, from: number): string | null {
  *  the tables it must page — so a read added to one of them without paging it
  *  fails here rather than in a CA's spreadsheet. */
 const EXPORT_SCREENS: Record<string, string[]> = {
-  "app/risks/page.tsx": [
-    "compliance_calendar",
-    "dsc_records",
-    "loans",
-    "fixed_deposits",
-  ],
+  // `app/risks/page.tsx` LEFT this list on 24-09-2026, and the property it was
+  // here for did not: the screen used to read compliance_calendar, dsc_records,
+  // loans and fixed_deposits itself, and its Export CSV was built from what
+  // came back. The whole register now comes from GET /api/risks/register, so
+  // the browser reads no table at all — and the four reads are paged in
+  // `apps/api/services/risk_register_service.py`, which
+  // `test_the_risk_register_is_derived_in_one_place.py::
+  // test_the_service_pages_every_read` holds to exactly this rule, counting
+  // `db.table(...)` calls against `fetch_all` calls.
+  //
+  // An entry removed because its subject MOVED is not an entry softened. The
+  // difference is that the new home is named here and asserted there.
   "app/accounting/receivables/page.tsx": ["fee_invoices", "clients"],
   "app/accounting/coa-export/page.tsx": ["chart_of_accounts"],
 };
