@@ -604,7 +604,16 @@ alone**: `/practice`, `/team`, `/health`, `/relationships`. They are 259–1,021
 line working dashboards with the complete panel beside them. Adding index cards
 would be work with no reader.
 
-## So 2.7c is the design conversion, and the ratchet was missing
+## So 2.7 is closed, and the design conversion belongs to 1.3
+
+⚠️ **A correction to this section's own first draft**, made before it could
+mislead: it said the remaining per-module work "is 2.7c". It is not — the named
+palette colours are T4-b's remainder and row **1.3** already owns them, in its
+own words: *"the rest of T4-b is still a judgement per site."* Filing them
+under 2.7 as well would give one body of work two homes. **2.7 is closed;** the
+conversion continues under 1.3, one module per PR with a before/after walk.
+
+## The ratchet that was missing
 
 4,373 named Tailwind palette colours (`app` 3,581 · `components` 780 ·
 `lib` 12), worst-first `app/clients` 1,045, `app/relationships` 285,
