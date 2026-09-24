@@ -657,3 +657,158 @@ test("an element that declares itself an alert carries no raw status colour", ()
     "a raw status colour inside an element that announces itself as an alert. " +
     "Use state.problem / state.problem-surface / state.problem-border.");
 });
+
+// ── THE SURFACE FOLLOWS THE INK ─────────────────────────────────────────────
+//
+// T4-b's difficulty is that whether a colour is a STATUS or a decoration is a
+// judgement per site. `role="alert"` was the first place that judgement had
+// already been made out loud (the rule above). This is the second, and it is
+// bigger: **181 class-lists carried `text-state-*` beside a raw Tailwind
+// surface** — `bg-red-100 text-state-problem`, `bg-amber-100
+// text-state-attention` — because the hex sweep tokenised the INK and left the
+// SURFACE where it was. The ink has already declared which of the four states
+// this element is in, so the surface is not a judgement any more: it is
+// determined by the ink sitting next to it.
+//
+// It was not cosmetic. The same filing status came out on two different
+// grounds across the product — `Filed` was `bg-green-100 text-green-700` on
+// the GST and MCA tabs and `bg-emerald-100 text-emerald-700` on GSTR-1 and
+// GSTR-3B — and `Overdue` wore three different reds.
+//
+// WHAT COUNTS AS ONE CLASS-LIST is the whole difficulty of scanning this. A
+// ternary — `ok ? "bg-green-50 text-green-700" : "bg-red-100
+// text-state-problem"` — is TWO class-lists, and a scan that reads the
+// template literal as one unit reports the green branch against the red
+// branch's ink. The first version of this scan produced 24 such phantoms. So
+// the leaves are: each quoted string, and each static run of a template
+// literal between `${` and `}`.
+
+/** The leaf class-lists in one line: quoted strings, and the static runs of a
+ *  template literal with its `${...}` holes removed. A ternary's two branches
+ *  are two leaves, which is the point. */
+function classLeaves(line: string): string[] {
+  const out: string[] = [];
+  for (const m of line.matchAll(/"([^"\n]*)"|'([^'\n]*)'/g)) out.push(m[1] ?? m[2] ?? "");
+  for (const m of line.matchAll(/`([^`\n]*)`/g)) {
+    const inner = (m[1] ?? "").replace(/"[^"]*"|'[^']*'/g, " ");
+    for (const chunk of inner.split(/\$\{|\}/)) out.push(chunk);
+  }
+  return out;
+}
+
+const PALETTE =
+  "red|amber|green|emerald|yellow|orange|rose|blue|gray|slate|indigo|purple|" +
+  "violet|teal|cyan|sky|lime|pink|fuchsia|stone|zinc|neutral";
+const STATE_INK = /\btext-state-(ready|attention|problem|done)\b/;
+const RAW_SURFACE = new RegExp(String.raw`\b(bg|border|ring|divide)-(${PALETTE})-\d{2,3}\b`, "g");
+/** Which palette hues ARE that state's own. A `problem` ink on a green surface
+ *  is a different kind of wrong from a `problem` ink on red-100, and only the
+ *  second is this rule's to fix — so the families are named rather than the
+ *  rule saying "any surface". */
+const OWN_HUES: Record<string, RegExp> = {
+  problem: /^red$/, attention: /^amber$/, ready: /^(emerald|green)$/, done: /^(slate|gray)$/,
+};
+
+test("a surface beside a state ink comes from that state", () => {
+  const offenders: string[] = [];
+  for (const { file, body } of BODIES) {
+    for (const line of body.split("\n")) {
+      for (const leaf of classLeaves(line)) {
+        const ink = STATE_INK.exec(leaf);
+        if (!ink) continue;
+        RAW_SURFACE.lastIndex = 0;
+        for (const s of leaf.matchAll(RAW_SURFACE)) {
+          if (OWN_HUES[ink[1]].test(s[2])) offenders.push(`${file}: ${s[0]} beside ${ink[0]}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual([...new Set(offenders)], [],
+    "a raw palette surface sits beside a state ink that has already said what " +
+      "this element is. Use `bg-state-<state>-surface` / " +
+      "`border-state-<state>-border`, or `-hover` for a hover fill.\n  " +
+      [...new Set(offenders)].join("\n  "));
+});
+
+// ── A MONEY TOKEN IS INK IN A CELL, NEVER A PILL ────────────────────────────
+//
+// The rule above this one — "a money-direction colour is never a status" —
+// is asked only of `role="alert"`, and the one below it exempts
+// `components/banking/` because that is where an amount genuinely has a
+// direction. Between them they left ELEVEN sites uncovered, every one of them
+// the defect both rules exist to stop: a `posted` chip, a `completed` chip, an
+// "in force" chip, two "✓ the balances agree" notices and a "this mapping
+// disagrees" band, all painted `text-money-in` / `text-money-out` because
+// those were a green and a red to hand. The carve-out that made the location
+// rule safe is exactly what hid them.
+//
+// What tells the two apart with no judgement: an AMOUNT is ink in a table
+// cell and carries no background of its own. Give it a fill and it has become
+// a chip or a band, which is a state.
+test("a money-direction token carries no surface of its own", () => {
+  const ANY_SURFACE = new RegExp(
+    String.raw`\b(bg|border|ring|divide)-(?!transparent|current|inherit|white|black)[a-z]+-[a-z0-9-]+`, "g");
+  const MONEY_TOKEN = /\b(text|bg|border|ring|fill|stroke)-money-(in|out|negative)\b/;
+  const offenders: string[] = [];
+  for (const { file, body } of BODIES) {
+    for (const line of body.split("\n")) {
+      for (const leaf of classLeaves(line)) {
+        if (!MONEY_TOKEN.test(leaf)) continue;
+        ANY_SURFACE.lastIndex = 0;
+        for (const s of leaf.matchAll(ANY_SURFACE)) offenders.push(`${file}: ${s[0]}`);
+      }
+    }
+  }
+  assert.deepEqual([...new Set(offenders)], [],
+    "a money-direction token on an element that also has a fill. An amount is " +
+      "ink in a cell; once it has a background it is a chip or a band, and " +
+      "that is a STATE — use `state.*`.\n  " + [...new Set(offenders)].join("\n  "));
+});
+
+// ── A BORDER TOKEN IS A HAIRLINE, NOT A FILL ────────────────────────────────
+//
+// `state.attention-border` (#FDE68A) is the one value in the state set that
+// does NOT carry its own ink: `state.attention` on it is **4.03:1**, under
+// WCAG 1.4.3's 4.5. It was being used as a chip fill in three places — the
+// `in_progress` reconciliation badge, the `matched` bank-line chip, and the
+// Executive role chip on the Team screen, which is a CATEGORY and had no
+// business wearing a state token at all.
+//
+// The fix was not to darken the ink. `ready-hover` already existed and proved
+// the shape the set was missing, so `problem-hover` and `attention-hover`
+// joined it — and their values are the `-100` steps the product was already
+// reaching for, which is why both clear 4.5 (5.30 and 4.51) where the border
+// token does not.
+test("a state's border token is a border", () => {
+  const AS_FILL = /\b(?:[a-z-]+:)?bg-state-[a-z]+-border\b/g;
+  const offenders: string[] = [];
+  for (const { file, body } of BODIES) {
+    for (const m of body.matchAll(AS_FILL)) offenders.push(`${file}: ${m[0]}`);
+  }
+  assert.deepEqual([...new Set(offenders)], [],
+    "`-border` used as a fill. It is the hairline value and does not carry " +
+      "the state's own ink: attention-on-attention-border is 4.03:1. Use " +
+      "`-surface` for a resting fill and `-hover` under the cursor.\n  " +
+      [...new Set(offenders)].join("\n  "));
+});
+
+test("the three rules above are not vacuous", () => {
+  // Each on a string written HERE, not on the tree — the tree is clean now,
+  // so a grep over it proves nothing. This file's own history records four
+  // guards that went quietly inert.
+  const ternary = 'x ? "bg-green-50 text-green-700" : "bg-red-100 text-state-problem"';
+  const leaves = classLeaves(ternary);
+  assert.equal(leaves.length, 2, "a ternary must read as TWO class-lists");
+  assert.ok(STATE_INK.test(leaves[1]) && !STATE_INK.test(leaves[0]),
+    "the ink must be found in the branch that carries it and not the other");
+  RAW_SURFACE.lastIndex = 0;
+  assert.ok(RAW_SURFACE.test("bg-red-100 text-state-problem"), "the surface regex is inert");
+  assert.ok(/\b(bg|border|ring|divide)-(?!transparent|current|inherit|white|black)[a-z]+-[a-z0-9-]+/
+    .test("bg-green-100 text-money-in"), "the money-surface regex is inert");
+  assert.ok(/\b(?:[a-z-]+:)?bg-state-[a-z]+-border\b/.test("hover:bg-state-attention-border"),
+    "the border-as-fill regex is inert");
+  // And the token the fix rests on must actually exist in the config.
+  for (const t of ["problem-hover", "attention-hover", "ready-hover"]) {
+    assert.match(CONFIG, new RegExp(`"${t}"\\s*:`), `state.${t} is missing from the config`);
+  }
+});

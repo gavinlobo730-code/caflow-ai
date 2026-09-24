@@ -37,7 +37,7 @@ const STATUS_CONFIG: Record<TDSReturnStatus, { label: string; color: string }> =
   prepared:    { label: "Prepared",    color: "bg-blue-100 text-blue-700" },
   ca_approved: { label: "CA Approved", color: "bg-green-100 text-green-700" },
   filed:       { label: "Filed",       color: "bg-emerald-100 text-emerald-700" },
-  revised:     { label: "Revised",     color: "bg-amber-100 text-state-attention" },
+  revised:     { label: "Revised",     color: "bg-state-attention-surface text-state-attention" },
 };
 
 const QUARTERS: TDSQuarter[] = ["Q1", "Q2", "Q3", "Q4"];
@@ -496,7 +496,7 @@ export default function TDSReturnsPage() {
                 the walk-through exists — the dead-control rule. */}
             {filingStatus === "ca_approved" && returnId && demoFlows.includes("tds") && (
               <button onClick={() => setShowDemo(true)}
-                className="flex items-center gap-2 bg-white border border-amber-300 text-amber-800 px-4 py-2 rounded-lg text-sm font-medium hover:bg-state-attention-surface">
+                className="flex items-center gap-2 bg-white border border-amber-300 text-amber-800 px-4 py-2 rounded-lg text-sm font-medium hover:bg-state-attention-hover">
                 File (demo)
               </button>
             )}

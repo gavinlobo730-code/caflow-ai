@@ -808,7 +808,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                       says the walk-through exists — the dead-control rule. */}
                   {r.status === "ca_approved" && demoFlows.includes("gstr1") && (
                     <button onClick={() => setDemo({ id: r.id as string })}
-                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-state-attention-surface text-amber-800">
+                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-state-attention-hover text-amber-800">
                       File (demo)
                     </button>
                   )}
@@ -1419,7 +1419,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       than no control. */}
                   {r.status === "ca_approved" && demoFlows.includes("gstr3b") && (
                     <button onClick={() => setDemo({ id: r.id as string })}
-                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-state-attention-surface text-amber-800">
+                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-state-attention-hover text-amber-800">
                       File (demo)
                     </button>
                   )}
@@ -1451,7 +1451,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       <button onClick={() => deleteReturn(r.id as string, r.period as string)}
                         disabled={busyRow === r.id}
                         title="Delete this saved working. Nothing has been filed."
-                        className="text-xs px-2 py-0.5 border border-state-problem-border rounded hover:bg-state-problem-surface text-state-problem disabled:opacity-40">
+                        className="text-xs px-2 py-0.5 border border-state-problem-border rounded hover:bg-state-problem-hover text-state-problem disabled:opacity-40">
                         Delete
                       </button>
                     </>
@@ -1997,7 +1997,7 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
               is loaded — the dead-control rule. */}
           {demoFlows.includes("gstr9") && (
             <button onClick={() => setDemo({ id: draft.id as string })}
-              className="text-xs px-3 py-1.5 border border-amber-300 rounded hover:bg-state-attention-surface text-amber-800">
+              className="text-xs px-3 py-1.5 border border-amber-300 rounded hover:bg-state-attention-hover text-amber-800">
               File (demo)
             </button>
           )}
@@ -2054,7 +2054,7 @@ export default function GSTWorkspacePage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">GST Compliance Workspace</h2>
-        <Badge variant="outline" className="text-state-attention border-amber-300 bg-state-attention-surface text-xs">
+        <Badge variant="outline" className="text-state-attention border-state-attention-border bg-state-attention-surface text-xs">
           CA Review Required before filing
         </Badge>
       </div>

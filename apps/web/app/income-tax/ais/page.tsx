@@ -84,9 +84,9 @@ function StatusBadge({ status }: { status: AISLine["status"] }) {
   if (status === "explained")
     return <span className={`${base} bg-blue-100 text-blue-700`}><CheckCircle2 className="w-3 h-3" /> Explained</span>;
   if (status === "not_in_books")
-    return <span className={`${base} bg-red-100 text-state-problem`}><AlertCircle className="w-3 h-3" /> Not in books</span>;
+    return <span className={`${base} bg-state-problem-surface text-state-problem`}><AlertCircle className="w-3 h-3" /> Not in books</span>;
   if (status === "amount_mismatch")
-    return <span className={`${base} bg-amber-100 text-state-attention`}><AlertTriangle className="w-3 h-3" /> Differs</span>;
+    return <span className={`${base} bg-state-attention-surface text-state-attention`}><AlertTriangle className="w-3 h-3" /> Differs</span>;
   // Not a finding. It is the absence of one, and it reads that way.
   return <span className={`${base} bg-ps-muted text-ps-label`}><HelpCircle className="w-3 h-3" /> Not reviewed</span>;
 }

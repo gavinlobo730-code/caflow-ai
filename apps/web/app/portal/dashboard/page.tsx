@@ -61,7 +61,7 @@ const DATA_SECTIONS = new Set(["invoices", "statements", "reminders", "complianc
 function StatusBadge({ status, danger }: { status: string | null; danger?: boolean }) {
   return (
     <span className={`inline-block rounded-full px-2 py-0.5 text-2xs font-medium ${
-      danger ? "bg-red-100 text-state-problem" : "bg-gray-100 text-gray-600"}`}>
+      danger ? "bg-state-problem-surface text-state-problem" : "bg-gray-100 text-gray-600"}`}>
       {status ?? "—"}
     </span>
   );

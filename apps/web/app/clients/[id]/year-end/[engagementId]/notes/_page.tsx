@@ -144,7 +144,7 @@ export default function NotesPage() {
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-4 text-sm text-state-problem">
+        <div className="bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-4 text-sm text-state-problem">
           {error}
           <button onClick={load} className="ml-3 underline text-xs">Retry</button>
         </div>
@@ -155,7 +155,7 @@ export default function NotesPage() {
   return (
     <div className="p-6 space-y-4 max-w-3xl mx-auto">
       {toast && (
-        <div className={`rounded-lg px-4 py-3 text-xs font-medium border ${toast.ok ? "bg-green-50 border-green-100 text-green-700" : "bg-state-problem-surface border-red-100 text-state-problem"}`}>
+        <div className={`rounded-lg px-4 py-3 text-xs font-medium border ${toast.ok ? "bg-green-50 border-green-100 text-green-700" : "bg-state-problem-surface border-state-problem-border text-state-problem"}`}>
           {toast.msg}
         </div>
       )}

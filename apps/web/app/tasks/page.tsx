@@ -20,9 +20,9 @@ import { formatDate } from "@/lib/services/formatting";
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const PRIORITY_BADGE: Record<TaskPriority, string> = {
-  critical: "bg-red-100 text-state-problem border border-state-problem-border",
+  critical: "bg-state-problem-surface text-state-problem border border-state-problem-border",
   high:     "bg-orange-100 text-orange-700 border border-orange-200",
-  medium:   "bg-amber-100 text-state-attention border border-state-attention-border",
+  medium:   "bg-state-attention-surface text-state-attention border border-state-attention-border",
   low:      "bg-ps-muted text-ps-label border border-ps-border",
 };
 
@@ -30,7 +30,7 @@ const STATUS_BADGE: Record<TaskStatus, string> = {
   todo:            "bg-ps-muted text-ps-body",
   in_progress:     "bg-blue-100 text-blue-700",
   waiting_client:  "bg-purple-100 text-purple-700",
-  review_required: "bg-amber-100 text-state-attention",
+  review_required: "bg-state-attention-surface text-state-attention",
   completed:       "bg-green-100 text-green-700",
 };
 
@@ -365,7 +365,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                   {STATUS_LABEL[task.status]}
                 </span>
                 {overdue && (
-                  <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-red-100 text-state-problem flex items-center gap-1">
+                  <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-state-problem-surface text-state-problem flex items-center gap-1">
                     <AlertTriangle size={10} /> Overdue
                   </span>
                 )}

@@ -84,8 +84,8 @@ const TABS = ["Companies", "Filings", "Directors", "Deadlines"];
 
 const STATUS_STYLE: Record<FilingStatus, string> = {
   Filed:    "bg-green-100 text-green-700",
-  Pending:  "bg-amber-100 text-state-attention",
-  Overdue:  "bg-red-100 text-state-problem",
+  Pending:  "bg-state-attention-surface text-state-attention",
+  Overdue:  "bg-state-problem-surface text-state-problem",
 };
 
 // Key annual MCA deadlines — Companies Act 2013. This is a generic "upcoming
@@ -758,7 +758,7 @@ export default function MCAPage() {
       },
       render: (d) => {
         const daysToKyc = daysUntilKyc(d.kyc_due_date);
-        const kycStyle = daysToKyc < 0 ? "bg-red-100 text-state-problem" : daysToKyc <= 30 ? "bg-amber-100 text-state-attention" : "bg-green-100 text-green-700";
+        const kycStyle = daysToKyc < 0 ? "bg-state-problem-surface text-state-problem" : daysToKyc <= 30 ? "bg-state-attention-surface text-state-attention" : "bg-green-100 text-green-700";
         const kycLabel = daysToKyc < 0 ? "Overdue" : daysToKyc <= 30 ? `Due in ${daysToKyc}d` : "Valid";
         return <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${kycStyle}`}>{kycLabel}</span>;
       },

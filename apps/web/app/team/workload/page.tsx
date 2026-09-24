@@ -132,12 +132,12 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
           </div>
           <div className="flex gap-1 shrink-0">
             {member.is_overloaded && (
-              <Badge className="text-3xs px-1.5 py-0 bg-red-100 text-state-problem gap-0.5">
+              <Badge className="text-3xs px-1.5 py-0 bg-state-problem-surface text-state-problem gap-0.5">
                 <AlertTriangle size={9} /> Overloaded
               </Badge>
             )}
             {member.is_underutilised && !member.is_overloaded && (
-              <Badge className="text-3xs px-1.5 py-0 bg-amber-100 text-state-attention gap-0.5">
+              <Badge className="text-3xs px-1.5 py-0 bg-state-attention-surface text-state-attention gap-0.5">
                 <TrendingDown size={9} /> Underutilised
               </Badge>
             )}

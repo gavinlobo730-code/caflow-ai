@@ -28,14 +28,14 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 const STATUS_COLOR: Record<string, string> = {
   uploaded: "bg-ps-muted text-ps-label",
-  parsing: "bg-amber-100 text-state-attention",
+  parsing: "bg-state-attention-surface text-state-attention",
   parsed: "bg-blue-100 text-blue-700",
-  validating: "bg-amber-100 text-state-attention",
+  validating: "bg-state-attention-surface text-state-attention",
   previewing: "bg-purple-100 text-purple-700",
   importing: "bg-orange-100 text-orange-700",
   completed: "bg-green-100 text-green-700",
-  rolled_back: "bg-red-100 text-state-problem",
-  error: "bg-red-100 text-state-problem",
+  rolled_back: "bg-state-problem-surface text-state-problem",
+  error: "bg-state-problem-surface text-state-problem",
 };
 
 const IMPORT_TYPES = ["ledgers", "journals", "customers", "vendors", "opening_balances", "masters"];

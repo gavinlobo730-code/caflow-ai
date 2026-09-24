@@ -275,7 +275,7 @@ export default function Form26ASPage() {
       {loadError && (
         <div role="alert" className="flex items-center justify-between gap-2 bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">
           <p className="text-xs text-state-problem font-medium">{loadError}</p>
-          <button onClick={() => load()} className="text-xs px-3 py-1 border border-state-problem-border rounded hover:bg-state-problem-surface text-state-problem shrink-0">Retry</button>
+          <button onClick={() => load()} className="text-xs px-3 py-1 border border-state-problem-border rounded hover:bg-state-problem-hover text-state-problem shrink-0">Retry</button>
         </div>
       )}
 
@@ -285,7 +285,7 @@ export default function Form26ASPage() {
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-ps-body">Reconciliation Summary</p>
             <span className={`text-3xs px-2 py-0.5 rounded-full font-medium ${
-              recon.status === "completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-state-attention"
+              recon.status === "completed" ? "bg-green-100 text-green-700" : "bg-state-attention-surface text-state-attention"
             }`}>{recon.status}</span>
           </div>
 

@@ -196,7 +196,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                     <td className="px-5 py-2 text-right">
                       {g.is_active && (
                         <button onClick={() => closeGodown(g)} aria-label={`Close ${g.name}`}
-                          className="p-1 rounded hover:bg-state-problem-surface text-red-600">
+                          className="p-1 rounded hover:bg-state-problem-hover text-red-600">
                           <Trash2 size={12} />
                         </button>
                       )}

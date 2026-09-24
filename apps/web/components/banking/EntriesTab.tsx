@@ -587,7 +587,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
         className={`text-2xs px-2.5 py-1 rounded-md font-medium text-white ${t.entry_state === "ready" ? "bg-state-ready-solid hover:bg-state-ready" : "bg-brand hover:bg-brand-dark"}`}>Pass</button>;
     }
     return <button onClick={(e) => { stop(e); setDetailId(t.id); }}
-      className="text-2xs px-2.5 py-1 rounded-md font-medium text-state-attention bg-state-attention-surface border border-state-attention-border hover:bg-state-attention-border">Answer</button>;
+      className="text-2xs px-2.5 py-1 rounded-md font-medium text-state-attention bg-state-attention-surface border border-state-attention-border hover:bg-state-attention-hover">Answer</button>;
   };
 
   // ── bulk ─────────────────────────────────────────────────────────────────

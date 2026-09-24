@@ -277,7 +277,7 @@ export default function CashFlowForecastPage() {
                 {rows.map(row => (
                   <tr
                     key={row.label}
-                    className={row.isSurplus ? "bg-green-50/40 hover:bg-green-50" : "bg-state-problem-surface/40 hover:bg-state-problem-surface"}
+                    className={row.isSurplus ? "bg-green-50/40 hover:bg-green-50" : "bg-state-problem-surface/40 hover:bg-state-problem-hover"}
                   >
                     <td className="px-5 py-3 font-medium text-ps-ink text-xs">{row.label}</td>
                     <td className="px-4 py-3 text-right font-mono text-xs text-ps-label">{fmt(row.opening)}</td>
@@ -294,7 +294,7 @@ export default function CashFlowForecastPage() {
                       <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
                         row.isSurplus
                           ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-state-problem"
+                          : "bg-state-problem-surface text-state-problem"
                       }`}>
                         {row.isSurplus
                           ? <TrendingUp size={11} />

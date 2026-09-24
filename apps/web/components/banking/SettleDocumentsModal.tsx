@@ -307,7 +307,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
           )}
 
           {checked.size > 0 && (
-            <div className={`rounded-lg px-3 py-2 text-xs ${remaining < 0 ? "bg-state-problem-surface text-money-out" : "bg-ps-bg text-ps-label"}`}>
+            <div className={`rounded-lg px-3 py-2 text-xs ${remaining < 0 ? "bg-state-problem-surface text-state-problem" : "bg-ps-bg text-ps-label"}`}>
               Allocated {fmt(totalAllocatedPaise)} of {fmt(settlementCap)}
               {tdsPaise > 0 && ` (${fmt(txnAmount)} received + ${fmt(tdsPaise)} TDS)`}
               {remaining > 0 && ` — ${fmt(remaining)} will remain unallocated on the ${isCredit ? "receipt" : "payment"}.`}

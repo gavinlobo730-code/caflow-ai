@@ -496,7 +496,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                   {r.is_active && (
                     <button onClick={() => trust(r, !r.is_trusted)} disabled={busy[r.id] || (!r.is_trusted && !r.suggested_account_id)}
                       title={!r.is_trusted && !r.suggested_account_id ? "Give the rule a ledger first" : r.is_trusted ? "Stop it passing on its own" : "Let it pass its lines without a click"}
-                      className={`text-3xs px-2 py-1 border rounded ${r.is_trusted ? "border-ps-border text-ps-label hover:bg-ps-bg" : "border-state-ready-border bg-state-ready-surface text-state-ready hover:bg-emerald-100"} disabled:opacity-40`}>
+                      className={`text-3xs px-2 py-1 border rounded ${r.is_trusted ? "border-ps-border text-ps-label hover:bg-ps-bg" : "border-state-ready-border bg-state-ready-surface text-state-ready hover:bg-state-ready-hover"} disabled:opacity-40`}>
                       {r.is_trusted ? "Un-trust" : "Trust"}
                     </button>
                   )}

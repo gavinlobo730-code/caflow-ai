@@ -3144,8 +3144,8 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
 // nothing here auto-corrects a finding, matching the same "a human decides
 // the fix" posture this session's own manual corrections used.
 const SEVERITY_STYLE: Record<string, string> = {
-  critical: "bg-state-problem-surface text-state-problem border-red-100",
-  warning: "bg-state-attention-surface text-state-attention border-amber-100",
+  critical: "bg-state-problem-surface text-state-problem border-state-problem-border",
+  warning: "bg-state-attention-surface text-state-attention border-state-attention-border",
 };
 
 const CHECK_LABEL: Record<string, string> = {
@@ -3287,7 +3287,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
           No verification has been run for this client yet. Click &ldquo;Verify Books&rdquo; to check it now.
         </div>
       ) : activeRun.status === "failed" ? (
-        <div className="bg-state-problem-surface border border-red-100 rounded-xl p-5 text-sm text-state-problem">
+        <div className="bg-state-problem-surface border border-state-problem-border rounded-xl p-5 text-sm text-state-problem">
           The verification run itself failed to complete: {activeRun.error}
         </div>
       ) : findings.length === 0 ? (

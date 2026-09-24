@@ -131,7 +131,7 @@ const QUARTER_LABEL: Record<string, string> = {
 // database can equal "Pending", so every badge rendered with no class at all.
 const STATUS_STYLE: Record<string, string> = {
   // tds_certificates
-  pending:    "bg-amber-100 text-state-attention",
+  pending:    "bg-state-attention-surface text-state-attention",
   generated:  "bg-blue-100 text-blue-700",
   issued:     "bg-green-100 text-green-700",
   downloaded: "bg-green-100 text-green-700",
@@ -139,11 +139,11 @@ const STATUS_STYLE: Record<string, string> = {
   prepared:    "bg-blue-100 text-blue-700",
   ca_approved: "bg-indigo-100 text-indigo-700",
   filed:       "bg-green-100 text-green-700",
-  revised:     "bg-amber-100 text-state-attention",
+  revised:     "bg-state-attention-surface text-state-attention",
   // tds_challans
   deposited: "bg-green-100 text-green-700",
   matched:   "bg-green-100 text-green-700",
-  unmatched: "bg-red-100 text-state-problem",
+  unmatched: "bg-state-problem-surface text-state-problem",
 };
 
 // A return is FILED once it has been furnished — "revised" is a return that

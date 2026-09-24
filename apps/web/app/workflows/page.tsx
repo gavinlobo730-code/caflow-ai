@@ -425,7 +425,7 @@ function WorkflowInstancesTab() {
 
   const STATUS_STYLES: Record<string, string> = {
     completed: "bg-green-100 text-green-700",
-    failed: "bg-red-100 text-state-problem",
+    failed: "bg-state-problem-surface text-state-problem",
     running: "bg-blue-100 text-blue-700",
     pending: "bg-gray-100 text-gray-600",
     cancelled: "bg-gray-100 text-gray-500",

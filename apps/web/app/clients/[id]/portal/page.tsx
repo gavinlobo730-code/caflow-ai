@@ -200,7 +200,7 @@ export default function PortalPage() {
                 <span
                   className={`shrink-0 text-2xs px-2 py-0.5 rounded-full font-medium ${
                     c.status === "active" ? "bg-green-100 text-green-700"
-                      : c.status === "invited" ? "bg-amber-100 text-state-attention"
+                      : c.status === "invited" ? "bg-state-attention-surface text-state-attention"
                       : "bg-ps-muted text-ps-label"
                   }`}
                 >

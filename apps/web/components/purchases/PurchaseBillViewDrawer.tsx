@@ -32,7 +32,7 @@ const PAYMENT_MODE_OPTIONS = ["bank", "cash", "cheque", "upi", "neft", "rtgs", "
 const PB_STATUS_BADGE: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
   received: "bg-blue-100 text-blue-700",
-  partially_paid: "bg-amber-100 text-state-attention",
+  partially_paid: "bg-state-attention-surface text-state-attention",
   paid: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-600",
 };
@@ -55,7 +55,7 @@ function Action({ children, onClick, icon, primary, danger }: {
   children: React.ReactNode; onClick: () => void; icon: React.ReactNode; primary?: boolean; danger?: boolean;
 }) {
   const cls = primary ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600"
-    : danger ? "border-ps-border text-red-600 hover:bg-state-problem-surface"
+    : danger ? "border-ps-border text-red-600 hover:bg-state-problem-hover"
     : "border-ps-border text-ps-label hover:bg-ps-bg";
   return (
     <button onClick={onClick} className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 ${cls}`}>

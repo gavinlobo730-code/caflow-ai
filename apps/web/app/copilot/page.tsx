@@ -56,9 +56,9 @@ const CONTEXT_ICONS: Record<string, JSX.Element> = {
 };
 
 const PRIORITY_STYLES: Record<string, string> = {
-  critical: "bg-red-100 text-state-problem border-state-problem-border",
+  critical: "bg-state-problem-surface text-state-problem border-state-problem-border",
   high:     "bg-orange-100 text-orange-700 border-orange-200",
-  medium:   "bg-amber-100 text-state-attention border-state-attention-border",
+  medium:   "bg-state-attention-surface text-state-attention border-state-attention-border",
   low:      "bg-gray-100 text-gray-600 border-gray-200",
 };
 
@@ -117,7 +117,7 @@ function MessageBubble({ msg, onRate }: { msg: Message; onRate: (id: string, rat
               </button>
               <button
                 onClick={() => onRate(msg.id, 1)}
-                className={`p-1 rounded hover:bg-state-problem-surface transition-colors ${msg.feedback_rating === 1 ? "text-red-500" : "text-ps-disabled hover:text-red-400"}`}
+                className={`p-1 rounded hover:bg-state-problem-hover transition-colors ${msg.feedback_rating === 1 ? "text-red-500" : "text-ps-disabled hover:text-red-400"}`}
               >
                 <ThumbsDown size={11} />
               </button>

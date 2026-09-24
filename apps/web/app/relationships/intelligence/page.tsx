@@ -321,7 +321,7 @@ export default function RelationshipIntelligencePage() {
                         <td className="px-3 py-3">
                           <div className="flex gap-1 flex-wrap">
                             {loan.section_185_flagged && (
-                              <Badge className="bg-amber-100 text-state-attention text-3xs">
+                              <Badge className="bg-state-attention-surface text-state-attention text-3xs">
                                 Sec 185
                               </Badge>
                             )}
@@ -433,7 +433,7 @@ export default function RelationshipIntelligencePage() {
                           className={
                             m.confirmed
                               ? "bg-emerald-100 text-emerald-700"
-                              : "bg-red-100 text-state-problem"
+                              : "bg-state-problem-surface text-state-problem"
                           }
                         >
                           {m.confirmed ? "Confirmed" : "Rejected"}

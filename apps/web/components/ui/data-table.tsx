@@ -433,7 +433,7 @@ export function DataTable<T>({
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                   a.variant === "danger"
-                    ? "border border-state-problem-border bg-white text-state-problem hover:bg-state-problem-surface"
+                    ? "border border-state-problem-border bg-white text-state-problem hover:bg-state-problem-hover"
                     : "border border-brand-light bg-white text-brand hover:bg-ps-hover",
                 )}
               >

@@ -430,7 +430,7 @@ export default function SuppliersPage() {
                     <td className="px-4 py-3 text-ps-label font-mono text-xs">{v.pan ?? "—"}</td>
                     <td className="px-4 py-3">
                       {v.tds_section ? (
-                        <span className="bg-amber-100 text-state-attention text-xs px-2 py-0.5 rounded-full font-medium">{v.tds_section}</span>
+                        <span className="bg-state-attention-surface text-state-attention text-xs px-2 py-0.5 rounded-full font-medium">{v.tds_section}</span>
                       ) : (
                         <span className="text-ps-hint text-xs">No TDS</span>
                       )}

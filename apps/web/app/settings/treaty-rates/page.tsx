@@ -262,7 +262,7 @@ export default function TreatyRatesPage() {
                     <td className="px-4 py-2 text-ps-label">{NATURE_LABELS[r.nature] ?? r.nature}</td>
                     <td className="px-4 py-2 text-right">
                       {r.no_article
-                        ? <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-state-attention">No article</span>
+                        ? <span className="text-xs px-2 py-0.5 rounded-full bg-state-attention-surface text-state-attention">No article</span>
                         : <span className="font-medium text-ps-ink">{((r.rate_bps ?? 0) / 100).toFixed(2)}%</span>}
                     </td>
                     <td className="px-4 py-2 text-xs text-ps-label">{r.article_ref ?? "—"}</td>

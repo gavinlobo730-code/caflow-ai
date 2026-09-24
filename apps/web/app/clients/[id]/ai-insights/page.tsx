@@ -52,8 +52,8 @@ export default function AiInsightsPage() {
 
   const SEVERITY_COLORS = {
     info: "bg-blue-50 border-blue-100 text-blue-700",
-    warning: "bg-state-attention-surface border-amber-100 text-state-attention",
-    critical: "bg-state-problem-surface border-red-100 text-state-problem",
+    warning: "bg-state-attention-surface border-state-attention-border text-state-attention",
+    critical: "bg-state-problem-surface border-state-problem-border text-state-problem",
   };
 
   return (

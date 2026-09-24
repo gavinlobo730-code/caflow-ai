@@ -222,7 +222,7 @@ function Toast({ msg, type }: { msg: string; type: "success" | "error" | "warnin
           ? "bg-green-50 border border-green-100 text-green-700"
           : type === "warning"
           ? "bg-state-attention-surface border border-state-attention-border text-amber-800"
-          : "bg-state-problem-surface border border-red-100 text-state-problem"
+          : "bg-state-problem-surface border border-state-problem-border text-state-problem"
       }`}
     >
       {msg}
@@ -535,7 +535,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
                   Resume
                 </button>
                 <button onClick={() => bulkChangeStatus("archive")} disabled={bulkBusy}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-state-problem-border bg-white px-2.5 py-1.5 font-medium text-red-600 hover:bg-state-problem-surface disabled:cursor-not-allowed disabled:opacity-50">
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-state-problem-border bg-white px-2.5 py-1.5 font-medium text-red-600 hover:bg-state-problem-hover disabled:cursor-not-allowed disabled:opacity-50">
                   Archive
                 </button>
                 <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className="text-ps-label hover:text-brand disabled:opacity-50" aria-label="Clear selection">
@@ -2064,7 +2064,7 @@ function SalesInvoices({
                   </button>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); setDeleteTarget(inv); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     <Trash2 size={13} /> Delete draft
                   </button>
                 </>
@@ -2230,7 +2230,7 @@ interface PaymentHistory { outstanding_paise: number; links: PaymentLinkRow[]; p
 const PAY_STATUS_BADGE: Record<string, string> = {
   created: "bg-ps-muted text-ps-label", active: "bg-blue-100 text-blue-700",
   paid: "bg-green-100 text-green-700", captured: "bg-green-100 text-green-700",
-  authorized: "bg-amber-100 text-state-attention", failed: "bg-red-100 text-red-600",
+  authorized: "bg-state-attention-surface text-state-attention", failed: "bg-red-100 text-red-600",
   refunded: "bg-purple-100 text-purple-700", expired: "bg-ps-muted text-ps-hint",
   cancelled: "bg-state-problem-surface text-red-500",
 };
@@ -2294,7 +2294,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         </p>
 
         {msg && (
-          <div className={`rounded-lg px-3 py-2 text-xs mb-3 ${msg.type === "success" ? "bg-green-50 text-green-700 border border-green-100" : "bg-state-problem-surface text-state-problem border border-red-100"}`}>
+          <div className={`rounded-lg px-3 py-2 text-xs mb-3 ${msg.type === "success" ? "bg-green-50 text-green-700 border border-green-100" : "bg-state-problem-surface text-state-problem border border-state-problem-border"}`}>
             {msg.text}
           </div>
         )}
@@ -3218,7 +3218,7 @@ function Customers({
                 </button>
               )}
               <button onClick={() => { setMenu(null); startDelete(c); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                 <Trash2 size={13} /> Delete
               </button>
             </div>
@@ -4409,7 +4409,7 @@ function CreditNotes({
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deleteCreditNote(c); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
                   </button>
                 </>
@@ -4839,7 +4839,7 @@ function SalesDebitNotes({
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deleteSalesDebitNote(d); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
                   </button>
                 </>

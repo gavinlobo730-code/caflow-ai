@@ -463,7 +463,7 @@ export default function ITNoticesPage() {
                         <div className="flex items-center gap-1.5">
                           {n.status === "pending" && (
                             <button onClick={() => updateStatus(n.id, "responded")}
-                              className="text-xs px-2 py-1 bg-state-attention-surface text-state-attention rounded hover:bg-amber-100">
+                              className="text-xs px-2 py-1 bg-state-attention-surface text-state-attention rounded hover:bg-state-attention-hover">
                               Responded
                             </button>
                           )}

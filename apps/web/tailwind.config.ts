@@ -179,7 +179,27 @@ const config: Config = {
           "problem-surface":"#FEF2F2",
           "problem-border": "#FECACA",
 
+          /* ── The hover STEP, and why all three now have one ───────────────
+             `ready-hover` was the only one, so a `problem` or `attention`
+             control under the cursor had nowhere to go. Converting the
+             surfaces (T4-b slice 2) made that visible twice over: a base of
+             `bg-red-100` with `hover:bg-red-200` became surface-on-surface and
+             the hover stopped happening at all, and a white button whose hover
+             was `bg-red-100` lost most of its step, because `problem-surface`
+             is #FEF2F2 against white.
+
+             The values are the `-100` the product was already reaching for —
+             which is the point: this step was in use and had no name, exactly
+             as `text-[11px]` was. Both clear WCAG 1.4.3 with their own ink
+             (problem 5.30:1, attention 4.51:1), which the BORDER token does
+             not: `state.attention` on `attention-border` is 4.03:1, and it was
+             being used as a chip fill in three places.
+
+             There is deliberately no `done-hover`: `done-surface` is #F8FAFC,
+             the same value as `ps.bg`, and a settled row is not a control. */
           "ready-hover":    "#DCFCE7",  /* a ready ROW under the cursor */
+          "problem-hover":  "#FEE2E2",
+          "attention-hover":"#FEF3C7",
 
           done:             "#475569",  /* settled, kept for the record */
           "done-surface":   "#F8FAFC",

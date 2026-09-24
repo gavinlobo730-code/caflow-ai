@@ -46,13 +46,13 @@ const FILING_STATUS_COLORS: Record<string, string> = {
   not_started: "bg-ps-muted text-ps-body",
   in_progress: "bg-blue-100 text-blue-700",
   filed: "bg-emerald-100 text-emerald-800",
-  overdue: "bg-red-100 text-state-problem",
+  overdue: "bg-state-problem-surface text-state-problem",
 };
 
 const KYC_COLORS: Record<string, string> = {
   active: "bg-green-100 text-green-700",
-  pending: "bg-amber-100 text-state-attention",
-  expired: "bg-red-100 text-state-problem",
+  pending: "bg-state-attention-surface text-state-attention",
+  expired: "bg-state-problem-surface text-state-problem",
 };
 
 // ── Company Master ─────────────────────────────────────────────────────────
@@ -539,7 +539,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                   {category === "annual" && r.status !== "filed" &&
                     demoFlows.includes("mca") && demoForms.includes(r.form_type as string) && (
                     <button onClick={() => setDemo({ id: r.id as string })}
-                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-state-attention-surface text-amber-800">
+                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-state-attention-hover text-amber-800">
                       File (demo)
                     </button>
                   )}
@@ -730,7 +730,7 @@ export default function MCAWorkspacePage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">MCA Compliance Workspace</h2>
-        <Badge variant="outline" className="text-state-attention border-amber-300 bg-state-attention-surface text-xs">
+        <Badge variant="outline" className="text-state-attention border-state-attention-border bg-state-attention-surface text-xs">
           CA Review Required before filing
         </Badge>
       </div>

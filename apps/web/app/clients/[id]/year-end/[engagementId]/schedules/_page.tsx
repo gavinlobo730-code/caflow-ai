@@ -198,7 +198,7 @@ export default function SchedulesPage() {
           {loading && !currentData ? (
             <TableSkeleton rows={5} />
           ) : error ? (
-            <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-4 text-sm text-state-problem">
+            <div className="bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-4 text-sm text-state-problem">
               {error}
               <button onClick={forceReload} className="ml-3 underline text-xs">Retry</button>
             </div>

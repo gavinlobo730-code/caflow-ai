@@ -864,7 +864,7 @@ export function PurchaseBillEditor({
               </button>
             </div>
             {aiExtracted && (
-              <div className="mt-1 text-3xs text-state-attention bg-amber-100 rounded px-2 py-1.5">
+              <div className="mt-1 text-3xs text-state-attention bg-state-attention-surface rounded px-2 py-1.5">
                 ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>
               </div>
             )}

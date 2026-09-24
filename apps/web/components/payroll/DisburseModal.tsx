@@ -89,7 +89,7 @@ export function DisburseModal({ run, onClose, onDone }: {
         {loadingAccts ? (
           <p className="text-sm text-ps-label">Loading bank accounts…</p>
         ) : accounts.length === 0 ? (
-          <div className="text-xs text-state-attention bg-state-attention-surface border border-amber-100 rounded-lg px-3 py-2">
+          <div className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2">
             No bank account is linked to a ledger account for this client. Add one under
             Accounting → Bank (with a Ledger Account link) before disbursing salaries.
           </div>

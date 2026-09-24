@@ -21,7 +21,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-ps-muted text-ps-label",
   in_progress: "bg-blue-100 text-blue-700",
   waiting_client: "bg-purple-100 text-purple-700",
-  review_required: "bg-amber-100 text-state-attention",
+  review_required: "bg-state-attention-surface text-state-attention",
   completed: "bg-green-100 text-green-700",
 };
 
@@ -34,8 +34,8 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  critical: "bg-red-100 text-state-problem",
-  high: "bg-amber-100 text-state-attention",
+  critical: "bg-state-problem-surface text-state-problem",
+  high: "bg-state-attention-surface text-state-attention",
   medium: "bg-blue-100 text-blue-700",
   low: "bg-ps-muted text-ps-label",
 };
@@ -237,7 +237,7 @@ export default function WorkPage() {
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <Clock size={13} className="text-amber-500" /> Due Today
                   {todayTasks.length > 0 && (
-                    <Badge className="ml-1 text-3xs px-1.5 py-0 bg-amber-100 text-state-attention">{todayTasks.length}</Badge>
+                    <Badge className="ml-1 text-3xs px-1.5 py-0 bg-state-attention-surface text-state-attention">{todayTasks.length}</Badge>
                   )}
                 </CardTitle>
               </CardHeader>
@@ -256,7 +256,7 @@ export default function WorkPage() {
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <AlertTriangle size={13} className="text-red-500" /> Overdue
                   {overdueTasks.length > 0 && (
-                    <Badge className="ml-1 text-3xs px-1.5 py-0 bg-red-100 text-state-problem">{overdueTasks.length}</Badge>
+                    <Badge className="ml-1 text-3xs px-1.5 py-0 bg-state-problem-surface text-state-problem">{overdueTasks.length}</Badge>
                   )}
                 </CardTitle>
               </CardHeader>

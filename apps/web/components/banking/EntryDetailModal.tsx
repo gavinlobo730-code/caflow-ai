@@ -321,7 +321,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
           )}
           {passed && (
             <button onClick={() => act("Couldn't undo", () => api.banking.undoPost(t.id)).then((ok) => ok && onClose())} disabled={busy}
-              className="text-xs px-3 py-1.5 border border-state-problem-border text-state-problem rounded-lg hover:bg-state-problem-surface mr-auto">Undo</button>
+              className="text-xs px-3 py-1.5 border border-state-problem-border text-state-problem rounded-lg hover:bg-state-problem-hover mr-auto">Undo</button>
           )}
           <button onClick={onClose} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">Close</button>
           {editable && (
@@ -344,7 +344,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
             {enrichError ? `: ${enrichError}` : "."} Everything else on this line is
             here — the ledger, GST, split and Pass all work.
           </p>
-          <button onClick={load} className="text-2xs px-2.5 py-1 border border-amber-300 bg-white text-amber-900 rounded-lg hover:bg-state-attention-border shrink-0">
+          <button onClick={load} className="text-2xs px-2.5 py-1 border border-state-attention-border bg-white text-state-attention rounded-lg hover:bg-state-attention-hover shrink-0">
             Try again
           </button>
         </div>
@@ -408,7 +408,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
                 {t.matched_document_no ? <span className="font-medium"> {t.matched_document_no}</span> : null}.
               </p>
               <button onClick={() => act("Couldn't unlink", () => api.banking.unmatch(t.id))} disabled={busy}
-                className="text-2xs px-2.5 py-1 border border-state-problem-border text-state-problem rounded-lg hover:bg-state-problem-surface">Unlink</button>
+                className="text-2xs px-2.5 py-1 border border-state-problem-border text-state-problem rounded-lg hover:bg-state-problem-hover">Unlink</button>
             </div>
           ) : (
             <>
@@ -427,7 +427,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
                         </p>
                       </div>
                       {sg.difference_paise > 0 ? (
-                        <button onClick={() => openSettle(sg)} disabled={busy} className="text-2xs px-2.5 py-1 border border-state-attention-border bg-state-attention-surface text-state-attention rounded-lg hover:bg-state-attention-border shrink-0">Settle…</button>
+                        <button onClick={() => openSettle(sg)} disabled={busy} className="text-2xs px-2.5 py-1 border border-state-attention-border bg-state-attention-surface text-state-attention rounded-lg hover:bg-state-attention-hover shrink-0">Settle…</button>
                       ) : (
                         <button onClick={() => act("Couldn't link", () => api.banking.matchEntity(t.id, { matched_entity_type: sg.matched_entity_type, matched_entity_id: sg.matched_entity_id }))}
                           disabled={busy} className="text-2xs px-2.5 py-1 border border-state-ready-border bg-state-ready-surface text-state-ready rounded-lg hover:bg-state-ready-hover shrink-0">Link</button>

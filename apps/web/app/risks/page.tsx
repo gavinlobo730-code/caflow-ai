@@ -90,8 +90,8 @@ const CATEGORY_ORDER = [
 
 function riskColor(level: string) {
   const m: Record<string, string> = {
-    critical: "text-state-problem bg-red-100",
-    high: "text-state-problem bg-red-100",
+    critical: "text-state-problem bg-state-problem-surface",
+    high: "text-state-problem bg-state-problem-surface",
     medium: "text-orange-700 bg-orange-100",
     low: "text-yellow-700 bg-yellow-100",
   };
@@ -160,7 +160,7 @@ function CategoryCard({ title, rows }: { title: string; rows: RiskRow[] }) {
         <CardTitle className="text-base flex items-center gap-2">
           <AlertCircle size={16} className="text-red-500" />
           {title}
-          <span className="ml-auto text-xs font-medium bg-red-100 text-state-problem px-2 py-0.5 rounded-full">
+          <span className="ml-auto text-xs font-medium bg-state-problem-surface text-state-problem px-2 py-0.5 rounded-full">
             {rows.length}
           </span>
         </CardTitle>

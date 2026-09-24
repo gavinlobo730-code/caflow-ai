@@ -36,8 +36,8 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 const STATUS_COLOR: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
-  validation_pending: "bg-amber-100 text-state-attention",
-  validation_failed: "bg-red-100 text-state-problem",
+  validation_pending: "bg-state-attention-surface text-state-attention",
+  validation_failed: "bg-state-problem-surface text-state-problem",
   validated: "bg-blue-100 text-blue-700",
   reviewed: "bg-green-100 text-green-700",
   filed: "bg-purple-100 text-purple-700",

@@ -30,14 +30,14 @@ const CAPACITY: Record<Role, number> = {
 const ROLE_COLORS: Record<Role, string> = {
   Partner: "bg-purple-100 text-purple-700",
   Manager: "bg-blue-100 text-blue-700",
-  Executive: "bg-amber-100 text-state-attention",
+  Executive: "bg-state-attention-surface text-state-attention",
   Reviewer: "bg-ps-muted text-ps-label",
 };
 
 const PRIORITY_BADGE: Record<string, string> = {
-  critical: "bg-red-100 text-state-problem",
+  critical: "bg-state-problem-surface text-state-problem",
   high: "bg-orange-100 text-orange-700",
-  medium: "bg-amber-100 text-state-attention",
+  medium: "bg-state-attention-surface text-state-attention",
   low: "bg-ps-muted text-ps-label",
 };
 
