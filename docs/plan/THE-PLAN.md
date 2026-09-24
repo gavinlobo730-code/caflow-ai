@@ -299,6 +299,30 @@ No new engines. Screens for what is already computed and tested.
 
 **Target: the 231 unreachable endpoints fall below 120.**
 
+**One of them is now measured and NAMED, because it is the shape the rest of
+that 231 will turn out to be** (24-09). `POST /api/banking/transactions/{id}/post`
+and its `/posting-preview` twin had lost their browser caller, and the obvious
+reading — a dead endpoint duplicating the live `/pass` door, so D21 says delete
+it — **is wrong, and the docstrings are why anybody would read it that way.**
+
+`PassEntryIn` carries `gst_rate_bps` and `is_interstate` and **no account
+fields at all**. `PostBankTxnIn` carries `bank_account_id`, `account_id` and
+`to_bank_account_id`. So `/pass` applies the draft the machine wrote and
+`/post` applies a coding the CA chose, and those are two different acts. Both
+reach the same `bank_posting_service.post` kernel, which is what made them look
+like one door.
+
+**The consequence is a product gap, not dead code: a CA cannot code a bank line
+themselves from any screen.** `/entries/redraft` re-runs the machine's
+proposal, `/pass` accepts or rejects it, and nothing takes an account the
+person picked. `/post` is the endpoint that closes that and it has no screen —
+so under D21 this is the WIRE IT UP branch, like the e-way extension and the
+firm's own GSTIN, and it belongs here in Phase 3 rather than in a cleanup.
+Deleting the browser wrapper would have made the gap invisible.
+
+Two docstrings said `/pass` applies "the draft **or the CA's own coding**",
+which its signature cannot express; both are corrected in the same commit.
+
 ### 3b — repoint the intelligence at the ledger · 6–10 days
 
 | ID | item | DONE WHEN |
