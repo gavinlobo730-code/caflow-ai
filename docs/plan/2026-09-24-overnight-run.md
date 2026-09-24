@@ -137,7 +137,7 @@ in T6, and it is independent of T4.
       ignored **silently**. Added to the owner questions as a one-request
       observation, since a Cloudflare preview already deploys on every PR.
 
-## Batch 4 — T5b, the exports that bypass `rbac()` ⏸ **partly; 4.4 scoped, not built**
+## Batch 4 — T5b, the exports that bypass `rbac()` ✅ **LANDED**
 
 Default taken on T5b-3's open scope question: **convert the `rbac()`-bypassing
 exports first**. That is the security half and cannot be the wrong call,
@@ -161,17 +161,37 @@ whichever way the full-scope question is eventually answered.
       comes from an API: the browser is only formatting what the server computed,
       which is not business logic. It is wrong only for a write path, which is 4.4.
 
-- [ ] **4.4** ⚠️ **`shareToPortal` is the real remaining item, and it is an access-control
-      gap rather than a tidy-up.** `app/clients/[id]/accounting/page.tsx:3523`
-      builds the P&L, Balance Sheet or Trial Balance, uploads the workbook to
-      Supabase storage **from the browser**, and inserts into `shared_reports` over
-      PostgREST — so `rbac()` never runs on either half, and what it publishes is a
-      client's financial statements to that client's own portal. The only control
-      is RLS.
+- [x] **4.4** ✅ **LANDED.** `shareToPortal` was an access-control gap rather than a
+      tidy-up: `app/clients/[id]/accounting/page.tsx` built the P&L, Balance Sheet or
+      Trial Balance, uploaded the workbook to Supabase Storage **from the browser**,
+      and inserted into `shared_reports` over PostgREST — so `rbac()` ran on neither
+      half, `core.authz`'s assignment scope ran on neither either, and what it
+      publishes is a client's financial statements to that client's own portal.
 
-      *Accept:* one endpoint under `rbac()` that builds the workbook server-side
-      (openpyxl, `services/time_export_service.py`'s shape), uploads, and inserts —
-      with the browser holding neither the storage write nor the table insert.
+      `POST /api/accounting/shared-reports` is the one door, under
+      `rbac("accounting", "write")` with `can_access_client` beside it;
+      `domain/reporting/shared_report.py` decides what may be shared and what the
+      table calls it, so the browser names no report type at all. A failed insert
+      now REMOVES the uploaded file, and a cleanup that itself fails goes to
+      `capture_soft_failure` rather than `pass`.
+
+      **The acceptance criterion above was half wrong and is corrected here.** It
+      said "builds the workbook server-side (openpyxl)". The workbook stays in the
+      browser and that is not the frontend holding business logic: `lib/export/xlsx.ts`
+      FORMATS figures `/api/accounting/{profit-loss,balance-sheet,trial-balance}`
+      already computed, and 4.2/4.3 above record that placement as right. Rebuilding
+      it in openpyxl would be a SECOND renderer of the same three statements, with
+      the export and the shared copy free to disagree. What had to move was the two
+      privileged WRITES, which is the clause of the criterion that mattered.
+
+      ⚠️ **A claim I made while scoping this was false and is corrected.** I wrote
+      that `apps/api` had never uploaded to storage, so there was no precedent.
+      `routers/branding.py:174` has uploaded a firm logo to Supabase Storage under
+      `rbac("branding", "write")` since it was written — service client, explicit
+      content type, mock branch first — and the new router copies that shape. The
+      error came from grepping only `services/*.py`; it overstated the cost of this
+      item, and it is the kind of "no precedent" claim that talks a reader out of
+      the right fix.
 
 ## Batch 5 — the backlog residue and the unpaged reads ✅ **LANDED**
 
@@ -209,6 +229,32 @@ whichever way the full-scope question is eventually answered.
       `.insert`, not a read at all. The other 65 stay a recorded finding: most are bounded in practice, a
       screen that truncates is at least a screen somebody is looking at, and a
       budget over 65 files is the shape that gets raised until it means nothing.
+
+---
+
+## Two measurements of mine that were wrong, and the same mistake both times
+
+Recorded because the mistake is the one CLAUDE.md now states as a rule — *a
+metric and the guard that enforces it must count the same population* — and I
+made it twice in one run, in both directions.
+
+**"68 guards have no vacuity floor."** Counted over all 121 `apps/web/scripts`
+guards. A vacuity floor is only meaningful for a guard whose assertion is a
+BUDGET: `found.length <= N` passes when the probe stops matching, while
+`assert.match(src, /…/)` fails. Re-counted over that population there are **six**
+budget-shaped web guards, and **all six are sound**: three carry an explicit
+floor; `a-colour-and-a-type-size-come-from-the-token-file` moved its floor onto
+the allowlist test, with the reason written down, when its own budget reached 0
+and `total >= 1` became self-contradictory; `a-rupee-figure-is-formatted-in-one-place`
+carries two (`FILES.length > 400` and `moneyFormatters().length > 50`); and
+`OVERRIDE_REASON_MIN` is a product constant, not a budget. **No work item. The
+68 was the wrong denominator, not a backlog.**
+
+**"`apps/api` has never uploaded to storage."** Grepped `services/*.py` only.
+`routers/branding.py:174` does, under `rbac()`. Corrected in 4.4 above.
+
+Both errors ran the same way: a population chosen for convenience, then a
+conclusion drawn as though it were the population the claim was about.
 
 ---
 
