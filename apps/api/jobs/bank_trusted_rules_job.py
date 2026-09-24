@@ -31,6 +31,8 @@ from __future__ import annotations
 import logging
 import os
 
+from core.db_paging import fetch_all
+
 logger = logging.getLogger("caflow.bank_trusted_rules")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -46,9 +48,14 @@ def _get_db():
 
 
 def _clients_with_trusted_rules(db, firm_id: str) -> list[str]:
-    rows = (db.table("bank_matching_rules").select("client_id")
-            .eq("firm_id", firm_id).eq("is_active", True).eq("is_trusted", True)
-            .execute().data or [])
+    # Paged: a firm with 200 clients and a handful of rules each crosses
+    # PostgREST's ~1000-row cap, and a truncated read here drops whole clients
+    # from a sweep that posts journals unattended — silently, since the cap
+    # reports nothing. `id` is in the projection because it is the cursor.
+    rows = fetch_all(
+        lambda: db.table("bank_matching_rules").select("id, client_id")
+        .eq("firm_id", firm_id).eq("is_active", True).eq("is_trusted", True),
+        label="trusted_rules.clients")
     return sorted({r["client_id"] for r in rows if r.get("client_id")})
 
 
