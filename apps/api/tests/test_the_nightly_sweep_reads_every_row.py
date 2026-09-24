@@ -36,7 +36,18 @@ from pathlib import Path
 
 import pytest
 
-JOBS = Path(__file__).resolve().parents[1] / "jobs"
+API = Path(__file__).resolve().parents[1]
+JOBS = API / "jobs"
+
+#: THE POPULATION IS THE UNATTENDED PATH, NOT A DIRECTORY. `jobs/` is where the
+#: sweep is scheduled; the per-firm work it calls lives in `services/`, and a
+#: read truncated THERE is exactly as silent. Each entry is a function the
+#: scheduler invokes once per firm, so whatever it enumerates is a population
+#: nobody is watching.
+_FIRM_WIDE_ENTRY_POINTS = (
+    ("services/balance_cache_service.py", "audit_and_heal_firm"),
+    ("services/reconciliation_service.py", "run_reconciliation_for_firm"),
+)
 
 #: Reads that do not need paging, each with the reason it is bounded. A `.limit()`
 #: is self-evidently bounded and is recognised by shape rather than listed.
@@ -170,3 +181,37 @@ def test_the_firm_enumeration_and_its_fallback_are_both_paged():
         assert "fetch_all" in window, (
             f"the {table} read in _all_firm_ids is no longer paged. That read "
             "is the population the entire daily sweep iterates over.")
+
+
+# ── The same rule, one step out from `jobs/` ─────────────────────────────────
+
+@pytest.mark.parametrize("rel,fn_name", _FIRM_WIDE_ENTRY_POINTS,
+                         ids=lambda v: v if isinstance(v, str) else str(v))
+def test_a_firm_wide_entry_point_pages_what_it_enumerates(rel: str, fn_name: str):
+    """`jobs/scheduler.py` calls these once per firm, and each enumerates that
+    firm's CLIENTS. A read truncated here is as silent as one in `jobs/` and
+    worse in consequence for the reconciliation one: past the cap a client is
+    never checked, and the CA is told the books are sound.
+
+    Scoped to the named function rather than the whole module, because both
+    files also hold per-client reads that are legitimately bounded by their
+    own client id.
+    """
+    tree = ast.parse((API / rel).read_text())
+    fn = next((n for n in ast.walk(tree)
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+               and n.name == fn_name), None)
+    assert fn is not None, (
+        f"{rel} no longer defines {fn_name}. If the firm-wide entry point "
+        "moved, point this guard at it — do not delete it.")
+    # `ast.unparse` normalises string literals to SINGLE quotes, so matching
+    # `table("clients")` against it finds nothing however right the code is —
+    # which is what this assertion did on its first run.
+    body = ast.unparse(fn)
+    assert re.search(r"""table\(\s*['"]clients['"]\s*\)""", body), (
+        f"{fn_name} no longer enumerates clients; check what it enumerates now")
+    assert any(pg + "(" in body for pg in _PAGERS), (
+        f"{rel}::{fn_name} enumerates clients with no pager. PostgREST caps the "
+        "response at ~1000 rows and says nothing, so past that a client is "
+        "silently skipped by a sweep nobody is watching. Use "
+        "core.db_paging.fetch_all, with `id` in the projection.")
