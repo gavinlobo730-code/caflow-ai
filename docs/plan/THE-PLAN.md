@@ -1,668 +1,392 @@
 # THE PLAN
 
-**The one plan. Everything else in `docs/plan/` is history.**
+**The one plan, end to end. Everything else in `docs/plan/` is history.**
 
-Written 16 September 2026. Supersedes `2026-09-12-compliance-and-craft.md` (stale
-facts) and folds in `2026-09-16-the-redesign-plan-revised.md` (the measurements)
-and `2026-09-13-questions-for-the-owner.md` (now answered).
+Rewritten **24 September 2026** at the owner's request — *"in the plan
+everything should be there, all the open items, up to the whole platform
+redesign part."* Every number below was measured on that date by running the
+command beside it, not carried forward from the previous version. Where a
+carried-forward figure turned out to be wrong, the correction is recorded
+rather than quietly replaced.
 
----
-
-## How to use this document
-
-Every item has an **ID**, an **owner**, a **size**, a **status** and a
-**DONE WHEN** that is objectively checkable — most of them by running one
-command. Neither of us has to take the other's word for whether something is
-finished.
-
-**Status values**
-
-| status | means |
-|---|---|
-| `TODO` | not started |
-| `DOING` | in progress |
-| `DONE` | its DONE WHEN check passes |
-| `BLOCKED` | waiting on something named in the row |
-
-**Owners**
-
-| owner | who |
-|---|---|
-| 🔧 **C** | Claude. Needs nothing from you. |
-| 👤 **O** | Owner. Only you can do it. |
-| 🤝 **B** | Both, in a working session. |
-
-**The rule that keeps this honest:** the status table below is updated in the
-SAME commit as the work. A plan only ever updated by a planning session is
-wrong by the time it is read — that is the lesson `docs/audits/findings-status.json`
-exists to record, and it applies here.
+Supersedes the 16 September edition, `2026-09-12-compliance-and-craft.md`,
+`2026-09-16-the-redesign-plan-revised.md` and
+`2026-09-13-questions-for-the-owner.md`.
 
 ---
 
-## Status at a glance
+## The shape of what is left, in one paragraph
 
-_Last updated: 2026-09-16_
-
-| track | what | owner | size | status |
-|---|---|---|---|---|
-| **T1** | Repair the safety net | 🔧 C | 4–6d | `DONE` — 7 of 7 |
-| **T2** | A demo firm that exists | 🔧 C | 2–3d | `DOING` — T2-0 done |
-| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `DOING` — T3-a, T3-b, T3-f done; T3-c 5 of 6 (money cell, Dr/Cr, gap callout, period picker, refusal banner) 19 Sep |
-| **T4** | Token adoption | 🔧 C | 5–8d | `DOING` — colour 10,146 → 116, type 2,265 → 405 |
-| **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `DOING` — T5a-4, T5a-4b, T5a-6, T5a-7, T5a-8 done 19 Sep; T5a-5 blocked on an owner licence decision (§M) |
-| **T6** | Navigation + the hub | 🔧 C | 11–17d | `BLOCKED` on T4 |
-| **T7** | Analytics & AI | 🔧 C | 3 layers | `BLOCKED` on T3 |
-| **T8** | The portals | 🔧 C | 8–12d | `BLOCKED` on T4 |
-| **T9** | Backend backlog (8 → 14 items) | 🔧 C | 14–17d | `TODO` — parallel, starts now |
-| **D** | Owner decisions | 👤 O | — | 8 of 8 `DONE` |
-| **F** | Documents to fetch | 👤 O | — | `TODO` |
-| **V** | Pre-demo verification | 🤝 B | 1 session | `BLOCKED` on T8 |
-
-**Honest total: 14–17 weeks** to the CA demo. Core build (through T6) is 10–12;
-analytics layers 2–3 and the portals add 4–6.
+**The engine is done.** 259 of 279 audit findings are closed, 412 migrations
+are applied, and every statutory computation a practice needs — GST, TDS,
+income tax, payroll, the general ledger, inventory, fixed assets, the year-end
+statements — is built, tested and pinned to the Act. **What remains is almost
+entirely the product's SHAPE**: a navigation that hides 235 working endpoints,
+~40 finished analytical engines with no screen, two portals on the old design,
+and a demo firm with nothing in it. In the owner's chosen order: **navigation →
+analytics → portals → demo data → a verification session**. Nothing on the
+critical path is blocked on anybody but me.
 
 ---
 
-## Decisions taken — locked, do not re-litigate
+## Where the product actually is — measured 24 September 2026
 
-Answered by the owner on 16 September 2026, except where a row says otherwise.
+| what | now | was | how it was measured |
+|---|---|---|---|
+| Audit findings closed | **259 of 279** (92.8%) | 0 of 278 on 7 Sep | `docs/audits/findings-status.json` |
+| — still partial | 12 | | each one's remaining half is listed in Phase 1.6 |
+| — still open | 2 | | TDS-16 (blocked on a document), GST-25 (blocked on forms) |
+| Migrations applied | **412** | 348 on 7 Sep | `ls apps/api/migrations/` |
+| Backend tests | ~7,000, green | | `pytest tests/` |
+| Routes in the app | **161** | | `find apps/web/app -name page.tsx \| wc -l` |
+| Smoke screenshots, distinct | **154 of 160** | 11 on 12 Sep | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` |
+| Endpoints a screen can reach | **829 of 1,064** | 797 of ~1,040 | the reachability test's own `_sources()` |
+| — unreachable | **235** | | Phase 3 is largely about these |
+| Error boundaries | **65** | 0 | `find apps/web/app -name error.tsx \| wc -l` |
+| Hardcoded hex colours | **70** | 10,146 | `grep -rEoh '#[0-9a-fA-F]{6}' apps/web/app apps/web/components \| wc -l` |
+| Arbitrary font sizes | **379** | 2,265 | `grep -rEoh 'text-\[[0-9]+px\]' apps/web/app apps/web/components \| wc -l` |
+| Cloudflare redirect rules | **98 of a hard 100** | 98 | `grep -v '^#' apps/web/public/_redirects \| grep -c '200$'` |
+| Portal code | 1,738 lines, 6 routes | | `find apps/web/app/portal -name '*.tsx' \| xargs wc -l` |
+
+**A correction, because the plan's own rule demands it.** The 16 September
+edition said retiring the shells meant *"2,675 lines across two shells"*. They
+measure **373 lines today** — `AppShell` 137, `ActivityRail` 151,
+`ContextPanel` 57, `ClientWorkspaceShell` 28. That figure was either measured
+against something else or has been overtaken. **T6-f is a far smaller job than
+the plan has been claiming**, and sizing it from the old number would have
+budgeted 3–4 days for perhaps one.
+
+---
+
+## Decisions — locked. Do not re-litigate.
+
+### Taken earlier
 
 | # | decision | answer |
 |---|---|---|
-| D1 | Hub tile set and order | **15 tiles**, below |
+| D1 | Hub tile set and order | **15 tiles** — Compliance Calendar · Insights · GST · Banking · Accounting · Sales · Purchases · TDS · Payroll · Income Tax · Fixed Assets · Inventory · Year-End · Reports · Documents |
 | D2 | The 39 screens in no menu | **Give them a home** |
-| D3 | Portals in scope? | **In scope** — T8 |
+| D3 | Portals in scope? | **In scope** |
 | D4 | Density persistence | **Per device** (localStorage, no migration) |
 | D5 | Money display | **2 decimals**, except return-prep screens → whole rupees |
-| D6 | Rupee grouping | **Indian everywhere** (12,34,567 — never 1,234,567) |
-| D7 | Demo on real or seeded data | **All data is demo today.** Seeded demo firm. |
-| D8 | i18n | **Extract strings, translate nothing.** English only. |
-| D9 | A PR that carries a migration | **Merge it like any other — no flag, no pause.** 17 Sep. |
+| D6 | Rupee grouping | **Indian everywhere** — 12,34,567, never 1,234,567 |
+| D7 | Demo on real or seeded data | **Seeded demo firm** |
+| D8 | i18n | **Extract strings, translate nothing.** English only |
+| D9 | A PR carrying a migration | **Merge it like any other** — no flag, no pause |
+| — | Access control | **Person-wise only.** Role is the template a new hire's grid is pre-filled from; the grid is the authority |
+| — | Emailing a client's customers | **Never automatic.** A Send button the CA presses, always |
 
-**D9 — why this needed asking at all.** Merging to `main` runs
-`apply pending migrations — production`, which applies every unapplied migration
-to the live Supabase project with no review step in between
-(`docs/deploy-migrations.md`). That is deliberate: it closed a gap where
-migrations 233-241 sat committed and unapplied for up to six days while the code
-that needed them was already live and failing silently behind broad
-`try/except`. Nothing in `CLAUDE.md` or in any doc asks for migrations to be held
-back — the only rule is the one above it, that CI must pass first, which the job
-already enforces. I had been holding migration-carrying work for a confirmation
-that was never asked for; D9 removes that. The job fails the push loudly on a bad
-migration rather than corrupting data quietly, which is the same bargain
-application code has always had here.
+### Taken 24 September 2026
 
-**D1 — the tile set:**
-
-> Compliance Calendar · **Insights** · GST · Banking · Accounting · Sales ·
-> Purchases · TDS · Payroll · Income Tax · Fixed Assets · Inventory ·
-> Year-End · Reports · Documents
-
-Insights is second because T7 makes it a first-class surface. Everything after
-Payroll is periodic rather than daily.
-
-**Earlier decisions that still stand:** light theme only (no dark mode), fluid
-layout with a ~1600px cap, **data tables exempt from that cap**, prose and forms
-keep a 65–75 character measure, 16px gutter floor, one PR per module, never
-auto-submit to a government portal.
+| # | question | decision | the reasoning |
+|---|---|---|---|
+| **D10** | Are the 41 bare-path redirect rules load-bearing? | **Yes.** The owner opened the Cloudflare preview: it 404s or bounces to the trailing-slash form | So the rule count cannot be collapsed. **Two rules of headroom against a cap that fails SILENTLY.** Consequence, binding on all of Phase 2: **no new route under `/clients/[id]`** — a query-param workspace instead, the way the year-end workspace already does it. The real relief is *reducing* dynamic pages, which the hub does anyway |
+| **D11** | One content width, or width by content? | **Width by content type** | Tables and dense grids full-width to the ~1600px cap; prose, forms and single-column reads keep a 65–75 character measure. Already what the Trial Balance and cash-flow views do, and it matches the standing decision that data tables are exempt from the cap |
+| **D12** | The 379 hand-written text sizes | **Convert all of them — module by module, with a before/after screenshot check on each.** The 135 off-scale sizes first | The owner's own point decided it: *"one would be good for one screen but not for the other."* There is no single correct line height, so this cannot be a codemod. The smoke walk already renders all 160 screens, so "before" and "after" are observable rather than discovered later. Anything that gets worse takes an explicit line height by hand |
+| **D13** | ₹ on PDFs | **Keep `Rs.` for now** | CGST Rule 46 prescribes no currency symbol, so this is cosmetic. The only two fonts that carry U+20B9 each cost something real — FreeSans is a metric drop-in but GPLv3 *in this repo*; DejaVu is permissive but 1.13–1.26× wider, which re-breaks the seven invoice columns T5a-4b just fixed. Reversible in one commit |
+| **D14** | Where a CA is told a posting fell back to the generic Bank ledger | **On the entry row AND in the posting confirmation** | The row so it is visible while scanning the ledger; the confirmation so it is caught at the moment it happens, when it is cheapest to fix |
+| **D15** | Order of the remaining tracks | **Navigation → analytics → portals → demo firm** | The analytics screens and the portal both need somewhere to live |
+| **D16** | Is there a date? | **No fixed date — do it properly** | Each track finishes before the next starts. Nothing half-built |
+| **D17** | Filing to the government portals | **Stay prepare-only.** Keep the simulation, make its wording professional, and say in the product that real filing is coming | The owner: *"once we demo to a CA I would go and start doing those registrations."* GSP/ERI/NIC are months of commercial lead time and the demo is what justifies starting them. Until then the simulation must be indistinguishable from the real flow **except** for saying, in plain professional words, that it is a simulation |
+| **D18** | The six documents this environment cannot fetch | **The owner will get all six — later. Tracked, not blocking** | Every one is already a NAMED gap in the product rather than a wrong number, which is the safe direction |
 
 ---
 
-# T1 — Repair the safety net
+## Phase 0 — what is already finished
 
-**Owner 🔧 C · 4–6 days · BLOCKED T3, T5, T6 · status `DONE` (16 Sep)**
+Recorded so nothing here gets re-started. Each was verified by running its own
+check, not by reading a status line.
 
-**Why first.** Track 1 of the old plan was built on 13 September and the
-13 September note told you it was "finished and green". It is not. Two of its
-four pieces observe nothing, and a redesign PR can merge today with both
-required CI checks green and nothing having verified it. Measured:
-
-- **148 of 159 smoke-walk screenshots are byte-identical** — the onboarding
-  wizard. Zero product modules have ever rendered under the harness.
-- **133 of 159 route pages (84%) can be deleted entirely** with the reachability
-  guard reporting zero losses. ✅ **T1-b, 16 Sep: now 77.** The rest share every
-  endpoint they call with a second screen, so deleting one orphans nothing —
-  that residual is the smoke walk's job, not this guard's.
-- **The required backend check reports green without running** on any
-  `apps/web`-only PR — which is exactly what a module conversion is.
-- **Zero `error.tsx` across 160 routes**, so "if something breaks it is one
-  module" is false at runtime.
-
-| ID | item | size | status | DONE WHEN |
-|---|---|---|---|---|
-| T1-a | Widen `backend-ci.yml` scope to `apps/web/`, or add a third job scoped to the two reachability tests. Make `frontend-ci` a required check. | 2h | `DONE` | A frontend-only PR shows the backend job **ran**, not "reported green without running" |
-| T1-b | Attribute reachability to a calling file under `app/` or `components/`, not the `lib/` blob | 1d | `DONE` | `_sources()` counts a URL literal only where a screen can reach it. Endpoints reached falls 907 → **797**; the 110 between were named by nothing but an api-client method with no caller |
-| T1-c | Seed the smoke walk's `users` read so `hasFirm` resolves true and screens actually render | 1h | `DONE` | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` ≥ 150 (was **11**, now 154) |
-| T1-d | Triage every failure T1-c exposes | 2–3d | `DONE` | `pnpm smoke` exits 0 with all 159 routes rendering their own screen |
-| T1-e | Per-route content assertion + fail the run if > 5 screenshots share an md5 | 1d | `DONE` | `pnpm smoke` exits 0 today; with the seeded rows removed — the harness exactly as it stood on 12 September — it exits 1 with **147 of 159** routes reporting, 143 of them "landed on /onboarding". That run exited **0**. |
-| T1-f | Add `error.tsx` to every module route | 0.5d | `DONE` | `find apps/web/app -name error.tsx \| wc -l` ≥ 14 (was **0**, now 65) |
-| T1-g | Refresh both snapshots at HEAD in a reviewed commit | 0.5h | `DONE` | Unprotected endpoints **0** (was 128); screen snapshot **159 → 160**. The 160th was `/settings/multi-currency`, and it crashed the first time anything visited it — see below. |
-
-**Risk that materialised, twice.** Each fix in this track exposed the next
-defect, which is what a safety net is for:
-
-- T1-c seeded the `users` row; **13 screens crashed** the first time anything
-  could see them.
-- T1-e's landing check found the product's **front door** bouncing to the
-  onboarding wizard — `DashboardContent` reads `firms.name` and the stub
-  answered null — so the dashboard had never rendered under the harness either.
-- T1-g refreshed the screen snapshot from 159 to 160, and the screen nobody had
-  ever walked, `/settings/multi-currency`, **threw on mount**: `data` came back
-  `[]`, `[] ?? null` is `[]`, and `firmGates?.platform.on` read `.on` off
-  undefined. Its error boundary (T1-f) contained it, which is the first time
-  that has been observed working.
-
-All three are fixed. `pnpm smoke` walks 160 routes and exits 0.
+| track | what it delivered |
+|---|---|
+| **T1 — the safety net** | 7 of 7. Required checks actually run on a web-only PR; reachability attributed to a calling screen; the smoke walk renders 154 distinct screens (was 11); 65 error boundaries (was 0); both snapshots refreshed |
+| **T3 — the design system** | The token file with a contrast-audited scale (`ps.hint` was **2.56:1**, the most-used colour in the product); five primitives; five of six product components; 10,146 → 70 hex literals |
+| **T5a — PDFs** | One style module shared by all six documents, which had picked **four different header fills** — including a navy on the year-end pack *a CA signs*. Two real contrast failures fixed. Page numbers and repeating headers. Indian rupee grouping. IST dating. The practice's own name on the pack instead of the product's |
+| **T5b — Excel and CSV** | One workbook builder — a money cell is a **number**, so `=SUM()` returns the total rather than 0. One CSV writer: two of thirteen hand-rolled escapers were wrong, and one shifted every column after a client called "Sharma, Gupta & Co" |
+| **T9 — the backend backlog** | Grew from 8 items to ~70 as each pass found more. 259 findings closed |
+| **The 24 Sep overnight run** | Eight batches: a browser palette; the 98 hex classes; four unpaged exports; a clock frozen at deploy date; the GSTIN check digit reaching seven doors that used a shape regex; PAN/TAN/DIN validators; the risk register moved out of the browser; two files that claimed another agreed with them and nothing checked either claim |
 
 ---
 
-# T2 — A demo firm that exists
+## Phase 1 — finish the foundation · 🔧 C · 6–9 days
 
-**Owner 🔧 C · 2–3 days · parallel with T1 · status `TODO`**
-
-`apps/api/seed/seed_data.py` — 164 lines, a full demo firm, five users, twenty
-named clients — has **zero importers**. No demo mode, no reset path. The only
-way into the product is a 940-line three-step OTP-gated onboarding wizard.
-
-**"valid PANs and GSTINs" was wrong, and it is measured now.** Checked against
-`domain/gst/gstin.checksum_char` on 16 Sep: **17 of the 20 client GSTINs carry
-the wrong check digit, and so does the firm's own.** That is not cosmetic —
-GST-29 made the check enforced at every door a human types one, `POST
-/api/onboarding/firm` refuses a firm GSTIN that fails it, and the GSTR-1 build
-refuses the client's own. Seeded as they stand, the demo could not file. The
-first 14 characters are fine; only the last needs recomputing, and it must be
-COMPUTED rather than typed.
-
-This is why T1-c is needed at all (nothing to seed → stub everything empty →
-land on the wizard) **and** it is on the critical path for the CA demo.
-
-D7 makes this safe: every byte in the platform today is demo data, so I can
-wipe and re-seed freely.
+Small, well-understood, and every item is unblocked. This clears the residue so
+Phase 2 starts on a clean base.
 
 | ID | item | size | DONE WHEN |
 |---|---|---|---|
-| T2-a | Make `seed_data.py` runnable — one command, idempotent, with a reset | 1d | One command creates the firm; running it twice is a no-op |
-| T2-0 | Correct the 18 GSTINs, computing each check digit | 1h | `DONE` 16 Sep — `tests/test_the_demo_firm_can_be_created_at_all.py`, 64 tests; 18 fail against the uncorrected data. Three further copies of one of them were found in `mock_data.py` and the document-intelligence specimens, and corrected too. |
-| T2-b | Extend to a **full financial year** of transactions across every module — sales, purchases, bank, payroll, GST returns, TDS, fixed assets, inventory | 1–2d | Every one of the 15 tiles has real figures on it; no screen shows an empty state |
+| **1.1** | **The type scale (D12).** Convert all 379 arbitrary sizes, module by module. The 135 off-scale ones (13px ×88, 9px ×29, 15px, 22px, 26px, 32px) first — they map to nothing, so nothing moves. Then the 244 that map to a built-in, one module per PR, each with a smoke-walk diff | 2–3d | `grep -rEoh 'text-\[[0-9]+px\]' apps/web/app apps/web/components \| wc -l` = **0**, and the guard's arbitrary-size budget is 0 |
+| **1.2** | **Width by content type (D11).** One rule, applied across the 95 pages that centre their own container; a guard stating the rule rather than a list of pages | 1d | A guard fails a page that caps a data table below the ~1600px limit, or lets prose exceed its measure |
+| **1.3** | **The named-colour judgement pass (T4-b).** 8,234 Tailwind utilities like `text-amber-600`. Status colours resolve to the semantic tokens; decorative ones stay | 2–3d | `amber`/`red`/`green` on a STATUS element resolve to `state.*`, asserted by a guard |
+| **1.4** | **The generic-Bank-ledger disclosure (D14).** `PaymentAccount.is_fallback` and `.reason` are computed and reach no caller. Surface on the entry row and in the posting confirmation. This is a refactor through eight journal-line builders | 1d | Posting a payment with no resolvable bank account shows the sentence in both places; a test asserts both |
+| **1.5** | **The filing-simulation wording (D17).** Every demo flow already carries an honest `SIM-NOT-FILED` reference and a "what changes when this is real" sentence. Rewrite those to read as a professional product statement — *"Preview only. PracticeSync does not transmit to the portal. Direct filing is in development"* — consistent across all flows, and visible on the screen rather than only in the response | 0.5d | One wording, one place it is defined, rendered by every flow; a guard asserts no flow renders its own |
+| **1.6** | **The twelve partial findings' remaining halves.** Listed below | 1–2d | Each moves to `closed` in `findings-status.json` in the same commit |
 
-**Deliberately included:** at least one client with a locked period, one with a
-filed return, one with a statutory gap. A demo where nothing is ever refused
-teaches a CA the wrong thing about the product.
+### 1.6 — the twelve partials, and what is actually left of each
 
-**Two facts settled on 16 Sep that decide HOW T2-a is built, recorded so the
-build does not re-derive them:**
+| finding | what is done | what remains | blocked? |
+|---|---|---|---|
+| GST-11 QRMP | the whole return engine | nothing material — re-read and close | no |
+| PAY-27 payroll reports | variance, department cost, bank advice | three more report shapes, if wanted | no |
+| IT-11 tax audit | §44AB applicability decided and served | **Form 3CD itself** — a clause workspace, needs a migration | needs document #4 |
+| SALES-23 reminders | the bulk Remind | the nightly sweep still advances a counter and sends nothing | no |
+| BANK-11 rules | priority, match field, operator, patterns, party | step 3's remaining half — what else a trusted rule may propose | **owner decision, see below** |
+| SALES-25 credit notes | the §34(2) window | half (b) — the post-window commercial note path | no |
+| ACC-03 bank ledger | two of three halves | the third is **1.4** above | no |
+| ACC-13 day book | day book built | **cost centres** — absent entirely, a real build | no |
+| GST-25 returns | GSTR-9 computed; 3.1.1 named as underivable | composition (CMP-08/GSTR-4), TCS on GSTR-8, GSTR-9C | needs document #5 |
+| INV-09 quantities | the three-decimal rule at every door | parts 2–3, small | no |
+| SALES-28 e-way | expiring-bill panel | the validity/extension write path | no |
+| TDS-22 clause rates | both clauses recordable, (b) limbs complete | **two numbers** for the (a) limbs | needs document #4 |
+| FA-11 CWIP | capital work-in-progress complete | the rest of FA-11's sub-features | no |
+| TDS-16 (open) | every figure computed | **the FVU/RPU file writer** | needs document #3 |
 
-1. **Creating a firm is four steps, not one insert.** `routers/onboarding.py`
-   does `firms` → `users` → `coa_seed_service.seed_firm_coa(firm_id)` →
-   `internal_client_service.provision(...)`. The chart of accounts is
-   FIRM-level (migration 057: one master chart, `client_id IS NULL`), and
-   `STANDARD_COA` is its one authority. A seeder that writes accounts of its
-   own would be a second one — so the seeder must either call that service or
-   GENERATE its rows from `STANDARD_COA`, never restate them.
-
-2. **Mock mode cannot verify a seeder, and that is by design.**
-   `seed_firm_coa` short-circuits to `{"skipped": True, "mock": True}` when
-   `SUPABASE_URL` is unset, because mock mode is an in-memory double for the
-   test suite rather than a database. So "running it twice is a no-op" is
-   checkable only against real Postgres. The practical shape is therefore a
-   Python generator that emits SQL from the existing Python authorities and
-   applies it with `psql --dsn`, the way `scripts/db/apply_migrations.py`
-   already does — verifiable against a local cluster, and runnable against the
-   Supabase DSN when the owner chooses.
-
-**⚠️ A seeded user cannot sign in.** `users.auth_user_id` references a Supabase
-auth identity, and the seeder must not mint one — that is credential creation.
-So either the owner passes the auth id of an account they have already signed
-up with, or the rows exist and nobody can log in. Whichever is chosen, the
-seeder must SAY which, not leave it to be discovered.
+**One owner decision hides in here, and it is genuinely a judgement call.**
+BANK-11 step 3 asks what a *trusted* matching rule — one that posts with nobody
+watching — may propose. Split legs and a party are built. The remaining
+candidate is a **TDS treatment**, and I would not build it without you saying
+so: widening what an unattended rule decides widens what happens with nobody
+watching, and TDS is the one where being wrong disallows the whole expenditure
+under §40(a)(ia). **Default if you say nothing: do not build it.**
 
 ---
 
-# T3 — Design system + two reference screens
+## Phase 2 — Navigation and the hub · 🔧 C · 10–15 days
 
-**Owner 🔧 C · 11–13 days · BLOCKED on T1 · status `TODO`**
+The largest single change to what the product feels like. **This is the
+redesign.**
 
-The old plan budgeted one week to "define tokens". **The tokens are already
-defined and nothing uses them** — `tailwind.config.ts` has carried brand, gold
-and `ps.*` scales all along, and `grep -rl 'bg-brand|text-brand|bg-ps-'` over
-`app/` and `components/` returns **zero files**. Against that: **10,828 raw hex
-literals across 66 values in 259 files**. About 0.2% of colour decisions go
-through the token layer.
+**What is wrong today.** There are 161 routes, 39 of them in no menu at all.
+Two different shells — the firm-level one and the client workspace — share
+nothing. Moving from one client to another means going back out to a list.
+⌘K is bound globally and opens an entity search rather than navigation. And 235
+working endpoints have no screen that can reach them, most of which is Phase 3
+but some of which is simply that nothing links to the screen.
 
-So T3 is replace-and-migrate, not define.
+**The constraint D10 puts on all of it.** Cloudflare Pages silently ignores
+`_redirects` rules past position 100. There are 98. The owner checked the
+preview and the bare-path rules are load-bearing, so they cannot be collapsed.
+**Two rules of headroom.** Every item below is designed around it: the hub adds
+no dynamic routes, and anything new under `/clients/[id]` is a query parameter,
+not a path. This is not a preference — it 404'd the entire client workspace
+once already, with no build error and no log.
 
 | ID | item | size | DONE WHEN |
 |---|---|---|---|
-| T3-a | ✅ **18 Sep.** Type scale reaches 10px (`text-3xs`) and 11px (`text-2xs`), bare. `darkMode` deleted. Dead gone: 2 colour tokens, 3 box shadows, **17 `:root` variables**, 9 CSS classes. **10,146 → 116 raw hex classes.** Spacing/radius/elevation deliberately NOT invented — see below. | 2.5d | ✅ done |
-| T3-b | ✅ **18 Sep.** FIVE built, not eight: `components/ui/field.tsx` (Input, Select, Textarea, Label, **Field** — the aria wiring, since `aria-describedby` appeared ONCE in the tree against 927 `<label>`) and `components/ui/callout.tsx` (Callout + GapList, four tones). **Table and Pagination already exist** as `DataTable` — the 242 raw `<table>` are adoption, not a missing primitive — and **Tooltip is deferred**: 292 sites use native `title=`, and a custom one is a behaviour decision for the reference screens. Both adopted on the screens that argued for them. | 3d | ✅ done |
-| T3-c | The 6 product-specific components | 3.5d | 5 of 6 done — below |
-| T3-d | Reference screen 1 — **periodic Trial Balance** | 1.5d | Renders full-width; 9 Dr/Cr columns; owner approves |
-| T3-e | Reference screen 2 — **Banking Entries** | 1.5d | Guard half done 19 Sep — see below. Density still to prove; owner approves |
-| T3-f | ✅ **18 Sep.** `ps.hint` was **2.56:1** — the most-used colour in the product. `label` #64748B→#475569, `hint` #94A3B8→#64748B. Guarded, reading the config. | in T3-a | ✅ every ink token ≥ 4.5:1 on white and on `ps.bg` |
-
-**T3-c, the six components:**
-
-| component | why it is not generic | today |
-|---|---|---|
-| **Money cell** | ✅ **18 Sep** — `lib/money/format.ts`. Re-measured: **248 formatters, 26 behaviours**, not 53/11. **139 had no `en-IN` locale at all**, ~150 were null-unsafe, the shared one rendered `undefined` as "₹NaN" and `null` as "₹0.00", and the whole-rupee one ROUNDED — a second CGST §170. Four Intl construction sites became two, both inside the authority | ~~53 / 11~~ **done** |
-| **Dr/Cr pair** | ✅ **18 Sep** — `components/ui/drcr.tsx`. The finding was not the duplication: two of the three sites read `p >= 0 ? "Dr" : "Cr"`, so a customer who had **settled every invoice** was emailed a statement reading **"₹0.00 Dr"**, and the same `>= 0` coloured it blue. A nil balance is on neither side; `sideOf` is a tri-state | ~~4 sites~~ **done** |
-| **Statutory-gap callout** | ✅ **18 Sep** — `GapList` existed and accepted ONE of the three shapes the backend emits, which is why 48 sites hand-rolled it. Widened, plus `StatutoryNotes` for the gap/caveat pair. The real defect: a GAP wore **11 distinct inks** and a CAVEAT **7**, with **5 used for both** — `RcmDocumentPanel` rendered the two in a *byte-identical* class string | ~~48 sites~~ **18 + 12**, ratcheted |
-| **Refusal banner** | ✅ **19 Sep.** The finding read as adoption and the real defect was ACCESSIBILITY: of 176 guarded failure bands with a red ground, exactly **one** carried `role="alert"`, so a CA pressing Save and being refused was told nothing at all by a screen reader — focus still in the form, page apparently unchanged. Both primitives already announce; `Callout tone="problem"` had **one caller in the whole product** (`Gstr1Findings`), the `capital_wip` shape again. 145 bands onto `Callout`, 12 public-facing ones kept their own markup and gained the announcement, **nil left** — the last 21 were finished by hand, each keeping its own shape (a Retry button, a Dismiss control, a heading over a list of problems, a `<Card>`, a sentence of extra prose) and taking `role="alert"` alone. Guard: `a-refusal-a-reader-must-act-on-is-announced.test.ts`, stated as *announced* rather than *uses the primitive*, because being announced is correctness and adopting the primitive is a design preference the owner reviews | 176 → 21 |
-| **Period picker** | ✅ **18 Sep** — `components/ui/period.tsx`, on T3-b's `Select`. **25** selects in 24 files, **14 class strings, 4 focus treatments**. Every option now carries `FY` or `AY`: IT Act §2(9) with §3 makes AY 2026-27 the same period as FY 2025-26, and the filing screen shows both dropdowns together. Month/quarter/range NOT built — no screen asks for one. **Still per-page** | ~~20 sites~~ **done** |
-| **Working panel** | "what this figure is made of" — the vehicle for T7 | 7 unrelated panels inside 2,000–4,800-line pages |
-
-**T3-d, part 1 — the periodic Trial Balance, and what widening it found.** The 9-column view now takes `max-w-6xl` where the 5-column one keeps `max-w-4xl` (the shape this file's own cash-flow view already uses), rather than a new global width rule — that is T3-d's own question and it is the owner's. Widening it surfaced a real defect: the rows go through `formatPaise` and the FOOTER did `₹{(x/100).toFixed(2)}`, so the one line a CA reads to check the two sides agree grouped **Western** — ₹123456.78 under a column of ₹1,23,456.78. Sweeping for that shape across the tree found **20 more sites in 16 files** losing the paise outright through `toLocaleString("en-IN")` with no options (`maximumFractionDigits` defaults to 3 and `minimum` to 0, so ₹1,18,000.50 renders "1,18,000.5"), most of them a per-file `rupees()`/`fmt()` helper — the ITC register, the §37(3) amendment panel, payroll, the GST and TDS compliance tabs, engagements, the loan risk register and both party lookups. Guard: `a-money-figure-keeps-its-paise.test.ts`. **The `(₹)` in a CSV HEADER is not a display figure** — 7 of the 15 the first heuristic caught were CSV columns that must stay bare, so the rule is about the OPTIONS and never about "divides by 100".
-
-**T3-e, part 1 — the guard's one class-string assertion, restated.** `bank-entries-is-a-table.test.ts` was already component-named throughout except one test: *"the two ways out of an unanswerable line are the LARGEST controls in the modal"* asserted `text-xs` and `px-3 py-1.5` — and `text-xs` is this app's DEFAULT button size, so the assertion said *ordinary* while its own name said *largest*. It now parses every button's type step and vertical padding into ORDINALS and asserts the two escape hatches tie for the top and are never below it. **Measured, not claimed**: growing an unrelated button to `text-base py-4` passed the old guard 20/20 and fails the new one — the exact defect its name describes. A second bug fell out: the label cut took the last `>` in the chunk, which is inside `{t.credit_paise > 0 ? …}`, so *Find the invoice* read as `0 ? "invoice" : "bill"}` and the test reported an escape hatch missing.
-
-**T4, part 1 — the colours nobody chose, and the theme colour declared three
-times.** The hex ratchet counted `border-[#E2E8F0]` and nothing else, so a hex in
-a `style={{}}`, an SVG attribute or a prop default — the same literal, drifting
-the same way — matched nothing. **Measured 19 Sep: 60 of them in 8 files**, and
-the guard's own name is *a colour comes from the token file*. It has a second
-limb now (budget **46**, with five files allowlisted WITH their reason: the root
-error boundary, which renders when the stylesheet may not have loaded; the
-`<meta>` tag; the logo's SVG; a colour PICKER, where hex is the data; and a
-print stylesheet injected as a string).
-
-Two findings fell out of measuring it:
-
-* **Twenty literals sat within 3/255 per channel of a token** — a distance no
-  screen resolves, so nobody CHOSE them. Six near-whites (`#FAFBFC`, `#FAFBFD`,
-  `#FAFAFA`, `#FCFDFE`, `#FCFCFD` and `#EEF2F7`) where the token file holds two,
-  and `#FAFBFC` against `#FAFBFD` differ by **one** in blue. 16 collapsed onto
-  `bg-ps-bg` / `border-ps-muted`. **`#FCFDFE` and `#FCFCFD` deliberately did
-  not**: they are a band LIGHTER than `ps.bg`, used on GSTR-3B against a
-  `hover:bg-ps-bg` row, so collapsing them would make a row identical to its own
-  hover state — the system has no token for that step and inventing one is a
-  design decision.
-* **The browser chrome colour was declared three times, in two values, and one
-  declaration was dead.** `metadata.themeColor: "#2563EB"` (a generic blue this
-  product's brand is nowhere), a hand-written `<meta>` at `#0B1635`, and
-  `manifest.json` at `#0B1635` — while `ps.ink` is `#0D1635`. Next 14 moved
-  `themeColor` out of `metadata`, so that key was silently dropped and the built
-  page has only ever emitted one tag. All three now say `#0D1635`, verified in
-  the built HTML.
-
-**Still owner-held and now measured exactly: the rival indigo is 55 sites across
-7 files**, not the ~40 recorded earlier — `#4338CA` (18), `#C7D2FE` (12),
-`#EEF2FF` (8), `#3730A3` (7), `#E0E7FF` (5), `#6366F1` (5). Folding them into
-`brand` changes what three screens look like, so it is one decision rather than
-fifty-five.
-
-**Why two reference screens.** Banking Entries cannot prove the width rule —
-it is already full-bleed (`px-6`, no max-width) and has 6 columns against 12 on
-the invoice editor. The Trial Balance is 9 Dr/Cr columns inside `max-w-4xl`
-(896px), which is exactly where the rule bites.
-
-**What T3-a actually found, and what it deliberately did NOT do.** The plan
-budgeted "rewrite the token file" and the file turned out to hold most of the
-right answer already; what it lacked was reach and two correct values.
-
-- **Seven greys for four roles.** `ink` is written `#0F172A` (801) and
-  `#1E293B` (333) as well as the token's own `#0D1635` (13); `label` is written
-  `#64748B` (1,388) *and* `#475569` (894) — and the token held the LIGHTER of
-  each pair. `ps.hint` at `#94A3B8` is the single most-used colour in the
-  product, 1,567 sites, most of them at 10px or 11px, rendering at **2.56:1**.
-- **The dominant hover pair was not the one the file described.** Its comment
-  said "104 sites darkening hint→label"; the measured pair is
-  `#94A3B8 → #475569` (95 sites), which was hint → *two steps down*. After the
-  fix it is hint → label with the target unchanged.
-- **Spacing, radius and elevation are NOT in this commit.** `shadow-card`,
-  `shadow-card-hover` and `shadow-modal` were declared and used zero times —
-  declaring a replacement scale before the reference screens exist just
-  re-creates what was deleted. They come with T3-d/T3-e, against a real card.
-- **The line-height on the two new type steps is deliberately absent.** Pinning
-  one changes the rendering of any of the 1,860 sites nested inside a
-  `text-sm`, so the T4 rename would not be a rename. It is a real question and
-  it belongs where it can be looked at.
-- **Still open, and visible:** ~40 sites on the rival indigo primary
-  (`#4338CA`, `#6366F1`, `#3730A3`) that the token file's own comment already
-  names. Folding them into `brand` changes what the banking screens look like,
-  so it goes with the reference screens.
-
-**⚠️ T3-c's money cell changes visible figures, and the two that shipped on 18
-Sep are named.** `/clients/[id]/tax/26as` and `/clients/[id]/tax/computation`
-each carried a `paise()` helper at `maximumFractionDigits: 0`, so they ROUNDED.
-They now show the paise on any figure the server has not rounded — which is
-most of them — because a browser-side round is a second implementation of CGST
-§170 and disagrees with it at exactly ₹x.50. More information rather than less,
-and a visible change: ₹1,23,457 becomes ₹1,23,456.50.
-
-The remaining screens move with T4's adoption pass, one at a time, because 103
-of the sites that divide by 100 are CSV cells and `<input value>` strings that
-must NOT carry a ₹ or a comma — the one rule a naive sweep would get wrong.
+| 2.1 | **Re-pin the redirect budget and write D10 into the generator's own comment**, so the next person does not re-derive it | 0.5d | `generate-redirects.test.ts` asserts ≤ 98 and names why 41 cannot be collapsed |
+| 2.2 | **The hub — firm level and client level.** The 15 tiles of D1, each with live signal rather than a label | 3–4d | Every tile shows a real figure or a real count; none is a stub |
+| 2.3 | **The persistent client switcher** | 1–2d | Move client → client without returning to a list |
+| 2.4 | **Re-point ⌘K at navigation** | 1d | ⌘K goes to any of the 161 screens by name; entity search moves behind a prefix |
+| 2.5 | **Give the 39 orphan screens a home (D2)** | 1–2d | Every route is reachable from the hub or a tile's sub-list. A guard asserts it, so a screen added later cannot be orphaned silently |
+| 2.6 | **Retire `ActivityRail`, `ContextPanel` and the client sidebar** | **0.5–1d** (was budgeted 3–4d on a stale 2,675-line figure; they are 373 lines) | One shell. All three `window.location` static-export workarounds survive — they exist because this is a static export and there is no server to redirect |
+| 2.7 | **Per-module conversion, one PR each** | 5–8d | Smoke walk green per module. Budget 0.5–1d per module for guard edits — several guards name a file path and will break on a move that does not break their rule; restate them as the rule |
+| 2.8 | **The two stacked mobile hamburgers** | 0.5d | One drawer, reachable |
+| 2.9 | **PAY-28** — payroll's three top-level areas | in 2.7 | Payroll is one place |
 
 ---
 
-# T4 — Token adoption
+## Phase 3 — Analytics and AI · 🔧 C · three layers
 
-**Owner 🔧 C · 5–8 days · BLOCKED on T3 · status `TODO`**
+**The finding that makes this worth doing: you already own more analysis than
+the product shows, and the AI a CA can see is the weakest AI you have.**
 
-**The work no track in the old plan owned.** Track 2 was scoped as "the
-vocabulary, not the redesign"; Track 4 as navigation. Neither budgeted 10,828
-replacement sites, and the work does not vanish.
-
-| ID | item | size | DONE WHEN |
-|---|---|---|---|
-| T4-a | Codemod the 66 hex values | 2d | Zero `#RRGGBB` literals in `app/` and `components/` |
-| T4-b | Judgement pass over 8,234 Tailwind named-colour utilities | 3–4d | `amber`/`red` resolve to semantic status tokens, not raw colours |
-| T4-c | ⚠️ **NOT A CODEMOD — measured 24-09-2026 and deliberately not started.** 379 uses in ten sizes; 244 of them (12px, 14px, 16px, 18px) have a same-size Tailwind built-in and converting them is still a **line-height change**, because a size token carries one and an arbitrary value does not — only 7 of the 167 `text-[12px]` sites set a `leading-`. Adding a size-only `xs` instead would change the line height of every element already using `text-xs`, in the other direction. A typographic decision across the product, and the one item on this list that cannot be verified without looking. The remaining 135 (13px×88, 9px×29, 22px, 26px, 15px, 32px) are off-scale and need steps chosen anyway. Full measurement in `docs/plan/2026-09-24-overnight-run.md`. | 1d | Every size on the scale |
-| T4-d | Width sweep over the 95 pages that centre their own container | 1d | Tables full-width; prose keeps its measure |
-
-**Must land before the second module in T6**, or module two re-litigates
-module one.
-
-**⚠️ No blanket codemod on the named colours.** `text-amber-600` on a statutory
-gap and on a decorative icon are the same string with different meanings.
-
----
-
-# T5 — Outputs: PDF and Excel
-
-**Owner 🔧 C · 16–22 days · BLOCKED on T1 · parallel with T3/T4 · status `TODO`**
-
-## T5a — PDF (6–9 days)
-
-Six services produce **nine documents**, and one of the six is `xhtml2pdf`, not
-reportlab — so "one shared style module over six services" cannot span it
-as written.
-
-| ID | item | DONE WHEN |
-|---|---|---|
-| T5a-1 | ✅ **19 Sep.** `services/pdf_style.py` — the palette, the type roles and the shared table builders. The palette is the PRODUCT'S, from `apps/web/tailwind.config.ts`, and `_TOKEN_SOURCE` names each value's token so a guard can pin it | ✅ |
-| T5a-2 | ✅ **19 Sep, and the defect was USER-VISIBLE rather than a tidy-up.** Six services had picked **four different header fills** — #0F172A (bank recon, statement), #1f2937 (invoice, payslip), **#1a3c5e navy on the year-end pack, the set a CA SIGNS**, and #1a1a1a (engagement letter) — plus three body greys, 31 hex literals and 16 TableStyle blocks with nothing shared. None used the product's own contrast-audited `ps.*` scale. **Two real contrast fixes fell out**: the invoice's and the payslip's `small` style was reportlab's stock `colors.grey` = #808080, **3.95:1 on white at 8pt**, below WCAG 1.4.3, and it carries the Rule 46 citation, the bank details a customer pays into and the employer's registration numbers; and the reconciliation drew its tie-out rule in **#94A3B8**, the very value the token file records moving OFF at 2.56:1, below even 1.4.11's 3:1. **Three dead constants went** — `_SUBHEAD_BG`, `_BLACK` and `_DRAFT_RED`; the last reads as though the pack stamps a draft, which it has never done. **No font size and no column width moved**, T5a-4b's measurement being the reason | ✅ 38 test modules pass (723 tests), 10 with pdfplumber; a render limb reads the fills back out of a real invoice |
-| T5a-3 | **Merge SALES-13 in** — `invoice_templates` read on day one, not retrofitted | A configured branding value appears in the output, asserted by a test |
-| T5a-4 | ✅ **DONE.** `services/pdf_page_furniture.NumberedCanvas` numbers every reportlab document (two-pass — reportlab cannot know the total during layout, so an `onPage` hook can say "Page 3" and not "of 7"); the one xhtml2pdf document gets a static frame carrying `pdf:pagecount`. `repeatRows` on **11** tables, not 18: seven of the twenty-one have no header row at all — two metadata blocks, a label/value tie-out, the invoice letterhead, its payment block, the payslip header and the Net Pay banner — and repeating their first row would print a line of DATA at the top of page 2. `test_a_document_that_runs_to_two_pages_says_so.py` derives header-ness from the style commands rather than listing tables | Verified by rendering: a 60-line invoice comes out as three pages, each headed `# Description HSN/SAC Qty Unit Rate Taxable Value GST Rate Tax` and footed `Page N of 3`; the engagement letter the same |
-| T5a-5 | ⏸ **BLOCKED on an owner decision, measured 19 Sep.** Of the 48 fonts on this image, 20 carry U+20B9 and the choice is a licence trade-off, not a technical one. **FreeSans** is the only near-metric match for Helvetica (0.977–1.013× across both weights, so no column moves) and is **GPLv3**; the font exception covers documents that EMBED it, not redistributing the font in this repo. **DejaVu** is permissively licensed (Bitstream Vera) and **1.13×/1.26× wider**, which re-breaks the columns T5a-4b just fixed. **Liberation Sans** would have been ideal and this build has **no rupee glyph** — checked, not assumed. See §M of the owner questions | Owner picks the licence posture; then embed, re-measure every column against the guard, and invert `test_no_pdf_renders_the_rupee_sign.py` |
-| T5a-4b | ✅ **19 Sep, no finding existed.** Sizing T5a-5 measured the invoice's own columns and **seven were too narrow**. The two HEADINGS `Taxable Value (Rs.)` (+11.7pt) and `GST Rate` (+8.3pt) overflowed on **every detail invoice ever rendered** — pdfplumber reads the header band back as one word, `'(Rs.)GST'`. A **crore-scale figure** overflowed Rate, Taxable Value AND Tax by 3pt each; a **99th line number** overflowed `#`; a fractional quantity overflowed Qty by 22pt. The room came from the **padding**, not from Description: nine columns at reportlab's default 6pt a side spend 38mm of the 180mm table on whitespace at 8pt type, and at 4pt everything fits while Description keeps 108pt against the 116pt it had | `test_a_column_is_wide_enough_for_what_goes_in_it.py` measures the headings AND a stated worst-case figure against the same three constants the renderer uses, and a render limb compares each heading's x-range against column edges derived from `_DETAIL_WIDTHS` |
-| T5a-6 | **Indian rupee grouping (D6)** — one formatter replacing three | Invoice prints 12,34,567 |
-| T5a-7 | **IST on the year-end pack** — `datetime.now()` at two sites, no TZ set | A pack generated 01:00 IST on 1 April is dated 1 April, not 31 March |
-| T5a-8 | ✅ **19 Sep.** The cover read *"Prepared by: PracticeSync AI — Practice Management Platform"* and the footer *"Generated by PracticeSync AI on …"*, on a set a CA SIGNS. It survived because the PDF service is handed an ENGAGEMENT and `year_end_engagements` carries `firm_id` and no name — there was nothing to print, so a literal went in. `domain/firm/letterhead.py` is the rule and `_with_firm_name` the one resolver all **six** call sites (three endpoints × mock and live) go through, so the name cannot be threaded into two and forgotten in the third. **A failed fetch is not a failed export**: no name known answers "The practice" — vague and true beats refusing to build the pack, and beats the product's name. A guard also asserts the three CLIENT-owned documents (invoice, payslip, statement) never import it | ✅ |
-
-**T5a-6 and T5a-7 were live correctness bugs, not styling — ✅ both done
-19 Sep, and each was worse than the row describing it.**
-
-* **T5a-6.** The sales invoice and the payslip did
-  `f"{paise // 100:,}.{paise % 100:02d}"`. `f"{1234567:,}"` is `1,234,567` —
-  Western — against D6's `12,34,567`, on the two documents that leave the
-  building most. **And those same two lines invert a NEGATIVE**: `//` floors and
-  `%` follows it, so **-1 paise rendered as "-1.99"** and -150 as "-2.50". Every
-  negative that is not an exact rupee was wrong by one rupee minus its fraction
-  — a payslip whose recoveries exceed the pay, a credit note, an adjustment
-  line. `domain/reporting/pdf_money.py` is the one formatter; the year-end
-  pack's own version was the one of three that was right, so it is the one that
-  moved. **Three tests pinned the defect**, one of them building its expectation
-  with the very expression that WAS the defect and one asserting
-  `"1,00,000.00" not in text  # formatting is western-grouped` — an observation
-  about the implementation frozen as a requirement. All three now assert through
-  the formatter, so they cannot pin a grouping at all.
-* **T5a-7.** `core/ist_clock`'s own docstring says the container is UTC with no
-  TZ pinning, so a bare `date.today()` is YESTERDAY from 00:00 to 05:30 IST —
-  and **79 sites read it anyway**. On the year-end pack that is the cover of a
-  set a CA signs: built at 01:00 IST on 1 April it was dated 31 March, the
-  previous day and, that one night a year, the previous FINANCIAL YEAR. 21 reads
-  across 15 services moved — the due-date countdown, the dates generated
-  documents take, the windows statements cover — leaving **58** behind a ratchet,
-  because a log timestamp may legitimately be UTC and telling the two apart is a
-  read of each site rather than a sweep. ✅ **Those 58 are now nil**, read one
-  at a time on 19 Sep. The dates that decide something rather than display it:
-  the compliance calendar's own **default FINANCIAL YEAR** (opened at 02:00 IST
-  on 1 April it resolved to the year that closed the night before, so every
-  obligation and every due date was the wrong year's), a journal's default
-  **`entry_date`**, an engagement letter's own date, **`rate_date`** on a
-  foreign-currency document (CGST Rule 34 fixes the rate at the time of supply),
-  whether an MCA form is overdue, and the name of the **current month**.
-  `routers/workload.py` also read the clock TWICE in one expression to find this
-  week's Monday. The two `computed_at` on the intelligence responses were a
-  different bug — naive, so no offset, so a browser read UTC as local and showed
-  a time five and a half hours behind. **The scheduler's `run_date` changes
-  meaning** and the commit says so. And the ratchet's vacuity proof had to be
-  restated: it asserted the TREE contained ten naive reads, which held only
-  while the defect did, so it now shows the probe its own examples and requires
-  it to reject the four correct forms.
-
-**⚠️ Do NOT put firm branding on the sales invoice, payslip or statement.**
-Three separately-fixed bugs are pinned by tests and written into the code as
-refusals — those documents belong to the *client*, not the practice.
-
-## T5b — Excel (10–13 days)
-
-| ID | item | DONE WHEN |
-|---|---|---|
-| T5b-1 | One shared workbook module in `apps/api` — header style, Indian number format, column widths, freeze panes, cover sheet, totals, print area | Exists with tests. **Copy `services/time_export_service.py`** — openpyxl is already deployed and working |
-| T5b-2 | **Money becomes a NUMBER, not text** | `=SUM(B:B)` on an exported trial balance returns the total, not **0** |
-| T5b-3 | 11 export actions become FastAPI endpoints | Each has a `reachable_endpoints.json` entry |
-| T5b-4 | `shareToPortal` — decide whether the server uploads | Today it writes to storage from the browser so `rbac()` never runs |
-| T5b-5 | ✅ **19 Sep, and it was a correctness fix rather than a tidy-up.** Thirteen files built a CSV and **seven escaped by hand; two were wrong**. `app/risks/page.tsx` left the client name and risk type **unquoted**, so a client called "Sharma, Gupta & Co" shifted every column after it by one — for that row alone, so the file opened and one line sat under the wrong headings; `app/accounting/receivables/page.tsx` wrapped every field in quotes and never doubled the ones inside, and the payroll statutory summary and all three payroll reports did the same to an employee NAME. The correct rule already existed — `csvCell` in `lib/table/process.ts` — and was **module-private**, which is exactly why there were seven others. `lib/export/csv.ts` is the one writer and `process.ts` delegates to it. Two more landmines fell out: `ais` and `BankBook` prepended a **literal U+FEFF typed into the source**, invisible in every editor, and `app/payroll/reports` declared a private `downloadCsv(content, filename)` — the shared name with the arguments **reversed** | `scripts/one-csv-writer-and-it-escapes.test.ts`: the door (nothing else makes a `text/csv` Blob or doubles a quote), the two GOVERNMENT-UPLOAD exemptions with their reason (a BOM breaks the EPFO/ESIC parse), no literal BOM anywhere in the tree, and the behaviour — a comma, a quote, a newline and a leading space each round-trip. 4 negative controls |
-
-**⚠️ Do not remove `xlsx` from `package.json`** — it is the .xlsx import parser
-on 17 screens. Only the write side moves.
-
-**✅ T5b-2 done 19 Sep — and it was seven sites, not eleven.** Every money
-cell in every browser export was a **text** cell: `json_to_sheet` types a cell
-from the JS value and every export built its money with `.toFixed(2)`. Excel's
-`=SUM()` skips text, so the amount column of an exported trial balance, P&L or
-balance sheet totalled **0** — silently, because SheetJS writes no
-`ignoredErrors` so not even the "number stored as text" triangle appeared.
-
-`lib/export/xlsx.ts` is the one workbook builder: money is a NUMBER carrying an
-Indian number FORMAT (`[>=10000000]…` — Excel has no locale-free way to say
-it), a figure nobody holds is an **empty cell rather than a zero**, the header
-freezes and columns are sized to their content. Seven exports converted; a
-guard asserts both the door (nothing else may call `json_to_sheet`) AND the
-behaviour (a real workbook is built and the cell read back as `t: "n"`),
-because a door everything goes through is worth nothing if what comes out is
-still a string.
-
-**Two things the row did not anticipate.** `CsvImportModal` is allowlisted —
-it builds a TEMPLATE with no money in it. And the AIS screen's `exportRows`
-feeds the CSV *and* the workbook, which want opposite things: a CSV cell must
-be a bare string with no grouping and no ₹. It re-types the money on the way
-into the sheet and leaves the CSV's rows alone; "Not reviewed" stays the word
-it is, because a zero in that column is a claim about the books.
-
-T5b-1, 3, 4 and 5 are unchanged.
-
----
-
-# T6 — Navigation and the hub
-
-**Owner 🔧 C · 11–17 days · BLOCKED on T4 · status `TODO`**
-
-| ID | item | size | DONE WHEN |
-|---|---|---|---|
-| T6-a | Reclaim redirect headroom **before anything else** | 0.5d | `grep -v '^#' apps/web/public/_redirects \| grep -c '200$'` ≤ 90 (is **98**) |
-| T6-b | Build the hub — firm level and client level | 3–4d | The 15 tiles of D1, each with live signal |
-| T6-c | Persistent client switcher | 1–2d | Move client→client without returning to the hub |
-| T6-d | Re-point ⌘K at navigation | 1d | Already bound globally; today it opens an entity search |
-| T6-e | **Give the 39 orphan screens a home (D2)** | 1–2d | Every route reachable from the hub or a tile's sub-list |
-| T6-f | Retire `ActivityRail` + `ContextPanel` + the client sidebar | 3–4d | 2,675 lines across two shells that share nothing. All three `window.location` static-export workarounds survive |
-| T6-g | Per-module conversion, one PR each | 5–8d | Smoke walk green per module; guard edits budgeted at 0.5–1d per module |
-| T6-h | Fix the two stacked mobile hamburgers | 0.5d | One drawer, reachable |
-| T6-i | Close PAY-28 (`deferred_to_the_redesign`) | in T6-g | Payroll's three top-level areas resolved |
-
-**⚠️ T6-a is a silent cliff.** Cloudflare ignores `_redirects` rules past
-position 100 — no build error, no test, no log. It 404'd the entire client
-workspace once already. Each new page under a dynamic segment costs 2 rules.
-**Prefer a query-param workspace over new routes**, the way the year-end
-workspace already does.
-
----
-
-# T7 — Analytics and AI
-
-**Owner 🔧 C · three layers · BLOCKED on T3 · status `TODO`**
-
-**The finding.** You already own more analysis than the product shows, and the
-AI a CA can see is the weakest AI you have.
-
-- `/ai-assistant` → `POST /api/assistant` is a **pure Groq passthrough over a
-  static prompt that loads no client data at all.** Its own code comment says
-  so. That is a generic tax chatbot.
-- `GET /api/accounting/statement-analysis` — an LLM narrating ratios computed
-  from the reporting engine's own paise, with a deterministic fallback — has
-  **0 screen callers**. The best AI feature here is unreachable.
-- `GET /api/analytics/profitability` — **client profitability, already built**,
-  revenue minus cost in integer paise, by client/engagement/team — **0 screen
-  callers**.
+- `/ai-assistant` is a **pure passthrough over a static prompt that loads no
+  client data at all.** Its own code comment says so. It is a generic tax
+  chatbot wearing your product's name.
+- `GET /api/accounting/statement-analysis` — ratios computed from the reporting
+  engine's own paise, narrated by an LLM, with a deterministic fallback — has
+  **zero screen callers.** The best AI feature here is unreachable.
+- `GET /api/analytics/profitability` — **client profitability, built, in
+  integer paise, by client and engagement and team** — zero screen callers.
 - The modules named "intelligence" and "memory" analyse **tasks, not money**.
-  `cash_flow_risk_months` is literally the two months with the most tasks:
-  `# Cash flow risk: months with highest task load typically correlate with pressure`
-- **~40 finished analytical endpoints have no screen** — all of
-  `/api/analytics`, `/api/intelligence`, `/api/risks`, 8 of 13 health, 8 of 17
-  copilot, 6 of 6 ai-insights.
+  `cash_flow_risk_months` is literally the two months with the most tasks.
 
-## The rule, adopted now
+### The rule, adopted now and enforced by a guard
 
 > **The LLM narrates figures the product computed. It never computes them.**
 
-Already the pattern in `statement-analysis`: deterministic ratios → LLM
-narration → deterministic fallback. A CA who catches the AI inventing a number
-stops trusting the software entirely. This becomes a guard test.
+Already the pattern in `statement-analysis`. A CA who catches the AI inventing
+a number stops trusting the software entirely — and unlike a wrong figure in a
+report, there is no way to audit it afterwards.
 
-## T7-L1 — Surface what exists · rides along with T6 · 8–12d standalone
+### 3a — surface what exists · 8–12 days
 
 No new engines. Screens for what is already computed and tested.
 
 | ID | item | DONE WHEN |
 |---|---|---|
-| T7-L1-a | The **Insights** tile (D1) — health, risk, profitability, trends in one place | The tile is not a stub |
-| T7-L1-b | Client profitability + realization | `/api/analytics/profitability` and `/revenue-vs-effort` have screen callers |
-| T7-L1-c | Statement analysis | `/api/accounting/statement-analysis` has a screen caller |
-| T7-L1-d | Health: render the **computed** 7-dimension score | 8 unreached health endpoints reached; screens stop rebuilding scores from raw rows |
-| T7-L1-e | Compliance risk + predicted misses | `/api/intelligence/*` reached |
-| T7-L1-f | Risk dashboard — delete the browser-side rival model | `/api/risks/*` reached; `app/risks/page.tsx` stops rebuilding its own |
-| T7-L1-g | `ai_insights` — wire the **writer** | Today a screen reads a table nothing reachable populates |
+| 3a-1 | The **Insights** tile (D1) — health, risk, profitability, trends in one place | The tile is not a stub |
+| 3a-2 | Client profitability and realization | `/api/analytics/profitability` and `/revenue-vs-effort` have screen callers |
+| 3a-3 | Statement analysis | `/api/accounting/statement-analysis` has a screen caller |
+| 3a-4 | Health — render the **computed** 7-dimension score | 8 unreached health endpoints reached; screens stop rebuilding scores from raw rows |
+| 3a-5 | Compliance risk and predicted misses | `/api/intelligence/*` reached |
+| 3a-6 | `ai_insights` — wire the **writer** | Today a screen reads a table nothing reachable populates |
+| 3a-7 | Give the copilot the client's own data | The 8 unreached copilot endpoints reached; the static prompt replaced by one that loads the client context |
 
-**DONE WHEN (whole layer):** zero analytical endpoints unreached by a screen,
-asserted by T1-b's repaired guard.
+**Target: the 235 unreachable endpoints fall below 120.**
 
-## T7-L2 — Repoint the intelligence at the ledger · 6–10d
-
-The engines exist; they read the wrong table.
+### 3b — repoint the intelligence at the ledger · 6–10 days
 
 | ID | item | DONE WHEN |
 |---|---|---|
-| T7-L2-a | Anomaly detection over `account_period_balances` — round numbers, period-end spikes, unusual account pairings, duplicate payments | "Anomaly" means a ledger anomaly, not task-volume sigma |
-| T7-L2-b | **Real cash-flow forecasting** from invoice/bill due dates, ageing and bank history | A forward-looking engine exists. There is **none** today — the only "forecast" is 353 lines of browser arithmetic with a user-typed opening balance |
-| T7-L2-c | Rewrite or retire `cash_flow_risk_months` and `seasonal_revenue_peak` | No financial-sounding figure is derived from task counts |
-| T7-L2-d | Firm-wide capacity risk — deadline concentration vs team capacity | *Which March are you about to fail?* |
+| 3b-1 | **Anomaly detection over `account_period_balances`** — round numbers, period-end spikes, unusual account pairings, duplicate payments | "Anomaly" means a ledger anomaly, not task-volume sigma |
+| 3b-2 | **Real cash-flow forecasting** from invoice and bill due dates, ageing and bank history | A forward-looking engine exists. There is **none** today — the only "forecast" is 353 lines of browser arithmetic off a user-typed opening balance |
+| 3b-3 | Rewrite or retire `cash_flow_risk_months` and `seasonal_revenue_peak` | No financial-sounding figure is derived from task counts |
+| 3b-4 | Firm-wide capacity risk — deadline concentration against team capacity | *Which March are you about to fail?* |
 
-## T7-L3 — The differentiators · 10–15d
-
-None of this exists.
-
-| ID | item | why it matters |
-|---|---|---|
-| T7-L3-a | Effective tax rate trend across years | Snapshots are stored and never compared |
-| T7-L3-b | ITC leakage as a trend | Reversals computed per return, never totalled for the year |
-| T7-L3-c | Vendor and customer concentration | No top-N share, no year-on-year shift |
-| T7-L3-d | GST/TDS/payroll trend analysis | All per-period today |
-| T7-L3-e | **Cross-client benchmarking** | *"Your client vs the other 40 in this sector."* Needs a book of clients on one platform — **nobody else can copy this** |
-
----
-
-# T8 — The portals
-
-**Owner 🔧 C · 8–12 days · BLOCKED on T4 · status `TODO`** — in scope per D3
-
-Six routes, 1,713 lines under `apps/web/app/portal/`, rendered outside the
-staff shell. They import almost none of the shared primitives, so T3 and T6
-reach none of them.
-
-**This is the only surface the CA's own client and employees see.** If it keeps
-today's look, the product visibly has two designs and the outside world sees
-the old one.
+### 3c — the differentiators · 10–15 days
 
 | ID | item | DONE WHEN |
 |---|---|---|
-| T8-a | Client portal on the design system | Uses T3 primitives |
-| T8-b | Employee portal on the design system | Same |
-| T8-c | `apps/marketing` brand parity | A **parity test written from `apps/web`'s side** — today it is a hand-copy maintained by a comment, the exact drift shape CLAUDE.md warns about three times |
-| T8-d | The portal dashboard drops 3 of 7 sections the API serves | All served sections render or are deliberately excluded |
+| 3c-1 | Effective tax rate trend across years | Snapshots are stored and never compared |
+| 3c-2 | ITC leakage as a trend | Reversals computed per return, never totalled for the year |
+| 3c-3 | Vendor and customer concentration | No top-N share, no year-on-year shift today |
+| 3c-4 | GST / TDS / payroll trend analysis | All per-period today |
+| 3c-5 | **Cross-client benchmarking** | *"Your client against the other 40 in this sector."* Needs a book of clients on one platform — **nobody else in this market can copy it** |
 
 ---
 
-# T9 — Backend backlog
+## Phase 4 — The portals · 🔧 C · 8–12 days
 
-**Owner 🔧 C · 14–17 days · parallel, starts now · status `TODO`**
+Six routes, 1,738 lines under `apps/web/app/portal/`, rendered outside the
+staff shell and importing almost none of the shared primitives — so Phase 1 and
+Phase 2 reach none of them.
 
-**Exactly 8 of the 35 remaining findings can run alongside the redesign.** The
-other 27 either need a screen (17) or are blocked on a document (10).
+**This is the only surface the CA's own client and employees ever see.** If it
+keeps today's look, the product visibly has two designs and the outside world
+sees the old one.
 
-`PAY-21` · `BANK-10` · `GST-19` · `INV-09` · `IT-09` · `PUR-07` · `SALES-13` ·
-`SALES-15`
-
-Two worth splitting rather than treating whole:
-
-- **ACC-22** — land the backend half now (carry `source_type`/`source_id`
-  through the reporting model and `account_ledger_page`) so T6's redesigned
-  ledger table has something to click. Do not build the click twice.
-- **IT-20** — its statutory branch is blocked; its surfacing branch is one hour
-  during any screen pass.
-
-**⚠️ Expect this to grow.** The 16 September re-read found 16% of "closed"
-findings not closed. The 106 verified on earlier dates have not been re-read.
-Budget 35–45, not 35.
+| ID | item | DONE WHEN |
+|---|---|---|
+| 4.1 | Client portal on the design system | Uses the shared primitives |
+| 4.2 | Employee portal on the design system | Same |
+| 4.3 | `apps/marketing` brand parity | **Done 24 Sep** — a parity test written from `apps/web`'s side, replacing a hand-copy maintained by a comment |
+| 4.4 | The portal dashboard drops 3 of 7 sections the API serves | All served sections render, or are deliberately excluded and say why |
 
 ---
 
-# D / F / V — the owner's tracks
+## Phase 5 — The demo firm · 🔧 C · 2–3 days
 
-## D — Decisions · 8 of 8 `DONE` ✅
+**Yes, I can build this entirely — it needs nothing from you.**
+`apps/api/seed/seed_data.py` already exists and is idempotent; what it lacks is
+volume. The work is to drive a full financial year through the **real posting
+paths** — not to insert rows — so the data is as valid as a real client's.
 
-## F — Documents to fetch · 👤 O · `TODO`
-
-Each needs a person to read a document. None can be derived, and writing any
-from memory puts a wrong number in somebody's pay or return.
-
-| ID | what | unblocks |
+| ID | item | DONE WHEN |
 |---|---|---|
-| F-1 | **§194I(a) and §194J(a) rates** off the Finance Act | **Two numbers close TDS-22 entirely.** Both limbs exist and withhold at the higher rate today |
-| F-2 | §47 GST late-fee rates | `LATE_FEE_RATES` is deliberately empty |
-| F-3 | §50(3) notified rate — 18% or 24% | A third of the charge separates the readings |
-| F-4 | PT slabs for any state your testers are in | 4 of 22 states modelled |
-| F-5 | §288A/§288B — nearest ₹10 or ₹1 on the ITR payload | Found 16 Sep; not modelled |
+| 5.1 | One command creates the firm; running it twice is a no-op | `python -m seed.seed_data` twice, no duplicates |
+| 5.2 | A **full financial year** across every module — sales, purchases, bank, payroll, GST returns, TDS, fixed assets, inventory, year-end | Every one of the 15 tiles has real figures; no screen shows an empty state |
+| 5.3 | The figures tie | Trial balance balances; GSTR-1 and GSTR-3B reconcile; the payroll challan foots |
 
-## V — Pre-demo verification · 🤝 B · `BLOCKED` on T8
+**Why it is worth the 2–3 days beyond the demo:** driving a year through the
+real paths exercises the whole engine end to end, and finds the class of defect
+an empty screen hides. Every previous seeding pass found some.
 
-### My gates — refuse to start the session until all five pass
+---
 
-| ID | gate | your one-command check |
-|---|---|---|
-| V-1 | Smoke walk renders the product | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` ≥ 150 |
-| V-2 | Required checks actually run on a web-only PR | Open one and read the job log |
-| V-3 | Reachability attributed to screens | `pytest tests/test_reachability_is_attributed_to_a_screen.py` passes |
-| V-4 | A demo firm exists | One command builds it |
-| V-5 | Error boundaries | `find apps/web/app -name error.tsx \| wc -l` ≥ 14 |
+## Phase 6 — Verification, with you · 🤝 · one session
 
-### The session itself
+### My gates — I refuse to book the session until all five pass
+
+| gate | your one-command check |
+|---|---|
+| Smoke walk renders the product | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` ≥ 150 ✅ **154** |
+| Required checks run on a web-only PR | Open one and read the job log ✅ |
+| Reachability attributed to screens | `pytest tests/test_reachability_is_attributed_to_a_screen.py` ✅ |
+| A demo firm exists | One command builds it — **Phase 5** |
+| Error boundaries | `find apps/web/app -name error.tsx \| wc -l` ≥ 14 ✅ **65** |
+
+### The session
 
 | ID | item |
 |---|---|
-| V-6 | **Six spot-checks** — one GSTR-1, GSTR-3B, 26Q, payslip, trial balance, balance sheet against figures you trust. Not because the engines are unverified, but so you can tell a CA you checked it yourself |
-| V-7 | **Print four documents on paper** — invoice, payslip, year-end pack, statement |
-| V-8 | Review the two reference screens and the hub |
-| V-9 | **Walk the first-hour gaps and decide what you are content to show** — payroll gaps in 18 of 22 PT states, §89 arrears before FY 2025-26, "cannot file" |
-| V-10 | Agree the sentence for *"can I use this tomorrow?"* — honestly no, because filing needs GSP and ERI registrations |
+| 6.1 | **Six spot-checks** — one GSTR-1, GSTR-3B, 26Q, payslip, trial balance, balance sheet against figures you trust. Not because the engines are unverified, but so you can tell a CA you checked it yourself |
+| 6.2 | **Print four documents on paper** — invoice, payslip, year-end pack, customer statement |
+| 6.3 | Review the hub and the two reference screens |
+| 6.4 | **Walk the first-hour gaps and decide what you are content to show** — payroll gaps in 18 of 22 professional-tax states, §89 arrears before FY 2025-26, "cannot file yet" |
+| 6.5 | Agree the sentence for *"can I use this tomorrow?"* — today, honestly: yes for everything except transmitting a return, which needs registrations you will start after this demo (D17) |
+
+---
+
+## Phase 7 — After the demo: the commercial track · 👤 O
+
+**Not code. Do not start it before the demo (D17).** Recorded here because the
+lead times are long and the order matters.
+
+| step | what | lead time | what it unblocks |
+|---|---|---|---|
+| 7.1 | **Third Party Software Utility Developer** registration (income tax) | days, free, self-service | An `SW########` number. The first rung, and the only one available without commercial negotiation |
+| 7.2 | **ERI** registration | months | Filing income-tax returns from inside the product |
+| 7.3 | **GSP** — via a GST Suvidha Provider | months, real money | Filing GST returns. There is no direct public GSTN endpoint; every product that files goes through a GSP |
+| 7.4 | **NIC** production credentials | months | e-way bill and e-invoice IRN — **the only two statutory outputs software can complete end to end**, because the portal signs them and no taxpayer signature is needed |
+
+**Three rules that do not relax when this becomes real, and get stricter:**
+never auto-submit — an explicit confirmation click per return, every time, never
+a batch and never a retry that resubmits; the signature is the **taxpayer's**,
+so the flow is *CA prepares → taxpayer signs on the portal*; and there is never
+an OTP or EVC field in this application, whatever it is labelled, because that
+is a credential-capture surface.
+
+The full playbook is `docs/compliance/07-getting-permission-to-file.md`.
+
+---
+
+## The standing work that never finishes
+
+Not a phase. These recur, and each has a named home so nobody rediscovers them.
+
+| what | when | where |
+|---|---|---|
+| **The financial-year refresh** | every April, and CII around June | `CLAUDE.md` § "What has to be updated every financial year". Every rate registry **falls back silently to last year** rather than failing, so a missing year is a confidently wrong number, not an error |
+| **The ITR JSON schemas** | every assessment year | The one item on that list that cannot be done from inside the repo. Document #7 |
+| **The six documents** (D18) | when you get to them | Listed below |
+| **The schema-drift fixtures** | when a migration moves them | `docs/schema-drift.md` |
+| **The findings ledger** | in the same commit as the fix | `docs/audits/findings-status.json`. A status only ever written by an audit is wrong by the time it is read — this is the lesson that file exists to record |
+
+### The six documents, and what each settles (D18 — tracked, not blocking)
+
+| # | document | what stays refused without it |
+|---|---|---|
+| 3 | NSDL **TDS FVU/RPU file layout** | TDS-16. Every figure on a quarterly statement is computed; nothing can write the file the portal accepts |
+| 4 | **Finance Act** §194I(a) / §194J(a), and **Form 3CD** | TDS-22's two clause rates, and IT-11's tax-audit annexure. Today those two limbs deduct at the parent's HIGHER rate and say so, rather than my guessing 2% |
+| 5 | **GST offline utility** screens | The GSTR-9 filing demo, and GST-25's composition and TCS returns |
+| 6 | A bank's **salary upload format** | Nothing. `domain/payroll/bank_advice` is deliberately generic — inventing one bank's layout produces a file that fails AT THE BANK rather than in front of the CA. Listed so the decision is visible |
+| 7 | **ITR JSON schemas** per form per AY | The annual refresh |
+| 8 | **State professional-tax slabs** (18 states) and **LWF** | Eighteen states' payroll deductions. Today reported as named gaps, which is the safe direction: a wrong deduction short-pays the employee AND leaves the employer owing the right figure, so a flagged gap beats a half-right table |
+
+**Two of the eight are already done** and both changed real code: the CBIC
+late-fee notifications and §50(3) — which turned out to be **24%, not the 18%
+three successive readings had settled on** — and the e-invoice validation set,
+which turned out to refuse `0001`, a number this product's own numbering
+service hands to a firm with an empty prefix.
 
 ---
 
 ## Sequencing
 
 ```
-now ──┬── T1  safety net (4-6d) ──┬── T3 design system (11-13d) ── T4 tokens (5-8d) ──┬── T6 nav (11-17d) ──┬── T8 portals (8-12d) ── V session ── CA DEMO
-      │                           │                                                   │                     │
-      ├── T2  demo firm (2-3d) ───┘                                                   ├── T7-L1 (rides T6)  ├── T7-L2 (6-10d)
-      │                                                                                │                     │
-      ├── T5  outputs (16-22d) ───────────────────────────────────────────────────────┘                     └── T7-L3 (10-15d)
-      │
-      └── T9  backend backlog (14-17d, continuous)
+Phase 1  foundation residue  (6-9d)
+   │
+Phase 2  navigation + hub    (10-15d)  ◄── the redesign
+   │
+Phase 3  analytics  3a (8-12d) → 3b (6-10d) → 3c (10-15d)
+   │
+Phase 4  the portals         (8-12d)
+   │
+Phase 5  the demo firm       (2-3d)
+   │
+Phase 6  verification, with you   (1 session)
+   │
+Phase 7  registrations — yours, after the demo
 ```
 
-**Critical path:** T1 → T3 → T4 → T6 → T8 → V ≈ **10–12 weeks**.
-T7-L2 and T7-L3 add 4–6 more and can land after the demo.
+**Honest totals.** Phase 1 → 6 is **10–14 weeks** of build. Phases 1, 2, 3a, 4,
+5 and 6 are the path to a demo — about **8–11 weeks**. Phases 3b and 3c are
+real differentiation and can land after the demo without anything looking
+unfinished.
+
+**There is no fixed date (D16), so nothing on this list is a candidate for
+cutting.** If one appears, tell me and I will re-cut around it.
 
 ---
 
@@ -670,79 +394,66 @@ T7-L2 and T7-L3 add 4–6 more and can land after the demo.
 
 Recorded so nobody half-starts them.
 
-- **Filing to government portals.** Needs GSP and ERI registrations — months of
-  commercial work. See `docs/compliance/07-getting-permission-to-file.md`.
-- **Account Aggregator bank feeds.** Closed: no purpose code fits an agent
-  keeping the customer's books.
-- **Translations.** D8 — extract strings, translate nothing.
-- **Dark mode.** Not built, and one inert config line to delete.
+- **Filing to government portals** — until Phase 7's registrations exist. The
+  simulation stays, and says so (D17).
+- **Account Aggregator bank feeds** — closed, and the reason is not cost. The
+  five published AA purpose codes are each tied to a class of licensee, and
+  **none describes an agent keeping the customer's own books.** Purpose defeats
+  the partner route too, so the whole line is shut. Statement upload is the
+  path, permanently. See `docs/compliance/05-…`.
+- **Screen-scraping net banking** — never. No credential capture, no stored
+  bank logins, no third party that works that way.
+- **Translations** — D8.
+- **Dark mode** — not built; one inert config line to delete.
 - **A second filing demo, a second reconciliation screen, a second cost
-  formula.** This codebase has found each of those once already.
+  formula, a second pager, a second money parser.** This codebase has found
+  each of those once already, and each one drifted before it was caught.
 
 ---
 
-## The numbers, today — run these any time
-
-Copy-paste. Every one is a real baseline taken 16 September 2026, so progress
-is visible without asking me.
+## The numbers — run these any time, no need to ask me
 
 ```sh
 cd /path/to/caflow-ai
 
-# T1-c/V-1  distinct smoke screenshots            now 11      target >=150
+# Findings closed                                     259 of 279
+python3 -c "import json,collections; d=json.load(open('docs/audits/findings-status.json'))['findings']; print(collections.Counter(v['status'] for v in d.values()))"
+
+# Distinct smoke screenshots                          154   target >=150  ✅
 md5sum apps/web/.smoke/*.jpg | awk '{print $1}' | sort -u | wc -l
 
-# T1-b/V-3  endpoints a screen can actually reach    now 797    was 907
+# Endpoints a screen can reach                        829 of 1064
 cd apps/api && python3 -c "from tests.test_every_mounted_endpoint_has_a_way_in \
-  import _sources, _pattern, _routes; b = _sources(); \
-  print(sum(1 for m, p in _routes() if _pattern(p).search(b)))"
+  import _sources, _pattern, _routes; b=_sources(); \
+  print(sum(1 for m,p in _routes() if _pattern(p).search(b)), 'of', len(_routes()))"
 
-# T1-f/V-5  error boundaries                      now 0       target >=14
+# Error boundaries                                    65    target >=14   ✅
 find apps/web/app -name error.tsx | wc -l
 
-# T6-a      Cloudflare redirect rules             now 98      target <=90  (cap 100)
-grep -v '^#' apps/web/public/_redirects | grep -c '200$'
-
-# T3-a/T4-a hardcoded hex colours                 now    116  target 0  (was 10,146)
-
-# T4-a  arbitrary font sizes                       now    405  target ~130 (was 2,265)
-grep -rEoh 'text-\[[0-9]+px\]' apps/web/app apps/web/components apps/web/lib | wc -l
+# Hardcoded hex colours (coarse; the GUARD is the authority)   70
 grep -rEoh '#[0-9a-fA-F]{6}' apps/web/app apps/web/components | wc -l
 
-# T5b  browser-side Excel writers            7, and the target of 0 counts the
-#      wrong population — measured 24-09-2026. SIX of the seven go through the
-#      one writer, `lib/export/xlsx.buildWorkbook`, which is what makes a money
-#      cell a NUMBER (T5b-2); the seventh, CsvImportModal, builds an empty
-#      IMPORT TEMPLATE with no money in it and is allowlisted with that reason
-#      in scripts/a-money-cell-in-a-spreadsheet-is-a-number.test.ts. The
-#      PROPERTY this row wanted is already held and already guarded; the count
-#      is of `XLSX.write` call sites, which is a spelling of it. Use the guard.
-grep -rl 'XLSX.write' apps/web/app apps/web/components | wc -l
+# Arbitrary font sizes                                379   target 0
+grep -rEoh 'text-\[[0-9]+px\]' apps/web/app apps/web/components | wc -l
 
-# T9        backlog: open + partial               now 49      target <=10 (rest blocked)
-python3 -c "import json,collections; d=json.load(open('docs/audits/findings-status.json')); \
-c=collections.Counter(v['status'] for v in d['findings'].values()); print(c['open']+c['partial'])"
+# Cloudflare redirect rules                           98    HARD CAP 100
+grep -v '^#' apps/web/public/_redirects | grep -c '200$'
 ```
 
-| check | 16 Sep 2026 | target | track |
-|---|---|---|---|
-| distinct smoke screenshots | ~~11~~ **154** of 160 | ≥ 150 | ✅ T1-c |
-| distinct rendered bodies | ~~11~~ **150** of 154 that stay put | largest group ≤ 5 | ✅ T1-e |
-| routes landing on someone else's screen | ~~143~~ **0** unpinned | 0 | ✅ T1-e |
-| error boundaries | ~~0~~ **65** | ≥ 14 | ✅ T1-f |
-| endpoints reached by an uncalled api-client method | ~~110~~ **0** of 797 | 0 | ✅ T1-b |
-| screens deletable in silence | ~~133~~ **77** of 159 | see note | T1-b done, rest → T1-e |
-| redirect rules used | **98** of 100 | ≤ 90 | T6-a |
-| hardcoded hex colours | ~~10,850~~ **116** | 0 | ✅ T3-a / T4-a |
-| money formatters | ~~53~~ **257** (re-measured) | 1 | T3-c done · adoption is T4 |
-| browser Excel writers | **7** | 0 | T5b |
-| analytical endpoints with no screen | **~40** | 0 | T7-L1 |
-| backlog open + partial | ~~35~~ **49** | ≤ 10 | T9 |
+⚠️ **A metric and the guard that enforces it must count the same population.**
+The hex and font-size greps above are coarse — they include comments and
+allowlisted entries, and they sum three populations the guard counts
+separately. The 19 September checkpoint recorded a hex "regression" of 54
+literals nobody had added, purely because the metric and the guard disagreed.
+**When they disagree, the guard is the authority and the metric is the thing to
+fix.**
 
 ---
 
 ## When you ask "where are we?"
 
-Read the status table at the top. If an item says `DONE`, run its DONE WHEN
-check — you should never have to take my word for it. If the table and the code
-disagree, **the code wins and the table gets fixed.**
+Run the block above. If a number here disagrees with it, the command is right
+and this file is stale — tell me and I will fix the file in the same commit as
+whatever I am working on. That rule is the only thing that keeps a plan
+honest, and this repository has watched three separate status documents go
+wrong for want of it.

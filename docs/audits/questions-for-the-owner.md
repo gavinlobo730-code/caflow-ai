@@ -44,43 +44,42 @@ than a flagged gap. Search gives me fragments of those tables, not tables.
 
 ---
 
-# WHAT IS WAITING ON YOU — as at 24 September 2026
+# WHAT IS WAITING ON YOU — as at 24 September 2026, 09:40 IST
 
-**That heading used to read "NOTHING IS WAITING ON YOU", and it was true on 17
-September.** Four things have accumulated since and the header did not move,
-which is the failure mode this whole file exists to avoid: a status line nobody
-re-reads is worse than no status line, because it is believed. This block is
-regenerated whenever an item is added or answered, and everything below it is
-the unchanged record of what was decided and why.
+**NOTHING.** Every one of the four items that had accumulated was put to the
+owner in this session and answered. The answers are recorded as **D10–D18** in
+`docs/plan/THE-PLAN.md` — that file is the authority; this one keeps the
+reasoning behind each.
 
-**Nothing here blocks the code. Every one of the four is something this
-environment cannot do, not something waiting on a preference** — and where a
-default was defensible it has already been taken and recorded below.
+This block is regenerated whenever an item is added or answered. A status line
+nobody re-reads is worse than no status line, because it is believed.
 
-| § | what | what it costs you | what it unblocks |
+| § | the question | the answer, 24 Sep | what it changed |
 |---|---|---|---|
-| **N** | **One URL in a browser.** Does a Cloudflare Pages preview serve `/clients/anything/bank` by directory-index lookup? The preview is already deployed on every PR; the URL is in §N. | one click | **41 of the 98 redirect rules**, against a hard cap of 100 that fails SILENTLY. Two rules of headroom left; T6-a is blocked until this is known. |
-| **M** | **A font licence posture.** FreeSans carries U+20B9 and is a near-metric match for Helvetica (no column moves) but is GPLv3; DejaVu is permissive and 1.13–1.26× wider, which re-breaks the columns T5a-4b just fixed. Liberation Sans has no rupee glyph at all — checked. | one decision | Every PDF printing "Rs." instead of ₹. |
-| **L** | **Where a CA is told** a posting fell back to the firm's generic Bank ledger — the entry row, the posting confirmation, or a report. The fact is computed and reaches no caller. | one decision | ACC-03's remaining half. |
-| **#164** | **Six documents this environment cannot fetch.** Egress is refused at the proxy; search works, fetching does not. | six downloads | Listed in the table below. |
+| **N** | Does a Cloudflare preview serve `/clients/anything/bank` by directory-index lookup? | **No — it 404s or bounces to the trailing-slash form.** The owner opened the URL | The 41 bare-path rules are LOAD-BEARING and cannot be collapsed. **98 of 100, two rules of headroom, against a cap that fails silently.** Binding on the whole redesign: no new route under `/clients/[id]`, query parameters only. D10 |
+| **M** | A font licence posture, so a PDF can print ₹ | **Keep `Rs.` for now** | Nothing changes. CGST Rule 46 prescribes no currency symbol, so this is cosmetic, and both candidate fonts cost something real — FreeSans is a metric drop-in but GPLv3 *in this repo*, DejaVu is permissive but 1.13–1.26× wider and re-breaks the invoice columns T5a-4b just fixed. Reversible in one commit. D13 |
+| **L** | Where a CA is told a posting fell back to the generic Bank ledger | **The entry row AND the posting confirmation** | Phase 1.4. The row so it is visible while scanning the ledger, the confirmation so it is caught when it is cheapest to fix. D14 |
+| **#164** | Six documents this environment cannot fetch | **The owner will get all six, later. Tracked, not blocking** | Nothing stalls. Every one is already a NAMED gap in the product rather than a wrong number. D18 |
 
-### The six documents, and what each one settles
+### Four more were answered in the same session, and they were not on this list
 
-| # | document | what stays refused without it |
-|---|---|---|
-| 3 | NSDL TDS **FVU/RPU file layout** | TDS-16 — the quarterly statement file. The engine computes every figure; nothing can write the file. |
-| 4 | **Finance Act** on §194I(a) / §194J(a), and **Form 3CD** | TDS-22's two clause rates (the module deliberately withholds at the parent's HIGHER rate and says so rather than stating 2% from memory); the tax-audit annexure. |
-| 5 | **GST offline utility** screens | The GSTR-9 filing demo. |
-| 6 | A bank's **salary upload format** | Nothing — `domain/payroll/bank_advice` is deliberately generic, because inventing one bank's layout produces a file that fails AT THE BANK rather than in front of the CA. Listed so the decision is visible, not because it blocks. |
-| 7 | **ITR JSON schemas** (per form, per AY, from incometax.gov.in) | The annual refresh. They cannot be inferred; this is the one item on the FY checklist that has to come from outside the repo. |
-| 8 | **State professional-tax slabs** (18 states) and **LWF** amounts | Eighteen states' payroll deductions. Currently reported as named gaps, which is the safe direction — a wrong deduction is worse than a flagged one, because the employee is short-paid and the employer still owes the right figure. |
+Each had been recorded below as a design question with a default taken. The
+owner took them properly instead.
 
-**Two of the eight are already done** — the CBIC late-fee notifications and
-§50(3) (document 1), and the e-invoice validation set (document 2). Both are
-committed under `docs/compliance/sources/`, and both changed real code: §50(3)
-turned out to be **24%, not the 18% three successive readings had settled on**,
-and the IRP's own `Document_Num` expression turned out to refuse `0001`, a
-number `sales_numbering_service` hands to a firm with an empty prefix.
+| § | the question | the answer | what it changed |
+|---|---|---|---|
+| **H** | The type scale's leading — 379 hand-written sizes, 244 of which re-flow on conversion | **Convert all of them — module by module, with a before/after screenshot check on each.** The 135 off-scale first | The owner's own reasoning decided the method: *"one would be good for one screen but not for the other."* There is no single correct line height, so it cannot be a codemod. The smoke walk already renders all 160 screens, which makes "before" and "after" observable rather than discovered later. D12, Phase 1.1 |
+| **J** | One content width, or width by content | **Width by content type** | Tables full-width to the ~1600px cap; prose and forms keep their measure. D11, Phase 1.2 |
+| — | Order of the remaining tracks | **Navigation → analytics → portals → demo firm** | D15. The analytics screens and the portal both need somewhere to live |
+| — | Filing to the portals | **Stay prepare-only. Keep the simulation, sharpen its wording professionally, say real filing is coming.** The owner starts the registrations once a CA demo happens | D17, Phase 1.5 and Phase 7. GSP/ERI/NIC are months of commercial lead time; the demo is what justifies starting them |
+
+**One genuinely open judgement call remains, and it is not urgent.** BANK-11
+step 3 asks whether a *trusted* matching rule — one that posts with nobody
+watching — may propose a **TDS treatment**. Split legs and a party are built.
+I would not build this one without a word, because widening what an unattended
+rule decides widens what happens with nobody watching, and an under-deduction
+disallows the whole expenditure under §40(a)(ia). **Default if nothing is
+said: do not build it.**
 
 ---
 
