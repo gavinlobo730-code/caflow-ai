@@ -112,10 +112,10 @@ BUDGET: dict[str, int] = {
     "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 2,
     "/api/approvals": 1, "/api/customer-statements": 1,
     "/api/document-intelligence-v2": 1, "/api/documents": 1,
-    "/api/knowledge": 1, "/api/payments": 1,
-    "/api/purchase-bills": 1, "/api/purchase-payments": 1,
+    "/api/knowledge": 1,
+    "/api/purchase-bills": 1,
     "/api/rcm-documents": 1,
-    "/api/tally-migration": 1, "/api/tds-workspace": 1,
+    "/api/tds-workspace": 1,
     "/api/time-entries": 1,
     # GONE on 24-09-2026, four prefixes at once — the first sweep through this
     # list's own tail rather than through a module:
@@ -132,6 +132,39 @@ BUDGET: dict[str, int] = {
     #                         a second write path for a fact
     #                         PATCH /api/identity/users/{id}/role already owns
     #                         and the Team screen already calls.
+    # And on the same day:
+    #   /api/purchase-payments  PATCH /{id}/allocate — the AP mirror of
+    #                         SALES-14, written at the same time as the AR one
+    #                         and uncalled for just as long, so a stranded
+    #                         vendor advance could never be put against a bill.
+    #   /api/payments         MOVED to NOT_REACHED_BY_A_SCREEN below rather
+    #                         than wired or budgeted — see that block.
+    #   /api/tally-migration  POST /jobs/{id}/rollback — undoing a bad Tally
+    #                         import, which otherwise meant unpicking two
+    #                         thousand customers by hand.
+}
+
+# ---------------------------------------------------------------------------
+# THE ONE THING A BUDGET CANNOT EXPRESS: AN ENDPOINT NO SCREEN SHOULD CALL
+# ---------------------------------------------------------------------------
+#
+# A budget says "this many are not wired up YET" and is meant to fall to nil.
+# `POST /api/payments/webhook/{provider}` can never fall out of it, because its
+# caller is a PAYMENT GATEWAY: the router's own header says it is "PUBLIC by
+# design (gateways cannot authenticate as a staff user)", protected instead by
+# provider signature verification, replay protection and idempotency. A screen
+# calling it would be the defect.
+#
+# Leaving it inside a budget makes that budget permanently un-closable and
+# teaches the next reader that 1 is the floor for this prefix. Naming it here
+# says which it is. Entries need a REASON, not merely a path — the alternative
+# is a second budget wearing a different word, which is what Track F6's rule 3
+# found does not work.
+NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
+    ("POST", "/api/payments/webhook/{provider}"):
+        "the caller is the payment gateway, not a person. Public by design, "
+        "signature-verified and idempotent inside payment_service; a screen "
+        "calling it would be the defect rather than the fix.",
 }
 
 # ---------------------------------------------------------------------------
@@ -161,9 +194,11 @@ BUDGET: dict[str, int] = {
 # /api/income-tax/interest/234ab, so a CA sees s.234A and s.234B beside the
 # s.234C it has always shown (IT-13). The engine and the endpoint were
 # already there; nothing called them.
-# 238 -> 231 on 24-09-2026: the four prefixes named at the foot of BUDGET, plus
-# the three the tree had already shed since the last measurement.
-TOTAL_BUDGET = 231
+# 238 -> 231 -> 229 on 24-09-2026: the four prefixes named at the foot of
+# BUDGET, plus the three the tree had already shed since the last measurement;
+# then the AP allocate mirror, and the gateway webhook moving out of the
+# counted population entirely.
+TOTAL_BUDGET = 228
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +511,8 @@ def unreached() -> dict[str, list[str]]:
     blob = _sources()
     by_prefix: dict[str, list[str]] = {}
     for method, path in sorted(_routes()):
+        if (method, path) in NOT_REACHED_BY_A_SCREEN:
+            continue
         if not _pattern(path).search(blob):
             by_prefix.setdefault("/".join(path.split("/")[:3]), []).append(
                 f"{method} {path}")
@@ -511,6 +548,29 @@ def test_the_total_only_goes_down(unreached):
     assert found <= TOTAL_BUDGET, (
         f"{found} endpoints reach no screen, budget {TOTAL_BUDGET}. Lower the "
         f"budget when you wire one up; raising it needs a reason.")
+
+
+def test_nothing_hides_in_the_not_reached_list():
+    """It is an exemption, so it has to stay small, real and reasoned.
+
+    Every entry must name a route the app actually mounts — otherwise a
+    renamed endpoint silently leaves the count AND the exemption behind — and
+    must say WHY no screen calls it. The size cap is the point: this is not a
+    second budget, and the moment it grows it is one.
+    """
+    routes = _routes()
+    for key, reason in NOT_REACHED_BY_A_SCREEN.items():
+        assert key in routes, (
+            f"{key} is exempted here and the app does not mount it — either it "
+            f"moved, in which case update the key, or it is gone, in which case "
+            f"delete the entry")
+        assert len(reason) > 40, (
+            f"{key} needs a reason saying why NO SCREEN should call it, not a "
+            f"note that none does")
+    assert len(NOT_REACHED_BY_A_SCREEN) <= 3, (
+        "this list is for endpoints whose caller is not a person at all. More "
+        "than a handful means it has become a second budget under another "
+        "name — put them back in BUDGET, where the ratchet can see them.")
 
 
 def test_no_budget_entry_is_stale(unreached):

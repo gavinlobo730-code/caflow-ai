@@ -1,5 +1,5 @@
 /**
- * Applying a receipt to invoices — the arithmetic, pure and testable.
+ * Applying a RECEIPT to invoices — what a receipt has to give, and how much.
  *
  * SALES-14. `PATCH /api/receipts/{id}/allocate` has existed and been correct
  * since task H3 and no screen called it, so a customer's advance could never be
@@ -8,9 +8,29 @@
  * endpoint will refuse, written down once so the modal and the receipts table
  * cannot disagree about what "unallocated" means.
  *
+ * THE CAPS THEMSELVES MOVED to `lib/allocation/documentAllocation` on
+ * 24-09-2026, when the AP mirror was finally wired up — `PATCH
+ * /api/purchase-payments/{id}/allocate`, written at the same time as this one
+ * and equally uncalled. The two servers do the same thing, so the two screens
+ * apply the same caps, and two copies would drift. They are re-exported here so
+ * every existing importer is untouched.
+ *
+ * WHAT STAYS IS THE PART THAT IS NOT SHARED: what a RECEIPT settles. That is a
+ * statutory question with a different answer on each side, and it is the one
+ * thing neither module may take from the other.
+ *
  * Integer paise throughout. No division except at the display boundary, which
  * is not in this file.
  */
+
+export {
+  ceilingFor,
+  allocationProblems,
+  type AllocatableDocument,
+  type AllocatableDocument as AllocatableInvoice,
+  type AllocationEntry,
+  type AllocationProblems,
+} from "../allocation/documentAllocation.ts";
 
 export interface ReceiptLike {
   amount_paise: number;
@@ -28,6 +48,9 @@ export interface ReceiptLike {
  * invoices, and routers/receipts.py caps allocations on exactly that. Capping
  * on cash alone makes a screen refuse what the server accepts, and leaves the
  * TDS permanently unallocated on an invoice that is fully paid.
+ *
+ * THE AP SIDE IS NOT THIS. A vendor payment settles the cash and only the
+ * cash — see `lib/purchases/paymentAllocation.settlementValue`, which says why.
  */
 export function settlementValue(r: ReceiptLike): number {
   return Number(r.amount_paise ?? 0) + Number(r.tds_paise ?? 0);
@@ -47,64 +70,4 @@ export function unallocatedOf(r: ReceiptLike): number {
     return Number(r.unallocated_paise);
   }
   return settlementValue(r) - Number(r.allocated_paise ?? 0);
-}
-
-export interface AllocatableInvoice {
-  id: string;
-  /** The GENERATED column (migration 278): total + debit notes − paid −
-   *  credited, CGST Act §34. Never recomputed in the browser. */
-  outstanding_paise: number;
-}
-
-/**
- * The most this receipt may put on one invoice.
- *
- * Its live outstanding PLUS whatever THIS receipt already has on it, because
- * the endpoint reverses this receipt's prior allocations before applying the
- * new ones — so an invoice this receipt already paid in full still has room for
- * it. Omitting the add-back makes re-allocating an existing receipt impossible.
- */
-export function ceilingFor(inv: AllocatableInvoice, priorFromThisReceipt = 0): number {
-  return Number(inv.outstanding_paise ?? 0) + Number(priorFromThisReceipt ?? 0);
-}
-
-export interface AllocationEntry {
-  invoiceId: string;
-  /** null when what was typed is not an amount at all. */
-  paise: number | null;
-  ceiling: number;
-}
-
-export interface AllocationProblems {
-  /** Per invoice, in the order given. */
-  perLine: { invoiceId: string; message: string }[];
-  /** More than the receipt settles. */
-  overRun: boolean;
-  total: number;
-  ok: boolean;
-}
-
-export function allocationProblems(
-  entries: AllocationEntry[], settlement: number,
-): AllocationProblems {
-  const perLine: { invoiceId: string; message: string }[] = [];
-  let total = 0;
-  for (const e of entries) {
-    if (e.paise === null) {
-      perLine.push({ invoiceId: e.invoiceId, message: "Not an amount." });
-      continue;
-    }
-    if (e.paise < 0) {
-      // A negative allocation is not a refund — it would drive the invoice's
-      // paid_paise DOWN and reopen an invoice this receipt never touched.
-      perLine.push({ invoiceId: e.invoiceId, message: "Cannot be negative." });
-      continue;
-    }
-    if (e.paise > e.ceiling) {
-      perLine.push({ invoiceId: e.invoiceId, message: "More than this invoice still owes." });
-    }
-    total += e.paise;
-  }
-  const overRun = total > settlement;
-  return { perLine, overRun, total, ok: perLine.length === 0 && !overRun };
 }

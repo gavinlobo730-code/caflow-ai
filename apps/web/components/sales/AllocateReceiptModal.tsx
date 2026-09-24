@@ -121,13 +121,13 @@ export default function AllocateReceiptModal({
   // The SETTLEMENT value, not the cash — see lib/sales/receiptAllocation.
   const settlement = settlementValue(receipt);
   const entered = invoices.map((i) => ({
-    invoiceId: i.id,
+    documentId: i.id,
     paise: (amounts[i.id] ?? "").trim() === "" ? 0 : paiseFromRupeeInput(amounts[i.id] ?? ""),
     ceiling: ceilingFor(i),
   }));
   const problems = allocationProblems(entered, settlement);
   const messageFor = (id: string) =>
-    problems.perLine.find((p) => p.invoiceId === id)?.message;
+    problems.perLine.find((p) => p.documentId === id)?.message;
   const total = problems.total;
   const overRun = problems.overRun;
 
@@ -137,7 +137,7 @@ export default function AllocateReceiptModal({
       const res = await api.receipts.allocate(
         receipt.id,
         entered.filter((e) => (e.paise ?? 0) > 0)
-          .map((e) => ({ sales_invoice_id: e.invoiceId, allocated_paise: e.paise! })));
+          .map((e) => ({ sales_invoice_id: e.documentId, allocated_paise: e.paise! })));
       if (!res?.success) throw new Error(res?.error ?? "That did not save.");
       const left = res.data?.unallocated_paise;
       onSaved(left && left > 0

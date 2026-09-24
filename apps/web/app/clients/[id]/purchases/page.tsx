@@ -29,6 +29,8 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
+import AllocatePaymentModal from "@/components/purchases/AllocatePaymentModal";
+import { unallocatedOf } from "@/lib/purchases/paymentAllocation";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
 import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
@@ -2301,6 +2303,13 @@ interface PaymentRow {
   tds_paise?: number | null;
   tds_base_paise?: number | null;
   tds_section?: string | null;
+  // What this payment has put against bills, and what is still loose. Both
+  // already arrive — the read is `select("*")` — and until 24-09-2026 nothing
+  // rendered either, so a stranded advance was invisible once the payment was
+  // saved. `unallocated_paise` is the SERVER's own figure, written by
+  // create_payment_core and rewritten by update_allocations_core.
+  allocated_paise?: number | null;
+  unallocated_paise?: number | null;
 }
 
 function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; openDoc?: string | null }) {
@@ -2310,6 +2319,11 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
   // payment depends on what the payment settled — which the panel asks the
   // server. A payment it does not reach opens the panel and is told why.
   const [voucherFor, setVoucherFor] = useState<string | null>(null);
+  /** The payment whose allocations are being edited. Holds the ROW rather
+   *  than the id, because the modal needs the vendor and the amount and
+   *  they are already here — a second fetch for a row the table has is the
+   *  Singapore-to-Mumbai round trip this codebase keeps removing. */
+  const [allocateFor, setAllocateFor] = useState<PaymentRow | null>(null);
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [openBills, setOpenBills] = useState<{
     id: string; our_reference: string; bill_no: string | null; net_payable_paise: number;
@@ -2628,6 +2642,19 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
           {fmt(Number(p.tds_paise))}
         </span>
       ) : <span className="text-ps-disabled">—</span> },
+    // WHAT IS STILL LOOSE. A vendor advance — left by a bank-match settlement
+    // that exceeded the bills it was told about, or a payment recorded before
+    // its bill existed — sat here unnamed and unfixable: the screen showed an
+    // unallocated total only while a payment was being TYPED. The figure is
+    // the server's own column, never a subtraction (see
+    // `lib/purchases/paymentAllocation.unallocatedOf`).
+    { key: "unallocated", header: "Unallocated", accessor: (p) => unallocatedOf(p), sortable: true, align: "right",
+      render: (p) => unallocatedOf(p) > 0 ? (
+        <span className="font-mono text-state-attention"
+              title="Not yet applied to any bill — an advance. Use Apply to put it against one.">
+          {fmt(unallocatedOf(p))}
+        </span>
+      ) : <span className="text-ps-disabled">—</span> },
     { key: "payment_mode", header: "Mode", accessor: (p) => p.payment_mode, searchable: true,
       // D14 — the vendor-payment side of the same disclosure the Sales tab's
       // receipt rows carry. This read is `select("*")`, so `bank_account_id`
@@ -2660,6 +2687,12 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
       options: vendors.map((v) => ({ value: v.name, label: v.name })) },
     { key: "payment_mode", label: "Mode", type: "select", accessor: (p) => p.payment_mode,
       options: PAYMENT_MODES.map((m) => ({ value: m, label: m })) },
+    // The Sales tab has had this filter on receipts since SALES-14; the AP
+    // side had neither the column nor the way to act on it.
+    { key: "unallocated", label: "Unallocated", type: "select",
+      accessor: (p) => (unallocatedOf(p) > 0 ? "Unallocated only" : "Fully applied"),
+      options: [{ value: "Unallocated only", label: "Unallocated only" },
+                { value: "Fully applied", label: "Fully applied" }] },
   ], [vendors]);
 
   return (
@@ -2912,6 +2945,12 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
               className="text-2xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
               Payment voucher
             </button>
+            {unallocatedOf(p) > 0 && (
+              <button onClick={() => setAllocateFor(p)}
+                className="text-2xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
+                Apply
+              </button>
+            )}
             <button onClick={() => reversePayment(p)}
               className="text-2xs text-red-600 hover:text-red-800 hover:underline">
               Reverse
@@ -2919,6 +2958,23 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
           </div>
         )}
       />
+
+      {allocateFor && (
+        <AllocatePaymentModal
+          payment={{
+            id: allocateFor.id,
+            payment_no: allocateFor.payment_no,
+            vendor_id: allocateFor.vendor_id,
+            vendor_name: allocateFor.vendors?.name,
+            amount_paise: allocateFor.amount_paise,
+            allocated_paise: allocateFor.allocated_paise ?? undefined,
+            unallocated_paise: allocateFor.unallocated_paise ?? undefined,
+          }}
+          clientId={clientId}
+          onClose={() => setAllocateFor(null)}
+          onSaved={(m) => { setAllocateFor(null); setMsg({ type: "ok", text: m }); load(); }}
+        />
+      )}
 
       {voucherFor && (
         <RcmDocumentPanel
