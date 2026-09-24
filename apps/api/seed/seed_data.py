@@ -13,7 +13,13 @@ from services.compliance_engine import enrich_compliance_task
 # The firm's own day, not the host's. `date.today()` on a UTC container is the
 # PREVIOUS Indian day for the whole of 00:00-05:30 IST, so a seed built in that
 # window dated every due date, task and document one day early.
-today = ist_today()
+# THE DAY THIS SEED WAS BUILT. Bound once, at import; every function that reads
+# it (`_compliance_tasks`, `_tasks`, `_documents`) is called at module level,
+# so for a script that is imported and run in the same breath it IS the current
+# day. The name says which moment it is rather than claiming to be "now", which
+# is what `tests/test_a_date_bound_at_import_says_so.py` requires of every
+# module-level clock in `apps/api`.
+_SEEDED_ON = ist_today()
 
 # ── WHY THESE IDS ARE UUIDs DERIVED FROM A LABEL ────────────────────────────
 # Every primary key in this schema is `UUID PRIMARY KEY` (migration 001 for
@@ -71,7 +77,7 @@ SEED_CLIENTS = [
      "pan": pan, "gstin": gstin, "city": city, "state": "Maharashtra",
      "state_code": "27", "gst_filing_frequency": freq, "status": "active",
      "email": email, "mobile": mobile,
-     "created_at": (today - timedelta(days=days)).isoformat()}
+     "created_at": (_SEEDED_ON - timedelta(days=days)).isoformat()}
     for i, (name, etype, pan, gstin, city, email, mobile, freq, days) in enumerate([
         ("Sharma Enterprises", "Proprietorship", "AABCS1429B", "27AABCS1429B1ZU", "Mumbai", "sharma@sharmaenterprises.in", "+91 98765 43210", "monthly", 180),
         ("Patel & Sons", "Partnership", "AAPCS4229B", "27AAPCS4229B1ZC", "Pune", "patel@patelandsons.in", "+91 98765 43211", "monthly", 120),
@@ -109,9 +115,9 @@ def _compliance_tasks() -> list[dict]:
                 "id": seed_id(f"sct-{i:03d}"),
                 "client_id": client["id"],
                 "compliance_type": ct,
-                "period_start": (today.replace(day=1) - timedelta(days=1)).replace(day=1).isoformat(),
-                "period_end": (today.replace(day=1) - timedelta(days=1)).isoformat(),
-                "due_date": (today + timedelta(days=offset * 3)).isoformat(),
+                "period_start": (_SEEDED_ON.replace(day=1) - timedelta(days=1)).replace(day=1).isoformat(),
+                "period_end": (_SEEDED_ON.replace(day=1) - timedelta(days=1)).isoformat(),
+                "due_date": (_SEEDED_ON + timedelta(days=offset * 3)).isoformat(),
                 "status": statuses[i % len(statuses)],
                 "assigned_to": DEMO_USERS[i % 3]["id"],
             }))
@@ -124,9 +130,9 @@ def _compliance_tasks() -> list[dict]:
             "id": seed_id(f"sct-{j:03d}"),
             "client_id": client["id"],
             "compliance_type": ct,
-            "period_start": (today - timedelta(days=60)).isoformat(),
-            "period_end": (today - timedelta(days=30)).isoformat(),
-            "due_date": (today + timedelta(days=(j % 30) - 10)).isoformat(),
+            "period_start": (_SEEDED_ON - timedelta(days=60)).isoformat(),
+            "period_end": (_SEEDED_ON - timedelta(days=30)).isoformat(),
+            "due_date": (_SEEDED_ON + timedelta(days=(j % 30) - 10)).isoformat(),
             "status": statuses[j % len(statuses)],
             "assigned_to": DEMO_USERS[j % 3]["id"],
         }))
@@ -152,10 +158,10 @@ def _tasks() -> list[dict]:
             "status": statuses[i % len(statuses)],
             "priority": priorities[i % len(priorities)],
             "assigned_to": DEMO_USERS[i % 3]["id"],
-            "due_date": (today + timedelta(days=(i % 30) - 5)).isoformat(),
-            "completed_at": (today - timedelta(days=1)).isoformat() if statuses[i % len(statuses)] == "completed" else None,
-            "created_at": (today - timedelta(days=30)).isoformat(),
-            "updated_at": (today - timedelta(days=i % 10)).isoformat(),
+            "due_date": (_SEEDED_ON + timedelta(days=(i % 30) - 5)).isoformat(),
+            "completed_at": (_SEEDED_ON - timedelta(days=1)).isoformat() if statuses[i % len(statuses)] == "completed" else None,
+            "created_at": (_SEEDED_ON - timedelta(days=30)).isoformat(),
+            "updated_at": (_SEEDED_ON - timedelta(days=i % 10)).isoformat(),
         })
     return tasks
 
@@ -176,7 +182,7 @@ def _documents() -> list[dict]:
             "financial_year": "2024-25",
             "review_status": review_statuses[i % len(review_statuses)],
             "confidence_score": round(0.75 + (i % 25) * 0.01, 2),
-            "upload_date": (today - timedelta(days=i % 60)).isoformat(),
+            "upload_date": (_SEEDED_ON - timedelta(days=i % 60)).isoformat(),
             "extracted_json": {"seed": True, "doc_type": dt},
         })
     return docs

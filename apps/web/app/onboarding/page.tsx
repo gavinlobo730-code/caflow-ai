@@ -11,6 +11,8 @@ import { api, type ApiResp } from "@/lib/api";
 import CsvImportModal, { type ImportRow, type ImportResult } from "@/components/CsvImportModal";
 import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
 import { Callout } from "@/components/ui/callout";
+import { isValidGstin } from "@/lib/gst/gstin";
+import { isValidPan } from "@/lib/identifiers/pan";
 
 interface SignupStash { firmName?: string; fullName?: string }
 function readSignupStash(): SignupStash {
@@ -56,16 +58,21 @@ const INDIAN_STATES = [
 ];
 
 // ─── Validation helpers ────────────────────────────────────────────────────
-// CGST Act Section 25 — GSTIN format: 2-digit state code + PAN (10 chars) + 1 entity digit + Z + 1 check digit
+// CGST Act §25, THROUGH THE ONE BROWSER AUTHORITY — see the same function in
+// app/settings/page.tsx. This is where a firm first types its own GSTIN, so
+// getting it wrong here is the value every later screen reads back. Blank
+// stays valid: unregistered is not wrong.
 function validateGSTIN(gstin: string): boolean {
-  if (!gstin) return true;
-  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin);
+  return isValidGstin(gstin);
 }
 
 // IT Act Section 139A — PAN format: 5 uppercase letters + 4 digits + 1 uppercase letter
+// IT Act §139A, THROUGH THE ONE BROWSER RULE — see the same function in
+// app/settings/page.tsx. This is where a firm first types its own PAN, and the
+// `Field` it is typed into does not uppercase, so the raw-value test refused a
+// PAN the server accepts.
 function validatePAN(pan: string): boolean {
-  if (!pan) return true;
-  return /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan);
+  return isValidPan(pan);
 }
 
 // ─── Diagnostic trace for the password / reauthentication flow ──────────────

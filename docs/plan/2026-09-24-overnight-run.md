@@ -230,6 +230,62 @@ whichever way the full-scope question is eventually answered.
       screen that truncates is at least a screen somebody is looking at, and a
       budget over 65 files is the shape that gets raised until it means nothing.
 
+## Batch 6 — a clock frozen at deploy, and two identifiers the browser checked its own way ✅ **LANDED**
+
+Nothing on the plan named any of these. All three were found by sweeping for a
+RULE — "where is a date bound", "where is this identifier tested" — rather than
+for a symptom, which is the argument for doing these passes by hand.
+
+- [x] **6.1** ✅ **A date bound at import is the deploy date.** Seven modules
+      opened `today = ist_today()`, evaluated once, and four functions read it
+      at call time. The live one WRITES: `ai_insight_service` computed
+      `days_left = (due - today).days` behind a `0 <= days_left <= 7` gate and
+      persisted an insight stating that figure — so it failed in BOTH
+      directions, dropping a deadline genuinely three days out and raising one
+      a fortnight out. `mock_data.py` carried the other half, `date.today()` on
+      a Singapore box. Fixed as the NAME (`_FIXTURES_BUILT_ON`, `_SEEDED_ON`)
+      plus four call-time reads, because four of the seven legitimately want
+      their import-time day. `test_a_date_bound_at_import_says_so.py` states
+      two rules and PROVES the two exemptions rather than allowlisting them.
+      One older guard asserted the literal `today = ist_today()` and failed on
+      a rename that made the module more correct — fifth time that pattern has
+      been corrected here.
+
+- [x] **6.2** ✅ **Eight GSTIN shape regexes in `apps/web` against one caller of
+      the check-digit authority.** The worst is `app/risks/page.tsx`, whose
+      GSTIN Mismatch section exists for no other purpose — so the one page a CA
+      opens to be told a GSTIN is wrong reported clean on every transposition.
+      Seven doors moved onto `lib/gst/gstin.gstinProblem`; the eighth
+      (`lib/invoices/compliance.ts`) is Rule 48(4)'s shape-only limb, pinned by
+      `shared/irn-parity-vectors.json`, and now says so in the code. Five
+      specimen GSTINs a CA READS had check digits this product refuses —
+      third time this repository has found that.
+
+- [x] **6.3** ✅ **Seven PAN validators tested the raw field.**
+      `core/validators.validate_pan` opens `value.strip().upper()`; the browser
+      copies did not, so they refused what the server accepts. Visible on
+      Settings and onboarding, where the shared `Field` does not uppercase:
+      typing `aabcu9603r` was refused. `lib/identifiers/pan.ts` mirrors the
+      server EXACTLY, edge included — `validate_pan` returns None for `""`
+      before normalising, so a string of spaces is a format error, an asymmetry
+      recorded rather than tidied. Rule 114's holder-type code is refused on
+      BOTH sides together, because the full set could not be confirmed here and
+      an incomplete one blocks a real client record.
+
+- [x] **6.4** ✅ **TAN and DIN, one copy each, same defect.** `tan.ts` and
+      `din.ts`, one rule per file. Two asymmetries pinned: a TAN's shape is a
+      PAN's reversed, and a BLANK DIN is an error where a blank PAN is not —
+      the server's own rule, since a director without a DIN is not a director.
+
+      **The guard does not compare two descriptions of the rule.** The whole
+      finding is that the two implementations NORMALISE differently, so it runs
+      the TypeScript through node and the Python in-process over the same
+      inputs. Thirteen negative controls across the four items, each firing on
+      the assertion it names; two guard bugs were caught by their own controls
+      — a door test satisfied by the comment that explained it, and a scan that
+      failed on its own explanation before comments were stripped.
+
+
 ---
 
 ## Four probes that came back CLEAN, recorded so nobody re-derives them
@@ -304,6 +360,10 @@ doing these sweeps by hand rather than by grep.
 | **The AI copilot is told the UTC day** | `ai_copilot_service`, 5 sites | between 00:00 and 05:30 IST that is YESTERDAY, and it is the line the model reasons from when a CA asks what is due. Third instance of the same clock class this run |
 | **Two grouping implementations with nothing pinning them** | `domain/money_text` vs `lib/money/format` | the shape this repo pins for GSTIN, UQC, invoice numbers, GST line tax, the e-way threshold and IRN scope. Grouping was the one that had two implementations and no vectors, which is how it came to be wrong on one side for as long as it was |
 | **A dead reader that would have truncated a reconciliation** | `lib/data/gst.fetchGSTR2ARecords` | unpaged `gstr2a_records` for a period, zero callers. Deleted rather than paged |
+| **A date bound at import, read at call time** | `ai_insight_service` ×2, `automation_engine`, `risk_engine` | a long-lived uvicorn process makes it the DEPLOY date. The insight writer's `0 <= days_left <= 7` gate dropped a deadline three days out and raised one a fortnight out, and PERSISTED the wrong figure |
+| **The screen that finds wrong GSTINs could not see the commonest one** | `app/risks/page.tsx`, +6 more | eight shape regexes against one caller of the check-digit authority. A transposition inside the PAN is what a person typing fifteen characters produces |
+| **Five specimen GSTINs a CA reads are refused by this product's own validator** | two placeholders, an invoice-terms example, a supplier placeholder, a client-form error message | a placeholder is a GSTIN the screen teaches. Third instance |
+| **Seven PAN validators tested the raw field** | Settings, onboarding, client form, two bulk imports, MCA, CSV mapper | `validate_pan` strips and uppercases first, so the browser refused what the server accepts — and the firm's own PAN field does not uppercase what is typed |
 | **An inactive icon at 2.56:1** | `app/workflows/page.tsx` | the exact value the token file records moving `ps.hint` OFF |
 
 ## Two lessons recorded in CLAUDE.md

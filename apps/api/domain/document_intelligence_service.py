@@ -8,7 +8,11 @@ from typing import Optional
 from core.ist_clock import ist_today
 from domain.money_text import whole_rupees
 
-today = ist_today()
+# THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. `ist_today()` at
+# module level is evaluated ONCE, at import, so on the long-lived uvicorn
+# process `apps/api` runs it is the DEPLOY date for the life of that process.
+# The name says which moment it is, so nothing reads it as the current day.
+_FIXTURES_BUILT_ON = ist_today()
 
 # ---------------------------------------------------------------------------
 # Seed mock data
@@ -37,8 +41,8 @@ MOCK_DOCUMENT_EXTRACTIONS: list[dict] = [
             "warnings": [],
         },
         "error_message": None,
-        "created_at": (today - timedelta(days=5)).isoformat(),
-        "updated_at": (today - timedelta(days=5)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=5)).isoformat(),
+        "updated_at": (_FIXTURES_BUILT_ON - timedelta(days=5)).isoformat(),
     },
     {
         "id": "ext-002",
@@ -49,8 +53,8 @@ MOCK_DOCUMENT_EXTRACTIONS: list[dict] = [
         "extracted_data": None,
         "validation_results": None,
         "error_message": None,
-        "created_at": (today - timedelta(days=2)).isoformat(),
-        "updated_at": (today - timedelta(days=2)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=2)).isoformat(),
+        "updated_at": (_FIXTURES_BUILT_ON - timedelta(days=2)).isoformat(),
     },
     {
         "id": "ext-003",
@@ -71,8 +75,8 @@ MOCK_DOCUMENT_EXTRACTIONS: list[dict] = [
             "warnings": ["TDS amount seems high — verify with 26AS"],
         },
         "error_message": None,
-        "created_at": (today - timedelta(days=10)).isoformat(),
-        "updated_at": (today - timedelta(days=10)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
+        "updated_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
     },
     {
         "id": "ext-004",
@@ -95,8 +99,8 @@ MOCK_DOCUMENT_EXTRACTIONS: list[dict] = [
             "warnings": ["AIS income differs from book income by ₹12,000"],
         },
         "error_message": None,
-        "created_at": (today - timedelta(days=7)).isoformat(),
-        "updated_at": (today - timedelta(days=7)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=7)).isoformat(),
+        "updated_at": (_FIXTURES_BUILT_ON - timedelta(days=7)).isoformat(),
     },
     {
         "id": "ext-005",
@@ -107,8 +111,8 @@ MOCK_DOCUMENT_EXTRACTIONS: list[dict] = [
         "extracted_data": None,
         "validation_results": None,
         "error_message": "Low confidence score — document too blurry or unsupported format",
-        "created_at": (today - timedelta(days=3)).isoformat(),
-        "updated_at": (today - timedelta(days=3)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=3)).isoformat(),
+        "updated_at": (_FIXTURES_BUILT_ON - timedelta(days=3)).isoformat(),
     },
 ]
 
@@ -123,7 +127,7 @@ MOCK_DOCUMENT_RISKS: list[dict] = [
         "description": "AIS shows total income of ₹8.5L but books show ₹7.3L. Difference of ₹1.2L may trigger scrutiny.",
         "resolution_status": "open",
         "resolved_at": None,
-        "created_at": (today - timedelta(days=7)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=7)).isoformat(),
     },
     {
         "id": "risk-002",
@@ -135,7 +139,7 @@ MOCK_DOCUMENT_RISKS: list[dict] = [
         "description": "Form 16 shows TDS of ₹1.8L but 26AS shows only ₹1.4L. Difference of ₹40,000 must be reconciled before ITR.",
         "resolution_status": "open",
         "resolved_at": None,
-        "created_at": (today - timedelta(days=10)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
     },
     {
         "id": "risk-003",
@@ -147,7 +151,7 @@ MOCK_DOCUMENT_RISKS: list[dict] = [
         "description": "GSTR-2B shows 4 supplier invoices but only 2 are present in purchase register. Missing invoices worth ₹45,000.",
         "resolution_status": "acknowledged",
         "resolved_at": None,
-        "created_at": (today - timedelta(days=5)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=5)).isoformat(),
     },
     {
         "id": "risk-004",
@@ -159,7 +163,7 @@ MOCK_DOCUMENT_RISKS: list[dict] = [
         "description": "Confidence score 41% is below threshold 70%. Document may be misclassified or corrupted.",
         "resolution_status": "open",
         "resolved_at": None,
-        "created_at": (today - timedelta(days=3)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=3)).isoformat(),
     },
     {
         "id": "risk-005",
@@ -171,7 +175,7 @@ MOCK_DOCUMENT_RISKS: list[dict] = [
         "description": "5 debit entries totalling ₹2.3L not matched in books. Potential unreported income or expense.",
         "resolution_status": "open",
         "resolved_at": None,
-        "created_at": (today - timedelta(days=2)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=2)).isoformat(),
     },
     {
         "id": "risk-006",
@@ -183,7 +187,7 @@ MOCK_DOCUMENT_RISKS: list[dict] = [
         "description": "TDS deducted ₹1.8L significantly higher than prior year. Verify with employer for any one-time payments.",
         "resolution_status": "open",
         "resolved_at": None,
-        "created_at": (today - timedelta(days=9)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=9)).isoformat(),
     },
     {
         "id": "risk-007",
@@ -194,8 +198,8 @@ MOCK_DOCUMENT_RISKS: list[dict] = [
         "title": "GST Rate Classification Check",
         "description": "Invoice uses 18% GST rate. Verify if goods qualify for 12% rate under HSN classification.",
         "resolution_status": "resolved",
-        "resolved_at": (today - timedelta(days=1)).isoformat(),
-        "created_at": (today - timedelta(days=5)).isoformat(),
+        "resolved_at": (_FIXTURES_BUILT_ON - timedelta(days=1)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=5)).isoformat(),
     },
     {
         "id": "risk-008",
@@ -207,7 +211,7 @@ MOCK_DOCUMENT_RISKS: list[dict] = [
         "description": "AIS shows TDS from 2 deductors but only 1 Form 16 submitted. Obtain Form 16 from second employer.",
         "resolution_status": "open",
         "resolved_at": None,
-        "created_at": (today - timedelta(days=6)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=6)).isoformat(),
     },
 ]
 
@@ -222,7 +226,7 @@ MOCK_EXTRA_DOCUMENTS: list[dict] = [
         "financial_year": "2024-25",
         "review_status": "pending_review",
         "confidence_score": 0.91,
-        "upload_date": (today - timedelta(days=10)).isoformat(),
+        "upload_date": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
         "extracted_json": None,
     },
     {
@@ -234,7 +238,7 @@ MOCK_EXTRA_DOCUMENTS: list[dict] = [
         "financial_year": "2025-26",
         "review_status": "pending_review",
         "confidence_score": 0.88,
-        "upload_date": (today - timedelta(days=7)).isoformat(),
+        "upload_date": (_FIXTURES_BUILT_ON - timedelta(days=7)).isoformat(),
         "extracted_json": None,
     },
     {
@@ -246,7 +250,7 @@ MOCK_EXTRA_DOCUMENTS: list[dict] = [
         "financial_year": "2025-26",
         "review_status": "review_required",
         "confidence_score": 0.41,
-        "upload_date": (today - timedelta(days=3)).isoformat(),
+        "upload_date": (_FIXTURES_BUILT_ON - timedelta(days=3)).isoformat(),
         "extracted_json": None,
     },
 ]

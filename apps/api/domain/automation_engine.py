@@ -9,7 +9,13 @@ import uuid
 from core.ist_clock import ist_today
 
 
-today = ist_today()
+# THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. `ist_today()` at
+# module level is evaluated ONCE, at import, so on the long-lived uvicorn
+# process `apps/api` runs as it is the DEPLOY date for the life of that
+# process. Reading it inside a function therefore reads a day that has stopped
+# advancing. The fixtures underneath are built at import, which is the one
+# moment the two agree; everything asked at CALL time asks `ist_today()`.
+_FIXTURES_BUILT_ON = ist_today()
 
 MOCK_AUTOMATION_RULES: list[dict] = [
     {
@@ -24,7 +30,7 @@ MOCK_AUTOMATION_RULES: list[dict] = [
             "description": "A critical risk has been detected. Immediate CA review required.",
         },
         "is_enabled": True,
-        "created_at": (today - timedelta(days=30)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=30)).isoformat(),
     },
     {
         "id": "rule-002",
@@ -38,7 +44,7 @@ MOCK_AUTOMATION_RULES: list[dict] = [
             "description": "New document uploaded. Review and validate extraction results.",
         },
         "is_enabled": True,
-        "created_at": (today - timedelta(days=28)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=28)).isoformat(),
     },
     {
         "id": "rule-003",
@@ -52,7 +58,7 @@ MOCK_AUTOMATION_RULES: list[dict] = [
             "severity": "high",
         },
         "is_enabled": True,
-        "created_at": (today - timedelta(days=25)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=25)).isoformat(),
     },
     {
         "id": "rule-004",
@@ -66,7 +72,7 @@ MOCK_AUTOMATION_RULES: list[dict] = [
             "title": "AIS Mismatch Detected — Reconciliation Required",
         },
         "is_enabled": True,
-        "created_at": (today - timedelta(days=20)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=20)).isoformat(),
     },
     {
         "id": "rule-005",
@@ -80,7 +86,7 @@ MOCK_AUTOMATION_RULES: list[dict] = [
             "description": "Filing deadline in 3 days. Initiate final filing steps.",
         },
         "is_enabled": True,
-        "created_at": (today - timedelta(days=15)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=15)).isoformat(),
     },
 ]
 
@@ -93,7 +99,7 @@ MOCK_AUTOMATION_EXECUTIONS: list[dict] = [
         "status": "success",
         "result_data": {"task_id": "task-gen-001", "title": "Review Critical Risk"},
         "error_message": None,
-        "executed_at": (today - timedelta(days=10)).isoformat(),
+        "executed_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
     },
     {
         "id": "exec-002",
@@ -103,7 +109,7 @@ MOCK_AUTOMATION_EXECUTIONS: list[dict] = [
         "status": "success",
         "result_data": {"task_id": "task-gen-002", "title": "Review Document"},
         "error_message": None,
-        "executed_at": (today - timedelta(days=10)).isoformat(),
+        "executed_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
     },
     {
         "id": "exec-003",
@@ -113,7 +119,7 @@ MOCK_AUTOMATION_EXECUTIONS: list[dict] = [
         "status": "success",
         "result_data": {"notification_id": "notif-gen-001"},
         "error_message": None,
-        "executed_at": (today - timedelta(days=7)).isoformat(),
+        "executed_at": (_FIXTURES_BUILT_ON - timedelta(days=7)).isoformat(),
     },
     {
         "id": "exec-004",
@@ -123,7 +129,7 @@ MOCK_AUTOMATION_EXECUTIONS: list[dict] = [
         "status": "success",
         "result_data": {"insight_id": "aiv2-005"},
         "error_message": None,
-        "executed_at": (today - timedelta(days=7)).isoformat(),
+        "executed_at": (_FIXTURES_BUILT_ON - timedelta(days=7)).isoformat(),
     },
     {
         "id": "exec-005",
@@ -133,7 +139,7 @@ MOCK_AUTOMATION_EXECUTIONS: list[dict] = [
         "status": "success",
         "result_data": {"task_id": "task-gen-003", "title": "Review Critical Risk — GSTR-3B Overdue"},
         "error_message": None,
-        "executed_at": (today - timedelta(days=8)).isoformat(),
+        "executed_at": (_FIXTURES_BUILT_ON - timedelta(days=8)).isoformat(),
     },
     {
         "id": "exec-006",
@@ -143,7 +149,7 @@ MOCK_AUTOMATION_EXECUTIONS: list[dict] = [
         "status": "success",
         "result_data": {"task_id": "task-gen-004", "title": "File Compliance — GSTR1"},
         "error_message": None,
-        "executed_at": (today - timedelta(days=3)).isoformat(),
+        "executed_at": (_FIXTURES_BUILT_ON - timedelta(days=3)).isoformat(),
     },
     {
         "id": "exec-007",
@@ -153,7 +159,7 @@ MOCK_AUTOMATION_EXECUTIONS: list[dict] = [
         "status": "success",
         "result_data": {"task_id": "task-gen-005", "title": "Review Document — AIS"},
         "error_message": None,
-        "executed_at": (today - timedelta(days=7)).isoformat(),
+        "executed_at": (_FIXTURES_BUILT_ON - timedelta(days=7)).isoformat(),
     },
     {
         "id": "exec-008",
@@ -163,7 +169,7 @@ MOCK_AUTOMATION_EXECUTIONS: list[dict] = [
         "status": "failed",
         "result_data": None,
         "error_message": "Client assignment not found for task creation",
-        "executed_at": (today - timedelta(days=3)).isoformat(),
+        "executed_at": (_FIXTURES_BUILT_ON - timedelta(days=3)).isoformat(),
     },
     {
         "id": "exec-009",
@@ -173,7 +179,7 @@ MOCK_AUTOMATION_EXECUTIONS: list[dict] = [
         "status": "skipped",
         "result_data": {"reason": "Notification already sent for this record"},
         "error_message": None,
-        "executed_at": (today - timedelta(days=6)).isoformat(),
+        "executed_at": (_FIXTURES_BUILT_ON - timedelta(days=6)).isoformat(),
     },
     {
         "id": "exec-010",
@@ -183,7 +189,7 @@ MOCK_AUTOMATION_EXECUTIONS: list[dict] = [
         "status": "success",
         "result_data": {"task_id": "task-gen-006", "title": "Review Critical Risk — GSTR-1 Overdue"},
         "error_message": None,
-        "executed_at": (today - timedelta(days=6)).isoformat(),
+        "executed_at": (_FIXTURES_BUILT_ON - timedelta(days=6)).isoformat(),
     },
 ]
 
@@ -241,7 +247,11 @@ def get_execution_log(limit: int = 50) -> list[dict]:
 
 
 def get_automation_stats() -> dict:
-    today_str = today.isoformat()
+    # ist_today(), not the import-time constant: "executions today" is a
+    # question about the day the CA is asking on, and against a frozen date
+    # it counts the executions of the day the process booted — a figure that
+    # is zero for ever after the first day.
+    today_str = ist_today().isoformat()
     active_rules = len([r for r in MOCK_AUTOMATION_RULES if r["is_enabled"]])
     executions_today = len([
         e for e in MOCK_AUTOMATION_EXECUTIONS

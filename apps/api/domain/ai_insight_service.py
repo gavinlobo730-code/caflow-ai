@@ -10,7 +10,17 @@ from typing import Optional
 import uuid
 from core.ist_clock import ist_today
 
-today = ist_today()
+# THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. A module-level
+# `today = ist_today()` is evaluated ONCE, when the module is imported — so on
+# `apps/api`, which runs as a long-lived uvicorn process on Render kept awake
+# across the scheduler window by `.github/workflows/wake-before-scheduler.yml`,
+# it is the DEPLOY date for as long as the process lives. Reading it inside a
+# function is therefore reading a date that stops advancing, and
+# `generate_insights_for_client` did exactly that on a figure it WRITES: see
+# the two `ist_today()` calls below. The name says what it is so the next
+# reader cannot mistake it for the current day; the fixture list underneath is
+# built at import, which is the one moment the two agree.
+_FIXTURES_BUILT_ON = ist_today()
 
 MOCK_AI_INSIGHTS_V2: list[dict] = [
     {
@@ -23,7 +33,7 @@ MOCK_AI_INSIGHTS_V2: list[dict] = [
         "description": "GSTR-3B for previous period is 10 days overdue. Late fee ₹50/day accruing under CGST Act Section 47.",
         "recommendation": "File GSTR-3B immediately to stop late fee accumulation. Estimated late fee ₹500 so far.",
         "status": "open",
-        "created_at": (today - timedelta(days=10)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
     },
     {
         "id": "aiv2-002",
@@ -35,7 +45,7 @@ MOCK_AI_INSIGHTS_V2: list[dict] = [
         "description": "Form 16 TDS ₹1.8L vs 26AS TDS ₹1.4L. ITR filing should be blocked until reconciled.",
         "recommendation": "Contact employer to rectify Form 16 or file revised TDS return before ITR due date.",
         "status": "open",
-        "created_at": (today - timedelta(days=10)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
     },
     {
         "id": "aiv2-003",
@@ -44,10 +54,10 @@ MOCK_AI_INSIGHTS_V2: list[dict] = [
         "category": "compliance",
         "severity": "high",
         "title": "GSTR-1 Due in 3 Days",
-        "description": "GSTR-1 due " + (today + timedelta(days=3)).strftime("%d %b %Y") + ". Filing not yet initiated. Sales data collection pending.",
+        "description": "GSTR-1 due " + (_FIXTURES_BUILT_ON + timedelta(days=3)).strftime("%d %b %Y") + ". Filing not yet initiated. Sales data collection pending.",
         "recommendation": "Begin GSTR-1 preparation today. Collect all B2B and B2C sales invoices.",
         "status": "open",
-        "created_at": today.isoformat(),
+        "created_at": _FIXTURES_BUILT_ON.isoformat(),
     },
     {
         "id": "aiv2-004",
@@ -59,7 +69,7 @@ MOCK_AI_INSIGHTS_V2: list[dict] = [
         "description": "Bank statement for Apr 2025 could not be extracted (confidence 41%). Manual data entry required.",
         "recommendation": "Obtain clearer PDF from bank and re-upload, or enter data manually for reconciliation.",
         "status": "open",
-        "created_at": (today - timedelta(days=3)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=3)).isoformat(),
     },
     {
         "id": "aiv2-005",
@@ -71,7 +81,7 @@ MOCK_AI_INSIGHTS_V2: list[dict] = [
         "description": "AIS shows income ₹8.5L vs books ₹7.3L. Unexplained gap may attract IT scrutiny under Section 143(3).",
         "recommendation": "Identify source of additional income in AIS. Reconcile before ITR filing.",
         "status": "open",
-        "created_at": (today - timedelta(days=7)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=7)).isoformat(),
     },
     {
         "id": "aiv2-006",
@@ -83,7 +93,7 @@ MOCK_AI_INSIGHTS_V2: list[dict] = [
         "description": "15% advance tax instalment due 15 Jun 2025. Interest under Section 234C if missed.",
         "recommendation": "Calculate advance tax liability and pay by 15 Jun 2025 via Challan 280.",
         "status": "open",
-        "created_at": (today - timedelta(days=2)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=2)).isoformat(),
     },
     {
         "id": "aiv2-007",
@@ -95,7 +105,7 @@ MOCK_AI_INSIGHTS_V2: list[dict] = [
         "description": "Projected annual turnover ₹98L. Tax audit mandatory above ₹1Cr under Section 44AB of IT Act 1961.",
         "recommendation": "Monitor Q4 sales. Begin audit preparation if turnover crosses ₹1Cr.",
         "status": "acknowledged",
-        "created_at": (today - timedelta(days=15)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=15)).isoformat(),
     },
     {
         "id": "aiv2-008",
@@ -107,7 +117,7 @@ MOCK_AI_INSIGHTS_V2: list[dict] = [
         "description": "4 supplier invoices in GSTR-2B but only 2 in purchase register. ITC ₹45,000 unmatched.",
         "recommendation": "Obtain invoices from suppliers and update purchase register before GSTR-3B filing.",
         "status": "open",
-        "created_at": (today - timedelta(days=5)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=5)).isoformat(),
     },
     {
         "id": "aiv2-009",
@@ -119,7 +129,7 @@ MOCK_AI_INSIGHTS_V2: list[dict] = [
         "description": "GSTR-3B for previous period filed on time. Good compliance track record maintained.",
         "recommendation": "Continue timely filing. Consider quarterly filing if eligible to reduce compliance burden.",
         "status": "acknowledged",
-        "created_at": (today - timedelta(days=11)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=11)).isoformat(),
     },
     {
         "id": "aiv2-010",
@@ -131,7 +141,7 @@ MOCK_AI_INSIGHTS_V2: list[dict] = [
         "description": "GSTR-2B ITC ₹45,000 vs purchase register ₹38,000. Gap ₹7,000 needs reconciliation before GSTR-3B.",
         "recommendation": "Reconcile purchase register with GSTR-2B. Identify missing supplier invoices.",
         "status": "open",
-        "created_at": (today - timedelta(days=4)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=4)).isoformat(),
     },
 ]
 
@@ -169,7 +179,15 @@ def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) 
 
         try:
             due = datetime.fromisoformat(record["due_date"]).date()
-            days_left = (due - today).days
+            # ist_today() at CALL time, never the module-level constant. This
+            # arithmetic decides both the `0 <= days_left <= 7` gate and the
+            # figure written into the insight's own description, and the row is
+            # PERSISTED by `ai_insights_repo.create` below — so against a date
+            # frozen at deploy a record genuinely due in three days reported
+            # "due in 13 day(s)" and fell outside the gate entirely, while one
+            # due in a fortnight generated an "approaching" insight that was
+            # not.
+            days_left = (due - ist_today()).days
             if 0 <= days_left <= 7 and record["status"] not in ("Filed",):
                 insight = ai_insights_repo.create({
                     "client_id": client_id,
@@ -205,7 +223,10 @@ def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) 
         r for r in MOCK_DOCUMENT_RISKS
         if r["client_id"] == client_id
         and r["resolution_status"] == "open"
-        and (today - date.fromisoformat(r["created_at"][:10])).days > 7
+        # ist_today(), for the reason on `days_left` above: an open risk stops
+        # ageing the moment the process stops restarting, so nothing ever
+        # crosses seven days on a deployment that has been up a week.
+        and (ist_today() - date.fromisoformat(r["created_at"][:10])).days > 7
     ]
     if old_risks:
         insight = ai_insights_repo.create({

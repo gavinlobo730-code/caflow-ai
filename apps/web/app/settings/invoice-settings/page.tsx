@@ -337,7 +337,7 @@ export default function InvoiceSettingsPage() {
                 value={form.footer_text}
                 onChange={(e) => update("footer_text", e.target.value)}
                 rows={2}
-                placeholder="e.g. Thank you for your business. Payment is due within 15 days. CGST registered under GSTIN 27AAAAA9999A1Z1."
+                placeholder="e.g. Thank you for your business. Payment is due within 15 days. CGST registered under GSTIN 27AAAAA9999A1ZK."
                 className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg resize-none"
               />
             </div>

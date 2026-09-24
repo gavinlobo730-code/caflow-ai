@@ -7,6 +7,8 @@ import type { CreateClientInput } from "@/lib/data/clients";
 
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
 import { Callout } from "@/components/ui/callout";
+import { gstinProblem } from "@/lib/gst/gstin";
+import { panProblem } from "@/lib/identifiers/pan";
 const ENTITY_TYPES = [
   "Proprietorship", "Partnership", "LLP", "Private Limited",
   "Public Limited", "Trust", "Society", "Individual",
@@ -78,14 +80,29 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
     e.preventDefault();
     setError(null);
 
-    // Validate PAN — IT Act format: AAAAA9999A
-    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(form.pan)) {
-      setError("Invalid PAN format. Expected: AAAAA9999A (e.g. ABCDE1234F)");
+    // IT Act §139A, through the one browser rule. PAN is REQUIRED on a client,
+    // so the blank case is refused here rather than inside `panProblem`, which
+    // treats blank as "not held" for the several forms where it is optional.
+    if (!form.pan.trim()) {
+      setError("PAN is required. IT Act §139A — e.g. AABCU9603R.");
       return;
     }
-    // Validate GSTIN if provided — CGST Act Section 25
-    if (form.gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(form.gstin)) {
-      setError("Invalid GSTIN format. Expected: 27AAAAA9999A1ZB");
+    const panIssue = panProblem(form.pan);
+    if (panIssue) {
+      setError(panIssue);
+      return;
+    }
+    // CGST Act §25, THROUGH THE ONE BROWSER AUTHORITY. This was a private
+    // shape regex, which accepts every transposition inside the PAN — and a
+    // CLIENT's own GSTIN is the registration every one of that client's
+    // returns is filed under. `models.client.validate_gstin` on the server is
+    // deliberately shape-only too (512 invented fixture GSTINs across 95 files
+    // flow through that Pydantic field), so this door was the only place the
+    // check digit could be asked, and it did not ask. `gstinProblem` names the
+    // character to look at rather than saying "invalid".
+    const gstinIssue = gstinProblem(form.gstin);
+    if (gstinIssue) {
+      setError(gstinIssue);
       return;
     }
 
@@ -211,7 +228,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               <input
                 value={form.gstin}
                 onChange={e => set("gstin", e.target.value.toUpperCase())}
-                placeholder="27ABCDE1234F1Z5"
+                placeholder="27ABCDE1234F1Z0"
                 maxLength={15}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />

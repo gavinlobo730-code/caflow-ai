@@ -33,8 +33,27 @@ test("customers: invalid GSTIN and duplicate name reported", () => {
     row({ name: "dup" }),
   ], "c1");
   assert.equal(records.length, 1); // only "Dup" survives
-  assert.match(errors.join(" "), /invalid GSTIN/i);
+  // The message is `gstinProblem`'s, which names what is wrong rather than
+  // saying "invalid GSTIN" — a row in a spreadsheet of two thousand needs to
+  // say which character to look at. This asserted the old generic wording.
+  assert.match(errors.join(" "), /A GSTIN is 15 characters; this one is 7/);
   assert.match(errors.join(" "), /duplicate name/i);
+});
+
+test("customers: a GSTIN whose check digit is wrong is refused", () => {
+  // THE WHOLE POINT OF THE CHANGE. The shape regex that used to live in
+  // lib/imports/mappers.ts accepts this: 27AAPFU0399F1ZV is 27AAPFU0939F1ZV
+  // with two PAN characters transposed, which is the commonest wrong GSTIN and
+  // exactly what a spreadsheet import introduces. Only the check digit tells
+  // them apart, and §16(2)(aa) sends the recipient's credit to whoever the
+  // GSTIN names.
+  const good = buildCustomers([row({ name: "Right Co", gstin: "27AAPFU0939F1ZV" })], "c1");
+  assert.equal(good.errors.length, 0);
+  assert.equal(good.records.length, 1);
+
+  const bad = buildCustomers([row({ name: "Wrong Co", gstin: "27AAPFU0399F1ZV" })], "c1");
+  assert.equal(bad.records.length, 0);
+  assert.match(bad.errors.join(" "), /check digit does not match/);
 });
 
 test("customers: blank/absent opening_balance maps to 0, never NaN", () => {

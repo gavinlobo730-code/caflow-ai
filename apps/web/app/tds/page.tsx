@@ -60,7 +60,9 @@ const TDS_IMPORT_COLUMNS = [
   { key: "challan_no",      label: "Challan No",       required: false, hint: "BSR code + serial e.g. 0510001-12345" },
 ];
 
-const PAN_RE_TDS = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+// PAN — IT Act §139A, through `lib/identifiers/pan.panProblem`. A DEDUCTEE
+// PAN decides §206AA's 20% floor, so refusing a good one here sends the CA
+// back to the spreadsheet rather than letting them import the quarter.
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -76,6 +78,7 @@ import {
 } from "@/lib/data/tds";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
+import { panProblem } from "@/lib/identifiers/pan";
 
 // ─── TDS section labels ──────────────────────────────────────────────────────
 //
@@ -1268,7 +1271,8 @@ export default function TDSPage() {
           }}
           validateRow={(row) => {
             const errs: string[] = [];
-            if (!PAN_RE_TDS.test(row.party_pan?.toUpperCase() ?? "")) errs.push("Invalid PAN format");
+            const panIssue = row.party_pan?.trim() ? panProblem(row.party_pan) : "PAN is required. IT Act §139A — e.g. AABCU9603R.";
+            if (panIssue) errs.push(panIssue);
             if (row.payment_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.payment_date)) errs.push("payment_date must be YYYY-MM-DD");
             if (row.gross_amount_rs && isNaN(parseFloat(row.gross_amount_rs))) errs.push("gross_amount_rs must be a number");
             return errs;

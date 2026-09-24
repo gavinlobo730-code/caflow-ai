@@ -873,7 +873,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
                   onChange={(e) => setGstin(e.target.value.toUpperCase())}
                   maxLength={15}
                   className="w-full mt-1 px-3 py-2 text-sm border border-ps-border rounded-lg text-ps-ink font-mono focus:outline-none focus:ring-2 focus:ring-green-500 uppercase"
-                  placeholder="22AAAAA0000A1Z5"
+                  placeholder="22AAAAA0000A1ZC"
                 />
               </div>
             </div>

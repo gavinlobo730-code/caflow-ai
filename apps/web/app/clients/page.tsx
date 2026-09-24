@@ -25,6 +25,8 @@ import { getLatestHealthScores } from "@/lib/services/health-score-compute";
 import { HealthBadgeLight } from "@/components/HealthBadge";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { api } from "@/lib/api";
+import { gstinProblem } from "@/lib/gst/gstin";
+import { panProblem } from "@/lib/identifiers/pan";
 
 const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
@@ -106,8 +108,12 @@ const CLIENT_EXPORT_COLUMNS: { key: string; header: string; accessor: (row: Clie
 ];
 
 const VALID_ENTITY_TYPES = ["Proprietorship","Partnership","LLP","Private Limited","Public Limited","Trust","Society","Individual"];
-const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
-const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+// PAN — IT Act §139A, through `lib/identifiers/pan.panProblem`, which
+// normalises the way `core/validators.validate_pan` does. This tested the
+// raw cell, so a spreadsheet column left in lower case failed every row.
+// The GSTIN rule is `lib/gst/gstin.gstinProblem` and there is one of it — a
+// shape regex here accepted every transposition inside the PAN, on the door
+// that writes a whole spreadsheet of clients at once.
 
 const ENTITY_LABELS: Record<string, string> = {
   Proprietorship: "Prop.", Partnership: "Partner.", LLP: "LLP",
@@ -928,8 +934,10 @@ export default function ClientsPage() {
           onImport={handleClientImport}
           validateRow={(row) => {
             const errs: string[] = [];
-            if (!PAN_RE.test(row.pan?.toUpperCase() ?? "")) errs.push("Invalid PAN format (AABCU9603R)");
-            if (row.gstin && !GSTIN_RE.test(row.gstin.toUpperCase())) errs.push("Invalid GSTIN format");
+            const panIssue = row.pan?.trim() ? panProblem(row.pan) : "PAN is required. IT Act §139A — e.g. AABCU9603R.";
+            if (panIssue) errs.push(panIssue);
+            const gstinIssue = gstinProblem(row.gstin);
+            if (gstinIssue) errs.push(gstinIssue);
             if (row.entity_type && !VALID_ENTITY_TYPES.includes(row.entity_type)) errs.push(`Invalid entity type`);
             return errs;
           }}

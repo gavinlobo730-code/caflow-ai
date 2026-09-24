@@ -8,7 +8,13 @@ from datetime import date, timedelta
 from typing import Optional
 from core.ist_clock import ist_today
 
-today = ist_today()
+# THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. `ist_today()` at
+# module level is evaluated ONCE, at import, so on the long-lived uvicorn
+# process `apps/api` runs as it is the DEPLOY date for the life of that
+# process. Reading it inside a function therefore reads a day that has stopped
+# advancing. The fixtures underneath are built at import, which is the one
+# moment the two agree; everything asked at CALL time asks `ist_today()`.
+_FIXTURES_BUILT_ON = ist_today()
 
 _SEVERITY_SCORE = {"critical": 100, "high": 75, "medium": 50, "low": 25, "info": 10}
 
@@ -28,7 +34,7 @@ MOCK_RISKS: list[dict] = [
         "title": "Form 16 TDS vs 26AS Mismatch",
         "description": "Form 16 shows TDS ₹1.8L but 26AS shows ₹1.4L. Reconciliation required before ITR filing.",
         "resolution_status": "open",
-        "created_at": (today - timedelta(days=10)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
     },
     {
         "id": "eng-risk-002",
@@ -40,7 +46,7 @@ MOCK_RISKS: list[dict] = [
         "title": "GSTR-3B Overdue — Penalty Accruing",
         "description": "GSTR-3B for previous month is 10 days overdue. Late fee accruing at ₹50/day under CGST Act Section 47.",
         "resolution_status": "open",
-        "created_at": (today - timedelta(days=10)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=10)).isoformat(),
     },
     {
         "id": "eng-risk-003",
@@ -52,7 +58,7 @@ MOCK_RISKS: list[dict] = [
         "title": "GSTR-1 Overdue — Outward Supply Penalty",
         "description": "GSTR-1 for previous period overdue. Late filing blocks recipient's ITC claims under CGST Act Section 16.",
         "resolution_status": "open",
-        "created_at": (today - timedelta(days=8)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=8)).isoformat(),
     },
     # High
     {
@@ -65,7 +71,7 @@ MOCK_RISKS: list[dict] = [
         "title": "AIS Income vs Book Income Mismatch",
         "description": "AIS shows total income ₹8.5L but books show ₹7.3L. Difference ₹1.2L may attract IT scrutiny.",
         "resolution_status": "open",
-        "created_at": (today - timedelta(days=7)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=7)).isoformat(),
     },
     {
         "id": "eng-risk-005",
@@ -77,7 +83,7 @@ MOCK_RISKS: list[dict] = [
         "title": "Document Extraction Failed — Low Confidence",
         "description": "Bank statement extraction confidence 41%. Document may be misclassified or corrupted.",
         "resolution_status": "open",
-        "created_at": (today - timedelta(days=3)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=3)).isoformat(),
     },
     {
         "id": "eng-risk-006",
@@ -89,7 +95,7 @@ MOCK_RISKS: list[dict] = [
         "title": "Unusually High TDS Liability",
         "description": "TDS deducted ₹1.8L significantly higher than prior year ₹1.1L. Verify one-time payments.",
         "resolution_status": "open",
-        "created_at": (today - timedelta(days=9)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=9)).isoformat(),
     },
     {
         "id": "eng-risk-007",
@@ -101,7 +107,7 @@ MOCK_RISKS: list[dict] = [
         "title": "Advance Tax Deadline Approaching",
         "description": "15% advance tax instalment due 15 Jun 2025. Non-payment attracts interest under Section 234C of IT Act 1961.",
         "resolution_status": "open",
-        "created_at": (today - timedelta(days=2)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=2)).isoformat(),
     },
     # Medium
     {
@@ -114,7 +120,7 @@ MOCK_RISKS: list[dict] = [
         "title": "Missing GST Input Invoices",
         "description": "GSTR-2B shows 4 supplier invoices but only 2 in purchase register. Missing ITC ₹45,000.",
         "resolution_status": "acknowledged",
-        "created_at": (today - timedelta(days=5)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=5)).isoformat(),
     },
     {
         "id": "eng-risk-009",
@@ -126,7 +132,7 @@ MOCK_RISKS: list[dict] = [
         "title": "Bank Statement — Unreconciled Entries",
         "description": "5 debit entries totalling ₹2.3L not matched in books. Potential unreported income or expense.",
         "resolution_status": "open",
-        "created_at": (today - timedelta(days=2)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=2)).isoformat(),
     },
     {
         "id": "eng-risk-010",
@@ -138,7 +144,7 @@ MOCK_RISKS: list[dict] = [
         "title": "Missing Form 16 from Second Employer",
         "description": "AIS shows TDS from 2 deductors but only 1 Form 16 submitted. Obtain Form 16 from second employer.",
         "resolution_status": "open",
-        "created_at": (today - timedelta(days=6)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=6)).isoformat(),
     },
     # Resolved
     {
@@ -151,7 +157,7 @@ MOCK_RISKS: list[dict] = [
         "title": "GST Rate Classification — Resolved",
         "description": "Invoice 18% GST rate confirmed correct after HSN verification.",
         "resolution_status": "resolved",
-        "created_at": (today - timedelta(days=5)).isoformat(),
+        "created_at": (_FIXTURES_BUILT_ON - timedelta(days=5)).isoformat(),
     },
 ]
 
@@ -181,7 +187,10 @@ def _derive_compliance_risks(firm_id: Optional[str], client_id: Optional[str]) -
                 "title": f"{r.get('compliance_type', 'Compliance')} Record Overdue",
                 "description": f"Compliance record overdue for period {r.get('period_label', '')}.",
                 "resolution_status": "open",
-                "created_at": r.get("due_date", today.isoformat()),
+                # ist_today() rather than the import-time constant: this is the fallback
+                # for a record carrying no due date, and a risk stamped with the
+                # deploy date ages by nothing however long it stays open.
+                "created_at": r.get("due_date", ist_today().isoformat()),
             })
 
     return derived

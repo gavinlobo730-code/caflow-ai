@@ -118,7 +118,28 @@ def test_the_seed_reads_the_indian_day():
     from pathlib import Path
     src = Path(__file__).resolve().parents[1] / "seed" / "seed_data.py"
     body = src.read_text()
-    assert "today = ist_today()" in body
+    # THE RULE, NOT A SPELLING OF IT. This asserted the literal
+    # `today = ist_today()` and failed on a rename that made the module MORE
+    # correct, not less: `test_a_date_bound_at_import_says_so` now forbids
+    # naming an import-time clock `today`, because it stops advancing the
+    # moment the process boots. What this test cares about is that the seed
+    # asks the INDIAN clock, so that is what it asks — the binding's name is
+    # the other guard's business. Fifth time this pattern has been corrected
+    # in this repository; write the rule.
+    import ast
+    tree = ast.parse(body)
+    bound_to_ist_today = [
+        t.id
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and getattr(node.value.func, "id", None) == "ist_today"
+        for t in node.targets
+        if isinstance(t, ast.Name)
+    ]
+    assert bound_to_ist_today, (
+        "the seed must bind ist_today() at module level; found no such binding"
+    )
     # COMMENTS FIRST. The module explains the defect in prose and quotes the
     # spelling it forbids, and a guard that fails on the documentation of its own
     # rule is a guard somebody deletes — which is exactly what this assertion did

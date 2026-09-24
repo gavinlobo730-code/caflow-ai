@@ -324,7 +324,7 @@ export default function RelationshipsPage() {
                     value={form.gstin}
                     onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
                     className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                    placeholder="22AAAAA0000A1Z5"
+                    placeholder="22AAAAA0000A1ZC"
                     maxLength={15}
                   />
                 </div>
