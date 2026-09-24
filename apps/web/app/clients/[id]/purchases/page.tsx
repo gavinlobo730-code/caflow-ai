@@ -47,6 +47,7 @@ import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { RecurringBills } from "@/components/purchases/RecurringBills";
 import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
+import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
@@ -2288,6 +2289,10 @@ interface PaymentRow {
   payment_mode: string;
   reference_no: string | null;
   is_reversed?: boolean;
+  /** D14 — which of the client's own accounts the money left, so the row can
+   *  say when the posting fell back to the firm's general Bank ledger. Already
+   *  arrives: this read is `select("*")`. */
+  bank_account_id?: string | null;
   // Migration 358. §194/§195 charge at credit or payment, whichever is EARLIER,
   // so the unallocated (advance) part of a payment withholds. tds_base_paise is
   // what it was charged on, and it can be non-zero with tds_paise 0 — a sum that
@@ -2623,7 +2628,24 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
         </span>
       ) : <span className="text-ps-disabled">—</span> },
     { key: "payment_mode", header: "Mode", accessor: (p) => p.payment_mode, searchable: true,
-      render: (p) => <span className="text-ps-label capitalize">{p.payment_mode}</span> },
+      // D14 — the vendor-payment side of the same disclosure the Sales tab's
+      // receipt rows carry. This read is `select("*")`, so `bank_account_id`
+      // already arrives; the rule is `domain/accounting/payment_account.
+      // row_notice` and this is its pinned mirror, needed because the read is
+      // PostgREST and never sees the API's stamped `posting_account_notice`.
+      render: (p) => (
+        <div className="flex flex-col items-start gap-0.5">
+          <span className="text-ps-label capitalize">{p.payment_mode}</span>
+          {postingAccountNotice(p.bank_account_id, p.payment_mode) && (
+            <span
+              className="text-3xs text-amber-700 whitespace-nowrap"
+              title={postingAccountNotice(p.bank_account_id, p.payment_mode) ?? undefined}
+            >
+              general ledger
+            </span>
+          )}
+        </div>
+      ) },
     { key: "reference_no", header: "Reference", accessor: (p) => p.reference_no ?? "", searchable: true,
       render: (p) => <span className="text-3xs text-ps-hint">{p.reference_no ?? "—"}</span> },
     { key: "is_reversed", header: "Status", accessor: (p) => (p.is_reversed ? "Reversed" : "Active"),

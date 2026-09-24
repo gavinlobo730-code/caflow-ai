@@ -89,6 +89,7 @@ budgeted 3–4 days for perhaps one.
 | **D16** | Is there a date? | **No fixed date — do it properly** | Each track finishes before the next starts. Nothing half-built |
 | **D17** | Filing to the government portals | **Stay prepare-only.** Keep the simulation, make its wording professional, and say in the product that real filing is coming | The owner: *"once we demo to a CA I would go and start doing those registrations."* GSP/ERI/NIC are months of commercial lead time and the demo is what justifies starting them. Until then the simulation must be indistinguishable from the real flow **except** for saying, in plain professional words, that it is a simulation |
 | **D18** | The six documents this environment cannot fetch | **The owner will get all six — later. Tracked, not blocking** | Every one is already a NAMED gap in the product rather than a wrong number, which is the safe direction |
+| **D19** | May a TRUSTED bank rule — one that posts with nobody watching — decide a TDS treatment? | **No. It posts the payment and FLAGS the line for a TDS decision** | The middle option, and the owner took it. A trusted rule already decides account, split and party, and rent, fees and contractor payments are exactly the recurring lines it is for — so leaving TDS out entirely means revisiting every one of them. But an under-deduction disallows the **whole expenditure** under §40(a)(ia), puts the tax on the client under §201(1) with §201(1A) interest, and is INVISIBLE: the entry posts, the books balance, and it surfaces in an assessment order two years later. A flagged line is visible; a wrong deduction is not |
 
 ---
 
@@ -118,8 +119,8 @@ Phase 2 starts on a clean base.
 | **1.1** | **The type scale (D12).** Convert all 379 arbitrary sizes, module by module. The 135 off-scale ones (13px ×88, 9px ×29, 15px, 22px, 26px, 32px) first — they map to nothing, so nothing moves. Then the 244 that map to a built-in, one module per PR, each with a smoke-walk diff | 2–3d | `grep -rEoh 'text-\[[0-9]+px\]' apps/web/app apps/web/components \| wc -l` = **0**, and the guard's arbitrary-size budget is 0 |
 | **1.2** | **Width by content type (D11).** One rule, applied across the 95 pages that centre their own container; a guard stating the rule rather than a list of pages | 1d | A guard fails a page that caps a data table below the ~1600px limit, or lets prose exceed its measure |
 | **1.3** | **The named-colour judgement pass (T4-b).** 8,234 Tailwind utilities like `text-amber-600`. Status colours resolve to the semantic tokens; decorative ones stay | 2–3d | `amber`/`red`/`green` on a STATUS element resolve to `state.*`, asserted by a guard |
-| **1.4** | **The generic-Bank-ledger disclosure (D14).** `PaymentAccount.is_fallback` and `.reason` are computed and reach no caller. Surface on the entry row and in the posting confirmation. This is a refactor through eight journal-line builders | 1d | Posting a payment with no resolvable bank account shows the sentence in both places; a test asserts both |
-| **1.5** | **The filing-simulation wording (D17).** Every demo flow already carries an honest `SIM-NOT-FILED` reference and a "what changes when this is real" sentence. Rewrite those to read as a professional product statement — *"Preview only. PracticeSync does not transmit to the portal. Direct filing is in development"* — consistent across all flows, and visible on the screen rather than only in the response | 0.5d | One wording, one place it is defined, rendered by every flow; a guard asserts no flow renders its own |
+| **1.4** ✅ | **LANDED 24-09.** **The generic-Bank-ledger disclosure (D14).** `PaymentAccount.is_fallback` and `.reason` are computed and reach no caller. Surface on the entry row and in the posting confirmation. This is a refactor through eight journal-line builders | 1d | Posting a payment with no resolvable bank account shows the sentence in both places; a test asserts both |
+| **1.5** ✅ | **LANDED 24-09.** **The filing-simulation wording (D17).** Every demo flow already carries an honest `SIM-NOT-FILED` reference and a "what changes when this is real" sentence. Rewrite those to read as a professional product statement — *"Preview only. PracticeSync does not transmit to the portal. Direct filing is in development"* — consistent across all flows, and visible on the screen rather than only in the response | 0.5d | One wording, one place it is defined, rendered by every flow; a guard asserts no flow renders its own |
 | **1.6** | **The twelve partial findings' remaining halves.** Listed below | 1–2d | Each moves to `closed` in `findings-status.json` in the same commit |
 
 ### 1.6 — the twelve partials, and what is actually left of each
@@ -141,13 +142,11 @@ Phase 2 starts on a clean base.
 | FA-11 CWIP | capital work-in-progress complete | the rest of FA-11's sub-features | no |
 | TDS-16 (open) | every figure computed | **the FVU/RPU file writer** | needs document #3 |
 
-**One owner decision hides in here, and it is genuinely a judgement call.**
-BANK-11 step 3 asks what a *trusted* matching rule — one that posts with nobody
-watching — may propose. Split legs and a party are built. The remaining
-candidate is a **TDS treatment**, and I would not build it without you saying
-so: widening what an unattended rule decides widens what happens with nobody
-watching, and TDS is the one where being wrong disallows the whole expenditure
-under §40(a)(ia). **Default if you say nothing: do not build it.**
+**BANK-11 step 3 was the one open judgement call and it is now answered
+(D19).** A trusted rule posts the payment and **flags the line for a TDS
+decision** rather than deciding one. That is its own small build — a flag on
+the transaction, a filter on the queue, and a sentence — and it belongs in
+Phase 1.6 rather than in the redesign.
 
 ---
 

@@ -73,13 +73,28 @@ owner took them properly instead.
 | — | Order of the remaining tracks | **Navigation → analytics → portals → demo firm** | D15. The analytics screens and the portal both need somewhere to live |
 | — | Filing to the portals | **Stay prepare-only. Keep the simulation, sharpen its wording professionally, say real filing is coming.** The owner starts the registrations once a CA demo happens | D17, Phase 1.5 and Phase 7. GSP/ERI/NIC are months of commercial lead time; the demo is what justifies starting them |
 
-**One genuinely open judgement call remains, and it is not urgent.** BANK-11
-step 3 asks whether a *trusted* matching rule — one that posts with nobody
-watching — may propose a **TDS treatment**. Split legs and a party are built.
-I would not build this one without a word, because widening what an unattended
-rule decides widens what happens with nobody watching, and an under-deduction
-disallows the whole expenditure under §40(a)(ia). **Default if nothing is
-said: do not build it.**
+### And the one judgement call was answered too — D19
+
+BANK-11 step 3: may a *trusted* matching rule — one that posts with nobody
+watching — decide a **TDS treatment**? Split legs and a party were already
+built.
+
+**Answer: no. It posts the payment and FLAGS the line for a TDS decision.**
+
+The owner took the middle option, and it is the right shape. The case FOR
+deciding it was real: rent (§194I), professional fees (§194J) and contractor
+payments (§194C) are exactly the recurring lines a trusted rule exists for, so
+a rule that posts the payment and skips the withholding sends the CA back to
+every one of them anyway. The case against is the asymmetry — an
+under-deduction **disallows the whole expenditure** under §40(a)(ia), puts the
+tax on the client under §201(1) with §201(1A) interest, and is **invisible**:
+the entry posts, the books balance, the P&L reads fine, and it surfaces in an
+assessment order two years later. A rule that picks the wrong ACCOUNT shows up
+on a statement somebody reads every month; a rule that picks the wrong TDS
+shows up in a notice.
+
+A flagged line is visible. A wrong deduction is not. The CA gets a short
+worklist instead of either a silent exposure or a full re-check.
 
 ---
 

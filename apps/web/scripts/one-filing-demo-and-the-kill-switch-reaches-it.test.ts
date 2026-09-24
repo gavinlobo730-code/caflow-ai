@@ -122,7 +122,38 @@ test("every screen that offers a filing demo asks the server first", () => {
 test("the wizard cannot render a result without its SPECIMEN badge and truth lines", () => {
   const src = read(path.join(WEB, "components/FilingDemoWizard.tsx"));
   assert.match(src, /SPECIMEN/, "the wizard lost its SPECIMEN badge");
-  assert.match(src, /DEMO — nothing is being filed/, "the wizard lost its DEMO banner");
+
+  // THIS ASSERTION USED TO READ  assert.match(src, /DEMO — nothing is being filed/)
+  // and it was a spelling of its own rule, in the shape this repository has now
+  // had to fix five times. It asserted that a STRING was present in the source:
+  // it could not tell a rendered banner from a commented-out one, could not tell
+  // a sticky banner from one that scrolls away, and it failed on any rewording
+  // however much better — which is what it did the day the wording moved into
+  // `domain/filing_posture.py` so the server and the screen would stop stating
+  // the product's filing position two different ways.
+  //
+  // What it cares about is that the banner EXISTS, is unmissable, and says what
+  // the server says. The first two are asserted here; the third is asserted
+  // from the Python side, in
+  // apps/api/tests/test_one_filing_posture_and_the_browser_echoes_it.py,
+  // because a guard written here would compare the browser against a copy of
+  // itself.
+  assert.match(
+    src, /sticky top-0[^"]*bg-amber/,
+    "the DEMO banner is no longer sticky — it must never scroll away, because " +
+      "whoever glances at this screen, including somebody who did not watch it " +
+      "start, has to see what it is",
+  );
+  assert.match(
+    src, /\{posture\.headline\}/,
+    "the banner no longer renders the served posture headline",
+  );
+  assert.match(
+    src, /\{posture\.roadmap\}/,
+    "the banner no longer renders what happens instead of filing, and what " +
+      "would have to change — the sentence a CA asks for before they finish " +
+      "the walk-through",
+  );
 });
 
 test("the guard would actually catch a reference minted in the browser", () => {
