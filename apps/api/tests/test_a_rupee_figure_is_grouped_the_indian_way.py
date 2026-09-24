@@ -37,6 +37,7 @@ were there on 24 September. A ninth copy written any other way still matches.
 from __future__ import annotations
 
 import ast
+import json
 import re
 from pathlib import Path
 
@@ -163,6 +164,56 @@ def test_whole_rupees_truncates_toward_zero(paise, expected):
     """-150 is -1 and not -2, and a magnitude under a rupee is '0' and never
     '-0' — a minus sign on a nil reads as an amount somebody owes."""
     assert whole_rupees(paise) == expected
+
+
+# ── The parity half: the browser groups the same way ─────────────────────────
+
+_VECTORS = json.loads(
+    (API.parent.parent / "shared" / "money-grouping-vectors.json").read_text()
+)["vectors"]
+
+
+@pytest.mark.parametrize("v", _VECTORS, ids=lambda v: str(v["paise"]))
+def test_the_shared_vectors_are_what_this_side_answers(v):
+    """`shared/money-grouping-vectors.json` is read by BOTH suites.
+
+    Indian grouping has two implementations and neither language can read the
+    other's — this one serves every PDF, email and 422, and
+    `apps/web/lib/money/format.ts` serves every screen. A CA reads both on one
+    page, so a disagreement is visible at a glance; it WAS one until this
+    commit, and nothing would have caught the next one.
+
+    `apps/web/scripts/money-grouping-parity.test.ts` asserts the same file
+    against `formatPaiseBare`.
+    """
+    assert rupees_paise(v["paise"]) == v["grouped"], v["note"]
+
+
+def test_the_fixture_still_carries_the_cases_that_matter():
+    """A fixture quietly emptied of its hard cases passes for ever."""
+    seen = {v["paise"] for v in _VECTORS}
+    assert len(_VECTORS) >= 15, f"only {len(_VECTORS)} vectors"
+    for must in (10_000_000, 1_000_000_000, -150):
+        assert must in seen, f"the {must}-paise vector has gone"
+
+
+def test_whole_rupees_is_deliberately_not_a_parity_vector():
+    """The two sides answer DIFFERENT questions here and must not be
+    harmonised: this one truncates toward zero because the year-end statements
+    present in whole rupees, while the browser's `formatWhole` falls back to
+    showing paise so an unrounded row stands out on a return-prep screen.
+
+    The fixture says so in prose; this asserts the fixture still says it, so
+    the reason cannot be lost while the file is edited."""
+    raw = json.loads(
+        (API.parent.parent / "shared" / "money-grouping-vectors.json").read_text())
+    assert not any("whole" in v for v in raw["vectors"]), (
+        "a `whole` column was added to the shared vectors. The two languages "
+        "round differently ON PURPOSE — read the fixture's own note before "
+        "pinning them.")
+    note = " ".join(k for k in raw if k.startswith("_"))
+    assert "whole_rupees" in note, (
+        "the fixture no longer records WHY whole rupees is not pinned")
 
 
 @pytest.mark.parametrize("digits,expected", [
