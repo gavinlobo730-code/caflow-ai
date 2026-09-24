@@ -53,6 +53,7 @@ import {
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook } from "@/lib/export/xlsx";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { objectWithLists } from "@/lib/api/shape";
 
 function formatRupees(paise: number): string {
   const rupees = Math.floor(Math.abs(paise) / 100);
@@ -127,7 +128,7 @@ export default function AISPage() {
     setError(null);
     try {
       const res = await api.ais.statement(clientId, assessmentYear);
-      setStatement(res.data);
+      setStatement(objectWithLists<AISStatement>(res.data, "uploads"));
       const nextBooks: Record<string, string> = {};
       const nextNotes: Record<string, string> = {};
       for (const line of res.data?.records ?? []) {
@@ -164,7 +165,7 @@ export default function AISPage() {
           client_id: clientId, assessment_year: assessmentYear,
           raw, file_name: file.name,
         });
-        setStatement(res.data);
+        setStatement(objectWithLists<AISStatement>(res.data, "uploads"));
         setMessage(`${res.data?.records?.length ?? 0} lines read from ${file.name}.`);
         await load();
       } catch (err) {

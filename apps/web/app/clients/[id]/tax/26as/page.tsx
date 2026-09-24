@@ -7,6 +7,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
+import { objectWithLists } from "@/lib/api/shape";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL (TDS-20's first half).
@@ -245,7 +246,7 @@ export default function Form26ASPage() {
         body: JSON.stringify({ client_id: clientId, financial_year: fy }),
       });
       if (!res.success) throw new Error(res.error ?? "Reconciliation failed");
-      setRecon(res.data);
+      setRecon(objectWithLists<Reconciliation>(res.data, "not_a_tds_credit"));
     } catch (err) {
       setReconError(err instanceof Error ? err.message : "Failed");
     } finally {

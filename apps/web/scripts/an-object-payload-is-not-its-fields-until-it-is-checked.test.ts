@@ -114,6 +114,28 @@ function sweep(): Site[] {
   return found;
 }
 
+/** Every object-state-from-a-payload site, narrowed or not. What the walk can
+ *  SEE, which is the only honest thing to put a vacuity floor on. */
+function population(): number {
+  let n = 0;
+  for (const f of walk(WEB)) {
+    const rel = relative(WEB, f).split("\\").join("/");
+    if (rel.startsWith("scripts/")) continue;
+    const src = code(readFileSync(f, "utf8"));
+    const decl =
+      /const\s*\[\s*(\w+)\s*,\s*(set\w+)\s*\]\s*=\s*useState\s*<[^>]*\|\s*null\s*>\s*\(\s*null\s*\)/g;
+    for (const m of src.matchAll(decl)) {
+      const [, state, setter] = m;
+      const sets = [...src.matchAll(new RegExp(`\\b${setter}\\s*\\(([^;]*?)\\)\\s*;`, "g"))]
+        .map((c) => c[1])
+        .filter((a) => /\.data\b/.test(a));
+      if (!sets.length) continue;
+      if ([...src.matchAll(new RegExp(`\\b${state}\\??\\.(\\w+)\\s*\\??\\.\\s*${NESTED_ARRAY_READ}\\b`, "g"))].length) n++;
+    }
+  }
+  return n;
+}
+
 const key = (s: Site) => `${s.file}::${s.state}`;
 
 /**
@@ -122,75 +144,26 @@ const key = (s: Site) => `${s.file}::${s.state}`;
  * so a fix that leaves its entry here fails just as loudly as a new offender.
  */
 const KNOWN_UNGUARDED: string[] = [
-  "app/accounting/budget/page.tsx::data",
-  "app/accounting/msme-tracker/page.tsx::working",
-  "app/clients/[id]/accounting/page.tsx::ledger",
-  "app/clients/[id]/compliance/gst/page.tsx::result",
-  "app/clients/[id]/fixed-assets/page.tsx::movement",
-  "app/clients/[id]/fixed-assets/page.tsx::preview",
   "app/clients/[id]/payroll/page.tsx::data",
   "app/clients/[id]/payroll/page.tsx::ecrSeq",
-  "app/clients/[id]/sales/page.tsx::hist",
-  "app/clients/[id]/sales/page.tsx::stmt",
-  "app/clients/[id]/tax/26as/page.tsx::recon",
-  "app/clients/[id]/tax/computation/page.tsx::computeResult",
-  "app/clients/[id]/tax/computation/page.tsx::presResult",
-  "app/clients/[id]/tax/filing/page.tsx::sheet",
-  "app/clients/[id]/year-end/xbrl/page.tsx::selected",
-  "app/income-tax/ais/page.tsx::statement",
-  "app/income-tax/book-to-tax/page.tsx::bridge",
-  "app/income-tax/section-32/page.tsx::answer",
-  "app/income-tax/tax-audit/page.tsx::applicability",
-  "app/onboarding/checklist/page.tsx::selected",
   "app/platform/page.tsx::detail",
-  "app/risks/page.tsx::register",
-  "app/workflows/page.tsx::analytics",
-  "components/accounting/FxRevaluationPanel.tsx::plan",
-  "components/accounting/OpeningBalancesTab.tsx::kinds",
-  "components/accounting/OpeningBalancesTab.tsx::listing",
-  "components/banking/AccountsPanel.tsx::preview",
-  "components/banking/CashBook.tsx::book",
-  "components/banking/ReconcileTab.tsx::history",
-  "components/banking/ReconcileTab.tsx::projection",
-  "components/banking/WorthALookTab.tsx::data",
-  "components/fixed-assets/CwipTab.tsx::register",
-  "components/gst/AmendmentsTab.tsx::amendments",
-  "components/gst/ItcRegisterTab.tsx::advances",
-  "components/gst/ItcRegisterTab.tsx::register",
-  "components/gst/RegistrationsTab.tsx::kinds",
-  "components/gst/RegistrationsTab.tsx::turnover",
-  "components/inventory/CostFormulaPanel.tsx::policy",
-  "components/inventory/LocationsAndBatches.tsx::expiry",
-  "components/inventory/StockCountSheet.tsx::result",
-  "components/inventory/StockCountSheet.tsx::sheet",
-  "components/payroll/ApplyStructureModal.tsx::result",
-  "components/payroll/BonusRegister.tsx::data",
   "components/payroll/EmployeeDrawer.tsx::result",
-  "components/payroll/MonthlyReview.tsx::advice",
-  "components/payroll/MonthlyReview.tsx::departments",
-  "components/payroll/MonthlyReview.tsx::variance",
   "components/payroll/StatutoryHandoff.tsx::handoff",
   "components/payroll/StatutoryHandoff.tsx::result",
-  "components/portal/TdsProjectionTab.tsx::data",
-  "components/purchases/BillsOfEntryTab.tsx::authorities",
-  "components/purchases/PurchaseCycleTab.tsx::matched",
-  "components/purchases/PurchaseCycleTab.tsx::position",
-  "components/purchases/RcmDocumentPanel.tsx::preview",
-  "components/sales/SalesCycleTab.tsx::detail",
-  "components/sales/SalesCycleTab.tsx::position",
-  "components/sales/SalesCycleTab.tsx::vocab",
-  "components/tax/RegimeElectionPanel.tsx::data",
 ];
 
 test("the sweep still finds object state at all", () => {
-  // Vacuity floor. This pattern is everywhere in this codebase; a sweep that
-  // finds a handful has stopped parsing, and a guard that finds nothing passes
-  // for the wrong reason.
-  const all = sweep();
+  // Vacuity floor, measured on the POPULATION and not on the offenders.
+  //
+  // ⚠️ It was written against `sweep()`, which excludes anything already
+  // narrowed — so it failed the moment the backlog was worked down, which is
+  // a floor that breaks when the work SUCCEEDS. A vacuity check has to count
+  // what the walk can SEE, not what is still wrong with it, or the guard
+  // cannot survive its own purpose being served.
   assert.ok(
-    all.length >= 40,
-    `only ${all.length} object-state payload sites found — the walk or the ` +
-      "regex has probably stopped matching.",
+    population() >= 40,
+    `only ${population()} object-state payload sites found at all — the walk ` +
+      "or the regex has probably stopped matching.",
   );
 });
 

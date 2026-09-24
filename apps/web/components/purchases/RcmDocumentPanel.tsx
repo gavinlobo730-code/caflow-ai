@@ -24,6 +24,7 @@ import { X, FileText, Check } from "lucide-react";
 import { api, type RcmDocumentPreview } from "@/lib/api";
 import { formatPaise } from "@/lib/money/format";
 import { Callout, GapList, StatutoryNotes } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 export function RcmDocumentPanel({
   clientId, kind, purchaseBillId, purchasePaymentId, onClose, onIssued,
@@ -50,7 +51,7 @@ export function RcmDocumentPanel({
         : await api.rcmDocuments.previewPaymentVoucher({
             client_id: clientId, purchase_payment_id: purchasePaymentId ?? "" });
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't read the document.");
-      setPreview(res.data);
+      setPreview(objectWithLists<RcmDocumentPreview>(res.data, "reasons"));
       // The suggested number is the server's. It stays editable — Rule 46(b)
       // allows one or multiple series and a client arriving mid-year has one
       // running already — and what is written is what the box says.

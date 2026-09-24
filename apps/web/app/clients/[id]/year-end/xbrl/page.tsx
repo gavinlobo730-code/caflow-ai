@@ -10,6 +10,7 @@ import { useClientEntityType } from "@/lib/clients/useClientEntityType";
 import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
+import { objectWithLists } from "@/lib/api/shape";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
@@ -131,7 +132,7 @@ export default function XBRLPage() {
     setValidating(true);
     const res = await apiFetch(`/api/xbrl/packages/${pkg.id}/validate`, { method: "POST" });
     if (res.success) {
-      setSelected(res.data);
+      setSelected(objectWithLists<XBRLPackage>(res.data, "missing_tags", "validation_errors"));
       await load();
     }
     setValidating(false);

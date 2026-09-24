@@ -17,7 +17,7 @@
  * describes it are all `domain/accounting/opening_documents.py`'s answers.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { arrayOrEmpty } from "@/lib/api/shape";
+import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { Plus, AlertTriangle, X, Info, Check } from "lucide-react";
 import {
   api,
@@ -70,7 +70,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
     try {
       const res = await api.openingDocuments.list(clientId, kind);
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't read the opening documents.");
-      setListing(res.data);
+      setListing(objectWithLists<OpeningDocumentListing>(res.data, "documents"));
       setLoadFailed(false);
     } catch {
       // Not swallowed into an empty list: on this tab "none" reads as "nothing
@@ -95,7 +95,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
   useEffect(() => {
     let alive = true;
     api.openingDocuments.kinds()
-      .then((r) => { if (alive && r.success && r.data) setKinds(r.data); })
+      .then((r) => { if (alive && r.success && r.data) setKinds(objectWithLists<OpeningDocumentKinds>(r.data, "kinds")); })
       .catch(() => { /* the labels fall back to the two we render */ });
     return () => { alive = false; };
   }, []);

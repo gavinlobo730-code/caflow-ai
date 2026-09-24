@@ -27,6 +27,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { todayLocalISO } from "@/lib/dateMath";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 interface Godown {
   id: string;
@@ -108,7 +109,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
       setGodowns(g.data.godowns ?? []);
       setUnallocatedMeans(g.data.unallocated_means ?? "");
       setDetail(d.data.rows ?? []);
-      setExpiry(e.data);
+      setExpiry(objectWithLists<Expiry>(e.data, "bucket_order", "notes", "rows"));
       setBatches(b.data ?? []);
       setItems(it.success ? (it.data ?? []) : []);
       setError("");

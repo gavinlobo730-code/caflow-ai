@@ -47,6 +47,7 @@ import { formatPaise, formatDate } from "@/lib/services/formatting";
 import { todayLocalISO } from "@/lib/dateMath";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { api } from "@/lib/api";
+import { objectWithLists } from "@/lib/api/shape";
 
 // ─── The server's shape ───────────────────────────────────────────────────────
 
@@ -218,7 +219,7 @@ export default function RisksPage() {
       if (!res.success || !res.data) {
         throw new Error(res.error || "Could not load the risk register");
       }
-      setRegister(res.data);
+      setRegister(objectWithLists<RegisterPayload>(res.data, "gaps", "notes"));
     } catch (err) {
       setPageError(err instanceof Error ? err.message : "Failed to load risk data");
     } finally {

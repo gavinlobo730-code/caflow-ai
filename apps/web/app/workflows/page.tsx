@@ -8,6 +8,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/services/formatting";
 import { ATTENTION, BRAND, BRAND_SURFACE, HINT, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
+import { objectWithLists } from "@/lib/api/shape";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -142,7 +143,7 @@ export default function WorkflowsPage() {
         api.workflowEngine.analytics() as Promise<{ data: WorkflowAnalytics }>,
       ]);
       setTemplates(tplRes.data?.templates || []);
-      setAnalytics(analyticsRes.data || null);
+      setAnalytics(objectWithLists<WorkflowAnalytics>(analyticsRes.data, "by_template") || null);
       setLoadError(null);
     } catch (e) {
       setTemplates([]);

@@ -16,6 +16,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/services/formatting";
 import { Callout } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -256,7 +257,7 @@ export default function OnboardingChecklistPage() {
     try {
       const res = await api.onboarding.get(workflowId) as ApiResponse<OnboardingWorkflow>;
       if (res.success) {
-        setSelected(res.data);
+        setSelected(objectWithLists<OnboardingWorkflow>(res.data, "steps"));
         setWorkflows((prev) => prev.map((w) => w.id === workflowId ? res.data : w));
       }
     } catch {
@@ -286,7 +287,7 @@ export default function OnboardingChecklistPage() {
     try {
       const res = await api.onboarding.complete(selected.id) as ApiResponse<OnboardingWorkflow>;
       if (!res.success) throw new Error(res.error ?? "Go-live failed");
-      setSelected(res.data);
+      setSelected(objectWithLists<OnboardingWorkflow>(res.data, "steps"));
       setWorkflows((prev) => prev.map((w) => w.id === selected.id ? res.data : w));
     } catch (e) {
       setGoLiveError(e instanceof Error ? e.message : "Go-live verification failed");

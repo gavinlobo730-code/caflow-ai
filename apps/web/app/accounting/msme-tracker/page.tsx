@@ -46,6 +46,7 @@ import type { Client } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
+import { objectWithLists } from "@/lib/api/shape";
 
 export default function MSME43BHPage() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -77,7 +78,7 @@ export default function MSME43BHPage() {
       const bps = bankRate.trim() === "" ? undefined : bpsFromPercentInput(bankRate);
       const r = await api.incomeTax.msme43bh(clientId, fy, bps ?? undefined);
       if (!r.success) { setWorking(null); setError(r.error ?? "Could not compute the §43B(h) working"); return; }
-      setWorking(r.data);
+      setWorking(objectWithLists<MSME43BHWorking>(r.data, "bills", "caveats", "gaps"));
     } catch (e) {
       setWorking(null);
       setError(e instanceof Error ? e.message : "Could not compute the §43B(h) working");

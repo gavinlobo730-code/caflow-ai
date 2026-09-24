@@ -18,6 +18,7 @@ import type { GLReconciliation, LateFilingBlock, ReturnPeriodWindow, Undeclarabl
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";
 import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { objectWithLists } from "@/lib/api/shape";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1619,7 +1620,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
         method: "POST",
         body: JSON.stringify({ client_id: clientId, period, raw_data }),
       });
-      if (resp.success) setResult(resp.data as Recon2BResult);
+      if (resp.success) setResult(objectWithLists<Recon2BResult>(resp.data, "defaulters", "problems"));
       else setError(resp.error ?? "Upload failed");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");

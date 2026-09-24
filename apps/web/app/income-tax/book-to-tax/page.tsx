@@ -44,6 +44,7 @@ import { request } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { YearPicker } from "@/components/ui/year-picker";
+import { objectWithLists } from "@/lib/api/shape";
 
 interface BridgeLine {
   label: string;
@@ -120,7 +121,7 @@ export default function BookToTaxBridgePage() {
       const r = await request<{ success: boolean; data: Bridge; error: string | null }>(
         "/api/income-tax/book-to-tax-bridge", { method: "POST", body: JSON.stringify(body) });
       if (!r.success) { setBridge(null); setError(r.error ?? "Could not build the bridge"); return; }
-      setBridge(r.data);
+      setBridge(objectWithLists<Bridge>(r.data, "lines", "missing", "reasons"));
     } catch (e) {
       setBridge(null);
       setError(e instanceof Error ? e.message : "Could not build the bridge");

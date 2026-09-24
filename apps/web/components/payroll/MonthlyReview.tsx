@@ -41,6 +41,7 @@ import { ArrowDown, ArrowUp, Banknote, Building2, Download, Info, TrendingUp } f
 import { api, type PayrollBankAdvice, type PayrollDepartmentCost, type PayrollMonthOnMonth } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/money/format";
+import { objectWithLists } from "@/lib/api/shape";
 
 function rupees(paise: number): string {
   const sign = paise < 0 ? "-" : "";
@@ -89,11 +90,11 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
         api.payroll.departmentCost(params),
         api.payroll.bankAdvice(params).catch(() => null),
       ]);
-      setVariance(v.success ? v.data : null);
-      setDepartments(d.success ? d.data : null);
+      setVariance(v.success ? objectWithLists<PayrollMonthOnMonth>(v.data, "employees", "notes") : null);
+      setDepartments(d.success ? objectWithLists<PayrollDepartmentCost>(d.data, "notes", "rows") : null);
       // A 404 here means no run for the month, which the variance panel
       // already says in its own words — not an error worth a red banner.
-      setAdvice(a && a.success ? a.data : null);
+      setAdvice(a && a.success ? objectWithLists<PayrollBankAdvice>(a.data, "excluded", "notes", "rows") : null);
     } catch {
       setError("Couldn't load the monthly review — the request failed or timed out.");
     } finally {

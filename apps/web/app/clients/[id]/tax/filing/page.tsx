@@ -8,6 +8,7 @@ import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { assessmentYearChoicesAround, financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
+import { objectWithLists } from "@/lib/api/shape";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -346,7 +347,7 @@ export default function ITRFilingPage() {
       // success:false and the sentence saying what to do, so an unchecked call
       // would render an empty sheet — which reads as "nothing to key".
       if (!res.success) { setSheetError(res.error ?? "Could not build the sheet"); return; }
-      setSheet(res.data as KeyingSheet);
+      setSheet(objectWithLists<KeyingSheet>(res.data, "gaps", "notes"));
     } catch (err) {
       setSheetError(err instanceof Error ? err.message : "Could not build the sheet");
     } finally {

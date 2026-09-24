@@ -38,6 +38,7 @@ import type {
 import { gstPeriodLabel as periodLabel, isGstPeriod as isPeriod } from "@/lib/gst/period";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
+import { objectWithLists } from "@/lib/api/shape";
 
 function money(paise?: number | null) {
   const p = Number(paise ?? 0);
@@ -161,7 +162,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
       } else if (kind === "amendments") {
         const res = await api.gstWorkspace.gstr1Amendments(clientId, period);
         if (!res?.success) throw new Error(res?.error ?? "That did not load.");
-        setAmendments(res.data);
+        setAmendments(objectWithLists<GSTR1AmendmentsReport>(res.data, "carry_forward", "closing_soon", "expired", "needs_decision", "sections", "source_periods"));
       } else {
         const res = await api.gstReturns.gstr1WithAmendments(
           { client_id: clientId, period });

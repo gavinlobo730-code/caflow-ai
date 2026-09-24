@@ -26,6 +26,7 @@ import type { BonusRegister as BonusRegisterData } from "@/lib/api";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 function rupees(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN", {
@@ -62,7 +63,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
         setData(null);
         return;
       }
-      setData(res.data ?? null);
+      setData(objectWithLists<BonusRegisterData>(res.data, "employees", "notes") ?? null);
       const d = res.data?.declaration;
       setRate(((res.data?.rate_bps ?? 0) / 100).toFixed(2));
       setMinWage(d?.minimum_wage_monthly_paise != null

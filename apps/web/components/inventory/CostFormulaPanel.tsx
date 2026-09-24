@@ -22,6 +22,7 @@ import { Loader2, Scale } from "lucide-react";
 import { api } from "@/lib/api";
 import type { InventoryCostingPolicy } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 export function CostFormulaPanel({ clientId }: { clientId: string }) {
   const [policy, setPolicy] = useState<InventoryCostingPolicy | null>(null);
@@ -36,7 +37,7 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
     setLoading(true);
     try {
       const res = await api.inventory.costingPolicy({ client_id: clientId });
-      setPolicy(res.success ? (res.data ?? null) : null);
+      setPolicy(res.success ? (objectWithLists<InventoryCostingPolicy>(res.data, "methods", "methods_used") ?? null) : null);
     } catch {
       setPolicy(null);
     } finally {

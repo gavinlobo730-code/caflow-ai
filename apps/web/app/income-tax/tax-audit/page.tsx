@@ -27,6 +27,7 @@ import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -186,7 +187,7 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
         is_company: isCompany,
       }).then(r => {
         if (cancelled) return;
-        if (r.success && r.data) { setApplicability(r.data); setApplicabilityError(null); }
+        if (r.success && r.data) { setApplicability(objectWithLists<TaxAuditApplicability>(r.data, "caveats", "limbs_not_tested")); setApplicabilityError(null); }
         // A refusal is SHOWN. The old badge could not fail, so it always said
         // something — which is how it came to say something wrong.
         else { setApplicability(null); setApplicabilityError(r.error ?? "Couldn't check §44AB."); }

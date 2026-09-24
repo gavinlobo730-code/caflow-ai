@@ -26,6 +26,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { todayLocalISO } from "@/lib/dateMath";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 interface Project {
   id: string;
@@ -123,7 +124,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
           `/api/cwip/schedules?client_id=${encodeURIComponent(clientId)}&as_of=${asOf}`),
       ]);
       if (!reg.success || !sch.success) throw new Error(reg.error ?? sch.error ?? "Couldn't load.");
-      setRegister(reg.data);
+      setRegister(objectWithLists<Register>(reg.data, "projects"));
       setSchedules(sch.data);
       setError("");
     } catch (e) {

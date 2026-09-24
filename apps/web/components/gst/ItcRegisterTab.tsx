@@ -38,6 +38,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { gstPeriodLabel, isGstPeriod } from "@/lib/gst/period";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
+import { objectWithLists } from "@/lib/api/shape";
 
 function money(paise?: number | null) {
   const p = Number(paise ?? 0);
@@ -160,10 +161,10 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
         api.gstWorkspace.gstr1Advances(clientId, p),
       ]);
       if (!reg?.success) throw new Error(reg?.error ?? "The register did not load.");
-      setRegister(reg.data);
+      setRegister(objectWithLists<ITCRegisterPeriod>(reg.data, "reversals"));
       // The advances panel is supplementary: a failure there must not hide the
       // register, which is the figure a return depends on.
-      setAdvances(adv?.success ? adv.data : null);
+      setAdvances(adv?.success ? objectWithLists<GSTR1Advances>(adv.data, "unadjusted_advances") : null);
     } catch (e) {
       setRegister(null); setAdvances(null);
       setErr(e instanceof Error ? e.message : "That did not load.");

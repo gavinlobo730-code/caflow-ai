@@ -26,6 +26,7 @@ import { apiGet, getAuthToken } from "@/lib/invoices/shared";
 import { formatPaise } from "@/lib/services/formatting";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
+import { objectWithLists } from "@/lib/api/shape";
 
 interface MonthRow {
   month: string;
@@ -70,7 +71,7 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
         `/api/portal/employee/tds-projection?financial_year=${encodeURIComponent(fy)}`,
         token);
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't load your tax working.");
-      setData(res.data as Projection);
+      setData(objectWithLists<Projection>(res.data, "gaps", "months"));
     } catch (e) {
       setData(null);
       onToast(e instanceof Error ? e.message : "Couldn't load your tax working.");

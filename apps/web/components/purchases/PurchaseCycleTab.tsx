@@ -20,7 +20,7 @@
  * acceptance date are `domain/purchases/three_way_match.py`'s answers.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { arrayOrEmpty } from "@/lib/api/shape";
+import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { AlertTriangle, ClipboardList, Info, PackageCheck, Plus, X } from "lucide-react";
 import {
   api,
@@ -168,7 +168,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
       setMsg({ type: "err", text: res.error || "That bill was not found." });
       return;
     }
-    setMatched(res.data ?? null);
+    setMatched(objectWithLists<ThreeWayMatch>(res.data, "caveats", "differences", "gaps", "lines") ?? null);
   }
 
   if (loading) return <div className="p-6 text-sm text-gray-500">Loading…</div>;
@@ -454,7 +454,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
             empty="No purchase orders yet."
             onRow={(i) => {
               void api.purchaseCycle.orderPosition(orders[i].id, clientId)
-                .then((r) => { if (r.success && r.data) setPosition(r.data); });
+                .then((r) => { if (r.success && r.data) setPosition(objectWithLists<PurchaseOrderPosition>(r.data, "lines")); });
             }}
           />
           {position && (

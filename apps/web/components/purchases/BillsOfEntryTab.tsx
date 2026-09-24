@@ -20,7 +20,7 @@
  * by /api/bills-of-entry/authorities rather than written here.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { arrayOrEmpty } from "@/lib/api/shape";
+import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { Plus, X, AlertTriangle, Info, Ship, Trash2 } from "lucide-react";
 import { api, type BillOfEntry, type BillOfEntryAuthorities } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -93,7 +93,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
   useEffect(() => {
     let alive = true;
     api.billsOfEntry.authorities()
-      .then((r) => { if (alive && r.success && r.data) setAuthorities(r.data); })
+      .then((r) => { if (alive && r.success && r.data) setAuthorities(objectWithLists<BillOfEntryAuthorities>(r.data, "not_modelled")); })
       .catch(() => { /* the citations simply do not render */ });
     return () => { alive = false; };
   }, []);
