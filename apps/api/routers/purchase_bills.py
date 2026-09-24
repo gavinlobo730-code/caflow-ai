@@ -151,6 +151,7 @@ def _compute_line_gst(
 
 
 from domain.gst import place_of_supply as _pos  # noqa: E402
+from domain.money_text import whole_rupees
 
 
 def _get_state_code_from_gstin(gstin: Optional[str]) -> Optional[str]:
@@ -1088,7 +1089,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         )
         timeline_service.log(
             client_id, "accounting", "Purchase Bill Created",
-            f"Bill {bill.get('bill_no', '')} for ₹{bill.get('total_paise', 0) // 100:,} created (draft)",
+            f"Bill {bill.get('bill_no', '')} for ₹{whole_rupees(bill.get('total_paise', 0))} created (draft)",
             "info", firm_id=firm_id or "",
             entity_type="purchase_bill", entity_id=bill_id,
             amount_paise=bill.get("total_paise"), actor_id=current_user.get("auth_user_id"),
@@ -1259,7 +1260,7 @@ def bulk_create_purchase_bills(
             total = sum(b.get("total_paise", 0) for b in bills)
             timeline_service.log(
                 cid, "accounting", "Purchase Bills Imported",
-                f"{len(bills)} bill(s) imported via bulk upload, totaling ₹{total // 100:,}.",
+                f"{len(bills)} bill(s) imported via bulk upload, totaling ₹{whole_rupees(total)}.",
                 "info", firm_id=firm_id or "",
                 entity_type="purchase_bill", amount_paise=total,
                 actor_id=current_user.get("auth_user_id"),
@@ -1844,7 +1845,7 @@ def receive_purchase_bill(
             category="accounting",
             event_type="bill_posted",
             title=f"Purchase Bill {updated_bill.get('bill_no', bill_id)} posted",
-            description=f"Vendor bill for ₹{updated_bill.get('total_paise', 0) // 100:,} received.",
+            description=f"Vendor bill for ₹{whole_rupees(updated_bill.get('total_paise', 0))} received.",
             severity="success",
             entity_type="purchase_bill",
             entity_id=bill_id,

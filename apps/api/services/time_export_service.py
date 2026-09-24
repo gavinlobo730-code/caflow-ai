@@ -7,6 +7,7 @@ integer paise plus a display string so no float arithmetic touches money.
 import csv
 import io
 from typing import Optional
+from domain.money_text import rupees_paise
 
 EXPORT_COLUMNS = [
     "date", "user_name", "client_name", "task_id", "description",
@@ -16,7 +17,7 @@ EXPORT_COLUMNS = [
 
 
 def _paise_to_inr_str(paise: int) -> str:
-    return f"{paise // 100:,}.{paise % 100:02d}"
+    return f"{rupees_paise(paise)}"
 
 
 def build_export_rows(entries: list[dict], users_by_id: dict, clients_by_id: dict) -> list[dict]:

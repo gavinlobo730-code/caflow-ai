@@ -4358,6 +4358,37 @@ declare purpose code 102.
   added. An overnight run starting from it would have spent its first hour
   hunting them. When the two disagree, the guard is the authority and the metric
   is the thing to fix.
+- **AND A DATE TOLD TO A PERSON OR TO A MODEL IS THE SAME RULE.** `domain/
+  ai_copilot_service` opened the copilot's system prompt with
+  `f"DATE: {datetime.utcnow().strftime('%d %B %Y')}"`, and four more places told
+  the model "REAL DATA AS OF <date>" the same way — so in that 00:00–05:30 IST
+  window the model reasoned from YESTERDAY when a CA asked what was due, and
+  "the 20th against the 19th" is the difference between due today and due
+  tomorrow. **The two questions are separated rather than merged**: an INSTANT
+  is `datetime.now(timezone.utc)`, aware, and a DATE a person or a model reads
+  is `ist_now()`. Merging them is what would break the other half — `now` in
+  that module also built `expires_at`, and an IST-offset string compared against
+  a UTC one sorts five and a half hours away from the instant it names, so a
+  cached summary would never expire. **`datetime.utcnow()` is banned there and
+  is deprecated from Python 3.12** for exactly this reason: it returns a naive
+  datetime that only convention calls UTC.
+- **A RUPEE FIGURE WRITTEN FOR A PERSON IS GROUPED THE INDIAN WAY, AND THE
+  GROUPING HAS ONE IMPLEMENTATION PER LANGUAGE.** `f"{1234567:,}"` is
+  `1,234,567`; decision D6 wants **12,34,567**. `domain/money_text.py` is the
+  backend authority — `group_indian`, `rupees_paise`, `whole_rupees` — and
+  `apps/web/lib/money/format.ts` the browser's, on `Intl.NumberFormat("en-IN")`;
+  `shared/money-grouping-vectors.json` pins the two and BOTH suites read it.
+  `domain/reporting/pdf_money` re-exports the three and **deliberately emits no
+  unit**: ReportLab's core fonts are WinAnsiEncoding and have no U+20B9 glyph,
+  so a PDF writes "Rs." and everything else writes ₹ — the grouping is
+  universal, the unit is the medium's. **NEVER split a paise value by hand**:
+  `f"{p // 100:,}.{p % 100:02d}"` groups the wrong way AND inverts a negative,
+  because `//` floors and `%` follows it, so -1 paise prints "-1.99". That was
+  live at ten sites, including the email a client's own customer receives.
+  `whole_rupees` TRUNCATES toward zero and the browser's `formatWhole`
+  deliberately does not — it keeps the paise so an unrounded row shows on a
+  return-prep screen — so those two are NOT pinned to each other and the
+  fixture says why.
 - Worked example: the daily sweep is nominally 06:00 IST = 00:30 UTC. A run recorded as `2026-08-18 01:36+00` is reported as "07:06 IST" — and that hour of drift is GitHub cron lateness under load, which is what the catch-up in jobs/ exists to absorb.
 
 ## PDFs — one palette, and it is the product's

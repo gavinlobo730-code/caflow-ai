@@ -22,6 +22,7 @@ from core.authz import (
 )
 from core.permissions import rbac
 from services.timeline_service import timeline_service
+from domain.money_text import whole_rupees
 
 router = APIRouter(prefix="/api/relationships", tags=["relationships"])
 
@@ -835,7 +836,7 @@ def create_loan(
             timeline_service.log(
                 data.client_id, "compliance", "Section 185 Flag",
                 f"Loan to director entity flagged — Section 185 Companies Act. "
-                f"Principal: ₹{data.principal_paise // 100:,}",
+                f"Principal: ₹{whole_rupees(data.principal_paise)}",
                 "warning", firm_id=firm_id,
             )
         return api_response(True, row)
@@ -847,7 +848,7 @@ def create_loan(
         timeline_service.log(
             data.client_id, "compliance", "Section 185 Flag",
             f"Loan to director flagged under Section 185 Companies Act. "
-            f"Principal: ₹{data.principal_paise // 100:,}",
+            f"Principal: ₹{whole_rupees(data.principal_paise)}",
             "warning", firm_id=firm_id,
             entity_type="loan", entity_id=created["id"],
             actor_id=current_user.get("auth_user_id"),

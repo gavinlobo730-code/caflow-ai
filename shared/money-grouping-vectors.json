@@ -1,0 +1,105 @@
+{
+  "_why": "Indian grouping (decision D6) has two implementations, one per language, and neither can read the other. domain/money_text.py serves every PDF, email, 422 and log line; apps/web/lib/money/format.ts serves every screen. A CA reads both on one page — components/payroll/MonthlyReview.tsx renders formatPaise on a figure and the server's own sentence beside it — so a disagreement is visible in a single glance and was, until 24-09-2026, real: the backend used Python's own separator and grouped 1,23,456.78 as 123,456.78.",
+  "_the_backend_side": "domain.money_text.rupees_paise / whole_rupees, pinned by apps/api/tests/test_a_rupee_figure_is_grouped_the_indian_way.py",
+  "_the_browser_side": "lib/money/format.formatPaiseBare, pinned by apps/web/scripts/money-grouping-parity.test.ts",
+  "_the_unit_is_not_here": "Neither side emits a currency symbol in these vectors, deliberately. A PDF writes 'Rs.' because ReportLab's core fonts carry no U+20B9 glyph; a screen and an email write the sign. The GROUPING is what both sides must agree on; the unit is the medium's.",
+  "_nothing_and_zero": "The browser renders null/undefined as an em dash and Python renders None as nil, because their callers differ — a table cell with no figure is not a cell reading zero, while a PDF built from a row whose column is NULL must not fail the document. That divergence is deliberate and is asserted APART, in each suite, rather than being a vector here.",
+  "vectors": [
+    {
+      "paise": 0,
+      "grouped": "0.00",
+      "note": "nil"
+    },
+    {
+      "paise": 1,
+      "grouped": "0.01",
+      "note": "one paisa truncates to nil rupees"
+    },
+    {
+      "paise": 99,
+      "grouped": "0.99",
+      "note": "under a rupee"
+    },
+    {
+      "paise": 100,
+      "grouped": "1.00",
+      "note": "exactly one rupee"
+    },
+    {
+      "paise": 999,
+      "grouped": "9.99",
+      "note": "no grouping below a thousand"
+    },
+    {
+      "paise": 99999,
+      "grouped": "999.99",
+      "note": "last ungrouped figure"
+    },
+    {
+      "paise": 100000,
+      "grouped": "1,000.00",
+      "note": "the first comma, same in both conventions"
+    },
+    {
+      "paise": 9999999,
+      "grouped": "99,999.99",
+      "note": "still agrees with the Western grouping"
+    },
+    {
+      "paise": 10000000,
+      "grouped": "1,00,000.00",
+      "note": "ONE LAKH — the first figure where the two conventions diverge; Western gives 100,000.00"
+    },
+    {
+      "paise": 12345678,
+      "grouped": "1,23,456.78",
+      "note": "Western gives 123,456.78"
+    },
+    {
+      "paise": 100000000,
+      "grouped": "10,00,000.00",
+      "note": "ten lakh"
+    },
+    {
+      "paise": 1000000000,
+      "grouped": "1,00,00,000.00",
+      "note": "ONE CRORE"
+    },
+    {
+      "paise": 10000000000,
+      "grouped": "10,00,00,000.00",
+      "note": "ten crore; Western gives 100,000,000.00"
+    },
+    {
+      "paise": 123456789012,
+      "grouped": "1,23,45,67,890.12",
+      "note": "past a crore the twos simply continue"
+    },
+    {
+      "paise": -1,
+      "grouped": "-0.01",
+      "note": "THE SIGN BUG: `//` floors and `%` follows it, so the hand-rolled split printed -1.99. Whole rupees is '0' and never '-0' — a minus on a nil reads as an amount owed"
+    },
+    {
+      "paise": -99,
+      "grouped": "-0.99",
+      "note": "printed -1.01 before"
+    },
+    {
+      "paise": -150,
+      "grouped": "-1.50",
+      "note": "printed -2.50 before; whole rupees truncates TOWARD ZERO, so -1 and not -2"
+    },
+    {
+      "paise": -100,
+      "grouped": "-1.00",
+      "note": "an exact negative rupee was the one case the old split got right"
+    },
+    {
+      "paise": -12345678,
+      "grouped": "-1,23,456.78",
+      "note": "the sign is taken off before grouping and put back after"
+    }
+  ],
+  "_whole_rupees_is_NOT_pinned_and_that_is_deliberate": "domain.money_text.whole_rupees TRUNCATES toward zero — the year-end statements present in whole rupees and always have. lib/money/format.formatWhole does something DIFFERENT on purpose: where a figure carries paise it falls back to showing them, so an unrounded row stands out on a return-prep screen rather than being silently rounded in a browser (rounding it there would be a second implementation of CGST s.170, and the two disagree at exactly Rs x.50). Two rules for two callers, not a drift — so only the GROUPING is a parity vector. Harmonising them is the tempting mistake; each suite asserts its own side's rule separately."
+}

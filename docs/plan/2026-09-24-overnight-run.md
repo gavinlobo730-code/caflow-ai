@@ -137,7 +137,7 @@ in T6, and it is independent of T4.
       ignored **silently**. Added to the owner questions as a one-request
       observation, since a Cloudflare preview already deploys on every PR.
 
-## Batch 4 — T5b, the exports that bypass `rbac()` ⏸ **partly; 4.4 scoped, not built**
+## Batch 4 — T5b, the exports that bypass `rbac()` ✅ **LANDED**
 
 Default taken on T5b-3's open scope question: **convert the `rbac()`-bypassing
 exports first**. That is the security half and cannot be the wrong call,
@@ -161,17 +161,37 @@ whichever way the full-scope question is eventually answered.
       comes from an API: the browser is only formatting what the server computed,
       which is not business logic. It is wrong only for a write path, which is 4.4.
 
-- [ ] **4.4** ⚠️ **`shareToPortal` is the real remaining item, and it is an access-control
-      gap rather than a tidy-up.** `app/clients/[id]/accounting/page.tsx:3523`
-      builds the P&L, Balance Sheet or Trial Balance, uploads the workbook to
-      Supabase storage **from the browser**, and inserts into `shared_reports` over
-      PostgREST — so `rbac()` never runs on either half, and what it publishes is a
-      client's financial statements to that client's own portal. The only control
-      is RLS.
+- [x] **4.4** ✅ **LANDED.** `shareToPortal` was an access-control gap rather than a
+      tidy-up: `app/clients/[id]/accounting/page.tsx` built the P&L, Balance Sheet or
+      Trial Balance, uploaded the workbook to Supabase Storage **from the browser**,
+      and inserted into `shared_reports` over PostgREST — so `rbac()` ran on neither
+      half, `core.authz`'s assignment scope ran on neither either, and what it
+      publishes is a client's financial statements to that client's own portal.
 
-      *Accept:* one endpoint under `rbac()` that builds the workbook server-side
-      (openpyxl, `services/time_export_service.py`'s shape), uploads, and inserts —
-      with the browser holding neither the storage write nor the table insert.
+      `POST /api/accounting/shared-reports` is the one door, under
+      `rbac("accounting", "write")` with `can_access_client` beside it;
+      `domain/reporting/shared_report.py` decides what may be shared and what the
+      table calls it, so the browser names no report type at all. A failed insert
+      now REMOVES the uploaded file, and a cleanup that itself fails goes to
+      `capture_soft_failure` rather than `pass`.
+
+      **The acceptance criterion above was half wrong and is corrected here.** It
+      said "builds the workbook server-side (openpyxl)". The workbook stays in the
+      browser and that is not the frontend holding business logic: `lib/export/xlsx.ts`
+      FORMATS figures `/api/accounting/{profit-loss,balance-sheet,trial-balance}`
+      already computed, and 4.2/4.3 above record that placement as right. Rebuilding
+      it in openpyxl would be a SECOND renderer of the same three statements, with
+      the export and the shared copy free to disagree. What had to move was the two
+      privileged WRITES, which is the clause of the criterion that mattered.
+
+      ⚠️ **A claim I made while scoping this was false and is corrected.** I wrote
+      that `apps/api` had never uploaded to storage, so there was no precedent.
+      `routers/branding.py:174` has uploaded a firm logo to Supabase Storage under
+      `rbac("branding", "write")` since it was written — service client, explicit
+      content type, mock branch first — and the new router copies that shape. The
+      error came from grepping only `services/*.py`; it overstated the cost of this
+      item, and it is the kind of "no precedent" claim that talks a reader out of
+      the right fix.
 
 ## Batch 5 — the backlog residue and the unpaged reads ✅ **LANDED**
 
@@ -212,6 +232,47 @@ whichever way the full-scope question is eventually answered.
 
 ---
 
+## Four probes that came back CLEAN, recorded so nobody re-derives them
+
+Each of these looked like a defect class worth sweeping, was measured, and was
+not one. A negative result nobody wrote down is a negative result somebody will
+pay for again.
+
+| probe | what was measured | why it is not a defect |
+|---|---|---|
+| **A read filtered on `client_id` without `firm_id`** | 11 statements, on tables that DO carry `firm_id` | `clients.id` is a globally unique UUID and `can_access_client` checks `_client_belongs_to_firm` before any of them run (the F1 fix), so a client id from another firm never reaches them. Defence-in-depth loss, not a cross-tenant read. Not "fixed" opportunistically: 11 untested query changes for no behaviour change is the wrong trade. |
+| **A write whose `{success:false}` nobody checks** | 9 unchecked write calls across `app/` and `components/` | `request()` throws only on `!res.ok`, so a **200 with `success:false`** does pass through — the failure mode CLAUDE.md records for the GST workspace. But of the six routers those nine reach, only `payroll` answers 200+false at all, on `finalize_run` and `disburse_run`, and **both of those callers check** (`page.tsx:1066`, `DisburseModal.tsx:66`). A guard was considered and rejected: it would have to map a browser call to a Python endpoint across two languages, and a fragile guard is worse than the finding. |
+| **Western grouping in the BROWSER** | 60 `toLocaleString`, 47 `toLocaleDateString` | 57 and 45 respectively already name `en-IN`. The three exceptions format a MONTH NAME, and the one date exception is `en-CA` with `timeZone: "Asia/Kolkata"` — the idiomatic ISO-date trick, deliberate and correct. |
+| **The marketing site overclaiming** | every `file` / `auto-submit` / `GSTR-*` string in `apps/marketing` | It is honest, explicitly: *"You upload and sign on the government portal"*, *"PracticeSync prepares the return; a CA files it on the portal. The software never transmits anything"*, and a section headed *"Never auto-submit — the principle at the heart of the platform."* |
+
+---
+
+## Two measurements of mine that were wrong, and the same mistake both times
+
+Recorded because the mistake is the one CLAUDE.md now states as a rule — *a
+metric and the guard that enforces it must count the same population* — and I
+made it twice in one run, in both directions.
+
+**"68 guards have no vacuity floor."** Counted over all 121 `apps/web/scripts`
+guards. A vacuity floor is only meaningful for a guard whose assertion is a
+BUDGET: `found.length <= N` passes when the probe stops matching, while
+`assert.match(src, /…/)` fails. Re-counted over that population there are **six**
+budget-shaped web guards, and **all six are sound**: three carry an explicit
+floor; `a-colour-and-a-type-size-come-from-the-token-file` moved its floor onto
+the allowlist test, with the reason written down, when its own budget reached 0
+and `total >= 1` became self-contradictory; `a-rupee-figure-is-formatted-in-one-place`
+carries two (`FILES.length > 400` and `moneyFormatters().length > 50`); and
+`OVERRIDE_REASON_MIN` is a product constant, not a budget. **No work item. The
+68 was the wrong denominator, not a backlog.**
+
+**"`apps/api` has never uploaded to storage."** Grepped `services/*.py` only.
+`routers/branding.py:174` does, under `rbac()`. Corrected in 4.4 above.
+
+Both errors ran the same way: a population chosen for convenience, then a
+conclusion drawn as though it were the population the claim was about.
+
+---
+
 ## Blocked — do not start
 
 | what | why |
@@ -238,6 +299,10 @@ doing these sweeps by hand rather than by grep.
 | **A UTC date compared with an Indian one**, three sites | `recurring_task_service._is_already_generated_today`, `customer_statement_service.ar_aging`, `vendor_statement_service.ap_aging` | between 18:30 and 24:00 UTC the two are different days. The first regenerated a recurring compliance task that had just been generated; the other two dated an ageing report yesterday and shifted every bucket |
 | **A button that has never once worked** | `shareToPortal("trial")` | wrote `report_type: "trial"` against a CHECK that has never contained it, and the workbook uploads BEFORE the insert, so every press orphaned a file in storage |
 | **A roster read that truncates an export** | `app/payroll/{reports,attendance,statutory}` | `payroll_runs` firm-wide is a row per client per month; a fifty-client practice crosses PostgREST's 1000 cap inside two years |
+| **Publishing a client's statements ran no permission check** | `shareToPortal` | both privileged writes were the browser's — a Supabase Storage upload and a `shared_reports` INSERT over PostgREST — so `rbac()` ran on neither and `core.authz`'s assignment scope on neither either. An Executive who cannot see a client could publish that client's balance sheet to that client's own portal |
+| **85 rupee figures grouped the Western way, ten of them inverting a negative** | 47 backend modules | `f"{n:,}"` gives 1,23,456.78 as 123,456.78, and the browser has used `en-IN` the whole time — so a figure was grouped one way in a column and the other way in the sentence beside it. Ten sites also carried the sign bug `domain/reporting/pdf_money`'s own docstring documents: -1 paise printed "-1.99" |
+| **The AI copilot is told the UTC day** | `ai_copilot_service`, 5 sites | between 00:00 and 05:30 IST that is YESTERDAY, and it is the line the model reasons from when a CA asks what is due. Third instance of the same clock class this run |
+| **Two grouping implementations with nothing pinning them** | `domain/money_text` vs `lib/money/format` | the shape this repo pins for GSTIN, UQC, invoice numbers, GST line tax, the e-way threshold and IRN scope. Grouping was the one that had two implementations and no vectors, which is how it came to be wrong on one side for as long as it was |
 | **A dead reader that would have truncated a reconciliation** | `lib/data/gst.fetchGSTR2ARecords` | unpaged `gstr2a_records` for a period, zero callers. Deleted rather than paged |
 | **An inactive icon at 2.56:1** | `app/workflows/page.tsx` | the exact value the token file records moving `ps.hint` OFF |
 

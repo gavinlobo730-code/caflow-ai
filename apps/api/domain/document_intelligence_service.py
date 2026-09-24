@@ -6,6 +6,7 @@ Provider-swappable: mock | aws_textract | google_docai | azure_formrec | claude_
 from datetime import date, timedelta
 from typing import Optional
 from core.ist_clock import ist_today
+from domain.money_text import whole_rupees
 
 today = ist_today()
 
@@ -599,7 +600,7 @@ def detect_document_risks(document_id: str, client_id: str, extracted_data: dict
                 "severity": "medium",
                 "category": "BANK_RECONCILIATION",
                 "title": "Bank Statement — Unreconciled Entries",
-                "description": f"Net unreconciled amount ₹{abs(credits - debits) // 100:,}. Verify entries against ledger.",
+                "description": f"Net unreconciled amount ₹{whole_rupees(abs(credits - debits))}. Verify entries against ledger.",
                 "resolution_status": "open",
                 "resolved_at": None,
                 "created_at": datetime.utcnow().isoformat(),

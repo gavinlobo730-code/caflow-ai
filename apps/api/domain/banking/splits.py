@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable, Optional
+from domain.money_text import rupees_paise
 
 # A split entry needs somewhere to go and something to put there. More than this
 # is optional.
@@ -107,7 +108,7 @@ def _rupees(paise: int) -> str:
     """₹ for a human-readable error. Display only — never fed back into maths."""
     sign = "-" if paise < 0 else ""
     p = abs(int(paise))
-    return f"{sign}₹{p // 100:,}.{p % 100:02d}"
+    return f"{sign}₹{rupees_paise(p)}"
 
 
 def build_split_lines(splits: list[Split], *, is_credit: bool,

@@ -33,6 +33,7 @@ from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from core.ist_clock import ist_fy_label
 from domain.gst import invoice_series
 from services import sales_numbering_service
+from domain.money_text import whole_rupees
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.sales_invoices")
@@ -1248,7 +1249,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         )
         timeline_service.log(
             client_id, "accounting", "Sales Invoice Created",
-            f"Invoice {invoice.get('invoice_no', '')} for ₹{invoice.get('total_paise', 0) // 100:,} created (draft)",
+            f"Invoice {invoice.get('invoice_no', '')} for ₹{whole_rupees(invoice.get('total_paise', 0))} created (draft)",
             "info", firm_id=firm_id or "",
             entity_type="sales_invoice", entity_id=invoice_id,
             amount_paise=invoice.get("total_paise"), actor_id=current_user.get("auth_user_id"),
@@ -1394,7 +1395,7 @@ def bulk_create_invoices(
             total = sum(inv.get("total_paise", 0) for inv in invs)
             timeline_service.log(
                 cid, "accounting", "Sales Invoices Imported",
-                f"{len(invs)} invoice(s) imported via bulk upload, totaling ₹{total // 100:,}.",
+                f"{len(invs)} invoice(s) imported via bulk upload, totaling ₹{whole_rupees(total)}.",
                 "info", firm_id=firm_id or "",
                 entity_type="sales_invoice", amount_paise=total,
                 actor_id=current_user.get("auth_user_id"),
@@ -2123,7 +2124,7 @@ def issue_invoice(
             category="accounting",
             event_type="invoice_posted",
             title=f"Sales Invoice {updated_inv.get('invoice_no', '')} posted",
-            description=f"Invoice for ₹{updated_inv.get('total_paise', 0) // 100:,} issued.",
+            description=f"Invoice for ₹{whole_rupees(updated_inv.get('total_paise', 0))} issued.",
             severity="success",
             entity_type="sales_invoice",
             entity_id=invoice_id,

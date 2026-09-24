@@ -487,6 +487,11 @@ app.include_router(knowledge_router, dependencies=_CLIENT_GUARD)
 from routers.branding import router as branding_router
 app.include_router(branding_router)
 
+# Sharing a statement to a client's portal is a privileged write: the browser
+# used to upload to storage and insert the row itself, so rbac() ran on neither.
+from routers.shared_reports import router as shared_reports_router
+app.include_router(shared_reports_router)
+
 
 # Beta hardening (Phase F) — validate configuration at boot so missing env vars are
 # visible immediately in the logs rather than surfacing as opaque runtime errors.

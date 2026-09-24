@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Optional
+from domain.money_text import rupees_paise
 
 _logger = logging.getLogger("caflow.financial_analysis")
 
@@ -56,7 +57,7 @@ def _pct_change(curr: int, prev: int) -> Optional[float]:
 
 
 def _rupees(paise: int) -> str:
-    return f"Rs {paise / 100:,.2f}"
+    return f"Rs {rupees_paise(paise)}"
 
 
 def _sum_by_bucket(bs: dict, section_key: str, buckets: set) -> int:

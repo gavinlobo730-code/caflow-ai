@@ -64,6 +64,7 @@ into the payroll that pays it.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from domain.money_text import rupees_paise
 
 # §2(13) — the eligibility ceiling. Above this the Act does not apply at all.
 ELIGIBILITY_CEILING_PAISE: int = 21_000 * 100
@@ -129,7 +130,7 @@ def compute(
     # §2(13) — the Act applies only up to ₹21,000 a month.
     if monthly_salary_paise > ELIGIBILITY_CEILING_PAISE:
         out.reasons.append(
-            f"Salary of ₹{monthly_salary_paise / 100:,.2f} a month exceeds the "
+            f"Salary of ₹{rupees_paise(monthly_salary_paise)} a month exceeds the "
             f"₹21,000 ceiling in §2(13), so this Act does not apply. An employer "
             f"may still pay an ex gratia, but it is not statutory bonus and is "
             f"not computed here."

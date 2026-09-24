@@ -35,6 +35,7 @@ from services.compliance_engine import (
 from services.gst_filing_record_service import (
     FILING_TYPE_GSTR1, FILING_TYPE_GSTR3B, record_filing, return_status_patch,
 )
+from domain.money_text import rupees_paise
 
 router = APIRouter(prefix="/api/gst-workspace", tags=["gst_workspace"])
 _logger = logging.getLogger("caflow.gst_workspace")
@@ -775,7 +776,7 @@ def update_gstr3b_status(
             d = stale_state["differences"]
             parts = ", ".join(
                 f"{k.replace('_paise', '').replace('_', ' ')} "
-                f"{v['saved_paise'] / 100:,.2f} -> {v['books_paise'] / 100:,.2f}"
+                f"{rupees_paise(v['saved_paise'])} -> {rupees_paise(v['books_paise'])}"
                 for k, v in d.items())
             return api_response(False, None,
                 "The books have changed since this return was computed, so these "

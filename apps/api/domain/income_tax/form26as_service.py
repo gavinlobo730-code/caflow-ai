@@ -28,6 +28,7 @@ from uuid import uuid4
 
 from domain.income_tax import claimable_credit as _claimable
 from domain.income_tax import form26as_matcher as _m
+from domain.money_text import whole_rupees
 
 _logger = logging.getLogger("caflow.form26as")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -852,9 +853,9 @@ def _trigger_26as_ai_insight(
     deductor files a correction. A CA acts on that by chasing the deductor, not
     by adjusting the books.
     """
-    detail = f"₹{variance_paise // 100:,} variance"
+    detail = f"₹{whole_rupees(variance_paise)} variance"
     if unsupported_credit_paise > 0:
-        detail += (f", of which ₹{unsupported_credit_paise // 100:,} is credit in the "
+        detail += (f", of which ₹{whole_rupees(unsupported_credit_paise)} is credit in the "
                    f"books that 26AS does not report")
     try:
         from services.timeline_service import timeline_service

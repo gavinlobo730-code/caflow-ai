@@ -60,6 +60,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
+from domain.money_text import rupees_paise, whole_rupees
 
 #: No year in this module has been confirmed against a Finance Act from here.
 VERIFIED = False
@@ -261,9 +262,9 @@ def section_80gg_paise(rent_paid_paise: int, total_income_paise: int) -> tuple:
     allowed = min(cap_monthly, cap_income, over_tenth)
     if allowed == over_tenth:
         which = (f"rent paid less 10% of total income "
-                 f"(₹{over_tenth / 100:,.2f})")
+                 f"(₹{rupees_paise(over_tenth)})")
     elif allowed == cap_income:
-        which = f"25% of total income (₹{cap_income / 100:,.2f})"
+        which = f"25% of total income (₹{rupees_paise(cap_income)})"
     else:
         which = "₹5,000 a month"
     return allowed, f"§80GG allows the least of three; the least here is {which}."
@@ -336,7 +337,7 @@ def compute(claims: ChapterVIAClaims) -> ChapterVIAResult:
                 claimed_paise=claims.housing_loan_extra_interest_paise,
                 allowed_paise=min(claims.housing_loan_extra_interest_paise, limit),
                 basis=(f"§{section} caps the additional interest at "
-                       f"₹{limit / 100:,.0f}. Decided by the SANCTION date, "
+                       f"₹{whole_rupees(limit)}. Decided by the SANCTION date, "
                        f"which fixes the section for the life of the loan."),
                 caveats=("This is ON TOP of §24(b), and the same interest "
                          "cannot be claimed under both.",)))
@@ -349,7 +350,7 @@ def compute(claims: ChapterVIAClaims) -> ChapterVIAResult:
             label="Maintenance and medical treatment of a dependant with a disability",
             claimed_paise=amount, allowed_paise=amount,
             basis=("A FLAT deduction, not a reimbursement: §80DD allows "
-                   f"₹{amount / 100:,.0f} whatever was actually spent."),
+                   f"₹{whole_rupees(amount)} whatever was actually spent."),
             caveats=(FORM_10IA,
                      "A dependant means a spouse, child, parent, brother or "
                      "sister who is wholly or mainly dependent on the assessee, "
@@ -362,7 +363,7 @@ def compute(claims: ChapterVIAClaims) -> ChapterVIAResult:
             section="80U", label="The assessee's own disability",
             claimed_paise=amount, allowed_paise=amount,
             basis=("A FLAT deduction, not a reimbursement: §80U allows "
-                   f"₹{amount / 100:,.0f} whatever was actually spent."),
+                   f"₹{whole_rupees(amount)} whatever was actually spent."),
             caveats=(FORM_10IA,)))
 
     # ── §80DDB ──────────────────────────────────────────────────────────────
@@ -378,8 +379,8 @@ def compute(claims: ChapterVIAClaims) -> ChapterVIAResult:
             section="80DDB", label="Treatment of a specified disease",
             claimed_paise=claims.specified_disease_spend_paise,
             allowed_paise=min(net, limit),
-            basis=(f"Reduced by ₹{claims.specified_disease_reimbursed_paise / 100:,.2f} "
-                   f"reimbursed, then capped at ₹{limit / 100:,.0f}"
+            basis=(f"Reduced by ₹{rupees_paise(claims.specified_disease_reimbursed_paise)} "
+                   f"reimbursed, then capped at ₹{whole_rupees(limit)}"
                    + (" (the PATIENT is a senior citizen)."
                       if claims.patient_is_senior else ".")),
             caveats=(SPECIALIST_PRESCRIPTION,)))

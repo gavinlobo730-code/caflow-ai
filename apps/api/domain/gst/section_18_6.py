@@ -76,6 +76,7 @@ from datetime import date
 from typing import Optional
 
 from domain.banking.charge_gst import ALLOWED_RATES_BPS, split_inclusive_charge
+from domain.money_text import rupees_paise
 
 #: Rule 40(2). Five percentage points per quarter or part thereof.
 RULE_40_2_POINTS_PER_QUARTER = 5
@@ -207,7 +208,7 @@ def _higher(a: TaxHeads, b: TaxHeads) -> tuple[TaxHeads, str]:
 
 def _rupees(paise: int) -> str:
     """A caveat is read by a person, so it says rupees."""
-    return f"Rs {paise // 100:,}.{paise % 100:02d}"
+    return f"Rs {rupees_paise(paise)}"
 
 
 def _iso(value) -> Optional[date]:

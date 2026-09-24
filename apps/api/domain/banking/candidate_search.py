@@ -41,6 +41,7 @@ from datetime import date
 from typing import Iterable, Optional
 
 from .matcher import Candidate, candidate_open_paise, detect_tds_rate_bps
+from domain.money_text import rupees_paise
 
 # What each direction of a bank line can legitimately settle. Not a filter — a
 # rule. See the module docstring.
@@ -200,4 +201,4 @@ def describe(hit: CandidateHit) -> str:
 def _rupees(paise: int) -> str:
     """Display only — never fed back into arithmetic."""
     p = abs(int(paise))
-    return f"₹{p // 100:,}.{p % 100:02d}"
+    return f"₹{rupees_paise(p)}"

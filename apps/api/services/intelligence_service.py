@@ -22,6 +22,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
+from domain.money_text import whole_rupees
 
 logger = logging.getLogger("caflow.services")
 
@@ -350,7 +351,7 @@ def compute_recommendations(
                     "detail": (
                         f"Health score {c['health_score']}/100 — "
                         f"{c['overdue_tasks']} overdue tasks, {c['overdue_invoices']} overdue invoices, "
-                        f"₹{c['outstanding_paise'] // 100:,} outstanding."
+                        f"₹{whole_rupees(c['outstanding_paise'])} outstanding."
                     ),
                     "client_id": c["client_id"],
                     "action": "open_client",
@@ -360,7 +361,7 @@ def compute_recommendations(
                     "category": "client",
                     "priority": "medium",
                     "title": f"Follow up on payment — {c['client_name']}",
-                    "detail": f"₹{c['outstanding_paise'] // 100:,} outstanding with {c['overdue_invoices']} overdue invoice(s).",
+                    "detail": f"₹{whole_rupees(c['outstanding_paise'])} outstanding with {c['overdue_invoices']} overdue invoice(s).",
                     "client_id": c["client_id"],
                     "action": "open_invoices",
                 })

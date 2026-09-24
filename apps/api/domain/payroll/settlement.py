@@ -39,6 +39,7 @@ TWO THINGS IT DELIBERATELY REFUSES TO GUESS
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from domain.money_text import rupees_paise
 
 
 # Which line of the salary head a component belongs on. 24Q Annexure II — the
@@ -195,7 +196,7 @@ def build(
 
     if s.net_payable_paise < 0:
         s.problems.append(
-            f"The employee owes ₹{-s.net_payable_paise / 100:,.2f} more than the "
+            f"The employee owes ₹{rupees_paise(-s.net_payable_paise)} more than the "
             f"settlement covers. Nothing is payable, and the balance is a debt to "
             f"be collected separately — it cannot be deducted from a salary that "
             f"has stopped."

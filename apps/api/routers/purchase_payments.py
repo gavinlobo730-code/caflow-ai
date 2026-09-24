@@ -29,6 +29,7 @@ from services import reversal_service
 from services import purchase_payment_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
+from domain.money_text import rupees_paise, whole_rupees
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payments")
@@ -154,8 +155,8 @@ def _claim_bill_outstanding(
         if amount_paise > outstanding:
             raise HTTPException(
                 status_code=422,
-                detail=f"Payment (₹{amount_paise/100:,.2f}) exceeds the bill's outstanding "
-                       f"(₹{outstanding/100:,.2f}).")
+                detail=f"Payment (₹{rupees_paise(amount_paise)}) exceeds the bill's outstanding "
+                       f"(₹{rupees_paise(outstanding)}).")
         new_paid = paid_paise + amount_paise
         new_status = "paid" if new_paid + debited_paise >= effective_payable else "partially_paid"
         result = (
@@ -694,7 +695,7 @@ def create_purchase_payment(
             category="accounting",
             event_type="payment_recorded",
             title=f"Vendor Payment {payment_no} recorded",
-            description=f"Payment of ₹{amount_paise // 100:,} made to vendor.",
+            description=f"Payment of ₹{whole_rupees(amount_paise)} made to vendor.",
             severity="success",
             entity_type="purchase_payment",
             entity_id=payment["id"],

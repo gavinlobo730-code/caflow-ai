@@ -48,50 +48,17 @@ rupees is a presentation choice, and a browser- or renderer-side ROUND would be
 a second implementation of a rounding rule — `domain/gst/money.py` is the
 authority where one is statutory (CGST §170). The truncation is toward ZERO,
 not toward minus infinity, so -150 paise is -1 rupee and not -2.
+
+── THE GROUPING MOVED, AND THE NO-GLYPH RULE DID NOT ────────────────────────
+`domain/money_text` is now the one implementation of Indian grouping, because
+the same two defects above survived in 73 more places outside the PDFs — every
+email, every 422 a CA reads, the XLSX export — with SIX more copies of the sign
+bug. This module re-exports the three unit-less functions and **deliberately
+does not re-export `inr`**: that one prepends U+20B9, and a PDF that prints ₹
+prints a black box. The grouping is universal; the unit is the medium's.
 """
 from __future__ import annotations
 
+from domain.money_text import group_indian, rupees_paise, whole_rupees
+
 __all__ = ["group_indian", "rupees_paise", "whole_rupees"]
-
-
-def group_indian(digits: str) -> str:
-    """`"1234567"` -> `"12,34,567"`. Digits only, no sign — the caller keeps it."""
-    if len(digits) <= 3:
-        return digits
-    last3, rest = digits[-3:], digits[:-3]
-    groups: list[str] = []
-    while len(rest) > 2:
-        groups.append(rest[-2:])
-        rest = rest[:-2]
-    if rest:
-        groups.append(rest)
-    groups.reverse()
-    return ",".join(groups) + "," + last3
-
-
-def rupees_paise(paise: int | None) -> str:
-    """Integer paise -> `"12,34,567.50"`, and `"-1.50"` for -150.
-
-    `None` reads as nil rather than raising: a PDF is built from rows a query
-    returned, and a column that is NULL on one row of a hundred must not fail
-    the whole document.
-    """
-    p = int(paise or 0)
-    sign = "-" if p < 0 else ""
-    mag = abs(p)
-    return f"{sign}{group_indian(str(mag // 100))}.{mag % 100:02d}"
-
-
-def whole_rupees(paise: int | None) -> str:
-    """Integer paise -> `"12,34,567"`, truncated TOWARD ZERO.
-
-    The year-end statements present in whole rupees. Truncating the magnitude
-    is what `-150 -> -1` means, and it is what the previous implementation did
-    for a positive; the sign split is what it got wrong.
-    """
-    p = int(paise or 0)
-    whole = abs(p) // 100
-    # "-0" is not a figure. A magnitude below one rupee truncates to nil, and a
-    # minus sign on a nil reads as an amount somebody owes.
-    sign = "-" if p < 0 and whole else ""
-    return f"{sign}{group_indian(str(whole))}"

@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 
 from domain.reporting.balance_cache import Buckets, build_buckets
 from domain.reporting.sources import SupabaseLedgerSource
+from core.db_paging import fetch_all
 
 _logger = logging.getLogger("caflow.balance_cache")
 
@@ -123,7 +124,13 @@ def audit_and_heal_client(db, firm_id: str, client_id: str) -> dict:
 def audit_and_heal_firm(db, firm_id: str) -> dict:
     """Audit (and self-heal) every client of a firm — the unit the nightly
     scheduler job runs. Returns a compact summary for the run log."""
-    clients = (db.table("clients").select("id").eq("firm_id", firm_id).execute().data or [])
+    # PAGED: this is the client enumeration the nightly balance-cache audit iterates over,
+    # and PostgREST caps a response at ~1000 rows without saying so — past that
+    # a client is silently never audited or healed. `id` is in the projection because it
+    # is fetch_all's cursor.
+    clients = fetch_all(
+        lambda: db.table("clients").select("id").eq("firm_id", firm_id),
+        label="balance_cache_service.clients")
     checked = 0
     healed = 0
     drifted: list[dict] = []

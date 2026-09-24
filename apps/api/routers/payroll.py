@@ -101,6 +101,7 @@ from domain.income_tax.statutory_rates import (
 from models.fy import FYLabel, OptionalFYLabel
 from services.compliance_obligation_service import fy_months
 from core.ist_clock import ist_today
+from domain.money_text import rupees_paise
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
@@ -3293,7 +3294,7 @@ def disburse_run(
     _net = int(run.get("total_net_paise") or 0)  # integer paise → ₹ display, no float
     timeline_service.log(run["client_id"], "work", "Salary Disbursed",
         f"Payroll for {run['month']} paid from {bank.get('bank_name', 'bank')} "
-        f"(₹{_net // 100:,}.{_net % 100:02d} net)", "success",
+        f"(₹{rupees_paise(_net)} net)", "success",
         firm_id=run["firm_id"], entity_type="payroll_run", entity_id=run_id,
         actor_id=current_user.get("auth_user_id"))
 
@@ -6345,8 +6346,8 @@ def verify_declaration(
         if value > declared:
             raise HTTPException(
                 status_code=422,
-                detail=f"{label}: ₹{value / 100:,.2f} verified against "
-                       f"₹{declared / 100:,.2f} declared. A proof can support less "
+                detail=f"{label}: ₹{rupees_paise(value)} verified against "
+                       f"₹{rupees_paise(declared)} declared. A proof can support less "
                        f"than was claimed, never more — raise the declaration first.")
         return max(0, int(value))
 
@@ -6364,8 +6365,8 @@ def verify_declaration(
         if verified > declared:
             raise HTTPException(
                 status_code=422,
-                detail=f"{it.section}: ₹{verified / 100:,.2f} verified against "
-                       f"₹{declared / 100:,.2f} declared. A proof can support less "
+                detail=f"{it.section}: ₹{rupees_paise(verified)} verified against "
+                       f"₹{rupees_paise(declared)} declared. A proof can support less "
                        f"than was claimed, never more — raise the declaration first.")
         # Spelled out rather than assembled so the column check can read it.
         # `proof_attachments` is omitted entirely when the request did not send
@@ -7203,7 +7204,7 @@ def record_settlement(
     timeline_service.log(
         body.client_id, "work", "Settlement Recorded",
         f"{emp.get('name') or 'Employee'} settled on {leaving.isoformat()} — "
-        f"net ₹{net_paid / 100:,.2f}", "info",
+        f"net ₹{rupees_paise(net_paid)}", "info",
         firm_id=current_user.get("firm_id", ""),
         entity_type="payroll_settlement", entity_id=settlement_id,
         actor_id=current_user.get("auth_user_id"))

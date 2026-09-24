@@ -74,7 +74,7 @@ class TestCapitalLossIsNotSetOffAgainstOtherHeads:
         simply disappears from the computation."""
         r = engine.compute(req(gross_salary_paise=20 * L, capital_gains_stcg_paise=-5 * L))
         w = _warning_mentioning(r, "Short-term capital loss", "Section 71(3)")
-        assert "₹500,000" in w
+        assert "₹5,00,000" in w   # Indian grouping (D6): domain/money_text, not f"{n:,}"
         assert "Section 74" in w
 
     def test_each_loss_head_is_named_separately(self):
@@ -84,9 +84,9 @@ class TestCapitalLossIsNotSetOffAgainstOtherHeads:
             capital_gains_ltcg_paise=-2 * L,
             capital_gains_ltcg_other_paise=-3 * L,
         ))
-        _warning_mentioning(r, "Short-term capital loss", "₹100,000")
-        _warning_mentioning(r, "Section 112A", "₹200,000")
-        _warning_mentioning(r, "Section 112", "₹300,000")
+        _warning_mentioning(r, "Short-term capital loss", "₹1,00,000")
+        _warning_mentioning(r, "Section 112A", "₹2,00,000")
+        _warning_mentioning(r, "Section 112", "₹3,00,000")
 
     def test_the_intra_head_set_off_this_engine_does_not_do_is_declared(self):
         """Sections 70(2)/70(3) would let this short-term loss be set off
@@ -146,7 +146,7 @@ class TestSection80GQualifyingLimit:
             donations_80g=[Donation80G("Approved trust", 9 * L, 50)],
         ))
         w = _warning_mentioning(r, "Section 80G(4)")
-        assert "₹900,000" in w and "₹95,000" in w and "₹950,000" in w
+        assert "₹9,00,000" in w and "₹95,000" in w and "₹9,50,000" in w
 
     def test_no_qualifying_limit_warning_when_the_donation_fits(self):
         r = engine.compute(req(
@@ -329,4 +329,4 @@ class TestSection80GUnderTheNewRegime:
             donations_80g=[Donation80G("Approved trust", 5 * L, 50)],
         ))
         assert r.deduction_80g_paise == 0
-        _warning_mentioning(r, "115BAC(2)", "₹500,000")
+        _warning_mentioning(r, "115BAC(2)", "₹5,00,000")

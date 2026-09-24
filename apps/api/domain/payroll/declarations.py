@@ -79,6 +79,7 @@ from domain.income_tax.itr_engine import (
     Deductions80C, Deductions80D, HRADetails, ITRComputeRequest, ITREngine,
 )
 from domain.payroll import age as age_domain
+from domain.money_text import rupees_paise
 
 PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 
@@ -248,8 +249,8 @@ def validate(decl: Declaration) -> list[str]:
             problems.append(f"{i.section}: a negative amount cannot be declared.")
         if i.status == ITEM_VERIFIED and i.amount_verified_paise > i.amount_declared_paise:
             problems.append(
-                f"{i.section}: ₹{i.amount_verified_paise / 100:,.2f} verified against "
-                f"₹{i.amount_declared_paise / 100:,.2f} declared. A proof can support "
+                f"{i.section}: ₹{rupees_paise(i.amount_verified_paise)} verified against "
+                f"₹{rupees_paise(i.amount_declared_paise)} declared. A proof can support "
                 f"less than was claimed, never more — raise the declaration first."
             )
 
@@ -259,7 +260,7 @@ def validate(decl: Declaration) -> list[str]:
         pan = decl.landlord_pan.strip().upper()
         if not pan:
             problems.append(
-                f"Rent of ₹{rent / 100:,.2f} exceeds ₹1,00,000, so Rule 26C requires "
+                f"Rent of ₹{rupees_paise(rent)} exceeds ₹1,00,000, so Rule 26C requires "
                 f"the landlord's PAN in Form 12BB before the §10(13A) exemption can "
                 f"be allowed."
             )

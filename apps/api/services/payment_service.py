@@ -26,6 +26,7 @@ from services.timeline_service import timeline_service
 from services import email_service
 from services.receipt_service import create_receipt_core
 from services.payments import get_provider, PaymentLinkRequest, CAPTURED, FAILED, REFUNDED
+from domain.money_text import whole_rupees
 
 _logger = logging.getLogger("caflow.payment_service")
 
@@ -326,7 +327,7 @@ def _apply_event(db, payment: dict, event, firm_id: str) -> None:
             client_id=payment["client_id"], firm_id=firm_id, financial_year=ist_fy_label(receipt.get("receipt_date")),
             category="accounting", event_type="online_payment_captured",
             title="Online payment received",
-            description=f"Online payment of ₹{int(payment['amount_paise']) // 100:,} captured.",
+            description=f"Online payment of ₹{whole_rupees(int(payment['amount_paise']))} captured.",
             severity="success", entity_type="customer_payment", entity_id=str(payment["id"]),
             amount_paise=int(payment["amount_paise"]), actor_type="system")
         return

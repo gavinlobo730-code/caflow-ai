@@ -353,7 +353,21 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     #
     # 19 columns across two payloads, not a spread across the tree. The floor
     # still protects what it was raised for in the first place: reverting
-    # blank_comments() drops ~26, which lands below 222.
+    # blank_comments() drops ~26, which lands below the floor.
+    #
+    # LOWERED 222 -> 214 on 2026-09-24, the same shape again and diagnosed the
+    # same way. `shareToPortal` on the client accounting screen inserted into
+    # `shared_reports` straight over PostgREST — publishing a client's Profit &
+    # Loss, Balance Sheet or Trial Balance to that client's own portal with
+    # `rbac()` running on neither that write nor the storage upload beside it.
+    # It now posts to POST /api/accounting/shared-reports. The per-file tally
+    # moved on precisely ONE page and nothing else:
+    #
+    #   app/clients/[id]/accounting/page.tsx: 8 -> 0
+    #
+    # Eight columns in one payload. That this floor tripped is independent
+    # evidence the browser really did lose the write, which is the point of
+    # the change.
     #
     # A drop here is not by itself a broken parser. Diagnose it the way those
     # were — tally scan_writes() PER FILE against the previous commit and
@@ -361,7 +375,7 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     # the floor, and say which page) or a spread across many (fix the parser):
     #
     #   collections.Counter(path for path, _, _ in scan_writes(WEB))
-    assert len(scan_writes(WEB)) >= 222, "write scan found too little — parser likely broke"
+    assert len(scan_writes(WEB)) >= 214, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG

@@ -7,6 +7,7 @@ import logging
 from typing import Optional
 
 from domain.branding import email_template
+from domain.money_text import rupees_paise
 
 _logger = logging.getLogger("caflow.email")
 _RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
@@ -173,7 +174,7 @@ def send_payment_link_to_customer(to: str, customer_name: str, firm_name: str,
     """Email a hosted online-payment link to the customer for an outstanding invoice
     (Phase 4.6). Reuses the Resend transport; has NO accounting side effect.
     Amount formatted with integer paise arithmetic (₹ = paise // 100)."""
-    amount_str = f"₹{amount_paise // 100:,}.{amount_paise % 100:02d}"
+    amount_str = f"₹{rupees_paise(amount_paise)}"
     subject = f"Payment request: Invoice {invoice_no} from {firm_name}"
     html = f"""
     <p>Hi {customer_name or 'there'},</p>
@@ -233,7 +234,7 @@ def send_firm_invite(to: str, firm_name: str, inviter_name: str, role: str, invi
 
 def _fmt_rupees(paise: int) -> str:
     """Format integer paise as a display rupee string, e.g. 123456 → ₹1,234.56."""
-    return f"₹{paise // 100:,}.{paise % 100:02d}"
+    return f"₹{rupees_paise(paise)}"
 
 
 def _send_with_attachment(

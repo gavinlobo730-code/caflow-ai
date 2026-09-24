@@ -23,6 +23,7 @@ logic externally via POST /api/tasks/trigger-scheduler-run with a cron).
 """
 import logging
 import os
+from core.db_paging import fetch_all
 from datetime import date, datetime, timezone
 from typing import Optional
 from core.ist_clock import ist_today
@@ -134,14 +135,26 @@ def _list_firm_ids() -> list[str]:
             return sorted({u["firm_id"] for u in users if u.get("firm_id")})
         except Exception:
             return []
+    # PAGED, AND THIS IS THE READ THE WHOLE SWEEP ITERATES OVER. PostgREST caps
+    # a response at ~1000 rows and says nothing when it does, so the 1001st
+    # firm's every daily job — the compliance calendar, recurring tasks,
+    # recurring invoices and bills, the trusted-rule sweep, the reminders —
+    # simply never runs, with no error anywhere.
     try:
-        result = _get_db().table("firms").select("id").execute()
-        return [f["id"] for f in (result.data or [])]
+        rows = fetch_all(lambda: _get_db().table("firms").select("id"),
+                         label="scheduler.firms")
+        return [f["id"] for f in rows]
     except Exception as e:
         logger.warning(f"Could not list firms, falling back to distinct task firm_ids: {e}")
         try:
-            result = _get_db().table("tasks").select("firm_id").execute()
-            return sorted({t["firm_id"] for t in (result.data or []) if t.get("firm_id")})
+            # THE FALLBACK IS THE READ THAT WOULD HAVE TRUNCATED FIRST: a row
+            # per TASK, not per firm, so a single busy practice fills the cap
+            # and the firms whose tasks sort after it vanish from the sweep.
+            # The projection carries `id` because that is the cursor — without
+            # it the walk reads one page and cannot advance.
+            rows = fetch_all(lambda: _get_db().table("tasks").select("id, firm_id"),
+                             label="scheduler.tasks_fallback")
+            return sorted({t["firm_id"] for t in rows if t.get("firm_id")})
         except Exception:
             return []
 
@@ -490,11 +503,17 @@ def _all_runs_today() -> list[dict]:
     if _USE_MOCK:
         return [r for r in _MOCK_RUNS if r.get("run_date") == today]
     try:
-        result = (
-            _get_db().table("scheduler_runs").select("job_name,status,run_date,firm_id")
-            .eq("run_date", today).execute()
-        )
-        return result.data or []
+        # PAGED, AND THE IDEMPOTENCY OF THE WHOLE SWEEP RESTS ON IT. This feeds
+        # _pending_jobs_today(), which decides what still needs running — so a
+        # read truncated at PostgREST's ~1000 rows makes a job that already
+        # SUCCEEDED read as pending, and it runs a second time: duplicate
+        # recurring tasks, duplicate recurring invoices, duplicate reminders.
+        # One row per (firm, job) per day, and thirteen jobs, so 77 firms is
+        # enough. `id` is in the projection because it is fetch_all's cursor.
+        return fetch_all(
+            lambda: _get_db().table("scheduler_runs")
+            .select("id,job_name,status,run_date,firm_id").eq("run_date", today),
+            label="scheduler.runs_today")
     except Exception as e:  # pragma: no cover - defensive
         logger.warning(f"scheduler_runs today lookup failed: {e}")
         return []

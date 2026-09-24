@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from domain.reporting.sources import SupabaseLedgerSource
+from core.db_paging import fetch_all
 
 _logger = logging.getLogger("caflow.reconciliation")
 
@@ -674,7 +675,13 @@ def run_reconciliation_for_firm(db, firm_id: str) -> dict:
     scheduler job runs (jobs/scheduler.py), mirroring
     services/balance_cache_service.py's own audit_and_heal_firm. One bad
     client's run must not abort the firm-wide sweep."""
-    clients = db.table("clients").select("id").eq("firm_id", firm_id).execute().data or []
+    # PAGED: this is the client enumeration the nightly "Verify Books" sweep iterates over,
+    # and PostgREST caps a response at ~1000 rows without saying so — past that
+    # a client is silently never checked — and the CA is told the books are sound. `id` is in the projection because it
+    # is fetch_all's cursor.
+    clients = fetch_all(
+        lambda: db.table("clients").select("id").eq("firm_id", firm_id),
+        label="reconciliation_service.clients")
     checked = 0
     findings_total = 0
     per_client: list[dict] = []
