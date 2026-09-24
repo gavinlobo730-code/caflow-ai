@@ -61,7 +61,18 @@ test("a received bill is not presented as a failure", () => {
   const s = code(PAGE);
   assert.match(s, /Nothing is blocked/,
     "the CA must be told the bill and its journal are posted");
-  assert.doesNotMatch(s, /registerNotes[\s\S]{0,400}?bg-red-50/,
+  // ── A NEGATIVE ASSERTION THAT NAMED A SPELLING GOES BLIND SILENTLY ──────
+  // This required the absence of the literal `bg-red-50`. On 24-09-2026 the
+  // token pass renamed that shade to `bg-state-problem-surface` — the same
+  // colour — and this would have kept PASSING while no longer forbidding
+  // anything, because what it forbids is now spelled differently.
+  //
+  // That direction is the dangerous one. A positive assertion that goes stale
+  // FAILS and somebody looks at it; a negative one that goes stale reports
+  // success for ever. So it names the ROLE, in both vocabularies: the token is
+  // the destination and the raw shade is what the judgement half of the rename
+  // has not reached.
+  assert.doesNotMatch(s, /registerNotes[\s\S]{0,400}?(bg-red-50|bg-state-problem-surface)/,
     "amber, not red — this is a gap, not a rejection");
 });
 

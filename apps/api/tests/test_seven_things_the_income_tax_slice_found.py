@@ -353,8 +353,32 @@ def test_it_is_a_warning_and_not_a_refusal():
 
 
 def test_the_screen_renders_the_notice_as_a_warning_not_an_error():
+    """A foreclosed month needs the CA's ATTENTION; it is not a failure.
+
+    ── THIS ASSERTION NAMED A SPELLING AND WENT STALE ──────────────────────
+    It required the literal `text-amber-700`. On 24-09-2026 the token pass
+    renamed 1,291 byte-identical status utilities onto `state.*`, so the notice
+    now reads `text-state-attention` — the SAME colour, rgb(180 83 9), verified
+    in the built stylesheet — and this failed on a change that did not touch
+    what it cares about.
+
+    It survived that PR's CI only because the PR was frontend-only and the
+    backend `scope` job short-circuited pytest, so it would have fired on the
+    next unrelated change to `apps/api`. Which is how it was found.
+
+    What the test is FOR is in its own name: attention, not problem. So it
+    asserts that, in both vocabularies — the token is the destination and the
+    raw shade is what the judgement half of the rename has not reached yet."""
     page = (WEB / "app/clients/[id]/fixed-assets/page.tsx").read_text()
     assert "foreclosure_notice" in page
     assert "notices[r.asset_id]" in page
-    assert "text-amber-700" in page[page.index("notices[r.asset_id]") - 200:
-                                    page.index("notices[r.asset_id]") + 200]
+    near = page[page.index("notices[r.asset_id]") - 200:
+                page.index("notices[r.asset_id]") + 200]
+    assert ("text-state-attention" in near or "text-amber-700" in near), (
+        "the foreclosure notice is not rendered in the attention colour: " + near[-120:]
+    )
+    assert "text-state-problem" not in near and "text-red-" not in near, (
+        "the notice is rendered as a PROBLEM. Starting depreciation late is "
+        "right and test-pinned — an asset brought over from Tally mid-life does "
+        "exactly that — so the months it forecloses are a warning, not a failure."
+    )

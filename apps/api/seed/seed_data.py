@@ -4,13 +4,47 @@ Realistic demo seed data for CAflow AI.
 All linked to a single demo firm.
 All monetary values in paise (integer).
 """
-from datetime import date, timedelta
+import uuid
+from datetime import timedelta
+
+from core.ist_clock import ist_today
 from services.compliance_engine import enrich_compliance_task
 
-today = date.today()
+# The firm's own day, not the host's. `date.today()` on a UTC container is the
+# PREVIOUS Indian day for the whole of 00:00-05:30 IST, so a seed built in that
+# window dated every due date, task and document one day early.
+today = ist_today()
+
+# ── WHY THESE IDS ARE UUIDs DERIVED FROM A LABEL ────────────────────────────
+# Every primary key in this schema is `UUID PRIMARY KEY` (migration 001 for
+# `firms`, and the same for everything that followed). This module used to carry
+# ids like "firm-001", "sc-003" and "sct-017", so **not one row of it could ever
+# have been inserted**: Postgres rejects a non-UUID for a uuid column outright.
+# That is why nothing has ever written this file — it is not that the writer was
+# missing, it is that the data could not land.
+#
+# The labels are kept, because they are what makes the fixture readable and what
+# the relationships below are expressed in. They are hashed into a UUID instead
+# of being used as one, with a fixed namespace, so:
+#
+#   • the id for a given label is the SAME on every run and on every machine,
+#     which is what lets a seeder upsert rather than duplicate — the one
+#     property T2-a's "idempotent" actually requires;
+#   • nothing has to be looked up or stored between runs;
+#   • a demo row is identifiable as one, because its id is reproducible from
+#     its label and no other row's is.
+#
+# The namespace is arbitrary and FIXED FOR EVER. Changing it re-points every id
+# and turns the next seed run into a duplicate of the last one.
+_SEED_NAMESPACE = uuid.UUID("6f1b5d9e-1f2a-5c4b-9d3e-7a8b0c1d2e3f")
+
+
+def seed_id(label: str) -> str:
+    """The stable UUID for a seed label, e.g. seed_id("sc-003")."""
+    return str(uuid.uuid5(_SEED_NAMESPACE, label))
 
 DEMO_FIRM = {
-    "id": "firm-001",
+    "id": seed_id("firm-001"),
     "name": "Gavin Lobo & Associates",
     "email": "gavin@calobo.in",
     "phone": "+91 98765 43210",
@@ -24,16 +58,16 @@ DEMO_FIRM = {
 }
 
 DEMO_USERS = [
-    {"id": "u-001", "firm_id": "firm-001", "full_name": "Gavin Lobo", "email": "gavin@calobo.in", "role": "Partner", "status": "active"},
-    {"id": "u-002", "firm_id": "firm-001", "full_name": "Priya Sharma", "email": "priya@calobo.in", "role": "Manager", "status": "active"},
-    {"id": "u-003", "firm_id": "firm-001", "full_name": "Rahul Mehta", "email": "rahul@calobo.in", "role": "Executive", "status": "active"},
-    {"id": "u-004", "firm_id": "firm-001", "full_name": "Deepa Nair", "email": "deepa@calobo.in", "role": "Executive", "status": "active"},
-    {"id": "u-005", "firm_id": "firm-001", "full_name": "Sanjay Joshi", "email": "sanjay@calobo.in", "role": "Reviewer", "status": "active"},
+    {"id": seed_id("u-001"), "firm_id": DEMO_FIRM["id"], "full_name": "Gavin Lobo", "email": "gavin@calobo.in", "role": "Partner", "status": "active"},
+    {"id": seed_id("u-002"), "firm_id": DEMO_FIRM["id"], "full_name": "Priya Sharma", "email": "priya@calobo.in", "role": "Manager", "status": "active"},
+    {"id": seed_id("u-003"), "firm_id": DEMO_FIRM["id"], "full_name": "Rahul Mehta", "email": "rahul@calobo.in", "role": "Executive", "status": "active"},
+    {"id": seed_id("u-004"), "firm_id": DEMO_FIRM["id"], "full_name": "Deepa Nair", "email": "deepa@calobo.in", "role": "Executive", "status": "active"},
+    {"id": seed_id("u-005"), "firm_id": DEMO_FIRM["id"], "full_name": "Sanjay Joshi", "email": "sanjay@calobo.in", "role": "Reviewer", "status": "active"},
 ]
 
 # 20 realistic Indian CA firm clients
 SEED_CLIENTS = [
-    {"id": f"sc-{i:03d}", "firm_id": "firm-001", "client_name": name, "entity_type": etype,
+    {"id": seed_id(f"sc-{i:03d}"), "firm_id": DEMO_FIRM["id"], "client_name": name, "entity_type": etype,
      "pan": pan, "gstin": gstin, "city": city, "state": "Maharashtra",
      "state_code": "27", "gst_filing_frequency": freq, "status": "active",
      "email": email, "mobile": mobile,
@@ -72,7 +106,7 @@ def _compliance_tasks() -> list[dict]:
         for ct in types[:2]:
             offset = (i % 6) - 2
             tasks.append(enrich_compliance_task({
-                "id": f"sct-{i:03d}",
+                "id": seed_id(f"sct-{i:03d}"),
                 "client_id": client["id"],
                 "compliance_type": ct,
                 "period_start": (today.replace(day=1) - timedelta(days=1)).replace(day=1).isoformat(),
@@ -87,7 +121,7 @@ def _compliance_tasks() -> list[dict]:
         client = SEED_CLIENTS[j % 20]
         ct = types[j % len(types)]
         tasks.append(enrich_compliance_task({
-            "id": f"sct-{j:03d}",
+            "id": seed_id(f"sct-{j:03d}"),
             "client_id": client["id"],
             "compliance_type": ct,
             "period_start": (today - timedelta(days=60)).isoformat(),
@@ -111,7 +145,7 @@ def _tasks() -> list[dict]:
     for i in range(100):
         client = SEED_CLIENTS[i % 20]
         tasks.append({
-            "id": f"st-{i:03d}",
+            "id": seed_id(f"st-{i:03d}"),
             "client_id": client["id"],
             "title": f"{titles[i % len(titles)]} — {client['client_name']}",
             "description": f"Seed task {i} for {client['client_name']}",
@@ -134,7 +168,7 @@ def _documents() -> list[dict]:
         client = SEED_CLIENTS[i % 20]
         dt = doc_types[i % len(doc_types)]
         docs.append({
-            "id": f"sd-{i:03d}",
+            "id": seed_id(f"sd-{i:03d}"),
             "client_id": client["id"],
             "document_type": dt,
             "file_name": f"{dt.lower()}_{client['id']}_{i}.pdf",
