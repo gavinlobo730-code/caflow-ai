@@ -113,7 +113,10 @@ export function FxRatesPanel() {
   return (
     <section className="mt-8">
       <h2 className="text-sm font-semibold text-ps-ink">Exchange rates</h2>
-      <p className="mt-1 text-xs text-ps-label">
+      {/* A reading measure, not the page's. This panel sits under a register
+          that takes the data width (D11), and an explanatory paragraph run to
+          the same edge is the half of that decision about prose. */}
+      <p className="mt-1 text-xs text-ps-label max-w-2xl">
         A rate is a fact about the world, so these are shared across the whole
         platform — every firm sees the same {base}/{quote} rate for a date, and
         only a Partner can record one. Nothing is fetched automatically.
