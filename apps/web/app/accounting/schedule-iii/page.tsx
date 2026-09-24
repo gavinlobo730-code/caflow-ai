@@ -15,6 +15,7 @@ import { StatementSkeleton } from "@/components/ui/skeleton";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { api } from "@/lib/api";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
@@ -304,13 +305,20 @@ export default function ScheduleIIIPage() {
     const sb = getSupabaseClient();
     getFirmId()
       .then(async (fid) => {
-        const { data: cls } = await sb
+        // Paged for the same reason as the payroll screens': a firm-wide
+        // client read stops at PostgREST's ~1000-row cap with no error, and a
+        // client past it simply cannot be selected — the screen looks complete
+        // and the mapping for that client is unreachable. The name ordering is
+        // applied to the rows that come back, because selectAll orders by its
+        // own key inside the paged query.
+        const { data: cls } = await selectAll(() => sb
           .from("clients")
           .select("id, client_name")
           .eq("firm_id", fid)
-          .order("client_name");
+          .order("id"));
         setClients(((cls ?? []) as { id: string; client_name: string }[])
-          .map((c) => ({ id: c.id, name: c.client_name })));
+          .map((c) => ({ id: c.id, name: c.client_name }))
+          .sort((a, b) => a.name.localeCompare(b.name)));
       })
       .catch(() => {});
   }, []);

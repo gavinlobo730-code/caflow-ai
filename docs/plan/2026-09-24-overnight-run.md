@@ -201,8 +201,12 @@ whichever way the full-scope question is eventually answered.
       | `app/payroll/attendance/page.tsx` | the employee roster the attendance CSV maps over (the attendance read itself is month-bounded and was fine) |
       | `app/payroll/statutory/page.tsx` | the client picker |
 
-      Must-fix class now **9 → 6**, and the six left are single-row or client-scoped
-      reads. The other 65 stay a recorded finding: most are bounded in practice, a
+      Must-fix class now **9 → 5** (the Schedule III client picker went too, in the
+      same batch as the payroll ones), and every one of the five left was opened and
+      checked rather than counted: `lib/data/gst.ts`'s remaining reads are keyed on a
+      client AND a period, `lib/data/tds.ts` is a client's returns by financial year,
+      the two client screens are client-scoped, and `app/clients/page.tsx`'s hit is an
+      `.insert`, not a read at all. The other 65 stay a recorded finding: most are bounded in practice, a
       screen that truncates is at least a screen somebody is looking at, and a
       budget over 65 files is the shape that gets raised until it means nothing.
 
