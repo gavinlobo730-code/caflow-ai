@@ -45,7 +45,7 @@ export function Button({
 }: ButtonProps) {
   const styles: Record<NonNullable<ButtonProps["variant"]>, string> = {
     primary:
-      "btn-shine bg-brand text-white hover:bg-brand-hover shadow-sm hover:shadow-[0_8px_24px_rgba(24,35,80,0.25)]",
+      "btn-shine bg-brand text-white hover:bg-brand-dark shadow-sm hover:shadow-[0_8px_24px_rgba(24,35,80,0.25)]",
     secondary: "bg-white text-brand border border-ps-border hover:bg-ps-muted",
     light: "btn-shine bg-white text-brand hover:bg-ps-muted shadow-sm",
     "ghost-light": "text-white border border-white/25 hover:bg-white/10",

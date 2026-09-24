@@ -77,7 +77,7 @@ const FAQ = [
 ];
 
 const linkCls =
-  "mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand transition-colors hover:text-brand-hover";
+  "mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand transition-colors hover:text-brand-dark";
 
 export default function SupportPage() {
   return (

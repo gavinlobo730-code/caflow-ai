@@ -3,6 +3,16 @@ import type { Config } from "tailwindcss";
 // Brand tokens mirror apps/web/tailwind.config.ts so the marketing site and the
 // application read as one product. Values are the canonical PracticeSync palette
 // documented in apps/web/app/globals.css.
+//
+// THAT CLAIM IS NOW ENFORCED, and it was not before:
+// `apps/api/tests/test_the_marketing_site_reads_as_one_product.py` reads BOTH
+// configs and requires every colour declared here to equal the product's at the
+// same path — and refuses one the product does not declare at all. A comment
+// asserting a mirror that nothing checks is the drift shape CLAUDE.md records
+// three times, and it had already drifted: `brand.hover: #0F1A3D` existed in
+// this file and nowhere in the product, for a role `apps/web` expresses as
+// `brand-dark` at fifteen sites. It is gone and both call sites use
+// `brand-dark`.
 const config: Config = {
   content: [
     "./app/**/*.{ts,tsx}",
@@ -14,7 +24,6 @@ const config: Config = {
       colors: {
         brand: {
           DEFAULT: "#182350", // Deep Blue — identity, primary actions
-          hover: "#0F1A3D",
           light: "#AFD2FA", // Powder Blue — hover, selection, accents
           dark: "#0D1635", // near-black navy — headings
         },
@@ -29,11 +38,11 @@ const config: Config = {
           muted: "#F1F5F9",
         },
       },
-      boxShadow: {
-        card: "0 1px 3px rgba(24,35,80,0.06), 0 1px 2px rgba(24,35,80,0.04)",
-        "card-hover": "0 10px 40px rgba(24,35,80,0.12)",
-        modal: "0 20px 60px rgba(24,35,80,0.20)",
-      },
+      // THREE DEAD SHADOW TOKENS WERE HERE — `card`, `card-hover` and `modal`,
+      // the same three T3-a deleted from apps/web/tailwind.config.ts. Nothing
+      // in this app referenced any of them (`grep -r "shadow-card"` was empty),
+      // so they were a palette the site declared and never wore. Removed for
+      // T3-a's reason rather than a new one.
       // Home-page-only typefaces (cinematic rebuild). The CSS vars only get
       // a real value where app/(site)/page.tsx's next/font/google loaders
       // are actually mounted — everywhere else these fall back to the
