@@ -41,7 +41,7 @@ export function WorkPanel() {
                 key={href}
                 href={href}
                 className={cn(
-                  "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
+                  "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-xs font-medium transition-all duration-75",
                   active
                     ? "bg-brand text-white"
                     : "text-gray-600 hover:bg-ps-bg hover:text-brand"
@@ -71,7 +71,7 @@ export function WorkPanel() {
                 key={href}
                 href={href}
                 className={cn(
-                  "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-[12.5px] font-medium transition-all duration-75",
+                  "flex items-center gap-2.5 px-2.5 py-2 rounded-[7px] text-xs font-medium transition-all duration-75",
                   active
                     ? "bg-brand text-white"
                     : "text-gray-600 hover:bg-ps-bg hover:text-brand"

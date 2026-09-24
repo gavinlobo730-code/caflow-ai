@@ -104,7 +104,7 @@ function NavItems({
             )}
             <Icon size={15} className="shrink-0" />
             {!collapsed && (
-              <span className="text-[12.5px] font-medium">{label}</span>
+              <span className="text-xs font-medium">{label}</span>
             )}
           </Link>
         );

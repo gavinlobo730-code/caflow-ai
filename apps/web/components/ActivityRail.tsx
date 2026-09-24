@@ -136,7 +136,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
                     setAvatarMenuOpen(false);
                     signOut();
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12.5px] text-slate-400 hover:text-red-400 hover:bg-white/10 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-400 hover:text-red-400 hover:bg-white/10 transition-colors"
                 >
                   <LogOut size={13} />
                   Sign out

@@ -104,7 +104,7 @@ export default function ApprovalsPage() {
           </div>
           <Link
             href="/settings/security"
-            className="mt-1 px-4 py-2 rounded-lg bg-brand text-white text-[12.5px] font-medium hover:bg-[#1e2d5e] transition-colors"
+            className="mt-1 px-4 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-[#1e2d5e] transition-colors"
           >
             Set Up MFA
           </Link>

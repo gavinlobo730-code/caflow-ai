@@ -152,18 +152,23 @@ const HEX_BUDGET = 44;
 // what is actually there each time, because a budget with slack in it is a
 // budget that permits a regression.
 //
-// ⚠️ 289 AND NOT 277, AND THE 12 ARE A FINDING. `PX_TEXT` matches a DECIMAL
-// (`\d+(\.\d+)?px`) and the census everyone has been quoting — including
-// THE-PLAN's own DONE WHEN — greps `text-\[[0-9]+px\]`, which does not. So
-// thirteen `text-[12.5px]` were invisible to every count of this taken so far,
-// and twelve of them are in ONE family: `ActivityRail` and the seven panels of
+// ⚠️ THE 289 WAS NOT 277, AND THE 12 WERE A FINDING. `PX_TEXT` matches a
+// DECIMAL (`\d+(\.\d+)?px`) and the census everyone had been quoting —
+// including THE-PLAN's own DONE WHEN — greps `text-\[[0-9]+px\]`, which does
+// not. So thirteen `text-[12.5px]` were invisible to every count taken so far,
+// and twelve were in ONE family: `ActivityRail` and the seven panels of
 // `ContextPanel`, the navigation chrome on every screen in the product. A HALF
 // PIXEL is not a step of any scale — it is what you write when you are nudging
-// one label against another — so they are a module of their own to convert,
-// not stragglers. The metric in THE-PLAN was corrected to this regex in the
-// same commit: a metric and the guard that enforces it must count the same
-// population, which this file's own history already records going wrong once.
-const PX_TEXT_BUDGET = 289;
+// one label against another. THE-PLAN's metric was corrected to this regex:
+// a metric and the guard that enforces it must count the same population,
+// which this file's own history already records going wrong once.
+//
+// 289 → 277 in the next commit, that family converted to `text-xs`. It shows
+// on 90 of the 160 routes, which is what a shell change means, and the walk
+// was run before and after on all of them: the rail and the context panel come
+// out a shade tighter (Tailwind's 16px leading in place of the ~19px these
+// inherited) and nothing else moves.
+const PX_TEXT_BUDGET = 277;
 
 // ── THE SECOND WAY TO WRITE A COLOUR, WHICH THIS FILE COULD NOT SEE ─────────
 //
