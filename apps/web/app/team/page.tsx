@@ -152,7 +152,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
         </div>
 
         {error && (
-          <div role="alert" className="bg-state-problem-surface border border-red-100 rounded-lg px-3 py-2 flex gap-2 text-xs text-money-out">
+          <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 flex gap-2 text-xs text-state-problem">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
@@ -245,7 +245,7 @@ function EditRoleModal({ member, onClose, onSave }: EditRoleModalProps) {
         <p className="text-xs text-ps-label">{member.full_name} · {member.email}</p>
 
         {error && (
-          <div role="alert" className="bg-state-problem-surface border border-red-100 rounded-lg px-3 py-2 flex gap-2 text-xs text-money-out">
+          <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 flex gap-2 text-xs text-state-problem">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
@@ -375,8 +375,8 @@ function RolePermissionsCard() {
                 </span>
                 <div className="space-y-1">
                   {allowed.map(m => (
-                    <div key={m.resource} className="flex items-center gap-1.5 text-xs text-money-in">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                    <div key={m.resource} className="flex items-center gap-1.5 text-xs text-state-ready">
+                      <span className="w-1.5 h-1.5 rounded-full bg-state-ready-solid shrink-0" />
                       {m.label}
                     </div>
                   ))}
@@ -844,7 +844,7 @@ export default function TeamPage() {
       </div>
 
       {error && (
-        <div role="alert" className="bg-state-problem-surface border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-money-out">
+        <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3 flex gap-2 text-sm text-state-problem">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
@@ -964,7 +964,7 @@ export default function TeamPage() {
                           </span>
                         </td>
                         <td className="px-3 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? "bg-green-100 text-money-in" : "bg-ps-muted text-ps-label"}`}>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? "bg-state-ready-surface text-state-ready" : "bg-ps-muted text-ps-label"}`}>
                             {isActive ? "Active" : "Inactive"}
                           </span>
                         </td>

@@ -541,3 +541,119 @@ test("the guards are not vacuous", () => {
   const probe = '"bg-brand-dark text-white hover:bg-brand-dark"';
   assert.match(probe, /hover:(bg|text|border)-([a-z0-9-]+)/, "the hover regex is inert");
 });
+
+// ── A COLOUR THAT MEANS SOMETHING MUST NOT MEAN THE OTHER THING ─────────────
+//
+// This file's own `money` tokens carry the rule in their comment: "Money
+// DIRECTION is its own axis and gets its own tokens, so a figure's colour never
+// accidentally says a CA has work to do." That was written about one direction
+// of the confusion — a withdrawal painted as a problem. The OTHER direction is
+// the same defect and was live: `app/team/page.tsx` painted three error bands
+// in `text-money-out` and two READY states (a permission the role is allowed to
+// reach, and an Active member chip) in `text-money-in` — a screen with no money
+// on it at all, reaching for the money tokens because they were a red and a
+// green. An error rendered in the debit colour is exactly what these two axes
+// exist to keep apart.
+//
+// WHAT MAKES IT CHECKABLE IS `role="alert"`. Everywhere else, whether an
+// element is a status or a decoration is a judgement and not a regex — T4-b's
+// whole difficulty. But an element that declares itself an alert has ANSWERED
+// that question, out loud, to a screen reader. So the rule below is asked only
+// of those, and it is exact rather than approximate.
+
+/** `role="alert"` and the two lines under it — the band, its icon and its
+ *  text. Anything deeper is a judgement again. */
+function alertWindows(body: string): string[] {
+  const lines = body.split("\n");
+  const out: string[] = [];
+  lines.forEach((l, i) => {
+    if (l.includes('role="alert"')) out.push(lines.slice(i, i + 4).join("\n"));
+  });
+  return out;
+}
+
+const MONEY = /\b(text|bg|border|ring|fill|stroke)-money-(in|out|negative)\b/;
+const RAW_STATUS = /\b(text|bg|border)-(red|amber|green|emerald|rose)-\d{2,3}\b/g;
+
+test("a money-direction colour is never a status", () => {
+  const offenders: string[] = [];
+  for (const { file, body } of BODIES) {
+    for (const w of alertWindows(body)) {
+      if (MONEY.test(w)) offenders.push(file);
+    }
+  }
+  assert.deepEqual([...new Set(offenders)], [],
+    "an element that declares itself an alert is painted in a money-direction " +
+    "token. `money.in`/`money.out` label which way an AMOUNT moved; a failure " +
+    "is `state.problem`. See the `money` block in tailwind.config.ts.");
+});
+
+test("money direction is used where money has a direction", () => {
+  // A location rule stands in for a meaning rule, and the budget is the honest
+  // part: today every one of these is in the banking module, which is where an
+  // amount has a direction. If another module genuinely shows a debit or a
+  // credit, add it here WITH THE REASON rather than raising a number.
+  const WHERE_MONEY_MOVES = ["components/banking/"];
+  const stray = BODIES
+    .filter(({ file }) => !WHERE_MONEY_MOVES.some((p) => file.includes(p)))
+    .filter(({ body }) => MONEY.test(body))
+    .map(({ file }) => file);
+  assert.deepEqual(stray, [],
+    "a money-direction token outside the module where money has a direction. " +
+    "If this is a STATUS, use `state.*`; if it really is an amount, add the " +
+    "path to WHERE_MONEY_MOVES with the reason.");
+  // Not vacuous: the tokens are in real use inside that module.
+  const inside = BODIES.filter(({ file, body }) =>
+    WHERE_MONEY_MOVES.some((p) => file.includes(p)) && MONEY.test(body));
+  assert.ok(inside.length >= 5,
+    `only ${inside.length} banking files use a money token — the scan is wrong`);
+});
+
+test("an element that declares itself an alert carries no raw status colour", () => {
+  // The inverse of the rule above, and the reason the conversion was possible
+  // at all: `role="alert"` is the one place a scan can be certain the colour
+  // is saying something rather than decorating. 59 lines across 29 files were
+  // `text-red-600`, `bg-red-100` and `border-red-100` on bands whose SURFACE
+  // was already `state.problem-surface` — half-converted, so one error band
+  // was two different reds.
+  //
+  // AND IT IS AN ACCESSIBILITY FIX, WHICH IS NOT WHAT IT LOOKED LIKE. Measured
+  // against `state.problem-surface` (#FEF2F2), the surface these bands already
+  // used:
+  //
+  //     text-red-500  #EF4444   3.44:1   FAILS WCAG 1.4.3 (4.5:1)
+  //     text-red-600  #DC2626   4.41:1   FAILS, just
+  //     state.problem #B91C1C   5.91:1   passes
+  //
+  // So thirteen `text-red-600` and two `text-red-500` sites were error text —
+  // the one message a reader has to read — below the contrast floor, on a
+  // surface that was already the token's. One site went the other way and is
+  // recorded rather than argued away: `text-red-800` was 7.60:1 and is now
+  // 5.91:1, still passing, and one vocabulary is worth the step.
+  //
+  // ⚠️ AND THE WALK CANNOT SEE ANY OF THIS. An alert band renders only when
+  // something has failed, and the smoke walk renders with no data and no
+  // errors: 159 of 160 routes came back byte-identical. The verification here
+  // is the contrast arithmetic above and the three negative controls below,
+  // not a photograph — said plainly, because "no visual diff" would read as
+  // evidence when it is the absence of it.
+  //
+  // ONE PAIR IS EXEMPT AND IT IS THE PAIR, NOT EITHER HALF. A dismiss ✕ is
+  // `text-red-400 hover:text-red-600`: no token is light enough for the
+  // resting step, and converting only the hover leaves a control that changes
+  // HUE under the cursor rather than darkening. So the skip matches the exact
+  // pair — a lone `text-red-400` on an alert still fails, which is the case
+  // this carve-out must not quietly cover.
+  const DISMISS_PAIR = /text-red-400\s+hover:text-red-600/;
+  const offenders: string[] = [];
+  for (const { file, body } of BODIES) {
+    const code = body.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    for (const w of alertWindows(code)) {
+      const rest = w.replace(DISMISS_PAIR, " ");
+      for (const hit of rest.match(RAW_STATUS) ?? []) offenders.push(`${file}: ${hit}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    "a raw status colour inside an element that announces itself as an alert. " +
+    "Use state.problem / state.problem-surface / state.problem-border.");
+});

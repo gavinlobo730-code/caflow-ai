@@ -401,7 +401,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
         </button>
       </div>
 
-      {error && <p role="alert" className="text-xs text-money-out bg-state-problem-surface border border-red-100 rounded-lg p-3">{error}</p>}
+      {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface border border-state-problem-border rounded-lg p-3">{error}</p>}
 
       {/* New session form */}
       {showNew && (

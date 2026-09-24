@@ -424,7 +424,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
           {err && (
             <div
               role="alert"
-              className="flex items-start gap-2 bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 text-sm text-red-600"
+              className="flex items-start gap-2 bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 text-sm text-state-problem"
             >
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
               <span>{err}</span>
@@ -1077,7 +1077,7 @@ export default function PipelinePage() {
       {/* Load error banner */}
       {loadError && (
         <div role="alert" className="flex items-start gap-3 bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3">
-          <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+          <AlertCircle size={16} className="text-state-problem shrink-0 mt-0.5" />
           <div className="flex-1 text-sm text-state-problem">
             <span className="font-semibold">Failed to load leads: </span>
             {loadError}

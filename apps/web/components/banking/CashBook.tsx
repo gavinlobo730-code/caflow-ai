@@ -120,9 +120,9 @@ export function CashRegister({ clientId }: { clientId: string }) {
 
       {error && (
         <div role="alert" className="rounded-lg border border-state-problem-border bg-state-problem-surface p-3">
-          <p className="text-2xs text-red-800">{error}</p>
+          <p className="text-2xs text-state-problem">{error}</p>
           <button onClick={() => void load()}
-                  className="mt-2 text-2xs text-money-out underline disabled:opacity-40"
+                  className="mt-2 text-2xs text-state-problem underline disabled:opacity-40"
                   disabled={loading}>
             Try again
           </button>
