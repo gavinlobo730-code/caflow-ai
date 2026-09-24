@@ -93,7 +93,7 @@ function sweep(): Site[] {
         .map((c) => c[1])
         .filter((a) => /\.data\b/.test(a));
       if (!sets.length) continue;
-      if (sets.every((a) => /objectOrNull/.test(a))) continue;
+      if (sets.every((a) => /objectOrNull|objectWithLists/.test(a))) continue;
 
       // ... and read with a nested array access somewhere in the file.
       // `\\??\\.` on BOTH hops, and that is not cosmetic: `x?.rows.map(...)`
@@ -155,14 +155,12 @@ const KNOWN_UNGUARDED: string[] = [
   "components/banking/WorthALookTab.tsx::data",
   "components/fixed-assets/CwipTab.tsx::register",
   "components/gst/AmendmentsTab.tsx::amendments",
-  "components/gst/GSTR9Working.tsx::working",
   "components/gst/ItcRegisterTab.tsx::advances",
   "components/gst/ItcRegisterTab.tsx::register",
   "components/gst/RegistrationsTab.tsx::kinds",
   "components/gst/RegistrationsTab.tsx::turnover",
   "components/inventory/CostFormulaPanel.tsx::policy",
   "components/inventory/LocationsAndBatches.tsx::expiry",
-  "components/inventory/StockAgeing.tsx::data",
   "components/inventory/StockCountSheet.tsx::result",
   "components/inventory/StockCountSheet.tsx::sheet",
   "components/payroll/ApplyStructureModal.tsx::result",
@@ -175,7 +173,6 @@ const KNOWN_UNGUARDED: string[] = [
   "components/payroll/StatutoryHandoff.tsx::result",
   "components/portal/TdsProjectionTab.tsx::data",
   "components/purchases/BillsOfEntryTab.tsx::authorities",
-  "components/purchases/LandedCostPanel.tsx::data",
   "components/purchases/PurchaseCycleTab.tsx::matched",
   "components/purchases/PurchaseCycleTab.tsx::position",
   "components/purchases/RcmDocumentPanel.tsx::preview",

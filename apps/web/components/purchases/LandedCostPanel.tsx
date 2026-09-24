@@ -29,6 +29,7 @@ import { X, Truck, Trash2, Lock } from "lucide-react";
 import { apiGet, apiCall, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { Callout, GapList } from "@/components/ui/callout";
+import { objectWithLists } from "@/lib/api/shape";
 
 interface Charge {
   id: string;
@@ -95,7 +96,7 @@ export function LandedCostPanel({
         `/api/purchase-bills/${billId}/landed-costs?client_id=${encodeURIComponent(clientId)}`,
         token);
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't read the charges.");
-      setData(res.data as LandedCosts);
+      setData(objectWithLists<LandedCosts>(res.data, "bases", "charges", "lines", "notes"));
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't read the charges.");
