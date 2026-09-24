@@ -3,23 +3,39 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Settings, LogOut } from "lucide-react";
+import { Search, Settings, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace/workspaceConfig";
 import { canAccessWorkspace } from "@/lib/auth/permissions";
+import { useNavShellCollapse } from "@/components/shell/NavShell";
 
-interface ActivityRailProps {
-  onOpenSearch: () => void;
-}
-
-export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
+/**
+ * The product's spine: the workspaces, search, Settings and the account menu.
+ *
+ * It was `components/ActivityRail.tsx` and rendered at FIRM LEVEL ONLY, which
+ * is the defect `NavShell`'s header records — inside a client workspace there
+ * was no way to sign out, no way to reach Settings and nothing saying ⌘K
+ * existed. It is now on every screen a signed-in CA sees.
+ *
+ * ⚠️ IT IS 64px WIDE AND WAS 52px, AND THAT IS A MEASUREMENT. At 52px with
+ * this label size, "Relationships" (~60px) and "Engagements" (~51px) did not
+ * fit and were cut off mid-word — they rendered as "elationship" and
+ * "ngagement" on every firm screen, which the 24-09 smoke shots show. 64px
+ * fits every one of the twelve. `truncate` is the BACKSTOP rather than the
+ * fix: it degrades a longer label added later to an ellipsis instead of
+ * letting it spill over the panel beside it.
+ */
+export function WorkspaceRail({ onOpenSearch }: { onOpenSearch: () => void }) {
   const { activeWorkspace, setWorkspace } = useWorkspace();
   const { user, userRole, signOut, fullName } = useAuth();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const pathname = usePathname();
   const isSettingsRoute = pathname.startsWith("/settings");
+  // Null inside the mobile drawer, which renders the rail outside the shell's
+  // desktop branch: there is nothing to collapse there, so no control is shown.
+  const collapse = useNavShellCollapse();
 
   const initials = fullName
     ? fullName.trim().split(" ").filter(Boolean).slice(0, 2).map((n) => n[0].toUpperCase()).join("")
@@ -30,30 +46,40 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
   );
 
   return (
-    <aside className="relative flex flex-col h-full w-[52px] shrink-0 bg-brand border-r border-white/10 z-10">
-      {/* Logo */}
-      <div className="flex items-center justify-center h-14 border-b border-white/10 shrink-0">
+    <aside className="relative flex flex-col h-full w-[64px] shrink-0 bg-brand border-r border-white/10 z-10 overflow-x-hidden">
+      {/* Logo, and the one collapse control. It lives here rather than in the
+          panel because a control inside the thing it hides has to be drawn
+          twice — which is exactly what ClientContextPanel did. */}
+      <div className="flex items-center justify-center gap-1 h-14 border-b border-white/10 shrink-0">
         <div className="w-7 h-7 rounded-[8px] bg-brand flex items-center justify-center text-2xs font-bold text-white shadow-[0_0_16px_rgba(59,130,246,0.35)]">
           P
         </div>
+        {collapse && (
+          <button
+            onClick={collapse.toggle}
+            title={collapse.collapsed ? "Show navigation" : "Hide navigation"}
+            aria-label={collapse.collapsed ? "Show navigation" : "Hide navigation"}
+            className="flex items-center justify-center w-6 h-6 rounded-md text-slate-500 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            {collapse.collapsed ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
+          </button>
+        )}
       </div>
 
-      {/* Workspace icons — scroll when they exceed the rail height (min-h-0 lets this
-          flex child shrink; scrollbar hidden to keep the 52px rail clean) */}
-      <nav className="flex flex-col items-center gap-1.5 py-3 flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Workspace icons — scroll when they exceed the rail height (min-h-0 lets
+          this flex child shrink; scrollbar hidden to keep the rail clean) */}
+      <nav className="flex flex-col items-center gap-1.5 py-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {visibleWorkspaces.map((ws) => {
           const Icon = ws.icon;
           const isActive = ws.id === activeWorkspace;
           return (
-            <div key={ws.id} className="flex flex-col items-center gap-0.5 w-full">
+            <div key={ws.id} className="flex flex-col items-center gap-0.5 w-full px-0.5">
               <button
                 onClick={() => setWorkspace(ws.id)}
                 title={ws.description}
                 className={cn(
                   "relative flex items-center justify-center w-9 h-9 rounded-[9px] transition-all duration-100 mx-auto",
-                  isActive
-                    ? "bg-brand"
-                    : "hover:bg-white/10"
+                  isActive ? "bg-brand" : "hover:bg-white/10"
                 )}
               >
                 {isActive && (
@@ -69,7 +95,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
               </button>
               <span
                 className={cn(
-                  "text-3xs font-medium leading-none select-none",
+                  "w-full text-center truncate text-3xs font-medium leading-none select-none",
                   isActive ? "text-white" : "text-slate-500"
                 )}
               >
@@ -80,7 +106,8 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
         })}
       </nav>
 
-      {/* Bottom utilities */}
+      {/* Bottom utilities. These are the three that did not exist inside a
+          client workspace before this rail became constant. */}
       <div className="flex flex-col items-center gap-2 pb-3 shrink-0 border-t border-white/10 pt-3">
         <button
           onClick={onOpenSearch}
@@ -116,12 +143,10 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
           </button>
           {avatarMenuOpen && (
             <>
-              {/* Backdrop */}
               <div
                 className="fixed inset-0 z-20"
                 onClick={() => setAvatarMenuOpen(false)}
               />
-              {/* Popover */}
               <div className="absolute left-full bottom-0 ml-2 z-30 w-48 bg-[#1e2d5e] border border-white/10 rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] p-1.5">
                 <div className="px-3 py-2 border-b border-white/10 mb-1">
                   <p className="text-xs font-semibold text-white truncate">

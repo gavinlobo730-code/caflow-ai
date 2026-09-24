@@ -30,8 +30,13 @@ export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
   // there instead of falsely lighting Home (see WorkspaceContext).
   const panelWorkspace = activeWorkspace ?? "home";
 
+  // NO BOX OF ITS OWN. `NavShell` owns the 220px, the white, the border and
+  // the collapse; this component is the CONTENT — which panel, for which
+  // workspace. It used to carry its own `w-[220px] bg-white border-r`, and a
+  // second box inside the shell's is how a width comes to be set in two places
+  // and drift.
   return (
-    <div className="flex flex-col h-full w-[220px] shrink-0 bg-white border-r border-gray-200">
+    <div className="flex flex-col h-full">
       {isSettings ? (
         <SettingsPanel />
       ) : (
