@@ -85,12 +85,33 @@ class Tile:
     #: None where the tile is a destination rather than a queue. The reason is
     #: rendered in place of a figure; see the module docstring.
     no_signal_because: Optional[str] = None
+    #: Set where the tile HAS a figure for one client and none for the firm.
+    #: `inventory` is the only one: what is at or below its reorder level is
+    #: on-hand stock against a per-item level, and on-hand is a sum of
+    #: `inventory_stock_ledger` deltas PER CLIENT — there is no firm-wide
+    #: aggregate, and computing one would be a read per client per item, which
+    #: is the reporting rule's own definition of a query proportional to the
+    #: ledger rather than to the answer.
+    no_firm_signal_because: Optional[str] = None
     #: False where the question is about the FIRM and has no per-client form.
     client_scoped: bool = True
 
     @property
     def answerable(self) -> bool:
+        """At any scope. `answerable_at` is the per-scope question."""
         return self.no_signal_because is None
+
+    def answerable_at(self, client_id: Optional[str]) -> bool:
+        if not self.answerable:
+            return False
+        return not (client_id is None and self.no_firm_signal_because)
+
+    def why_no_signal(self, client_id: Optional[str]) -> Optional[str]:
+        if self.no_signal_because:
+            return self.no_signal_because
+        if client_id is None and self.no_firm_signal_because:
+            return self.no_firm_signal_because
+        return None
 
     def href_for(self, client_id: Optional[str]) -> Optional[str]:
         """Where this tile goes at this scope, or None if nowhere yet.
@@ -210,6 +231,11 @@ TILES: tuple[Tile, ...] = (
         client_section="inventory",
         question="Items at or below their reorder level",
         unit=Unit.COUNT,
+        no_firm_signal_because=(
+            "On-hand stock is a sum of one client's own ledger, so there is "
+            "no firm-wide figure to show — open a client to see what needs "
+            "reordering."
+        ),
     ),
     Tile(
         id="year_end",
@@ -294,13 +320,14 @@ def describe(tile: Tile, signal: Optional[int], client_id: Optional[str] = None)
     service's to report. A tile that genuinely has nothing outstanding carries
     0, not null.
     """
+    ok = tile.answerable_at(client_id)
     return {
         "id": tile.id,
         "label": tile.label,
         "href": tile.href_for(client_id),
         "question": tile.question,
         "unit": tile.unit.value,
-        "answerable": tile.answerable,
-        "no_signal_because": tile.no_signal_because,
-        "signal": None if not tile.answerable else signal,
+        "answerable": ok,
+        "no_signal_because": tile.why_no_signal(client_id),
+        "signal": signal if ok else None,
     }

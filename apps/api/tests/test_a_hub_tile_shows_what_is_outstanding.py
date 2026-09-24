@@ -208,3 +208,48 @@ def test_these_guards_are_not_vacuous():
     assert len(D1_ORDER) == 15
     assert sum(1 for t in TILES if t.answerable) == 13
     assert BY_ID["gst"].question == "Returns prepared and not yet filed"
+
+
+def test_a_tile_may_have_a_figure_for_a_client_and_none_for_the_firm():
+    """Inventory is the one, and it is a THIRD reason to have no number.
+
+    What is at or below its reorder level is on-hand stock against a per-item
+    level, and on-hand is a sum of one client's `inventory_stock_ledger`
+    deltas. There is no firm-wide aggregate, and computing one would be a read
+    per client per item — the reporting rule's own definition of a query
+    proportional to the ledger rather than to the answer.
+
+    So the tile is answerable at CLIENT scope and not at firm scope, and the
+    payload says which, with a sentence. The alternative — leaving its firm
+    figure null on an "answerable" tile — would be indistinguishable from a
+    fetch that failed, which is a state the service reports and the screen
+    renders differently.
+    """
+    inv = BY_ID["inventory"]
+    assert inv.answerable, "inventory has a figure; it is the SCOPE that limits it"
+    assert inv.answerable_at("c1") is True
+    assert inv.answerable_at(None) is False
+
+    at_firm = describe(inv, 4, None)
+    assert at_firm["signal"] is None and at_firm["answerable"] is False
+    assert "open a client" in (at_firm["no_signal_because"] or "").lower()
+
+    at_client = describe(inv, 4, "c1")
+    assert at_client["signal"] == 4 and at_client["answerable"] is True
+    assert at_client["no_signal_because"] is None
+
+    # And it is the ONLY one — a second would be a claim worth reviewing.
+    scoped = [t.id for t in TILES if t.no_firm_signal_because]
+    assert scoped == ["inventory"], f"tiles with a client-only figure: {scoped}"
+
+
+def test_the_two_destination_tiles_are_unanswerable_at_every_scope():
+    """The distinction the test above rests on: `insights` and `reports` have
+    no figure ANYWHERE, so they must not be confused with inventory's
+    scope-limited one."""
+    for tile_id in ("insights", "reports"):
+        t = BY_ID[tile_id]
+        assert t.answerable_at(None) is False and t.answerable_at("c1") is False
+        assert t.no_firm_signal_because is None, (
+            f"{tile_id} has no figure at all — a firm-scope reason would say "
+            f"it has one for a client, which it does not")
