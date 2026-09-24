@@ -22,6 +22,7 @@
  * /api/client-gst-registrations.
  */
 import { useCallback, useEffect, useState } from "react";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { Plus, AlertTriangle, X, Info } from "lucide-react";
 import { api, type ClientGstRegistration, type GstRegistrationKinds,
          type ClientGstTurnover } from "@/lib/api";
@@ -78,7 +79,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
     try {
       const res = await api.clientGstRegistrations.list(clientId);
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't read the registrations.");
-      setRows(res.data);
+      setRows(arrayOrEmpty(res.data));
       setLoadFailed(false);
     } catch {
       // Not swallowed into an empty list: on this tab "none" reads as an

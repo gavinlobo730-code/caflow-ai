@@ -20,6 +20,7 @@
  * acceptance date are `domain/purchases/three_way_match.py`'s answers.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { AlertTriangle, ClipboardList, Info, PackageCheck, Plus, X } from "lucide-react";
 import {
   api,
@@ -84,9 +85,9 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
         api.vendors.list(clientId),
       ]);
       if (v.success && v.data) setVocab(v.data);
-      if (o.success && o.data) setOrders(o.data);
-      if (g.success && g.data) setReceipts(g.data);
-      if (ven.success && ven.data) setVendors(ven.data as Vendor[]);
+      if (o.success && o.data) setOrders(arrayOrEmpty(o.data));
+      if (g.success && g.data) setReceipts(arrayOrEmpty(g.data));
+      if (ven.success && ven.data) setVendors(arrayOrEmpty<Vendor>(ven.data));
     } catch {
       setLoadFailed(true);
     } finally {

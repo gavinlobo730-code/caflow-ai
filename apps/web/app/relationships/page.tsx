@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { Plus, X } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { DataTable } from "@/components/ui/data-table";
@@ -137,7 +138,7 @@ export default function RelationshipsPage() {
       // and still detect it below in case some firm's registry ever does exceed it.
       const json: ApiResponse<Entity[]> = await apiFetch(`/api/relationships/entities?limit=${ENTITY_FETCH_LIMIT}`);
       if (!json.success) throw new Error(json.error ?? "Failed to load entities");
-      setEntities(json.data);
+      setEntities(arrayOrEmpty(json.data));
       setEntitiesCapped(json.data.length === ENTITY_FETCH_LIMIT);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");

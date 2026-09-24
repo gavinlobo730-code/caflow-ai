@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { Users, UserPlus, Shield, Mail, MoreVertical, X, AlertCircle, Lock, SlidersHorizontal } from "lucide-react";
 import MemberAccessDrawer from "@/components/team/MemberAccessDrawer";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -729,7 +730,13 @@ export default function TeamPage() {
       const res = await api.identity.listUsers();
       if (!res.success) throw new Error(res.error ?? "Failed to load team");
 
-      setMembers(res.data.users.map(r => ({
+      // `res.data.users` was read straight off the payload: a backend that
+      // has not deployed this shape, or a 200 carrying `{}`, made `members`
+      // undefined and the next render threw. `lib/api/shape.ts` exists for
+      // this and its docstring counts thirteen screens.
+      setMembers(arrayOrEmpty<NonNullable<typeof res.data>["users"][number]>(
+        objectOrNull<{ users?: unknown }>(res.data)?.users,
+      ).map(r => ({
         id: r.id,
         full_name: r.full_name ?? r.email ?? "—",
         email: r.email ?? "",

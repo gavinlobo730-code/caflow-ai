@@ -27,6 +27,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Clock, HelpCircle, Truck } from "lucide-react";
 import { api, type ExpiringEwayBill, type ExpiringEwayBills as Report } from "@/lib/api";
+import { objectOrNull } from "@/lib/api/shape";
 
 const STATE_LABEL: Record<ExpiringEwayBill["state"], string> = {
   expired: "Expired",
@@ -50,7 +51,13 @@ export function ExpiringEwayBills() {
     setLoading(true);
     try {
       const r = await api.ewayBill.expiring(2);
-      setReport(r.success ? r.data : null);
+      // `objectOrNull`, not `r.data` — `lib/api/shape.ts` exists for exactly
+      // this and its own docstring records thirteen screens that crashed this
+      // way on 16-09-2026. `[]` is TRUTHY, so the `!report` guard below passes
+      // an array straight through and `report.bills.length` throws; so does a
+      // `{}` from a backend that has not deployed this endpoint yet, which is
+      // a real state on every rolling deploy.
+      setReport(objectOrNull<Report>(r.success ? r.data : null));
     } catch {
       // Silent: this is a panel above the deadline table, not the screen's
       // own data. A red banner here would suggest the deadlines failed to
@@ -63,7 +70,14 @@ export function ExpiringEwayBills() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading || !report || report.bills.length === 0) return null;
+  // The FIELDS are defended too, not just the envelope. `objectOrNull` answers
+  // "is this the right KIND of thing" and deliberately validates no field —
+  // its docstring says so — so an object arriving without `bills` still
+  // reaches here. Reading a missing list as empty renders nothing, which is
+  // this panel's own no-data state.
+  const bills = report?.bills ?? [];
+  const caveats = report?.caveats ?? [];
+  if (loading || !report || bills.length === 0) return null;
 
   return (
     <section className="bg-ps-surface border border-ps-border rounded-xl overflow-hidden mb-6">
@@ -93,7 +107,7 @@ export function ExpiringEwayBills() {
           </tr>
         </thead>
         <tbody>
-          {report.bills.map((b) => (
+          {bills.map((b) => (
             <tr key={b.record_id} className="border-b border-ps-border last:border-0 align-top">
               <td className="px-5 py-2">
                 <Link href={`/clients/${b.client_id}`}
@@ -126,7 +140,7 @@ export function ExpiringEwayBills() {
       </table>
 
       <div className="px-5 py-3 border-t border-ps-border bg-ps-bg space-y-1">
-        {report.caveats.map((c, i) => (
+        {caveats.map((c, i) => (
           <p key={i} className="text-xs text-ps-hint">{c}</p>
         ))}
       </div>

@@ -17,6 +17,7 @@
  * `GET /api/sales-cycle/vocabulary` so no label lives here.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { AlertTriangle, Clock, FileText, Info, Plus, Truck, X } from "lucide-react";
 import {
   api,
@@ -89,10 +90,10 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
         api.customers.list(clientId),
       ]);
       if (v.success && v.data) setVocab(v.data);
-      if (q.success && q.data) setQuotations(q.data);
-      if (o.success && o.data) setOrders(o.data);
-      if (c.success && c.data) setChallans(c.data);
-      if (cust.success && cust.data) setCustomers(cust.data as Customer[]);
+      if (q.success && q.data) setQuotations(arrayOrEmpty(q.data));
+      if (o.success && o.data) setOrders(arrayOrEmpty(o.data));
+      if (c.success && c.data) setChallans(arrayOrEmpty(c.data));
+      if (cust.success && cust.data) setCustomers(arrayOrEmpty<Customer>(cust.data));
     } catch {
       setLoadFailed(true);
     } finally {

@@ -1,6 +1,7 @@
 "use client";
 
 import { PAYMENT_MODES } from "@/lib/payments/modes";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw } from "lucide-react";
@@ -1428,7 +1429,7 @@ function Vendors({ clientId }: { clientId: string }) {
     let alive = true;
     api.rcmDocuments.registrationStates()
       .then((res) => {
-        if (alive && res.success && Array.isArray(res.data)) setGstRegistrationOptions(res.data);
+        if (alive && res.success && Array.isArray(res.data)) setGstRegistrationOptions(arrayOrEmpty(res.data));
       })
       .catch(() => { /* leaves the field unset, which is the third state */ });
     return () => { alive = false; };

@@ -17,6 +17,7 @@
  * describes it are all `domain/accounting/opening_documents.py`'s answers.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { Plus, AlertTriangle, X, Info, Check } from "lucide-react";
 import {
   api,
@@ -108,7 +109,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
     fetcher
       .then((r) => {
         if (!alive || !r.success || !r.data) return;
-        setParties(r.data.map((p) => ({ id: p.id, name: p.name })));
+        setParties(arrayOrEmpty<{ id: string; name: string }>(r.data).map((p) => ({ id: p.id, name: p.name })));
       })
       .catch(() => { if (alive) setParties([]); });
     return () => { alive = false; };
