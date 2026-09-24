@@ -39,7 +39,7 @@ const FREQUENCY_LABEL: Record<Frequency, string> = {
 };
 
 const STATUS_CHIP: Record<string, string> = {
-  active: "bg-green-50 text-green-700",
+  active: "bg-state-ready-surface text-state-ready",
   paused: "bg-state-attention-surface text-state-attention",
   archived: "bg-ps-muted text-ps-label",
 };

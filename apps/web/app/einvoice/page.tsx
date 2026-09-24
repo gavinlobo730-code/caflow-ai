@@ -23,7 +23,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 const STATUS_COLOR: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
-  generated: "bg-green-100 text-green-700",
+  generated: "bg-state-ready-surface text-state-ready",
   cancelled: "bg-state-problem-surface text-state-problem",
 };
 

@@ -24,8 +24,8 @@ const FY_OPTIONS = financialYearChoicesAround(null);
 const STATUS_BADGE: Record<string, string> = {
   draft:     "bg-ps-muted text-ps-label",
   in_review: "bg-state-attention-surface text-state-attention",
-  approved:  "bg-blue-100 text-blue-700",
-  locked:    "bg-green-100 text-green-700",
+  approved:  "bg-state-ready-surface text-state-ready",
+  locked:    "bg-state-done-surface text-state-done",
 };
 
 interface Engagement {

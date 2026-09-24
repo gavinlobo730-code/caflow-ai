@@ -51,9 +51,9 @@ export default function AiInsightsPage() {
   useEffect(() => { load(); }, [clientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const SEVERITY_COLORS = {
-    info: "bg-blue-50 border-blue-100 text-blue-700",
-    warning: "bg-state-attention-surface border-state-attention-border text-state-attention",
-    critical: "bg-state-problem-surface border-state-problem-border text-state-problem",
+    info: "bg-sev-low-surface border-sev-low-border text-sev-low",
+    warning: "bg-sev-medium-surface border-sev-medium-border text-sev-medium",
+    critical: "bg-sev-critical-surface border-sev-critical-border text-sev-critical",
   };
 
   return (

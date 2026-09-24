@@ -24,10 +24,10 @@ const STEP_LABELS: Record<string, string> = {
 
 const ACTION_BADGE: Record<string, string> = {
   submitted: "bg-state-attention-surface text-state-attention",
-  approved: "bg-green-100 text-green-700",
+  approved: "bg-state-ready-surface text-state-ready",
   revision_requested: "bg-state-problem-surface text-state-problem",
-  final_approved: "bg-blue-100 text-blue-700",
-  locked: "bg-blue-100 text-blue-700",
+  final_approved: "bg-state-ready-surface text-state-ready",
+  locked: "bg-state-done-surface text-state-done",
 };
 
 interface ReviewData {

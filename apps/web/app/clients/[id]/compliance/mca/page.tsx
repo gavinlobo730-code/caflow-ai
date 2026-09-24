@@ -44,13 +44,13 @@ type MCATab = "companies" | "directors" | "annual" | "events" | "history";
 
 const FILING_STATUS_COLORS: Record<string, string> = {
   not_started: "bg-ps-muted text-ps-body",
-  in_progress: "bg-blue-100 text-blue-700",
-  filed: "bg-emerald-100 text-emerald-800",
+  in_progress: "bg-state-working-surface text-state-working",
+  filed: "bg-state-ready-surface text-state-ready",
   overdue: "bg-state-problem-surface text-state-problem",
 };
 
 const KYC_COLORS: Record<string, string> = {
-  active: "bg-green-100 text-green-700",
+  active: "bg-state-ready-surface text-state-ready",
   pending: "bg-state-attention-surface text-state-attention",
   expired: "bg-state-problem-surface text-state-problem",
 };

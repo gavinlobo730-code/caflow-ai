@@ -204,6 +204,69 @@ const config: Config = {
           done:             "#475569",  /* settled, kept for the record */
           "done-surface":   "#F8FAFC",
           "done-border":    "#E2E8F0",
+
+          /* ── THE FIFTH QUESTION, AND WHY THERE WAS NO WORD FOR IT ────────
+             The four above answer: is it ready, does it need me, did it go
+             wrong, is it settled. A CA screen asks a fifth constantly and
+             the set could not say it — SOMEBODY IS ON IT. A task in
+             progress, a return prepared but not filed, a statement
+             importing, a reconciliation running, an invoice issued and
+             unpaid. None of the four fits, so every screen reached for blue:
+             measured on 24-09-2026, 51 of the 191 raw colours surviving
+             inside maps that ALREADY spoke this vocabulary were that one
+             meaning.
+
+             The value is the `blue-700` those screens were already writing,
+             so naming it changes nothing on screen — the method that gave us
+             `problem-hover`. It stops colliding with the primary once the
+             brand navy takes the buttons (D22), which is the other half of
+             why blue was the largest colour in the codebase. */
+          working:          "#1D4ED8",  /* somebody is on it */
+          "working-surface":"#DBEAFE",
+          "working-border": "#BFDBFE",
+          "working-hover":  "#BFDBFE",
+        },
+
+        /* ── Severity, which is a LADDER and therefore not a state ───────────
+           `critical / high / medium / low` is four RANKED steps and
+           `Healthy / Good / Needs Attention / At Risk / Critical` is five.
+           The state set has three severities and they are not ranked —
+           `ready` is not "better than" `attention` — so painting a five-step
+           health grade in three tokens either collapses steps a CA is meant
+           to tell apart, or forces raw colours back in, which is how the 27
+           orange and yellow entries got there.
+
+           Five steps, in the colours those ladders already use, so nothing
+           moves. `ok` and `critical` are deliberately the SAME values as
+           `state.ready` and `state.problem`: the ends of a severity ramp and
+           the two states mean the same thing to a reader, and giving them a
+           second pair of near-identical greens and reds is what this file
+           exists to stop. Every ink clears WCAG 1.4.3 on white and on its own
+           surface (4.76 to 5.93).
+
+           NO HOVER STEP: these are chips, not controls. A `-border` here is a
+           hairline and never a fill — it does not carry its own ink (3.83 to
+           4.47), which is the rule the T4-b guard already enforces. */
+        sev: {
+          ok:              "#047857",
+          "ok-surface":    "#ECFDF5",
+          "ok-border":     "#A7F3D0",
+
+          low:             "#0369A1",
+          "low-surface":   "#F0F9FF",
+          "low-border":    "#BAE6FD",
+
+          medium:          "#A16207",
+          "medium-surface":"#FEFCE8",
+          "medium-border": "#FEF08A",
+
+          high:            "#C2410C",
+          "high-surface":  "#FFF7ED",
+          "high-border":   "#FED7AA",
+
+          critical:        "#B91C1C",
+          "critical-surface":"#FEF2F2",
+          "critical-border": "#FECACA",
         },
 
         /* ── Money direction, which is NOT state ─────────────────────────────

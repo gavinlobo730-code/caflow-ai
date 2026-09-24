@@ -107,8 +107,8 @@ function fmtDate(date: string): string {
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   Draft: "bg-ps-muted text-ps-label",
-  Issued: "bg-blue-100 text-blue-700",
-  Paid: "bg-green-100 text-green-700",
+  Issued: "bg-state-working-surface text-state-working",
+  Paid: "bg-state-ready-surface text-state-ready",
   Overdue: "bg-state-problem-surface text-state-problem",
 };
 

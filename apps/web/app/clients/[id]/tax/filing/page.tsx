@@ -37,9 +37,9 @@ const STATUS_LABEL: Record<string, string> = {
 const STATUS_COLOR: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
   review: "bg-state-attention-surface text-state-attention",
-  partner_review: "bg-blue-100 text-blue-700",
-  ready_for_filing: "bg-purple-100 text-purple-700",
-  filed: "bg-green-100 text-green-700",
+  partner_review: "bg-state-attention-surface text-state-attention",
+  ready_for_filing: "bg-state-attention-surface text-state-attention",
+  filed: "bg-state-ready-surface text-state-ready",
 };
 
 // The forms are SERVED, not listed here (IT-23). This array said

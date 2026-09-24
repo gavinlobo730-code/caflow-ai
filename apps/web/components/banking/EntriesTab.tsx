@@ -134,11 +134,11 @@ const KIND_LABEL = { receipt: "Receipt", payment: "Payment", contra: "Contra" } 
 
 const STATE_STYLE: Record<EntryState, string> = {
   needs_you: "bg-state-attention-surface text-state-attention border-state-attention-border",
-  proposed:  "bg-sky-50 text-sky-800 border-sky-200",
+  proposed:  "bg-state-working-surface text-state-working border-state-working-border",
   ready:     "bg-state-ready-surface text-state-ready border-state-ready-border",
-  covered:   "bg-slate-50 text-slate-600 border-slate-200",
-  passed:    "bg-slate-100 text-slate-700 border-slate-200",
-  set_aside: "bg-slate-50 text-slate-500 border-slate-200",
+  covered:   "bg-state-done-surface text-state-done border-state-done-border",
+  passed:    "bg-state-done-surface text-state-done border-state-done-border",
+  set_aside: "bg-state-done-surface text-state-done border-state-done-border",
 };
 const STATE_LABEL: Record<EntryState, string> = {
   needs_you: "Needs you", proposed: "Proposed", ready: "Ready", covered: "Covered",

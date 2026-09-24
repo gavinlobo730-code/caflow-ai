@@ -336,9 +336,9 @@ function RegisterTab({ clientId, openDoc }:
   useEffect(() => { load(); }, [load]);
 
   const LIFECYCLE_BADGE: Record<string, string> = {
-    active:             "bg-green-100 text-green-700",
+    active:             "bg-state-ready-surface text-state-ready",
     disposed:           "bg-state-problem-surface text-state-problem",
-    fully_depreciated:  "bg-gray-100 text-gray-600",
+    fully_depreciated:  "bg-state-done-surface text-state-done",
   };
 
   // Summary stats

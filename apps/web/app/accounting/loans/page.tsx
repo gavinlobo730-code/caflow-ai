@@ -1058,7 +1058,7 @@ function SummaryCard({
 
 function LoanStatusBadge({ status }: { status: LoanStatus }) {
   const styles: Record<LoanStatus, string> = {
-    active: "bg-green-100 text-green-700",
+    active: "bg-state-ready-surface text-state-ready",
     overdue: "bg-state-problem-surface text-state-problem",
     closed: "bg-ps-muted text-ps-label",
   };
@@ -1071,8 +1071,8 @@ function LoanStatusBadge({ status }: { status: LoanStatus }) {
 
 function FDStatusBadge({ status }: { status: FDStatus }) {
   const styles: Record<FDStatus, string> = {
-    active: "bg-green-100 text-green-700",
-    matured: "bg-blue-100 text-blue-700",
+    active: "bg-state-ready-surface text-state-ready",
+    matured: "bg-state-done-surface text-state-done",
     broken: "bg-state-problem-surface text-state-problem",
   };
   return (

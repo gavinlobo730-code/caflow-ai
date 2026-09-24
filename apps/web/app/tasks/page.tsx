@@ -20,18 +20,18 @@ import { formatDate } from "@/lib/services/formatting";
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const PRIORITY_BADGE: Record<TaskPriority, string> = {
-  critical: "bg-state-problem-surface text-state-problem border border-state-problem-border",
-  high:     "bg-orange-100 text-orange-700 border border-orange-200",
-  medium:   "bg-state-attention-surface text-state-attention border border-state-attention-border",
-  low:      "bg-ps-muted text-ps-label border border-ps-border",
+  critical: "bg-sev-critical-surface text-sev-critical border border-sev-critical-border",
+  high:     "bg-sev-high-surface text-sev-high border border-sev-high-border",
+  medium:   "bg-sev-medium-surface text-sev-medium border border-sev-medium-border",
+  low:      "bg-sev-low-surface text-sev-low border border-sev-low-border",
 };
 
 const STATUS_BADGE: Record<TaskStatus, string> = {
   todo:            "bg-ps-muted text-ps-body",
-  in_progress:     "bg-blue-100 text-blue-700",
+  in_progress:     "bg-state-working-surface text-state-working",
   waiting_client:  "bg-purple-100 text-purple-700",
   review_required: "bg-state-attention-surface text-state-attention",
-  completed:       "bg-green-100 text-green-700",
+  completed:       "bg-state-ready-surface text-state-ready",
 };
 
 const STATUS_LABEL: Record<TaskStatus, string> = {

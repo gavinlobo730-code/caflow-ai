@@ -62,10 +62,10 @@ const TREND_WORD = {
 
 /** One palette, for the white surfaces this badge is actually rendered on. */
 const RING_COLOR = {
-  Healthy:   "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  Fair:      "bg-yellow-50 text-yellow-700 ring-yellow-200",
-  "At Risk": "bg-orange-50 text-orange-700 ring-orange-200",
-  Critical:  "bg-state-problem-surface text-state-problem ring-state-problem-border",
+  Healthy:   "bg-sev-ok-surface text-sev-ok ring-sev-ok-border",
+  Fair:      "bg-sev-medium-surface text-sev-medium ring-sev-medium-border",
+  "At Risk": "bg-sev-high-surface text-sev-high ring-sev-high-border",
+  Critical:  "bg-sev-critical-surface text-sev-critical ring-sev-critical-border",
 };
 
 function ringFor(score: number): string {

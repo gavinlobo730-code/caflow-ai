@@ -12,8 +12,8 @@ import { PageLoader } from "@/components/ui/skeleton";
 const LOGIN_HISTORY_DEFAULT_LIMIT = 200;
 
 const EVENT_STYLE: Record<string, string> = {
-  login: "bg-emerald-50 text-emerald-700",
-  logout: "bg-gray-100 text-gray-500",
+  login: "bg-state-ready-surface text-state-ready",
+  logout: "bg-state-done-surface text-state-done",
   failed_login: "bg-state-problem-surface text-state-problem",
   forced_logout: "bg-state-attention-surface text-state-attention",
   suspended: "bg-state-problem-surface text-state-problem",

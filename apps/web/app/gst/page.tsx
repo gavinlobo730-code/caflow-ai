@@ -135,7 +135,7 @@ function keyDeadlines() {
 // ─── Status badge style map ───────────────────────────────────────────────────
 
 const STATUS_STYLE: Record<FilingStatus, string> = {
-  Filed: "bg-green-100 text-green-700",
+  Filed: "bg-state-ready-surface text-state-ready",
   Pending: "bg-state-attention-surface text-state-attention",
   Overdue: "bg-state-problem-surface text-state-problem",
 };

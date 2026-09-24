@@ -38,9 +38,9 @@ const STATUS_COLOR: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
   validation_pending: "bg-state-attention-surface text-state-attention",
   validation_failed: "bg-state-problem-surface text-state-problem",
-  validated: "bg-blue-100 text-blue-700",
-  reviewed: "bg-green-100 text-green-700",
-  filed: "bg-purple-100 text-purple-700",
+  validated: "bg-state-working-surface text-state-working",
+  reviewed: "bg-state-working-surface text-state-working",
+  filed: "bg-state-ready-surface text-state-ready",
 };
 
 interface XBRLPackage {

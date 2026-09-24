@@ -25,9 +25,9 @@ interface Stats { total_firms: number; active_firms: number; suspended_firms: nu
 interface FirmUser { name: string; email: string; role: string; status: string }
 
 const STATUS_BADGE: Record<string, string> = {
-  active: "bg-green-100 text-green-700",
+  active: "bg-state-ready-surface text-state-ready",
   suspended: "bg-state-attention-surface text-state-attention",
-  deleted: "bg-red-100 text-red-600",
+  deleted: "bg-state-done-surface text-state-done",
 };
 
 export default function PlatformAdminPage() {

@@ -110,11 +110,11 @@ function scoreBg(score: number): string {
 
 function gradeBadge(grade: Grade): string {
   const map: Record<Grade, string> = {
-    "Healthy":         "bg-green-100 text-green-700",
-    "Good":            "bg-blue-100 text-blue-700",
-    "Needs Attention": "bg-yellow-100 text-yellow-700",
-    "At Risk":         "bg-orange-100 text-orange-700",
-    "Critical":        "bg-state-problem-surface text-state-problem",
+    "Healthy":         "bg-sev-ok-surface text-sev-ok",
+    "Good":            "bg-sev-low-surface text-sev-low",
+    "Needs Attention": "bg-sev-medium-surface text-sev-medium",
+    "At Risk":         "bg-sev-high-surface text-sev-high",
+    "Critical":        "bg-sev-critical-surface text-sev-critical",
   };
   return map[grade] ?? "bg-gray-100 text-gray-700";
 }

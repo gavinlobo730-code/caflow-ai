@@ -131,8 +131,8 @@ function fyFromPeriodStart(periodStart: string): string {
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-state-attention-surface text-state-attention",
   overdue: "bg-state-problem-surface text-state-problem",
-  filed: "bg-green-100 text-green-700",
-  in_progress: "bg-blue-100 text-blue-700",
+  filed: "bg-state-ready-surface text-state-ready",
+  in_progress: "bg-state-working-surface text-state-working",
 };
 
 const STATUS_LABELS: Record<string, string> = {

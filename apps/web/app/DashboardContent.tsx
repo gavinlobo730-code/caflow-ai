@@ -169,10 +169,10 @@ function DeadlineBadge({ daysLeft }: { daysLeft: number }) {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  completed:       { label: "Done",        color: "text-emerald-600 bg-emerald-50" },
-  in_progress:     { label: "In Progress", color: "text-blue-600 bg-blue-50" },
+  completed:       { label: "Done",        color: "text-state-ready bg-state-ready-surface" },
+  in_progress:     { label: "In Progress", color: "text-state-working bg-state-working-surface" },
   todo:            { label: "To Do",       color: "text-ps-label bg-ps-muted" },
-  review_required: { label: "Review",      color: "text-amber-600 bg-state-attention-surface" },
+  review_required: { label: "Review",      color: "text-state-attention bg-state-attention-surface" },
   waiting_client:  { label: "Waiting",     color: "text-purple-600 bg-purple-50" },
 };
 

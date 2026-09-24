@@ -38,9 +38,9 @@ async function apiFetch(path: string, opts?: RequestInit) {
 }
 
 const TALLY_TONES = {
-  green: "bg-green-50 text-green-700 text-green-600",
-  red: "bg-state-problem-surface text-state-problem text-red-600",
-  amber: "bg-state-attention-surface text-state-attention text-amber-600",
+  green: "bg-state-ready-surface text-state-ready text-ps-label",
+  red: "bg-state-problem-surface text-state-problem text-ps-label",
+  amber: "bg-state-attention-surface text-state-attention text-ps-label",
   neutral: "bg-ps-bg text-ps-body text-ps-label",
 } as const;
 

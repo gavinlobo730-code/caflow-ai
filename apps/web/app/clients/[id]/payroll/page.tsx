@@ -1796,9 +1796,9 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     draft:     "bg-ps-muted text-ps-label",
-    review:    "bg-state-attention-surface text-amber-600",
-    finalized: "bg-emerald-50 text-emerald-600",
-    paid:      "bg-sky-50 text-sky-600",
+    review:    "bg-state-attention-surface text-state-attention",
+    finalized: "bg-state-working-surface text-state-working",
+    paid:      "bg-state-ready-surface text-state-ready",
   };
   return <span className={cn("text-3xs font-medium px-1.5 py-0.5 rounded capitalize", map[status] || map.draft)}>{status}</span>;
 }

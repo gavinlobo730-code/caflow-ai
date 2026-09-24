@@ -299,11 +299,11 @@ export default function PurchasesPage() {
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
-  received: "bg-blue-100 text-blue-700",
+  received: "bg-state-working-surface text-state-working",
   partially_paid: "bg-state-attention-surface text-state-attention",
-  paid: "bg-green-100 text-green-700",
+  paid: "bg-state-ready-surface text-state-ready",
   cancelled: "bg-state-problem-surface text-state-problem",
-  issued: "bg-green-100 text-green-700",
+  issued: "bg-state-working-surface text-state-working",
 };
 
 // ── TDS section options ────────────────────────────────────────────────────

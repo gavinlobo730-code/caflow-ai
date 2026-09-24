@@ -304,8 +304,8 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
 const STATE_BADGE: Record<string, string> = {
   none: "bg-ps-muted text-ps-label",
   draft: "bg-state-attention-surface text-state-attention",
-  generated: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-600",
+  generated: "bg-state-ready-surface text-state-ready",
+  cancelled: "bg-state-done-surface text-state-done",
 };
 
 function ComplianceCard({ icon, title, state, children }: { icon: React.ReactNode; title: string; state: string; children: React.ReactNode }) {

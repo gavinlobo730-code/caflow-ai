@@ -252,15 +252,15 @@ function monthState(c: ClientMonthState): {
     };
   }
   if (c.run_status === "paid") {
-    return { label: "Paid", className: "bg-green-100 text-green-700",
+    return { label: "Paid", className: "bg-state-ready-surface text-state-ready",
              note: "Salaries disbursed and the payment journal posted.", needsWork: false };
   }
   if (c.run_status === "finalized") {
-    return { label: "Finalised", className: "bg-emerald-100 text-emerald-700",
+    return { label: "Finalised", className: "bg-state-working-surface text-state-working",
              note: "The accrual is posted. Still to disburse.", needsWork: true };
   }
   if (c.run_status) {
-    return { label: "Draft", className: "bg-blue-100 text-blue-700",
+    return { label: "Draft", className: "bg-state-working-surface text-state-working",
              note: `The run exists at "${c.run_status}" and has not been released.`, needsWork: true };
   }
   return { label: "Not started", className: "bg-state-attention-surface text-state-attention",
