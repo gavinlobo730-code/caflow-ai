@@ -35,6 +35,7 @@
  *   a status — the loop IS the status.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { tdsDecisionPending } from "@/lib/banking/tdsDecision";
 import { useRouter } from "next/navigation";
 import { BookOpen, CheckCircle, Landmark, Loader2, Paperclip, RotateCcw, Sparkles, Undo2, Upload, X } from "lucide-react";
 import { api, type EntryListState, type EntryState } from "@/lib/api";
@@ -74,6 +75,14 @@ export interface Entry {
   draft_source: "rule" | "document" | "history" | "transfer" | null;
   draft_grade: "ready" | "proposed" | null;
   draft_label: string | null; draft_reason: string | null;
+  /** D19, migration 413. `draft_flags_tds_decision` is what a rule PROPOSED;
+   *  `tds_decision_needed` is the recorded fact stamped when the line was
+   *  actually passed, and `tds_decision_resolved_at` is null while it is
+   *  outstanding. Three states, not two — "never flagged" and "flagged and
+   *  dealt with" are different answers to the question s.201 proceedings ask. */
+  draft_flags_tds_decision?: boolean | null;
+  tds_decision_needed?: boolean | null;
+  tds_decision_resolved_at?: string | null;
   draft_account_id: string | null; draft_category: string | null;
   draft_entity_type: string | null; draft_entity_id: string | null;
   draft_rule_id: string | null; draft_gst_rate_bps: number | null; draft_is_interstate: boolean;
@@ -88,10 +97,16 @@ export interface Entry {
 interface Counts {
   needs_you: number; proposed: number; ready: number; covered: number; passed: number;
   set_aside: number; to_do: number; undrafted: number; trusted_pending: number;
+  /** D19 — lines a rule flagged for a withholding decision that nobody has
+   *  answered. Not a state: a flagged line is `passed`. Optional for the
+   *  window in which the frontend is deployed ahead of its backend, where an
+   *  absent key must read as nothing outstanding rather than as NaN. */
+  tds_decision_pending: number;
 }
 
 const ZERO: Counts = { needs_you: 0, proposed: 0, ready: 0, covered: 0, passed: 0,
-                       set_aside: 0, to_do: 0, undrafted: 0, trusted_pending: 0 };
+                       set_aside: 0, to_do: 0, undrafted: 0, trusted_pending: 0,
+                       tds_decision_pending: 0 };
 
 /** The three filters: still to do, done, set aside — the three states a
  *  statement line is in as far as the person clearing it is concerned. Passed
@@ -149,6 +164,12 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
   const { toast } = useToast();
   const router = useRouter();
   const [state, setState] = useState<EntryListState>("to_do");
+  /** D19 — narrow the list to lines still waiting on a withholding decision.
+   *  Its own piece of state rather than a ninth `EntryListState`, because the
+   *  server REPLACES the state filter with it (a flagged line is always
+   *  `passed`, so ANDing the two answers empty every time) — so the two are
+   *  not alternatives in one union, they are different questions. */
+  const [tdsPending, setTdsPending] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showAccounts, setShowAccounts] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
@@ -226,9 +247,13 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
 
   const loadCounts = useCallback(async () => {
     const res = (await api.banking.entries.counts({ client_id: clientId, ...acct })) as
-      { success: boolean; data: Counts };
-    if (res.success) setCounts(res.data);
-    return res.data;
+      { success: boolean; data: Partial<Counts> | null };
+    // ZERO first: a backend that does not yet send `tds_decision_pending`
+    // would otherwise make it undefined, and `undefined > 0` is false but
+    // `{counts.tds_decision_pending}` renders nothing where a number belongs.
+    const merged = { ...ZERO, ...(res.data ?? {}) };
+    if (res.success) setCounts(merged);
+    return merged;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, bankAccountId]);
 
@@ -248,6 +273,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
       const res = (await api.banking.entries.list({
         client_id: clientId, state, limit: String(pageSize), offset: String(page * pageSize),
         ...(search ? { q: search } : {}), ...acct,
+        ...(tdsPending ? { tds_pending: "true" } : {}),
       })) as { success: boolean; data: { rows: Entry[]; total: number; ledger_order: string[] } };
       if (!res.success) throw new Error("Couldn't load the entries.");
       setRows(res.data.rows ?? []);
@@ -261,7 +287,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId, state, page, pageSize, search, bankAccountId]);
+  }, [clientId, state, page, pageSize, search, bankAccountId, tdsPending]);
 
   /** Every caller of this is "something was written, catch up" — never a
    *  first load — so the rows stay put while they are re-read. */
@@ -478,6 +504,25 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
             <Paperclip size={11} className="shrink-0 text-ps-hint"
               aria-label={`${t.attachments!.length} supporting document${t.attachments!.length === 1 ? "" : "s"}`} />
           )}
+          {/* D19. A trusted rule posts this line with nobody watching; the chip
+              is the only thing that says a withholding question was left open.
+              VISIBLE TEXT rather than an icon, because an under-deduction
+              disallows the whole expense under IT Act s.40(a)(ia) and surfaces
+              in an assessment, not on a screen — so this must survive a
+              printed list and a screenshot, which a tooltip does not.
+
+              PENDING only: a line somebody has already settled is not a
+              question, and leaving the chip on would train the CA to ignore it.
+
+              `text-3xs` (10px), NOT the `text-[9px]` the channel chip beside
+              it uses: the type ratchet refused the arbitrary value — correctly
+              — and the fix is the token, not a raised budget. */}
+          {tdsDecisionPending(t) && (
+            <span className="shrink-0 text-3xs px-1 py-0.5 rounded bg-state-attention-surface text-state-attention font-medium"
+              title="A rule passed this line and flagged it: someone has to decide the TDS. The rule never picks a section or a rate.">
+              TDS?
+            </span>
+          )}
         </div>
       ),
     },
@@ -580,6 +625,33 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
     {
       id: "restore", label: "Restore", appliesTo: (sel) => sel.some((t) => t.entry_state === "set_aside"),
       run: async (sel) => { await api.banking.batchInclude(sel.filter((t) => t.entry_state === "set_aside").map((t) => t.id)); await reload(); },
+    },
+    {
+      // D19. A BULK action rather than a row control: the action cell is one
+      // control per row and a passed line's is Undo, which is the right one
+      // to keep — a line whose withholding is unanswered may also be a line
+      // posted to the wrong ledger. The workflow this serves is the filter
+      // above: narrow to the waiting lines, tick the ones you have dealt
+      // with, mark them.
+      //
+      // The label says DECIDED and not "clear" or "dismiss": it records that
+      // a person looked, and nothing about what they concluded. Tax actually
+      // to be withheld is raised where TDS is raised — a rule may not carry a
+      // section or a rate (migration 404) and neither may this.
+      id: "tds-decided", label: "TDS decided",
+      appliesTo: (sel) => sel.some(tdsDecisionPending),
+      confirm: "Record that the TDS on the selected lines has been decided? This says someone looked — it withholds nothing and posts nothing.",
+      run: async (sel) => {
+        const waiting = sel.filter(tdsDecisionPending);
+        let n = 0, failed = 0;
+        for (const t of waiting) {
+          try { await api.banking.entries.resolveTdsDecision(t.id); n += 1; } catch { failed += 1; }
+        }
+        toast({ title: `${n} marked decided`,
+                description: failed ? `${failed} could not be recorded.` : undefined,
+                variant: failed ? "destructive" : undefined });
+        await reload();
+      },
     },
     {
       id: "undo", label: "Undo", appliesTo: (sel) => sel.some((t) => t.entry_state === "passed"),
@@ -707,6 +779,29 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
             </span>
           ))}
           {state !== "to_do" && <span className="text-ps-hint"> · showing only these</span>}
+        </p>
+      )}
+
+      {/* D19. A separate line from the working states above, and not a chip
+          beside To do / Passed / Set aside, because it is not a state a line
+          is IN: these lines are already passed and in the books. What is
+          outstanding is the withholding question a trusted rule asked on the
+          way past, which nobody has answered.
+
+          SHOWN ONLY WHEN THERE IS SOMETHING TO SHOW. A permanent "0 waiting"
+          row teaches the CA to stop reading it, and an ignored prompt is
+          worse than no prompt — the chip's own reason. */}
+      {counts.tds_decision_pending > 0 && (
+        <p className="text-xs text-state-attention" role="group" aria-label="TDS decisions">
+          <button onClick={() => { setTdsPending((v) => !v); setPage(0); }}
+            aria-pressed={tdsPending}
+            className={`tabular-nums underline decoration-dotted underline-offset-2 hover:text-ps-ink ${tdsPending ? "font-semibold text-ps-ink" : ""}`}>
+            {counts.tds_decision_pending} line{counts.tds_decision_pending === 1 ? "" : "s"} waiting on a TDS decision
+          </button>
+          <span className="text-ps-hint">
+            {" "}— a rule passed {counts.tds_decision_pending === 1 ? "it" : "them"} and flagged the withholding for a person.
+            {tdsPending ? " Showing only these." : ""}
+          </span>
         </p>
       )}
 

@@ -196,21 +196,55 @@ class BankEntryService:
             self._count(lambda count=False: self._trusted_sweep(
                 base(count).eq("entry_state", E.READY).is_("draft_error", "null"), trusted))
             if trusted else 0)
+        # D19 — lines a rule flagged for a withholding decision that nobody has
+        # answered. Migration 413's partial index is this predicate exactly, so
+        # the count is an index scan rather than a table one. NOT filtered by
+        # entry_state, for _tds_pending's reason.
+        out["tds_decision_pending"] = self._count(
+            lambda count=False: self._tds_pending(base(count)))
         return out
+
+    @staticmethod
+    def _tds_pending(q):
+        """Lines still waiting on a human to decide the withholding (D19).
+
+        PENDING IS TWO COLUMNS. `tds_decision_needed` is never cleared;
+        answering writes `tds_decision_resolved_at`. Three states, not two —
+        never flagged, flagged and waiting, flagged and answered — because the
+        third is the audit answer to "did anyone look at the withholding on
+        this line", which is the question a s.201 proceeding asks.
+
+        Written once, here, and read by the count, the list filter and
+        migration 413's partial index alike.
+        """
+        return q.eq("tds_decision_needed", True).is_("tds_decision_resolved_at", "null")
 
     _LIST_STATES = frozenset(E.STATES) | {"to_do", "all"}
 
     def list_entries(self, db, firm_id: str, client_id: str, *, state: str = "to_do",
                      limit: int = 50, offset: int = 0, q_text: Optional[str] = None,
-                     bank_account_id: Optional[str] = None) -> tuple[list[dict], int]:
+                     bank_account_id: Optional[str] = None,
+                     tds_pending: bool = False) -> tuple[list[dict], int]:
         """One page, from stored columns. No pools are read here: the draft is
         on the row, and the detail (get_entry) fetches live candidates for the
-        one line that is open."""
+        one line that is open.
+
+        `tds_pending` REPLACES the state filter rather than narrowing it
+        (D19). The flag is stamped when a line is PASSED, so every line
+        carrying one is `passed` or `covered` — ANDing it with the default
+        `to_do` would answer zero rows for every client, every time, with
+        nothing to say why. A filter that is always empty is worse than no
+        filter, and "which lines are waiting on a withholding decision" is not
+        a question about the entry state. Deciding it here rather than in the
+        screen means no caller can get that confidently empty answer.
+        """
         if state not in self._LIST_STATES:
             raise HTTPException(status_code=422, detail="Invalid entry state.")
 
         def make(count: bool = False):
             q = self._base(db, firm_id, client_id, bank_account_id, count=count)
+            if tds_pending:
+                return bank_matching_service._search_filter(self._tds_pending(q), q_text)
             if state == "to_do":
                 q = q.in_("entry_state", list(E.OPEN_STATES))
             elif state == E.PASSED:
@@ -249,6 +283,47 @@ class BankEntryService:
         pairs = self._pairs_by_txn(db, firm_id, client_id, [txn])
         txn["transfer_candidate"] = pairs.get(str(txn_id))
         return txn
+
+    def resolve_tds_decision(self, db, firm_id: str, txn_id: str,
+                             actor_id: Optional[str]) -> dict:
+        """Record that a person answered the withholding question on one line.
+
+        It stamps `tds_decision_resolved_at` / `_by` and NEVER clears
+        `tds_decision_needed`: three states, not two — never flagged, flagged
+        and waiting, flagged and answered — because the third is the audit
+        answer to "did anyone look at the withholding on this line", which is
+        the question a s.201 proceeding asks. Clearing the boolean would lose
+        it.
+
+        IT RECORDS THAT SOMEBODY LOOKED AND NOTHING ELSE. No section, no rate,
+        no amount and no journal: migration 404's refusal to let a rule carry a
+        TDS treatment is what D19 exists to respect, and a resolve endpoint
+        that took a section would be that refusal undone at the other end. Tax
+        actually to be withheld is raised where TDS is raised, and lands in the
+        deduction register.
+
+        A LINE NOBODY ASKED ABOUT IS REFUSED rather than stamped. A resolution
+        against a question that was never put is a record of a review that did
+        not happen, which is worse on an audit file than no record at all.
+
+        THE FIRST ANSWER STANDS. A second call returns the stored stamp
+        untouched rather than moving it to today — the question is WHEN
+        somebody looked — and answers 200 rather than 409, because a CA who
+        pressed the button twice has done nothing wrong.
+        """
+        txn = self._get_txn(db, firm_id, txn_id)
+        if not txn.get("tds_decision_needed"):
+            raise HTTPException(
+                status_code=422,
+                detail="No TDS decision was asked for on this line.")
+        if txn.get("tds_decision_resolved_at"):
+            return {"transaction_id": str(txn_id), "already_resolved": True,
+                    "tds_decision_resolved_at": txn["tds_decision_resolved_at"],
+                    "tds_decision_resolved_by": txn.get("tds_decision_resolved_by")}
+        stamp = {"tds_decision_resolved_at": _now(), "tds_decision_resolved_by": actor_id}
+        (db.table("bank_transactions").update(stamp)
+           .eq("id", txn_id).eq("firm_id", firm_id).execute())
+        return {"transaction_id": str(txn_id), "already_resolved": False, **stamp}
 
     def _annotate(self, db, firm_id: str, rows: list[dict]) -> None:
         """What every reader of a line needs and no column holds: the kind,

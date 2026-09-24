@@ -75,11 +75,24 @@ const HEX_CLASS = /[a-zA-Z][a-zA-Z-]*-\[#[0-9a-fA-F]{3,8}\]/g;
 /** An arbitrary font size: `text-[13px]`. */
 const PX_TEXT = /\btext-\[\d+(\.\d+)?px\]/g;
 
+/** Comments stripped first — the SAME treatment the interpolation test below
+ *  already gives its own scan, and for the reason recorded there: "a guard that
+ *  fails on the documentation of its own rule is a guard nobody keeps."
+ *
+ *  This function did NOT strip, so a comment explaining WHY a token was used
+ *  instead of `text-[9px]` counted as a `text-[9px]`. Found on 24-09-2026 by a
+ *  chip that used the token correctly and still pushed the total one over
+ *  budget — the fix for which would have been to raise the budget, hiding a
+ *  real arbitrary value behind a prose one. The lesson was already written
+ *  forty lines below and had not been applied to its neighbour. */
 function count(re: RegExp): { total: number; byFile: Map<string, number> } {
   const byFile = new Map<string, number>();
   let total = 0;
   for (const { file, body } of BODIES) {
-    const n = (body.match(re) ?? []).length;
+    const code = body
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    const n = (code.match(re) ?? []).length;
     if (n) { byFile.set(file, n); total += n; }
   }
   return { total, byFile };

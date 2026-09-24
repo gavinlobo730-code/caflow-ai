@@ -506,23 +506,70 @@ def test_the_tds_flag_can_only_summon_a_human_never_dismiss_one():
 
     So the service may only ever set it TRUE. Resolution is a different column
     that a person writes.
+
+    THE TWO HALVES ARE ASSERTED PER FUNCTION, not over the module's text. The
+    first draft of this guard read `"tds_decision_resolved_at" not in src` —
+    true while nothing could resolve, and a spelling of the rule rather than
+    the rule: it failed the day `resolve_tds_decision` was added beside the
+    pass path, on a change that does exactly what the docstring above asks
+    for. Write the rule, not a spelling of it.
     """
+    import ast
     import pathlib as _p
     api = _p.Path(__file__).resolve().parents[1]
     src = (api / "services/bank_entry_service.py").read_text()
-    # Every write of the flag from the rule path sets it true.
-    writes = [ln for ln in src.split("\n") if "tds_decision_needed" in ln and "update" in ln]
-    assert writes, "the pass path no longer stamps the flag at all"
-    for ln in writes:
-        assert "True" in ln, (
-            f"a rule path writes tds_decision_needed to something other than "
-            f"True: {ln.strip()!r} — a rule that can clear the flag can "
-            "dismiss a withholding question nobody has answered"
-        )
-    assert "tds_decision_resolved_at" not in src, (
-        "the pass path writes the RESOLUTION column. Resolving is a person's "
-        "act; a rule that resolves its own flag has made the flag decorative"
-    )
+    tree = ast.parse(src)
+
+    def columns_written(name: str) -> set:
+        """Every column this function can write.
+
+        A write here is a dict literal handed to `.update(...)`, directly or
+        through a local — so the KEYS of every dict literal in the body are
+        the columns it can reach. Asserted on keys rather than on the text,
+        because a docstring naming a column, and a `.get()` READING one, are
+        neither of them writes; the first draft of this guard matched both and
+        failed on correct code.
+        """
+        fn = next((n for n in ast.walk(tree)
+                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name),
+                  None)
+        assert fn is not None, f"{name} is gone — this guard is asserting nothing"
+        out = set()
+        for d in ast.walk(fn):
+            if isinstance(d, ast.Dict):
+                out |= {k.value for k in d.keys
+                        if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+        return out
+
+    # ── the RULE path: sets the flag, and cannot reach the resolution ──
+    rule_path = columns_written("_apply_draft")
+    assert "tds_decision_needed" in rule_path, "the pass path no longer stamps the flag"
+    assert not {c for c in rule_path if c.startswith("tds_decision_resolved")}, (
+        "the pass path writes a RESOLUTION column. Resolving is a person's act; "
+        "a rule that resolves its own flag has made the flag decorative")
+
+    # And it sets it TRUE. The one other writer is `_unapply`, which restores
+    # the pre-pass snapshot — the value there is `before[...]`, not a literal,
+    # which is why this limb is on the pass path alone.
+    fn_src = ast.get_source_segment(src, next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_apply_draft")) or ""
+    flag_lines = [ln for ln in fn_src.split("\n")
+                  if "\"tds_decision_needed\"" in ln]
+    assert flag_lines and all("True" in ln for ln in flag_lines), (
+        "the pass path writes tds_decision_needed to something other than True — "
+        "a rule that can clear the flag can dismiss a withholding question "
+        "nobody has answered")
+
+    # ── the PERSON path: stamps the resolution, and cannot reach the flag ──
+    person_path = columns_written("resolve_tds_decision")
+    assert "tds_decision_resolved_at" in person_path, (
+        "resolve_tds_decision no longer stamps the resolution")
+    assert "tds_decision_needed" not in person_path, (
+        "resolve_tds_decision writes tds_decision_needed. It must not: three "
+        "states, not two — clearing the flag loses the difference between a "
+        "line nobody ever asked about and one somebody answered, which is the "
+        "question a s.201 proceeding asks")
 
 
 def test_the_flag_alone_is_not_a_proposal():

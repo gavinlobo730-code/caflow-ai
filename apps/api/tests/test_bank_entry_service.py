@@ -721,3 +721,64 @@ def test_one_line_that_cannot_pass_does_not_take_the_chunk_with_it(monkeypatch):
     # And the next chunk leaves it alone rather than failing on it forever.
     again = svc.pass_ready(db, FIRM, CLIENT, actor_id="u1")
     assert again["passed"] == 0 and again["failed"] == 0
+
+
+# ── 9. the withholding question a trusted rule asks (D19, migration 413) ─────
+
+def test_a_flagged_line_is_counted_and_listed_until_somebody_answers():
+    """The count, the filter and the resolve, as one walk.
+
+    THE FILTER REPLACES THE STATE RATHER THAN NARROWING IT. A flagged line is
+    stamped when it is PASSED, so it is always `passed` or `covered` — ANDing
+    the flag with the default `to_do` would answer zero rows for every client,
+    every time, with nothing on screen to say why. A filter that is always
+    empty is worse than no filter, so the service drops the state filter when
+    the flag one is on, and this asserts it from the caller's side.
+    """
+    db = _db()
+    _line(db, "a", "RENT APR", entry_state="passed", match_status="posted",
+          tds_decision_needed=True, tds_decision_resolved_at=None)
+    _line(db, "b", "RENT MAR", entry_state="passed", match_status="posted",
+          tds_decision_needed=True, tds_decision_resolved_at="2026-04-20T00:00:00Z")
+    _line(db, "c", "BANK CHARGES", entry_state="passed", match_status="posted")
+    _line(db, "d", "UPI", entry_state="ready")
+
+    assert svc.counts(db, FIRM, CLIENT)["tds_decision_pending"] == 1
+
+    # The default state would have excluded every one of them.
+    rows, total = svc.list_entries(db, FIRM, CLIENT, state="to_do", tds_pending=True)
+    assert total == 1 and [r["id"] for r in rows] == ["a"]
+
+    out = svc.resolve_tds_decision(db, FIRM, "a", "user-1")
+    assert out["already_resolved"] is False and out["tds_decision_resolved_by"] == "user-1"
+    assert svc.counts(db, FIRM, CLIENT)["tds_decision_pending"] == 0
+    # The flag is NOT cleared: three states, not two.
+    assert _row(db, "a")["tds_decision_needed"] is True
+
+
+def test_resolving_records_that_somebody_looked_and_the_first_answer_stands():
+    """Two refusals and one idempotence, each for its own reason.
+
+    A line NOBODY ASKED ABOUT is refused rather than stamped — a resolution
+    against a question never put is a record of a review that did not happen,
+    which is worse on an audit file than no record at all.
+
+    A SECOND CALL returns the stored stamp untouched. The question the column
+    answers is WHEN somebody looked; moving it to today on a double-click
+    would answer it wrongly, and a 409 would tell a CA who has done nothing
+    wrong that they have.
+    """
+    db = _db()
+    _line(db, "a", "RENT", entry_state="passed", match_status="posted",
+          tds_decision_needed=True, tds_decision_resolved_at=None)
+    _line(db, "b", "UPI", entry_state="passed", match_status="posted")
+
+    with pytest.raises(HTTPException) as e:
+        svc.resolve_tds_decision(db, FIRM, "b", "user-1")
+    assert e.value.status_code == 422
+
+    first = svc.resolve_tds_decision(db, FIRM, "a", "user-1")
+    again = svc.resolve_tds_decision(db, FIRM, "a", "user-2")
+    assert again["already_resolved"] is True
+    assert again["tds_decision_resolved_at"] == first["tds_decision_resolved_at"]
+    assert _row(db, "a")["tds_decision_resolved_by"] == "user-1"

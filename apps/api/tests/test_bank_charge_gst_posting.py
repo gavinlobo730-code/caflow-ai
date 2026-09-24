@@ -624,8 +624,16 @@ def test_the_entries_ROUTE_runs_end_to_end_with_a_database(monkeypatch):
     monkeypatch.setattr(banking_router, "_db", lambda: db)
     monkeypatch.setattr(authz, "_USE_MOCK", True)
 
+    # EVERY parameter is passed explicitly, including the ones with defaults.
+    # Calling a route function directly is what gets past the `if not db`
+    # early return, and it also means a default written `x: bool = Query(False)`
+    # arrives as the Query OBJECT rather than as False — and a Query object is
+    # TRUTHY, so an omitted flag reads as set. `tds_pending` (D19) landed with
+    # this call unchanged and turned the assertion below into `[] == ["row-1"]`.
+    # Adding a parameter here when the route grows one is the right cost.
     res = banking_router.list_entries(
         client_id=CLIENT, state="all", bank_account_id=None, limit=50, offset=0, q=None,
+        tds_pending=False,
         current_user={"firm_id": FIRM, "role": "Partner", "auth_user_id": "p1", "id": "u1"})
     assert res["success"] is True
     data = res["data"]

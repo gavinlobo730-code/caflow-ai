@@ -1999,6 +1999,11 @@ def list_entries(
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     q: Optional[str] = Query(None, max_length=200),
+    # D19. Not a ninth `state`: a flagged line is `passed`, so this is a
+    # question ABOUT a passed line rather than a state it can be in, and the
+    # service replaces the state filter rather than ANDing with it — see
+    # list_entries, where the reason lives.
+    tds_pending: bool = Query(False),
     current_user: dict = Depends(rbac("banking", "read")),
 ):
     """One page of entries in a state, with the total. `to_do` is everything
@@ -2010,7 +2015,7 @@ def list_entries(
                                    "ledger_order": []})
     rows, total = bank_entry_service.list_entries(
         db, current_user["firm_id"], client_id, state=state, limit=limit, offset=offset,
-        q_text=q, bank_account_id=bank_account_id)
+        q_text=q, bank_account_id=bank_account_id, tds_pending=tds_pending)
     return api_response(True, {
         "rows": rows, "total": total, "limit": limit, "offset": offset,
         "ledger_order": bank_matching_service.ledger_order(db, current_user["firm_id"], client_id),
@@ -2031,7 +2036,8 @@ def entry_counts(
     if not db:
         return api_response(True, {s: 0 for s in
                                    ("needs_you", "proposed", "ready", "covered", "passed",
-                                    "set_aside", "to_do", "undrafted", "trusted_pending")})
+                                    "set_aside", "to_do", "undrafted", "trusted_pending",
+                                    "tds_decision_pending")})
     return api_response(True, bank_entry_service.counts(
         db, current_user["firm_id"], client_id, bank_account_id=bank_account_id))
 
@@ -2115,6 +2121,33 @@ def pass_entry(
         # One line, one click: the refusal is the response, not a row in a list.
         raise HTTPException(status_code=422, detail=out["reason"])
     return api_response(True, out)
+
+
+@router.post("/transactions/{txn_id}/tds-decision/resolve")
+def resolve_tds_decision(
+    txn_id: str,
+    current_user: dict = Depends(rbac("banking", "write")),
+):
+    """Record that a person answered the withholding question on this line.
+
+    D19, migration 413. A trusted rule marked `flags_tds_decision` passes a
+    line with nobody watching and stamps `tds_decision_needed`; this is how
+    that question is closed.
+
+    IT TAKES NO BODY, and that is the feature rather than an omission: it
+    records that somebody LOOKED, never what they decided. A section or a rate
+    here would be migration 404's refusal — a rule may not carry a TDS
+    treatment — undone at the other end of the same flow. Where tax is to be
+    withheld the CA raises it where TDS is raised.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"transaction_id": txn_id, "already_resolved": False,
+                                   "tds_decision_resolved_at": None,
+                                   "tds_decision_resolved_by": None})
+    _assert_txn_scope(db, current_user, txn_id)
+    return api_response(True, bank_entry_service.resolve_tds_decision(
+        db, current_user["firm_id"], txn_id, current_user.get("id")))
 
 
 # ─── Reconciliation Engine (B.4) ──────────────────────────────────────────────

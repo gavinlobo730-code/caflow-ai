@@ -142,10 +142,9 @@ Phase 2 starts on a clean base.
 | FA-11 CWIP | capital work-in-progress complete | the rest of FA-11's sub-features | no |
 | TDS-16 (open) | every figure computed | **the FVU/RPU file writer** | needs document #3 |
 
-**BANK-11 step 3 (D19) — the BACKEND landed 24-09-2026; the SCREEN is the
-remaining half and it is named here rather than assumed.**
+**BANK-11 step 3 (D19) — landed whole, 24-09-2026. ✅**
 
-Built: migration 413 (`bank_matching_rules.flags_tds_decision`, and on
+The backend: migration 413 (`bank_matching_rules.flags_tds_decision`, and on
 `bank_transactions` the `draft_flags_tds_decision` proposal beside the
 `tds_decision_needed` recorded fact — migration 382's split, so a REJECTED
 proposal cannot read as a recorded one); the flag on both rule doors; the
@@ -153,13 +152,28 @@ draft carrying it; the stamp at pass time; and a guard holding it **one-way** �
 a rule may only ever set it true, because a rule that could CLEAR it would
 silently dismiss the outstanding withholding question on every line it matched.
 
-**Still to do, and until it is done the flag is settable but not visible:** the
-Entries queue must show a "TDS decision needed" chip and filter on it, the rule
-editor needs the checkbox, and a resolve action must write
-`tds_decision_resolved_at`/`_by`. The columns are inert until then — every
-default is false and nothing back-filled — so landing the migration early costs
-nothing, but **this is the `capital_wip` shape and it is not finished until the
-CA can see it.**
+The screen, which is what stopped this being the `capital_wip` shape: the
+checkbox in the rule editor, a **TDS?** chip on the flagged line, a count and
+filter above the queue, and **TDS decided** as a bulk action writing
+`tds_decision_resolved_at`/`_by`.
+
+Three shapes in it are worth keeping:
+
+- **Pending is TWO columns.** Answering never clears the flag — three states,
+  not two: never flagged, flagged and waiting, flagged and answered. The third
+  is the audit answer to *did anyone look at the withholding on this line*,
+  which is what a §201 proceeding asks, and clearing the boolean loses it.
+  `domain`-side that predicate is `_tds_pending`, migration 413's partial index
+  and `lib/banking/tdsDecision.ts`, all three the same two-column test.
+- **The filter REPLACES the state rather than narrowing it.** A flagged line is
+  stamped when it is PASSED, so ANDing the flag with the default `to_do` would
+  answer zero rows for every client, every time, with nothing on screen to say
+  why. The service decides that, not the caller, so no caller can get that
+  confidently empty answer.
+- **Resolving takes NO body.** It records that somebody looked and nothing
+  about what they concluded. A section or a rate on that endpoint would be
+  migration 404's refusal — a rule may not carry a TDS treatment — undone at
+  the other end of the same flow.
 
 ---
 

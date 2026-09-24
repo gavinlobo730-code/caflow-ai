@@ -43,6 +43,11 @@ interface BankRule {
   suggested_narration: string | null;
   suggested_gst_rate_bps: number | null;
   suggested_is_interstate: boolean | null;
+  /** D19, migration 413 — payments this rule covers may attract TDS, so a line
+   *  it passes is routed to a human. NOT a withholding: the rule carries no
+   *  section, no rate and no amount, and migration 404's refusal of a TDS
+   *  TREATMENT stands. */
+  flags_tds_decision: boolean | null;
   is_active: boolean;
   is_trusted: boolean;
   trusted_by: string | null;
@@ -63,6 +68,9 @@ const BLANK_RULE = {
   suggested_category: "", suggested_account_id: "", suggested_narration: "",
   // "" = the rule says nothing about GST. "0" = it says the charge carries none.
   suggested_gst_rate_bps: "", suggested_is_interstate: false,
+  // Off by default: every rule that exists today flags nothing, and a default
+  // of true would fill the worklist on the day this shipped.
+  flags_tds_decision: false,
 };
 
 export function RulesTab({ clientId, accounts }: { clientId: string; accounts: Account[] }) {
@@ -117,6 +125,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
       suggested_narration: r.suggested_narration ?? "",
       suggested_gst_rate_bps: r.suggested_gst_rate_bps == null ? "" : String(r.suggested_gst_rate_bps),
       suggested_is_interstate: !!r.suggested_is_interstate,
+      flags_tds_decision: !!r.flags_tds_decision,
     });
     setFormError(null);
     setEditing(r.id);
@@ -148,6 +157,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
       // Explicit null so clearing a wrongly-stamped rate actually sticks.
       suggested_gst_rate_bps: form.suggested_gst_rate_bps === "" ? null : Number(form.suggested_gst_rate_bps),
       suggested_is_interstate: form.suggested_is_interstate,
+      flags_tds_decision: form.flags_tds_decision,
     };
     if (!payload.rule_name) { setFormError("Give the rule a name."); return; }
     if (form.amount_min.trim() !== "" && payload.amount_min_paise === null) {
@@ -401,6 +411,32 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                 <p className="text-3xs text-ps-hint mt-1">Tick when this bank is registered outside the client&apos;s state (IGST Act s.12(12)).</p>
               </div>
             )}
+          </div>
+
+          {/* D19. OUTSIDE the GST block deliberately: a rule may flag a TDS
+              decision whether or not it says anything about GST, and nesting it
+              there would hide it from every rule that carries no rate.
+
+              The wording is careful because the distinction is the whole
+              feature. The rule does NOT decide the withholding — it carries no
+              section, no rate and no amount — it asks a person to. That is why
+              it is safe for a TRUSTED rule, which posts with nobody watching:
+              it can only add somebody's review, never remove one. */}
+          <div className="border-t border-ps-border pt-3">
+            <label className="flex items-start gap-2">
+              <input type="checkbox" checked={form.flags_tds_decision}
+                onChange={(e) => setForm((f) => ({ ...f, flags_tds_decision: e.target.checked }))}
+                className="mt-0.5 h-3.5 w-3.5 rounded border-ps-disabled" />
+              <span className="text-xs text-ps-label">
+                Payments under this rule may attract TDS
+              </span>
+            </label>
+            <p className="text-3xs text-ps-hint mt-1">
+              The line is still posted; it is also listed for someone to decide
+              the withholding. The rule never picks a section or a rate — an
+              under-deduction disallows the whole expense under IT Act
+              s.40(a)(ia), so that decision stays with a person.
+            </p>
           </div>
           {formError && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{formError}</p>}
           <div className="flex gap-2 justify-end pt-1">

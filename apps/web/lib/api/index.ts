@@ -3082,7 +3082,13 @@ export const api = {
     entries: {
       /** One page of lines in a state, with the total. */
       list: (params: { client_id: string; state?: EntryListState; bank_account_id?: string;
-                       limit?: string; offset?: string; q?: string }) =>
+                       limit?: string; offset?: string; q?: string;
+                       /** D19 — lines a rule flagged for a withholding decision that
+                        *  nobody has answered. It REPLACES `state` rather than
+                        *  narrowing it: a flagged line is always `passed`, so ANDing
+                        *  the two would answer empty for every client. The server
+                        *  decides that, not the caller. */
+                       tds_pending?: string }) =>
         request(`/api/banking/entries?${new URLSearchParams(params as Record<string, string>)}`),
       /** One number per state, plus undrafted (redraft while non-zero) and
        *  trusted_pending (pass these with a progress bar). SQL counts. */
@@ -3102,6 +3108,12 @@ export const api = {
       /** Pass ONE line — the click is the CA accepting its draft. A refusal is a 422. */
       pass: (txnId: string, data?: { gst_rate_bps?: number | null; is_interstate?: boolean }) =>
         request(`/api/banking/transactions/${txnId}/pass`, { method: "POST", body: JSON.stringify(data ?? {}) }),
+      /** D19 — record that a person answered the withholding question on this
+       *  line. NO BODY, deliberately: it records that somebody LOOKED, never
+       *  what they decided. A section or a rate here would undo migration
+       *  404's refusal to let a rule carry a TDS treatment. */
+      resolveTdsDecision: (txnId: string) =>
+        request(`/api/banking/transactions/${txnId}/tds-decision/resolve`, { method: "POST" }),
     },
     suggestions: (txnId: string) => request(`/api/banking/transactions/${txnId}/suggestions`),
     // B.1.6 — "Find other matches". suggestions() ranks the best five WITHIN an
