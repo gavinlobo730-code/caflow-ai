@@ -586,6 +586,60 @@ Five slices landed overnight (PRs #560–#563). Each is described in its own
 commit; these are the **decisions left for you**, and nothing below is blocking
 — the work went round them.
 
+## G1. THE STATE VOCABULARY IS MISSING A STEP, AND THAT IS WHY BLUE IS EVERYWHERE  *(new, 24-09-2026)*
+
+**This reframes T4-b from ~5,840 judgements into two decisions and a codemod,
+so it is worth reading before scheduling any more colour work.**
+
+`tailwind.config.ts` has four state tokens: **ready** (nothing left to do),
+**attention** (a person has to answer something), **problem** (it failed) and
+**done** (settled, kept for the record). I measured what survives *inside the
+67 maps that already speak that vocabulary* — maps whose author had already
+decided this is a status, so the vocabulary should have covered them. **191 raw
+colours are still there**, and they sort almost perfectly into three groups:
+
+| hue | sites | the keys wearing it | is it determined? |
+|---|---|---|---|
+| green + emerald | **66** | `filed`, `paid`, `completed`, `approved`, `active`, `signed` | **YES** — this is `state.ready`, exactly |
+| **blue** | **51** | `in_progress`, `received`, `prepared`, `running`, `sending`, `info` | **NO — there is no token for it** |
+| orange + yellow | **27** | `high`, `medium`, `low`, `at_risk`, `needs_attention`, `fair` | **NO — a graded LADDER, and the set has three unranked severities** |
+| purple, indigo, violet, sky, slate, gray, red | 47 | `waiting_client`, `viewed`, `refunded`, `cancelled`, `draft` | mixed — some genuinely categorical |
+
+**The blue row is the finding.** A CA screen asks four questions — is it ready,
+does it need me, did it go wrong, is it settled — and there is a fifth the
+product asks constantly and cannot say: **somebody is on it.** A task
+in_progress, a return prepared but not filed, a statement importing, a
+reconciliation running. None of the four fits, so every screen reached for
+blue. That is also why `blue` is the single largest colour in the codebase
+(**2,101 utilities**) and why it collides with G0's primary question.
+
+**The ladder row is the second one.** `critical / high / medium / low` is four
+RANKED steps; `Healthy / Good / Needs Attention / At Risk / Critical` is five.
+The state set has three severities and they are not a ladder — `ready` is not
+"better than" `attention`. Painting a five-step health grade in three tokens
+either collapses steps a CA is meant to tell apart, or forces raw colours back
+in, which is where we came in.
+
+> **The question, two parts:**
+>
+> **(1)** Add a fifth state token — call it `working` — for "somebody is on
+> it"? My recommendation: **yes**, at the blue already in use, which is the
+> same method that gave us `problem-hover` and `attention-hover` (name the
+> value that is there, so nothing looks different).
+>
+> **(2)** A severity LADDER — four ranked steps — as its own small scale
+> beside the states? My recommendation: **yes**, and it is the honest home for
+> `critical/high/medium/low` and the health grades, which are not states at
+> all.
+
+**I have deliberately NOT converted the 66 determined green entries yet**, and
+the reason is the point of this note: they are perhaps 40 minutes of work, and
+doing them now means touching the same 67 maps twice — once for the greens, and
+again when the two tokens above land and the blues and the ladders can go with
+them. **One pass over those maps, after the decision, is cheaper and safer than
+two.** If you would rather I did the green half immediately, say so and it goes
+in on its own.
+
 ## G0. THE PRODUCT HAS THREE PRIMARY COLOURS AND THE BRAND IS THE SMALLEST — 547 sites  *(new, 24-09-2026)*
 
 **This is G's question at ten times the size, and it was found by measuring
