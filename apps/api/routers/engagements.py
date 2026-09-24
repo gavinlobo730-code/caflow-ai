@@ -12,6 +12,41 @@ from models.fy import OptionalFYLabel
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
 
+# ── WHICH PERMISSION GOVERNS A FEE ENGAGEMENT (G2) ────────────────────────────
+#
+# This router writes `fee_engagements`, whose rows carry `fee_paise` — what the
+# practice charges that client. Two authorities answered differently and a whole
+# tier apart:
+#
+#   core/permissions.py   billing:write     Partner only  ("exposes fee economics")
+#   core/permissions.py   engagement:write  Manager+
+#   migration 260         RLS on the table  Partner, and its comment cites billing
+#   this router (before)  rbac("engagement", …)           Manager+
+#
+# It is `billing`. The row carries the fee and the matrix is Partner *because
+# of* that; migration 260 read it the same way. The other reading would have
+# meant loosening the database so a Manager may set fee economics, which is a
+# widening nobody asked for.
+#
+# THIS REMOVES NOTHING ANYBODY CAN DO TODAY, which is what made it decidable
+# rather than an owner question. Measured 24-09-2026: `apps/web` mentions
+# `/api/engagements` NOWHERE — `lib/api/index.ts` had no `engagements`
+# namespace, so all seven endpoints were unreachable from the browser — and the
+# billing screen's own PostgREST insert was already refused for a Manager by
+# migration 260's RESTRICTIVE policy (`USE_USER_JWT` is true in production, so
+# RLS applies on both paths). No journey existed in which a Manager created a
+# fee engagement.
+#
+# AND THE PER-PERSON GRID IS WHY THE TIER IS NOT THE LAST WORD. `rbac()`
+# resolves migration 403's overrides, so a Partner who wants one Manager on
+# billing grants that person `billing:write` on the Team screen. That is the
+# control, and pointing this router at `engagement` was pointing the grid at
+# the wrong checkbox for this row.
+#
+# `generate-obligations` keeps `compliance:write`: it writes compliance
+# records, not fee economics.
+
+
 # ── Client-assignment scope (M2) ──────────────────────────────────────────────
 # The "guards the body, not the record" shape again: the list was narrowed and
 # create checked its body, but every ROW-addressed endpoint checked only the
@@ -84,7 +119,7 @@ ENGAGEMENT_TRANSITIONS: dict[str, list[str]] = {
 def list_engagements(
     client_id: Optional[str] = None,
     status: Optional[str] = None,
-    current_user: dict = Depends(rbac("engagement", "read")),
+    current_user: dict = Depends(rbac("billing", "read")),
 ):
     firm_id = current_user.get("firm_id")
     engagements = engagement_repo.find_all(
@@ -99,7 +134,7 @@ def list_engagements(
 @router.get("/{engagement_id}")
 def get_engagement(
     engagement_id: str,
-    current_user: dict = Depends(rbac("engagement", "read")),
+    current_user: dict = Depends(rbac("billing", "read")),
 ):
     firm_id = current_user.get("firm_id")
     engagement = _assert_engagement_scope(
@@ -110,7 +145,7 @@ def get_engagement(
 @router.post("")
 def create_engagement(
     body: EngagementCreate,
-    current_user: dict = Depends(rbac("engagement", "write")),
+    current_user: dict = Depends(rbac("billing", "write")),
 ):
     from core.authz import assert_client_access
     assert_client_access(current_user, body.client_id)  # M6 #7: body client_id guard
@@ -133,7 +168,7 @@ def create_engagement(
 def update_engagement(
     engagement_id: str,
     body: EngagementUpdate,
-    current_user: dict = Depends(rbac("engagement", "write")),
+    current_user: dict = Depends(rbac("billing", "write")),
 ):
     firm_id = current_user.get("firm_id")
     engagement = _assert_engagement_scope(
@@ -161,7 +196,7 @@ def update_engagement(
 @router.delete("/{engagement_id}")
 def delete_engagement(
     engagement_id: str,
-    current_user: dict = Depends(rbac("engagement", "write")),
+    current_user: dict = Depends(rbac("billing", "write")),
 ):
     firm_id = current_user.get("firm_id")
     engagement = _assert_engagement_scope(
@@ -175,7 +210,7 @@ def delete_engagement(
 def transition_engagement(
     engagement_id: str,
     body: EngagementTransition,
-    current_user: dict = Depends(rbac("engagement", "write")),
+    current_user: dict = Depends(rbac("billing", "write")),
 ):
     """Advance an engagement through its lifecycle (validated). Audited + timelined; no hard delete."""
     firm_id = current_user.get("firm_id")

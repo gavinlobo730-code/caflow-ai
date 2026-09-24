@@ -588,6 +588,69 @@ commit; these are the **decisions left for you**, and nothing below is blocking
 
 ## G2. TWO AUTHORITIES DISAGREE BY A ROLE TIER ABOUT A FEE ENGAGEMENT, AND ITS STATE MACHINE HAS NO CALLER AT ALL  *(new, 24-09-2026)*
 
+> ### ✅ ANSWERED 24-09-2026 — *"I thought we were going to change the control from position to per individual right?"*
+>
+> That reframes the question rather than picking one of its two options, and it
+> is the right reframing: **the control is the per-person grid, and the tier is
+> only the template it falls back to.** Three things followed.
+>
+> **1. The two authorities now name the same resource — `billing`.** The row
+> carries the fee; migration 260's RLS read it that way and its comment says
+> so. **This removes nothing anybody can do today**, which is what made it
+> decidable rather than a second question: `apps/web` mentioned
+> `/api/engagements` NOWHERE, and the billing screen's own PostgREST insert was
+> already refused for a Manager by that RLS. No journey existed in which a
+> Manager created a fee engagement. Pointing the router at `engagement` was
+> pointing the grid at the wrong checkbox for this row.
+>
+> **2. The screen goes through the API and the state machine has a door.**
+> `lib/api` has an `engagements` namespace; six of the router's seven endpoints
+> now have a caller (the seventh is `generate-obligations`, which is
+> `compliance:write` and belongs on a compliance screen). Every step goes
+> through `POST /{id}/transition`, which validates and writes `audit_log` and
+> the client timeline.
+>
+> **3. A status the database cannot hold is gone.** The screen's own type said
+> `status: "Active" | "Paused"`, and **"Paused" is not one of the seven
+> migration 108's CHECK allows**. Building a Pause button would have written a
+> row Postgres rejects. The screen now offers exactly what the state machine
+> allows from the current status, and a test pins the browser's copy of that
+> map to the router's and both to the CHECK.
+>
+> ### ✅ AND THE STEP THAT MAKES THE GRID REAL — migration 415, approved and landed
+>
+> Migration 260's policies asked `my_role_at_least(...)` and nothing else, so a
+> Partner who granted one Manager `billing:write` on the Team screen got a
+> person who **passed `rbac()` and was then refused by Postgres** — the grid
+> vetoed by the control it replaced, arriving as a save failure with no reason.
+> `public.my_permission(resource, action, minimum_role)` is the SQL twin of
+> `resolve_permission` and those nine policies now ask it.
+>
+> **No table's minimum ROLE moved**, which is what makes it safe: 403 wrote no
+> backfill, so against an empty `user_permissions` it reproduces today's
+> behaviour exactly, and that branch is the first thing the test file proves.
+>
+> **The guard found a lockout before it shipped.** The first draft asked
+> `billing:delete` for the DELETE policies on `fee_invoices` and
+> `fee_engagements` — and PERMISSIONS defines no such pair, which
+> `resolve_permission` treats as INERT and falls through to `can`, which fails
+> closed. Every fee invoice and fee engagement would have become permanently
+> undeletable, **for a Partner too**. The delete-action set is now asserted
+> against PERMISSIONS rather than trusted.
+>
+> **A second thing the real database settled**: a grant is a MODULE, not a
+> SCOPE. Migration 084's `<table>_assignment_scope` is an orthogonal
+> RESTRICTIVE policy, so granting a Manager `billing:write` does not hand them
+> a client they are not assigned to — which is exactly why 403 left the role
+> answering the SQL policies and left scope alone. Both directions are pinned.
+>
+> ⚠️ **One test in this file was vacuous on its first run and is worth
+> knowing**: a RESTRICTIVE policy's `USING` clause FILTERS the rows an UPDATE
+> can see, so a refused UPDATE is `UPDATE 0` and psql exits **0**. The
+> "a grant is one pair, not a tier" test asserted on the exit code and passed
+> whether the policy worked or not. It measures the row now.
+
+
 **The backlog item that led here said "fee engagements are created over
 PostgREST, so `rbac()` and the state machine never run". Both halves are true
 and neither is the defect.** Re-reading the code found something sharper under
@@ -609,14 +672,21 @@ This is not two write paths for one fact, which is the shape this codebase
 usually finds. It is **two answers to "which permission governs this row"**,
 one whole tier apart.
 
-A Manager can therefore create a fee-bearing engagement through the API — and
-with the service-role key the API path bypasses RLS entirely, so nothing
-catches it (`USE_USER_JWT`, `core/security_config.py`). The billing screen
-writes over PostgREST, where RLS **does** apply, so the same Manager is refused
-there. One person, two routes, two answers. And because the per-person grid
-(migration 403) resolves through `rbac()`, a firm can grant or deny
-`engagement:write` on this row and never `billing:write` — the grid is the
-authority and for this row it is pointed at the wrong resource.
+A Manager therefore passes the API's guard and is refused by Postgres.
+
+> ⚠️ **This paragraph said the opposite when it was written, and the owner
+> caught it.** It read *"with the service-role key the API path bypasses RLS
+> entirely, so nothing catches it"*. **`USE_USER_JWT` is TRUE in production** —
+> `render.yaml` records it in its own comment, `sync: false`, so no test can
+> see the value — which means the backend queries as `authenticated` and **RLS
+> is enforced on the API path too**. The disagreement is real and it resolves
+> the other way: the stricter authority wins everywhere, so a Manager cannot
+> create a fee engagement by any route.
+
+And because the per-person grid (migration 403) resolves through `rbac()`, a
+firm can grant or deny `engagement:write` on this row and never
+`billing:write` — the grid is the authority and for this row it was pointed at
+the wrong resource.
 
 > **The question:** is a fee engagement **billing** (Partner) or **engagement**
 > (Manager+)?

@@ -2369,6 +2369,40 @@ export interface ThreeWayMatch {
   ca_review_required: boolean;
 }
 
+/** A row of `public.fee_engagements`. `status` is migration 108's CHECK,
+ *  verbatim — the billing screen used to declare `"Active" | "Paused"`, and
+ *  "Paused" is not in it. */
+export type FeeEngagementStatus =
+  | "Draft" | "Active" | "In Progress" | "Review" | "Completed" | "Closed" | "Inactive";
+
+export interface FeeEngagement {
+  id: string;
+  client_id: string;
+  service_type: string;
+  fee_paise: number;
+  billing_cycle: string;
+  start_date: string;
+  end_date?: string | null;
+  status: FeeEngagementStatus;
+  notes?: string | null;
+}
+
+/** What `POST /{id}/transition` will accept from each status, mirroring
+ *  `routers/engagements.ENGAGEMENT_TRANSITIONS`. The server is the authority
+ *  and answers 422 with the permitted set; this exists so the screen offers
+ *  the buttons that will work rather than a dropdown of seven, six of which
+ *  are refused. Pinned to the Python map by
+ *  `apps/api/tests/test_the_engagement_state_machine_has_one_map.py`. */
+export const ENGAGEMENT_TRANSITIONS: Record<FeeEngagementStatus, FeeEngagementStatus[]> = {
+  "Draft": ["Active", "Closed"],
+  "Active": ["In Progress", "Closed", "Inactive"],
+  "In Progress": ["Review", "Active", "Closed"],
+  "Review": ["Completed", "In Progress"],
+  "Completed": ["Closed"],
+  "Closed": [],
+  "Inactive": ["Active"],
+};
+
 export const api = {
   /** The firm's own reading of the DTAA rates it withholds under, per country
    *  and nature of income. Ships empty and is never seeded: India has
@@ -2423,6 +2457,52 @@ export const api = {
     archive: (id: string) => request(`/api/clients/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request(`/api/clients/${id}/restore`, { method: "POST" }),
     permanentDelete: (id: string) => request(`/api/clients/${id}`, { method: "DELETE" }),
+  },
+  // ── FEE ENGAGEMENTS (G2) ───────────────────────────────────────────────
+  //
+  // This namespace did not exist, and nothing under `apps/web` mentioned
+  // `/api/engagements`, so all seven endpoints of `routers/engagements.py`
+  // were unreachable from the product. The billing screen INSERTed and
+  // SELECTed `fee_engagements` straight over PostgREST instead, which means
+  // `rbac()` never ran and — this is the half that mattered — `POST
+  // /{id}/transition`, which validates against ENGAGEMENT_TRANSITIONS and
+  // writes both `audit_log` and the client timeline, had never been called.
+  // An engagement was created `Active` and could never change.
+  //
+  // The screen's own TypeScript said `status: "Active" | "Paused"`, and
+  // "Paused" is not a status `fee_engagements` can hold: migration 108's CHECK
+  // allows Draft, Active, In Progress, Review, Completed, Closed and Inactive
+  // and nothing else. So the one status the type offered besides Active was
+  // one the database would have refused.
+  engagements: {
+    list: (params?: { client_id?: string; status?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.client_id) q.set("client_id", params.client_id);
+      if (params?.status) q.set("status", params.status);
+      const qs = q.toString();
+      return request<ApiResp<{ engagements: FeeEngagement[]; total: number }>>(
+        `/api/engagements${qs ? `?${qs}` : ""}`);
+    },
+    create: (body: {
+      client_id: string; service_type: string; fee_paise: number;
+      billing_cycle: string; start_date: string; status?: string;
+      notes?: string | null;
+    }) => request<ApiResp<{ engagement: FeeEngagement }>>("/api/engagements", {
+      method: "POST", body: JSON.stringify(body),
+    }),
+    update: (id: string, body: Record<string, unknown>) =>
+      request<ApiResp<{ engagement: FeeEngagement }>>(`/api/engagements/${id}`, {
+        method: "PATCH", body: JSON.stringify(body),
+      }),
+    // The state machine's own door. `status` must be one the server allows
+    // FROM the current one — it answers 422 naming the permitted set rather
+    // than writing whatever it is sent, which is why the screen offers the
+    // allowed set rather than a free dropdown.
+    transition: (id: string, body: { status: string; notes?: string | null }) =>
+      request<ApiResp<{ engagement: FeeEngagement }>>(
+        `/api/engagements/${id}/transition`, {
+          method: "POST", body: JSON.stringify(body),
+        }),
   },
   compliance: {
     // Recording that a calendar obligation was filed — and, for a GST return,

@@ -11,13 +11,17 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, RefreshCw, X, MessageCircle, IndianRupee, Download, Clock } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
-import { api } from "@/lib/api";
+import { api, ENGAGEMENT_TRANSITIONS } from "@/lib/api";
+import type { FeeEngagementStatus } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import type { Client } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
+// A payload field is not a list until something has checked.
+import { arrayOrEmpty } from "@/lib/api/shape";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +30,11 @@ type BillingCycle = "Monthly" | "Quarterly" | "Annual";
 type InvoiceStatus = "Draft" | "Issued" | "Paid" | "Overdue";
 type PaymentMode = "NEFT" | "RTGS" | "Cheque" | "Cash" | "UPI";
 
+// `status` is migration 108's CHECK, verbatim. This said `"Active" | "Paused"`
+// and `fee_engagements` cannot hold "Paused" — the CHECK allows Draft, Active,
+// In Progress, Review, Completed, Closed and Inactive. So the one alternative
+// the type offered was one the database would have refused, and the chip below
+// rendered everything-not-Active as the same grey.
 interface Engagement {
   id: string;
   firm_id: string;
@@ -34,7 +43,7 @@ interface Engagement {
   fee_paise: number;
   billing_cycle: BillingCycle;
   start_date: string;
-  status: "Active" | "Paused";
+  status: FeeEngagementStatus;
   client_name?: string;
 }
 
@@ -135,20 +144,26 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
     if (!clientId || feePaise <= 0) { setError("Select a client and enter a valid fee"); return; }
     setSaving(true);
     try {
-      const firmId = await getFirmId();
-      const sb = getSupabaseClient();
-      const { data, error: err } = await sb.from("fee_engagements").insert({
-        firm_id: firmId,
+      // Through the API, not PostgREST: `rbac("billing","write")` runs, the
+      // firm is taken from the caller rather than sent by the browser, and the
+      // client-assignment scope (`assert_client_access`) is checked.
+      const res = await api.engagements.create({
         client_id: clientId,
         service_type: serviceType,
         fee_paise: feePaise,
         billing_cycle: billingCycle,
         start_date: startDate,
         status: "Active",
-      }).select().single();
-      if (err) throw new Error(err.message);
+      });
+      // The GST workspace router answers a refusal as HTTP 200 with
+      // `success: false`, so an unchecked call would show "saved" for a request
+      // the server declined. Check the envelope, not the transport.
+      if (!res.success || !res.data?.engagement) {
+        throw new Error(res.error || "Failed to save");
+      }
       const client = clients.find(c => c.id === clientId);
-      onSaved({ ...(data as Engagement), client_name: client?.client_name });
+      onSaved({ ...(res.data.engagement as unknown as Engagement),
+                client_name: client?.client_name });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -322,7 +337,28 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+// The seven statuses migration 108's CHECK allows, in the state vocabulary:
+// Active and Completed are finished, Draft/In Progress/Review are
+// somebody-is-on-it, Review is waiting on a person, and Closed/Inactive are
+// settled.
+const ENGAGEMENT_STATUS_BADGE: Record<FeeEngagementStatus, string> = {
+  "Draft":       "bg-ps-muted text-ps-label",
+  "Active":      "bg-state-ready-surface text-state-ready",
+  "In Progress": "bg-state-working-surface text-state-working",
+  "Review":      "bg-state-attention-surface text-state-attention",
+  "Completed":   "bg-state-ready-surface text-state-ready",
+  "Closed":      "bg-state-done-surface text-state-done",
+  "Inactive":    "bg-state-done-surface text-state-done",
+};
+
 export default function BillingPage() {
+  // `billing:*` is Partner by ROLE and per-person on the Team grid (migration
+  // 403), which `rbac()` resolves — so this asks what the server will do
+  // rather than testing the role, and a Manager granted billing sees the
+  // controls their grant gives them.
+  const { can } = usePermissions();
+  const canWrite = can("billing", "write");
+  const [transitioning, setTransitioning] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
@@ -350,22 +386,27 @@ export default function BillingPage() {
       const clientMap = new Map(clientList.map(c => [c.id, c]));
       const sb = getSupabaseClient();
 
-      const [engRes, invRes, recRes] = await Promise.all([
-        sb.from("fee_engagements").select("*").eq("firm_id", firmId).order("created_at", { ascending: false }),
+      // Engagements come from the API — `billing:read` is Partner-only
+      // ("exposes fee economics"), and over PostgREST the SELECT policy is
+      // firm-scoped with no role test, so every role could read every fee.
+      // Invoices and receipts are still direct reads; moving them is the same
+      // shape and is not this change.
+      const [engResp, invRes, recRes] = await Promise.all([
+        api.engagements.list(),
         sb.from("fee_invoices").select("*").eq("firm_id", firmId).order("invoice_date", { ascending: false }),
         sb.from("fee_receipts").select("*").eq("firm_id", firmId).order("receipt_date", { ascending: false }),
       ]);
       // A non-null PostgREST error is a real failure (RLS denial, network, timeout),
       // not "zero rows" — .data would still be null/[] either way, so skipping this
-      // check would silently render engagements/invoices/receipts as empty instead
+      // check would silently render invoices/receipts as empty instead
       // of surfacing the failure.
-      if (engRes.error) throw new Error(engRes.error.message);
+      if (!engResp.success) throw new Error(engResp.error || "Could not read fee engagements");
       if (invRes.error) throw new Error(invRes.error.message);
       if (recRes.error) throw new Error(recRes.error.message);
 
-      const engs: Engagement[] = (engRes.data ?? []).map((e: Engagement) => ({
-        ...e,
-        client_name: clientMap.get(e.client_id)?.client_name,
+      const engs: Engagement[] = arrayOrEmpty(engResp.data?.engagements).map((e) => ({
+        ...(e as unknown as Engagement),
+        client_name: clientMap.get((e as { client_id: string }).client_id)?.client_name,
       }));
       const invs: Invoice[] = (invRes.data ?? []).map((i: Invoice) => ({
         ...i,
@@ -416,6 +457,28 @@ export default function BillingPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // One engagement, one step. The server validates against
+  // ENGAGEMENT_TRANSITIONS and writes `audit_log` and the client timeline; a
+  // refused step comes back 422 naming what IS allowed, which is shown rather
+  // than swallowed.
+  async function handleTransition(e: Engagement, next: FeeEngagementStatus) {
+    setTransitioning(`${e.id}:${next}`);
+    setError(null);
+    try {
+      const res = await api.engagements.transition(e.id, { status: next });
+      if (!res.success || !res.data?.engagement) {
+        throw new Error(res.error || "Could not change the engagement's status");
+      }
+      const updated = res.data.engagement as unknown as Engagement;
+      setEngagements(prev => prev.map(x =>
+        x.id === e.id ? { ...x, status: updated.status } : x));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not change the engagement's status");
+    } finally {
+      setTransitioning(null);
+    }
+  }
 
   async function handleRaiseInvoice() {
     setRaisingInvoice(true);
@@ -645,9 +708,34 @@ export default function BillingPage() {
                       <td className="px-4 py-3 text-ps-label">{e.billing_cycle}</td>
                       <td className="px-4 py-3 text-ps-label">{fmtDate(e.start_date)}</td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${e.status === "Active" ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ENGAGEMENT_STATUS_BADGE[e.status] ?? "bg-ps-muted text-ps-label"}`}>
                           {e.status}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {/* The state machine's own answer, not a dropdown of
+                            seven. `POST /{id}/transition` 422s anything the
+                            current status does not allow, so offering the
+                            refused ones would be inviting a failure. */}
+                        {canWrite ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {(ENGAGEMENT_TRANSITIONS[e.status] ?? []).map(next => (
+                              <button
+                                key={next}
+                                onClick={() => handleTransition(e, next)}
+                                disabled={transitioning !== null}
+                                className="text-2xs px-2 py-1 rounded-md border border-ps-border text-ps-body hover:bg-ps-hover disabled:opacity-50"
+                              >
+                                {transitioning === `${e.id}:${next}` ? "…" : next}
+                              </button>
+                            ))}
+                            {(ENGAGEMENT_TRANSITIONS[e.status] ?? []).length === 0 && (
+                              <span className="text-2xs text-ps-hint">No further step</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-2xs text-ps-hint">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
