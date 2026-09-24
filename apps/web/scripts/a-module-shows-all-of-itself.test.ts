@@ -47,7 +47,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { SCREENS } from "../lib/navigation/screens.ts";
+import { SCREENS, ALL_SCREENS } from "../lib/navigation/screens.ts";
 import { getActiveWorkspaceForPathname } from "../lib/workspace/routeOwnership.ts";
 
 const WEB = join(import.meta.dirname, "..");
@@ -107,7 +107,7 @@ function sweep(): Unlisted[] {
   const missing: Unlisted[] = [];
 
   for (const s of SCREENS) {
-    if (s.scope !== "firm") continue;          // client screens have their own nav
+    if (s.scope !== "firm") continue;          // held by the client test below
     if (s.href in NO_BROWSE_SURFACE) continue;
 
     const component = s.href.startsWith("/settings")
@@ -184,4 +184,63 @@ test("the two screens that had no browse surface at all now have one", () => {
   // made `sweep()` vacuous would still have to keep them listed.
   assert.match(panelSource("TeamPanel"), /"\/team\/workload"/);
   assert.match(panelSource("ClientsPanel"), /"\/onboarding\/checklist"/);
+});
+
+/**
+ * THE CLIENT WORKSPACE SATISFIES THE SAME RULE IN ITS OWN IDIOM, and this
+ * measures it rather than exempting it.
+ *
+ * `ClientContextPanel` lists the 21 SECTIONS, not their tabs — and expanding
+ * all 21 would be a taller wall than the one grouping fixed on the firm side.
+ * What makes that sound is that a client sub-screen's SECTION PAGE is an index
+ * of its tabs AND the sidebar keeps that section one click away, so from
+ * `/clients/:id/reports/ageing` a CA reaches `/reports/trend` in two clicks
+ * rather than through the browser's Back button — which is the thing that was
+ * actually wrong on the firm side.
+ *
+ * All 11 were already linked when this was written. It is asserted so the
+ * argument stays true: a twelfth sub-screen added with no link on its section
+ * page fails here, and the fix is the section page, not this list.
+ */
+test("every client sub-screen is linked from its own section page", () => {
+  const missing: string[] = [];
+  let checked = 0;
+  for (const s of ALL_SCREENS) {
+    if (s.scope !== "client" || !s.href.includes("/")) continue;  // a bare section is in CLIENT_SECTIONS
+    checked++;
+    const section = s.href.split("/")[0];
+    const page = join(WEB, "app/clients/[id]", section, "page.tsx");
+    if (!existsSync(page)) { missing.push(`${s.href} — no app/clients/[id]/${section}/page.tsx`); continue; }
+    const txt = readFileSync(page, "utf8");
+    const tail = s.href.slice(section.length + 1);
+
+    // A page links a sub-screen in one of two shapes, and BOTH had to be
+    // recognised for different reasons.
+    //
+    // 1. THE WHOLE PATH AS A LITERAL — `href: "reports/ageing"`, or the
+    //    absolute `/clients/${id}/reports/ageing`.
+    // 2. A TEMPLATE PLUS THE SEGMENT — `app/clients/[id]/compliance/page.tsx`
+    //    does `router.push(\`/clients/${clientId}/compliance/${path}\`)` over
+    //    cards carrying `path: "gst"`, so no literal path exists anywhere in
+    //    the file and all three of its sub-screens read as unlinked.
+    //
+    // ⚠️ THE SEGMENT MUST BE A ROUTE FIELD, not any quoted string. A first
+    // draft matched the bare tail and a negative control PASSED against it,
+    // because the reports page carries `id: "ageing"` beside its href — so
+    // breaking the link left the test green. A guard satisfied by a value that
+    // is not a link is not a guard.
+    const asLiteral = txt.includes(`"${s.href}"`) || txt.includes(`/${s.href}`);
+    const asTemplate =
+      txt.includes(`/${section}/\${`) &&
+      new RegExp(`\\b(?:path|href|slug|route|segment)\\s*:\\s*"${tail}"`).test(txt);
+    if (!asLiteral && !asTemplate)
+      missing.push(`${s.href} (${s.name}) — not linked from /clients/:id/${section}`);
+  }
+  assert.ok(checked >= 10, `only ${checked} client sub-screens seen — CLIENT_SUBSCREENS has probably moved`);
+  assert.deepEqual(
+    missing,
+    [],
+    "A client sub-screen its own section page does not link is reachable only by " +
+      "typing its name. Add it to that section page's index.\n  " + missing.join("\n  "),
+  );
 });
