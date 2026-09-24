@@ -79,7 +79,7 @@ export default function LoginHistoryPage() {
         </div>
         {canForceLogout && (
           <button onClick={forceLogoutAll} disabled={busy}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-state-problem-surface disabled:opacity-60">
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-state-problem-hover disabled:opacity-60">
             {busy ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />} Sign out all users
           </button>
         )}

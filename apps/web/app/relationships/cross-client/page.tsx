@@ -112,7 +112,7 @@ export default function CrossClientMatchesPage() {
       return <Badge className="bg-yellow-100 text-yellow-700">Pending</Badge>;
     if (m.is_confirmed)
       return <Badge className="bg-emerald-100 text-emerald-700">Confirmed</Badge>;
-    return <Badge className="bg-red-100 text-state-problem">Rejected</Badge>;
+    return <Badge className="bg-state-problem-surface text-state-problem">Rejected</Badge>;
   };
 
   return (

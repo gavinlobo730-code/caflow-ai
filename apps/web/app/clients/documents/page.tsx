@@ -381,7 +381,7 @@ export default function ClientDocumentsPage() {
                   </a>
                 )}
                 <button onClick={() => handleDelete(doc)}
-                  className="flex items-center justify-center gap-1 px-3 py-1.5 border border-red-100 rounded-lg text-xs text-red-600 hover:bg-state-problem-surface">
+                  className="flex items-center justify-center gap-1 px-3 py-1.5 border border-red-100 rounded-lg text-xs text-red-600 hover:bg-state-problem-hover">
                   <Trash2 size={12} /> Delete
                 </button>
               </div>

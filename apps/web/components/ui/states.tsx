@@ -61,7 +61,7 @@ export function ErrorState({
       {onRetry && (
         <button
           onClick={onRetry}
-          className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-state-problem transition-colors hover:bg-red-100"
+          className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-state-problem-border bg-white px-4 py-2 text-sm font-medium text-state-problem transition-colors hover:bg-state-problem-hover"
         >
           <RefreshCw size={14} />
           Try again

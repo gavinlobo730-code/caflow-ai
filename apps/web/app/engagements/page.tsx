@@ -145,7 +145,7 @@ const STATUS_COLORS: Record<EngagementLetter["status"], string> = {
   Sent: "bg-indigo-100 text-indigo-700",
   Viewed: "bg-purple-100 text-purple-700",
   Signed: "bg-green-100 text-green-700",
-  Rejected: "bg-red-100 text-state-problem",
+  Rejected: "bg-state-problem-surface text-state-problem",
   Expired: "bg-orange-100 text-orange-700",
 };
 
@@ -962,7 +962,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                     <button
                       disabled={actionLoading}
                       onClick={() => setShowRegenConfirm(true)}
-                      className="flex items-center gap-1.5 rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-2 text-sm font-medium text-state-attention hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-2 text-sm font-medium text-state-attention hover:bg-state-attention-hover disabled:opacity-50 transition-colors"
                     >
                       <RefreshCw size={13} />
                       Generate New Signing Link
@@ -1018,7 +1018,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       <button
                         disabled={actionLoading}
                         onClick={() => doRegenerate(false)}
-                        className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-state-attention hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                        className="flex items-center gap-1.5 rounded-lg border border-state-attention-border bg-white px-4 py-2 text-sm font-medium text-state-attention hover:bg-state-attention-hover disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                         Generate Only

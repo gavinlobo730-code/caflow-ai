@@ -634,7 +634,7 @@ export default function CapitalGainsPage() {
                       </div>
                       <div>
                         <p className="text-xs text-ps-hint">Classification</p>
-                        <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.is_long_term ? "bg-green-100 text-green-700" : "bg-amber-100 text-state-attention"}`}>
+                        <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.is_long_term ? "bg-green-100 text-green-700" : "bg-state-attention-surface text-state-attention"}`}>
                           {result.is_long_term ? "Long Term" : "Short Term"} Capital Gain
                         </span>
                       </div>
@@ -885,7 +885,7 @@ export default function CapitalGainsPage() {
                           <td className="px-4 py-3 text-right text-ps-body">{fmtRs(r.sale_value_paise)}</td>
                           <td className="px-4 py-3 text-right text-ps-label text-xs">{r.indexed_cost_paise != null ? fmtRs(r.indexed_cost_paise) : "—"}</td>
                           <td className="px-4 py-3 text-center">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.gain_type === "LTCG" ? "bg-green-100 text-green-700" : "bg-amber-100 text-state-attention"}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.gain_type === "LTCG" ? "bg-green-100 text-green-700" : "bg-state-attention-surface text-state-attention"}`}>
                               {r.gain_type ?? "—"}
                             </span>
                           </td>

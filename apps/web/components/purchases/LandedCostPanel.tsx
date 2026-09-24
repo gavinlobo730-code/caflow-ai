@@ -277,7 +277,7 @@ export function LandedCostPanel({
                             ) : (
                               <button onClick={() => remove(c)} disabled={saving}
                                 aria-label={`Remove ${c.description}`}
-                                className="p-1 rounded hover:bg-state-problem-surface text-red-600 disabled:opacity-40">
+                                className="p-1 rounded hover:bg-state-problem-hover text-red-600 disabled:opacity-40">
                                 <Trash2 size={12} />
                               </button>
                             )}

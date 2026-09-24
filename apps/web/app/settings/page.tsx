@@ -466,7 +466,7 @@ export default function SettingsPage() {
             <p className="text-xs text-state-problem">
               Couldn&apos;t load your saved firm profile — the form below may not reflect what&apos;s saved. {loadError}
             </p>
-            <button onClick={loadFirmData} className="text-xs px-3 py-1.5 border border-state-problem-border rounded-lg hover:bg-red-100 text-state-problem shrink-0">
+            <button onClick={loadFirmData} className="text-xs px-3 py-1.5 border border-state-problem-border rounded-lg hover:bg-state-problem-hover text-state-problem shrink-0">
               Retry
             </button>
           </div>
@@ -755,7 +755,7 @@ export default function SettingsPage() {
               </div>
               <Link
                 href="/settings/multi-currency"
-                className="px-4 py-1.5 border border-state-attention-border text-state-attention text-sm font-medium rounded-lg hover:bg-state-attention-surface transition-colors whitespace-nowrap"
+                className="px-4 py-1.5 border border-state-attention-border text-state-attention text-sm font-medium rounded-lg hover:bg-state-attention-hover transition-colors whitespace-nowrap"
               >
                 Manage →
               </Link>

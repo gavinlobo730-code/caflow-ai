@@ -215,7 +215,7 @@ function TemplateCard({
           </button>
         )}
         {!template.is_default && (
-          <button onClick={onDelete} className="flex items-center gap-1.5 px-3 py-1 text-xs text-red-500 border border-state-problem-border rounded-lg hover:bg-state-problem-surface transition-colors ml-auto">
+          <button onClick={onDelete} className="flex items-center gap-1.5 px-3 py-1 text-xs text-red-500 border border-state-problem-border rounded-lg hover:bg-state-problem-hover transition-colors ml-auto">
             <Trash2 size={11} /> Delete
           </button>
         )}

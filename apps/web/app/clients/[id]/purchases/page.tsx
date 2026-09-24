@@ -300,9 +300,9 @@ export default function PurchasesPage() {
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
   received: "bg-blue-100 text-blue-700",
-  partially_paid: "bg-amber-100 text-state-attention",
+  partially_paid: "bg-state-attention-surface text-state-attention",
   paid: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-state-problem",
+  cancelled: "bg-state-problem-surface text-state-problem",
   issued: "bg-green-100 text-green-700",
 };
 
@@ -1164,7 +1164,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); setDeleteTarget(b); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
                   </button>
                 </>
@@ -1173,7 +1173,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); cancelBill(b); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Cancel bill
                   </button>
                 </>
@@ -1701,7 +1701,7 @@ function Vendors({ clientId }: { clientId: string }) {
     { key: "residential_status", header: "Residence", accessor: (v) => v.residential_status ?? "",
       render: (v) =>
         v.residential_status === "non_resident"
-          ? <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-amber-100 text-state-attention">
+          ? <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-state-attention-surface text-state-attention">
               Non-resident{v.country_of_residence ? ` · ${v.country_of_residence}` : ""}
             </span>
           : v.residential_status === "resident"
@@ -1923,7 +1923,7 @@ function Vendors({ clientId }: { clientId: string }) {
                 </button>
               )}
               <button onClick={() => { setMenu(null); startDelete(v); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                 <Trash2 size={13} /> Delete
               </button>
             </div>
@@ -2678,7 +2678,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
       render: (p) => <span className="text-3xs text-ps-hint">{p.reference_no ?? "—"}</span> },
     { key: "is_reversed", header: "Status", accessor: (p) => (p.is_reversed ? "Reversed" : "Active"),
       render: (p) => p.is_reversed ? (
-        <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-red-100 text-state-problem">Reversed</span>
+        <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-state-problem-surface text-state-problem">Reversed</span>
       ) : null },
   ], []);
 
@@ -3372,7 +3372,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deleteDebitNote(d); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
                   </button>
                 </>
@@ -3837,7 +3837,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deletePcn(d); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
                   </button>
                 </>

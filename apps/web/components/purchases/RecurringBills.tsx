@@ -349,7 +349,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
                         )}
                         {t.status !== "archived" && (
                           <button onClick={() => changeStatus(t, "archive")} disabled={busy === t.id}
-                            className="text-2xs px-2 py-1 border border-state-problem-border text-red-600 rounded-md hover:bg-state-problem-surface disabled:opacity-40">
+                            className="text-2xs px-2 py-1 border border-state-problem-border text-red-600 rounded-md hover:bg-state-problem-hover disabled:opacity-40">
                             Archive
                           </button>
                         )}

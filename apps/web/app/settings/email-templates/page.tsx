@@ -311,7 +311,7 @@ export default function EmailTemplatesPage() {
             <p className="text-xs text-state-problem">
               Couldn&apos;t load your saved templates — showing defaults. {loadError}
             </p>
-            <button onClick={load} className="text-xs px-3 py-1.5 border border-state-problem-border rounded-lg hover:bg-red-100 text-state-problem shrink-0">
+            <button onClick={load} className="text-xs px-3 py-1.5 border border-state-problem-border rounded-lg hover:bg-state-problem-hover text-state-problem shrink-0">
               Retry
             </button>
           </div>

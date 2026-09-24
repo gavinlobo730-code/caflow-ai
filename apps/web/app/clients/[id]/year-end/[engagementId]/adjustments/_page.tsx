@@ -36,16 +36,16 @@ const TYPE_BADGE: Record<AdjustmentType, string> = {
   prepayment: "bg-purple-100 text-purple-700",
   provision: "bg-orange-100 text-orange-700",
   reclassification: "bg-cyan-100 text-cyan-700",
-  depreciation_adj: "bg-red-100 text-state-problem",
+  depreciation_adj: "bg-state-problem-surface text-state-problem",
   manual: "bg-ps-muted text-ps-label",
 };
 
 const STATUS_BADGE: Record<AdjustmentStatus, string> = {
   draft: "bg-ps-muted text-ps-label",
-  pending_review: "bg-amber-100 text-state-attention",
+  pending_review: "bg-state-attention-surface text-state-attention",
   approved: "bg-green-100 text-green-700",
   posted: "bg-blue-100 text-blue-700",
-  rejected: "bg-red-100 text-state-problem",
+  rejected: "bg-state-problem-surface text-state-problem",
 };
 
 const STATUS_LABEL: Record<AdjustmentStatus, string> = {
@@ -133,7 +133,7 @@ export default function AdjustmentsPage() {
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-4 text-sm text-state-problem">
+        <div className="bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-4 text-sm text-state-problem">
           {error}
           <button onClick={load} className="ml-3 underline text-xs">Retry</button>
         </div>
@@ -144,7 +144,7 @@ export default function AdjustmentsPage() {
   return (
     <div className="p-6 space-y-5 max-w-4xl mx-auto">
       {toast && (
-        <div className={`rounded-lg px-4 py-3 text-xs font-medium border ${toast.ok ? "bg-green-50 border-green-100 text-green-700" : "bg-state-problem-surface border-red-100 text-state-problem"}`}>
+        <div className={`rounded-lg px-4 py-3 text-xs font-medium border ${toast.ok ? "bg-green-50 border-green-100 text-green-700" : "bg-state-problem-surface border-state-problem-border text-state-problem"}`}>
           {toast.msg}
         </div>
       )}

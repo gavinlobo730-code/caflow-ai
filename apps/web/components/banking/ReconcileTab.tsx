@@ -381,7 +381,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
       return String(a.transaction_date).localeCompare(String(b.transaction_date)) * dir;
     });
   })();
-  const statusBadge = (s: string) => s === "completed" ? "bg-green-100 text-money-in" : s === "in_progress" ? "bg-state-attention-border text-state-attention" : "bg-ps-muted text-ps-label";
+  const statusBadge = (s: string) => s === "completed" ? "bg-state-ready-surface text-state-ready" : s === "in_progress" ? "bg-state-attention-surface text-state-attention" : "bg-ps-muted text-ps-label";
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
@@ -524,7 +524,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                     {brs.statement_balance_paise !== null && (
                       <>
                         <Row label="Balance per the statement" paise={brs.statement_balance_paise} />
-                        <div className={`mt-1 rounded px-2 py-1.5 font-sans text-2xs ${brs.agrees ? "bg-state-ready-surface text-money-in" : "bg-state-problem-surface text-money-out"}`}>
+                        <div className={`mt-1 rounded px-2 py-1.5 font-sans text-2xs ${brs.agrees ? "bg-state-ready-surface text-state-ready" : "bg-state-problem-surface text-state-problem"}`}>
                           {brs.agrees
                             ? "The books reconcile to the statement."
                             : `Unexplained difference ${fmt(Math.abs(brs.difference_paise ?? 0))} — something is neither in the books nor accounted for above.`}
@@ -532,7 +532,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                       </>
                     )}
                     {brs.gap && (
-                      <p className="font-sans text-2xs text-state-attention bg-state-attention-surface border border-amber-100 rounded px-2 py-1.5">
+                      <p className="font-sans text-2xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-2 py-1.5">
                         {brs.gap}
                       </p>
                     )}
@@ -606,7 +606,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
             {/* A period that has been reopened is a fact about the books, so it
                 stays visible on the session rather than only in the audit log. */}
             {(report.reconciliation.reopen_count ?? 0) > 0 && (
-              <p className="text-3xs text-state-attention bg-state-attention-surface border border-amber-100 rounded px-3 py-2">
+              <p className="text-3xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
                 Reopened {report.reconciliation.reopen_count}
                 {report.reconciliation.reopen_count === 1 ? " time" : " times"}
                 {report.reconciliation.reopened_at ? ` · last on ${String(report.reconciliation.reopened_at).slice(0, 10)}` : ""}
@@ -671,7 +671,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                       <div className="min-w-0">
                         <p className="text-2xs font-medium text-ps-ink">
                           Current certification
-                          <span className="ml-2 text-3xs px-1.5 py-0.5 rounded-full bg-state-ready-surface text-money-in">in force</span>
+                          <span className="ml-2 text-3xs px-1.5 py-0.5 rounded-full bg-state-ready-surface text-state-ready">in force</span>
                         </p>
                         <p className="text-3xs text-ps-hint mt-0.5">
                           Completed {String(history.current.completed_at ?? "").slice(0, 10)}

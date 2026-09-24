@@ -337,7 +337,7 @@ function RegisterTab({ clientId, openDoc }:
 
   const LIFECYCLE_BADGE: Record<string, string> = {
     active:             "bg-green-100 text-green-700",
-    disposed:           "bg-red-100 text-state-problem",
+    disposed:           "bg-state-problem-surface text-state-problem",
     fully_depreciated:  "bg-gray-100 text-gray-600",
   };
 

@@ -263,7 +263,7 @@ function monthState(c: ClientMonthState): {
     return { label: "Draft", className: "bg-blue-100 text-blue-700",
              note: `The run exists at "${c.run_status}" and has not been released.`, needsWork: true };
   }
-  return { label: "Not started", className: "bg-amber-100 text-state-attention",
+  return { label: "Not started", className: "bg-state-attention-surface text-state-attention",
            note: "Payroll is on for this client and this month has no run yet.",
            needsWork: true };
 }
@@ -470,14 +470,14 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
 function StatusBadge({ status }: { status: "overdue" | "due-soon" | "upcoming" | "filed" }) {
   if (status === "overdue") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-state-problem">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-state-problem-surface text-state-problem">
         <AlertTriangle size={11} />Overdue
       </span>
     );
   }
   if (status === "due-soon") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-state-attention">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-state-attention-surface text-state-attention">
         <Clock size={11} />Due Soon
       </span>
     );

@@ -23,7 +23,7 @@ const FY_OPTIONS = financialYearChoicesAround(null);
 
 const STATUS_BADGE: Record<string, string> = {
   draft:     "bg-ps-muted text-ps-label",
-  in_review: "bg-amber-100 text-state-attention",
+  in_review: "bg-state-attention-surface text-state-attention",
   approved:  "bg-blue-100 text-blue-700",
   locked:    "bg-green-100 text-green-700",
 };
@@ -183,7 +183,7 @@ export default function YearEndPage() {
       {loading ? (
         <ListSkeleton rows={3} />
       ) : error ? (
-        <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-4 text-sm text-state-problem">
+        <div className="bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-4 text-sm text-state-problem">
           {error} <button onClick={load} className="ml-2 underline text-xs">Retry</button>
         </div>
       ) : engagements.length === 0 ? (

@@ -374,7 +374,7 @@ export default function ExecutiveDashboardPage() {
                       <p className="text-xs text-ps-label mt-0.5">{sig.signal}</p>
                     </div>
                     <span className={`ml-auto text-3xs px-2 py-0.5 rounded-full font-semibold ${
-                      sig.risk === "high" ? "bg-red-100 text-state-problem" : "bg-amber-100 text-state-attention"
+                      sig.risk === "high" ? "bg-state-problem-surface text-state-problem" : "bg-state-attention-surface text-state-attention"
                     }`}>
                       {sig.risk.toUpperCase()}
                     </span>

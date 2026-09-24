@@ -65,7 +65,7 @@ const RING_COLOR = {
   Healthy:   "bg-emerald-50 text-emerald-700 ring-emerald-200",
   Fair:      "bg-yellow-50 text-yellow-700 ring-yellow-200",
   "At Risk": "bg-orange-50 text-orange-700 ring-orange-200",
-  Critical:  "bg-state-problem-surface text-state-problem ring-red-200",
+  Critical:  "bg-state-problem-surface text-state-problem ring-state-problem-border",
 };
 
 function ringFor(score: number): string {

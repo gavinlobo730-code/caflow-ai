@@ -80,8 +80,8 @@ interface DSCStatus {
 
 function getDSCStatus(expiryDate: string): DSCStatus {
   const days = getDaysRemaining(expiryDate);
-  if (days < 0)  return { label: "Expired",      style: "bg-red-100 text-state-problem" };
-  if (days <= 30) return { label: "Renew Now",    style: "bg-amber-100 text-state-attention" };
+  if (days < 0)  return { label: "Expired",      style: "bg-state-problem-surface text-state-problem" };
+  if (days <= 30) return { label: "Renew Now",    style: "bg-state-attention-surface text-state-attention" };
   if (days <= 90) return { label: "Renew Soon",   style: "bg-yellow-100 text-yellow-700" };
   return              { label: "Valid",          style: "bg-green-100 text-green-700" };
 }
@@ -484,7 +484,7 @@ export default function DSCTrackerPage() {
             <p className="text-sm text-state-problem font-medium">Couldn&apos;t load DSC records.</p>
             <p className="text-xs text-red-600 mt-0.5">{tableError}</p>
           </div>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-state-problem-border rounded-lg hover:bg-red-100 text-state-problem shrink-0">
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-state-problem-border rounded-lg hover:bg-state-problem-hover text-state-problem shrink-0">
             Retry
           </button>
         </div>

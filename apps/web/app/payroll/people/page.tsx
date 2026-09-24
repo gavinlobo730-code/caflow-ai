@@ -365,13 +365,13 @@ export default function PayrollPeoplePage() {
                           className="p-1.5 rounded-lg text-ps-label hover:bg-ps-muted hover:text-ps-body"><Pencil size={14} /></button>
                         {active ? (
                           <button onClick={() => setEmployeeStatus(e, "resigned")} title="Deactivate"
-                            className="p-1.5 rounded-lg text-ps-label hover:bg-state-attention-surface hover:text-state-attention"><Ban size={14} /></button>
+                            className="p-1.5 rounded-lg text-ps-label hover:bg-state-attention-hover hover:text-state-attention"><Ban size={14} /></button>
                         ) : (
                           <button onClick={() => setEmployeeStatus(e, "active")} title="Reactivate"
                             className="p-1.5 rounded-lg text-ps-label hover:bg-green-50 hover:text-green-700"><RotateCcw size={14} /></button>
                         )}
                         <button onClick={() => deleteEmployeeAction(e)} title="Delete (only if no payroll history)"
-                          className="p-1.5 rounded-lg text-ps-label hover:bg-state-problem-surface hover:text-red-600"><Trash2 size={14} /></button>
+                          className="p-1.5 rounded-lg text-ps-label hover:bg-state-problem-hover hover:text-red-600"><Trash2 size={14} /></button>
                       </div>
                     );
                   }}

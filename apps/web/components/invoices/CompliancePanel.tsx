@@ -303,7 +303,7 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
 
 const STATE_BADGE: Record<string, string> = {
   none: "bg-ps-muted text-ps-label",
-  draft: "bg-amber-100 text-state-attention",
+  draft: "bg-state-attention-surface text-state-attention",
   generated: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-600",
 };

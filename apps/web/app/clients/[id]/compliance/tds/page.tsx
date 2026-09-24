@@ -73,7 +73,7 @@ interface ChallanGap {
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-ps-muted text-ps-body",
   deposited: "bg-blue-100 text-blue-700",
-  prepared: "bg-amber-100 text-state-attention",
+  prepared: "bg-state-attention-surface text-state-attention",
   ca_approved: "bg-green-100 text-green-700",
   filed: "bg-emerald-100 text-emerald-800",
   draft: "bg-ps-muted text-ps-body",
@@ -81,8 +81,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 const KYC_COLORS: Record<string, string> = {
   active: "bg-green-100 text-green-700",
-  pending: "bg-amber-100 text-state-attention",
-  expired: "bg-red-100 text-state-problem",
+  pending: "bg-state-attention-surface text-state-attention",
+  expired: "bg-state-problem-surface text-state-problem",
 };
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -1059,7 +1059,7 @@ export default function TDSWorkspacePage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">TDS Compliance Workspace</h2>
-        <Badge variant="outline" className="text-state-attention border-amber-300 bg-state-attention-surface text-xs">
+        <Badge variant="outline" className="text-state-attention border-state-attention-border bg-state-attention-surface text-xs">
           CA Review Required before filing
         </Badge>
       </div>

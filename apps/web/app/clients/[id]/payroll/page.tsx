@@ -862,7 +862,7 @@ function RunsTab({ clientId, firmId, openDoc }:
                   ) : (
                     <button onClick={() => setConfirmDelete(r.id)}
                       title="Throw this draft away — the month becomes creatable again"
-                      className="text-2xs px-2.5 py-1.5 border border-state-problem-border rounded-lg hover:bg-state-problem-surface text-state-problem">
+                      className="text-2xs px-2.5 py-1.5 border border-state-problem-border rounded-lg hover:bg-state-problem-hover text-state-problem">
                       Delete
                     </button>
                   )
@@ -873,13 +873,13 @@ function RunsTab({ clientId, firmId, openDoc }:
                     wizards can never be open at once. */}
                 {(r.status === "finalized" || r.status === "paid") && demoFlows.includes("pf") && (
                   <button onClick={() => setDemo({ flow: "pf", runId: r.id })}
-                    className="text-2xs px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-state-attention-surface text-amber-800">
+                    className="text-2xs px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-state-attention-hover text-amber-800">
                     PF ECR (demo)
                   </button>
                 )}
                 {(r.status === "finalized" || r.status === "paid") && demoFlows.includes("esi") && (
                   <button onClick={() => setDemo({ flow: "esi", runId: r.id })}
-                    className="text-2xs px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-state-attention-surface text-amber-800">
+                    className="text-2xs px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-state-attention-hover text-amber-800">
                     ESI (demo)
                   </button>
                 )}
@@ -1164,7 +1164,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                       {(finalized || paid) && (
                         // Never primary. It is a correction to posted books.
                         <button onClick={() => reverse(r)} disabled={busy === r.id}
-                          className="px-3 py-1 border border-ps-border rounded-lg text-ps-label hover:bg-state-problem-surface hover:text-red-600 disabled:opacity-50">
+                          className="px-3 py-1 border border-ps-border rounded-lg text-ps-label hover:bg-state-problem-hover hover:text-red-600 disabled:opacity-50">
                           {busy === r.id ? "Reversing…" : "Reverse"}
                         </button>
                       )}

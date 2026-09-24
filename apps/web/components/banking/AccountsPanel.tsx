@@ -167,7 +167,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
       {msg && (
-        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-state-ready-surface text-money-in" : "bg-state-problem-surface text-state-problem"}`}>
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-state-ready-surface text-state-ready" : "bg-state-problem-surface text-state-problem"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <X size={14} />}
           {msg.text}
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
@@ -332,7 +332,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                       <td className="px-3 py-2 text-right font-mono text-money-out">{t.debit_paise > 0 ? fmt(t.debit_paise) : "—"}</td>
                       <td className="px-3 py-2 text-right font-mono text-money-in">{t.credit_paise > 0 ? fmt(t.credit_paise) : "—"}</td>
                       <td className="px-3 py-2">
-                        <span className={`text-3xs px-1.5 py-0.5 rounded-full font-medium ${t.match_status === "posted" ? "bg-green-100 text-money-in" : t.match_status === "matched" ? "bg-blue-100 text-blue-700" : t.match_status === "ignored" ? "bg-ps-muted text-ps-hint" : "bg-state-attention-border text-state-attention"}`}>{t.match_status}</span>
+                        <span className={`text-3xs px-1.5 py-0.5 rounded-full font-medium ${t.match_status === "posted" ? "bg-state-ready-surface text-state-ready" : t.match_status === "matched" ? "bg-blue-100 text-blue-700" : t.match_status === "ignored" ? "bg-ps-muted text-ps-hint" : "bg-state-attention-surface text-state-attention"}`}>{t.match_status}</span>
                       </td>
                     </tr>
                   ))}
@@ -907,7 +907,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 It is recorded against this statement. {result.verification_gap}
               </p>
             ) : (
-              <p className="text-xs text-state-attention bg-state-attention-surface border border-amber-100 rounded-lg px-3 py-2">
+              <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2">
                 {result.verification_gap
                   ?? "Nothing confirmed that every line was read."}{" "}
                 Compare the totals against the statement before you rely on these figures.
@@ -923,7 +923,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Bank Account *</label>
                 {accounts.length === 0 ? (
-                  <div className="text-xs text-state-attention bg-state-attention-surface border border-amber-100 rounded-lg px-3 py-2">
+                  <div className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2">
                     No active bank accounts. <button onClick={onManageAccounts} className="underline font-medium">Add one first</button>.
                   </div>
                 ) : (
@@ -1051,14 +1051,14 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         A swapped Debit/Credit parses perfectly and inverts the
                         client's cash — no column-label check could catch it. */}
                     {preview.balance_check.checked && preview.balance_check.agrees && (
-                      <p className="text-xs text-money-in bg-state-ready-surface border border-green-100 rounded px-3 py-2">
+                      <p className="text-xs text-state-ready bg-state-ready-surface border border-state-ready-border rounded px-3 py-2">
                         ✓ Checked against the bank&apos;s own balance column across{" "}
                         {preview.balance_check.rows_checked} row{preview.balance_check.rows_checked === 1 ? "" : "s"} — every
                         movement agrees.{preview.balance_check.note ? ` ${preview.balance_check.note}` : ""}
                       </p>
                     )}
                     {preview.balance_check.checked && preview.balance_check.agrees === false && (
-                      <div className="text-xs text-money-out bg-state-problem-surface border border-state-problem-border rounded px-3 py-2 space-y-1.5">
+                      <div className="text-xs text-state-problem bg-state-problem-surface border border-state-problem-border rounded px-3 py-2 space-y-1.5">
                         <p className="font-medium">This mapping disagrees with the bank&apos;s own balances.</p>
                         <p>{preview.balance_check.reason}</p>
                         <label className="flex items-center gap-1.5">
@@ -1068,7 +1068,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                       </div>
                     )}
                     {!preview.balance_check.checked && (
-                      <p className="text-xs text-state-attention bg-state-attention-surface border border-amber-100 rounded px-3 py-2">
+                      <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
                         This statement has no balance column, so the mapping could not be
                         checked arithmetically. Read the rows below before importing.
                       </p>
@@ -1077,12 +1077,12 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         The balance column says the rows agree with each other;
                         this says they agree with what the bank printed. */}
                     {preview.totals_check?.checked && preview.totals_check.agrees && (
-                      <p className="text-xs text-money-in bg-state-ready-surface border border-green-100 rounded px-3 py-2">
+                      <p className="text-xs text-state-ready bg-state-ready-surface border border-state-ready-border rounded px-3 py-2">
                         ✓ Adds up to the statement&apos;s own &ldquo;{preview.totals_check.label}&rdquo; row.
                       </p>
                     )}
                     {preview.totals_check?.checked && preview.totals_check.agrees === false && (
-                      <p className="text-xs text-money-out bg-state-problem-surface border border-state-problem-border rounded px-3 py-2">
+                      <p className="text-xs text-state-problem bg-state-problem-surface border border-state-problem-border rounded px-3 py-2">
                         {preview.totals_check.reason}
                       </p>
                     )}
@@ -1091,7 +1091,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         front of a statement that visibly has them sends the CA
                         looking for a parsing bug. */}
                     {preview.totals_check?.ambiguous && (
-                      <p className="text-xs text-state-attention bg-state-attention-surface border border-amber-100 rounded px-3 py-2">
+                      <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
                         {preview.totals_check.gap}
                       </p>
                     )}

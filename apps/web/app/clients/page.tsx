@@ -87,7 +87,7 @@ function payrollBadge(p: PayrollState | undefined):
   }
   return {
     label: "Payroll due",
-    className: "bg-amber-100 text-state-attention",
+    className: "bg-state-attention-surface text-state-attention",
     title: "Payroll is switched on for this client and this month's run has "
          + "not been started.",
   };
@@ -741,7 +741,7 @@ export default function ClientsPage() {
                                   setDeleteBlockers(null);
                                   setActionError(null);
                                 }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-state-problem-surface"
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-state-problem-hover"
                               >
                                 <Trash2 size={13} /> Permanent Delete
                               </button>

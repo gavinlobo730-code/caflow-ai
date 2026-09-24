@@ -394,9 +394,9 @@ function PLStatementReport({ data }: { data: PLData }) {
 
 function ComplianceStatusReport({ data }: { data: ComplianceRow[] }) {
   function trafficLight(filed: number, pending: number, overdue: boolean) {
-    if (overdue) return "bg-red-100 text-state-problem";
+    if (overdue) return "bg-state-problem-surface text-state-problem";
     if (pending === 0) return "bg-green-100 text-green-700";
-    return "bg-amber-100 text-state-attention";
+    return "bg-state-attention-surface text-state-attention";
   }
 
   function label(filed: number, pending: number) {

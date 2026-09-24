@@ -129,8 +129,8 @@ function fyFromPeriodStart(periodStart: string): string {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-amber-100 text-state-attention",
-  overdue: "bg-red-100 text-state-problem",
+  pending: "bg-state-attention-surface text-state-attention",
+  overdue: "bg-state-problem-surface text-state-problem",
   filed: "bg-green-100 text-green-700",
   in_progress: "bg-blue-100 text-blue-700",
 };
@@ -1113,7 +1113,7 @@ export default function IncomeTaxPage() {
                           isPast
                             ? "bg-ps-muted text-ps-label"
                             : isUpcoming
-                            ? "bg-amber-100 text-state-attention"
+                            ? "bg-state-attention-surface text-state-attention"
                             : "bg-blue-50 text-blue-600"
                         }`}
                       >

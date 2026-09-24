@@ -184,7 +184,7 @@ export default function ApprovalsPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         {overdue && (
-                          <span className="flex items-center gap-1 text-xs bg-red-100 text-state-problem px-2 py-0.5 rounded-full font-medium">
+                          <span className="flex items-center gap-1 text-xs bg-state-problem-surface text-state-problem px-2 py-0.5 rounded-full font-medium">
                             <AlertTriangle size={10} /> Overdue
                           </span>
                         )}
@@ -225,7 +225,7 @@ export default function ApprovalsPage() {
                         </span>
                       )}
                       {approval.status === "rejected" && (
-                        <span className="flex items-center gap-1 text-xs bg-red-100 text-state-problem px-3 py-1.5 rounded-lg font-medium">
+                        <span className="flex items-center gap-1 text-xs bg-state-problem-surface text-state-problem px-3 py-1.5 rounded-lg font-medium">
                           <XCircle size={12} /> Rejected
                         </span>
                       )}
@@ -259,7 +259,7 @@ export default function ApprovalsPage() {
                         <button
                           onClick={() => respond(approval.id, "rejected")}
                           disabled={responding === approval.id}
-                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-state-problem-surface text-state-problem border border-state-problem-border hover:bg-red-100 disabled:opacity-50"
+                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-state-problem-surface text-state-problem border border-state-problem-border hover:bg-state-problem-hover disabled:opacity-50"
                         >
                           <XCircle size={12} />
                           Reject

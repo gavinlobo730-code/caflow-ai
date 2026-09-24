@@ -91,7 +91,7 @@ const ROLES: Role[] = ["Partner", "Manager", "Executive", "Reviewer"];
 const ROLE_COLORS: Record<Role, string> = {
   Partner: "bg-purple-100 text-purple-700",
   Manager: "bg-blue-100 text-blue-700",
-  Executive: "bg-state-attention-border text-state-attention",
+  Executive: "bg-teal-100 text-teal-700",
   Reviewer: "bg-ps-muted text-ps-label",
 };
 

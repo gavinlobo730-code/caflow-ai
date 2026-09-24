@@ -26,7 +26,7 @@ interface FirmUser { name: string; email: string; role: string; status: string }
 
 const STATUS_BADGE: Record<string, string> = {
   active: "bg-green-100 text-green-700",
-  suspended: "bg-amber-100 text-state-attention",
+  suspended: "bg-state-attention-surface text-state-attention",
   deleted: "bg-red-100 text-red-600",
 };
 
@@ -298,7 +298,7 @@ export default function PlatformAdminPage() {
       </div>
 
       {toast && (
-        <div className={`rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2 ${toast.ok ? "bg-green-50 text-green-700 border border-green-100" : "bg-state-problem-surface text-state-problem border border-red-100"}`}>
+        <div className={`rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2 ${toast.ok ? "bg-green-50 text-green-700 border border-green-100" : "bg-state-problem-surface text-state-problem border border-state-problem-border"}`}>
           <AlertCircle size={14} /> {toast.msg}
         </div>
       )}

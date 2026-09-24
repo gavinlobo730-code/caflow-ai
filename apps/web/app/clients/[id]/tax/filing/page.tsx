@@ -36,7 +36,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 const STATUS_COLOR: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
-  review: "bg-amber-100 text-state-attention",
+  review: "bg-state-attention-surface text-state-attention",
   partner_review: "bg-blue-100 text-blue-700",
   ready_for_filing: "bg-purple-100 text-purple-700",
   filed: "bg-green-100 text-green-700",
@@ -605,7 +605,7 @@ export default function ITRFilingPage() {
             {selectedFiling.status === "ready_for_filing" && demoFlows.includes("itr") && (
               <button
                 onClick={() => setDemo({ id: selectedFiling.id })}
-                className="text-xs px-4 py-2 border border-amber-300 rounded-lg hover:bg-state-attention-surface text-amber-800"
+                className="text-xs px-4 py-2 border border-amber-300 rounded-lg hover:bg-state-attention-hover text-amber-800"
               >
                 File (demo)
               </button>

@@ -230,14 +230,14 @@ function buildStatutoryCalendar(
 function StatusBadge({ status }: { status: DueStatus }) {
   if (status === "overdue") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-state-problem">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-state-problem-surface text-state-problem">
         <AlertTriangle size={11} />Overdue
       </span>
     );
   }
   if (status === "due-soon") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-state-attention">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-state-attention-surface text-state-attention">
         <Clock size={11} />Due Soon
       </span>
     );
@@ -616,7 +616,13 @@ function YtdTab({ employees, runs, fyOptions }: {
                     <td className="py-3 px-4 text-right font-mono text-state-problem">{r.totalDeductions > 0 ? fmtPaise(r.totalDeductions) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{r.net > 0 ? fmtPaise(r.net) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono bg-blue-50/50 font-semibold text-ps-ink">{fmtPaise(r.ytdGross)}</td>
-                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-state-problem">{fmtPaise(r.ytdTds)}</td>
+                    {/* The YTD trio share `bg-blue-50/50` as a COLUMN-GROUP shade, so the
+                        surface is not this cell's to move — the ink is. Tax withheld
+                        under §192 is not a problem: §198 deems it income received and
+                        §199 gives the employee credit for it. It takes the same neutral
+                        as the YTD Gross cell beside it. (The rest of this file's
+                        deduction colouring is T4-b's judgement pass, not this rule.) */}
+                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-ps-body">{fmtPaise(r.ytdTds)}</td>
                     <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-green-700 font-semibold">{fmtPaise(r.ytdNet)}</td>
                   </tr>
                 ))}

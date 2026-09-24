@@ -178,7 +178,7 @@ export default function ClientRelationshipsPage() {
           <button
             onClick={handleDetectMatches}
             disabled={actionInFlight}
-            className="flex items-center gap-1 text-xs text-state-attention border border-amber-300 px-2.5 py-1.5 rounded hover:bg-state-attention-surface disabled:opacity-50"
+            className="flex items-center gap-1 text-xs text-state-attention border border-state-attention-border px-2.5 py-1.5 rounded hover:bg-state-attention-hover disabled:opacity-50"
           >
             <Network size={12} /> Detect Matches
           </button>
@@ -267,14 +267,14 @@ export default function ClientRelationshipsPage() {
                   {matches.map((m) => (
                     <tr key={m.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3">
-                        <Badge className="bg-amber-100 text-state-attention text-3xs">{m.match_type.toUpperCase()}</Badge>
+                        <Badge className="bg-state-attention-surface text-state-attention text-3xs">{m.match_type.toUpperCase()}</Badge>
                       </td>
                       <td className="px-3 py-3 text-gray-700 text-xs font-mono">{m.pan}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">
                         {m.client_id_a === clientId ? m.client_id_b.slice(0, 8) : m.client_id_a.slice(0, 8)}…
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={m.is_confirmed ? "bg-red-100 text-state-problem text-3xs" : "bg-amber-100 text-state-attention text-3xs"}>
+                        <Badge className={m.is_confirmed ? "bg-state-problem-surface text-state-problem text-3xs" : "bg-state-attention-surface text-state-attention text-3xs"}>
                           {m.is_reviewed ? (m.is_confirmed ? "Confirmed" : "Dismissed") : "Pending"}
                         </Badge>
                       </td>

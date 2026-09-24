@@ -114,7 +114,7 @@ function gradeBadge(grade: Grade): string {
     "Good":            "bg-blue-100 text-blue-700",
     "Needs Attention": "bg-yellow-100 text-yellow-700",
     "At Risk":         "bg-orange-100 text-orange-700",
-    "Critical":        "bg-red-100 text-state-problem",
+    "Critical":        "bg-state-problem-surface text-state-problem",
   };
   return map[grade] ?? "bg-gray-100 text-gray-700";
 }
