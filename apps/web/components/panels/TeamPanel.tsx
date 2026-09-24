@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserCheck, LayoutGrid, Users, Link2, ShieldCheck, History, Gauge } from "lucide-react";
+import { UserCheck, LayoutGrid, Link2, ShieldCheck, History, Gauge } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
 import { usePermissions } from "@/lib/auth/AuthContext";
 
@@ -12,9 +12,17 @@ import { usePermissions } from "@/lib/auth/AuthContext";
 // an item with no `requires` is a claim that no FastAPI permission governs it,
 // not that nobody checked.
 //
-// Work Allocation and Attendance query Supabase directly (RLS, not rbac()), so
-// there is no matrix entry to gate them on — inventing one here would hide a
-// page that actually works.
+// Work Allocation queries Supabase directly (RLS, not rbac()), so there is no
+// matrix entry to gate it on — inventing one here would hide a page that
+// actually works.
+//
+// ⚠️ `/payroll/attendance` WAS HERE AND LEFT ON 24-09 (PAY-28). It was listed
+// as a cross-module convenience — attendance is staff-shaped — while the panel
+// that owns `/payroll` did not list it at all, so payroll's screens sat across
+// three top-level areas and attendance was the one nobody could find from
+// payroll. It is in `PayrollPanel` now, under "This month", where the LOP it
+// records is an input to the run. Do not add it back: two panels listing one
+// screen is the defect, not the fix.
 const TEAM_ITEMS: Array<{
   href: string;
   label: string;
@@ -34,7 +42,6 @@ const TEAM_ITEMS: Array<{
   // this panel nor any landing page — one of exactly two named screens in the
   // product reachable only by typing its name into ⌘K.
   { href: "/team/workload", label: "Workload", icon: Gauge, requires: ["workload", "read"] },
-  { href: "/payroll/attendance", label: "Attendance", icon: Users },
 ];
 
 export function TeamPanel() {

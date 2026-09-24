@@ -9,8 +9,6 @@ import {
   Download,
   BookOpen,
   Receipt,
-  Briefcase,
-  ShieldCheck,
   DatabaseZap,
   LayoutDashboard,
   Users,
@@ -23,10 +21,6 @@ import {
   ClipboardCheck,
   Scale,
   Lock,
-  UserCog,
-  CalendarCheck,
-  FileSpreadsheet,
-  BarChart3,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
 import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
@@ -62,8 +56,16 @@ import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
  * `rbac()` remains the boundary — it stops the panel offering a link that can
  * only bounce.
  *
- * Payroll and Fee Billing map to this workspace (see routeOwnership.ts), so
- * their screens are grouped here rather than left unreachable from the rail.
+ * Fee Billing and Data Migration map to this workspace (see routeOwnership.ts),
+ * so their screens are grouped here rather than left unreachable from the rail.
+ *
+ * ⚠️ PAYROLL LEFT ON 24-09 AND THAT IS PAY-28, not a deletion. Its six screens
+ * were listed here under a "Payroll" heading; payroll is now the thirteenth
+ * top-level workspace with its own panel (`PayrollPanel`), because a bureau
+ * running payroll for a dozen clients needs a home for the service rather than
+ * a sub-heading inside somebody else's module. `routeOwnership.ts` asks
+ * `/payroll` BEFORE `/accounting`, so nothing here owns those routes any more
+ * and re-adding one would put payroll in two places again.
  */
 type NavItem = {
   label: string;
@@ -129,24 +131,6 @@ const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
     ],
   },
   {
-    heading: "Payroll",
-    // payroll.py: every endpoint these five pages call is rbac("payroll", …).
-    items: [
-      { label: "Payroll Runs", href: "/payroll", icon: Briefcase, exact: true,
-        requires: ["payroll", "read"] },
-      { label: "Employees", href: "/payroll/people", icon: UserCog,
-        requires: ["payroll", "read"] },
-      { label: "Attendance", href: "/payroll/attendance", icon: CalendarCheck,
-        requires: ["payroll", "read"] },
-      { label: "Investment Declarations", href: "/payroll/declarations", icon: FileSpreadsheet,
-        requires: ["payroll", "read"] },
-      { label: "Payroll Reports", href: "/payroll/reports", icon: BarChart3,
-        requires: ["payroll", "read"] },
-      { label: "Payroll Statutory", href: "/payroll/statutory", icon: ShieldCheck,
-        requires: ["payroll", "read"] },
-    ],
-  },
-  {
     heading: "Firm",
     items: [
       { label: "Fee Billing", href: "/billing", icon: Receipt,
@@ -186,9 +170,12 @@ export function AccountingPanel() {
         </div>
       </div>
 
-      {/* Nav items. Grouped because the whole module is 22 entries and an
-          ungrouped list of 22 is a wall — the headings are how it stays
-          scannable at the 220px the panel gets. */}
+      {/* Nav items. Grouped because the whole module is 17 entries and an
+          ungrouped list of 17 is a wall — the headings are how it stays
+          scannable at the 220px the panel gets. (It was 22 before payroll's
+          six moved out to their own workspace; grouping still earns its
+          keep, and the headings are the module's own shape rather than a
+          length threshold.) */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
         {groups.map(({ heading, items }) => (
           <div key={heading ?? "_"} className={heading ? "mt-3 first:mt-0" : ""}>
