@@ -267,7 +267,7 @@ export default function WorkflowsPage() {
         {toggleError && (
           <div role="alert" className="mb-3 flex items-center justify-between gap-2 bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2">
             <p className="text-xs text-state-problem">{toggleError}</p>
-            <button onClick={() => setToggleError(null)} className="text-xs text-red-500 hover:underline shrink-0">Dismiss</button>
+            <button onClick={() => setToggleError(null)} className="text-xs text-state-problem hover:underline shrink-0">Dismiss</button>
           </div>
         )}
         {tab === "templates" && (

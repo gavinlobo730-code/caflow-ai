@@ -304,7 +304,7 @@ export default function DashboardContent() {
           KPIs on screen but make it explicit they may be stale, and offer Retry. */}
       {loadFailed && (
         <div role="alert" className="flex items-center gap-3 rounded-xl border border-state-problem-border bg-state-problem-surface px-4 py-3">
-          <AlertTriangle size={16} className="text-red-600 shrink-0" />
+          <AlertTriangle size={16} className="text-state-problem shrink-0" />
           <p className="text-sm text-state-problem flex-1">
             Couldn&apos;t load your dashboard — please retry. The figures below may be stale.
           </p>

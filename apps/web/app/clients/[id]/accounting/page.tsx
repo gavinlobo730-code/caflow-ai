@@ -1460,7 +1460,7 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
       ) : loaded ? (
         loadFailed ? (
           <div className="text-center py-12" role="alert">
-            <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the trial balance — the request failed or timed out.</p>
+            <p className="text-sm text-state-problem font-medium mb-2">Couldn&apos;t load the trial balance — the request failed or timed out.</p>
             <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
           </div>
         ) : (

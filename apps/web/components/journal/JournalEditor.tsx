@@ -433,7 +433,7 @@ export function JournalEditor({
         )}
 
         {(localError || serverError) && (
-          <p role="alert" className="text-xs text-red-600 bg-state-problem-surface rounded px-3 py-2">
+          <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">
             {localError || serverError}
           </p>
         )}

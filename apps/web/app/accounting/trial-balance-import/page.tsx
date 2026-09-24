@@ -180,7 +180,7 @@ export default function TrialBalanceImportPage() {
         {err && (
           <Card role="alert" className="mb-4 border-state-problem-border bg-state-problem-surface">
             <CardContent className="pt-4 flex gap-2">
-              <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+              <AlertCircle size={16} className="text-state-problem shrink-0 mt-0.5" />
               <p className="text-sm text-state-problem">{err}</p>
             </CardContent>
           </Card>

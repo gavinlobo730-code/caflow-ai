@@ -461,7 +461,7 @@ export default function CopilotPage() {
               {/* Input */}
               <div className="px-6 py-4 border-t border-ps-border bg-white flex-shrink-0">
                 {chatError && (
-                  <div role="alert" className="max-w-3xl mx-auto mb-2 flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-lg px-3 py-2">
+                  <div role="alert" className="max-w-3xl mx-auto mb-2 flex items-center justify-between gap-3 bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2">
                     <p className="text-xs text-state-problem">{chatError}</p>
                     <button onClick={() => setChatError(null)} className="text-red-400 hover:text-red-600 shrink-0">✕</button>
                   </div>

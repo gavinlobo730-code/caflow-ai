@@ -147,7 +147,7 @@ export default function OwnershipMapPage() {
 
           {error && (
             <Card role="alert" className="bg-state-problem-surface border-state-problem-border">
-              <CardContent className="p-4 text-sm text-red-600">{error}</CardContent>
+              <CardContent className="p-4 text-sm text-state-problem">{error}</CardContent>
             </Card>
           )}
 

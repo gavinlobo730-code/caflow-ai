@@ -438,7 +438,7 @@ export default function MigrationPage() {
       )}
 
       {error && (
-        <div role="alert" className="bg-state-problem-surface border border-red-100 rounded-lg px-4 py-3 flex items-start gap-2 text-xs text-red-600">
+        <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3 flex items-start gap-2 text-xs text-state-problem">
           <AlertTriangle size={14} className="shrink-0 mt-0.5" />
           <span className="flex-1">{error}</span>
           <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">Dismiss</button>
