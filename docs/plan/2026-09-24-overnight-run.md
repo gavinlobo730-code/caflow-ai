@@ -631,6 +631,18 @@ It is deliberately **not a ban**: a chart series or an illustration may need a
 palette step no token names. What the ratchet buys is that a module's
 conversion cannot be undone by the next screen somebody writes.
 
+⚠️ **AND 4,373 IS A CEILING, NOT A BACKLOG.** 1.3d's own record puts three
+categories deliberately outside the conversion — links (`text-blue-*`, because
+a link in #182350 reads as body text), the `-50`/`-100` tint panels, and the
+opacity-modified column shades. A sample of `app/income-tax`'s 202 is roughly
+half exactly those: `bg-blue-50 border-blue-200` info boxes and `bg-green-50`
+chips. **A blind module sweep would reverse recorded decisions rather than
+continue them.** It is a judgement per site, which is what 1.3 has said from
+the start; the ratchet's job is to stop the number growing while that judgement
+is made, not to turn it into a queue. The income-tax sample did turn up one
+real item — a `bg-green-600` primary-action button in a module whose primary is
+the brand navy.
+
 ## And the smoke walk was reading the wrong list
 
 `scripts/screens.snapshot.json` is a **record** of the screens the product had
