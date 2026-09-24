@@ -75,6 +75,7 @@ caller supplies this figure explicitly and it is named for what it is.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from domain.money_text import rupees_paise, whole_rupees
 
 # ── Rule 3(1), as substituted by Notification 65/2023 w.e.f. 01-09-2023 ──────
 # (population threshold in lakh, percentage of salary in basis points)
@@ -180,7 +181,7 @@ def value_accommodation(
         rent = max(0, actual_lease_rent_paise)
         gross = min(rent, cap)
         note = ("Taken on lease: the lower of the rent paid "
-                f"(₹{rent / 100:,.2f}) and 10% of salary (₹{cap / 100:,.2f}).")
+                f"(₹{rupees_paise(rent)}) and 10% of salary (₹{rupees_paise(cap)}).")
 
     value = max(0, gross - max(0, rent_recovered_from_employee_paise))
     return Perquisite(label="Accommodation", value_paise=value,
@@ -234,7 +235,7 @@ def value_motor_car(
         note=(f"Part official, part personal; {who}; engine "
               f"{'over' if large else 'up to'} 1.6 litre"
               f"{'; with driver' if with_driver else ''}. "
-              f"₹{monthly / 100:,.0f} a month for {months} months.")), gaps
+              f"₹{whole_rupees(monthly)} a month for {months} months.")), gaps
 
 
 def value_concessional_loan(
@@ -276,8 +277,8 @@ def value_concessional_loan(
     return Perquisite(
         label="Concessional loan", value_paise=value, rule="Rule 3(7)(i)",
         note=(f"SBI rate {sbi_rate_bps_on_first_day / 100:g}% on a maximum "
-              f"outstanding of ₹{outstanding / 100:,.2f} for {months} months, "
-              f"less ₹{interest_actually_charged_paise / 100:,.2f} charged.")), gaps
+              f"outstanding of ₹{rupees_paise(outstanding)} for {months} months, "
+              f"less ₹{rupees_paise(interest_actually_charged_paise)} charged.")), gaps
 
 
 def value_meals(*, meals_provided: int, cost_per_meal_paise: int) -> Perquisite:
@@ -286,7 +287,7 @@ def value_meals(*, meals_provided: int, cost_per_meal_paise: int) -> Perquisite:
     return Perquisite(
         label="Free or concessional meals", value_paise=excess * max(0, meals_provided),
         rule="Rule 3(7)(iii)",
-        note=f"₹{cost_per_meal_paise / 100:,.2f} a meal, of which ₹50 is exempt.")
+        note=f"₹{rupees_paise(cost_per_meal_paise)} a meal, of which ₹50 is exempt.")
 
 
 def value_gifts(*, total_gifts_paise: int) -> Perquisite:

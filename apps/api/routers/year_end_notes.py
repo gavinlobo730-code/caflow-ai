@@ -29,6 +29,7 @@ from services.audit_service import log_event
 # Delegates to year_end.py's own _assert_engagement_scope rather than a
 # fifth copy of the same check.
 from routers.year_end import _assert_engagement_scope
+from domain.money_text import rupees_paise
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -167,7 +168,7 @@ def _compute_fixed_assets_note_data(db, firm_id: str, client_id: str, fy_end: Op
 
 def _rupees(paise: int) -> str:
     """Paise as a plain rupee figure for a sentence a CA reads."""
-    return f"Rs {paise / 100:,.2f}"
+    return f"Rs {rupees_paise(paise)}"
 
 
 def _compute_accounting_policies_data(

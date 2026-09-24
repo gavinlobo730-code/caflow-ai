@@ -45,6 +45,7 @@ from services import period_lock_service
 from services.timeline_service import timeline_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
+from domain.money_text import whole_rupees
 
 
 class SalesDebitNoteIn(BaseModel):
@@ -501,7 +502,7 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
             client_id=client_id, firm_id=firm_id or "", financial_year=ist_fy_label(updated.get("debit_note_date")),
             category="accounting", event_type="sales_debit_note_issued",
             title=f"Debit Note {updated.get('debit_note_no', '')} issued",
-            description=f"Sales debit note for ₹{updated.get('total_paise', 0) // 100:,} issued.",
+            description=f"Sales debit note for ₹{whole_rupees(updated.get('total_paise', 0))} issued.",
             severity="success", entity_type="sales_debit_note", entity_id=sdn_id,
             amount_paise=updated.get("total_paise"),
             actor_id=current_user.get("auth_user_id"), actor_name=current_user.get("email"),

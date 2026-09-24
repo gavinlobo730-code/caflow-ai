@@ -54,6 +54,7 @@ from decimal import Decimal
 from typing import Optional
 
 from domain.purchases.order_cycle import to_decimal
+from domain.money_text import rupees_paise
 
 NO_TOLERANCE_IS_APPLIED = (
     "Every difference below is stated exactly. No tolerance is applied: "
@@ -264,7 +265,7 @@ def _rupees(paise: int) -> str:
     """A difference is read by a person, so it says rupees."""
     sign = "-" if paise < 0 else ""
     paise = abs(int(paise))
-    return f"{sign}Rs {paise // 100:,}.{paise % 100:02d}"
+    return f"{sign}Rs {rupees_paise(paise)}"
 
 
 # ── The MSMED s.15 clock ─────────────────────────────────────────────────────

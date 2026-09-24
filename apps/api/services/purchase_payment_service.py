@@ -29,6 +29,7 @@ from domain.tds.residency import (
     GAP_FOREIGN_ADVANCE_NOT_WITHHELD, describe_gaps,
 )
 from core.ist_clock import fy_code, ist_fy_label
+from domain.money_text import rupees_paise, whole_rupees
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payment_service")
@@ -356,7 +357,7 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         client_id=client_id, firm_id=firm_id or "", financial_year=ist_fy_label(data["payment_date"]),
         category="accounting", event_type="payment_recorded",
         title=f"Vendor Payment {payment_no} recorded",
-        description=f"Payment of ₹{amount_paise // 100:,} made to vendor across {len(alloc_payloads)} bill(s).",
+        description=f"Payment of ₹{whole_rupees(amount_paise)} made to vendor across {len(alloc_payloads)} bill(s).",
         severity="success", entity_type="purchase_payment", entity_id=payment_id,
         amount_paise=amount_paise, actor_id=(actor or {}).get("auth_user_id"), actor_name=(actor or {}).get("email"),
     )
@@ -727,7 +728,7 @@ def update_allocations_core(firm_id: str, payment_id: str, allocations: list, ac
         if req_amt > outstanding:
             raise HTTPException(
                 status_code=422,
-                detail=f"Allocation (₹{req_amt/100:,.2f}) exceeds the bill's outstanding (₹{max(outstanding, 0)/100:,.2f}).")
+                detail=f"Allocation (₹{rupees_paise(req_amt)}) exceeds the bill's outstanding (₹{rupees_paise(max(outstanding, 0))}).")
 
     # Reverse this payment's PRIOR allocations before re-applying, so
     # paid_paise is recomputed from scratch and never inflated by repeated

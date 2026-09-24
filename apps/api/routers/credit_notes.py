@@ -22,6 +22,7 @@ from services import period_lock_service
 from services.timeline_service import timeline_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
+from domain.money_text import rupees_paise, whole_rupees
 
 
 class CreditNoteIn(BaseModel):
@@ -692,8 +693,8 @@ def issue_credit_note(
                 if cn_total > net_outstanding:
                     raise HTTPException(
                         status_code=422,
-                        detail=(f"Credit note (₹{cn_total / 100:,.2f}) exceeds the invoice's outstanding "
-                                f"(₹{net_outstanding / 100:,.2f})."),
+                        detail=(f"Credit note (₹{rupees_paise(cn_total)}) exceeds the invoice's outstanding "
+                                f"(₹{rupees_paise(net_outstanding)})."),
                     )
                 new_credited = credited + cn_total
                 settled = paid + new_credited
@@ -778,7 +779,7 @@ def issue_credit_note(
             category="accounting",
             event_type="credit_note_issued",
             title=f"Credit Note {updated_cn.get('credit_note_no', '')} issued",
-            description=f"Credit note for ₹{updated_cn.get('total_paise', 0) // 100:,} issued.",
+            description=f"Credit note for ₹{whole_rupees(updated_cn.get('total_paise', 0))} issued.",
             severity="success",
             entity_type="credit_note",
             entity_id=cn_id,

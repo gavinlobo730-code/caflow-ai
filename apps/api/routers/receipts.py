@@ -20,6 +20,7 @@ from services import receipt_service
 from services import reversal_service
 # Re-exported for backward compat — collections_service and tests import these here.
 from services.receipt_service import MOCK_RECEIPTS, MOCK_RECEIPT_ALLOCATIONS
+from domain.money_text import rupees_paise
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.receipts")
@@ -291,7 +292,7 @@ def update_allocations(
             if req_amt > outstanding:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Allocation (₹{req_amt/100:,.2f}) exceeds the invoice's outstanding (₹{max(outstanding,0)/100:,.2f}).")
+                    detail=f"Allocation (₹{rupees_paise(req_amt)}) exceeds the invoice's outstanding (₹{rupees_paise(max(outstanding,0))}).")
 
         # H3 fix: reverse this receipt's PRIOR allocations before re-applying, so
         # invoice.paid_paise is recomputed from scratch and never inflated by

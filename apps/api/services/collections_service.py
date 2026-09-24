@@ -22,6 +22,7 @@ from services.internal_client_service import get_internal_client_id
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from domain.reporting.party_advances import aging_bucket as _shared_aging_bucket
 from core.ist_clock import ist_today
+from domain.money_text import whole_rupees
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.collections")
@@ -333,7 +334,7 @@ def flag_overdue_for_internal_followup(firm_id: str, today: Optional[date] = Non
             timeline_service.log(
                 inv.get("client_id", ""), "ai", "Flagged for Collections Follow-up",
                 f"Internal note #{count} for invoice {inv.get('invoice_no','')} "
-                f"(₹{m['outstanding_paise'] // 100:,} overdue {m['days_overdue']}d). "
+                f"(₹{whole_rupees(m['outstanding_paise'])} overdue {m['days_overdue']}d). "
                 f"Nothing was sent to the customer.",
                 "warning", firm_id=firm_id,
                 entity_type="sales_invoice", entity_id=inv.get("id"),

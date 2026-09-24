@@ -67,6 +67,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from domain.money_text import rupees_paise
 
 # Payment of Gratuity Act §4(3), as raised by S.O. 1420(E) of 29-03-2018.
 GRATUITY_CEILING_PAISE: int = 20_00_000 * 100
@@ -242,8 +243,8 @@ def compute(
 
     if amount_actually_paid_paise is not None and paid > statutory:
         out.gaps.append(
-            f"₹{paid / 100:,.2f} is being paid against a statutory entitlement of "
-            f"₹{statutory / 100:,.2f}. §10(10) exempts the FORMULA amount, not "
+            f"₹{rupees_paise(paid)} is being paid against a statutory entitlement of "
+            f"₹{rupees_paise(statutory)}. §10(10) exempts the FORMULA amount, not "
             f"whatever was paid, so the excess is taxable salary and belongs in "
             f"the year's §17(1) figure."
         )

@@ -33,6 +33,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from core.ist_clock import fy_bounds as _fy_bounds_from_label, ist_fy_label
+from domain.money_text import whole_rupees
 
 _logger = logging.getLogger("caflow.vendor_tds")
 
@@ -401,18 +402,18 @@ def resolve_resident_tds(
     if not _tds.applies:
         why = (f"Nothing withheld: §{tds_section} does not charge this "
                f"{event_noun}. The year's payments to this payee under this "
-               f"section so far are ₹{(fy_prior + own_base) // 100:,}.")
+               f"section so far are ₹{whole_rupees((fy_prior + own_base))}.")
     elif fy_prior > 0:
         why = (f"§{tds_section} at {_tds.rate_pct:g}% on the year's aggregate of "
-               f"₹{(fy_prior + own_base) // 100:,}, less ₹{fy_prior_tds // 100:,} "
+               f"₹{whole_rupees((fy_prior + own_base))}, less ₹{whole_rupees(fy_prior_tds)} "
                f"already withheld on earlier bills and advances (§200).")
     else:
-        why = f"§{tds_section} at {_tds.rate_pct:g}% on ₹{own_base // 100:,}."
+        why = f"§{tds_section} at {_tds.rate_pct:g}% on ₹{whole_rupees(own_base)}."
     if adjusted:
         # Said on the document it affects. A bill that withholds nothing
         # because an advance already carried the tax looks, on its own, like a
         # bill the software forgot.
-        why += (f" ₹{adjusted // 100:,} of this {event_noun} was already "
+        why += (f" ₹{whole_rupees(adjusted)} of this {event_noun} was already "
                 f"charged as an advance and is not charged again "
                 f"(§194 — credit or payment, whichever is earlier).")
     # IT Act §197, said on the document. A certificate that lowered the rate and
@@ -421,10 +422,10 @@ def resolve_resident_tds(
     # certificate they know they recorded.
     if _tds.applies and _tds.certified_base_paise and cert is not None:  # noqa: E501
         why += (f" §197 certificate {cert.certificate_no} at "
-                f"{cert.rate_bps / 100:g}% on ₹{_tds.certified_base_paise // 100:,} "
+                f"{cert.rate_bps / 100:g}% on ₹{whole_rupees(_tds.certified_base_paise)} "
                 f"of that.")
         if _tds.certified_base_paise < (fy_prior + own_base):
-            why += (f" The certificate's ₹{cert.ceiling_paise // 100:,} ceiling "
+            why += (f" The certificate's ₹{whole_rupees(cert.ceiling_paise)} ceiling "
                     f"(Rule 28AA(4)) is exhausted, so the excess is at the "
                     f"section rate.")
     elif position.refusal:

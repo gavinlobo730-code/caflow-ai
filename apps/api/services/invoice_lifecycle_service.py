@@ -13,6 +13,7 @@ from typing import Optional
 
 from repositories.invoice_repository import invoice_repo
 from core.ist_clock import ist_today
+from domain.money_text import whole_rupees
 
 logger = logging.getLogger("caflow.services")
 
@@ -85,7 +86,7 @@ def _notify_overdue(invoice: dict) -> None:
                 "title": f"Invoice Overdue: {invoice.get('invoice_no', '')}",
                 "message": (
                     f"Invoice {invoice.get('invoice_no', '')} "
-                    f"(total ₹{invoice.get('total_paise', 0) // 100:,}) is past its due date."
+                    f"(total ₹{whole_rupees(invoice.get('total_paise', 0))}) is past its due date."
                 ),
                 "metadata": {
                     "invoice_id": invoice["id"],

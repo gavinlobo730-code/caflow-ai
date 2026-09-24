@@ -30,6 +30,7 @@ from services.timeline_service import timeline_service
 from services import tds_register_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
+from domain.money_text import rupees_paise, whole_rupees
 
 # Same private Storage bucket routers/documents.py and document_intelligence_v1.py
 # use — plain attachment (a scanned goods-return note, vendor acknowledgment),
@@ -503,8 +504,8 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
                 if dn_total > outstanding:
                     raise HTTPException(
                         status_code=422,
-                        detail=f"Debit note (₹{dn_total/100:,.2f}) exceeds the bill's outstanding "
-                               f"(₹{outstanding/100:,.2f}).")
+                        detail=f"Debit note (₹{rupees_paise(dn_total)}) exceeds the bill's outstanding "
+                               f"(₹{rupees_paise(outstanding)}).")
                 new_debited = debited + dn_total
                 settled = paid + new_debited
                 new_status = "paid" if settled >= effective_payable else ("partially_paid" if settled > 0 else bill.get("status"))
@@ -565,7 +566,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             client_id=client_id, firm_id=firm_id or "", financial_year=ist_fy_label(updated.get("debit_note_date")),
             category="accounting", event_type="debit_note_issued",
             title=f"Debit Note {updated.get('debit_note_no', '')} issued",
-            description=f"Debit note for ₹{updated.get('total_paise', 0)//100:,} issued.",
+            description=f"Debit note for ₹{whole_rupees(updated.get('total_paise', 0))} issued.",
             severity="success", entity_type="debit_note", entity_id=dn_id,
             amount_paise=updated.get("total_paise"),
             actor_id=current_user.get("auth_user_id"), actor_name=current_user.get("email"))

@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException
+from domain.money_text import rupees_paise
 
 _logger = logging.getLogger("caflow.party_credit")
 
@@ -243,8 +244,8 @@ class PartyCreditService:
             current_balance = int(raw_balance or 0)
             if amount_paise > current_balance:
                 raise HTTPException(status_code=422,
-                                    detail=f"Requested application (₹{amount_paise/100:,.2f}) exceeds "
-                                           f"the available credit (₹{current_balance/100:,.2f}).")
+                                    detail=f"Requested application (₹{rupees_paise(amount_paise)}) exceeds "
+                                           f"the available credit (₹{rupees_paise(current_balance)}).")
             new_balance = current_balance - amount_paise
             upd = (db.table("party_credit_balances")
                    .update({"balance_paise": new_balance, "updated_at": _now()})
@@ -278,7 +279,7 @@ class PartyCreditService:
                 if amount_paise > outstanding:
                     raise HTTPException(status_code=422,
                                         detail=f"{applied_to_type} {applied_to_id}: application would exceed its outstanding "
-                                               f"(₹{outstanding/100:,.2f}).")
+                                               f"(₹{rupees_paise(outstanding)}).")
                 raw_paid = doc.get("paid_paise")
                 new_paid = int(raw_paid or 0) + amount_paise
                 new_status = "paid" if amount_paise >= outstanding else "partially_paid"

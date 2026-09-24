@@ -34,6 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Optional
+from domain.money_text import rupees_paise
 
 #: A sales opening document and a purchase one, named so a caller cannot pass
 #: the wrong one by position.
@@ -217,7 +218,7 @@ class PartyReconciliation:
 def _r(paise: int) -> str:
     """Rupees, for a sentence a CA reads. Money crosses the API in paise; this
     is the one place a figure is spelled, because the sentence is the answer."""
-    return f"{paise / 100:,.2f}"
+    return f"{rupees_paise(paise)}"
 
 
 def reconcile(parties: list[dict], documents: list[dict], *,

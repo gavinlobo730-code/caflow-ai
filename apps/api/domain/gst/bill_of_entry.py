@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Optional
+from domain.money_text import rupees_paise
 
 #: The GSTR-2B section a Bill of Entry belongs to. The portal file keeps the two
 #: apart (`data.docdata.impg` and `data.docdata.impgsez`), so a reconciliation
@@ -181,7 +182,7 @@ def readiness(row: dict[str, Any], assessment: Optional[Assessment] = None) -> R
             "port and the number together.")
     if a.non_creditable_duty_paise:
         caveats.append(
-            f"₹{a.non_creditable_duty_paise / 100:,.2f} of duty is not input "
+            f"₹{rupees_paise(a.non_creditable_duty_paise)} of duty is not input "
             f"tax and is posted to the expense account named above. {COST_AUTHORITY} "
             "would put it in the cost of the goods themselves; it is NOT "
             "apportioned across the stock lines, because the basis for that "

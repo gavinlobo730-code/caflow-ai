@@ -36,6 +36,7 @@ refuse a lawful export. `gstr3b_computer` already carries this distinction and
 says the same thing.
 """
 from __future__ import annotations
+from domain.money_text import rupees_paise
 
 #: Supply types the invoice can declare, per migration 268's CHECK.
 #: These three assert that no tax is chargeable on the supply.
@@ -73,7 +74,7 @@ def tax_conflict(
     if stype in UNTAXED_SUPPLY_TYPES:
         return (
             f"This invoice is classified as a {_LABEL[stype]} supply but carries "
-            f"₹{tax / 100:,.2f} of GST. A {_LABEL[stype]} supply attracts no tax "
+            f"₹{rupees_paise(tax)} of GST. A {_LABEL[stype]} supply attracts no tax "
             f"(CGST §2(47)/§2(78)), and GSTR-1 reports it as value only — so the "
             f"tax would be charged to the customer and posted to the ledger while "
             f"the return declared none. Either set the line rates to 0% or change "
@@ -82,7 +83,7 @@ def tax_conflict(
 
     if is_reverse_charge:
         return (
-            f"This invoice is marked as reverse charge but carries ₹{tax / 100:,.2f} "
+            f"This invoice is marked as reverse charge but carries ₹{rupees_paise(tax)} "
             f"of GST. Under CGST §9(3)/(4) the RECIPIENT pays the tax — Rule 46(p) "
             f"requires the invoice to say so and the supplier does not charge it. "
             f"GSTR-1 would report this as rchrg=Y, telling the portal the customer "
