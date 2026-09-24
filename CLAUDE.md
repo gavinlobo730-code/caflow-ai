@@ -2640,6 +2640,31 @@ Recorded so nobody goes looking:
 - All API responses must follow: { success: bool, data: any, error: string | null }
   (`models/common.api_response`)
 
+**A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES
+IT.** `lib/api/shape.ts` (`arrayOrEmpty`, `objectOrNull`) was written on
+16-09-2026 after thirteen screens crashed the first time the smoke walk could
+render them, and it says why this is not a test-harness problem: the GST
+workspace router answers a refusal as HTTP 200, `lib/api` aborts at 45 seconds
+and never retries, and Render's free tier cold-starts. A rolling deploy is a
+fourth — the frontend is live before the backend that serves the new field.
+**Two components written AFTER that sweep reintroduced it and the walk of
+24-09-2026 crashed on both**: `ExpiringEwayBills` guarded `!report` and then
+read `report.bills.length` (`[]` and `{}` are both truthy, so the guard passes
+them), and `FxRatesPanel` checked the ENVELOPE — `if (t.success && t.data)` —
+and then set state from `t.data.rate_types`, so `types` became undefined and
+the next line did `types.find(...)`. **`useState<T[]>([])` satisfies TypeScript
+on either**, however absent the key is at runtime, which is why no compiler and
+no reviewer caught it. A sweep found **28** more live sites. The rule is
+`apps/web/scripts/a-payload-field-is-not-a-list-until-it-is-checked.test.ts`:
+array state may not be REPLACED from a payload without `arrayOrEmpty`,
+`objectOrNull`, a `?? []` fallback, or a function taking `unknown` — the last
+being a real narrowing boundary, allowlisted by name and asserted to actually
+take `unknown`. **The functional-insert variant is counted APART and not
+failed**: `setRows(prev => [json.data, ...prev])` puts undefined in as an
+ELEMENT, so a row renders blank and the screen lives — a different defect with
+a different fix, and folding it in would make the count bigger and the claim
+weaker.
+
 ## The frontend's second data path
 
 The frontend does **not** reach the database only through FastAPI. Roughly 320

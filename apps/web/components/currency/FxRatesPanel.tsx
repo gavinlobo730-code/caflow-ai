@@ -27,6 +27,7 @@
  * The four rate types and their meanings are SERVED, not spelled here.
  */
 import { useCallback, useEffect, useState } from "react";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { api, type FxRate } from "@/lib/api/index";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
@@ -57,9 +58,19 @@ export function FxRatesPanel() {
         api.currencies.rateTypes(),
         api.currencies.rates({ base, quote, rate_type: rateType }),
       ]);
-      if (t.success && t.data) setTypes(t.data.rate_types);
+      // `arrayOrEmpty`, not the raw field. BOTH of these crashed the screen on
+      // the smoke walk of 24-09-2026 and the state TYPES hid it: `useState<
+      // {code,meaning}[]>([])` satisfies TypeScript on `setTypes(t.data
+      // .rate_types)` however absent that key is at runtime, and the very next
+      // render does `types.find(...)` on undefined. `lib/api/shape.ts` was
+      // written for this exact failure — its docstring counts thirteen screens
+      // — and this component was written after that sweep and reintroduced it.
+      //
+      // The `t.success && t.data` guard is not the fix: it checks the ENVELOPE,
+      // and the field inside it is what the screen reads.
+      if (t.success) setTypes(arrayOrEmpty(objectOrNull<{ rate_types?: unknown }>(t.data)?.rate_types));
       if (!r.success || !r.data) throw new Error(r.error ?? "failed");
-      setRows(r.data.rates);
+      setRows(arrayOrEmpty(objectOrNull<{ rates?: unknown }>(r.data)?.rates));
     } catch {
       setRows([]);
       setFailed(true);

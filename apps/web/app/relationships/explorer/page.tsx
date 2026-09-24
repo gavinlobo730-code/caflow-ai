@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { Search, Network, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -76,7 +77,7 @@ export default function RelationshipExplorerPage() {
     try {
       const json: ApiResponse<Entity[]> = await apiFetch("/api/relationships/entities?limit=100");
       if (!json.success) throw new Error(json.error ?? "Failed to load");
-      setEntities(json.data);
+      setEntities(arrayOrEmpty(json.data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {

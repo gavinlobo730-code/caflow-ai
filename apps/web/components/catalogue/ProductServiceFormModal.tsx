@@ -16,6 +16,7 @@
  * management page derives its own toast text from the returned item.
  */
 import { useEffect, useState } from "react";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { api, type ApiResp } from "@/lib/api/index";
@@ -66,7 +67,7 @@ export function ProductServiceFormModal({
   useEffect(() => {
     let live = true;
     api.inventory.itemGroups({ client_id: clientId })
-      .then((r) => { if (live && r.success) setItemGroups(r.data.groups.map((g) => g.group)); })
+      .then((r) => { if (live && r.success) setItemGroups(arrayOrEmpty<{ group: string }>(objectOrNull<{ groups?: unknown }>(r.data)?.groups).map((g) => g.group)); })
       .catch(() => {});
     return () => { live = false; };
   }, [clientId]);

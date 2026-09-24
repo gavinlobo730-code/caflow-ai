@@ -202,7 +202,7 @@ export default function SuppliersPage() {
     let alive = true;
     api.rcmDocuments.registrationStates()
       .then((res) => {
-        if (alive && res.success && Array.isArray(res.data)) setRegistrationStates(res.data);
+        if (alive && res.success && Array.isArray(res.data)) setRegistrationStates(arrayOrEmpty(res.data));
       })
       .catch(() => { /* leaves the field unset, which is the third state */ });
     return () => { alive = false; };

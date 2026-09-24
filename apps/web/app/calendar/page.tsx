@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { api } from "@/lib/api";
 import {
   ChevronLeft,
@@ -363,7 +364,12 @@ export default function CalendarPage() {
         setAgmGaps(res.data.without_agm_date ?? []);
         setDeadlines([
           ...base,
-          ...res.data.deadlines.map(d => ({
+          // A SPREAD of undefined throws — `[...undefined]` is a TypeError,
+          // not an empty list. The line above already writes `?? []` for
+          // `without_agm_date` and this one was left raw.
+          ...arrayOrEmpty<NonNullable<typeof res.data>["deadlines"][number]>(
+            objectOrNull<{ deadlines?: unknown }>(res.data)?.deadlines,
+          ).map(d => ({
             // Per COMPANY, not per year: two companies with different AGMs have
             // different AOC-4 dates, and one row keyed by year would collapse them.
             id: `mca-${d.form_type}-${d.client_id}-${d.due_date}`,

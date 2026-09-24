@@ -14,6 +14,7 @@
  * tab's ledger drill-down: its own date range, defaulting to the client's FY.
  */
 import { useCallback, useEffect, useState } from "react";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { RefreshCw, AlertTriangle, ClipboardEdit, Loader2, TrendingDown } from "lucide-react";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { api } from "@/lib/api";
@@ -229,7 +230,13 @@ export default function InventoryPage() {
           success: boolean; data: StockPosition | null;
         };
         if (!res.success || !res.data) throw new Error("load failed");
-        setItems(res.data.items.map((r) => ({
+        // The element type is taken FROM `StockPosition` rather than spelled
+        // here: a hand-written shape is a second description of the payload,
+        // and it went wrong on the first attempt — it named two fields and the
+        // map reads eight.
+        setItems(arrayOrEmpty<StockPosition["items"][number]>(
+          objectOrNull<{ items?: unknown }>(res.data)?.items,
+        ).map((r) => ({
           id: r.service_catalogue_id,
           name: r.name,
           description: null,
@@ -256,7 +263,7 @@ export default function InventoryPage() {
         success: boolean; data: StockItem[] | null;
       };
       if (!res.success || !res.data) throw new Error("load failed");
-      setItems(res.data);
+      setItems(arrayOrEmpty(res.data));
       setLoadFailed(false);
     } catch {
       setItems([]);
@@ -537,7 +544,7 @@ function StockLedgerDrillDown({
         data: { item: unknown; lines: StockLedgerLine[]; opening: LedgerEdge; closing: LedgerEdge } | null;
       };
       if (res.success && res.data) {
-        setLines(res.data.lines);
+        setLines(arrayOrEmpty(objectOrNull<{ lines?: unknown }>(res.data)?.lines));
         setOpening(res.data.opening ?? null);
         setClosing(res.data.closing ?? null);
         setLoadFailed(false);

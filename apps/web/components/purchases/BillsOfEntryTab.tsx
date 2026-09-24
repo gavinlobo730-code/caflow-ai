@@ -20,6 +20,7 @@
  * by /api/bills-of-entry/authorities rather than written here.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { Plus, X, AlertTriangle, Info, Ship, Trash2 } from "lucide-react";
 import { api, type BillOfEntry, type BillOfEntryAuthorities } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -75,7 +76,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
     try {
       const res = await api.billsOfEntry.list({ client_id: clientId });
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't read the register.");
-      setRows(res.data);
+      setRows(arrayOrEmpty(res.data));
       setLoadFailed(false);
     } catch {
       // Swallowed, a failed fetch renders as "no bills of entry yet", which on

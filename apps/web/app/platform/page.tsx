@@ -8,6 +8,7 @@
  * else redirects away. Visibility + control only (no firm data editing).
  */
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { useRouter } from "next/navigation";
 import { Building2, Users, ShieldCheck, Ban, RotateCcw, Trash2, X, Loader2, AlertCircle, RefreshCw, AlertTriangle, KeyRound } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -108,7 +109,7 @@ export default function PlatformAdminPage() {
   const load = useCallback(async () => {
     const [s, f] = await Promise.all([api.platform.stats(), api.platform.firms()]);
     setStats(s.data);
-    setFirms(f.data);
+    setFirms(arrayOrEmpty(f.data));
   }, []);
 
   // Gate: must be signed in AND a platform admin. Authorization (is_platform_admin)

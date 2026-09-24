@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 // The year picker comes from the clock, never a literal list (CLAUDE.md).
@@ -175,7 +176,7 @@ function DeductionsTab({ clientId }: { clientId: string }) {
     setLoading(true);
     apiFetch(`/api/tds-workspace/deductions?client_id=${clientId}`)
       .then((r) => {
-        if (r.success) { setRows(r.data); setLoadError(null); }
+        if (r.success) { setRows(arrayOrEmpty(r.data)); setLoadError(null); }
         else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS deductions."); }
       })
       .catch(() => { setRows([]); setLoadError("Couldn't load TDS deductions. Please try again."); })
@@ -241,7 +242,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
     setLoading(true);
     apiFetch(`/api/tds-workspace/challans?client_id=${clientId}`)
       .then((r) => {
-        if (r.success) { setRows(r.data); setLoadError(null); }
+        if (r.success) { setRows(arrayOrEmpty(r.data)); setLoadError(null); }
         else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS challans."); }
       })
       .catch(() => { setRows([]); setLoadError("Couldn't load TDS challans. Please try again."); })
@@ -424,7 +425,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
     setLoading(true);
     apiFetch(`/api/tds-workspace/returns?client_id=${clientId}`)
       .then((r) => {
-        if (r.success) { setRows(r.data); setLoadError(null); }
+        if (r.success) { setRows(arrayOrEmpty(r.data)); setLoadError(null); }
         else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS returns."); }
       })
       .catch(() => { setRows([]); setLoadError("Couldn't load TDS returns. Please try again."); })
@@ -896,7 +897,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
     setLoading(true);
     apiFetch(`/api/tds-workspace/certificates?client_id=${clientId}`)
       .then((r) => {
-        if (r.success) { setRows(r.data); setLoadError(null); }
+        if (r.success) { setRows(arrayOrEmpty(r.data)); setLoadError(null); }
         else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS certificates."); }
       })
       .catch(() => { setRows([]); setLoadError("Couldn't load TDS certificates. Please try again."); })
