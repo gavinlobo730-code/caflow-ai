@@ -265,9 +265,16 @@ PAYLOAD_PERIOD_CAVEAT = (
 #: Rule 59(2). Named on every quarterly GSTR-1 rather than silently absent —
 #: a CA reading a quarterly return has to know the two interim months are not
 #: in it, because their customers' credit is what waits.
-IFF_NOT_BUILT = (
-    "The Invoice Furnishing Facility for months 1 and 2 of this quarter (CGST "
-    "Rule 59(2) — B2B documents only, due the 13th) is not produced by this "
-    "product. Nothing is owed if it is not used, but without it the recipient's "
-    "input tax credit waits for this quarterly return."
+IFF_AVAILABLE = (
+    "The Invoice Furnishing Facility is available for months 1 and 2 of this "
+    "quarter (CGST Rule 59(2) — documents to a registered person only, between "
+    "the 1st and the 13th of the following month). Nothing is owed if it is "
+    "not used, but without it the recipient's input tax credit waits for this "
+    "quarterly return. Prepare it per month from the IFF panel."
 )
+
+# `IFF_NOT_BUILT` stood here and said the facility "is not produced by this
+# product", which was true from GST-11 until `domain/gst/iff.py` was written.
+# RENAMED rather than aliased: a constant called NOT_BUILT holding a sentence
+# that says it IS built is the kind of name a later reader trusts and a grep
+# finds, and there is no caller outside this repository to keep it for.

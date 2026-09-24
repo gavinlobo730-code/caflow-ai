@@ -1026,6 +1026,51 @@ class GSTR9In(BaseModel):
     total_tax_paise: int = 0
 
 
+@router.get("/iff/compute")
+def compute_iff(
+    client_id: str = Query(...),
+    period: str = Query(..., pattern=r"^\d{6}$",
+                        description="MMYYYY of the CALENDAR MONTH to furnish for"),
+    gstin: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """One month's Invoice Furnishing Facility — CGST Rule 59(2).
+
+    A QRMP filer furnishes GSTR-1 once a quarter, and their customer's input
+    tax credit rests on s.16(2)(aa) — the SUPPLIER's furnished invoice as
+    communicated in GSTR-2B. So a January invoice reaches the buyer's 2B in
+    April unless this facility is used: months 1 and 2 of a quarter, documents
+    to a REGISTERED person only, between the 1st and the 13th of the following
+    month.
+
+    `period` is a CALENDAR MONTH and is deliberately not widened to the client's
+    filing frequency, which every other return endpoint here does. Widening it
+    would answer with the quarter — the very thing the facility exists to get
+    ahead of.
+
+    `gstin` selects the REGISTRATION (GST-20); omitting it means the primary.
+
+    Optional in the strict sense — nothing is owed if it is not used — so this
+    raises no deadline and refuses no return. Writes nothing and transmits
+    nothing.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"period": period, "available": True,
+                                   "payload": {}, "summary": {}, "notes": [],
+                                   "not_carried": [], "document_count": 0,
+                                   "cap_exceeded": False})
+    from core.supabase_client import get_supabase
+    from services import client_gst_registration_service as regs
+    from services import gst_return_service
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    registration = regs.resolve(db, firm_id, client_id, gstin)
+    return api_response(True, gst_return_service.iff_from_books(
+        db, firm_id, client_id, period, registration.gstin))
+
+
 @router.get("/gstr9/compute")
 def compute_gstr9(
     client_id: str = Query(...),

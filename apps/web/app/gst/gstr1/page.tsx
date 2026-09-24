@@ -29,6 +29,7 @@ import {
 import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
+import { IffPanel } from "@/components/gst/IffPanel";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
@@ -401,6 +402,17 @@ export default function GSTR1Page() {
                     errors={result.validation_errors}
                     warnings={result.validation_warnings}
                     gaps={result.payload_gaps}
+                  />
+                  {/* THE INVOICE FURNISHING FACILITY (GST-11), the same panel
+                      the client workspace renders. It shows nothing for a
+                      monthly filer. `period_window` had to be CARRIED through
+                      `buildGSTR1` for this to be possible at all — it was
+                      dropped on the way, GST-22's shape on the 3B side. */}
+                  <IffPanel
+                    clientId={clientId}
+                    months={result.period_window?.months ?? []}
+                    isQuarter={result.period_window?.frequency === "quarterly"}
+                    gstin={result.gstin}
                   />
                 </div>
               )}

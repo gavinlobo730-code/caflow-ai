@@ -372,6 +372,19 @@ export interface GSTR1BuildResult {
    *  wrong; a gap is a document that is not in the return at all. Filing short
    *  is the failure a CA hears about from the recipient. */
   payload_gaps: PayloadGap[];
+  /** The period the server actually resolved (GST-11). A QRMP registration's
+   *  return covers a QUARTER however one of its months was asked for, and the
+   *  two interim months' Invoice Furnishing Facility hangs off exactly this —
+   *  `months[0]` and `months[1]`.
+   *
+   *  CARRIED, not dropped. `computeGSTR3B` dropped four keys on the way
+   *  through and the firm-level screen showed none of them (GST-22); this is
+   *  the same shape, and the firm-level GSTR-1 page cannot tell a quarterly
+   *  filer from a monthly one without it. */
+  period_window?: ReturnPeriodWindow;
+  /** The REGISTRATION this was built under. A client may hold several
+   *  (GST-20), and the facility must be prepared under the same one. */
+  gstin?: string;
   ca_review_required: true;
 }
 
@@ -408,6 +421,10 @@ interface FromBooksGSTR1 {
   validation_errors: ValidationError[];
   validation_warnings: ValidationError[];
   payload_gaps: PayloadGap[];
+  /** The resolved window — a QUARTER for a QRMP registration, keyed on its
+   *  first month. `gstr1_from_books` has sent this since GST-11 and nothing
+   *  read it. */
+  period_window?: ReturnPeriodWindow;
 }
 
 /** Raw shape of POST /api/gst/gstr3b/from-books. */
@@ -932,6 +949,10 @@ export async function buildGSTR1(
     validation_errors: result.validation_errors ?? [],
     validation_warnings: result.validation_warnings ?? [],
     payload_gaps: result.payload_gaps ?? [],
+    // CARRIED, for GST-22's reason on the 3B side: a key dropped here is a
+    // panel the firm-level screen cannot render, and nothing says why.
+    period_window: result.period_window,
+    gstin: result.gstin,
     ca_review_required: true,
   };
 
