@@ -23,6 +23,7 @@ import { getClients } from "@/lib/data/clients";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
+import { gstinProblem } from "@/lib/gst/gstin";
 import { toLocalISO, todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -121,16 +122,17 @@ interface MissingPanRisk {
 // this codebase generates it.
 const TDS_STATEMENT_TYPES = ["TDS24Q", "TDS26Q", "TDS27Q"];
 
-// CGST Act, Section 25 — GSTIN format: 2-digit state code + PAN + entity number + Z + check digit
-const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-
-function validateGstin(gstin: string): string | null {
-  if (!gstin) return null;
-  const trimmed = gstin.trim().toUpperCase();
-  if (trimmed.length !== 15) return `Length is ${trimmed.length}, expected 15`;
-  if (!GSTIN_REGEX.test(trimmed)) return "Format does not match state code + PAN + entity + Z + check";
-  return null;
-}
+// THE SCREEN THAT EXISTS TO FIND A WRONG GSTIN USED THE ONE TEST THAT CANNOT
+// FIND THE COMMONEST WRONG GSTIN.
+//
+// This carried its own shape regex — a third copy of a rule the browser already
+// has exactly one of, `lib/gst/gstin.gstinProblem`, pinned to
+// apps/api/domain/gst/gstin.py by tests/fixtures/gstin.json. The shape accepts
+// every transposition inside the PAN (27AAPFU0939F1ZV and 27AAPFU0399F1ZV are
+// both well-formed) and accepts a state code that does not exist, so the GSTIN
+// Mismatch section reported clean on precisely the errors a CA opens this page
+// to be told about. `gstinProblem` names the character to look at, which is
+// what the `reason` column here is for.
 
 
 // Days elapsed since `dateStr`, both anchored to LOCAL midnight.
@@ -279,7 +281,7 @@ export default function RisksPage() {
         clients
           .filter((c) => c.gstin && c.gstin.trim().length > 0)
           .flatMap((c) => {
-            const reason = validateGstin(c.gstin!);
+            const reason = gstinProblem(c.gstin);
             return reason ? [{ clientId: c.id, clientName: c.client_name, gstin: c.gstin!, reason }] : [];
           })
       );

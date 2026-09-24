@@ -51,6 +51,7 @@ import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker"
 import { todayLocalISO } from "@/lib/dateMath";
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import { Callout } from "@/components/ui/callout";
+import { gstinProblem } from "@/lib/gst/gstin";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -1306,7 +1307,10 @@ interface VendorRow {
   is_active: boolean;
 }
 
-const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+// The GSTIN rule is `lib/gst/gstin.gstinProblem` and there is one of it. A
+// vendor's GSTIN is half the key `domain/gst/itc_matching` reconciles a
+// GSTR-2B on, so a transposition leaves the bill in "missing in 2B" for ever
+// while the CA chases a supplier who has done nothing wrong.
 
 interface VendorDependencies {
   can_delete: boolean;
@@ -1460,7 +1464,8 @@ function Vendors({ clientId }: { clientId: string }) {
 
   async function handleSave() {
     if (!name.trim()) { setMsg({ type: "err", text: "Name is required" }); return; }
-    if (gstin && !GSTIN_RE.test(gstin.trim().toUpperCase())) { setMsg({ type: "err", text: "Invalid GSTIN format (15 chars: 2-digit state + PAN + entity + Z + check)" }); return; }
+    const gstinIssue = gstinProblem(gstin);
+    if (gstinIssue) { setMsg({ type: "err", text: gstinIssue }); return; }
     // Read exactly before anything is saved. The old form was
     // Math.round(parseFloat(x) * 100), which reads "1,25,000" as 1 and a blank
     // field as NaN — JSON.stringify sends that as null, so an opening balance
@@ -1949,7 +1954,7 @@ function Vendors({ clientId }: { clientId: string }) {
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">GSTIN</label>
-              <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="27AABCS1429B1Z5" maxLength={15} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+              <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="27AABCS1429B1ZU" maxLength={15} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">PAN</label>

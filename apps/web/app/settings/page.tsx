@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type FirmProfile } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
+import { isValidGstin } from "@/lib/gst/gstin";
 
 // ─── Indian states list ────────────────────────────────────────────────────
 const INDIAN_STATES = [
@@ -49,10 +50,15 @@ const INDIAN_STATES = [
 ];
 
 // ─── Validation helpers ────────────────────────────────────────────────────
-// CGST Act Section 25 — GSTIN format: 2-digit state code + PAN (10 chars) + 1 entity digit + Z + 1 check digit
+// CGST Act §25, THROUGH THE ONE BROWSER AUTHORITY. This is the PRACTICE's own
+// GSTIN, which `domain/firm/identity` puts on every fee invoice the firm
+// raises, and the shape regex that used to live here accepts a transposition.
+// `PATCH /api/firms/profile` does test the check digit, so a wrong one was
+// refused — after the CA had filled in the rest of the form, with a server
+// error rather than a message naming the character. Blank stays valid: the
+// field is optional and unregistered is not wrong.
 function validateGSTIN(gstin: string): boolean {
-  if (!gstin) return true; // Optional field
-  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin);
+  return isValidGstin(gstin);
 }
 
 // IT Act Section 139A — PAN format: 5 uppercase letters + 4 digits + 1 uppercase letter

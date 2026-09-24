@@ -24,6 +24,18 @@ export function isValidStateCode(code: string): boolean {
   return (n >= 1 && n <= 38) || n === 96 || n === 97;
 }
 // CGST Act §25 GSTIN: 2-digit state + PAN(10) + entity + Z + check.
+//
+// SHAPE ONLY, DELIBERATELY, AND THIS IS THE ONE PLACE IN THE BROWSER THAT MAY
+// SAY SO. Everywhere a human TYPES or an importer READS a GSTIN now goes
+// through `lib/gst/gstin.gstinProblem`, which tests the check digit. Here the
+// question is not "is this the right registration" but "is the recipient a
+// registered person at all" — Rule 48(4)'s supply limb and Rule 138's — and
+// `apps/api/domain/gst/irn_scope.py` answers it on the shape for a recorded
+// reason: a checksum would put the two implementations in disagreement on a
+// transposition, which says nothing about WHO the customer is. The parity
+// vectors in shared/irn-parity-vectors.json pin that agreement, so tightening
+// this regex breaks them. `tests/test_one_gstin_rule_in_the_browser.py` carries
+// the exemption with this reason.
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
 /** E-Way Bill threshold — Rule 138(1), ₹50,000 of CONSIGNMENT value. In paise.
