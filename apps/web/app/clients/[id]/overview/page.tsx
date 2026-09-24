@@ -15,6 +15,7 @@ import type { Task } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate, ENTITY_TYPE_LABELS } from "@/lib/services/formatting";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
+import { Hub } from "@/components/hub/Hub";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { Skeleton, SkeletonText, MetricCardSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 
@@ -124,6 +125,12 @@ export default function OverviewPage() {
 
         {/* Pinned client instructions (Amendment v1.1 FR-KB-02) */}
         <ClientInstructions clientId={clientId} pinnedOnly />
+
+        {/* ── The hub at CLIENT scope — D1's fifteen, minus the three that
+             are questions about the FIRM (Phase 2.2). Same component and the
+             same one request as the firm hub; `clientId` is the SCOPE, not a
+             filter, so every figure below is this client's alone. */}
+        <Hub clientId={clientId} />
 
         {/* Stat strip */}
         <div className="grid grid-cols-3 gap-3">

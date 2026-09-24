@@ -56,6 +56,36 @@ export interface ClientSummary {
   gstin?: string | null;
 }
 
+/** One hub tile, exactly as `domain/hub/tiles.describe()` serialises it.
+ *
+ *  THE THREE STATES ARE TOLD APART BY TWO FIELDS, and a screen must not
+ *  collapse them — the backend keeps them distinct as three different dicts
+ *  and `tests/test_a_hub_tile_shows_what_is_outstanding.py` asserts it:
+ *
+ *    signal: 0     answerable: true    nothing is outstanding
+ *    signal: null  answerable: false   nobody can tell — render the reason
+ *    signal: null  answerable: true    this one tile's fetch failed
+ *
+ *  `href` is null where this tile has no destination AT THIS SCOPE (five
+ *  modules have no firm-level screen — question G3), so the card must not
+ *  render as a link. */
+export interface HubTile {
+  id: string;
+  label: string;
+  href: string | null;
+  question: string;
+  unit: "count" | "paise";
+  answerable: boolean;
+  no_signal_because: string | null;
+  signal: number | null;
+}
+
+export interface HubPayload {
+  scope: "firm" | "client";
+  client_id: string | null;
+  tiles: HubTile[];
+}
+
 /** One statutory settlement on the handoff screen, exactly as
  *  domain/payroll/handoff.py serialises it. Every string here is composed on
  *  the SERVER — render them, do not rebuild them: they carry statutory
@@ -2459,6 +2489,15 @@ export const api = {
     remove: (id: string) => request<ApiResp<{ deleted: string }>>(
       `/api/tds/treaty-rates/${id}`, { method: "DELETE" }),
   },
+  hub: {
+    /** Every tile, with its figure, in ONE request — fifteen browser fetches
+     *  would be fifteen Singapore-to-Mumbai round trips for fifteen numbers.
+     *  Omit `clientId` for the firm hub. */
+    get: (clientId?: string) =>
+      request<ApiResp<HubPayload>>(
+        `/api/hub${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ""}`),
+  },
+
   clients: {
     /** The caller's OWN clients: `rbac("client","read")` plus
      *  `effective_client_ids`, so an Executive or Reviewer gets the ones they
