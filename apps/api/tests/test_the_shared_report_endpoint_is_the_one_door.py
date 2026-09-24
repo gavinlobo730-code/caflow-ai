@@ -115,3 +115,38 @@ def test_the_financial_year_is_validated_and_not_merely_annotated():
         "the field from it and throws the validator away. Write it as "
         "Annotated[FYLabel, Form()] = ... instead."
     )
+
+
+def test_the_two_payload_literals_do_not_drift():
+    """The mock answer and the live INSERT spell the same dict twice.
+
+    That duplication is deliberate — `tests/test_backend_columns_exist_pg.py`
+    reads the SOURCE to check every column against the real schema, so an
+    insert whose payload is a name is invisible to it and counts against a
+    budget with no headroom. Raising that budget is what its message invites
+    and is the wrong trade on a door that writes a row granting a client read
+    access to their own firm's statements.
+
+    What duplication costs is drift, so this is the thing that stops it: the
+    two literals must name the same columns, and the test reads them out of the
+    AST rather than matching a spelling of them.
+    """
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(sr))
+    dicts = [
+        {k.value for k in n.keys if isinstance(k, ast.Constant)}
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Dict) and n.keys
+        and {"firm_id", "client_id", "storage_path"} <= {
+            k.value for k in n.keys if isinstance(k, ast.Constant)}
+    ]
+    assert len(dicts) == 2, (
+        f"expected exactly two shared_reports payload literals, found "
+        f"{len(dicts)} — if the duplication was removed, check that the "
+        "INSERT still spells its columns out or the schema guard stops "
+        "seeing them")
+    assert dicts[0] == dicts[1], (
+        f"the mock answer and the INSERT name different columns: "
+        f"{dicts[0] ^ dicts[1]}")

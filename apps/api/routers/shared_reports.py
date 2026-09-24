@@ -82,6 +82,8 @@ def share_report_to_portal(
     except ShareRefused as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    # The mock branch's answer, and the shape the live INSERT below writes.
+    # They are deliberately two literals — see the note on the insert.
     row = {
         "firm_id": firm_id,
         "client_id": client_id,
@@ -115,8 +117,28 @@ def share_report_to_portal(
     # a file in storage that no row points at. A row without a file is a broken
     # link on the portal; a file without a row is invisible litter that nothing
     # will ever remove.
+    # THE PAYLOAD IS SPELLED OUT RATHER THAN PASSED AS `row`, and the seven
+    # duplicated keys are the price of schema coverage rather than an oversight.
+    # `tests/test_backend_columns_exist_pg.py` checks every column this codebase
+    # names against the real schema BY READING THE SOURCE, so an insert whose
+    # payload is a NAME — `insert(row)` — is invisible to it and counts against
+    # a budget with no headroom. Raising that budget is what the guard's own
+    # message invites and is the wrong fix here: the coverage is recoverable, and
+    # this is a door that writes a row saying a client may read their own
+    # firm's statements. `test_the_two_payload_literals_do_not_drift` holds the
+    # two in step.
     try:
-        saved = svc.table("shared_reports").insert(row).execute().data
+        saved = svc.table("shared_reports").insert({
+            "firm_id": firm_id,
+            "client_id": client_id,
+            "report_type": plan.report_type,
+            "report_label": report_label,
+            "financial_year": financial_year,
+            "storage_path": plan.storage_path,
+            "file_name": plan.file_name,
+            "file_size_bytes": len(content),
+            "shared_by": current_user.get("id"),
+        }).execute().data
     except Exception as exc:  # noqa: BLE001
         try:
             svc.storage.from_(BUCKET).remove([plan.storage_path])
