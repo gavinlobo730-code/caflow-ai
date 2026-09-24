@@ -37,7 +37,7 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
 function Action({ children, onClick, icon, primary, danger }: {
   children: React.ReactNode; onClick: () => void; icon: React.ReactNode; primary?: boolean; danger?: boolean;
 }) {
-  const cls = primary ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600"
+  const cls = primary ? "bg-brand text-white hover:bg-brand-dark border-brand"
     : danger ? "border-ps-border text-red-600 hover:bg-state-problem-hover"
     : "border-ps-border text-ps-label hover:bg-ps-bg";
   return (

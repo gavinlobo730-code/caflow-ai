@@ -143,7 +143,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
     } finally { setSaving(false); }
   }
 
-  const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-blue-400";
+  const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-brand";
   return (
     <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-md p-5 space-y-3">
@@ -198,7 +198,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
             Cancel
           </button>
           <button onClick={submit} disabled={saving}
-            className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+            className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Saving…" : "Record the renewal"}
           </button>
         </div>
@@ -260,7 +260,7 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
     } finally { setSaving(false); }
   }
 
-  const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-blue-400";
+  const field = "w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-brand";
   return (
     <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-md p-5 space-y-3">
@@ -377,46 +377,46 @@ function AddDSCModal({ onClose, onAdded }: {
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="text-xs font-medium text-ps-body block mb-1">Full Name</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={holderName} onChange={e => setHolderName(e.target.value)} placeholder="CA / Director name" />
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={holderName} onChange={e => setHolderName(e.target.value)} placeholder="CA / Director name" />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">PAN</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500" value={pan} onChange={e => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand" value={pan} onChange={e => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Type</label>
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={dscType} onChange={e => setDscType(e.target.value as "Class 2" | "Class 3")}>
+            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={dscType} onChange={e => setDscType(e.target.value as "Class 2" | "Class 3")}>
               {DSC_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Purpose</label>
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purpose} onChange={e => setPurpose(e.target.value)}>
+            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={purpose} onChange={e => setPurpose(e.target.value)}>
               {DSC_PURPOSES.map(p => <option key={p}>{p}</option>)}
             </select>
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Issuing CA</label>
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={issuingCA} onChange={e => setIssuingCA(e.target.value)}>
+            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={issuingCA} onChange={e => setIssuingCA(e.target.value)}>
               {ISSUING_CAS.map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Issue Date</label>
-            <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
+            <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Expiry Date</label>
-            <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+            <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
           </div>
           <div className="col-span-2">
             <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
-          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add DSC"}
           </button>
         </div>
@@ -462,7 +462,7 @@ export default function DSCTrackerPage() {
           <h1 className="text-xl font-semibold text-ps-ink">DSC Tracker</h1>
           <p className="text-sm text-ps-label mt-0.5">Digital Signature Certificate expiry tracker</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-blue-600 text-white text-sm px-3 py-2 rounded-lg hover:bg-blue-700">
+        <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
           <Plus className="w-4 h-4" /> Add DSC
         </button>
       </div>

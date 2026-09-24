@@ -723,7 +723,7 @@ export function PurchaseBillEditor({
       <button onClick={handleCancel} disabled={busy} className="mr-auto text-xs px-3 py-1.5 text-ps-label hover:text-ps-body disabled:opacity-50">
         Cancel
       </button>
-      <button onClick={save} disabled={busy} className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+      <button onClick={save} disabled={busy} className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
         {saving && <Loader2 size={12} className="animate-spin" />} {isEdit ? "Save Changes" : "Save Draft"}
       </button>
     </>
@@ -947,25 +947,25 @@ export function PurchaseBillEditor({
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor Invoice No.</label>
               <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001" disabled={isLocked}
-                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint" />
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once received.</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Our Reference</label>
               <input value={ourReference} onChange={(e) => setOurReference(e.target.value)} placeholder="Internal tracking no."
-                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Bill Date *</label>
               <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} disabled={isLocked}
-                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint" />
               {fieldErr(validation.errors.billDate)}
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once received — issue a Debit Note to correct (CGST Act §34).</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
               <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div className="flex flex-col justify-end pb-1.5">
               <label className={`flex items-center gap-2 text-xs text-ps-label ${isEdit ? "opacity-50" : "cursor-pointer"}`}>
@@ -979,7 +979,7 @@ export function PurchaseBillEditor({
             <div className="col-span-2 lg:col-span-4">
               <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes — not shown to the vendor" rows={2}
-                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>
 
@@ -988,7 +988,7 @@ export function PurchaseBillEditor({
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
                 <select value={currency} onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
-                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                   <option value="">INR (default)</option>
                   {currencies.filter((c) => c.code !== "INR").map((c) => (
                     <option key={c.code} value={c.code}>{c.code}{c.display_name ? ` — ${c.display_name}` : ""}</option>
@@ -1000,7 +1000,7 @@ export function PurchaseBillEditor({
                   <label className="block text-xs font-medium text-ps-label mb-1">Exchange Rate *</label>
                   <input type="number" min="0" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
                     placeholder={`1 ${currency} = ? INR`}
-                    className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono" />
+                    className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-right font-mono" />
                   {fieldErr(validation.errors.exchangeRate)}
                 </div>
               )}
@@ -1042,7 +1042,7 @@ export function PurchaseBillEditor({
                 </label>
                 <input value={form15caAckNo} onChange={(e) => setForm15caAckNo(e.target.value)}
                   placeholder="As shown on the filed 15CA"
-                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">
@@ -1050,7 +1050,7 @@ export function PurchaseBillEditor({
                 </label>
                 <input type="date" value={form15caFiledOn}
                   onChange={(e) => setForm15caFiledOn(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">
@@ -1058,7 +1058,7 @@ export function PurchaseBillEditor({
                 </label>
                 <input value={form15cbUdin} onChange={(e) => setForm15cbUdin(e.target.value)}
                   placeholder="UDIN of the certifying member"
-                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
                 <p className="mt-1 text-3xs text-ps-hint">
                   What makes the certificate traceable to the member who signed it.
                 </p>
@@ -1185,7 +1185,7 @@ export function PurchaseBillEditor({
                       </td>
                       <td className="py-1.5 pr-2">
                         <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
-                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-xs" />
                         {/* CGST ACT §17(5), UNDER THE DESCRIPTION AND NOT IN A
                             COLUMN OF ITS OWN. Eligible is the ordinary case, so
                             it is one checkbox; the fifteen-clause select appears
@@ -1233,7 +1233,7 @@ export function PurchaseBillEditor({
                       </td>
                       <td className="py-1.5 px-1">
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label={`Line ${idx + 1} quantity`}
-                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
                       </td>
                       <td className="py-1.5 px-1">
                         <select value={line.unit || "NOS"} onChange={(e) => setLine(idx, { unit: e.target.value })} aria-label={`Line ${idx + 1} unit`}
@@ -1243,7 +1243,7 @@ export function PurchaseBillEditor({
                       </td>
                       <td className="py-1.5 px-1">
                         <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
-                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
                       </td>
                       <td className="py-1.5 px-1">
                         <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseFloat(e.target.value) })} aria-label={`Line ${idx + 1} GST rate`}
@@ -1258,14 +1258,14 @@ export function PurchaseBillEditor({
                               value={line.cessPercent ?? ""}
                               onChange={(e) => setLine(idx, { cessPercent: e.target.value })}
                               placeholder="0" aria-label={`Line ${idx + 1} compensation cess percent`}
-                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
                           </td>
                           <td className="py-1.5 px-1">
                             <input type="number" min="0" step="0.01"
                               value={line.cessPerUnit ?? ""}
                               onChange={(e) => setLine(idx, { cessPerUnit: e.target.value })}
                               placeholder="0.00" aria-label={`Line ${idx + 1} compensation cess per unit`}
-                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
                           </td>
                         </>
                       )}

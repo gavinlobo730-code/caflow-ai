@@ -375,11 +375,11 @@ export default function HealthPage() {
               const count = gradeCounts[grade];
               const heightPct = maxGradeCount > 0 ? (count / maxGradeCount) * 100 : 0;
               const colors: Record<Grade, string> = {
-                "Healthy":         "bg-green-500",
-                "Good":            "bg-blue-500",
-                "Needs Attention": "bg-yellow-500",
-                "At Risk":         "bg-orange-500",
-                "Critical":        "bg-red-500",
+                "Healthy":         "bg-sev-ok",
+                "Good":            "bg-sev-low",
+                "Needs Attention": "bg-sev-medium",
+                "At Risk":         "bg-sev-high",
+                "Critical":        "bg-sev-critical",
               };
               const shortLabel: Record<Grade, string> = {
                 "Healthy":         "H",

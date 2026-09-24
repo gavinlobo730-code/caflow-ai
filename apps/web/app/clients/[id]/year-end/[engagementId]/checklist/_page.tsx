@@ -207,7 +207,7 @@ export default function ChecklistPage() {
         </div>
         <div className="w-full h-2 bg-ps-muted rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all ${allDone ? "bg-green-500" : "bg-blue-500"}`}
+            className={`h-full rounded-full transition-all ${allDone ? "bg-state-ready" : "bg-brand"}`}
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -258,7 +258,7 @@ export default function ChecklistPage() {
                             value={editingNotes[item.id]}
                             onChange={(e) => setEditingNotes((prev) => ({ ...prev, [item.id]: e.target.value }))}
                             onKeyDown={(e) => { if (e.key === "Enter") saveNotes(item); if (e.key === "Escape") setEditingNotes((prev) => { const n = { ...prev }; delete n[item.id]; return n; }); }}
-                            className="flex-1 text-xs px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="flex-1 text-xs px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand"
                             placeholder="Add notes…"
                             autoFocus
                           />
@@ -319,7 +319,7 @@ export default function ChecklistPage() {
         <button
           onClick={handleSubmitForReview}
           disabled={!allDone || submitting}
-          className="flex items-center gap-1.5 text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+          className="flex items-center gap-1.5 text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
         >
           {submitting && <Loader2 size={12} className="animate-spin" />}
           Submit for Review <ChevronRight size={12} />

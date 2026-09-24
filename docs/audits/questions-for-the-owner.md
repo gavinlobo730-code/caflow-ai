@@ -746,6 +746,58 @@ in on its own.
 
 ## G0. THE PRODUCT HAS THREE PRIMARY COLOURS AND THE BRAND IS THE SMALLEST — 547 sites  *(new, 24-09-2026)*
 
+> ### ✅ ANSWERED 24-09-2026 — **"Navy"**. Done: 1,193 utilities across 162 files.
+>
+> **It was not three primaries. It was five.** Writing the guard for this —
+> rather than converting the list the table below had counted — found two more
+> that no measurement had: the **HSN library** screen's buttons and focus rings
+> were **violet**, and the **treaty-rates** screen's were **sky**. Neither
+> colour is in any palette; neither screen appears in the table. A list can only
+> hold what somebody already counted.
+>
+> What moved, by role:
+>
+> | role | sites | from → to |
+> |---|---|---|
+> | the fill of a primary control | 313 | `bg-blue-600/700`, `bg-indigo-600`, `bg-violet-600`, `bg-sky-600` → `bg-brand` |
+> | its hover | 251 | → `hover:bg-brand-dark` |
+> | the focus ring | 387 | `focus:ring-blue-500` → `focus:ring-brand` |
+> | the focus border | 148 | `focus:border-blue-*` → `focus:border-brand` |
+> | the soft focus halo | 35 | → `focus:ring-brand-light` |
+> | a border dressing a converted fill | 30 | → `border-brand` |
+> | the disabled fill | 4 | → `disabled:bg-ps-disabled` |
+> | selection rails, progress bars, wizard steps, the unread dot | 25 | → `bg-brand` |
+>
+> **The focus ring is the part that is an accessibility fix, not a brand
+> change.** `focus:ring-brand` is **15.05:1** on white; `ring-blue-500` was
+> **3.68:1**, which only just clears WCAG 1.4.11's 3:1 for a non-text
+> indicator. White-on-navy is **15.05:1** against white-on-`blue-600`'s 5.17.
+> `components/ui/field.tsx` had already written the rule down in its own
+> docstring — *"THE FOCUS RING IS THE BRAND, NOT A STRAY TAILWIND BLUE …
+> the fourth primary in a product that already had three"* — and it was true of
+> that one component and of nothing else.
+>
+> **One thing is worse and it is recorded rather than papered over:** the
+> hover step. `brand` → `brand-dark` is **1.18:1**, against `blue-600` →
+> `blue-700`'s **1.30:1**. Both are subtle; navy's is subtler. It is about 6.7
+> L\* units, which is above the just-noticeable threshold for a button-sized
+> area, and I used the pair **already in use** on the 22 sites that were
+> painting brand buttons rather than inventing a third navy for the hover —
+> naming a value that is there is the method every other slice this week used.
+> **If you want a stronger step, say so and it is one token.**
+>
+> **What is deliberately NOT navy**, each for its own reason: `text-blue-*`
+> (a LINK — #182350 on white reads as body text, not as a link, so that is its
+> own question); `bg-blue-50` / `bg-blue-100` panels and their hairlines (a
+> TINT is a different role); the opacity-modified tints (`bg-blue-500/[0.08]`
+> column shades, the dark hero's `/20`); `app/calendar`'s map keyed by
+> COMPLIANCE AREA (a category — painting GST the brand would say GST is the
+> primary area); and the `relationships` entity screen, which is DARK-ground,
+> where navy is invisible and so is the wrong answer rather than the
+> unconverted one. Both exceptions are allowlisted **with their reason**, and a
+> second test fails if an allowlisted file stops holding one.
+
+
 **This is G's question at ten times the size, and it was found by measuring
 rather than by reading.** `tailwind.config.ts` says, in its own comment:
 

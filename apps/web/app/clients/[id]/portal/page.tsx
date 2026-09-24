@@ -182,7 +182,7 @@ export default function PortalPage() {
             <button
               onClick={handleOpenInvite}
               disabled={loading}
-              className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark disabled:opacity-50"
             >
               {enabled ? "Invite Another Contact" : "Invite to Portal"}
             </button>
@@ -251,7 +251,7 @@ export default function PortalPage() {
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     placeholder="client@example.com"
-                    className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                   />
                 </div>
                 {inviteError && <Callout tone="problem">{inviteError}</Callout>}
@@ -265,7 +265,7 @@ export default function PortalPage() {
                   <button
                     onClick={handleSendInvite}
                     disabled={loading || !inviteEmail.trim()}
-                    className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+                    className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
                   >
                     {loading ? "Sending…" : "Send Invite"}
                   </button>

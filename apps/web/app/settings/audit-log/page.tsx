@@ -331,17 +331,17 @@ function AuditLogContent() {
         <div>
           <label className="text-xs text-ps-label">From Date</label>
           <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
         </div>
         <div>
           <label className="text-xs text-ps-label">To Date</label>
           <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
         </div>
         <div>
           <label className="text-xs text-ps-label">Action</label>
           <select value={filterAction} onChange={(e) => setFilterAction(e.target.value)}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand">
             <option value="">All Actions</option>
             {actionOptions.map((a) => (
               <option key={a} value={a}>{formatAction(a)}</option>
@@ -351,7 +351,7 @@ function AuditLogContent() {
         <div>
           <label className="text-xs text-ps-label">Entity Type</label>
           <select value={filterEntity} onChange={(e) => setFilterEntity(e.target.value)}
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand">
             <option value="">All Entities</option>
             {entityOptions.map((t) => (
               <option key={t} value={t}>{formatEntityType(t)}</option>
@@ -367,7 +367,7 @@ function AuditLogContent() {
           </label>
           <input value={filterUser} onChange={(e) => setFilterUser(e.target.value)}
             placeholder="Search loaded events…"
-            className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
         </div>
       </div>
 

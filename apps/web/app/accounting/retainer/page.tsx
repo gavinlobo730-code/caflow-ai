@@ -140,7 +140,7 @@ function SetRetainerModal({
               id="retainer-fee"
               type="text"
               inputMode="decimal"
-              className="w-full border border-ps-border rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
               placeholder="15000"
               value={feeRupees}
               onChange={e => { setFeeRupees(e.target.value); setError(null); }}
@@ -154,7 +154,7 @@ function SetRetainerModal({
             <label htmlFor="retainer-cadence" className="text-xs font-medium text-ps-body block mb-1">Billing cycle</label>
             <select
               id="retainer-cadence"
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
               value={cadence}
               onChange={e => setCadence(e.target.value)}
             >
@@ -167,7 +167,7 @@ function SetRetainerModal({
               id="retainer-gst"
               type="text"
               inputMode="decimal"
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
               value={gstPercent}
               onChange={e => { setGstPercent(e.target.value); setError(null); }}
             />
@@ -178,7 +178,7 @@ function SetRetainerModal({
           <label htmlFor="retainer-service" className="text-xs font-medium text-ps-body block mb-1">Product / Service</label>
           <select
             id="retainer-service"
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
             value={serviceId}
             onChange={e => { setServiceId(e.target.value); setError(null); }}
           >
@@ -196,7 +196,7 @@ function SetRetainerModal({
           <input
             id="retainer-next"
             type="date"
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
             value={nextRun}
             onChange={e => setNextRun(e.target.value)}
           />
@@ -211,7 +211,7 @@ function SetRetainerModal({
           <button
             disabled={saving}
             onClick={handleSave}
-            className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save Retainer"}
           </button>

@@ -136,7 +136,7 @@ export default function EInvoicePage() {
           <p className="text-xs text-ps-hint mt-0.5">CGST Act §31B, Rule 48(4) — IRN management</p>
         </div>
         <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+          className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
           <Plus size={12} /> New E-Invoice
         </button>
       </div>
@@ -181,7 +181,7 @@ export default function EInvoicePage() {
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
             <button onClick={handleCreate} disabled={actionInFlight || !invNo || !invDate || !clientId}
-              className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
+              className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
             </button>
           </div>

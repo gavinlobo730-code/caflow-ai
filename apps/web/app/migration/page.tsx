@@ -250,7 +250,7 @@ export default function MigrationPage() {
         </div>
         {canStartImport && (
           <button onClick={() => { setShowCreate(true); setStep("create"); setJobId(null); setParseResult(null); setImportResult(null); }}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
             <Plus size={12} /> New Import
           </button>
         )}
@@ -270,7 +270,7 @@ export default function MigrationPage() {
           <div className="flex gap-2">
             {["create", "parse", "preview", "import"].map((s, i) => (
               <div key={s} className="flex items-center gap-1 flex-1">
-                <div className={`h-1.5 flex-1 rounded-full ${["create","parse","preview","import"].indexOf(step) >= i ? "bg-blue-500" : "bg-ps-border"}`} />
+                <div className={`h-1.5 flex-1 rounded-full ${["create","parse","preview","import"].indexOf(step) >= i ? "bg-brand" : "bg-ps-border"}`} />
               </div>
             ))}
           </div>
@@ -301,14 +301,14 @@ export default function MigrationPage() {
                 <div className="flex flex-wrap gap-2">
                   {IMPORT_TYPES.map(t => (
                     <button key={t} onClick={() => toggleType(t)}
-                      className={`text-3xs px-2 py-1 rounded-full border ${selectedTypes.includes(t) ? "bg-blue-600 text-white border-blue-600" : "border-ps-border text-ps-label"}`}>
+                      className={`text-3xs px-2 py-1 rounded-full border ${selectedTypes.includes(t) ? "bg-brand text-white border-brand" : "border-ps-border text-ps-label"}`}>
                       {t}
                     </button>
                   ))}
                 </div>
               </div>
               <button onClick={handleCreate} disabled={working || !name || !fileName}
-                className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
+                className="text-xs px-4 py-2 bg-brand text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
                 {working && <Loader2 size={10} className="animate-spin" />} Create Job →
               </button>
             </div>
@@ -321,10 +321,10 @@ export default function MigrationPage() {
                 In Tally: Gateway of Tally → Export → XML. Paste the exported XML content below.
               </p>
               <textarea value={xmlContent} onChange={e => setXmlContent(e.target.value)} rows={12}
-                className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-brand"
                 placeholder='<?xml version="1.0"?><ENVELOPE>...</ENVELOPE>' />
               <button onClick={handleParse} disabled={working || !xmlContent.trim()}
-                className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
+                className="text-xs px-4 py-2 bg-brand text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
                 {working && <Loader2 size={10} className="animate-spin" />} Parse XML →
               </button>
             </div>
@@ -401,7 +401,7 @@ export default function MigrationPage() {
                 </p>
               }>
                 <button onClick={handleImport} disabled={working || (preview.error_count > 0 && !isDryRun)}
-                  className={`text-xs px-4 py-2 text-white rounded-lg disabled:opacity-50 flex items-center gap-1 ${isDryRun ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"}`}>
+                  className={`text-xs px-4 py-2 text-white rounded-lg disabled:opacity-50 flex items-center gap-1 ${isDryRun ? "bg-brand hover:bg-brand-dark" : "bg-red-600 hover:bg-red-700"}`}>
                   {working && <Loader2 size={10} className="animate-spin" />}
                   {isDryRun ? "Run Dry Run →" : "Execute Import →"}
                 </button>

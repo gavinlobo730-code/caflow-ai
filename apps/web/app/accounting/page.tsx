@@ -73,7 +73,7 @@ export default function AccountingHubPage() {
                 Practice books
               </Link>
             )}
-            <Link href="/clients" className="inline-flex items-center gap-1.5 text-xs font-medium px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <Link href="/clients" className="inline-flex items-center gap-1.5 text-xs font-medium px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark">
               Go to Clients <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>

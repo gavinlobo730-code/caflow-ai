@@ -285,7 +285,7 @@ export default function FirmHsnLibraryPage() {
               </button>
               <button
                 onClick={() => setAdding(true)}
-                className="flex items-center gap-1.5 text-sm bg-violet-600 text-white px-3.5 py-2 rounded-lg hover:bg-violet-700 whitespace-nowrap"
+                className="flex items-center gap-1.5 text-sm bg-brand text-white px-3.5 py-2 rounded-lg hover:bg-brand-dark whitespace-nowrap"
               >
                 <Plus size={15} /> Add Code
               </button>
@@ -301,7 +301,7 @@ export default function FirmHsnLibraryPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by code or description…"
-              className="w-full pl-8 pr-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full pl-8 pr-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>
           <select
@@ -318,7 +318,7 @@ export default function FirmHsnLibraryPage() {
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`px-3 py-2 capitalize ${filter === f ? "bg-violet-600 text-white" : "bg-white text-ps-label hover:bg-ps-bg"}`}
+                className={`px-3 py-2 capitalize ${filter === f ? "bg-brand text-white" : "bg-white text-ps-label hover:bg-ps-bg"}`}
               >
                 {f}
               </button>
@@ -361,7 +361,7 @@ export default function FirmHsnLibraryPage() {
                 {q ? "No codes match your search" : filter === "archived" ? "No retired codes" : "Your library is empty"}
               </p>
               {!q && filter === "active" && (
-                <button onClick={() => setAdding(true)} className="mt-3 text-xs px-3 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700">
+                <button onClick={() => setAdding(true)} className="mt-3 text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark">
                   Add your first code
                 </button>
               )}
@@ -498,7 +498,7 @@ function EditCodeModal({ row, onClose, onSaved, onError }: {
             autoFocus
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+            className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </label>
         <label className="block space-y-1">
@@ -508,12 +508,12 @@ function EditCodeModal({ row, onClose, onSaved, onError }: {
             value={gstRate}
             onChange={(e) => setGstRate(e.target.value === "" ? "" : parseFloat(e.target.value))}
             placeholder="Varies / not set"
-            className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+            className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </label>
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-          <button onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50">
+          <button onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
             Save changes
           </button>
         </div>

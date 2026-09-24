@@ -397,7 +397,7 @@ export default function AdvanceTaxPage() {
           <label className="text-xs text-ps-label">Estimated Annual Tax (₹)</label>
           <input type="number" min="0" step="0.01" value={estimatedTaxRs}
             onChange={e => setEstimatedTaxRs(e.target.value)}
-            className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-48"
+            className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand w-48"
             placeholder="Enter tax amount" />
         </div>
         <label className="flex items-center gap-1.5 text-xs text-ps-label pb-2"
@@ -497,20 +497,20 @@ export default function AdvanceTaxPage() {
                         <input type="number" min="0" step="0.01"
                           value={editPaidRs[n] ?? ""}
                           onChange={e => setEditPaidRs(prev => ({ ...prev, [n]: e.target.value }))}
-                          className="w-28 border border-ps-border rounded px-2 py-1 text-sm text-right outline-none focus:border-blue-500" />
+                          className="w-28 border border-ps-border rounded px-2 py-1 text-sm text-right outline-none focus:border-brand" />
                       </td>
                       <td className="px-3 py-3">
                         <input type="date"
                           value={editPaidDate[n] ?? ""}
                           onChange={e => setEditPaidDate(prev => ({ ...prev, [n]: e.target.value }))}
-                          className="border border-ps-border rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
+                          className="border border-ps-border rounded px-2 py-1 text-xs outline-none focus:border-brand" />
                       </td>
                       <td className="px-3 py-3">
                         <input type="text"
                           value={editChallan[n] ?? ""}
                           onChange={e => setEditChallan(prev => ({ ...prev, [n]: e.target.value }))}
                           placeholder="BSR/challan"
-                          className="w-32 border border-ps-border rounded px-2 py-1 text-xs outline-none focus:border-blue-500" />
+                          className="w-32 border border-ps-border rounded px-2 py-1 text-xs outline-none focus:border-brand" />
                       </td>
                       <td className={`px-3 py-3 text-sm text-right tabular-nums ${interest > 0 ? "text-red-600 font-semibold" : "text-ps-hint"}`}>
                         {interest > 0 ? formatPaise(interest) : "—"}
@@ -542,21 +542,21 @@ export default function AdvanceTaxPage() {
               <label className="text-xs text-ps-label">TDS / TCS credit (₹)</label>
               <input type="text" inputMode="decimal" value={tdsTcsRs}
                 onChange={e => setTdsTcsRs(e.target.value)}
-                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-40"
+                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand w-40"
                 placeholder="0.00" />
             </div>
             <div>
               <label className="text-xs text-ps-label">Relief u/s 89 / 90 / 91 (₹)</label>
               <input type="text" inputMode="decimal" value={reliefRs}
                 onChange={e => setReliefRs(e.target.value)}
-                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-40"
+                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand w-40"
                 placeholder="0.00" />
             </div>
             <div>
               <label className="text-xs text-ps-label">Return furnished on</label>
               <input type="date" value={furnishedOn}
                 onChange={e => setFurnishedOn(e.target.value)}
-                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
               <p className="text-3xs text-ps-hint mt-1 max-w-[16rem]">
                 Leave blank if it has not been filed — the §234A period then runs to today
                 and keeps running.
@@ -669,24 +669,24 @@ export default function AdvanceTaxPage() {
             <label className="text-xs text-ps-label">BSR code
               <input type="text" inputMode="numeric" value={saForm.bsr_code}
                 onChange={e => setSaForm({ ...saForm, bsr_code: e.target.value })}
-                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                 placeholder="7 digits" />
             </label>
             <label className="text-xs text-ps-label">Deposited on
               <input type="date" value={saForm.deposit_date}
                 onChange={e => setSaForm({ ...saForm, deposit_date: e.target.value })}
-                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
             </label>
             <label className="text-xs text-ps-label">Challan serial no.
               <input type="text" value={saForm.challan_serial_no}
                 onChange={e => setSaForm({ ...saForm, challan_serial_no: e.target.value })}
-                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                 placeholder="e.g. 00123" />
             </label>
             <label className="text-xs text-ps-label">Bank
               <input type="text" value={saForm.bank_name}
                 onChange={e => setSaForm({ ...saForm, bank_name: e.target.value })}
-                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                 placeholder="Optional" />
             </label>
           </div>
@@ -700,7 +700,7 @@ export default function AdvanceTaxPage() {
               <label key={key} className="text-xs text-ps-label">{label}
                 <input type="text" inputMode="decimal" value={saForm[key]}
                   onChange={e => setSaForm({ ...saForm, [key]: e.target.value })}
-                  className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                   placeholder="0.00" />
               </label>
             ))}
@@ -710,7 +710,7 @@ export default function AdvanceTaxPage() {
             <label className="text-xs text-ps-label">Major head
               <select value={saForm.major_head}
                 onChange={e => setSaForm({ ...saForm, major_head: e.target.value })}
-                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
                 <option value="0021">0021 — other than companies</option>
                 <option value="0020">0020 — companies</option>
               </select>
@@ -718,7 +718,7 @@ export default function AdvanceTaxPage() {
             <label className="text-xs text-ps-label">Minor head
               <select value={saForm.minor_head}
                 onChange={e => setSaForm({ ...saForm, minor_head: e.target.value })}
-                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+                className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
                 <option value="300">300 — self-assessment tax</option>
                 <option value="100">100 — advance tax</option>
                 <option value="400">400 — tax on regular assessment</option>

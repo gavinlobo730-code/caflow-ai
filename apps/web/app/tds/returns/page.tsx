@@ -218,7 +218,7 @@ export default function TDSReturnsPage() {
                 and rebuilt it by hand from the deduction list.
                 27EQ (TCS) is deliberately absent: nothing builds it. */}
             <select value={returnType} onChange={e => setReturnType(e.target.value as TDSReturnType)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand">
               <option value="26Q">26Q — Non-salary, resident (194 series)</option>
               <option value="24Q">24Q — Salary (192)</option>
               <option value="27Q">27Q — Non-resident (195 and the like)</option>
@@ -231,14 +231,14 @@ export default function TDSReturnsPage() {
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Quarter</label>
             <select value={quarter} onChange={e => setQuarter(e.target.value as TDSQuarter)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand">
               {QUARTERS.map(q => <option key={q} value={q}>{QUARTER_LABELS[q]}</option>)}
             </select>
           </div>
         </div>
         <div className="mt-4 flex items-center gap-3">
           <button onClick={handleCompute} disabled={actionInFlight || !clientId}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+            className="flex items-center gap-2 bg-brand text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-dark disabled:opacity-50">
             {loading ? "Computing…" : `Compute ${returnType}`}
           </button>
           {result && (
@@ -283,7 +283,7 @@ export default function TDSReturnsPage() {
               {(["summary", "deductees", "challans", "json"] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`px-4 py-3 text-sm font-medium capitalize transition-colors ${
-                    tab === t ? "border-b-2 border-blue-600 text-blue-600" : "text-ps-label hover:text-ps-body"
+                    tab === t ? "border-b-2 border-brand text-blue-600" : "text-ps-label hover:text-ps-body"
                   }`}>
                   {t}
                 </button>
@@ -522,13 +522,13 @@ export default function TDSReturnsPage() {
               <label className="block text-xs font-medium text-ps-body mb-1">PRN (Provisional Receipt Number) *</label>
               <input value={prn} onChange={e => setPrn(e.target.value.toUpperCase())}
                 placeholder="Token / PRN from the e-filing portal"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500" />
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Acknowledgement Number</label>
               <input value={ackNumber} onChange={e => setAckNumber(e.target.value)}
                 placeholder="Optional acknowledgement number"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500" />
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-brand" />
             </div>
             <div className="flex gap-3 pt-1">
               <button onClick={() => setShowFiledModal(false)}

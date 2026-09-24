@@ -86,7 +86,21 @@ const config: Config = {
            no STATE colours, so each screen picked its own emerald and amber;
            and there was no single primary, so three were in use at once —
            brand navy here, indigo #4338CA in banking, blue-700 on the Team
-           screen. What follows closes all three. */
+           screen.
+
+           ⚠️ THAT SENTENCE USED TO END "What follows closes all three", AND IT
+           DID NOT. The token was added here and the SITES were never
+           converted, so for months this comment claimed something the codebase
+           contradicted: measured 24-09-2026, `bg-blue-600` 303 and
+           `bg-blue-700` 244 against this navy's 200 and indigo's 92 — Tailwind
+           blue was the de-facto primary 547 to 200. G0 converted them (1,193
+           utilities across 162 files) and, more to the point, put the rule
+           under a guard, because writing the guard is what found there were
+           not three primaries but FIVE: the HSN library screen's buttons and
+           focus rings were VIOLET and the treaty-rates screen's were SKY,
+           neither of them in any palette and neither in any count. A list can
+           only hold what somebody already counted; a rule holds what nobody
+           has looked at yet. */
         ps: {
           /* Surfaces, lightest to heaviest. */
           bg:      "#F8FAFC",   /* the application background */

@@ -203,7 +203,7 @@ export default function ReviewPage() {
             onChange={(e) => setComment(e.target.value)}
             rows={3}
             placeholder="Add a comment for the reviewer…"
-            className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand resize-none"
           />
         </div>
 
@@ -325,7 +325,7 @@ function ActionButton({
   variant: "primary" | "success" | "danger";
 }) {
   const styles = {
-    primary: "bg-blue-600 text-white hover:bg-blue-700",
+    primary: "bg-brand text-white hover:bg-brand-dark",
     success: "bg-green-600 text-white hover:bg-green-700",
     danger: "bg-state-problem-surface text-state-problem hover:bg-state-problem-hover border border-state-problem-border",
   };

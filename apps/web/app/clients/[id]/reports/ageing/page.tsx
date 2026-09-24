@@ -368,7 +368,7 @@ export default function ClientAgeingSchedulePage() {
             title={t.hint}
             className={`text-2xs px-3 py-2 border-b-2 -mb-px transition-colors ${
               tab === t.id
-                ? "border-blue-600 text-blue-700 font-medium"
+                ? "border-brand text-blue-700 font-medium"
                 : "border-transparent text-ps-hint hover:text-ps-label"
             }`}
           >

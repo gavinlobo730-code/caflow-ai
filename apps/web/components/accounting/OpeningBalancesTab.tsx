@@ -190,7 +190,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
           </p>
         </div>
         <button onClick={() => { setForm(BLANK); setShowForm(true); }} disabled={busy}
-          className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">
+          className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1.5">
           <Plus size={13} /> Add a document
         </button>
       </div>
@@ -396,7 +396,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
                   Cancel
                 </button>
                 <button onClick={handleSave} disabled={saving}
-                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                  className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                   {saving ? "Saving…" : "Record"}
                 </button>
               </div>

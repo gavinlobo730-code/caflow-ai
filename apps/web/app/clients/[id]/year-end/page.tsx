@@ -149,7 +149,7 @@ export default function YearEndPage() {
           )}
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
           >
             <Plus size={12} /> New Engagement
           </button>
@@ -171,7 +171,7 @@ export default function YearEndPage() {
             <button
               onClick={handleCreate}
               disabled={creating}
-              className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"
+              className="text-xs px-3 py-1.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1"
             >
               {creating && <Loader2 size={10} className="animate-spin" />}
               Create

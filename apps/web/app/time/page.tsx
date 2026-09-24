@@ -312,7 +312,7 @@ export default function TimeTrackingPage() {
             <select
               value={exportClientId}
               onChange={e => setExportClientId(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
             >
               <option value="">All clients</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
@@ -324,7 +324,7 @@ export default function TimeTrackingPage() {
               type="date"
               value={exportDateFrom}
               onChange={e => setExportDateFrom(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
             />
           </div>
           <div>
@@ -333,7 +333,7 @@ export default function TimeTrackingPage() {
               type="date"
               value={exportDateTo}
               onChange={e => setExportDateTo(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
             />
           </div>
           <div className="flex gap-2 ml-auto">
@@ -427,7 +427,7 @@ export default function TimeTrackingPage() {
                 <select
                   value={startClientId}
                   onChange={e => setStartClientId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                 >
                   <option value="">No client</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
@@ -438,7 +438,7 @@ export default function TimeTrackingPage() {
                 <input
                   value={startDescription}
                   onChange={e => setStartDescription(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                   placeholder="What are you working on?"
                 />
               </div>
@@ -485,7 +485,7 @@ export default function TimeTrackingPage() {
                 <select
                   value={manualClientId}
                   onChange={e => setManualClientId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                 >
                   <option value="">No client</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
@@ -496,7 +496,7 @@ export default function TimeTrackingPage() {
                 <input
                   value={manualDescription}
                   onChange={e => setManualDescription(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                   placeholder="What did you work on?"
                 />
               </div>
@@ -507,7 +507,7 @@ export default function TimeTrackingPage() {
                     type="datetime-local"
                     value={manualStarted}
                     onChange={e => setManualStarted(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                   />
                 </div>
                 <div>
@@ -516,7 +516,7 @@ export default function TimeTrackingPage() {
                     type="datetime-local"
                     value={manualEnded}
                     onChange={e => setManualEnded(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                   />
                 </div>
               </div>
@@ -539,7 +539,7 @@ export default function TimeTrackingPage() {
                       step="0.01"
                       value={manualHourlyRate}
                       onChange={e => setManualHourlyRate(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                       placeholder="Rate ₹/hr"
                     />
                   </div>

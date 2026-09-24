@@ -317,7 +317,7 @@ export default function YearEndDashboardPage() {
           {/* Progress bar */}
           <div className="w-full h-1.5 bg-ps-muted rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-500 rounded-full transition-all"
+              className="h-full bg-brand rounded-full transition-all"
               style={{ width: `${checklistPct}%` }}
             />
           </div>
@@ -382,7 +382,7 @@ export default function YearEndDashboardPage() {
           </button>
           <button
             onClick={() => router.push(`${base}/?tab=financial-statements`)}
-            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-brand text-white hover:bg-brand-dark"
           >
             <TrendingUp size={12} /> Generate Statements <ArrowRight size={10} />
           </button>

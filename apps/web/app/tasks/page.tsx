@@ -167,7 +167,7 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
         <select
           value={addId}
           onChange={e => setAddId(e.target.value)}
-          className="flex-1 border border-ps-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+          className="flex-1 border border-ps-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-brand"
         >
           <option value="">Add a blocking task…</option>
           {candidates.map(t => (
@@ -263,7 +263,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 <input
                   value={form.title ?? ""}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                 />
               </div>
               <div>
@@ -271,7 +271,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 <select
                   value={form.client_id ?? ""}
                   onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                 >
                   {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
                 </select>
@@ -281,7 +281,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 <select
                   value={form.assignee_id ?? ""}
                   onChange={e => setForm(f => ({ ...f, assignee_id: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                 >
                   <option value="">Unassigned</option>
                   {teamMembers.map(m => <option key={m.id} value={m.id}>{m.full_name ?? m.email}</option>)}
@@ -293,7 +293,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                   <select
                     value={form.priority ?? "medium"}
                     onChange={e => setForm(f => ({ ...f, priority: e.target.value as TaskPriority }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                   >
                     {(["low","medium","high","critical"] as TaskPriority[]).map(p => (
                       <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
@@ -305,7 +305,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                   <select
                     value={form.status ?? "todo"}
                     onChange={e => setForm(f => ({ ...f, status: e.target.value as TaskStatus }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                   >
                     {(Object.keys(STATUS_LABEL) as TaskStatus[]).map(s => (
                       <option key={s} value={s}>{STATUS_LABEL[s]}</option>
@@ -319,7 +319,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                   type="date"
                   value={form.due_date ?? ""}
                   onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                 />
               </div>
               <div>
@@ -328,7 +328,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                   rows={3}
                   value={form.description ?? ""}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand resize-none"
                 />
               </div>
               <div className="flex gap-2 pt-1">
@@ -341,7 +341,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex-1 bg-blue-600 text-white rounded-lg px-3 py-2 text-sm hover:bg-blue-700 disabled:opacity-60"
+                  className="flex-1 bg-brand text-white rounded-lg px-3 py-2 text-sm hover:bg-brand-dark disabled:opacity-60"
                 >
                   {saving ? "Saving…" : "Save"}
                 </button>
@@ -641,7 +641,7 @@ export default function TasksPage() {
           </button>
           <button
             onClick={() => setModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark transition-colors"
           >
             <Plus size={16} /> New Task
           </button>

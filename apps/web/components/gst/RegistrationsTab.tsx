@@ -217,7 +217,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
           </p>
         </div>
         <button onClick={() => { setForm(BLANK); setShowForm(true); }} disabled={busy}
-          className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">
+          className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1.5">
           <Plus size={13} /> Add a registration
         </button>
       </div>
@@ -313,7 +313,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
               className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
           </label>
           <button onClick={saveTurnover} disabled={busy || !tvForm.fy || !tvForm.amount.trim()}
-            className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {tvSaving ? "Saving…" : "Record"}
           </button>
         </div>
@@ -405,7 +405,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                               className="px-1.5 py-1 text-2xs border border-ps-border rounded" />
                             <button onClick={() => handleClose(r, closing.on)}
                               disabled={busy || !closing.on}
-                              className="px-2 py-1 text-2xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40">
+                              className="px-2 py-1 text-2xs bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-40">
                               Record
                             </button>
                             <button onClick={() => setClosing(null)} disabled={busy}
@@ -507,7 +507,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                 Cancel
               </button>
               <button onClick={handleSave} disabled={busy || !form.gstin.trim()}
-                className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {saving ? "Adding…" : "Add"}
               </button>
             </div>

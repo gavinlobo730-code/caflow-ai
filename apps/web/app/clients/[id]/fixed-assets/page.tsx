@@ -243,7 +243,7 @@ export default function FixedAssetsPage() {
               onClick={() => setTab(t.id)}
               className={`px-4 py-3 text-xs font-medium border-b-2 transition-colors ${
                 tab === t.id
-                  ? "border-blue-600 text-blue-600"
+                  ? "border-brand text-blue-600"
                   : "border-transparent text-ps-label hover:text-ps-ink"
               }`}
             >
@@ -369,7 +369,7 @@ function RegisterTab({ clientId, openDoc }:
           <button onClick={load} className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
             <Plus size={12} /> Add Asset
           </button>
         </div>
@@ -571,7 +571,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
           <div key={f.k}>
             <label className="block text-2xs font-medium text-ps-label mb-1">{f.label}</label>
             <input
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand-light"
               value={form[f.k]}
               onChange={e => set(f.k, e.target.value)}
             />
@@ -582,7 +582,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
 
         <div className="flex gap-2 pt-2">
           <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving} className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 disabled:opacity-50">
+          <button onClick={save} disabled={saving} className="flex-1 text-xs bg-brand text-white rounded-lg py-2 hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Save correction"}
           </button>
         </div>
@@ -1159,7 +1159,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
 
         <div className="px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
           <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50">
+          <button onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Asset"}
           </button>
         </div>
@@ -1330,21 +1330,21 @@ function DepreciationTab({ clientId }: { clientId: string }) {
         <div className="flex items-center gap-3">
           <input
             type="month"
-            className="border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand-light"
             value={period}
             onChange={e => setPeriod(e.target.value)}
           />
           <span className="text-2xs text-ps-hint">to</span>
           <input
             type="month"
-            className="border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand-light"
             value={toPeriod}
             onChange={e => setToPeriod(e.target.value)}
           />
           <button
             onClick={runDepreciation}
             disabled={running}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark disabled:opacity-50"
           >
             <TrendingDown size={12} /> {running ? "Running…" : "Run depreciation"}
           </button>
@@ -2252,7 +2252,7 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-const INPUT = "w-full border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white";
+const INPUT = "w-full border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand-light bg-white";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

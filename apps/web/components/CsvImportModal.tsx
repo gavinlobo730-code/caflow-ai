@@ -327,7 +327,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       onClick={downloadTemplate}
-                      className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                      className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark font-medium"
                     >
                       Download Excel (.xlsx)
                     </button>
@@ -557,7 +557,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           {step === "resolve" && (
             <button
               onClick={() => setStep("preview")}
-              className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+              className="px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
             >
               Continue to preview
             </button>
@@ -565,7 +565,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           {step === "preview" && validCount > 0 && (
             <button
               onClick={handleImport}
-              className="px-5 py-2 bg-blue-600 text-gray-900 text-sm font-medium rounded-lg hover:bg-blue-700"
+              className="px-5 py-2 bg-brand text-gray-900 text-sm font-medium rounded-lg hover:bg-brand-dark"
             >
               Import {validCount} row{validCount !== 1 ? "s" : ""}
             </button>

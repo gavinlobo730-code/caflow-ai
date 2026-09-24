@@ -132,7 +132,7 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
               Cost formula (AS-2 paragraph 14)
             </label>
             <select id="cost-formula" value={method} onChange={(e) => setMethod(e.target.value)}
-                    className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
               {policy.methods.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
@@ -144,7 +144,7 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
             </label>
             <input id="cost-formula-from" type="date" value={effectiveFrom}
                    onChange={(e) => setEffectiveFrom(e.target.value)}
-                   className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                   className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             <p className="text-2xs text-ps-label mt-1 leading-relaxed">
               A change is prospective. Nothing already priced is re-costed, so
               the date has to be after the last recorded movement — the start

@@ -337,7 +337,7 @@ export default function AISPage() {
           <select
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
           >
             <option value="">Select a client…</option>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
@@ -350,7 +350,7 @@ export default function AISPage() {
           <select
             value={assessmentYear}
             onChange={(e) => setAssessmentYear(e.target.value)}
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
           >
             {years.map((y) => <option key={y} value={y}>AY {y}</option>)}
           </select>
@@ -515,7 +515,7 @@ export default function AISPage() {
                           value={books[line.id] ?? ""}
                           onChange={(e) => setBooks((p) => ({ ...p, [line.id]: e.target.value }))}
                           onBlur={() => { void saveWorking(line); }}
-                          className="w-32 border border-ps-border rounded-lg px-2 py-1 text-xs text-ps-ink text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-32 border border-ps-border rounded-lg px-2 py-1 text-xs text-ps-ink text-right focus:outline-none focus:ring-2 focus:ring-brand"
                         />
                       </td>
                       <td className="px-4 py-3 text-right text-xs font-medium">
@@ -551,7 +551,7 @@ export default function AISPage() {
                           value={notes[line.id] ?? ""}
                           onChange={(e) => setNotes((p) => ({ ...p, [line.id]: e.target.value }))}
                           onBlur={() => { void saveWorking(line); }}
-                          className="w-44 border border-ps-border rounded-lg px-2 py-1 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-44 border border-ps-border rounded-lg px-2 py-1 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -625,7 +625,7 @@ export default function AISPage() {
                 <button
                   onClick={() => { void addManual(); }}
                   disabled={busy || !manual.payer.trim() || !manual.amount.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
+                  className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-40 transition-colors"
                 >
                   Add
                 </button>

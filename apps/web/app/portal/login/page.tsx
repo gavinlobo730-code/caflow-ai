@@ -50,7 +50,7 @@ export default function PortalLoginPage() {
     <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-ps-bg">
       <div className="w-full max-w-[380px]">
         <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-sm font-bold text-white">P</div>
+          <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center text-sm font-bold text-white">P</div>
           <span className="text-base font-bold text-ps-ink">PracticeSync</span>
         </div>
 
@@ -65,7 +65,7 @@ export default function PortalLoginPage() {
             <input
               autoFocus type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="you@company.com"
-              className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+              className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
             />
           </div>
           <div className="space-y-1.5">
@@ -78,7 +78,7 @@ export default function PortalLoginPage() {
             <input
               type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+              className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
             />
           </div>
 
@@ -93,7 +93,7 @@ export default function PortalLoginPage() {
 
           <button
             type="submit" disabled={loading}
-            className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+            className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
           >
             {loading ? (
               <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Signing in…</>

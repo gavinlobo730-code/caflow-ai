@@ -185,7 +185,7 @@ function Field({
         onChange={(e) => onChange(field, e.target.value)}
         placeholder={placeholder}
         maxLength={maxLength}
-        className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${
+        className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg ${
           errors[field] ? "border-red-400 bg-state-problem-surface" : "border-ps-border"
         }`}
       />
@@ -427,7 +427,7 @@ export default function SettingsPage() {
               value={personalName}
               onChange={(e) => setPersonalName(e.target.value)}
               placeholder="e.g. CA Gavin Lobo"
-              className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+              className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
             />
           </div>
           <div>
@@ -445,7 +445,7 @@ export default function SettingsPage() {
           <button
             onClick={savePersonalProfile}
             disabled={actionInFlight}
-            className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {savingPersonal ? "Saving…" : "Save Profile"}
           </button>
@@ -532,7 +532,7 @@ export default function SettingsPage() {
                 <select
                   value={form.state}
                   onChange={(e) => handleChange("state", e.target.value)}
-                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 >
                   <option value="">Select state…</option>
                   {INDIAN_STATES.map((s) => (
@@ -552,7 +552,7 @@ export default function SettingsPage() {
           <button
             onClick={handleSave}
             disabled={actionInFlight || loading}
-            className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? "Saving…" : "Save Changes"}
           </button>

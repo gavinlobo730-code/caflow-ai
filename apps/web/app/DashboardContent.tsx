@@ -374,7 +374,7 @@ export default function DashboardContent() {
           <p className="text-sm text-ps-hint mt-1">{dateLabel}</p>
         </div>
         <Link href="/ai-assistant">
-          <div className="hidden sm:flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium px-3.5 py-2 rounded-lg shadow-[0_4px_12px_rgba(59,130,246,0.2)] transition-colors">
+          <div className="hidden sm:flex items-center gap-2 bg-brand hover:bg-brand-dark text-white text-sm font-medium px-3.5 py-2 rounded-lg shadow-[0_4px_12px_rgba(59,130,246,0.2)] transition-colors">
             <Sparkles size={14} />
             Ask AI
           </div>

@@ -126,7 +126,7 @@ function ReassignModal({ task, members, onClose, onReassigned }: ReassignModalPr
         <div>
           <label className="text-xs font-medium text-ps-body block mb-1">Reassign to:</label>
           <select value={targetId} onChange={e => setTargetId(e.target.value)}
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
             {members.map(m => (
               <option key={m.id} value={m.id}>{m.full_name} ({m.role})</option>
             ))}
@@ -138,7 +138,7 @@ function ReassignModal({ task, members, onClose, onReassigned }: ReassignModalPr
             Cancel
           </button>
           <button onClick={handleConfirm} disabled={saving}
-            className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm hover:bg-blue-700 disabled:opacity-60">
+            className="flex-1 bg-brand text-white rounded-lg py-2 text-sm hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : "Confirm"}
           </button>
         </div>
@@ -246,7 +246,7 @@ export default function WorkAllocationPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value as Role | "all")}
-          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
           <option value="all">All Roles</option>
           {(["Partner","Manager","Executive","Reviewer"] as Role[]).map(r => (
             <option key={r} value={r}>{r}</option>

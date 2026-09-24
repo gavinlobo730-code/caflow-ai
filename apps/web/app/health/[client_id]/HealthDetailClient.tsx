@@ -156,11 +156,11 @@ function scoreColor(score: number): string {
 }
 
 function scoreBarColor(score: number): string {
-  if (score >= 80) return "bg-green-500";
-  if (score >= 65) return "bg-blue-500";
-  if (score >= 50) return "bg-yellow-500";
-  if (score >= 35) return "bg-orange-500";
-  return "bg-red-500";
+  if (score >= 80) return "bg-sev-ok";
+  if (score >= 65) return "bg-sev-low";
+  if (score >= 50) return "bg-sev-medium";
+  if (score >= 35) return "bg-sev-high";
+  return "bg-sev-critical";
 }
 
 function gradeBadgeColor(grade: Grade): string {

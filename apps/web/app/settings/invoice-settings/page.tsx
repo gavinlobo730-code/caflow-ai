@@ -194,7 +194,7 @@ export default function InvoiceSettingsPage() {
                       value={form.prefix}
                       onChange={(e) => update("prefix", e.target.value.toUpperCase().slice(0, 10))}
                       placeholder="INV"
-                      className="w-full text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                      className="w-full text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                     />
                     <p className="text-xs text-ps-hint mt-1">Up to 10 uppercase characters (e.g. INV, CF, GST)</p>
                   </div>
@@ -204,7 +204,7 @@ export default function InvoiceSettingsPage() {
                     <select
                       value={form.sequence_length}
                       onChange={(e) => update("sequence_length", Number(e.target.value))}
-                      className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                      className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                     >
                       {[3, 4, 5, 6].map((n) => (
                         <option key={n} value={n}>{n} digits ({String(1).padStart(n, "0")} to {String(10 ** n - 1).padStart(n, "0")})</option>
@@ -219,7 +219,7 @@ export default function InvoiceSettingsPage() {
                       min={1}
                       value={form.starting_number}
                       onChange={(e) => update("starting_number", Math.max(1, Number(e.target.value)))}
-                      className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                      className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                     />
                     <p className="text-xs text-ps-hint mt-1">Use this to continue from a previous system&apos;s sequence</p>
                   </div>
@@ -233,7 +233,7 @@ export default function InvoiceSettingsPage() {
                   <button
                     onClick={() => update("include_financial_year", !form.include_financial_year)}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      form.include_financial_year ? "bg-blue-600" : "bg-ps-border-strong"
+                      form.include_financial_year ? "bg-brand" : "bg-ps-border-strong"
                     }`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
@@ -250,7 +250,7 @@ export default function InvoiceSettingsPage() {
                   <button
                     onClick={() => update("manual_override_allowed", !form.manual_override_allowed)}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      form.manual_override_allowed ? "bg-blue-600" : "bg-ps-border-strong"
+                      form.manual_override_allowed ? "bg-brand" : "bg-ps-border-strong"
                     }`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
@@ -279,7 +279,7 @@ export default function InvoiceSettingsPage() {
                     onClick={() => update("credit_limit_blocks", !form.credit_limit_blocks)}
                     aria-pressed={form.credit_limit_blocks}
                     className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      form.credit_limit_blocks ? "bg-blue-600" : "bg-ps-border-strong"
+                      form.credit_limit_blocks ? "bg-brand" : "bg-ps-border-strong"
                     }`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
@@ -308,7 +308,7 @@ export default function InvoiceSettingsPage() {
                   value={form.bank_name}
                   onChange={(e) => update("bank_name", e.target.value)}
                   placeholder="e.g. HDFC Bank"
-                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />
               </div>
               <div>
@@ -318,7 +318,7 @@ export default function InvoiceSettingsPage() {
                   value={form.account_holder}
                   onChange={(e) => update("account_holder", e.target.value)}
                   placeholder="e.g. Gavin Lobo & Associates"
-                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />
               </div>
               <div>
@@ -328,7 +328,7 @@ export default function InvoiceSettingsPage() {
                   value={form.account_number}
                   onChange={(e) => update("account_number", e.target.value)}
                   placeholder="e.g. 50100123456789"
-                  className="w-full text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                  className="w-full text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />
               </div>
               <div>
@@ -339,7 +339,7 @@ export default function InvoiceSettingsPage() {
                   onChange={(e) => update("ifsc_code", e.target.value.toUpperCase())}
                   placeholder="e.g. HDFC0001234"
                   maxLength={11}
-                  className="w-full text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                  className="w-full text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />
               </div>
               <div>
@@ -349,7 +349,7 @@ export default function InvoiceSettingsPage() {
                   value={form.upi_id}
                   onChange={(e) => update("upi_id", e.target.value)}
                   placeholder="e.g. firm@okaxis"
-                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />
               </div>
               <div>
@@ -359,7 +359,7 @@ export default function InvoiceSettingsPage() {
                   value={form.upi_qr_url}
                   onChange={(e) => update("upi_qr_url", e.target.value)}
                   placeholder="https://example.com/qr.png"
-                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />
               </div>
             </div>
@@ -371,7 +371,7 @@ export default function InvoiceSettingsPage() {
                 onChange={(e) => update("footer_text", e.target.value)}
                 rows={2}
                 placeholder="e.g. Thank you for your business. Payment is due within 15 days. CGST registered under GSTIN 27AAAAA9999A1ZK."
-                className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg resize-none"
+                className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg resize-none"
               />
             </div>
           </div>
@@ -381,7 +381,7 @@ export default function InvoiceSettingsPage() {
           <button
             onClick={handleSave}
             disabled={saving || loading}
-            className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
           >
             <Save size={14} />
             {saving ? "Saving…" : "Save Settings"}

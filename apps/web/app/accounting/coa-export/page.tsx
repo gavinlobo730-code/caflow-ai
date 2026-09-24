@@ -122,7 +122,7 @@ export default function CoaExportPage() {
         <button
           onClick={() => doExport("csv")}
           disabled={loading}
-          className="flex items-center gap-2 text-sm bg-blue-600 text-white px-5 py-2.5 rounded-md hover:bg-blue-700 disabled:opacity-50"
+          className="flex items-center gap-2 text-sm bg-brand text-white px-5 py-2.5 rounded-md hover:bg-brand-dark disabled:opacity-50"
         >
           <Download size={14} />
           {loading ? "Preparing…" : "Download CSV"}

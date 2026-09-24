@@ -151,7 +151,7 @@ export default function MSME43BHPage() {
             inputMode="decimal"
             placeholder="6.75"
             title="MSMED §16 charges three times this. Not the repo rate and not a lending rate."
-            className="w-[90px] border border-ps-border rounded-lg px-3 py-2 text-sm tabular-nums outline-none focus:border-blue-500"
+            className="w-[90px] border border-ps-border rounded-lg px-3 py-2 text-sm tabular-nums outline-none focus:border-brand"
             value={bankRate}
             onChange={e => setBankRate(e.target.value)}
           />

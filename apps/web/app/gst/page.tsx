@@ -291,7 +291,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
           <select
             value={returnType}
             onChange={(e) => setReturnType(e.target.value as ReturnType)}
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
           >
             {RETURN_TYPES.map((r) => (
               <option key={r} value={r}>{r}</option>
@@ -305,7 +305,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
           >
             {MONTH_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -323,7 +323,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
           />
           {dueDateErr ? (
             <p className="text-3xs text-state-attention mt-1">{dueDateErr}</p>
@@ -342,7 +342,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as FilingStatus)}
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
           >
             <option value="Pending">Pending</option>
             <option value="Filed">Filed</option>
@@ -360,7 +360,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save Filing"}
           </button>
@@ -507,7 +507,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
               type="date"
               value={filedDate}
               onChange={(e) => setFiledDate(e.target.value)}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>
 
@@ -527,7 +527,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
                     placeholder="e.g. AA270125001234A"
                     value={arns[f.id] ?? ""}
                     onChange={(e) => setArns((p) => ({ ...p, [f.id]: e.target.value }))}
-                    className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                   />
                   {rowErrors[f.id] && (
                     <p className="text-3xs text-red-600 mt-1">{rowErrors[f.id]}</p>
@@ -852,7 +852,7 @@ export default function GSTPage() {
           </Link>
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark"
           >
             <Plus className="w-3.5 h-3.5" />
             Add GST Filing
@@ -1055,7 +1055,7 @@ export default function GSTPage() {
                   placeholder="e.g. AA270125001234A"
                   value={filedForm.arn}
                   onChange={(e) => setFiledForm((p) => ({ ...p, arn: e.target.value }))}
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 
@@ -1067,7 +1067,7 @@ export default function GSTPage() {
                   type="date"
                   value={filedForm.filed_date}
                   onChange={(e) => setFiledForm((p) => ({ ...p, filed_date: e.target.value }))}
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 

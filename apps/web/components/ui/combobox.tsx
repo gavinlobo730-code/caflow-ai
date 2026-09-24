@@ -415,7 +415,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
       {showInlineInput ? (
         <div
           className={cn(
-            "flex w-full items-center gap-2 rounded-lg border border-blue-500 bg-white ring-2 ring-blue-500",
+            "flex w-full items-center gap-2 rounded-lg border border-brand bg-white ring-2 ring-brand",
             SIZE[size],
             className,
           )}
@@ -458,8 +458,8 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
           className={cn(
             "items-center gap-2 text-left text-ps-body transition-colors focus:outline-none disabled:cursor-not-allowed disabled:text-ps-hint",
             plain
-              ? "inline-flex rounded focus:ring-1 focus:ring-blue-500"
-              : cn("flex w-full justify-between rounded-lg border border-ps-border bg-white focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg", SIZE[size]),
+              ? "inline-flex rounded focus:ring-1 focus:ring-brand"
+              : cn("flex w-full justify-between rounded-lg border border-ps-border bg-white focus:ring-2 focus:ring-brand disabled:bg-ps-bg", SIZE[size]),
             className,
           )}
         >

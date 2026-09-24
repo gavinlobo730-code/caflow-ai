@@ -42,7 +42,7 @@ export default function MovedToClientWorkspace({
         </div>
         <Link
           href="/clients"
-          className="inline-flex items-center gap-1.5 text-xs font-medium px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          className="inline-flex items-center gap-1.5 text-xs font-medium px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark"
         >
           Choose a client <ArrowRight className="w-3.5 h-3.5" />
         </Link>

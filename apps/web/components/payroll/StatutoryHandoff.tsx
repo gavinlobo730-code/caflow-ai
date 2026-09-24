@@ -210,7 +210,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
             </label>
             <select value={returnType} onChange={(e) => setReturnType(e.target.value)}
               className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
-                         outline-none focus:border-blue-400">
+                         outline-none focus:border-brand">
               <option value="regular">
                 Regular — every active member for the month
               </option>
@@ -230,13 +230,13 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           <input value={reference} onChange={(e) => setReference(e.target.value)}
             placeholder={isEpf ? "as shown on the receipt" : "from the challan"}
             className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
-                       outline-none focus:border-blue-400" />
+                       outline-none focus:border-brand" />
         </div>
         <div>
           <label className="block text-3xs text-ps-label mb-0.5">Date</label>
           <input type="date" value={on} onChange={(e) => setOn(e.target.value)}
             className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
-                       outline-none focus:border-blue-400" />
+                       outline-none focus:border-brand" />
         </div>
         {!isEpf && (
           <div>
@@ -246,7 +246,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
             <input value={amount} onChange={(e) => setAmount(e.target.value)}
               inputMode="decimal" placeholder="what left the bank"
               className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
-                         outline-none focus:border-blue-400" />
+                         outline-none focus:border-brand" />
           </div>
         )}
       </div>
@@ -271,8 +271,8 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
         </p>
       )}
       <button onClick={submit} disabled={busy}
-        className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg
-                   hover:bg-blue-700 disabled:opacity-40">
+        className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg
+                   hover:bg-brand-dark disabled:opacity-40">
         {busy ? "Saving…" : "Record it"}
       </button>
     </div>
@@ -333,7 +333,7 @@ function MappedIpCheck({ runId }: { runId: string }) {
           <textarea value={pasted} onChange={(e) => setPasted(e.target.value)}
             rows={4} placeholder={"3113456789 ASHA KUMARI\n3113456790 BIMAL ROY"}
             className="w-full border border-ps-border rounded-lg px-2.5 py-2 text-xs
-                       font-mono outline-none focus:border-blue-400" />
+                       font-mono outline-none focus:border-brand" />
           <div className="flex items-center gap-2">
             <button onClick={check} disabled={busy}
               className="px-3 py-1.5 text-xs border border-ps-border rounded-lg
@@ -847,7 +847,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
         <label className="text-2xs text-ps-label">Month</label>
         <select value={runId} onChange={(e) => setRunId(e.target.value)}
           className="border border-ps-border rounded-lg px-3 py-1.5 text-sm
-                     outline-none focus:border-blue-400">
+                     outline-none focus:border-brand">
           {runs.map((r) => (
             <option key={r.id} value={r.id}>{fmtMonth(r.month)} · {r.status}</option>
           ))}

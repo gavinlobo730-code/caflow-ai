@@ -238,7 +238,7 @@ export default function ScheduledReportsPage() {
         </div>
         <button
           onClick={() => { setShowModal(true); setFormError(null); }}
-          className="flex items-center gap-1.5 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          className="flex items-center gap-1.5 text-sm bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand-dark"
         >
           <Plus size={14} /> New Schedule
         </button>
@@ -354,7 +354,7 @@ export default function ScheduledReportsPage() {
                 <select
                   value={form.report_type}
                   onChange={e => setForm(f => ({ ...f, report_type: e.target.value as ReportType }))}
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   {(Object.entries(REPORT_TYPE_LABELS) as [ReportType, string][]).map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
@@ -381,7 +381,7 @@ export default function ScheduledReportsPage() {
                 <select
                   value={form.frequency}
                   onChange={e => setForm(f => ({ ...f, frequency: e.target.value as Frequency }))}
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   {(Object.entries(FREQUENCY_LABELS) as [Frequency, string][]).map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
@@ -396,7 +396,7 @@ export default function ScheduledReportsPage() {
                   value={form.recipients}
                   onChange={e => setForm(f => ({ ...f, recipients: e.target.value }))}
                   placeholder="e.g. client@example.com, partner@firm.com"
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 
@@ -408,7 +408,7 @@ export default function ScheduledReportsPage() {
                   max={28}
                   value={form.day_of_month}
                   onChange={e => setForm(f => ({ ...f, day_of_month: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 
@@ -425,7 +425,7 @@ export default function ScheduledReportsPage() {
               <button
                 onClick={handleCreate}
                 disabled={actionInFlight}
-                className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1.5"
+                className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40 flex items-center gap-1.5"
               >
                 {saving && <Loader2 size={12} className="animate-spin" />}
                 {saving ? "Creating…" : "Create Schedule"}

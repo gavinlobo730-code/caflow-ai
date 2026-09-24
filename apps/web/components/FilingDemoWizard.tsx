@@ -238,7 +238,7 @@ export default function FilingDemoWizard({
                     ))}
                   </div>
                   <button onClick={advance}
-                    className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                    className="px-4 py-2 bg-brand text-white rounded text-sm hover:bg-brand-dark">
                     {stage.cta ?? "Proceed"}
                   </button>
                 </>
@@ -277,7 +277,7 @@ export default function FilingDemoWizard({
                   </div>
                   <div className="flex gap-2">
                     <button onClick={advance}
-                      className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                      className="px-4 py-2 bg-brand text-white rounded text-sm hover:bg-brand-dark">
                       {stage.cta ?? "Proceed"}
                     </button>
                     <button onClick={back} className="px-3 py-2 border rounded text-sm">Back</button>
@@ -292,7 +292,7 @@ export default function FilingDemoWizard({
                   </div>
                   <div className="flex gap-2">
                     <button onClick={advance}
-                      className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                      className="px-4 py-2 bg-brand text-white rounded text-sm hover:bg-brand-dark">
                       {stage.cta ?? "Proceed"}
                     </button>
                     <button onClick={back} className="px-3 py-2 border rounded text-sm">Back</button>
@@ -330,7 +330,7 @@ export default function FilingDemoWizard({
                         advance();
                       }}
                       disabled={!declared || !signatory}
-                      className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-40">
+                      className="px-4 py-2 bg-brand text-white rounded text-sm hover:bg-brand-dark disabled:opacity-40">
                       Continue
                     </button>
                     <button onClick={back} className="px-3 py-2 border rounded text-sm">Back</button>
@@ -350,7 +350,7 @@ export default function FilingDemoWizard({
                     {(stage.methods ?? []).map((m) => (
                       <button key={m.key} title={m.note}
                         onClick={() => { setMethod(m); setIdx((i) => nextFrom(i, m)); }}
-                        className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                        className="px-4 py-2 bg-brand text-white rounded text-sm hover:bg-brand-dark">
                         {m.label}
                       </button>
                     ))}
@@ -388,7 +388,7 @@ export default function FilingDemoWizard({
                   {stage.note && <p className="text-2xs text-amber-800">{stage.note}</p>}
                   <div className="flex gap-2">
                     <button onClick={advance}
-                      className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                      className="px-4 py-2 bg-brand text-white rounded text-sm hover:bg-brand-dark">
                       Continue
                     </button>
                     <button onClick={back} className="px-3 py-2 border rounded text-sm">Back</button>

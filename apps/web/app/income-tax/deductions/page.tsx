@@ -158,7 +158,7 @@ function PaiseInput({ label, valuePaise, onChange, note }: {
             setBad(p === null);
             if (p !== null) onChange(p);
           }}
-          className={`w-28 border rounded px-2 py-1 text-sm text-right outline-none ${bad ? "border-red-400 focus:border-red-500" : "border-ps-border focus:border-blue-500"}`}
+          className={`w-28 border rounded px-2 py-1 text-sm text-right outline-none ${bad ? "border-red-400 focus:border-red-500" : "border-ps-border focus:border-brand"}`}
           placeholder="0"
         />
       </div>
@@ -559,7 +559,7 @@ export default function DeductionsPage() {
               <input type="text" value={d.description}
                 onChange={e => { const ds = [...state.donations]; ds[i].description = e.target.value; upd({ donations: ds }); }}
                 placeholder="Fund/Trust name"
-                className="flex-1 border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-blue-500" />
+                className="flex-1 border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-brand" />
               <input type="number" min="0" value={d.amountPaise / 100}
                 onChange={e => {
                   // A s.80G donation deducted at 100% or 50% of a mis-read
@@ -571,11 +571,11 @@ export default function DeductionsPage() {
                   const ds = [...state.donations]; ds[i].amountPaise = paise; upd({ donations: ds });
                 }}
                 placeholder="₹"
-                className="w-24 border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-blue-500" />
+                className="w-24 border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-brand" />
               <select value={d.deductionPct}
                 onChange={e => { const ds = [...state.donations]; ds[i].deductionPct = parseInt(e.target.value) as 100 | 50; upd({ donations: ds }); }}
                 aria-label={`Donation ${i + 1} deduction percentage`}
-                className="border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-blue-500">
+                className="border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-brand">
                 <option value={100}>100%</option>
                 <option value={50}>50%</option>
               </select>
@@ -589,7 +589,7 @@ export default function DeductionsPage() {
                 onChange={e => { const ds = [...state.donations]; ds[i].subjectToLimit = e.target.value === "limited"; upd({ donations: ds }); }}
                 aria-label={`Donation ${i + 1} qualifying limit`}
                 title="Section 80G(4) caps donations in the residual category at 10% of adjusted gross total income. Funds listed in Section 80G(1)(i) — the PM National Relief Fund and its neighbours — are not capped."
-                className="border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-blue-500">
+                className="border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-brand">
                 <option value="limited">Subject to 10% limit</option>
                 <option value="unlimited">No qualifying limit — s.80G(1)(i)</option>
               </select>
@@ -607,7 +607,7 @@ export default function DeductionsPage() {
                 }}
                 aria-label={`Donation ${i + 1} mode of payment`}
                 title="Section 80G(5D) — no deduction for a donation over Rs 2,000 paid in cash. Leaving this unstated allows the deduction and returns a warning."
-                className="border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-blue-500">
+                className="border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-brand">
                 <option value="unstated">Mode not stated</option>
                 <option value="not-cash">Not paid in cash</option>
                 <option value="cash">Paid in cash</option>
@@ -701,12 +701,12 @@ export default function DeductionsPage() {
         <div>
           <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>
           <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand resize-none"
             placeholder="Planning notes…" />
         </div>
 
         <button onClick={handleSave} disabled={saving || !clientId || computing || !oldResult || !newResult}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-60">
+          className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark disabled:opacity-60">
           <Save size={15} /> {saving ? "Saving…" : "Save for Client"}
         </button>
         {saveMsg && <p className="text-xs text-green-600">{saveMsg}</p>}

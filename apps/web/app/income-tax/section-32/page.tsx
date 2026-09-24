@@ -412,7 +412,7 @@ function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
     }
   }
 
-  const input = "w-full mt-1 px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200";
+  const input = "w-full mt-1 px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-light";
 
   return (
     <div className="fixed inset-0 bg-brand-dark/50 z-50 flex items-center justify-center p-4" onClick={onClose}>

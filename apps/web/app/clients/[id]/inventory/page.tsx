@@ -400,7 +400,7 @@ export default function InventoryPage() {
               As at
             </label>
             <input id="stock-as-at" type="date" value={asAt} onChange={(e) => setAsAt(e.target.value)}
-              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           {asAt ? (
             <button onClick={() => setAsAt("")} className="text-xs text-blue-600 hover:underline pb-2">
@@ -597,12 +597,12 @@ function StockLedgerDrillDown({
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">From</label>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">To</label>
             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <button onClick={() => { setStartDate(fyRange.start); setEndDate(fyRange.end); }} className="text-xs text-blue-600 hover:underline pb-1.5">
             Reset to FY {financialYear}
@@ -790,7 +790,7 @@ function AdjustStockModal({
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Direction</label>
               <select value={direction} onChange={(e) => onDirectionChange(e.target.value as "increase" | "decrease")}
-                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                 <option value="decrease">Decrease (loss / write-off)</option>
                 <option value="increase">Increase (surplus found)</option>
               </select>
@@ -798,14 +798,14 @@ function AdjustStockModal({
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Quantity *</label>
               <input type="number" min="0.001" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)}
-                placeholder="0" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                placeholder="0" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Reason</label>
             <select value={reason} onChange={(e) => onReasonChange(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
               {reasonOptions.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </div>
@@ -824,19 +824,19 @@ function AdjustStockModal({
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Date *</label>
               <input type="date" value={adjustmentDate} onChange={(e) => setAdjustmentDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>
               <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="e.g. count sheet #"
-                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-              placeholder="Details for the audit trail" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              placeholder="Details for the audit trail" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
 
           {error && <Callout tone="problem">{error}</Callout>}
@@ -844,7 +844,7 @@ function AdjustStockModal({
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
             <button onClick={submit} disabled={saving}
-              className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+              className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
               {saving && <Loader2 size={12} className="animate-spin" />} Save Adjustment
             </button>
           </div>
@@ -921,12 +921,12 @@ function NrvWritedownModal({
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Net realisable value / unit (₹) *</label>
               <input type="text" inputMode="decimal" value={nrvPerUnit} onChange={(e) => setNrvPerUnit(e.target.value)}
-                placeholder="0.00" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                placeholder="0.00" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Date *</label>
               <input type="date" value={writedownDate} onChange={(e) => setWritedownDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>
 
@@ -947,13 +947,13 @@ function NrvWritedownModal({
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>
             <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="e.g. valuation note #"
-              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-              placeholder="Basis for the NRV estimate" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              placeholder="Basis for the NRV estimate" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
 
           {error && <Callout tone="problem">{error}</Callout>}
@@ -961,7 +961,7 @@ function NrvWritedownModal({
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
             <button onClick={submit} disabled={saving}
-              className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+              className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
               {saving && <Loader2 size={12} className="animate-spin" />} Save Write-down
             </button>
           </div>

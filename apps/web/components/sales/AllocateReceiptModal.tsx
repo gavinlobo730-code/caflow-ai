@@ -214,7 +214,7 @@ export default function AllocateReceiptModal({
                             <input value={amounts[inv.id] ?? ""} type="text" inputMode="decimal"
                               aria-label={`Amount to apply to ${inv.invoice_no}`}
                               onChange={(ev) => setAmounts((a) => ({ ...a, [inv.id]: ev.target.value }))}
-                              className={`w-28 px-2 py-1 border rounded text-right text-2xs outline-none focus:border-blue-400 ${
+                              className={`w-28 px-2 py-1 border rounded text-right text-2xs outline-none focus:border-brand ${
                                 problem ? "border-red-300" : "border-ps-border"}`} />
                             <button type="button"
                               onClick={() => setAmounts((a) => ({

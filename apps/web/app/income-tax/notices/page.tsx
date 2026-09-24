@@ -101,7 +101,7 @@ function AddModal({ clients, onClose, onAdded }: {
   const [error, setError] = useState<string | null>(null);
 
   function upd(patch: Partial<AddFormState>) { setForm(f => ({ ...f, ...patch })); }
-  const inputCls = "w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
+  const inputCls = "w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand";
   const lbl = "text-xs font-medium text-ps-body block mb-1";
 
   async function handleSave() {
@@ -201,13 +201,13 @@ function AddModal({ clients, onClose, onAdded }: {
           <div>
             <label className={lbl}>Notes</label>
             <textarea rows={2} value={form.notes} onChange={e => upd({ notes: e.target.value })}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand resize-none"
               placeholder="Additional details…" />
           </div>
         </div>
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-muted flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
+          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : "Add Notice"}
           </button>
         </div>
@@ -379,12 +379,12 @@ export default function ITNoticesPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
-          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
           <option value="all">All Clients</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
         </select>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as NoticeStatus | "all")}
-          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
           <option value="all">All Statuses</option>
           {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
         </select>

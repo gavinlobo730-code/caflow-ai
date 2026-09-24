@@ -150,7 +150,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
             <Warehouse size={15} className="text-blue-600" /> Godowns
           </h3>
           <button onClick={() => setAdding(true)}
-            className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white flex items-center gap-1">
+            className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
             <Plus size={12} /> Add godown
           </button>
         </div>
@@ -262,7 +262,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
             <Boxes size={15} className="text-blue-600" /> Lots
           </h3>
           <button onClick={() => setAddingBatch(true)}
-            className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white flex items-center gap-1">
+            className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
             <Plus size={12} /> Add lot
           </button>
         </div>
@@ -498,7 +498,7 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
 
         <div className="flex justify-end">
           <button onClick={move} disabled={saving || !item || !quantity || from === to}
-            className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs disabled:opacity-40">
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
             Move stock
           </button>
         </div>
@@ -588,7 +588,7 @@ function GodownModal({ clientId, onClose, onSaved }: {
             Cancel
           </button>
           <button onClick={save} disabled={saving || !name.trim()}
-            className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs disabled:opacity-40">
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
             Create
           </button>
         </div>
@@ -669,7 +669,7 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
             Cancel
           </button>
           <button onClick={save} disabled={saving || !item || !batchNo.trim()}
-            className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs disabled:opacity-40">
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
             Create
           </button>
         </div>

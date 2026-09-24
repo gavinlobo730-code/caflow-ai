@@ -314,7 +314,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
               type="button"
               onClick={save}
               disabled={!dirty || saving}
-              className="px-3 py-1.5 text-xs font-medium rounded-md bg-blue-700 text-white disabled:bg-ps-disabled"
+              className="px-3 py-1.5 text-xs font-medium rounded-md bg-brand text-white disabled:bg-ps-disabled"
             >
               {saving ? "Saving…" : "Save"}
             </button>

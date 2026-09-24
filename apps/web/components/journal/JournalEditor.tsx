@@ -203,7 +203,7 @@ export function JournalEditor({
     : isPosted ? `Journal Entry ${existing?.reference_no ?? ""}`.trim()
     : `Draft Journal Entry ${existing?.reference_no ?? ""}`.trim();
 
-  const field = "w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-label";
+  const field = "w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-label";
 
   return (
     <div className="space-y-5 max-w-3xl mx-auto">
@@ -359,7 +359,7 @@ export function JournalEditor({
                 const bad = (side: "debit" | "credit") => parsed[idx][side] === null;
                 const amountCls = (side: "debit" | "credit") =>
                   `w-full px-2 py-1 border rounded focus:outline-none focus:ring-1 text-right text-xs disabled:bg-ps-bg ${
-                    bad(side) ? "border-red-400 focus:ring-red-500 bg-state-problem-surface" : "border-ps-border focus:ring-blue-500"}`;
+                    bad(side) ? "border-red-400 focus:ring-red-500 bg-state-problem-surface" : "border-ps-border focus:ring-brand"}`;
                 return (
                   <tr key={line.key}>
                     <td className="py-1.5 pr-2">
@@ -389,7 +389,7 @@ export function JournalEditor({
                       <input value={line.narration} disabled={readOnly} placeholder="optional"
                              aria-label="Line narration"
                              onChange={(e) => setLine(idx, { narration: e.target.value })}
-                             className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs disabled:bg-ps-bg" />
+                             className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-xs disabled:bg-ps-bg" />
                     </td>
                     <td className="py-1.5 pl-1">
                       {!readOnly && lines.length > 2 && (
@@ -446,7 +446,7 @@ export function JournalEditor({
             </button>
             {isPosted ? (
               <button onClick={() => handleSave("correct")} disabled={saving || !isBalanced}
-                      className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+                      className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {saving ? "Saving…" : "Save Correction"}
               </button>
             ) : (
@@ -456,7 +456,7 @@ export function JournalEditor({
                   Save Draft
                 </button>
                 <button onClick={() => handleSave("post")} disabled={saving || !isBalanced}
-                        className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+                        className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                   {saving ? "Saving…" : "Post Entry"}
                 </button>
               </>

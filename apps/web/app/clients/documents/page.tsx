@@ -147,19 +147,19 @@ function UploadModal({ onClose, onUploaded, clientId, firmId }: UploadModalProps
             <label className="text-xs font-medium text-ps-body block mb-1">Document Name</label>
             <input type="text" value={docName} onChange={e => setDocName(e.target.value)}
               placeholder="e.g. PAN Card"
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Category</label>
             <select value={category} onChange={e => setCategory(e.target.value as DocCategory)}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Expiry Date (optional)</label>
             <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">File</label>
@@ -182,7 +182,7 @@ function UploadModal({ onClose, onUploaded, clientId, firmId }: UploadModalProps
             Cancel
           </button>
           <button onClick={handleUpload} disabled={uploading}
-            className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm hover:bg-blue-700 disabled:opacity-60">
+            className="flex-1 bg-brand text-white rounded-lg py-2 text-sm hover:bg-brand-dark disabled:opacity-60">
             {uploading ? "Uploading…" : "Upload"}
           </button>
         </div>
@@ -282,7 +282,7 @@ export default function ClientDocumentsPage() {
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
           <button onClick={() => setShowUpload(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+            className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark">
             <Upload size={15} /> Upload Document
           </button>
         </div>
@@ -323,7 +323,7 @@ export default function ClientDocumentsPage() {
           return (
             <button key={cat} onClick={() => setActiveCategory(cat)}
               className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                activeCategory === cat ? "border-blue-600 text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"
+                activeCategory === cat ? "border-brand text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"
               }`}>
               {cat} {count > 0 && <span className="ml-1 text-xs text-ps-hint">({count})</span>}
             </button>

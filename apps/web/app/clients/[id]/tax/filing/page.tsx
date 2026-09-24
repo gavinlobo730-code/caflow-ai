@@ -376,7 +376,7 @@ export default function ITRFilingPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+          className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
         >
           <Plus size={12} /> New Filing
         </button>
@@ -492,7 +492,7 @@ export default function ITRFilingPage() {
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
             <button onClick={handleCreate} disabled={actionInFlight}
-              className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
+              className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
             </button>
           </div>
@@ -566,7 +566,7 @@ export default function ITRFilingPage() {
             {STATUS_ORDER.map((s, i) => (
               <div key={s} className="flex items-center gap-1 flex-1">
                 <div className={`h-1.5 flex-1 rounded-full ${
-                  STATUS_ORDER.indexOf(selectedFiling.status) >= i ? "bg-blue-500" : "bg-ps-border"
+                  STATUS_ORDER.indexOf(selectedFiling.status) >= i ? "bg-brand" : "bg-ps-border"
                 }`} />
               </div>
             ))}
@@ -594,7 +594,7 @@ export default function ITRFilingPage() {
               <button
                 onClick={() => handleTransition(selectedFiling, nextStatus(selectedFiling.status)!)}
                 disabled={actionInFlight}
-                className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 flex items-center gap-1 hover:bg-blue-700"
+                className="text-xs px-4 py-2 bg-brand text-white rounded-lg disabled:opacity-50 flex items-center gap-1 hover:bg-brand-dark"
               >
                 {transitioning && <Loader2 size={10} className="animate-spin" />}
                 Move to {STATUS_LABEL[nextStatus(selectedFiling.status)!]}

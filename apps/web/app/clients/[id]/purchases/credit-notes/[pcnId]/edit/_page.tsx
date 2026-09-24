@@ -78,7 +78,7 @@ export default function PurchaseCreditNotePageClient() {
           title="No vendors yet"
           description="Add a vendor before creating a credit note."
           action={
-            <button onClick={() => router.push(`/clients/${clientId}/purchases?tab=vendors`)} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+            <button onClick={() => router.push(`/clients/${clientId}/purchases?tab=vendors`)} className="text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
               Back to Purchases
             </button>
           }

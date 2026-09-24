@@ -132,7 +132,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
       <div className="flex justify-between items-center">
         <h3 className="font-medium">Company Master</h3>
         <button onClick={() => setShowNew(true)}
-          className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
           + Add Company
         </button>
       </div>
@@ -166,7 +166,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
             </select>
           </div>
           <div className="flex gap-2">
-            <button onClick={saveNew} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">Save</button>
+            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -265,7 +265,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
       <div className="flex justify-between items-center">
         <h3 className="font-medium">Directors / DIN Register</h3>
         <button onClick={() => setShowNew(true)}
-          className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
           + Add Director
         </button>
       </div>
@@ -293,7 +293,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
             </select>
           </div>
           <div className="flex gap-2">
-            <button onClick={saveNew} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">Save</button>
+            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -469,7 +469,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       <div className="flex justify-between items-center">
         <h3 className="font-medium">{category === "annual" ? "Annual" : "Event"} Filings</h3>
         <button onClick={() => setShowNew(true)}
-          className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
           + New Filing
         </button>
       </div>
@@ -495,7 +495,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
           </div>
           <div className="flex gap-2">
             <button onClick={saveNew} disabled={!form.form_type}
-              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">Save</button>
+              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">Save</button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -740,7 +740,7 @@ export default function MCAWorkspacePage() {
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
-                ? "border-blue-600 text-blue-700"
+                ? "border-brand text-blue-700"
                 : "border-transparent text-ps-label hover:text-ps-body"
             }`}>
             {t.label}

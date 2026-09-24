@@ -297,7 +297,7 @@ export default function TaskTemplatesPage() {
                 <input
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                   placeholder="e.g. Monthly GST Filing"
                 />
               </div>
@@ -307,7 +307,7 @@ export default function TaskTemplatesPage() {
                   value={form.description}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                   rows={2}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 resize-none"
                   placeholder="Brief description of this template"
                 />
               </div>
@@ -317,7 +317,7 @@ export default function TaskTemplatesPage() {
                   <select
                     value={form.default_priority}
                     onChange={e => setForm(f => ({ ...f, default_priority: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                   >
                     {["low", "medium", "high", "critical"].map(p => (
                       <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
@@ -331,7 +331,7 @@ export default function TaskTemplatesPage() {
                     min="0"
                     value={form.estimated_hours}
                     onChange={e => setForm(f => ({ ...f, estimated_hours: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                     placeholder="e.g. 3"
                   />
                 </div>
@@ -341,7 +341,7 @@ export default function TaskTemplatesPage() {
                 <input
                   value={form.tags}
                   onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                   placeholder="e.g. gst, monthly, filing"
                 />
               </div>
@@ -350,7 +350,7 @@ export default function TaskTemplatesPage() {
                 <select
                   value={form.default_assignee_role}
                   onChange={e => setForm(f => ({ ...f, default_assignee_role: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                 >
                   <option value="">None</option>
                   {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
@@ -390,7 +390,7 @@ export default function TaskTemplatesPage() {
                   <select
                     value={instClientId}
                     onChange={e => setInstClientId(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                   >
                     <option value="">Select client…</option>
                     {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
@@ -402,7 +402,7 @@ export default function TaskTemplatesPage() {
                     type="date"
                     value={instDueDate}
                     onChange={e => setInstDueDate(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                   />
                 </div>
                 {instError && (

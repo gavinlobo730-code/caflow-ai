@@ -1017,7 +1017,7 @@ export default function TaxComputationPage() {
         <select
           value={fy}
           onChange={e => setFy(e.target.value)}
-          className="text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
         >
           {fyOptions.map(o => (
             <option key={o.fy} value={o.fy}>
@@ -1261,7 +1261,7 @@ export default function TaxComputationPage() {
                     inputMode="decimal"
                     value={value}
                     onChange={e => set(e.target.value)}
-                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                     placeholder="0"
                   />
                   {hint && <p className="text-3xs text-ps-hint mt-0.5">{hint}</p>}
@@ -1325,7 +1325,7 @@ export default function TaxComputationPage() {
                         <label className="text-3xs text-ps-label mb-1 block">{label}</label>
                         <input type="text" inputMode="decimal" value={value}
                           onChange={e => set(e.target.value)}
-                          className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                           placeholder="0" />
                         {hint && <p className="text-3xs text-ps-hint mt-0.5">{hint}</p>}
                       </div>
@@ -1336,7 +1336,7 @@ export default function TaxComputationPage() {
                       </label>
                       <input type="text" inputMode="decimal" value={presDeclared}
                         onChange={e => setPresDeclared(e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="Blank uses the deemed figure" />
                       <p className="text-3xs text-ps-hint mt-0.5">
                         Declaring LESS is refused — §44AD(5) then requires books
@@ -1445,7 +1445,7 @@ export default function TaxComputationPage() {
                     </label>
                     <input type="text" inputMode="decimal" value={employerNps}
                       onChange={e => setEmployerNps(e.target.value)}
-                      className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       placeholder="0" />
                     <p className="text-3xs text-ps-hint mt-0.5">
                       Allowed under the new regime too — §115BAC(2) withdraws the
@@ -1458,7 +1458,7 @@ export default function TaxComputationPage() {
                     </label>
                     <input type="text" inputMode="decimal" value={nps80ccd2Salary}
                       onChange={e => setNps80ccd2Salary(e.target.value)}
-                      className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       placeholder="Blank uses the gross salary above" />
                     <p className="text-3xs text-ps-hint mt-0.5">
                       Basic + dearness allowance, not the gross.
@@ -1508,7 +1508,7 @@ export default function TaxComputationPage() {
                       <label className="text-3xs text-ps-label mb-1 block">{label}</label>
                       <input type="text" inputMode="decimal" value={value}
                         onChange={e => set(e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
                       {hint && <p className="text-3xs text-ps-hint mt-0.5">{hint}</p>}
                     </div>
@@ -1550,7 +1550,7 @@ export default function TaxComputationPage() {
                       </label>
                       <input type="text" inputMode="decimal" value={s80eInterest}
                         onChange={e => setS80eInterest(e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
                       <p className="text-3xs text-ps-hint mt-0.5">
                         Interest only, and no monetary ceiling — eight assessment
@@ -1563,7 +1563,7 @@ export default function TaxComputationPage() {
                       </label>
                       <input type="number" min={1} value={s80eYear}
                         onChange={e => setS80eYear(e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="Blank if unknown" />
                       <p className="text-3xs text-ps-hint mt-0.5">
                         Left blank the claim is allowed and the gap named —
@@ -1576,7 +1576,7 @@ export default function TaxComputationPage() {
                       </label>
                       <input type="text" inputMode="decimal" value={housingExtraInterest}
                         onChange={e => setHousingExtraInterest(e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
                       <p className="text-3xs text-ps-hint mt-0.5">
                         Over and above the §24(b) interest above.
@@ -1588,7 +1588,7 @@ export default function TaxComputationPage() {
                       </label>
                       <input type="date" value={housingSanctionedOn}
                         onChange={e => setHousingSanctionedOn(e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
                       <p className="text-3xs text-ps-hint mt-0.5">
                         This date alone decides which section applies. Both
                         windows are shut, and the two limits differ by ₹1,00,000
@@ -1601,7 +1601,7 @@ export default function TaxComputationPage() {
                       </label>
                       <input type="text" inputMode="decimal" value={diseaseSpend}
                         onChange={e => setDiseaseSpend(e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
                     </div>
                     <div>
@@ -1610,7 +1610,7 @@ export default function TaxComputationPage() {
                       </label>
                       <input type="text" inputMode="decimal" value={diseaseReimbursed}
                         onChange={e => setDiseaseReimbursed(e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
                       <p className="text-3xs text-ps-hint mt-0.5">
                         Subtracted from the spend before the ceiling, not after.
@@ -1622,7 +1622,7 @@ export default function TaxComputationPage() {
                       </label>
                       <input type="text" inputMode="decimal" value={s80ggRent}
                         onChange={e => setS80ggRent(e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
                       <p className="text-3xs text-ps-hint mt-0.5">
                         The least of ₹60,000, rent over 10% of income, and 25% of
@@ -1673,7 +1673,7 @@ export default function TaxComputationPage() {
                     </label>
                     <input type="text" inputMode="decimal" value={nps80ccd1b}
                       onChange={e => setNps80ccd1b(e.target.value)}
-                      className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       placeholder="0" />
                     <p className="text-3xs text-ps-hint mt-0.5">
                       Ceiling ₹50,000, in addition to §80C.
@@ -1702,7 +1702,7 @@ export default function TaxComputationPage() {
                         <label className="text-3xs text-ps-label mb-1 block">{label}</label>
                         <input type="text" inputMode="decimal" value={value}
                           onChange={e => set(e.target.value)}
-                          className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                           placeholder="0" />
                         {hint && <p className="text-3xs text-ps-hint mt-0.5">{hint}</p>}
                       </div>
@@ -1795,7 +1795,7 @@ export default function TaxComputationPage() {
                     </label>
                     <input type="text" inputMode="decimal" value={turnoverRefYear}
                       onChange={e => setTurnoverRefYear(e.target.value)}
-                      className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       placeholder="Leave blank for 30%" />
                     {/* The 25% concession looks at the turnover of a year TWO
                         BACK, not the year being taxed. Left blank, the higher
@@ -1811,7 +1811,7 @@ export default function TaxComputationPage() {
                   </label>
                   <input type="text" inputMode="decimal" value={bookProfit}
                     onChange={e => setBookProfit(e.target.value)}
-                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                     placeholder={isCompany ? "Companies Act profit as adjusted" : "Total income with §10AA/§35AD/VI-A Part C added back"} />
                   <p className="text-3xs text-ps-hint mt-0.5">
                     {isCompany
@@ -1842,7 +1842,7 @@ export default function TaxComputationPage() {
               // can compute. Posting fy:"" would take the engine's own default
               // and put a figure on screen for a year nobody chose.
               disabled={actionInFlight || !fy || assesseeRefusal !== null}
-              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
             >
               {computing && <Loader2 size={12} className="animate-spin" />}
               <Save size={12} />
@@ -2178,7 +2178,7 @@ export default function TaxComputationPage() {
                   <button
                     onClick={handleSaveDisallowance}
                     disabled={actionInFlight || !disallDesc || !disallAmount}
-                    className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1"
+                    className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1"
                   >
                     {savingDisall && <Loader2 size={10} className="animate-spin" />}
                     Save

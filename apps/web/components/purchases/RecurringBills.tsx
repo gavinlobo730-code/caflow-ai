@@ -259,7 +259,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
             </button>
           )}
           <button onClick={() => setEditor("new")}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
             <Plus size={12} /> New Template
           </button>
         </div>
@@ -537,24 +537,24 @@ function RecurringBillEditor({
               <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>
               <input value={title} onChange={(e) => setTitle(e.target.value)}
                 placeholder="Office rent — Andheri"
-                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Every *</label>
               <select value={frequency} onChange={(e) => setFrequency(e.target.value as Frequency)}
-                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                 {FREQUENCIES.map((f) => <option key={f} value={f}>{FREQUENCY_LABEL[f]}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">First bill on *</label>
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Stop after (optional)</label>
               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div className="col-span-2 lg:col-span-3 flex flex-wrap gap-4 pt-1">
               <label className="flex items-center gap-2 text-xs text-ps-label">
@@ -596,36 +596,36 @@ function RecurringBillEditor({
                     <div className="col-span-2">
                       <label className="block text-3xs text-ps-hint mb-1">Description</label>
                       <input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })}
-                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
                     <div>
                       <label className="block text-3xs text-ps-hint mb-1">Qty</label>
                       <input value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })}
                         inputMode="decimal"
-                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
                     <div>
                       <label className="block text-3xs text-ps-hint mb-1">Rate (₹)</label>
                       <input value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })}
                         inputMode="decimal" placeholder="0.00"
-                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
                     <div>
                       <label className="block text-3xs text-ps-hint mb-1">GST %</label>
                       <input value={l.gst_rate} onChange={(e) => setLine(i, { gst_rate: e.target.value })}
                         inputMode="decimal"
-                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
                     <div>
                       <label className="block text-3xs text-ps-hint mb-1">HSN / SAC</label>
                       <input value={l.hsn_sac} onChange={(e) => setLine(i, { hsn_sac: e.target.value })}
-                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
                     <div>
                       <label className="block text-3xs text-ps-hint mb-1">Unit</label>
                       <input value={l.unit} onChange={(e) => setLine(i, { unit: e.target.value })}
                         placeholder="NOS"
-                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-4">
@@ -648,7 +648,7 @@ function RecurringBillEditor({
                       <input value={l.blocked_credit_reason}
                         onChange={(e) => setLine(i, { blocked_credit_reason: e.target.value })}
                         placeholder="Which clause of §17(5)?"
-                        className="flex-1 min-w-[12rem] px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="flex-1 min-w-[12rem] px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
                     )}
                     {lines.length > 1 && (
                       <button type="button" aria-label={`Remove line ${i + 1}`}
@@ -667,14 +667,14 @@ function RecurringBillEditor({
             <label className="block text-xs font-medium text-ps-label mb-1">Description</label>
             <input value={description} onChange={(e) => setDescription(e.target.value)}
               placeholder="What this template is for — shown in the list, not on the bill"
-              className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Notes on every generated bill</label>
             <input value={notes} onChange={(e) => setNotes(e.target.value)}
               placeholder="Left on each draft — e.g. the lease reference"
-              className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
 
           <p className="text-2xs text-ps-hint">
@@ -689,7 +689,7 @@ function RecurringBillEditor({
             Cancel
           </button>
           <button onClick={save} disabled={saving}
-            className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+            className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Saving…" : existing ? "Save changes" : "Create template"}
           </button>
         </div>

@@ -177,7 +177,7 @@ export default function XBRLPage() {
           <p className="text-xs text-ps-hint mt-0.5">Companies Act 2013, Schedule III — MCA_2023 taxonomy</p>
         </div>
         <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+          className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
           <Plus size={12} /> New Package
         </button>
       </div>
@@ -199,7 +199,7 @@ export default function XBRLPage() {
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
             <button onClick={handleCreate} disabled={actionInFlight}
-              className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
+              className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
             </button>
           </div>
@@ -285,7 +285,7 @@ export default function XBRLPage() {
             <button
               onClick={() => handleValidate(selected)}
               disabled={actionInFlight}
-              className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg disabled:opacity-50 flex items-center gap-1 hover:bg-blue-700"
+              className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg disabled:opacity-50 flex items-center gap-1 hover:bg-brand-dark"
             >
               {validating && <Loader2 size={10} className="animate-spin" />}
               Run Validation

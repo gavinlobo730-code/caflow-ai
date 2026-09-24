@@ -57,7 +57,7 @@ export default function PeriodPicker({
           onModeChange(next.mode);
         }}
         aria-label={ariaLabel}
-        className="px-2.5 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-ps-label"
+        className="px-2.5 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-ps-label"
       >
         {periodChoices().map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
@@ -70,7 +70,7 @@ export default function PeriodPicker({
             value={customFrom}
             onChange={(e) => onCustomFromChange(e.target.value)}
             aria-label="From date"
-            className="px-2 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-ps-label"
+            className="px-2 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-ps-label"
           />
           <span className="text-xs text-ps-hint">to</span>
           <input
@@ -78,7 +78,7 @@ export default function PeriodPicker({
             value={customTo}
             onChange={(e) => onCustomToChange(e.target.value)}
             aria-label="To date"
-            className="px-2 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-ps-label"
+            className="px-2 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-ps-label"
           />
         </>
       )}
@@ -87,7 +87,7 @@ export default function PeriodPicker({
           value={granularity}
           onChange={(e) => onGranularityChange(e.target.value as Granularity)}
           aria-label="Display columns by"
-          className="px-2.5 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-ps-label"
+          className="px-2.5 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-ps-label"
         >
           {GRANULARITY_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>Display: {o.label}</option>

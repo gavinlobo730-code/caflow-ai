@@ -214,7 +214,7 @@ function Field<T extends Record<string, string>>({
         onChange={(e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))}
         placeholder={placeholder}
         maxLength={maxLength}
-        className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${
+        className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg ${
           errors[field] ? "border-red-400 bg-state-problem-surface" : "border-ps-border"
         }`}
       />
@@ -239,9 +239,9 @@ function ProgressBar({ step }: { step: number }) {
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
                     done
-                      ? "bg-blue-600 text-white"
+                      ? "bg-brand text-white"
                       : active
-                      ? "bg-blue-600 text-white ring-4 ring-blue-100"
+                      ? "bg-brand text-white ring-4 ring-brand-light"
                       : "bg-ps-muted text-ps-hint"
                   }`}
                 >
@@ -258,7 +258,7 @@ function ProgressBar({ step }: { step: number }) {
               {i < STEPS.length - 1 && (
                 <div
                   className={`flex-1 h-0.5 mx-3 transition-colors ${
-                    step > n ? "bg-blue-600" : "bg-white/[0.08]"
+                    step > n ? "bg-brand" : "bg-white/[0.08]"
                   }`}
                 />
               )}
@@ -644,7 +644,7 @@ export default function OnboardingPage() {
                   onChange={(e) => setOwnerName(e.target.value)}
                   placeholder="e.g. CA Gavin Lobo"
                   autoComplete="name"
-                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />
               </div>
               <div>
@@ -656,7 +656,7 @@ export default function OnboardingPage() {
                     onChange={(e) => setPw(e.target.value)}
                     placeholder="At least 10 characters"
                     autoComplete="new-password"
-                    className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${pwError ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
+                    className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg ${pwError ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
                   />
                   <button type="button" onClick={() => setShowPw((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
                     {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -671,7 +671,7 @@ export default function OnboardingPage() {
                   onChange={(e) => setPw2(e.target.value)}
                   placeholder="Re-enter your password"
                   autoComplete="new-password"
-                  className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg ${pwError ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
+                  className={`w-full text-sm text-ps-ink border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg ${pwError ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
                 />
               </div>
               {pwError && <p className="text-xs text-red-500">{pwError}</p>}
@@ -693,14 +693,14 @@ export default function OnboardingPage() {
                     onChange={(e) => { setReauthError(null); setReauthOtp(e.target.value.replace(/\D/g, "")); }}
                     placeholder="8-digit code"
                     autoComplete="one-time-code"
-                    className="w-full text-sm border border-blue-300 rounded-lg px-3 py-2 tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    className="w-full text-sm border border-blue-300 rounded-lg px-3 py-2 tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-brand bg-white"
                   />
                   {reauthError && <p className="text-xs text-red-500">{reauthError}</p>}
                   <div className="flex items-center gap-3">
                     <button
                       onClick={verifyAndSetPassword}
                       disabled={reauthSending || reauthOtp.length < 8}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
                     >
                       {reauthSending ? "Verifying…" : "Verify & Set Password"}
                       {!reauthSending && <ChevronRight size={14} />}
@@ -722,7 +722,7 @@ export default function OnboardingPage() {
               <button
                 onClick={savePassword}
                 disabled={saving || !pw || !pw2 || needsReauth}
-                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
               >
                 {saving ? "Saving…" : "Set Password & Continue"}
                 {!saving && <ChevronRight size={16} />}
@@ -803,7 +803,7 @@ export default function OnboardingPage() {
                 <select
                   value={firmForm.state}
                   onChange={(e) => setFirmForm((p) => ({ ...p, state: e.target.value }))}
-                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 >
                   <option value="">Select state…</option>
                   {INDIAN_STATES.map((s) => (
@@ -832,7 +832,7 @@ export default function OnboardingPage() {
               <button
                 onClick={saveFirmProfile}
                 disabled={actionInFlight}
-                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
               >
                 {saving ? "Setting up your workspace…" : "Continue"}
                 {!saving && <ChevronRight size={16} />}
@@ -909,7 +909,7 @@ export default function OnboardingPage() {
                 </button>
                 <button
                   onClick={finish}
-                  className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                  className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
                 >
                   {hsnAddedCount > 0 ? "Finish setup" : "Continue"}
                   <ChevronRight size={16} />

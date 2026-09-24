@@ -204,7 +204,7 @@ export default function SignPage() {
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           placeholder="e.g. Rahul Patel"
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
                         />
                       </div>
                       <label className="flex items-start gap-2 text-sm text-slate-700">
@@ -212,7 +212,7 @@ export default function SignPage() {
                           type="checkbox"
                           checked={consent}
                           onChange={(e) => setConsent(e.target.checked)}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-brand"
                         />
                         <span>
                           I, the person named above, have read and <strong>accept the terms</strong> of
@@ -232,7 +232,7 @@ export default function SignPage() {
                         <button
                           disabled={submitting || !name.trim() || !consent}
                           onClick={() => post("/sign", { signer_name: name.trim(), consent })}
-                          className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                          className="flex items-center gap-1.5 rounded-lg bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                         >
                           {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                           Accept &amp; Sign

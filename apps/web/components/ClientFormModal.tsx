@@ -157,7 +157,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
                 required value={form.client_name}
                 onChange={e => set("client_name", e.target.value)}
                 placeholder="e.g. Sharma Enterprises"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
             <div>
@@ -165,7 +165,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               <select
                 required value={form.entity_type}
                 onChange={e => set("entity_type", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               >
                 {ENTITY_TYPES.map(t => <option key={t}>{t}</option>)}
               </select>
@@ -175,7 +175,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               <select
                 value={form.gst_filing_frequency}
                 onChange={e => set("gst_filing_frequency", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               >
                 <option value="monthly">Monthly</option>
                 <option value="quarterly">Quarterly</option>
@@ -220,7 +220,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
                 onChange={e => set("pan", e.target.value.toUpperCase())}
                 placeholder="ABCDE1234F"
                 maxLength={10}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
             <div>
@@ -230,7 +230,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
                 onChange={e => set("gstin", e.target.value.toUpperCase())}
                 placeholder="27ABCDE1234F1Z0"
                 maxLength={15}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
           </div>
@@ -243,7 +243,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
                 value={form.mobile}
                 onChange={e => set("mobile", e.target.value)}
                 placeholder="+91 98765 43210"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               />
             </div>
             <div>
@@ -252,7 +252,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
                 type="email" value={form.email}
                 onChange={e => set("email", e.target.value)}
                 placeholder="client@business.in"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               />
             </div>
           </div>
@@ -264,7 +264,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               value={form.address_line1}
               onChange={e => set("address_line1", e.target.value)}
               placeholder="Street address"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
             />
           </div>
           <div className="grid grid-cols-3 gap-4">
@@ -274,7 +274,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
                 value={form.city}
                 onChange={e => set("city", e.target.value)}
                 placeholder="Mumbai"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               />
             </div>
             <div>
@@ -282,7 +282,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               <select
                 value={form.state}
                 onChange={e => handleStateChange(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               >
                 {STATES.map(s => <option key={s.code} value={s.name}>{s.name}</option>)}
               </select>
@@ -294,7 +294,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
                 onChange={e => set("pincode", e.target.value)}
                 placeholder="400001"
                 maxLength={6}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               />
             </div>
           </div>
@@ -307,7 +307,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               onChange={e => set("notes", e.target.value)}
               rows={2}
               placeholder="Any additional notes about this client..."
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand resize-none"
             />
           </div>
 
@@ -323,7 +323,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             </button>
             <button
               type="submit" disabled={saving}
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-brand-dark disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {saving ? "Saving…" : editClient ? "Save Changes" : "Add Client"}
             </button>

@@ -441,7 +441,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="Full name"
-              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
             />
           </div>
 
@@ -459,7 +459,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
                 placeholder="10-digit mobile"
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
             <div>
@@ -471,7 +471,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="email@example.com"
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
           </div>
@@ -488,7 +488,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 setForm({ ...form, businessName: e.target.value })
               }
               placeholder="Business / firm name"
-              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
             />
           </div>
 
@@ -503,7 +503,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, entityType: e.target.value as EntityType })
                 }
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               >
                 {ENTITY_TYPES.map((t) => (
                   <option key={t}>{t}</option>
@@ -519,7 +519,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, source: e.target.value as Source })
                 }
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               >
                 {SOURCES.map((s) => (
                   <option key={s}>{s}</option>
@@ -544,7 +544,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 })
               }
               placeholder="e.g. 5000"
-              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
             />
           </div>
 
@@ -560,7 +560,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, lastContactDate: e.target.value })
                 }
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
             <div>
@@ -573,7 +573,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
                 onChange={(e) =>
                   setForm({ ...form, nextFollowUpDate: e.target.value })
                 }
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
           </div>
@@ -588,7 +588,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={3}
               placeholder="Any additional context…"
-              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light resize-none"
             />
           </div>
 
@@ -605,7 +605,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              className="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
               {saving
@@ -1024,7 +1024,7 @@ export default function PipelinePage() {
         </div>
         <button
           onClick={openAdd}
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
         >
           <Plus size={15} />
           Add Lead

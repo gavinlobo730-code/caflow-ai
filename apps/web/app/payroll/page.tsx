@@ -312,7 +312,7 @@ function MonthQueueTab({ month, onMonthChange }: {
           </div>
           <input
             type="month" value={month} onChange={e => onMonthChange(e.target.value)}
-            className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400"
+            className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-brand"
           />
         </div>
         {!loading && !error && rows.length > 0 && (

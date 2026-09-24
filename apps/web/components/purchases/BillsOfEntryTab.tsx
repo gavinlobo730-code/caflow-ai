@@ -245,7 +245,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
         </div>
         <button onClick={() => { setForm(BLANK); setShowForm(true); }}
           disabled={busy}
-          className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">
+          className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1.5">
           <Plus size={13} /> Record a Bill of Entry
         </button>
       </div>
@@ -504,7 +504,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                 Cancel
               </button>
               <button onClick={handleSave} disabled={saving}
-                className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>

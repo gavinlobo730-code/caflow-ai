@@ -834,6 +834,73 @@ test("a tokenised surface and a tokenised ink name the same state", () => {
       [...new Set(offenders)].join("\n  "));
 });
 
+// ── THE PRODUCT HAS ONE PRIMARY AND IT IS THE BRAND ────────────────────────
+//
+// `tailwind.config.ts` claimed, in its own comment, that the brand token
+// "closes all three" of the primaries that were in use. It did not: the token
+// was added and the sites were never converted. Measured on 24-09-2026, before
+// G0 — `bg-blue-600` 303, `bg-blue-700` 244, the navy 200, indigo 92 — so
+// Tailwind blue was the de-facto primary 547 to 200, and a CA moving between
+// two screens saw Save in two colours.
+//
+// **It was not three. Writing this rule found a FIFTH and a SIXTH**: the HSN
+// library screen's buttons and focus rings were VIOLET and the treaty-rates
+// screen's were SKY, neither of them in any measurement, neither in any
+// palette. That is the argument for asserting the rule rather than converting
+// a list — a list can only hold what somebody already counted.
+//
+// The rule is about a ROLE, not a hue: a SOLID fill at a primary shade, and a
+// FOCUS indicator. An opacity-modified fill (`bg-blue-500/20`,
+// `bg-blue-500/[0.08]`) is a tint, which is a different role and is out of it;
+// so are the pale `-50` and `-100` panels.
+const PRIMARY_HUES = "blue|indigo|violet|sky|cyan";
+const PRIMARY_FILL = new RegExp(
+  String.raw`\b(?:[a-z-]+:)?bg-(?:${PRIMARY_HUES})-(?:500|600|700|800|900)(?![\w/\[-])`, "g");
+const PRIMARY_FOCUS = new RegExp(
+  String.raw`\bfocus(?:-visible)?:(?:ring|border|outline)-(?:${PRIMARY_HUES})-\d{2,3}\b`, "g");
+
+/** Each entry says what the colour is DOING there, because "it is on a list"
+ *  is not a reason and the next reader has to be able to check it. */
+const NOT_A_PRIMARY: Record<string, string> = {
+  "app/calendar/page.tsx":
+    "a map keyed by COMPLIANCE AREA — GST, Income Tax, TDS, MCA — which is a " +
+    "category and not an action; painting one of them the brand would say " +
+    "this area is the primary one.",
+  "app/relationships/[entity_id]/EntityDetailClient.tsx":
+    "a DARK-ground screen: two category badges (`bg-cyan-800`, " +
+    "`bg-violet-800`) and a confidence meter. Navy on near-black is " +
+    "invisible, so the brand is the wrong answer here rather than the " +
+    "unconverted one.",
+};
+
+test("a primary action and a focus ring come from the brand", () => {
+  const offenders: string[] = [];
+  for (const { file, body } of BODIES) {
+    if (NOT_A_PRIMARY[file]) continue;
+    for (const rx of [PRIMARY_FILL, PRIMARY_FOCUS]) {
+      rx.lastIndex = 0;
+      for (const m of body.matchAll(rx)) offenders.push(`${file}: ${m[0]}`);
+    }
+  }
+  assert.deepEqual([...new Set(offenders)], [],
+    "a control is painted in a Tailwind primary rather than the brand. Use " +
+      "`bg-brand` with `hover:bg-brand-dark` for a fill and `focus:ring-brand` " +
+      "for a focus indicator — `focus:ring-brand` is 15.05:1 on white against " +
+      "`ring-blue-500`'s 3.68:1.\n  " + [...new Set(offenders)].join("\n  "));
+});
+
+test("the not-a-primary allowlist names files that exist and still hold one", () => {
+  for (const [file, why] of Object.entries(NOT_A_PRIMARY)) {
+    const entry = BODIES.find((b) => b.file === file);
+    assert.ok(entry, `${file} is allowlisted and does not exist`);
+    PRIMARY_FILL.lastIndex = 0;
+    PRIMARY_FOCUS.lastIndex = 0;
+    assert.ok(PRIMARY_FILL.test(entry!.body) || PRIMARY_FOCUS.test(entry!.body),
+      `${file} is allowlisted and no longer holds a primary — remove the entry`);
+    assert.ok(why.length > 40, `${file}'s reason is too short to be one`);
+  }
+});
+
 // ── A LADDER SPEAKS ONE VOCABULARY ─────────────────────────────────────────
 //
 // `sev` is four ranked steps; `state` is five exclusive ones. A map that

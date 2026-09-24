@@ -78,7 +78,7 @@ export default function SalesDebitNotePageClient() {
           title="No customers yet"
           description="Add a customer before creating a debit note."
           action={
-            <button onClick={() => router.push(`/clients/${clientId}/sales?tab=customers`)} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+            <button onClick={() => router.push(`/clients/${clientId}/sales?tab=customers`)} className="text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
               Back to Sales
             </button>
           }

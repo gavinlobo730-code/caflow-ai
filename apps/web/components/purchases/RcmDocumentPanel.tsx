@@ -243,7 +243,7 @@ export function RcmDocumentPanel({
             </button>
             <button onClick={issue}
               disabled={!preview?.due || !!issued || issuing || busy}
-              className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
               {issuing ? "Issuing…" : "Issue"}
             </button>
           </div>

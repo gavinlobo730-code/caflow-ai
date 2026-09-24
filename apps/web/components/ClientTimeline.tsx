@@ -175,14 +175,14 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search events…"
-          className="flex-1 min-w-[120px] bg-ps-bg border border-ps-border rounded-lg px-2.5 py-1 text-2xs text-ps-label placeholder:text-ps-disabled outline-none focus:border-blue-300"
+          className="flex-1 min-w-[120px] bg-ps-bg border border-ps-border rounded-lg px-2.5 py-1 text-2xs text-ps-label placeholder:text-ps-disabled outline-none focus:border-brand"
         />
         {/* Category filter */}
         <div className="relative">
           <select
             value={catFilter}
             onChange={(e) => setCatFilter(e.target.value as EventCategory | "all")}
-            className="appearance-none bg-ps-bg border border-ps-border rounded-lg pl-2.5 pr-6 py-1 text-2xs text-ps-label outline-none focus:border-blue-300 cursor-pointer"
+            className="appearance-none bg-ps-bg border border-ps-border rounded-lg pl-2.5 pr-6 py-1 text-2xs text-ps-label outline-none focus:border-brand cursor-pointer"
           >
             {CATEGORY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -195,7 +195,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           <select
             value={sevFilter}
             onChange={(e) => setSevFilter(e.target.value)}
-            className="appearance-none bg-ps-bg border border-ps-border rounded-lg pl-2.5 pr-6 py-1 text-2xs text-ps-label outline-none focus:border-blue-300 cursor-pointer"
+            className="appearance-none bg-ps-bg border border-ps-border rounded-lg pl-2.5 pr-6 py-1 text-2xs text-ps-label outline-none focus:border-brand cursor-pointer"
           >
             {SEVERITY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>

@@ -93,7 +93,7 @@ export function Modal({
           <button
             onClick={onClose}
             aria-label="Close dialog"
-            className="text-ps-hint hover:text-ps-label rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="text-ps-hint hover:text-ps-label rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
             <X size={16} />
           </button>

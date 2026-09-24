@@ -40,7 +40,7 @@ export default function FinancialYearPicker({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       aria-label={ariaLabel}
-      className={`px-2.5 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-ps-label ${className}`}
+      className={`px-2.5 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-ps-label ${className}`}
     >
       {/* A year outside the offered window — reached by an old bookmark, or a
           client whose books start further back — is added rather than silently

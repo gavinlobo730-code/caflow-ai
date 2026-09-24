@@ -433,7 +433,7 @@ function Badge({ children, tone, title }: { children: React.ReactNode; tone: "gr
 function Action({ children, onClick, icon, primary, danger }: {
   children: React.ReactNode; onClick: () => void; icon: React.ReactNode; primary?: boolean; danger?: boolean;
 }) {
-  const cls = primary ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600"
+  const cls = primary ? "bg-brand text-white hover:bg-brand-dark border-brand"
     : danger ? "border-ps-border text-red-600 hover:bg-state-problem-hover"
     : "border-ps-border text-ps-label hover:bg-ps-bg";
   return (
@@ -619,7 +619,7 @@ function CreateSalesDebitNoteModal({ invoice, clientId, onClose, onDone, onError
 }
 
 // ── Modal primitives (local, compact) ───────────────────────────────────────
-const inputCls = "w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
+const inputCls = "w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand";
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block space-y-1"><span className="block text-xs font-medium text-ps-label">{label}</span>{children}</label>;
 }
@@ -627,7 +627,7 @@ function ModalActions({ onClose, onSubmit, saving, label }: { onClose: () => voi
   return (
     <div className="flex justify-end gap-2 pt-1">
       <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-      <button onClick={onSubmit} disabled={saving} className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+      <button onClick={onSubmit} disabled={saving} className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
         {saving && <Loader2 size={12} className="animate-spin" />} {label}
       </button>
     </div>

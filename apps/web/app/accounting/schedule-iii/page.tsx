@@ -265,7 +265,7 @@ function GrandTotal({ label, paise, prior, showPrior }: {
   label: string; paise: number; prior: number | null; showPrior: boolean;
 }) {
   return (
-    <div className="flex items-baseline px-4 py-3 bg-blue-700 text-white font-bold">
+    <div className="flex items-baseline px-4 py-3 bg-brand text-white font-bold">
       <span className="text-sm flex-1">{label}</span>
       <span className="text-sm tabular-nums w-36 text-right">{formatPaise(paise)}</span>
       {showPrior && (
@@ -380,7 +380,7 @@ export default function ScheduleIIIPage() {
           <select
             value={fyIndex}
             onChange={(e) => setFyIndex(Number(e.target.value))}
-            className="px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand"
           >
             {fyOptions().map((f, i) => (
               <option key={f.label} value={i}>{f.label}</option>
@@ -402,7 +402,7 @@ export default function ScheduleIIIPage() {
         </div>
         <button
           onClick={() => window.print()}
-          className="flex items-center gap-2 px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 px-4 py-1.5 text-sm bg-brand text-white rounded-md hover:bg-brand-dark transition-colors"
         >
           <Printer size={15} /> Print
         </button>
