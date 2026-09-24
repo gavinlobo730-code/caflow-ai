@@ -56,10 +56,10 @@ const CONTEXT_ICONS: Record<string, JSX.Element> = {
 };
 
 const PRIORITY_STYLES: Record<string, string> = {
-  critical: "bg-state-problem-surface text-state-problem border-state-problem-border",
-  high:     "bg-orange-100 text-orange-700 border-orange-200",
-  medium:   "bg-state-attention-surface text-state-attention border-state-attention-border",
-  low:      "bg-gray-100 text-gray-600 border-gray-200",
+  critical: "bg-sev-critical-surface text-sev-critical border-sev-critical-border",
+  high:     "bg-sev-high-surface text-sev-high border-sev-high-border",
+  medium:   "bg-sev-medium-surface text-sev-medium border-sev-medium-border",
+  low:      "bg-sev-low-surface text-sev-low border-sev-low-border",
 };
 
 const REC_TYPE_LABELS: Record<string, string> = {

@@ -72,15 +72,15 @@ interface ChallanGap {
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-ps-muted text-ps-body",
-  deposited: "bg-blue-100 text-blue-700",
+  deposited: "bg-state-ready-surface text-state-ready",
   prepared: "bg-state-attention-surface text-state-attention",
-  ca_approved: "bg-green-100 text-green-700",
-  filed: "bg-emerald-100 text-emerald-800",
+  ca_approved: "bg-state-ready-surface text-state-ready",
+  filed: "bg-state-ready-surface text-state-ready",
   draft: "bg-ps-muted text-ps-body",
 };
 
 const KYC_COLORS: Record<string, string> = {
-  active: "bg-green-100 text-green-700",
+  active: "bg-state-ready-surface text-state-ready",
   pending: "bg-state-attention-surface text-state-attention",
   expired: "bg-state-problem-surface text-state-problem",
 };

@@ -718,8 +718,8 @@ function UnmatchedRemittances({ clientId, onLinked }: {
 
       {note && (
         <p className={`text-2xs px-3 py-2 rounded-lg ${
-          note.kind === "ok" ? "bg-green-50 text-green-700"
-          : "bg-state-problem-surface text-red-600"}`}>{note.text}</p>
+          note.kind === "ok" ? "bg-state-ready-surface text-state-ready"
+          : "bg-state-problem-surface text-state-problem"}`}>{note.text}</p>
       )}
 
       {rows.map((r) => (

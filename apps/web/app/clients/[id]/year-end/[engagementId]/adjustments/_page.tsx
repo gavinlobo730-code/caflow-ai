@@ -43,8 +43,8 @@ const TYPE_BADGE: Record<AdjustmentType, string> = {
 const STATUS_BADGE: Record<AdjustmentStatus, string> = {
   draft: "bg-ps-muted text-ps-label",
   pending_review: "bg-state-attention-surface text-state-attention",
-  approved: "bg-green-100 text-green-700",
-  posted: "bg-blue-100 text-blue-700",
+  approved: "bg-state-ready-surface text-state-ready",
+  posted: "bg-state-ready-surface text-state-ready",
   rejected: "bg-state-problem-surface text-state-problem",
 };
 

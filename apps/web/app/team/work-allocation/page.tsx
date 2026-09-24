@@ -35,10 +35,10 @@ const ROLE_COLORS: Record<Role, string> = {
 };
 
 const PRIORITY_BADGE: Record<string, string> = {
-  critical: "bg-state-problem-surface text-state-problem",
-  high: "bg-orange-100 text-orange-700",
-  medium: "bg-state-attention-surface text-state-attention",
-  low: "bg-ps-muted text-ps-label",
+  critical: "bg-sev-critical-surface text-sev-critical",
+  high: "bg-sev-high-surface text-sev-high",
+  medium: "bg-sev-medium-surface text-sev-medium",
+  low: "bg-sev-low-surface text-sev-low",
 };
 
 interface Member {

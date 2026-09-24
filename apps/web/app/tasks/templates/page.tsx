@@ -21,10 +21,10 @@ import { arrayOrEmpty } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
 
 const PRIORITY_COLORS: Record<string, string> = {
-  low: "bg-ps-muted text-ps-label",
-  medium: "bg-blue-100 text-blue-700",
-  high: "bg-state-attention-surface text-state-attention",
-  critical: "bg-state-problem-surface text-state-problem",
+  low: "bg-sev-low-surface text-sev-low",
+  medium: "bg-sev-medium-surface text-sev-medium",
+  high: "bg-sev-high-surface text-sev-high",
+  critical: "bg-sev-critical-surface text-sev-critical",
 };
 
 const ROLE_OPTIONS = ["Partner", "Manager", "Executive", "Reviewer"];

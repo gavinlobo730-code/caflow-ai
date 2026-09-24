@@ -89,9 +89,9 @@ const DIMENSION_LABELS: Record<string, string> = {
 const DIMENSION_KEYS = Object.keys(DIMENSION_LABELS);
 
 const SEVERITY_COLORS: Record<string, string> = {
-  info:     "bg-blue-100 text-blue-700",
-  warning:  "bg-yellow-100 text-yellow-700",
-  critical: "bg-state-problem-surface text-state-problem",
+  info:     "bg-sev-low-surface text-sev-low",
+  warning:  "bg-sev-medium-surface text-sev-medium",
+  critical: "bg-sev-critical-surface text-sev-critical",
 };
 
 function scoreColor(s: number) {
@@ -108,11 +108,11 @@ function scoreBarColor(s: number) {
 
 function gradeBadge(g: Grade) {
   const map: Record<Grade, string> = {
-    A: "bg-green-100 text-green-700",
-    B: "bg-blue-100 text-blue-700",
-    C: "bg-yellow-100 text-yellow-700",
-    D: "bg-orange-100 text-orange-700",
-    F: "bg-state-problem-surface text-state-problem",
+    A: "bg-sev-ok-surface text-sev-ok",
+    B: "bg-sev-low-surface text-sev-low",
+    C: "bg-sev-medium-surface text-sev-medium",
+    D: "bg-sev-high-surface text-sev-high",
+    F: "bg-sev-critical-surface text-sev-critical",
   };
   return map[g] ?? "bg-gray-100 text-gray-600";
 }

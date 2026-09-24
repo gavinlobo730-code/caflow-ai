@@ -355,7 +355,7 @@ const FREQ_LABEL: Record<string, string> = {
   weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly", half_yearly: "Half-Yearly", yearly: "Yearly",
 };
 const REC_STATUS_BADGE: Record<string, string> = {
-  active: "bg-green-50 text-green-700", paused: "bg-state-attention-surface text-state-attention", archived: "bg-ps-muted text-ps-label",
+  active: "bg-state-ready-surface text-state-ready", paused: "bg-state-attention-surface text-state-attention", archived: "bg-ps-muted text-ps-label",
 };
 const recBase = (lines: RecurringLine[]) =>
   lines.reduce((s, l) => s + Math.round((l.rate_paise || 0) * (l.quantity || 0)), 0);
@@ -2228,11 +2228,11 @@ interface CustomerPaymentRow { id: string; amount_paise: number; status: string;
 interface PaymentHistory { outstanding_paise: number; links: PaymentLinkRow[]; payments: CustomerPaymentRow[] }
 
 const PAY_STATUS_BADGE: Record<string, string> = {
-  created: "bg-ps-muted text-ps-label", active: "bg-blue-100 text-blue-700",
-  paid: "bg-green-100 text-green-700", captured: "bg-green-100 text-green-700",
-  authorized: "bg-state-attention-surface text-state-attention", failed: "bg-red-100 text-red-600",
-  refunded: "bg-purple-100 text-purple-700", expired: "bg-ps-muted text-ps-hint",
-  cancelled: "bg-state-problem-surface text-red-500",
+  created: "bg-ps-muted text-ps-label", active: "bg-state-working-surface text-state-working",
+  paid: "bg-state-ready-surface text-state-ready", captured: "bg-state-ready-surface text-state-ready",
+  authorized: "bg-state-attention-surface text-state-attention", failed: "bg-state-problem-surface text-state-problem",
+  refunded: "bg-state-done-surface text-state-done", expired: "bg-ps-muted text-ps-hint",
+  cancelled: "bg-state-done-surface text-state-done",
 };
 
 function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose: () => void }) {
@@ -2545,8 +2545,8 @@ function RemindInvoiceModal({
 
 const DELIVERY_STATUS_COLOR: Record<string, string> = {
   queued:  "bg-ps-muted text-ps-label",
-  sending: "bg-blue-50 text-blue-600",
-  sent:    "bg-green-50 text-green-700",
+  sending: "bg-state-working-surface text-state-working",
+  sent:    "bg-state-ready-surface text-state-ready",
   failed:  "bg-state-problem-surface text-state-problem",
   bounced: "bg-state-attention-surface text-state-attention",
 };

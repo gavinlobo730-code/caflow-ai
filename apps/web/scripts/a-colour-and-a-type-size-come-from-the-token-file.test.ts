@@ -699,7 +699,7 @@ function classLeaves(line: string): string[] {
 const PALETTE =
   "red|amber|green|emerald|yellow|orange|rose|blue|gray|slate|indigo|purple|" +
   "violet|teal|cyan|sky|lime|pink|fuchsia|stone|zinc|neutral";
-const STATE_INK = /\btext-state-(ready|attention|problem|done)\b/;
+const STATE_INK = /\btext-(?:state|sev)-([a-z]+)\b/;
 const RAW_SURFACE = new RegExp(String.raw`\b(bg|border|ring|divide)-(${PALETTE})-\d{2,3}\b`, "g");
 /** Which palette hues ARE that state's own. A `problem` ink on a green surface
  *  is a different kind of wrong from a `problem` ink on red-100, and only the
@@ -707,6 +707,15 @@ const RAW_SURFACE = new RegExp(String.raw`\b(bg|border|ring|divide)-(${PALETTE})
  *  rule saying "any surface". */
 const OWN_HUES: Record<string, RegExp> = {
   problem: /^red$/, attention: /^amber$/, ready: /^(emerald|green)$/, done: /^(slate|gray)$/,
+  /* `working` is the fifth state (G1) — the blue every screen reached for
+     when none of the four fitted. Its own hues are the three the product was
+     already writing for "somebody is on it". */
+  working: /^(blue|sky|indigo)$/,
+  /* And the severity LADDER, whose steps are ranked rather than exclusive.
+     `ok` and `critical` share their values with `ready` and `problem`, so
+     they share their hues too. */
+  ok: /^(emerald|green)$/, low: /^(blue|sky)$/, medium: /^(amber|yellow)$/,
+  high: /^orange$/, critical: /^(red|rose)$/,
 };
 
 test("a surface beside a state ink comes from that state", () => {
@@ -715,7 +724,7 @@ test("a surface beside a state ink comes from that state", () => {
     for (const line of body.split("\n")) {
       for (const leaf of classLeaves(line)) {
         const ink = STATE_INK.exec(leaf);
-        if (!ink) continue;
+        if (!ink || !OWN_HUES[ink[1]]) continue;
         RAW_SURFACE.lastIndex = 0;
         for (const s of leaf.matchAll(RAW_SURFACE)) {
           if (OWN_HUES[ink[1]].test(s[2])) offenders.push(`${file}: ${s[0]} beside ${ink[0]}`);
@@ -780,7 +789,7 @@ test("a money-direction token carries no surface of its own", () => {
 // reaching for, which is why both clear 4.5 (5.30 and 4.51) where the border
 // token does not.
 test("a state's border token is a border", () => {
-  const AS_FILL = /\b(?:[a-z-]+:)?bg-state-[a-z]+-border\b/g;
+  const AS_FILL = /\b(?:[a-z-]+:)?bg-(?:state|sev)-[a-z]+-border\b/g;
   const offenders: string[] = [];
   for (const { file, body } of BODIES) {
     for (const m of body.matchAll(AS_FILL)) offenders.push(`${file}: ${m[0]}`);
@@ -792,7 +801,86 @@ test("a state's border token is a border", () => {
       [...new Set(offenders)].join("\n  "));
 });
 
-test("the three rules above are not vacuous", () => {
+// ── A CHIP IS ONE STATE, AND BOTH HALVES OF IT HAVE TO SAY SO ──────────────
+//
+// The rule above catches a RAW surface under a tokenised ink, which is what
+// the first conversion pass left behind. The second pass (G1) can leave the
+// mirror image: a surface tokenised as one state in an earlier commit and an
+// ink tokenised as another in a later one. `bg-state-problem-surface
+// text-state-done` is a red pill with grey type, and neither half is raw, so
+// every rule written so far reads it as clean. It happened once — a cancelled
+// payment, called a failure by one pass and settled by the next.
+const TOKEN_INK = /\btext-((?:state|sev)-[a-z]+)\b/g;
+const TOKEN_SURFACE = /\b(?:bg|border|ring)-((?:state|sev)-[a-z]+)-(?:surface|border|hover|solid)\b/g;
+
+test("a tokenised surface and a tokenised ink name the same state", () => {
+  const offenders: string[] = [];
+  for (const { file, body } of BODIES) {
+    for (const line of body.split("\n")) {
+      for (const leaf of classLeaves(line)) {
+        TOKEN_INK.lastIndex = 0;
+        TOKEN_SURFACE.lastIndex = 0;
+        const inks = new Set([...leaf.matchAll(TOKEN_INK)].map((m) => m[1]));
+        const surfaces = new Set([...leaf.matchAll(TOKEN_SURFACE)].map((m) => m[1]));
+        if (!inks.size || !surfaces.size) continue;
+        if ([...inks].some((i) => surfaces.has(i))) continue;
+        offenders.push(`${file}: ${[...surfaces].join("+")} under ${[...inks].join("+")}`);
+      }
+    }
+  }
+  assert.deepEqual([...new Set(offenders)], [],
+    "one element is painted as two different states. Decide which one it is " +
+      "and move both halves — the surface and the ink are one decision.\n  " +
+      [...new Set(offenders)].join("\n  "));
+});
+
+// ── A LADDER SPEAKS ONE VOCABULARY ─────────────────────────────────────────
+//
+// `sev` is four ranked steps; `state` is five exclusive ones. A map that
+// borrows from both looks harmless because `sev.ok` and `sev.critical` hold
+// the SAME hex values as `state.ready` and `state.problem` — and it is not,
+// because the two middles do not line up. Measured on 24-09-2026, before this
+// rule: `app/risks` painted `critical` and `high` both `state-problem`, and
+// `app/work` and `app/tasks/templates` painted `high` and `medium` both
+// `state-attention`. Two RANKED steps rendering identically is the one thing
+// a severity chip may not do, and it is invisible in review — each line reads
+// fine on its own.
+function objectLiterals(body: string): { line: number; text: string }[] {
+  const src = body.split("\n");
+  const out: { line: number; text: string }[] = [];
+  for (let i = 0; i < src.length; i++) {
+    if (!/(?:=|:)\s*\{\s*$/.test(src[i])) continue;
+    let depth = 1;
+    const held: string[] = [];
+    let j = i + 1;
+    while (j < src.length && depth > 0 && j - i < 40) {
+      depth += (src[j].match(/\{/g) ?? []).length - (src[j].match(/\}/g) ?? []).length;
+      if (depth > 0) held.push(src[j]);
+      j++;
+    }
+    out.push({ line: i + 1, text: held.join("\n") });
+    i = j - 1;
+  }
+  return out;
+}
+
+test("a map paints with the severity ladder or the state set, never both", () => {
+  const offenders: string[] = [];
+  for (const { file, body } of BODIES) {
+    for (const lit of objectLiterals(body)) {
+      if (/\bsev-[a-z]+\b/.test(lit.text) && /\bstate-[a-z]+\b/.test(lit.text)) {
+        offenders.push(`${file}:${lit.line}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [],
+    "one map mixes the ranked ladder with the exclusive state set. `sev.ok` " +
+      "and `sev.critical` share their values with `state.ready` and " +
+      "`state.problem`, so the mixture renders plausibly and collapses two " +
+      "ranked steps onto one colour in the middle.\n  " + offenders.join("\n  "));
+});
+
+test("the four rules above are not vacuous", () => {
   // Each on a string written HERE, not on the tree — the tree is clean now,
   // so a grep over it proves nothing. This file's own history records four
   // guards that went quietly inert.
@@ -805,10 +893,38 @@ test("the three rules above are not vacuous", () => {
   assert.ok(RAW_SURFACE.test("bg-red-100 text-state-problem"), "the surface regex is inert");
   assert.ok(/\b(bg|border|ring|divide)-(?!transparent|current|inherit|white|black)[a-z]+-[a-z0-9-]+/
     .test("bg-green-100 text-money-in"), "the money-surface regex is inert");
-  assert.ok(/\b(?:[a-z-]+:)?bg-state-[a-z]+-border\b/.test("hover:bg-state-attention-border"),
+  assert.ok(/\b(?:[a-z-]+:)?bg-(?:state|sev)-[a-z]+-border\b/.test("hover:bg-state-attention-border"),
     "the border-as-fill regex is inert");
-  // And the token the fix rests on must actually exist in the config.
-  for (const t of ["problem-hover", "attention-hover", "ready-hover"]) {
-    assert.match(CONFIG, new RegExp(`"${t}"\\s*:`), `state.${t} is missing from the config`);
+  assert.ok(/\b(?:[a-z-]+:)?bg-(?:state|sev)-[a-z]+-border\b/.test("bg-sev-high-border"),
+    "the border-as-fill regex does not reach the severity ladder");
+  // The two-states-on-one-element rule, on the pair that actually occurred.
+  {
+    const leaf = "bg-state-problem-surface text-state-done";
+    TOKEN_INK.lastIndex = 0;
+    TOKEN_SURFACE.lastIndex = 0;
+    const inks = [...leaf.matchAll(TOKEN_INK)].map((m) => m[1]);
+    const surfaces = [...leaf.matchAll(TOKEN_SURFACE)].map((m) => m[1]);
+    assert.deepEqual(inks, ["state-done"], "the token-ink regex is inert");
+    assert.deepEqual(surfaces, ["state-problem"], "the token-surface regex is inert");
+    assert.ok(!inks.some((i) => surfaces.includes(i)), "the agreement test is inert");
+  }
+  // And every token the two passes rest on must actually exist in the config.
+  for (const t of ["problem-hover", "attention-hover", "ready-hover", "working",
+                   "working-surface", "working-border", "working-hover"]) {
+    assert.match(CONFIG, new RegExp(`"?${t}"?\\s*:`), `state.${t} is missing from the config`);
+  }
+  for (const t of ["ok", "low", "medium", "high", "critical"]) {
+    for (const step of ["", "-surface", "-border"]) {
+      assert.match(CONFIG, new RegExp(`"?${t}${step}"?\\s*:\\s*"#`),
+        `sev.${t}${step} is missing from the config`);
+    }
+  }
+  // The one-vocabulary rule, on a literal written here.
+  {
+    const mixed = objectLiterals('const M = {\n  critical: "text-sev-critical",\n' +
+                                 '  high: "text-state-problem",\n}');
+    assert.equal(mixed.length, 1, "the literal walker found no literal");
+    assert.ok(/\bsev-[a-z]+\b/.test(mixed[0].text) && /\bstate-[a-z]+\b/.test(mixed[0].text),
+      "the mixed-vocabulary test is inert");
   }
 });

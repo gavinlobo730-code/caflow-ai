@@ -652,6 +652,46 @@ rewire. Say the word on the tier and both halves go in together.
 
 ## G1. THE STATE VOCABULARY IS MISSING A STEP, AND THAT IS WHY BLUE IS EVERYWHERE  *(new, 24-09-2026)*
 
+> ### ✅ ANSWERED 24-09-2026 — *"You decide"*, so: both, at the values already on screen.
+>
+> `state.working` (#1D4ED8, the `blue-700` the product was writing) and a
+> five-step `sev` ladder (`ok / low / medium / high / critical`) are in
+> `tailwind.config.ts`, and **186 class-lists across 56 files** now speak one
+> of the two. **44 of those change hue** and the rest are the same colour at
+> the token's own shade — the list is in the PR.
+>
+> **Three things turned up that the measurement above had not seen**, and two
+> of them were live defects rather than tidying:
+>
+> 1. **A severity ladder that borrows two steps from the state set collapses
+>    its own middle.** `app/risks` painted `critical` and `high` BOTH
+>    `state-problem`; `app/work` and `app/tasks/templates` painted `high` and
+>    `medium` BOTH `state-attention`. Two ranked steps rendering identically
+>    is the one thing a severity chip may not do, and it is invisible in
+>    review because each line reads fine on its own. It happened because
+>    `sev.ok` and `sev.critical` deliberately share their hex values with
+>    `state.ready` and `state.problem` — so the mixture looks right.
+>    `a map paints with the severity ladder or the state set, never both` is
+>    now a guard.
+> 2. **Two screens disagreed about what `finalized` means.** The firm-level
+>    payroll screen carried a note reading *"The accrual is posted. Still to
+>    disburse"* with `needsWork: true`, and painted the chip GREEN; the client
+>    payroll screen painted it green too. Both are `working` now, which is
+>    what their own note says.
+> 3. **A cancelled payment was called a failure by one pass and settled by the
+>    next** — `bg-state-problem-surface text-state-done`, a red pill with grey
+>    type, both halves tokenised so every rule written so far read it as
+>    clean. `a tokenised surface and a tokenised ink name the same state` is
+>    now a guard too.
+>
+> **And the vocabulary is still short of two words, which is recorded rather
+> than guessed at:** *waiting on somebody OUTSIDE the firm* (five sites, all
+> purple, `waiting_client`) and *queued, nobody on it yet* (one site,
+> `app/workflows`' `pending`). Both were left exactly as they were. A fifth
+> and sixth state invented to make a codemod tidy is how a vocabulary stops
+> meaning anything.
+
+
 **This reframes T4-b from ~5,840 judgements into two decisions and a codemod,
 so it is worth reading before scheduling any more colour work.**
 

@@ -60,8 +60,8 @@ const TYPE_EMPTY_STATES: Record<string, EmptyStateCopy> = {
 // ─── Styling ───────────────────────────────────────────────────────────────
 const FILING_STATUS_COLORS: Record<string, string> = {
   pending:     "bg-state-attention-surface text-state-attention",
-  in_progress: "bg-blue-100 text-blue-700",
-  filed:       "bg-green-100 text-green-700",
+  in_progress: "bg-state-working-surface text-state-working",
+  filed:       "bg-state-ready-surface text-state-ready",
   overdue:     "bg-state-problem-surface text-state-problem",
   na:          "bg-ps-muted text-ps-label",
 };

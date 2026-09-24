@@ -424,12 +424,12 @@ function WorkflowInstancesTab() {
   useEffect(() => { load(); }, [load]);
 
   const STATUS_STYLES: Record<string, string> = {
-    completed: "bg-green-100 text-green-700",
+    completed: "bg-state-ready-surface text-state-ready",
     failed: "bg-state-problem-surface text-state-problem",
-    running: "bg-blue-100 text-blue-700",
+    running: "bg-state-working-surface text-state-working",
     pending: "bg-gray-100 text-gray-600",
-    cancelled: "bg-gray-100 text-gray-500",
-    waiting_approval: "bg-orange-100 text-orange-700",
+    cancelled: "bg-state-done-surface text-state-done",
+    waiting_approval: "bg-state-attention-surface text-state-attention",
   };
 
   return (

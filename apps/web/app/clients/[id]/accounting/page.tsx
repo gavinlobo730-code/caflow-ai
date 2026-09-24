@@ -3144,8 +3144,8 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
 // nothing here auto-corrects a finding, matching the same "a human decides
 // the fix" posture this session's own manual corrections used.
 const SEVERITY_STYLE: Record<string, string> = {
-  critical: "bg-state-problem-surface text-state-problem border-state-problem-border",
-  warning: "bg-state-attention-surface text-state-attention border-state-attention-border",
+  critical: "bg-sev-critical-surface text-sev-critical border-sev-critical-border",
+  warning: "bg-sev-medium-surface text-sev-medium border-sev-medium-border",
 };
 
 const CHECK_LABEL: Record<string, string> = {

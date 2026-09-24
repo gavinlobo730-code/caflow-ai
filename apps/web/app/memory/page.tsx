@@ -65,10 +65,10 @@ interface PatternAnomaly {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const SEVERITY_STYLES: Record<string, string> = {
-  critical: "bg-state-problem-surface text-state-problem border border-state-problem-border",
-  high: "bg-orange-100 text-orange-700 border border-orange-200",
-  medium: "bg-yellow-100 text-yellow-700 border border-yellow-200",
-  low: "bg-blue-100 text-blue-700 border border-blue-200",
+  critical: "bg-sev-critical-surface text-sev-critical border border-sev-critical-border",
+  high: "bg-sev-high-surface text-sev-high border border-sev-high-border",
+  medium: "bg-sev-medium-surface text-sev-medium border border-sev-medium-border",
+  low: "bg-sev-low-surface text-sev-low border border-sev-low-border",
 };
 
 const TRIGGER_TYPE_LABELS: Record<string, string> = {

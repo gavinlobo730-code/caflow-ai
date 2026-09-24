@@ -56,8 +56,8 @@ const STATUS_LABEL: Record<EngagementStatus, string> = {
 const STATUS_COLOR: Record<EngagementStatus, string> = {
   draft: "text-ps-label bg-ps-muted",
   in_review: "text-state-attention bg-state-attention-surface",
-  approved: "text-green-700 bg-green-50",
-  locked: "text-blue-700 bg-blue-50",
+  approved: "text-state-ready bg-state-ready-surface",
+  locked: "text-state-done bg-state-done-surface",
 };
 
 // Human-readable text for the event_type values written by

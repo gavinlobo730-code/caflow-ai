@@ -25,7 +25,7 @@ const STATUS_LABEL: Record<ChecklistItemStatus, string> = {
 const STATUS_BADGE: Record<ChecklistItemStatus, string> = {
   pending: "bg-ps-muted text-ps-hint",
   in_progress: "bg-state-attention-surface text-state-attention",
-  complete: "bg-green-100 text-green-700",
+  complete: "bg-state-ready-surface text-state-ready",
   not_applicable: "bg-ps-muted text-ps-label line-through",
 };
 

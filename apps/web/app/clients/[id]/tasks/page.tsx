@@ -29,10 +29,10 @@ import { todayLocalISO } from "@/lib/dateMath";
 
 const TASK_STATUS_COLORS: Record<string, string> = {
   todo: "bg-ps-muted text-ps-label",
-  in_progress: "bg-blue-100 text-blue-700",
+  in_progress: "bg-state-working-surface text-state-working",
   waiting_client: "bg-purple-100 text-purple-700",
   review_required: "bg-state-attention-surface text-state-attention",
-  completed: "bg-green-100 text-green-700",
+  completed: "bg-state-ready-surface text-state-ready",
 };
 
 /** Where a task can go next. Closing is one click; the rest of the lifecycle

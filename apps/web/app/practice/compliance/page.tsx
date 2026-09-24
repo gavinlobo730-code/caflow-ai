@@ -24,11 +24,11 @@ const NEXT_STATUS: Record<string, string[]> = {
 const STATUS_BADGE: Record<string, string> = {
   "Not Started": "bg-gray-100 text-gray-600",
   "Awaiting Documents": "bg-state-attention-surface text-state-attention",
-  "In Progress": "bg-blue-50 text-blue-700",
-  "Ready For Review": "bg-indigo-50 text-indigo-700",
-  "Ready To File": "bg-violet-50 text-violet-700",
-  "Filed": "bg-green-50 text-green-700",
-  "Completed": "bg-emerald-50 text-emerald-700",
+  "In Progress": "bg-state-working-surface text-state-working",
+  "Ready For Review": "bg-state-attention-surface text-state-attention",
+  "Ready To File": "bg-state-attention-surface text-state-attention",
+  "Filed": "bg-state-ready-surface text-state-ready",
+  "Completed": "bg-state-ready-surface text-state-ready",
   "Overdue": "bg-state-problem-surface text-state-problem",
 };
 

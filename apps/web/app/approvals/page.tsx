@@ -15,9 +15,9 @@ function isMfaError(msg: string) {
 // Partners approve/reject; everyone with access sees pending + history.
 const STATUS_STYLE: Record<string, string> = {
   pending: "bg-state-attention-surface text-state-attention",
-  approved: "bg-emerald-50 text-emerald-700",
+  approved: "bg-state-ready-surface text-state-ready",
   rejected: "bg-state-problem-surface text-state-problem",
-  cancelled: "bg-gray-100 text-gray-500",
+  cancelled: "bg-state-done-surface text-state-done",
 };
 
 export default function ApprovalsPage() {

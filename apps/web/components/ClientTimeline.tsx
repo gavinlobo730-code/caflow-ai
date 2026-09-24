@@ -28,9 +28,9 @@ const CATEGORY_ICONS: Record<EventCategory, React.ElementType> = {
 
 const SEVERITY_STYLES = {
   info:     "border-l-ps-border bg-ps-bg",
-  success:  "border-l-emerald-300 bg-emerald-50/50",
-  warning:  "border-l-amber-300 bg-state-attention-surface/50",
-  critical: "border-l-red-300 bg-state-problem-surface/50",
+  success:  "border-l-state-ready-border bg-state-ready-surface/50",
+  warning:  "border-l-state-attention-border bg-state-attention-surface/50",
+  critical: "border-l-state-problem-border bg-state-problem-surface/50",
 };
 
 const SEVERITY_DOT = {

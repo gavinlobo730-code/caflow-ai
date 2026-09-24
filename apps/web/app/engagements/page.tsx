@@ -141,12 +141,12 @@ function rupeesToPaise(rupeesStr: string): number | null {
 
 const STATUS_COLORS: Record<EngagementLetter["status"], string> = {
   Draft: "bg-gray-100 text-gray-600",
-  Generated: "bg-blue-100 text-blue-700",
-  Sent: "bg-indigo-100 text-indigo-700",
-  Viewed: "bg-purple-100 text-purple-700",
-  Signed: "bg-green-100 text-green-700",
+  Generated: "bg-state-working-surface text-state-working",
+  Sent: "bg-state-working-surface text-state-working",
+  Viewed: "bg-state-working-surface text-state-working",
+  Signed: "bg-state-ready-surface text-state-ready",
   Rejected: "bg-state-problem-surface text-state-problem",
-  Expired: "bg-orange-100 text-orange-700",
+  Expired: "bg-state-attention-surface text-state-attention",
 };
 
 function StatusBadge({ status }: { status: EngagementLetter["status"] }) {

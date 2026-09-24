@@ -31,10 +31,10 @@ const PAYMENT_MODE_OPTIONS = ["bank", "cash", "cheque", "upi", "neft", "rtgs", "
 
 const PB_STATUS_BADGE: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
-  received: "bg-blue-100 text-blue-700",
+  received: "bg-state-working-surface text-state-working",
   partially_paid: "bg-state-attention-surface text-state-attention",
-  paid: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-600",
+  paid: "bg-state-ready-surface text-state-ready",
+  cancelled: "bg-state-done-surface text-state-done",
 };
 
 interface JournalLine { account_name?: string; account_id?: string; debit_paise: number; credit_paise: number }

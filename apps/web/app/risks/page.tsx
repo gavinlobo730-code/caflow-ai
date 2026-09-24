@@ -90,10 +90,10 @@ const CATEGORY_ORDER = [
 
 function riskColor(level: string) {
   const m: Record<string, string> = {
-    critical: "text-state-problem bg-state-problem-surface",
-    high: "text-state-problem bg-state-problem-surface",
-    medium: "text-orange-700 bg-orange-100",
-    low: "text-yellow-700 bg-yellow-100",
+    critical: "text-sev-critical bg-sev-critical-surface",
+    high: "text-sev-high bg-sev-high-surface",
+    medium: "text-sev-medium bg-sev-medium-surface",
+    low: "text-sev-low bg-sev-low-surface",
   };
   return m[level] ?? "text-ps-body bg-ps-muted";
 }

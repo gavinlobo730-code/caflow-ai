@@ -19,10 +19,10 @@ import { Callout } from "@/components/ui/callout";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-ps-muted text-ps-label",
-  in_progress: "bg-blue-100 text-blue-700",
+  in_progress: "bg-state-working-surface text-state-working",
   waiting_client: "bg-purple-100 text-purple-700",
   review_required: "bg-state-attention-surface text-state-attention",
-  completed: "bg-green-100 text-green-700",
+  completed: "bg-state-ready-surface text-state-ready",
 };
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -34,10 +34,10 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  critical: "bg-state-problem-surface text-state-problem",
-  high: "bg-state-attention-surface text-state-attention",
-  medium: "bg-blue-100 text-blue-700",
-  low: "bg-ps-muted text-ps-label",
+  critical: "bg-sev-critical-surface text-sev-critical",
+  high: "bg-sev-high-surface text-sev-high",
+  medium: "bg-sev-medium-surface text-sev-medium",
+  low: "bg-sev-low-surface text-sev-low",
 };
 
 function fmt(date?: string) {

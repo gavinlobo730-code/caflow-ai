@@ -132,17 +132,17 @@ const QUARTER_LABEL: Record<string, string> = {
 const STATUS_STYLE: Record<string, string> = {
   // tds_certificates
   pending:    "bg-state-attention-surface text-state-attention",
-  generated:  "bg-blue-100 text-blue-700",
-  issued:     "bg-green-100 text-green-700",
-  downloaded: "bg-green-100 text-green-700",
+  generated:  "bg-state-working-surface text-state-working",
+  issued:     "bg-state-ready-surface text-state-ready",
+  downloaded: "bg-state-ready-surface text-state-ready",
   // tds_returns
-  prepared:    "bg-blue-100 text-blue-700",
-  ca_approved: "bg-indigo-100 text-indigo-700",
-  filed:       "bg-green-100 text-green-700",
+  prepared:    "bg-state-working-surface text-state-working",
+  ca_approved: "bg-state-working-surface text-state-working",
+  filed:       "bg-state-ready-surface text-state-ready",
   revised:     "bg-state-attention-surface text-state-attention",
   // tds_challans
-  deposited: "bg-green-100 text-green-700",
-  matched:   "bg-green-100 text-green-700",
+  deposited: "bg-state-ready-surface text-state-ready",
+  matched:   "bg-state-ready-surface text-state-ready",
   unmatched: "bg-state-problem-surface text-state-problem",
 };
 
