@@ -224,7 +224,7 @@ export default function DocumentsPage() {
         </h2>
         <button
           onClick={() => { setShowUploadModal(true); setUploadError(null); }}
-          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+          className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
         >
           <Upload size={13} /> Upload Document
         </button>
@@ -337,7 +337,7 @@ export default function DocumentsPage() {
                   value={uploadLabel}
                   onChange={(e) => setUploadLabel(e.target.value)}
                   placeholder="e.g. GSTR-9 FY 2024-25, ITR AY 2024-25"
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
               <div>
@@ -365,7 +365,7 @@ export default function DocumentsPage() {
               <button
                 onClick={() => handleUploadDocument()}
                 disabled={actionInFlight || !uploadFile || !uploadLabel.trim()}
-                className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+                className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
               >
                 {uploading ? "Uploading…" : "Upload"}
               </button>
@@ -395,7 +395,7 @@ export default function DocumentsPage() {
               </button>
               <button
                 onClick={() => { const doc = versionPromptDoc; setVersionPromptDoc(null); handleUploadDocument(true, doc); }}
-                className="text-xs px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark"
               >
                 New Version
               </button>

@@ -95,12 +95,12 @@ function NavItems({
               "relative flex items-center gap-2.5 rounded-lg transition-all duration-100",
               collapsed ? "justify-center w-9 h-9 mx-auto" : "px-2 py-2",
               active
-                ? "bg-blue-600 text-white"
+                ? "bg-brand text-white"
                 : "text-slate-400 hover:text-white hover:bg-white/10"
             )}
           >
             {active && (
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-blue-400 rounded-r" />
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-brand rounded-r" />
             )}
             <Icon size={15} className="shrink-0" />
             {!collapsed && (

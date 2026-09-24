@@ -367,15 +367,15 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="text-xs font-medium text-ps-body block mb-1">Party / Vendor Name</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" />
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">PAN of Party</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500" value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand" value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">TDS Section</label>
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={section} onChange={e => setSection(e.target.value)}>
+            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
               {sections.map(k => (
                 <option key={k} value={k}>{k}{SECTION_LABELS[k] ? ` — ${SECTION_LABELS[k]}` : ""}</option>
               ))}
@@ -383,7 +383,7 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Gross Payment (₹)</label>
-            <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={grossRupees} onChange={e => setGrossRupees(e.target.value)} placeholder="0.00" />
+            <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={grossRupees} onChange={e => setGrossRupees(e.target.value)} placeholder="0.00" />
           </div>
           {/* No TDS Rate input. The rate is not the CA's to type: it depends on
               the section, on whether the payee is an individual or a company
@@ -423,17 +423,17 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Payment Date</label>
-            <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
+            <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Challan No.</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={challanNo} onChange={e => setChallanNo(e.target.value)} placeholder="Optional" />
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={challanNo} onChange={e => setChallanNo(e.target.value)} placeholder="Optional" />
           </div>
         </div>
 
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Deduction"}
           </button>
         </div>
@@ -503,7 +503,7 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
         <label className="text-xs text-ps-label flex items-center gap-2">
           Deduction month
           <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-            className="border border-ps-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="border border-ps-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand" />
         </label>
       </div>
 
@@ -692,21 +692,21 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">BSR Code</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={bsrCode} onChange={e => setBsrCode(e.target.value)} placeholder="7-digit BSR code" />
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" value={bsrCode} onChange={e => setBsrCode(e.target.value)} placeholder="7-digit BSR code" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Challan Date</label>
-              <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={challanDate} onChange={e => setChallanDate(e.target.value)} />
+              <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={challanDate} onChange={e => setChallanDate(e.target.value)} />
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Serial No.</label>
-              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="00001" />
+              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="00001" />
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Amount (₹)</label>
-            <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={amtRupees} onChange={e => { setAmtRupees(e.target.value); setError(null); }} />
+            <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={amtRupees} onChange={e => { setAmtRupees(e.target.value); setError(null); }} />
             <p className="text-3xs text-ps-hint mt-1">
               The TOTAL that left the bank. Tax is whatever is left after the three below.
             </p>
@@ -718,15 +718,15 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Surcharge (₹)</label>
-              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={surchargeRupees} onChange={e => { setSurchargeRupees(e.target.value); setError(null); }} placeholder="0" />
+              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={surchargeRupees} onChange={e => { setSurchargeRupees(e.target.value); setError(null); }} placeholder="0" />
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1" title="IT Act s.201(1A)">Interest (₹)</label>
-              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={interestRupees} onChange={e => { setInterestRupees(e.target.value); setError(null); }} placeholder="0" />
+              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={interestRupees} onChange={e => { setInterestRupees(e.target.value); setError(null); }} placeholder="0" />
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1" title="IT Act s.234E / s.271H">Fee (₹)</label>
-              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={penaltyRupees} onChange={e => { setPenaltyRupees(e.target.value); setError(null); }} placeholder="0" />
+              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={penaltyRupees} onChange={e => { setPenaltyRupees(e.target.value); setError(null); }} placeholder="0" />
             </div>
           </div>
           <p className="text-3xs text-ps-hint -mt-1">
@@ -739,7 +739,7 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
             {/* 200 vs 400 is who initiated the payment, NOT company vs
                 non-company — that is the challan's major head (0020/0021) and
                 migration 037's inline comment had it the other way round. */}
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={minorHead} onChange={e => setMinorHead(e.target.value === "400" ? "400" : "200")}>
+            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={minorHead} onChange={e => setMinorHead(e.target.value === "400" ? "400" : "200")}>
               <option value="200">200 — TDS payable by the deductor</option>
               <option value="400">400 — TDS regular assessment (against a demand)</option>
             </select>
@@ -751,7 +751,7 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Period</label>
-              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={period} onChange={e => setPeriod(e.target.value)}>
+              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={period} onChange={e => setPeriod(e.target.value)}>
                 {QUARTERS.map(q => <option key={q} value={q}>{QUARTER_LABEL[q]}</option>)}
               </select>
             </div>
@@ -766,7 +766,7 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
                 salary TDS is deposited on an ITNS 281 like any other — Payroll
                 computes it, and the CA records the challan. The deduction form
                 above deliberately excludes it. */}
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={section} onChange={e => setSection(e.target.value)}>
+            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
               {Object.entries(SECTION_LABELS).map(([k, v]) => <option key={k} value={k}>{k} — {v}</option>)}
             </select>
           </div>
@@ -774,7 +774,7 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
           <button onClick={handleAdd} disabled={saving}
-            className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add"}
           </button>
         </div>
@@ -1010,7 +1010,7 @@ export default function TDSPage() {
       <div className="flex gap-1 border-b border-ps-muted">
         {TABS.map((tab, i) => (
           <button key={tab} onClick={() => setActiveTab(i)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-blue-600 text-blue-700" : "border-transparent text-ps-label hover:text-ps-body"}`}>
+            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-brand text-blue-700" : "border-transparent text-ps-label hover:text-ps-body"}`}>
             {tab}
           </button>
         ))}
@@ -1030,7 +1030,7 @@ export default function TDSPage() {
                 <Upload className="w-3.5 h-3.5" /> Import CSV
               </button>
               <button onClick={() => setShowAddDeduction(true)}
-                className="flex items-center gap-1.5 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700">
+                className="flex items-center gap-1.5 bg-brand text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-dark">
                 <Plus className="w-3.5 h-3.5" /> Add Deduction
               </button>
             </div>
@@ -1070,7 +1070,7 @@ export default function TDSPage() {
               <p className="text-xs text-ps-hint mt-0.5">IT Act Section 200(1) — TDS deposit challans</p>
             </div>
             <button onClick={() => setShowAddChallan(true)}
-              className="flex items-center gap-1.5 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700">
+              className="flex items-center gap-1.5 bg-brand text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-dark">
               <Plus className="w-3.5 h-3.5" /> Add Challan
             </button>
           </div>
@@ -1130,7 +1130,7 @@ export default function TDSPage() {
               </div>
               <Link
                 href="/tds/returns"
-                className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 shrink-0"
+                className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark shrink-0"
               >
                 Prepare a Return <ArrowRight className="w-3.5 h-3.5" />
               </Link>

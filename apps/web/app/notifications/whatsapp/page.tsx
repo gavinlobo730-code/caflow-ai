@@ -203,14 +203,14 @@ function VariableForm({
               onChange={(e) => onChange(v, e.target.value)}
               rows={3}
               placeholder="e.g. • Bank statements\n• Purchase bills\n• Salary slips"
-              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light resize-none"
             />
           ) : (
             <input
               value={values[v] ?? ""}
               onChange={(e) => onChange(v, e.target.value)}
               placeholder={`Enter ${LABELS[v] ?? v}`}
-              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
             />
           )}
         </div>
@@ -506,7 +506,7 @@ export default function WhatsAppPage() {
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors capitalize flex items-center gap-1.5 ${
               activeTab === tab
-                ? "border-blue-600 text-blue-700"
+                ? "border-brand text-blue-700"
                 : "border-transparent text-ps-label hover:text-ps-body"
             }`}
           >
@@ -623,7 +623,7 @@ export default function WhatsAppPage() {
                 value={composedMessage}
                 onChange={(e) => setComposedMessage(e.target.value)}
                 rows={8}
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none font-mono"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light resize-none font-mono"
               />
             </div>
 
@@ -773,7 +773,7 @@ export default function WhatsAppPage() {
                         type="checkbox"
                         checked={selectedClientIds.has(client.id)}
                         onChange={() => toggleBulkClient(client.id)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="rounded border-gray-300 text-blue-600 focus:ring-brand"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-ps-ink">
@@ -796,7 +796,7 @@ export default function WhatsAppPage() {
               <button
                 onClick={generateBulkMessages}
                 disabled={selectedClientIds.size === 0}
-                className="w-full mt-3 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full mt-3 flex items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Plus size={15} />
                 Generate Messages ({selectedClientIds.size})

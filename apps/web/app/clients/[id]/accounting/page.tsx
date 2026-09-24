@@ -937,7 +937,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
           {!dayBook && (
             <button
               onClick={() => router.push(journalEditorHref(clientId, "new"))}
-              className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
+              className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark flex items-center gap-1"
             >
               <Plus size={12} /> New Journal Entry
             </button>
@@ -1161,12 +1161,12 @@ function LedgerDrillDown({
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">From</label>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">To</label>
             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <button onClick={() => { setStartDate(fyRange.start); setEndDate(fyRange.end); }} className="text-xs text-blue-600 hover:underline pb-1.5">
             Reset to FY {financialYear}
@@ -3626,7 +3626,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                   className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
                     shareSuccess === r.id
                       ? "bg-green-100 text-green-700 border border-green-200"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
+                      : "bg-brand text-white hover:bg-brand-dark"
                   }`}
                 >
                   <Share2 size={12} />

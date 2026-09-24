@@ -137,7 +137,7 @@ function PinModal({
                   value={newPin}
                   onChange={e => setNewPin(e.target.value)}
                   placeholder="Min 4 characters"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm pr-9 outline-none focus:border-blue-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm pr-9 outline-none focus:border-brand"
                 />
                 <button type="button" onClick={() => setShowPin(v => !v)}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ps-hint">
@@ -153,7 +153,7 @@ function PinModal({
                 onChange={e => setConfirmPin(e.target.value)}
                 placeholder="Re-enter PIN"
                 onKeyDown={e => e.key === "Enter" && submit()}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               />
             </div>
           </div>
@@ -166,7 +166,7 @@ function PinModal({
               onChange={e => setPin(e.target.value)}
               onKeyDown={e => e.key === "Enter" && submit()}
               placeholder="Enter firm PIN"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm pr-9 outline-none focus:border-blue-500"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm pr-9 outline-none focus:border-brand"
             />
             <button type="button" onClick={() => setShowPin(v => !v)}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ps-hint">
@@ -183,7 +183,7 @@ function PinModal({
             Cancel
           </button>
           <button onClick={submit}
-            className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+            className="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
             {isSettingPin ? "Set PIN & Lock" : "Confirm"}
           </button>
         </div>

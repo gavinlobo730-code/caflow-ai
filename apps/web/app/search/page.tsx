@@ -110,7 +110,7 @@ function SearchContent() {
             <input
               autoFocus
               type="text"
-              className="w-full pl-11 pr-4 py-3 border rounded-xl text-base bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="w-full pl-11 pr-4 py-3 border rounded-xl text-base bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
               placeholder="Search clients, tasks, filings, journals..."
               value={query}
               onChange={e => setQuery(e.target.value)}

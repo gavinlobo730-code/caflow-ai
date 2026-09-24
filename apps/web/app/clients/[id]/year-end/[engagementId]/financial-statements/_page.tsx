@@ -361,7 +361,7 @@ export default function FinancialStatementsPage() {
         <button
           onClick={handleSnapshot}
           disabled={snapshotting}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50"
         >
           {snapshotting ? <RefreshCw size={12} className="animate-spin" /> : <Camera size={12} />}
           Create Snapshot
@@ -372,7 +372,7 @@ export default function FinancialStatementsPage() {
           <select
             value={selectedVersionId}
             onChange={(e) => setSelectedVersionId(e.target.value)}
-            className="text-xs border border-ps-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="text-xs border border-ps-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand"
           >
             <option value="live">Live (Current)</option>
             {versions.map((v) => (

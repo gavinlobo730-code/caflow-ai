@@ -272,7 +272,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               placeholder="e.g. GST Compliance — FY 2025-26"
-              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
             />
           </div>
 
@@ -282,7 +282,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
               <select
                 value={form.template_id}
                 onChange={(e) => setForm({ ...form, template_id: e.target.value })}
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 appearance-none"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light appearance-none"
               >
                 <option value="">— No template —</option>
                 {templates.map((t) => (
@@ -299,7 +299,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
               value={form.recipient_name}
               onChange={(e) => setForm({ ...form, recipient_name: e.target.value })}
               placeholder="Recipient name"
-              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
             />
           </div>
 
@@ -312,7 +312,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
                 value={form.fee_rupees}
                 onChange={(e) => setForm({ ...form, fee_rupees: e.target.value })}
                 placeholder="e.g. 12000"
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
             <div>
@@ -322,7 +322,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
                 value={form.recipient_email}
                 onChange={(e) => setForm({ ...form, recipient_email: e.target.value })}
                 placeholder="client@example.com"
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
           </div>
@@ -334,7 +334,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
                 type="date"
                 value={form.start_date}
                 onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
             <div>
@@ -343,7 +343,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
                 type="date"
                 value={form.expiry_date}
                 onChange={(e) => setForm({ ...form, expiry_date: e.target.value })}
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
           </div>
@@ -359,7 +359,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              className="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
               {saving ? "Creating…" : "Create Engagement"}
@@ -449,7 +449,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="e.g. Standard GST Compliance Letter"
-              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
             />
           </div>
 
@@ -459,7 +459,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
               <select
                 value={form.service_type}
                 onChange={(e) => setForm({ ...form, service_type: e.target.value })}
-                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 appearance-none"
+                className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light appearance-none"
               >
                 {SERVICE_TYPES.map((s) => (
                   <option key={s}>{s}</option>
@@ -477,7 +477,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
               onChange={(e) => setForm({ ...form, content: e.target.value })}
               rows={10}
               placeholder="Write your template content here…"
-              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-y font-mono"
+              className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light resize-y font-mono"
             />
             <p className="mt-1.5 text-xs text-ps-hint">
               Available merge fields:{" "}
@@ -498,7 +498,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              className="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
               {saving ? "Saving…" : "Save Template"}
@@ -862,7 +862,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
               <button
                 disabled={actionLoading}
                 onClick={() => doAction(`/api/engagement-letters/${letter.id}/generate`)}
-                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
               >
                 {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
                 Mark as Generated
@@ -874,7 +874,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                 <button
                   disabled={actionLoading}
                   onClick={() => setShowSendInput(true)}
-                  className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                 >
                   <Send size={13} />
                   Send to Client
@@ -887,7 +887,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                     value={sendEmail}
                     onChange={(e) => setSendEmail(e.target.value)}
                     placeholder="client@example.com"
-                    className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
                   />
                   <p className="text-xs text-ps-label">
                     The letter will be emailed to this address with a PDF copy attached, then marked as Sent.
@@ -896,7 +896,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                     <button
                       disabled={actionLoading || !sendEmail.trim()}
                       onClick={() => doAction(`/api/engagement-letters/${letter.id}/send`, { to_email: sendEmail.trim() })}
-                      className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                     >
                       {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                       Send Now
@@ -916,7 +916,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                     <button
                       disabled={actionLoading}
                       onClick={() => doResend()}
-                      className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                     >
                       {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                       Send Again
@@ -978,7 +978,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       value={recipientEmail}
                       onChange={(e) => setRecipientEmail(e.target.value)}
                       placeholder="client@example.com"
-                      className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
                     />
                     <p className="text-xs text-ps-label">
                       Updates the recipient on this same engagement — the signing link and token stay the same.
@@ -995,7 +995,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       <button
                         disabled={actionLoading || !recipientEmail.trim()}
                         onClick={() => doChangeRecipient(true)}
-                        className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                        className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                         Save &amp; Resend
@@ -1439,7 +1439,7 @@ function EngagementsPageInner() {
         {activeTab === "templates" ? (
           <button
             onClick={() => { setEditTemplate(null); setShowCreateTemplate(true); }}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
           >
             <Plus size={15} />
             New Template
@@ -1447,7 +1447,7 @@ function EngagementsPageInner() {
         ) : (
           <button
             onClick={() => setShowCreateEngagement(true)}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
           >
             <Plus size={15} />
             New Engagement
@@ -1485,7 +1485,7 @@ function EngagementsPageInner() {
               onClick={() => setActiveTab(tab.id)}
               className={`pb-3 text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.id
-                  ? "border-b-2 border-blue-600 text-blue-600"
+                  ? "border-b-2 border-brand text-blue-600"
                   : "text-ps-label hover:text-ps-body"
               }`}
             >

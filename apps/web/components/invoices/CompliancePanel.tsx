@@ -339,20 +339,20 @@ function EligibilityBlock({ elig, actionLabel, onAction }: { elig: { eligible: b
 function PrimaryBtn({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1">
+      className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1">
       {children}
     </button>
   );
 }
 
 // ── Modals ────────────────────────────────────────────────────────────────────
-const inputCls = "w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
+const inputCls = "w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand";
 
 function Actions({ onClose, onSubmit, busy, label, disabled }: { onClose: () => void; onSubmit: () => void; busy: boolean; label: string; disabled?: boolean }) {
   return (
     <div className="flex justify-end gap-2 pt-1">
       <button onClick={onClose} disabled={busy} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-      <button onClick={onSubmit} disabled={busy || disabled} className="text-xs px-3.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+      <button onClick={onSubmit} disabled={busy || disabled} className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
         {busy && <Loader2 size={12} className="animate-spin" />} {label}
       </button>
     </div>

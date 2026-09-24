@@ -103,7 +103,7 @@ export default function TasksPage() {
           </CardTitle>
           <button
             onClick={() => setModalOpen(true)}
-            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark"
           >
             <Plus size={13} /> New task
           </button>

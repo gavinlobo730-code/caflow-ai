@@ -226,7 +226,7 @@ export default function StatutoryValuesPage() {
           </div>
           <button
             onClick={() => { reset(); setShowForm(true); }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
           >
             <Plus size={15} />Record a notification
           </button>
@@ -371,7 +371,7 @@ export default function StatutoryValuesPage() {
                 <div>
                   <label className="block text-2xs text-ps-label mb-1">Read against</label>
                   <select value={basis} onChange={e => setBasis(e.target.value)}
-                    className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-400">
+                    className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-brand">
                     <option value="monthly">The month&apos;s gross</option>
                     <option value="half_yearly">Six months&apos; gross (half-yearly levy)</option>
                   </select>
@@ -388,7 +388,7 @@ export default function StatutoryValuesPage() {
                           ? prev.filter(x => x !== i + 1) : [...prev, i + 1].sort((a, b) => a - b))}
                         className={`text-2xs px-2 py-1 rounded border ${
                           months.includes(i + 1)
-                            ? "bg-indigo-600 text-white border-indigo-600"
+                            ? "bg-brand text-white border-brand"
                             : "border-ps-border text-ps-label hover:bg-ps-bg"}`}>
                         {m}
                       </button>
@@ -409,13 +409,13 @@ export default function StatutoryValuesPage() {
                       <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-1.5 items-center">
                         <input value={band.from} placeholder="From ₹"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, from: e.target.value } : x))}
-                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-400" />
+                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-brand" />
                         <input value={band.to} placeholder="To ₹ (blank = and above)"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, to: e.target.value } : x))}
-                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-400" />
+                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-brand" />
                         <input value={band.amount} placeholder="Tax ₹"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
-                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-400" />
+                          className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-brand" />
                         <button type="button" disabled={bands.length === 1}
                           onClick={() => setBands(b => b.filter((_, j) => j !== i))}
                           className="text-ps-hint hover:text-red-600 disabled:opacity-30">
@@ -433,7 +433,7 @@ export default function StatutoryValuesPage() {
                 <button onClick={() => setShowForm(false)}
                   className="px-4 py-1.5 text-sm text-ps-label hover:bg-ps-bg rounded-lg">Cancel</button>
                 <button onClick={save} disabled={actionInFlight}
-                  className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                  className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
                   {saving ? "Saving…" : "Record"}
                 </button>
               </div>
@@ -454,7 +454,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }: {
       <label className="block text-2xs text-ps-label mb-1">{label}</label>
       <input type={type} value={value} placeholder={placeholder}
         onChange={e => onChange(e.target.value)}
-        className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-indigo-400" />
+        className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-brand" />
     </div>
   );
 }

@@ -62,9 +62,9 @@ export default function JoinPage() {
           {(status === "checking" || status === "linking") && (
             <>
               <div className="flex items-center justify-center gap-1.5 py-4">
-                <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:0ms]" />
-                <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:150ms]" />
-                <div className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce [animation-delay:300ms]" />
+                <div className="w-2 h-2 rounded-full bg-brand-light animate-bounce [animation-delay:0ms]" />
+                <div className="w-2 h-2 rounded-full bg-brand-light animate-bounce [animation-delay:150ms]" />
+                <div className="w-2 h-2 rounded-full bg-brand-light animate-bounce [animation-delay:300ms]" />
               </div>
               <p className="text-sm text-ps-label">
                 {status === "checking" ? "Verifying your invite…" : "Setting up your account…"}
@@ -89,7 +89,7 @@ export default function JoinPage() {
               )}
               <button
                 onClick={() => router.replace("/")}
-                className="w-full bg-blue-500 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-blue-600 transition-colors"
+                className="w-full bg-brand text-white text-sm font-medium py-2.5 rounded-lg hover:bg-brand-dark transition-colors"
               >
                 Go to Dashboard →
               </button>

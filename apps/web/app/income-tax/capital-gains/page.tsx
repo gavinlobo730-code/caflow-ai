@@ -478,13 +478,13 @@ export default function CapitalGainsPage() {
       <div className="flex border-b border-ps-border">
         <button
           onClick={() => setActiveTab("calculator")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "calculator" ? "border-blue-600 text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"}`}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "calculator" ? "border-brand text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"}`}
         >
           <Calculator className="w-4 h-4" /> Calculator
         </button>
         <button
           onClick={() => setActiveTab("register")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "register" ? "border-blue-600 text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"}`}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "register" ? "border-brand text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"}`}
         >
           <BookOpen className="w-4 h-4" /> Register
         </button>
@@ -503,7 +503,7 @@ export default function CapitalGainsPage() {
 
               <div>
                 <label className="text-xs font-medium text-ps-body block mb-1">Asset Type</label>
-                <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value as AnyCapitalGainsAssetType)}>
+                <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={assetType} onChange={e => setAssetType(e.target.value as AnyCapitalGainsAssetType)}>
                   {ASSET_TYPES_CALC.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
               </div>
@@ -518,7 +518,7 @@ export default function CapitalGainsPage() {
               {askListing && (
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Listed on a recognised stock exchange in India?</label>
-                  <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                           aria-label="Listed security"
                           value={listedChoice} onChange={e => setListedChoice(e.target.value as "" | "listed" | "unlisted")}>
                     <option value="">Not recorded</option>
@@ -538,7 +538,7 @@ export default function CapitalGainsPage() {
               {askGrandfathering && (
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Fair market value on 31 Jan 2018 (₹) — the whole holding</label>
-                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                          aria-label="Fair market value on 31 January 2018"
                          value={fmv2018Rupees} onChange={e => setFmv2018Rupees(e.target.value)} placeholder="Not recorded" />
                   <p className="text-2xs text-ps-label mt-1">
@@ -559,7 +559,7 @@ export default function CapitalGainsPage() {
                   a benefit nobody established a right to. */}
               <div>
                 <label className="text-xs font-medium text-ps-body block mb-1">Assessee</label>
-                <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                         aria-label="Assessee type"
                         value={assesseeType} onChange={e => setAssesseeType(e.target.value as CapitalGainsAssesseeType)}>
                   <option value="unspecified">Not stated</option>
@@ -576,29 +576,29 @@ export default function CapitalGainsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Purchase Date</label>
-                  <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
+                  <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Sale Date</label>
-                  <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleDate} onChange={e => setSaleDate(e.target.value)} />
+                  <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={saleDate} onChange={e => setSaleDate(e.target.value)} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Purchase Price (₹)</label>
-                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={purchaseRupees} onChange={e => setPurchaseRupees(e.target.value)} placeholder="0.00" />
+                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={purchaseRupees} onChange={e => setPurchaseRupees(e.target.value)} placeholder="0.00" />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Sale Price (₹)</label>
-                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={saleRupees} onChange={e => setSaleRupees(e.target.value)} placeholder="0.00" />
+                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={saleRupees} onChange={e => setSaleRupees(e.target.value)} placeholder="0.00" />
                 </div>
               </div>
 
               {(assetType === "property" || assetType === "gold") && (
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Improvement Costs (₹) — optional</label>
-                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={improvementRupees} onChange={e => setImprovementRupees(e.target.value)} placeholder="0.00" />
+                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={improvementRupees} onChange={e => setImprovementRupees(e.target.value)} placeholder="0.00" />
                 </div>
               )}
 
@@ -1147,19 +1147,19 @@ export default function CapitalGainsPage() {
 
                   <div>
                     <label className="text-xs font-medium text-ps-body block mb-1">Asset Description *</label>
-                    <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_description} onChange={e => setRegForm(f => ({ ...f, asset_description: e.target.value }))} placeholder="e.g. Reliance Industries Ltd — 100 shares" />
+                    <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.asset_description} onChange={e => setRegForm(f => ({ ...f, asset_description: e.target.value }))} placeholder="e.g. Reliance Industries Ltd — 100 shares" />
                   </div>
 
                   <div>
                     <label className="text-xs font-medium text-ps-body block mb-1">Asset Type *</label>
-                    <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value as CapitalGainsRegisterAssetType }))}>
+                    <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value as CapitalGainsRegisterAssetType }))}>
                       {ASSET_TYPES_REG.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                     </select>
                   </div>
 
                   <div>
                     <label className="text-xs font-medium text-ps-body block mb-1">Sold as</label>
-                    <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                             aria-label="What was sold, for the s.54 family"
                             value={regForm.transferred_asset_nature}
                             onChange={e => setRegForm(f => ({ ...f, transferred_asset_nature: e.target.value as "" | TransferredAssetNature }))}>
@@ -1181,7 +1181,7 @@ export default function CapitalGainsPage() {
                   {listingIsAsked(regForm.asset_type) && (
                     <div>
                       <label className="text-xs font-medium text-ps-body block mb-1">Listed on a recognised stock exchange in India?</label>
-                      <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                               aria-label="Register listed security"
                               value={regForm.listed}
                               onChange={e => setRegForm(f => ({ ...f, listed: e.target.value as "" | "listed" | "unlisted" }))}>
@@ -1199,7 +1199,7 @@ export default function CapitalGainsPage() {
 
                   <div>
                     <label className="text-xs font-medium text-ps-body block mb-1">Assessee</label>
-                    <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                             aria-label="Register assessee type"
                             value={regForm.assessee_type} onChange={e => setRegForm(f => ({ ...f, assessee_type: e.target.value as CapitalGainsAssesseeType }))}>
                       <option value="unspecified">Not stated</option>
@@ -1215,11 +1215,11 @@ export default function CapitalGainsPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium text-ps-body block mb-1">Purchase Date *</label>
-                      <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_date} onChange={e => setRegForm(f => ({ ...f, purchase_date: e.target.value }))} />
+                      <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.purchase_date} onChange={e => setRegForm(f => ({ ...f, purchase_date: e.target.value }))} />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-ps-body block mb-1">Sale Date *</label>
-                      <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_date} onChange={e => setRegForm(f => ({ ...f, sale_date: e.target.value }))} />
+                      <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.sale_date} onChange={e => setRegForm(f => ({ ...f, sale_date: e.target.value }))} />
                     </div>
                   </div>
 
@@ -1229,7 +1229,7 @@ export default function CapitalGainsPage() {
                   {grandfatheringIsAsked(regForm.asset_type, regForm.purchase_date) && (
                     <div>
                       <label className="text-xs font-medium text-ps-body block mb-1">Fair market value on 31 Jan 2018 (₹) — the whole holding</label>
-                      <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                              aria-label="Register fair market value on 31 January 2018"
                              value={regForm.fmv_31_01_2018_rs}
                              onChange={e => setRegForm(f => ({ ...f, fmv_31_01_2018_rs: e.target.value }))}
@@ -1247,17 +1247,17 @@ export default function CapitalGainsPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium text-ps-body block mb-1">Purchase Cost (₹)</label>
-                      <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.purchase_cost_rs} onChange={e => setRegForm(f => ({ ...f, purchase_cost_rs: e.target.value }))} placeholder="0" />
+                      <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.purchase_cost_rs} onChange={e => setRegForm(f => ({ ...f, purchase_cost_rs: e.target.value }))} placeholder="0" />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-ps-body block mb-1">Sale Value (₹)</label>
-                      <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_value_rs} onChange={e => setRegForm(f => ({ ...f, sale_value_rs: e.target.value }))} placeholder="0" />
+                      <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.sale_value_rs} onChange={e => setRegForm(f => ({ ...f, sale_value_rs: e.target.value }))} placeholder="0" />
                     </div>
                   </div>
 
                   <div>
                     <label className="text-xs font-medium text-ps-body block mb-1">Improvement Cost (₹) — optional</label>
-                    <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.improvement_cost_rs} onChange={e => setRegForm(f => ({ ...f, improvement_cost_rs: e.target.value }))} placeholder="0" />
+                    <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.improvement_cost_rs} onChange={e => setRegForm(f => ({ ...f, improvement_cost_rs: e.target.value }))} placeholder="0" />
                   </div>
 
                   {/* Server-computed preview (STCG/LTCG, rate, indexed cost) */}

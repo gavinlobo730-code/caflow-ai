@@ -313,7 +313,7 @@ export default function EmployeePortalPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${
                 activeTab === tab.id
-                  ? "bg-blue-500 text-white shadow-sm"
+                  ? "bg-brand text-white shadow-sm"
                   : "text-ps-label hover:text-ps-body hover:bg-ps-bg"
               }`}
             >

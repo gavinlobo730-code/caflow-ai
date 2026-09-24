@@ -347,7 +347,7 @@ function DeadlinesContent() {
   const emptyAction = records.length === 0 && clients.length === 0 ? (
     <Link
       href="/clients"
-      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+      className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-xs font-semibold rounded-lg hover:bg-brand-dark transition-colors"
     >
       Add First Client <ArrowRight size={13} />
     </Link>
@@ -409,12 +409,12 @@ function DeadlinesContent() {
                 value={markFiled.arn}
                 onChange={e => setMarkFiled({ ...markFiled, arn: e.target.value })}
                 placeholder="ARN Number (optional)"
-                className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand bg-white"
               />
               <button
                 onClick={handleMarkFiled}
                 disabled={filingLoading}
-                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                className="text-xs px-3 py-1.5 bg-brand text-white rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
                 {filingLoading ? "Saving…" : "Confirm Filed"}
               </button>

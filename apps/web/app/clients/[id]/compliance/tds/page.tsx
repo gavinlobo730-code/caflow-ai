@@ -273,7 +273,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS Challans</h3>
         <button onClick={() => setShowNew(true)}
-          className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
           + New Challan
         </button>
       </div>
@@ -301,7 +301,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
             </select>
           </div>
           <div className="flex gap-2">
-            <button onClick={saveNew} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">Save</button>
+            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -520,7 +520,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
             Compute from Books
           </button>
           <button onClick={() => setShowNew(true)}
-            className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
             + New Return
           </button>
         </div>
@@ -578,7 +578,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
           <div className="flex gap-2">
             <button onClick={computeFromBooks}
               disabled={actionInFlight || !computeForm.financial_year || !computeForm.tan || !computeForm.deductor_name || !computeForm.deductor_pan}
-              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
             </button>
             <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
@@ -698,7 +698,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               className="border rounded px-3 py-1.5 text-sm" />
           </div>
           <div className="flex gap-2">
-            <button onClick={saveNew} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">Save</button>
+            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -838,7 +838,7 @@ function Form26ASTab({ clientId }: { clientId: string }) {
           rows={8} className="w-full border rounded px-3 py-2 text-sm font-mono" />
         {error && <p className="text-red-600 text-sm">{error}</p>}
         <button onClick={upload} disabled={loading || !fy || !jsonText}
-          className="px-4 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+          className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
           {loading ? "Reconciling…" : "Reconcile"}
         </button>
       </div>
@@ -936,7 +936,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS Certificates (Form 16/16A)</h3>
         <button onClick={() => setShowNew(true)}
-          className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
           + Generate Draft
         </button>
       </div>
@@ -973,7 +973,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
           </div>
           {saveError && <p className="text-sm text-red-600">{saveError}</p>}
           <div className="flex gap-2">
-            <button onClick={saveNew} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">Generate Draft</button>
+            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Generate Draft</button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -1069,7 +1069,7 @@ export default function TDSWorkspacePage() {
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
-                ? "border-blue-600 text-blue-700"
+                ? "border-brand text-blue-700"
                 : "border-transparent text-ps-label hover:text-ps-body"
             }`}>
             {t.label}
@@ -1230,7 +1230,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
           </p>
         </div>
         <button onClick={() => setShowNew((s) => !s)}
-          className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 whitespace-nowrap">
+          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark whitespace-nowrap">
           + Record Certificate
         </button>
       </div>

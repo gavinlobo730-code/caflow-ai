@@ -422,7 +422,7 @@ export default function Form26ASPage() {
           <button
             onClick={handleReconcile}
             disabled={actionInFlight}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
           >
             {reconciling ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
             Run Reconciliation
@@ -443,7 +443,7 @@ export default function Form26ASPage() {
             value={rawText}
             onChange={e => setRawText(e.target.value)}
             rows={10}
-            className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-brand"
             placeholder="Paste Form 26AS text here..."
           />
           {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
@@ -481,7 +481,7 @@ export default function Form26ASPage() {
             <button
               onClick={handleUploadAndParse}
               disabled={actionInFlight || !rawText.trim()}
-              className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50 flex items-center gap-1"
+              className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1"
             >
               {uploading && <Loader2 size={10} className="animate-spin" />}
               Upload &amp; Parse

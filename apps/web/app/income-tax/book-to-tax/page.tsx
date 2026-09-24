@@ -176,7 +176,7 @@ export default function BookToTaxBridgePage() {
                 <input id={box.key} inputMode="decimal" placeholder="derived"
                   value={typed[box.key] ?? ""}
                   onChange={e => setTyped(t => ({ ...t, [box.key]: e.target.value }))}
-                  className="mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm tabular-nums outline-none focus:border-blue-500" />
+                  className="mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm tabular-nums outline-none focus:border-brand" />
                 <p className="text-2xs text-ps-hint mt-1">{box.hint}</p>
               </div>
             ))}
@@ -186,7 +186,7 @@ export default function BookToTaxBridgePage() {
               </label>
               <input id="bf-loss" inputMode="decimal" placeholder="0"
                 value={bfLoss} onChange={e => setBfLoss(e.target.value)}
-                className="mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm tabular-nums outline-none focus:border-blue-500" />
+                className="mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm tabular-nums outline-none focus:border-brand" />
               <p className="text-2xs text-ps-hint mt-1">
                 Never derived — each head has its own section and its own set-off rules
               </p>

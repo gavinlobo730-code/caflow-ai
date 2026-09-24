@@ -241,7 +241,7 @@ export default function PayrollPeoplePage() {
       render: (e) => (
         <button
           onClick={() => setPortalEmployee(e)}
-          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium hover:ring-1 hover:ring-blue-300 ${
+          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium hover:ring-1 hover:ring-brand ${
             e.portal_enabled ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}
           title={e.portal_enabled ? "Portal access is on — click to manage" : "Give this employee portal access"}
         >

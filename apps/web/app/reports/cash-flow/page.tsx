@@ -229,14 +229,14 @@ export default function CashFlowForecastPage() {
             value={openingBalanceInput}
             onChange={e => setOpeningBalanceInput(e.target.value)}
             placeholder="0"
-            className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </div>
 
         <button
           onClick={handleGenerate}
           disabled={loading || !selectedClientId}
-          className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40"
+          className="flex items-center gap-1.5 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-40"
         >
           {loading && <Loader2 size={14} className="animate-spin" />}
           {loading ? "Generating…" : "Generate Forecast"}

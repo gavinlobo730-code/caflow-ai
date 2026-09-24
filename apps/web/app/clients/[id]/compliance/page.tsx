@@ -113,7 +113,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
         <div className="flex justify-between items-center">
           <CardTitle className="text-sm">Government Notices ({notices.length})</CardTitle>
           <button onClick={() => setShowExtract(!showExtract)}
-            className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+            className="text-xs px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
             + Extract Notice
           </button>
         </div>
@@ -127,7 +127,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
               rows={6} className="w-full border rounded px-3 py-2 text-sm" />
             <div className="flex gap-2">
               <button onClick={extract} disabled={extracting || !noticeText}
-                className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+                className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
                 {extracting ? "Extracting…" : "Extract"}
               </button>
               <button onClick={() => setShowExtract(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
@@ -431,12 +431,12 @@ export default function CompliancePage() {
                 value={markFiled.arn}
                 onChange={(e) => setMarkFiled({ ...markFiled, arn: e.target.value })}
                 placeholder="ARN Number (optional)"
-                className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand bg-white"
               />
               <button
                 onClick={handleMarkFiled}
                 disabled={actionInFlight}
-                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                className="text-xs px-3 py-1.5 bg-brand text-white rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
                 {filingLoading ? "Saving…" : "Confirm Filed"}
               </button>

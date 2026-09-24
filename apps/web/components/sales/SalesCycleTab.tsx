@@ -275,7 +275,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
         ))}
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="ml-auto flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white"
+          className="ml-auto flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm text-white"
         >
           <Plus size={14} /> New
         </button>
@@ -557,7 +557,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             <button
               disabled={saving}
               onClick={() => void save()}
-              className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white disabled:opacity-50"
+              className="rounded bg-brand px-4 py-1.5 text-sm text-white disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save"}
             </button>

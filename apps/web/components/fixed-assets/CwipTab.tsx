@@ -90,7 +90,7 @@ function Shell({ title, children, onClose, onSave, saving, error, cta }: {
             Cancel
           </button>
           <button onClick={onSave} disabled={saving}
-            className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs disabled:opacity-40">
+            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
             {cta}
           </button>
         </div>
@@ -174,7 +174,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
             <HardHat size={15} className="text-amber-600" /> Projects under construction
           </h3>
           <button onClick={() => setAdding(true)}
-            className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white flex items-center gap-1">
+            className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
             <Plus size={12} /> New project
           </button>
         </div>

@@ -318,7 +318,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
         </div>
         <div className="flex gap-3 justify-end px-5 py-4 border-t border-ps-muted">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving || checked.size === 0 || remaining < 0} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+          <button onClick={save} disabled={saving || checked.size === 0 || remaining < 0} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Settling…" : `Confirm allocation`}
           </button>
         </div>

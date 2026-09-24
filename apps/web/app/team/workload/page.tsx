@@ -86,7 +86,7 @@ function CapacityModal({ member, onClose, onSaved }: {
               type="number" min="1" max="100"
               value={weeklyHours}
               onChange={e => setWeeklyHours(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
             />
           </div>
           <div>
@@ -95,7 +95,7 @@ function CapacityModal({ member, onClose, onSaved }: {
               type="number" min="1" max="100"
               value={maxTasks}
               onChange={e => setMaxTasks(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
             />
           </div>
         </div>

@@ -438,7 +438,7 @@ export default function ClientPortalPage() {
         {selectedClient && (
           <button
             onClick={handleCopyPortalLink}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
           >
             {copied ? (
               <>
@@ -538,7 +538,7 @@ export default function ClientPortalPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === tab.id
-                    ? "border-blue-600 text-blue-700"
+                    ? "border-brand text-blue-700"
                     : "border-transparent text-ps-label hover:text-ps-body"
                 }`}
               >
@@ -565,7 +565,7 @@ export default function ClientPortalPage() {
                     </CardTitle>
                     <button
                       onClick={() => setShowNewRequestModal(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-xs font-medium rounded-lg hover:bg-brand-dark transition-colors"
                     >
                       <Plus size={13} /> New Request
                     </button>
@@ -647,7 +647,7 @@ export default function ClientPortalPage() {
                         placeholder="Label (optional)"
                         value={uploadLabel}
                         onChange={(e) => setUploadLabel(e.target.value)}
-                        className="text-xs px-2 py-1.5 border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
+                        className="text-xs px-2 py-1.5 border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand w-36"
                       />
                       <input
                         type="file"
@@ -662,7 +662,7 @@ export default function ClientPortalPage() {
                       <button
                         onClick={() => sharedUploadRef.current?.click()}
                         disabled={uploadingDoc}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-xs font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-60"
                       >
                         <Upload size={13} />
                         {uploadingDoc ? "Uploading…" : "Upload"}
@@ -947,7 +947,7 @@ export default function ClientPortalPage() {
                     ) : (
                       portalMessages.map((msg) => (
                         <div key={msg.id} className="flex gap-3">
-                          <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                          <div className="w-7 h-7 rounded-full bg-brand text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
                             {msg.from_ca ? "CA" : "C"}
                           </div>
                           <div className="flex-1 bg-ps-bg rounded-lg px-4 py-3">
@@ -963,13 +963,13 @@ export default function ClientPortalPage() {
                         placeholder="Type a message to send to this client…"
                         value={newMessageText}
                         onChange={(e) => setNewMessageText(e.target.value)}
-                        className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand resize-none"
                       />
                       <div className="flex justify-end">
                         <button
                           onClick={handleSendMessage}
                           disabled={actionInFlight || !newMessageText.trim()}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-xs font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
                         >
                           <MessageSquare size={12} />
                           {sendingMessage ? "Sending…" : "Send Message"}
@@ -997,7 +997,7 @@ export default function ClientPortalPage() {
                   placeholder="e.g. Upload Q4 Bank Statement"
                   value={newRequest.title}
                   onChange={(e) => setNewRequest((p) => ({ ...p, title: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                   autoFocus
                 />
               </div>
@@ -1007,7 +1007,7 @@ export default function ClientPortalPage() {
                   placeholder="e.g. For the period Jan–Mar 2026"
                   value={newRequest.description}
                   onChange={(e) => setNewRequest((p) => ({ ...p, description: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand resize-none"
                   rows={3}
                 />
               </div>
@@ -1016,7 +1016,7 @@ export default function ClientPortalPage() {
                   type="checkbox"
                   checked={newRequest.is_urgent}
                   onChange={(e) => setNewRequest((p) => ({ ...p, is_urgent: e.target.checked }))}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-brand"
                 />
                 <span className="text-sm text-ps-body">Mark as Urgent</span>
                 <AlertTriangle size={14} className="text-amber-500" />
@@ -1035,7 +1035,7 @@ export default function ClientPortalPage() {
               <button
                 onClick={handleCreateRequest}
                 disabled={actionInFlight || !newRequest.title.trim()}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                className="px-4 py-2 text-sm bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 font-medium"
               >
                 {savingRequest ? "Creating…" : "Create Request"}
               </button>

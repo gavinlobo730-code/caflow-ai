@@ -168,7 +168,7 @@ export default function TrialBalanceImportPage() {
         <div className="flex items-center gap-2 mb-8 text-sm">
           {["Upload", "Map Columns", "Review", "Import"].map((s, i) => (
             <div key={s} className="flex items-center gap-2">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${step > i + 1 ? "bg-green-500 text-white" : step === i + 1 ? "bg-blue-500 text-white" : "bg-white/[0.08] text-ps-label"}`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${step > i + 1 ? "bg-state-ready text-white" : step === i + 1 ? "bg-brand text-white" : "bg-white/[0.08] text-ps-label"}`}>
                 {step > i + 1 ? <CheckCircle size={14} /> : i + 1}
               </div>
               <span className={step === i + 1 ? "font-semibold text-ps-ink" : "text-ps-hint"}>{s}</span>

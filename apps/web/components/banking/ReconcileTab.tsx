@@ -458,7 +458,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
             </>
           )}
 
-          <button onClick={createSession} disabled={busy} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">Open Reconciliation</button>
+          <button onClick={createSession} disabled={busy} className="text-xs px-4 py-1.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50">Open Reconciliation</button>
         </div>
       )}
 
@@ -737,7 +737,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
           {!completed && !isReadOnlyView(view) && selectedIds.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               {view === "unreconciled"
-                ? <button onClick={() => act(() => api.banking.reconciliations.reconcile(selectedId, selectedIds))} disabled={busy} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">Reconcile {selectedIds.length} selected</button>
+                ? <button onClick={() => act(() => api.banking.reconciliations.reconcile(selectedId, selectedIds))} disabled={busy} className="text-xs px-4 py-1.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50">Reconcile {selectedIds.length} selected</button>
                 : <button onClick={() => act(() => api.banking.reconciliations.unreconcile(selectedId, selectedIds))} disabled={busy} className="text-xs px-4 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label">Unreconcile {selectedIds.length} selected</button>}
 
               {/* Live difference: what the tie-out becomes if you commit this

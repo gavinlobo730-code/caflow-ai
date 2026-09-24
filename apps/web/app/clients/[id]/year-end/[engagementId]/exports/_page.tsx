@@ -230,7 +230,7 @@ export default function ExportsPage() {
                   disabled={!!generatingType}
                   className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-2 rounded-lg disabled:opacity-50 ${
                     cfg.primary
-                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      ? "bg-brand text-white hover:bg-brand-dark"
                       : "border border-ps-border text-ps-label hover:bg-ps-bg"
                   }`}
                 >

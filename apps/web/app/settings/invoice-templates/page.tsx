@@ -103,7 +103,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
               value={name}
               onChange={(e) => { setName(e.target.value); setError(""); }}
               placeholder="e.g. Standard Client Invoice"
-              className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+              className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
             />
           </div>
           <div>
@@ -145,7 +145,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
         </div>
         <div className="px-6 py-4 border-t border-ps-muted flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-1.5 border border-ps-border text-ps-label text-sm rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button onClick={handleCreate} disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          <button onClick={handleCreate} disabled={saving} className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Creating…" : "Create Template"}
           </button>
         </div>
@@ -166,7 +166,7 @@ function TemplateCard({
 }) {
   const info = TEMPLATE_DESCRIPTIONS[template.template_type];
   return (
-    <div className={`bg-white rounded-xl border overflow-hidden ${template.is_default ? "border-blue-300 ring-2 ring-blue-100" : "border-ps-muted"}`}>
+    <div className={`bg-white rounded-xl border overflow-hidden ${template.is_default ? "border-brand ring-2 ring-brand-light" : "border-ps-muted"}`}>
       <div className="px-5 py-4 flex items-start justify-between">
         <div className="flex items-start gap-3">
           <div className={`mt-0.5 px-2 py-0.5 rounded text-xs font-medium ${info.accent}`}>{info.label}</div>
@@ -291,7 +291,7 @@ export default function InvoiceTemplatesPage() {
             </div>
             <button
               onClick={() => setShowCreate(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
             >
               <Plus size={14} /> New Template
             </button>
@@ -315,7 +315,7 @@ export default function InvoiceTemplatesPage() {
             <p className="text-sm text-ps-label">No invoice templates yet.</p>
             <button
               onClick={() => setShowCreate(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
             >
               <Plus size={14} /> Create your first template
             </button>

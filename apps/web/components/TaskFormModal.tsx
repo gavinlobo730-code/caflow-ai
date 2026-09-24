@@ -167,7 +167,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
                 value={form.title}
                 onChange={e => set("title", e.target.value)}
                 placeholder="Describe the task…"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               />
             </div>
           )}
@@ -179,7 +179,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
               <select
                 value={form.priority}
                 onChange={e => set("priority", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               >
                 {PRIORITIES.map(p => (
                   <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
@@ -192,7 +192,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
                 type="date"
                 value={form.due_date}
                 onChange={e => set("due_date", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               />
             </div>
           </div>
@@ -205,7 +205,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
               onChange={e => set("description", e.target.value)}
               rows={2}
               placeholder="Any additional notes…"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand resize-none"
             />
           </div>
 
@@ -220,7 +220,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
             </button>
             <button
               type="submit" disabled={saving}
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-blue-700 disabled:opacity-60"
+              className="flex-1 rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-brand-dark disabled:opacity-60"
             >
               {saving ? "Creating…" : "Create Task"}
             </button>

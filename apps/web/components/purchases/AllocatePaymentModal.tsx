@@ -230,7 +230,7 @@ export default function AllocatePaymentModal({
                             <input value={amounts[bill.id] ?? ""} type="text" inputMode="decimal"
                               aria-label={`Amount to apply to ${billLabel(bill)}`}
                               onChange={(ev) => setAmounts((a) => ({ ...a, [bill.id]: ev.target.value }))}
-                              className={`w-28 px-2 py-1 border rounded text-right text-2xs outline-none focus:border-blue-400 ${
+                              className={`w-28 px-2 py-1 border rounded text-right text-2xs outline-none focus:border-brand ${
                                 problem ? "border-red-300" : "border-ps-border"}`} />
                             <button type="button"
                               onClick={() => setAmounts((a) => ({

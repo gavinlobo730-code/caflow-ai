@@ -77,7 +77,7 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
           }}
           maxLength={7}
           placeholder="#000000"
-          className="w-28 text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+          className="w-28 text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
         />
       </div>
     </div>
@@ -287,7 +287,7 @@ export default function BrandingPage() {
                     value={branding.logo_url ?? ""}
                     onChange={(e) => update("logo_url", e.target.value || null)}
                     placeholder="https://example.com/logo.png"
-                    className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                    className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                   />
                 </div>
                 <div>
@@ -297,7 +297,7 @@ export default function BrandingPage() {
                     value={branding.tagline ?? ""}
                     onChange={(e) => update("tagline", e.target.value)}
                     placeholder="e.g. Chartered Accountants & Advisors"
-                    className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                    className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                   />
                 </div>
               </div>
@@ -319,7 +319,7 @@ export default function BrandingPage() {
                 <select
                   value={branding.font_family}
                   onChange={(e) => update("font_family", e.target.value)}
-                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 >
                   {FONTS.map((f) => (
                     <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
@@ -345,7 +345,7 @@ export default function BrandingPage() {
                         update("social_links", { ...(branding.social_links ?? {}), [platform]: e.target.value || undefined })
                       }
                       placeholder={`https://${platform}.com/yourfirm`}
-                      className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+                      className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                     />
                   </div>
                 ))}
@@ -356,7 +356,7 @@ export default function BrandingPage() {
               <button
                 onClick={handleSave}
                 disabled={saving || loading}
-                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
               >
                 <Save size={14} />
                 {saving ? "Saving…" : "Save Branding"}

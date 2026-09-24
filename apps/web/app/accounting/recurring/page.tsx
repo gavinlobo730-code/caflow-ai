@@ -384,7 +384,7 @@ export default function RecurringPage() {
         </button>
         <button
           onClick={openCreate}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          className="flex items-center gap-1 px-3 py-1.5 text-sm bg-brand text-white rounded-md hover:bg-brand-dark"
         >
           <Plus size={14} /> New template
         </button>
@@ -619,7 +619,7 @@ export default function RecurringPage() {
               <input
                 id="rj-name"
                 type="text"
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                 placeholder="Monthly office rent"
                 value={form.name}
                 onChange={e => { setForm(f => ({ ...f, name: e.target.value })); setFormError(null); }}
@@ -631,7 +631,7 @@ export default function RecurringPage() {
                 <label htmlFor="rj-dr" className="text-xs font-medium text-ps-body block mb-1">Debit account</label>
                 <select
                   id="rj-dr"
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                   value={form.debit_account_id}
                   onChange={e => setForm(f => ({ ...f, debit_account_id: e.target.value }))}
                 >
@@ -643,7 +643,7 @@ export default function RecurringPage() {
                 <label htmlFor="rj-cr" className="text-xs font-medium text-ps-body block mb-1">Credit account</label>
                 <select
                   id="rj-cr"
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                   value={form.credit_account_id}
                   onChange={e => setForm(f => ({ ...f, credit_account_id: e.target.value }))}
                 >
@@ -660,7 +660,7 @@ export default function RecurringPage() {
                   id="rj-amount"
                   type="text"
                   inputMode="decimal"
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                   placeholder="125000"
                   value={form.amount_rupees}
                   onChange={e => { setForm(f => ({ ...f, amount_rupees: e.target.value })); setFormError(null); }}
@@ -670,7 +670,7 @@ export default function RecurringPage() {
                 <label htmlFor="rj-freq" className="text-xs font-medium text-ps-body block mb-1">Frequency</label>
                 <select
                   id="rj-freq"
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                   value={form.frequency}
                   onChange={e => setForm(f => ({ ...f, frequency: e.target.value }))}
                 >
@@ -684,7 +684,7 @@ export default function RecurringPage() {
                 <label htmlFor="rj-day" className="text-xs font-medium text-ps-body block mb-1">Day of month</label>
                 <select
                   id="rj-day"
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                   value={form.day_of_month}
                   onChange={e => setForm(f => ({ ...f, day_of_month: parseInt(e.target.value, 10) }))}
                 >
@@ -702,7 +702,7 @@ export default function RecurringPage() {
                 <input
                   id="rj-start"
                   type="date"
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                   value={form.start_date}
                   onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
                 />
@@ -712,7 +712,7 @@ export default function RecurringPage() {
                 <input
                   id="rj-end"
                   type="date"
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                   value={form.end_date}
                   onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))}
                 />
@@ -724,7 +724,7 @@ export default function RecurringPage() {
               <input
                 id="rj-narr"
                 type="text"
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                 placeholder="Office rent for the month"
                 value={form.narration}
                 onChange={e => setForm(f => ({ ...f, narration: e.target.value }))}
@@ -740,7 +740,7 @@ export default function RecurringPage() {
               <button
                 onClick={handleSave}
                 disabled={busyId === "save"}
-                className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
               >
                 {busyId === "save" ? "Saving…" : "Save template"}
               </button>

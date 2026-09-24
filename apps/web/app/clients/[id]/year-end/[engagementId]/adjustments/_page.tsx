@@ -157,7 +157,7 @@ export default function AdjustmentsPage() {
         </p>
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+          className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
         >
           <Plus size={12} /> New Adjustment
         </button>
@@ -362,7 +362,7 @@ function AdjustmentForm({
           <select
             value={type}
             onChange={(e) => setType(e.target.value as AdjustmentType)}
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           >
             {ADJ_TYPES.map((t) => (
               <option key={t} value={t}>{TYPE_LABELS[t]}</option>
@@ -375,7 +375,7 @@ function AdjustmentForm({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="e.g. Accrual for outstanding salary — March"
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </div>
         <div>
@@ -384,7 +384,7 @@ function AdjustmentForm({
             value={debitAccount}
             onChange={(e) => setDebitAccount(e.target.value)}
             placeholder="e.g. 5001 / Salary Expense"
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand font-mono"
           />
         </div>
         <div>
@@ -393,7 +393,7 @@ function AdjustmentForm({
             value={creditAccount}
             onChange={(e) => setCreditAccount(e.target.value)}
             placeholder="e.g. 2001 / Salary Payable"
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand font-mono"
           />
         </div>
         <div>
@@ -404,7 +404,7 @@ function AdjustmentForm({
             value={amountStr}
             onChange={(e) => setAmountStr(e.target.value)}
             placeholder="0.00"
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-right font-mono"
           />
         </div>
         <div>
@@ -413,7 +413,7 @@ function AdjustmentForm({
             type="date"
             value={adjDate}
             onChange={(e) => setAdjDate(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </div>
         <div className="col-span-2 lg:col-span-3">
@@ -422,7 +422,7 @@ function AdjustmentForm({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Optional supporting notes"
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </div>
       </div>
@@ -439,7 +439,7 @@ function AdjustmentForm({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"
+          className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1.5"
         >
           {saving && <Loader2 size={12} className="animate-spin" />}
           {saving ? "Saving…" : "Create Adjustment"}

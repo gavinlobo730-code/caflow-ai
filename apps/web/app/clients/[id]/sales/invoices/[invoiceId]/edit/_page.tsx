@@ -101,7 +101,7 @@ export default function SalesInvoicePageClient() {
           title="No customers yet"
           description="Add a customer before creating an invoice."
           action={
-            <button onClick={() => router.push(salesListHref(clientId))} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+            <button onClick={() => router.push(salesListHref(clientId))} className="text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
               Back to Sales
             </button>
           }

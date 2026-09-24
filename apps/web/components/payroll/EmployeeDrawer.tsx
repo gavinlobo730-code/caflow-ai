@@ -75,7 +75,7 @@ function fmt(paise?: number | null) {
 }
 
 const FIELD =
-  "border border-ps-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 w-full";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-brand w-full";
 const LABEL = "text-2xs text-ps-label block";
 
 /** A typed rupee amount, through the one parser. Returns null for anything that

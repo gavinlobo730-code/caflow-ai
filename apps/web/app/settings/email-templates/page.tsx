@@ -183,7 +183,7 @@ function TemplateEditor({
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Email subject line"
-          className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg"
+          className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
         />
       </div>
 
@@ -198,7 +198,7 @@ function TemplateEditor({
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={10}
-          className="w-full text-sm text-ps-ink font-mono border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg resize-none"
+          className="w-full text-sm text-ps-ink font-mono border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg resize-none"
         />
       </div>
 
@@ -223,7 +223,7 @@ function TemplateEditor({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
         >
           <Save size={14} />
           {saving ? "Saving…" : "Save Template"}

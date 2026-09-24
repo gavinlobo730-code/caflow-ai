@@ -199,7 +199,7 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
       cashReceiptsPaise, cashPaymentsPaise, totalPaymentsPaise, isCompany]);
 
   function upd(patch: Partial<AuditFormState>) { setForm(f => ({ ...f, ...patch })); }
-  const inputCls = "w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
+  const inputCls = "w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand";
   const lbl = "text-xs font-medium text-ps-body block mb-1";
 
   async function handleSave() {
@@ -412,7 +412,7 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
         </div>
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-muted flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
+          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : editAudit ? "Update" : "Add Audit"}
           </button>
         </div>

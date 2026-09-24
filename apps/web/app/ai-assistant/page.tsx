@@ -206,7 +206,7 @@ export default function AIAssistantPage() {
             <div
               className={`shrink-0 flex items-center justify-center w-7 h-7 rounded-full mt-0.5 ${
                 msg.role === "user"
-                  ? "bg-blue-600 text-white"
+                  ? "bg-brand text-white"
                   : "bg-ps-muted text-ps-label border border-ps-border"
               }`}
             >
@@ -217,7 +217,7 @@ export default function AIAssistantPage() {
             <div
               className={`max-w-[75%] text-sm rounded-xl px-4 py-3 whitespace-pre-wrap leading-relaxed ${
                 msg.role === "user"
-                  ? "bg-blue-600 text-white rounded-tr-sm"
+                  ? "bg-brand text-white rounded-tr-sm"
                   : "bg-ps-bg text-ps-ink border border-ps-muted rounded-tl-sm"
               }`}
             >
@@ -263,12 +263,12 @@ export default function AIAssistantPage() {
             placeholder="Ask about GST, Income Tax, TDS, MCA filings..."
             rows={1}
             disabled={loading}
-            className="flex-1 text-sm text-ps-ink border border-ps-border rounded-xl px-4 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-ps-bg disabled:opacity-60 placeholder:text-ps-hint max-h-32 overflow-y-auto"
+            className="flex-1 text-sm text-ps-ink border border-ps-border rounded-xl px-4 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg disabled:opacity-60 placeholder:text-ps-hint max-h-32 overflow-y-auto"
           />
           <button
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || loading}
-            className="flex items-center justify-center w-9 h-9 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            className="flex items-center justify-center w-9 h-9 bg-brand text-white rounded-xl hover:bg-brand-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
           >
             <Send size={15} />
           </button>

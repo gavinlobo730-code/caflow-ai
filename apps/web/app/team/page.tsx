@@ -135,7 +135,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
           <p className="text-xs text-ps-label">
             Invite sent! {name} will receive a magic link at {email}. They&apos;ll be added as {role}.
           </p>
-          <button onClick={onClose} className="w-full bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700">
+          <button onClick={onClose} className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
             Done
           </button>
         </div>
@@ -197,7 +197,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
             <button
               type="submit"
               disabled={saving || !name.trim() || !email.trim()}
-              className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
             >
               {saving ? "Saving…" : "Send Invitation"}
             </button>
@@ -266,7 +266,7 @@ function EditRoleModal({ member, onClose, onSave }: EditRoleModalProps) {
           <button
             disabled={saving || role === member.role}
             onClick={handleSave}
-            className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -553,7 +553,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
                     {/* Sticky member name column */}
                     <td className="px-4 py-3 sticky left-0 bg-white hover:bg-ps-bg/40 z-10">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-blue-700 text-white flex items-center justify-center text-xs font-semibold shrink-0">
+                        <div className="w-7 h-7 rounded-full bg-brand text-white flex items-center justify-center text-xs font-semibold shrink-0">
                           {initials}
                         </div>
                         <div className="min-w-0">
@@ -603,7 +603,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
                               enabled
                                 ? overridden
                                   ? "bg-orange-500 border-orange-500"
-                                  : "bg-blue-600 border-blue-600"
+                                  : "bg-brand border-brand"
                                 : overridden
                                   ? "border-orange-400 border-dashed bg-white"
                                   : "border-ps-border bg-white",
@@ -628,7 +628,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
         {/* Legend */}
         <div className="px-5 py-3 border-t border-gray-50 bg-ps-bg/30 flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-1.5 text-xs text-ps-label">
-            <span className="w-4 h-4 rounded bg-blue-600 inline-block" />
+            <span className="w-4 h-4 rounded bg-brand inline-block" />
             Access granted (role default)
           </div>
           <div className="flex items-center gap-1.5 text-xs text-ps-label">
@@ -836,7 +836,7 @@ export default function TeamPage() {
         </div>
         <button
           onClick={() => setShowInvite(true)}
-          className="flex items-center gap-1.5 bg-blue-600 text-white text-sm px-3 py-2 rounded-lg hover:bg-blue-700"
+          className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark"
         >
           <UserPlus className="w-4 h-4" />
           Invite Member
@@ -872,7 +872,7 @@ export default function TeamPage() {
           onClick={() => setActiveTab("members")}
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
             activeTab === "members"
-              ? "border-blue-600 text-blue-600"
+              ? "border-brand text-blue-600"
               : "border-transparent text-ps-label hover:text-ps-body"
           }`}
         >
@@ -882,7 +882,7 @@ export default function TeamPage() {
           onClick={() => setActiveTab("permissions")}
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-1.5 ${
             activeTab === "permissions"
-              ? "border-blue-600 text-blue-600"
+              ? "border-brand text-blue-600"
               : "border-transparent text-ps-label hover:text-ps-body"
           }`}
         >
@@ -939,7 +939,7 @@ export default function TeamPage() {
                       <tr key={member.id} className={`hover:bg-ps-bg/50 ${!isActive ? "opacity-60" : ""}`}>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-full bg-blue-700 text-white flex items-center justify-center text-xs font-semibold shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-brand text-white flex items-center justify-center text-xs font-semibold shrink-0">
                               {initials}
                             </div>
                             <div>

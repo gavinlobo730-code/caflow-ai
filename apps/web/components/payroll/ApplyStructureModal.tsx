@@ -47,7 +47,7 @@ function fmt(paise?: number | string | null) {
 }
 
 const FIELD =
-  "border border-ps-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-brand";
 
 export default function ApplyStructureModal({
   structureId, structureName, clientId, employees, onClose, onApplied,

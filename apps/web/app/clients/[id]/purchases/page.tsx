@@ -1093,7 +1093,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
             </button>
             <button
               onClick={() => router.push(`/clients/${clientId}/purchases/bills/new/edit`)}
-              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
             >
               <Plus size={12} /> New Bill
             </button>
@@ -1888,7 +1888,7 @@ function Vendors({ clientId }: { clientId: string }) {
                   {deleteTarget.is_active && (
                     <button
                       onClick={() => { const t = deleteTarget; setDeleteTarget(null); setDeleteDeps(null); setDeactivateTarget(t); }}
-                      className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-blue-600 hover:bg-blue-700"
+                      className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-brand hover:bg-brand-dark"
                     >
                       Deactivate instead
                     </button>
@@ -1954,27 +1954,27 @@ function Vendors({ clientId }: { clientId: string }) {
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Vendor legal name" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Vendor legal name" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">GSTIN</label>
-              <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="27AABCS1429B1ZU" maxLength={15} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+              <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="27AABCS1429B1ZU" maxLength={15} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand font-mono" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">PAN</label>
-              <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+              <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand font-mono" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Phone</label>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Opening Balance (₹ payable)</label>
-              <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>
 
@@ -1993,7 +1993,7 @@ function Vendors({ clientId }: { clientId: string }) {
                   id="residential-status"
                   value={residentialStatus}
                   onChange={(e) => setResidentialStatus(e.target.value as "" | "resident" | "non_resident")}
-                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   <option value="">Not established</option>
                   <option value="resident">Resident</option>
@@ -2006,7 +2006,7 @@ function Vendors({ clientId }: { clientId: string }) {
                   id="gst-registration-status"
                   value={gstRegistrationStatus}
                   onChange={(e) => setGstRegistrationStatus(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   {/* The EMPTY option is the third state and says so: a blank
                       here is "nobody has recorded it", which is why a
@@ -2029,7 +2029,7 @@ function Vendors({ clientId }: { clientId: string }) {
                     onChange={(e) => setCountryOfResidence(e.target.value.toUpperCase())}
                     maxLength={2}
                     placeholder="AE"
-                    className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-brand"
                   />
                 </div>
               )}
@@ -2044,7 +2044,7 @@ function Vendors({ clientId }: { clientId: string }) {
                   value={taxIdentificationNumber}
                   onChange={(e) => setTaxIdentificationNumber(e.target.value)}
                   placeholder="TIN in the country of residence"
-                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
             )}
@@ -2066,7 +2066,7 @@ function Vendors({ clientId }: { clientId: string }) {
                       id="nature-of-income"
                       value={natureOfIncome}
                       onChange={(e) => setNatureOfIncome(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                     >
                       <option value="">Not established</option>
                       <option value="business_profits_no_pe">Business profits — no permanent establishment (nil)</option>
@@ -2095,7 +2095,7 @@ function Vendors({ clientId }: { clientId: string }) {
                       id="payee-class"
                       value={payeeClass}
                       onChange={(e) => setPayeeClass(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                     >
                       <option value="">Not established</option>
                       <option value="foreign_company">Foreign company</option>
@@ -2118,7 +2118,7 @@ function Vendors({ clientId }: { clientId: string }) {
                       onChange={(e) => setTreatyRate(e.target.value)}
                       placeholder="e.g. 10"
                       disabled={!trcOnFile}
-                      className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint"
+                      className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint"
                     />
                   </div>
                 </div>
@@ -2145,7 +2145,7 @@ function Vendors({ clientId }: { clientId: string }) {
                         type="date"
                         value={noPeDeclarationOn}
                         onChange={(e) => setNoPeDeclarationOn(e.target.value)}
-                        className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       />
                     </div>
                     <div>
@@ -2155,7 +2155,7 @@ function Vendors({ clientId }: { clientId: string }) {
                         value={noPeDeclarationRef}
                         onChange={(e) => setNoPeDeclarationRef(e.target.value)}
                         placeholder="Letter no. / document reference"
-                        className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       />
                     </div>
                   </div>
@@ -2237,7 +2237,7 @@ function Vendors({ clientId }: { clientId: string }) {
 
           <div className="flex gap-3 justify-end">
             <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-            <button onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : "Add Vendor"}</button>
+            <button onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">{saving ? "Saving…" : "Add Vendor"}</button>
           </div>
         </div>
       )}
@@ -2271,7 +2271,7 @@ function Vendors({ clientId }: { clientId: string }) {
         toolbarExtra={
           <>
             <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"><Upload size={12} /> Import</button>
-            <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Add Vendor</button>
+            <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"><Plus size={12} /> Add Vendor</button>
           </>
         }
       />
@@ -2742,7 +2742,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                 <select
                   value={currency}
                   onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); setBillId(""); }}
-                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   <option value="">INR (default)</option>
                   {currencies.filter((c) => c.code !== "INR").map((c) => (
@@ -2763,7 +2763,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                   value={exchangeRate}
                   onChange={(e) => setExchangeRate(e.target.value)}
                   placeholder={`1 ${currency} = ? INR`}
-                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-right font-mono"
                 />
               </div>
             )}
@@ -2789,21 +2789,21 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
             )}
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Date *</label>
-              <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Amount ({isForeign ? currency : "₹"}) *</label>
-              <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Mode</label>
-              <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                 {PAYMENT_MODES.map((m) => <option key={m}>{m}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Reference No.</label>
-              <input value={refNo} onChange={(e) => setRefNo(e.target.value)} placeholder="UTR / cheque no." className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input value={refNo} onChange={(e) => setRefNo(e.target.value)} placeholder="UTR / cheque no." className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <PaymentAccountPicker
               clientId={clientId}
@@ -2879,7 +2879,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                                 placeholder="0.00"
                                 aria-label={`Allocate to ${b.our_reference ?? b.bill_no ?? "bill"}`}
                                 aria-invalid={bad || undefined}
-                                className={`w-32 px-2 py-1 text-xs border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${bad ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
+                                className={`w-32 px-2 py-1 text-xs border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-brand ${bad ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
                               />
                             </td>
                           </tr>
@@ -2911,7 +2911,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
 
           <div className="flex gap-3 justify-end">
             <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-            <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : "Record Payment"}</button>
+            <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">{saving ? "Saving…" : "Record Payment"}</button>
           </div>
         </div>
       )}
@@ -2936,7 +2936,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
         toolbarExtra={
           <>
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
-            <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"><Plus size={12} /> Record Payment</button>
+            <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"><Plus size={12} /> Record Payment</button>
           </>
         }
         rowActions={(p) => !p.is_reversed && (
@@ -3437,7 +3437,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
             </button>
             <button
               onClick={() => router.push(`/clients/${clientId}/purchases/debit-notes/new/edit`)}
-              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
             >
               <Plus size={12} /> Create Debit Note
             </button>
@@ -3902,7 +3902,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
             </button>
             <button
               onClick={() => router.push(`/clients/${clientId}/purchases/credit-notes/new/edit`)}
-              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
             >
               <Plus size={12} /> Create Credit Note
             </button>

@@ -50,7 +50,7 @@ function money(paise?: number | null) {
 }
 
 const FIELD =
-  "border border-ps-border rounded-lg px-2 py-1.5 text-sm outline-none focus:border-blue-400";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-sm outline-none focus:border-brand";
 
 /** The reclaimable reasons, and ONLY those. Kept in step with
  *  services/itc_register_service.RECLAIMABLE_REASONS — a reason this list

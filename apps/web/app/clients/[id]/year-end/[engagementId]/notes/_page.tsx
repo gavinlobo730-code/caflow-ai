@@ -168,7 +168,7 @@ export default function NotesPage() {
         <button
           onClick={handleGenerateAll}
           disabled={generating}
-          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark disabled:opacity-50"
         >
           {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
           {generating ? "Generating…" : "Auto-Generate All Notes"}
@@ -242,7 +242,7 @@ export default function NotesPage() {
                             value={contentValue}
                             onChange={(e) => setEditContent((prev) => ({ ...prev, [note.id]: e.target.value }))}
                             rows={5}
-                            className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y font-mono"
+                            className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand resize-y font-mono"
                             placeholder="Enter note content…"
                           />
                           {isEditing && (
@@ -256,7 +256,7 @@ export default function NotesPage() {
                               <button
                                 onClick={() => handleSave(note)}
                                 disabled={savingId === note.id}
-                                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"
+                                className="text-xs px-3 py-1.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1"
                               >
                                 {savingId === note.id && <Loader2 size={10} className="animate-spin" />}
                                 Save

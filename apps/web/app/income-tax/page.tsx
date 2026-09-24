@@ -308,7 +308,7 @@ function BulkMarkFiledModal({
               type="date"
               value={filedDate}
               onChange={(e) => setFiledDate(e.target.value)}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>
 
@@ -348,7 +348,7 @@ function BulkMarkFiledModal({
                           onChange={(e) =>
                             setArns((p) => ({ ...p, [entry.id]: e.target.value }))
                           }
-                          className={`w-full border rounded-lg px-2.5 py-1.5 text-xs font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                          className={`w-full border rounded-lg px-2.5 py-1.5 text-xs font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand ${
                             rowError ? "border-red-400" : "border-ps-border"
                           }`}
                         />
@@ -854,7 +854,7 @@ export default function IncomeTaxPage() {
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
         >
           <Plus className="w-4 h-4" />
           Add ITR Deadline
@@ -902,7 +902,7 @@ export default function IncomeTaxPage() {
             onClick={() => setActiveTab(tab)}
             className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab
-                ? "border-blue-600 text-blue-700"
+                ? "border-brand text-blue-700"
                 : "border-transparent text-ps-label hover:text-ps-body"
             }`}
           >
@@ -1139,7 +1139,7 @@ export default function IncomeTaxPage() {
             </div>
             <Link
               href="/income-tax/advance-tax"
-              className="shrink-0 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              className="shrink-0 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
             >
               Open Calculator →
             </Link>
@@ -1162,7 +1162,7 @@ export default function IncomeTaxPage() {
           </div>
           <Link
             href="/income-tax/ais"
-            className="shrink-0 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            className="shrink-0 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
           >
             Open AIS Tool →
           </Link>
@@ -1212,7 +1212,7 @@ export default function IncomeTaxPage() {
                 <select
                   value={addForm.client_id}
                   onChange={(e) => handleAddFormChange("client_id", e.target.value)}
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   <option value="">Select client…</option>
                   {clients.map((c) => (
@@ -1233,7 +1233,7 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     handleAddFormChange("itr_form", e.target.value)
                   }
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   {ITR_FORMS.map((f) => (
                     <option key={f} value={f}>
@@ -1271,7 +1271,7 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     handleAddFormChange("due_date", e.target.value)
                   }
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
 
                 {dueDateLoading && (
@@ -1326,7 +1326,7 @@ export default function IncomeTaxPage() {
               <button
                 onClick={handleAddSubmit}
                 disabled={actionInFlight || dueDateLoading}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
               >
                 {addLoading ? "Adding…" : "Add Deadline"}
               </button>
@@ -1390,7 +1390,7 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     setFiledForm((p) => ({ ...p, arn: e.target.value }))
                   }
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 
@@ -1405,7 +1405,7 @@ export default function IncomeTaxPage() {
                   onChange={(e) =>
                     setFiledForm((p) => ({ ...p, filed_date: e.target.value }))
                   }
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 

@@ -307,7 +307,7 @@ export function LandedCostPanel({
                       className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg text-xs text-right tabular-nums" />
                   </label>
                   <button onClick={add} disabled={saving}
-                    className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs disabled:opacity-40">
+                    className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
                     Add
                   </button>
                 </div>

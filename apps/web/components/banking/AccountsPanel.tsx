@@ -178,7 +178,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-4 py-3 border-b border-ps-muted flex items-center justify-between">
           <p className="text-xs font-semibold text-ps-body flex items-center gap-1.5"><Landmark size={13} /> Bank Accounts</p>
-          <button onClick={() => setAccountModal("new")} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+          <button onClick={() => setAccountModal("new")} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
             <Plus size={12} /> Add Account
           </button>
         </div>
@@ -250,7 +250,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
           <button onClick={loadStatements} className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
             onClick={() => activeAccounts.length === 0 ? setAccountModal("new") : setShowImport(true)}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
             title={activeAccounts.length === 0 ? "Add a bank account first" : "Import a statement for one of your bank accounts"}
           >
             <Upload size={12} /> Import Statement
@@ -551,7 +551,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
         {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+          <button onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Saving…" : editing ? "Save Changes" : "Add Account"}
           </button>
         </div>
@@ -914,7 +914,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
               </p>
             )}
             <div className="flex justify-end">
-              <button onClick={onImported} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Done</button>
+              <button onClick={onImported} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark">Done</button>
             </div>
           </>
         ) : (
@@ -1183,7 +1183,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   // "Import anyway", and it needs the reason first.
                   || (!!totalsRefusal && !ackReady)
                 }
-                className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+                className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
               >
                 {importing ? "Importing…" : totalsRefusal ? "Import anyway" : "Import"}
               </button>

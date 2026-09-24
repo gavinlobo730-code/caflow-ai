@@ -544,7 +544,7 @@ export default function CalendarPage() {
                 >
                   {/* Day number */}
                   <div className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium mb-1
-                    ${isToday ? "bg-blue-600 text-white" : "text-ps-body"}`}>
+                    ${isToday ? "bg-brand text-white" : "text-ps-body"}`}>
                     {cell.day}
                   </div>
 

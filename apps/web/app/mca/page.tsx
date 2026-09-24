@@ -247,28 +247,28 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">CIN / LLPIN</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="U17200MH2010PTC205678" value={cin} onChange={e => setCin(e.target.value.toUpperCase())} />
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" placeholder="U17200MH2010PTC205678" value={cin} onChange={e => setCin(e.target.value.toUpperCase())} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Form Type</label>
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={formType} onChange={e => setFormType(e.target.value)}>
+            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={formType} onChange={e => setFormType(e.target.value)}>
               {FORM_TYPES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Period</label>
-              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={period} onChange={e => setPeriod(e.target.value)} placeholder="FY 2025-26" />
+              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={period} onChange={e => setPeriod(e.target.value)} placeholder="FY 2025-26" />
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Due Date</label>
-              <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+              <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={dueDate} onChange={e => setDueDate(e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Status</label>
-              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={status} onChange={e => setStatus(e.target.value as FilingStatus)}>
+              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={status} onChange={e => setStatus(e.target.value as FilingStatus)}>
                 <option value="Pending">Pending</option>
                 <option value="Filed">Filed</option>
                 <option value="Overdue">Overdue</option>
@@ -276,17 +276,17 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">SRN (if filed)</label>
-              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" value={srn} onChange={e => setSrn(e.target.value)} placeholder="SRN12345678" />
+              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" value={srn} onChange={e => setSrn(e.target.value)} placeholder="SRN12345678" />
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
+            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
-          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Filing"}
           </button>
         </div>
@@ -409,7 +409,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
                   type="date"
                   value={filedDate}
                   onChange={(e) => setFiledDate(e.target.value)}
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
                 <p className="text-3xs text-ps-hint mt-1">Applied to all filings below.</p>
               </div>
@@ -432,7 +432,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
                         placeholder="SRN12345678"
                         value={srns[f.id] ?? ""}
                         onChange={(e) => setSrns((p) => ({ ...p, [f.id]: e.target.value }))}
-                        className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                       />
                     </div>
                   </div>
@@ -773,7 +773,7 @@ export default function MCAPage() {
           <p className="text-sm text-ps-label mt-0.5">Ministry of Corporate Affairs — Companies Act 2013 compliance tracker</p>
         </div>
         {activeTab === 1 && (
-          <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-blue-600 text-white text-sm px-3 py-2 rounded-lg hover:bg-blue-700">
+          <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
             <Plus className="w-4 h-4" /> Add Filing
           </button>
         )}
@@ -813,7 +813,7 @@ export default function MCAPage() {
       <div className="flex gap-1 border-b border-ps-muted">
         {TABS.map((tab, i) => (
           <button key={tab} onClick={() => setActiveTab(i)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-blue-600 text-blue-700" : "border-transparent text-ps-label hover:text-ps-body"}`}>
+            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-brand text-blue-700" : "border-transparent text-ps-label hover:text-ps-body"}`}>
             {tab}
           </button>
         ))}
@@ -969,7 +969,7 @@ export default function MCAPage() {
                   placeholder="SRN12345678"
                   value={filedForm.srn}
                   onChange={(e) => setFiledForm((p) => ({ ...p, srn: e.target.value }))}
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 
@@ -981,7 +981,7 @@ export default function MCAPage() {
                   type="date"
                   value={filedForm.filed_date}
                   onChange={(e) => setFiledForm((p) => ({ ...p, filed_date: e.target.value }))}
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 

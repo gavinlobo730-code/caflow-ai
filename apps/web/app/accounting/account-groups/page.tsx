@@ -168,7 +168,7 @@ function LedgerDialog({ account, onClose, onSaved }:
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
           <button onClick={save} disabled={saving}
-                  className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 disabled:opacity-50">
+                  className="flex-1 text-xs bg-brand text-white rounded-lg py-2 hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : account ? "Save changes" : "Add ledger"}
           </button>
         </div>
@@ -271,7 +271,7 @@ export default function AccountGroupsPage() {
           </p>
         </div>
         <button onClick={() => setAdding(true)}
-                className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+                className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
           <Plus size={12} /> Add ledger
         </button>
       </div>

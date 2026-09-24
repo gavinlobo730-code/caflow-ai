@@ -105,7 +105,7 @@ export function HealthBadge({ score, size = "sm", showLabel = false, trend, href
       href={href}
       title={title}
       aria-label={title}
-      className={cn(shape, "transition-colors hover:ring-2 focus:outline-none focus:ring-2 focus:ring-blue-500")}
+      className={cn(shape, "transition-colors hover:ring-2 focus:outline-none focus:ring-2 focus:ring-brand")}
     >
       {body}
     </Link>

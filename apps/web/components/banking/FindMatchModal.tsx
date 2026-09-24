@@ -153,7 +153,7 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
               aria-label="Search documents"
               className="flex-1 px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" />
             <button type="submit" disabled={loading}
-              className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+              className="text-xs px-3 py-1.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50">
               {loading ? "Searching…" : "Search"}
             </button>
           </div>
@@ -235,7 +235,7 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
                   </button>
                 ) : (
                   <button onClick={() => pick(r)} disabled={picking !== null}
-                    className="text-3xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                    className="text-3xs px-2 py-0.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50">
                     {picking === r.matched_entity_id ? "Matching…" : "Match"}
                   </button>
                 )}

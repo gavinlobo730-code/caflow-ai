@@ -271,7 +271,7 @@ export default function GSTR3BPage() {
             <select
               value={yearMonth}
               onChange={e => { setYearMonth(e.target.value); setResult(null); setError(null); setRule37(null); setRule43(null); }}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand focus:border-brand"
             >
               {PERIOD_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -282,7 +282,7 @@ export default function GSTR3BPage() {
         <button
           onClick={handleCompute}
           disabled={actionInFlight || !clientId || !yearMonth}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-medium rounded-lg transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-brand hover:bg-brand-dark disabled:bg-ps-disabled text-white text-sm font-medium rounded-lg transition-colors"
         >
           <Calculator className="w-4 h-4" />
           {loading ? "Computing…" : "Compute GSTR-3B"}
@@ -331,7 +331,7 @@ export default function GSTR3BPage() {
                 <button
                   onClick={handleApprove}
                   disabled={actionInFlight}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-medium rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-dark disabled:bg-ps-disabled text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   <CheckCircle className="w-4 h-4" />
                   {approving ? "Approving…" : "CA Approve"}
@@ -1340,7 +1340,7 @@ export default function GSTR3BPage() {
                 value={arn}
                 onChange={e => setArn(e.target.value)}
                 placeholder="e.g. AA270525XXXXXXXXXX"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-brand"
               />
             </div>
             <div className="flex gap-3 justify-end">

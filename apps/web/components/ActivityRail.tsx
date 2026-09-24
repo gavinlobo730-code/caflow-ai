@@ -33,7 +33,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
     <aside className="relative flex flex-col h-full w-[52px] shrink-0 bg-brand border-r border-white/10 z-10">
       {/* Logo */}
       <div className="flex items-center justify-center h-14 border-b border-white/10 shrink-0">
-        <div className="w-7 h-7 rounded-[8px] bg-blue-600 flex items-center justify-center text-2xs font-bold text-white shadow-[0_0_16px_rgba(59,130,246,0.35)]">
+        <div className="w-7 h-7 rounded-[8px] bg-brand flex items-center justify-center text-2xs font-bold text-white shadow-[0_0_16px_rgba(59,130,246,0.35)]">
           P
         </div>
       </div>
@@ -52,12 +52,12 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
                 className={cn(
                   "relative flex items-center justify-center w-9 h-9 rounded-[9px] transition-all duration-100 mx-auto",
                   isActive
-                    ? "bg-blue-600"
+                    ? "bg-brand"
                     : "hover:bg-white/10"
                 )}
               >
                 {isActive && (
-                  <span className="absolute left-[-1px] h-5 w-[3px] rounded-r-[2px] bg-blue-400" />
+                  <span className="absolute left-[-1px] h-5 w-[3px] rounded-r-[2px] bg-brand" />
                 )}
                 <Icon
                   size={16}
@@ -95,12 +95,12 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
           className={cn(
             "relative flex items-center justify-center w-9 h-9 rounded-[9px] transition-all duration-100",
             isSettingsRoute
-              ? "bg-blue-600 text-white"
+              ? "bg-brand text-white"
               : "text-slate-500 hover:text-white hover:bg-white/10"
           )}
         >
           {isSettingsRoute && (
-            <span className="absolute left-[-1px] h-5 w-[3px] rounded-r-[2px] bg-blue-400" />
+            <span className="absolute left-[-1px] h-5 w-[3px] rounded-r-[2px] bg-brand" />
           )}
           <Settings size={15} />
         </Link>
@@ -110,7 +110,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
           <button
             onClick={() => setAvatarMenuOpen((v) => !v)}
             title={user?.email ?? "Account"}
-            className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-3xs font-bold text-white hover:opacity-80 transition-opacity shrink-0"
+            className="w-7 h-7 rounded-full bg-brand flex items-center justify-center text-3xs font-bold text-white hover:opacity-80 transition-opacity shrink-0"
           >
             {initials}
           </button>

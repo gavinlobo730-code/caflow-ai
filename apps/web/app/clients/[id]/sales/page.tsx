@@ -506,7 +506,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
           <button onClick={() => setEditor("new")}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
             <Plus size={12} /> New Template
           </button>
         </div>
@@ -764,33 +764,33 @@ function RecurringEditor({
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Title</label>
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Monthly bookkeeping fee"
-                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Description (optional)</label>
             <input value={description} onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Frequency</label>
               <select value={frequency} onChange={(e) => setFrequency(e.target.value)}
-                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand">
                 {Object.entries(FREQ_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Start date</label>
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">End date (optional)</label>
               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
             </div>
           </div>
 
@@ -813,15 +813,15 @@ function RecurringEditor({
                   />
                   <div className="grid grid-cols-12 gap-2 items-center">
                     <input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="Description"
-                      className="col-span-4 px-2 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      className="col-span-4 px-2 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
                     <input value={l.hsn_sac} onChange={(e) => setLine(i, { hsn_sac: e.target.value })} placeholder="HSN/SAC"
-                      className="col-span-2 px-2 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      className="col-span-2 px-2 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
                     <input value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} placeholder="Qty" inputMode="decimal"
-                      className="col-span-1 px-2 py-1.5 border border-ps-border rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      className="col-span-1 px-2 py-1.5 border border-ps-border rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-brand" />
                     <input value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} placeholder="Rate ₹" inputMode="decimal"
-                      className="col-span-2 px-2 py-1.5 border border-ps-border rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      className="col-span-2 px-2 py-1.5 border border-ps-border rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-brand" />
                     <select value={l.gst} onChange={(e) => setLine(i, { gst: parseFloat(e.target.value) })}
-                      className="col-span-2 px-1 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      className="col-span-2 px-1 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-brand">
                       {[0, 5, 12, 18, 28].map((g) => <option key={g} value={g}>{g}%</option>)}
                     </select>
                     <button type="button" onClick={() => removeLine(i)} className="col-span-1 text-ps-disabled hover:text-red-600 flex justify-center"><Trash2 size={13} /></button>
@@ -837,7 +837,7 @@ function RecurringEditor({
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Notes (optional)</label>
             <input value={notes} onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
           </div>
 
           <label className="flex items-center gap-2 text-xs text-ps-label">
@@ -854,7 +854,7 @@ function RecurringEditor({
               <label className="block text-xs font-medium text-ps-label mb-1">Supply type</label>
               <select value={classification.supplyType}
                 onChange={(e) => setClassification((c) => ({ ...c, supplyType: e.target.value as ClassificationState["supplyType"] }))}
-                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand">
                 {SUPPLY_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
@@ -862,7 +862,7 @@ function RecurringEditor({
               <label className="block text-xs font-medium text-ps-label mb-1">Invoice type</label>
               <select value={classification.invoiceType}
                 onChange={(e) => setClassification((c) => ({ ...c, invoiceType: e.target.value as ClassificationState["invoiceType"] }))}
-                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand">
                 {INVOICE_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
@@ -886,7 +886,7 @@ function RecurringEditor({
           <div className="flex gap-3 justify-end">
             <button type="button" onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <button type="submit" disabled={saving}
-              className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
               {saving ? "Saving…" : existing ? "Save changes" : "Create template"}
             </button>
           </div>
@@ -1169,17 +1169,17 @@ function Statements({ clientId }: { clientId: string }) {
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">From</label>
             <input type="date" value={start} onChange={(e) => setStart(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">To</label>
             <input type="date" value={end} onChange={(e) => setEnd(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={generate} disabled={actionInFlight || !customerId}
-            className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {loading ? "Generating…" : "Generate"}
           </button>
           {stmt && (
@@ -1262,12 +1262,12 @@ function Statements({ clientId }: { clientId: string }) {
             <label className="block">
               <span className="text-xs font-medium text-ps-label">Recipient email</span>
               <input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="customer@example.com"
-                className="mt-1 w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="mt-1 w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </label>
             {emailMsg && <Callout tone="problem">{emailMsg}</Callout>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
-              <button onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{emailing ? "Sending…" : "Send"}</button>
+              <button onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">{emailing ? "Sending…" : "Send"}</button>
             </div>
           </div>
         </div>
@@ -1283,7 +1283,7 @@ function Statements({ clientId }: { clientId: string }) {
             <label className="block">
               <span className="text-xs font-medium text-ps-label">Invoice</span>
               <select value={applyInvoiceId} onChange={(e) => setApplyInvoiceId(e.target.value)}
-                className="mt-1 w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                className="mt-1 w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                 <option value="">Select an outstanding invoice…</option>
                 {applyInvoices.map((i) => (
                   <option key={i.id} value={i.id}>
@@ -1296,13 +1296,13 @@ function Statements({ clientId }: { clientId: string }) {
             <label className="block">
               <span className="text-xs font-medium text-ps-label">Amount to apply (₹)</span>
               <input type="number" min="0" step="0.01" value={applyAmount} onChange={(e) => setApplyAmount(e.target.value)}
-                className="mt-1 w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="mt-1 w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </label>
             {applyError && <Callout tone="problem">{applyError}</Callout>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <button onClick={applyCredit} disabled={actionInFlight || !applyInvoiceId || !applyAmount}
-                className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {applying ? "Applying…" : "Apply"}
               </button>
             </div>
@@ -2021,7 +2021,7 @@ function SalesInvoices({
           </button>
           <button
             onClick={() => router.push(newInvoiceHref(clientId))}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
           >
             <Plus size={12} /> New Invoice
           </button>
@@ -2305,7 +2305,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
             <p className="text-base font-semibold text-ps-ink font-mono">{hist ? fmt(hist.outstanding_paise) : "…"}</p>
           </div>
           <button onClick={generate} disabled={busy || !hist || hist.outstanding_paise <= 0}
-            className="flex items-center gap-1.5 text-xs bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             <CreditCard size={13} /> Generate Payment Link
           </button>
         </div>
@@ -2412,7 +2412,7 @@ function SendInvoiceModal({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="customer@example.com"
-              className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand"
               autoFocus
             />
             {!defaultEmail && (
@@ -3020,7 +3020,7 @@ function Customers({
           </button>
           <button
             onClick={() => { setEditCustomer(null); setShowForm(true); }}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
           >
             <Plus size={12} /> Add Customer
           </button>
@@ -3170,7 +3170,7 @@ function Customers({
                   {deleteTarget.is_active && (
                     <button
                       onClick={() => { const t = deleteTarget; setDeleteTarget(null); setDeleteDeps(null); setDeactivateTarget(t); }}
-                      className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-blue-600 hover:bg-blue-700"
+                      className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-brand hover:bg-brand-dark"
                     >
                       Deactivate instead
                     </button>
@@ -3474,7 +3474,7 @@ function Receipts({
           </button>
           <button
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
           >
             <Plus size={12} /> Record Receipt
           </button>
@@ -3841,7 +3841,7 @@ function ReceiptForm({
             type="date"
             value={receiptDate}
             onChange={(e) => setReceiptDate(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </div>
         <div>
@@ -3853,7 +3853,7 @@ function ReceiptForm({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-right font-mono"
           />
         </div>
         {/* TDS THE CUSTOMER WITHHELD. Hidden on a foreign receipt because the
@@ -3873,7 +3873,7 @@ function ReceiptForm({
               value={tds}
               onChange={(e) => { setTds(e.target.value); setError(null); }}
               placeholder="0.00"
-              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-right font-mono"
             />
             <p className="mt-1 text-3xs text-ps-hint">
               {tdsPaise !== null && tdsPaise > 0 && amountPaise !== null
@@ -3887,7 +3887,7 @@ function ReceiptForm({
           <select
             value={paymentMode}
             onChange={(e) => setPaymentMode(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           >
             {PAYMENT_MODES.map((m) => (
               <option key={m} value={m}>{m.toUpperCase()}</option>
@@ -3914,7 +3914,7 @@ function ReceiptForm({
             value={referenceNo}
             onChange={(e) => setReferenceNo(e.target.value)}
             placeholder="UTR / cheque no."
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </div>
       </div>
@@ -3947,7 +3947,7 @@ function ReceiptForm({
                 onChange={(e) => setAdvanceRate(e.target.value)}
                 inputMode="decimal"
                 placeholder="18"
-                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
               />
               <p className="mt-1 text-3xs text-ps-hint">Per cent, e.g. 18.</p>
             </div>
@@ -3991,7 +3991,7 @@ function ReceiptForm({
             <select
               value={currency}
               onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); setAllocations({}); }}
-              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
             >
               <option value="">INR (default)</option>
               {currencies.filter((c) => c.code !== "INR").map((c) => (
@@ -4011,7 +4011,7 @@ function ReceiptForm({
                 value={exchangeRate}
                 onChange={(e) => setExchangeRate(e.target.value)}
                 placeholder={`1 ${currency} = ? INR`}
-                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+                className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-right font-mono"
               />
               <p className="mt-1 text-3xs text-ps-hint">
                 Rate on the day cash was received — may differ from an invoice&apos;s booking rate; the
@@ -4045,7 +4045,7 @@ function ReceiptForm({
                   value={allocations[inv.id] ?? ""}
                   onChange={(e) => setAllocations((prev) => ({ ...prev, [inv.id]: e.target.value }))}
                   placeholder={isForeign ? `${currency} 0.00` : "₹ 0.00"}
-                  className="w-28 px-2 py-1 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right font-mono"
+                  className="w-28 px-2 py-1 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right font-mono"
                 />
               </div>
             ))}
@@ -4074,7 +4074,7 @@ function ReceiptForm({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50"
         >
           {saving ? "Saving…" : "Record Receipt"}
         </button>
@@ -4474,7 +4474,7 @@ function CreditNotes({
             </button>
             <button
               onClick={() => router.push(`/clients/${clientId}/sales/credit-notes/new/edit`)}
-              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
             >
               <Plus size={12} /> Create Credit Note
             </button>
@@ -4904,7 +4904,7 @@ function SalesDebitNotes({
             </button>
             <button
               onClick={() => router.push(`/clients/${clientId}/sales/debit-notes/new/edit`)}
-              className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
             >
               <Plus size={12} /> Create Debit Note
             </button>

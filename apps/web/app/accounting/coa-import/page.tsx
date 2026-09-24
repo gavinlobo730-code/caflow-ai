@@ -260,7 +260,7 @@ export default function CoaImportPage() {
             <button onClick={() => { setStep("upload"); setPreview([]); setFileName(null); }} className="text-sm text-ps-label border border-ps-border px-4 py-2 rounded-md hover:bg-ps-bg">
               Cancel
             </button>
-            <button onClick={runImport} disabled={importing} className="text-sm bg-blue-600 text-white px-5 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50">
+            <button onClick={runImport} disabled={importing} className="text-sm bg-brand text-white px-5 py-2 rounded-md hover:bg-brand-dark disabled:opacity-50">
               {importing ? "Importing…" : `Import ${preview.length} Accounts`}
             </button>
           </div>
@@ -290,7 +290,7 @@ export default function CoaImportPage() {
             </div>
           )}
           <div className="flex gap-2">
-            <Link href="/accounting/account-groups" className="text-sm bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+            <Link href="/accounting/account-groups" className="text-sm bg-brand text-white px-4 py-2 rounded-md hover:bg-brand-dark">
               View Chart of Accounts
             </Link>
             <button onClick={() => { setStep("upload"); setPreview([]); setFileName(null); setResult(null); setParseErrors([]); }} className="text-sm text-ps-label border border-ps-border px-4 py-2 rounded-md hover:bg-ps-bg">

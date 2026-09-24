@@ -51,7 +51,7 @@ function money(paise?: number | null) {
 }
 
 const FIELD =
-  "border border-ps-border rounded-lg px-2 py-1.5 text-sm outline-none focus:border-blue-400";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-sm outline-none focus:border-brand";
 
 /** The §37(3)/§16(4) window, as the server graded it. Never recomputed here:
  *  the limit is 30 November following the FY OR the date GSTR-9 was furnished,

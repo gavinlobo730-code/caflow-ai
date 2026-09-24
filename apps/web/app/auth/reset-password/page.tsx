@@ -144,7 +144,7 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-ps-bg">
       <div className="w-full max-w-[380px]">
         <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-sm font-bold text-white">P</div>
+          <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center text-sm font-bold text-white">P</div>
           <span className="text-base font-bold text-ps-ink">PracticeSync AI</span>
         </div>
 
@@ -187,7 +187,7 @@ export default function ResetPasswordPage() {
                     autoFocus type={showPw ? "text" : "password"} required value={pw}
                     onChange={(e) => setPw(e.target.value)} autoComplete="new-password"
                     placeholder={`At least ${MIN_LENGTH} characters`}
-                    className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 pr-11 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                    className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 pr-11 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                   />
                   <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide password" : "Show password"}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
@@ -201,7 +201,7 @@ export default function ResetPasswordPage() {
                   type={showPw ? "text" : "password"} required value={pw2}
                   onChange={(e) => setPw2(e.target.value)} autoComplete="new-password"
                   placeholder="Re-enter your password"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
               </div>
 
@@ -216,7 +216,7 @@ export default function ResetPasswordPage() {
 
               <button
                 type="submit" disabled={saving}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+                className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
               >
                 {saving ? (
                   <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Updating…</>
@@ -243,7 +243,7 @@ export default function ResetPasswordPage() {
                   autoFocus inputMode="numeric" value={reauthOtp} maxLength={8}
                   onChange={(e) => setReauthOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
                   placeholder="123456"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
               </div>
               {reauthError && (
@@ -256,7 +256,7 @@ export default function ResetPasswordPage() {
               )}
               <button
                 type="submit" disabled={saving || reauthOtp.length < 6}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+                className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
               >
                 {saving ? (
                   <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Verifying…</>

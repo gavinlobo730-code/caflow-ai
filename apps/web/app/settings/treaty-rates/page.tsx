@@ -165,7 +165,7 @@ export default function TreatyRatesPage() {
           </div>
           <button
             onClick={() => { reset(); setShowForm(true); }}
-            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 text-white text-sm rounded-lg hover:bg-sky-700"
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark"
           >
             <Plus size={14} /> Add reading
           </button>
@@ -187,12 +187,12 @@ export default function TreatyRatesPage() {
               <div>
                 <label htmlFor="tr-country" className="block text-xs font-medium text-ps-label mb-1">Country (ISO code)</label>
                 <input id="tr-country" value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} maxLength={2} placeholder="AE"
-                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>
               <div>
                 <label htmlFor="tr-nature" className="block text-xs font-medium text-ps-label mb-1">Nature of income</label>
                 <select id="tr-nature" value={nature} onChange={(e) => setNature(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500">
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                   <option value="">Select…</option>
                   {natures.map((n) => <option key={n} value={n}>{NATURE_LABELS[n] ?? n}</option>)}
                 </select>
@@ -200,7 +200,7 @@ export default function TreatyRatesPage() {
               <div>
                 <label htmlFor="tr-rate" className="block text-xs font-medium text-ps-label mb-1">Rate (%)</label>
                 <input id="tr-rate" value={rate} onChange={(e) => setRate(e.target.value)} disabled={noArticle} placeholder="10"
-                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:bg-ps-bg disabled:text-ps-hint" />
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint" />
               </div>
             </div>
             <label className="flex items-start gap-2 text-xs text-ps-label">
@@ -216,17 +216,17 @@ export default function TreatyRatesPage() {
               <div>
                 <label htmlFor="tr-article" className="block text-xs font-medium text-ps-label mb-1">Article relied on</label>
                 <input id="tr-article" value={articleRef} onChange={(e) => setArticleRef(e.target.value)} placeholder="Article 12(2)"
-                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>
               <div>
                 <label htmlFor="tr-notes" className="block text-xs font-medium text-ps-label mb-1">Notes</label>
                 <input id="tr-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="MFN position, protocol date, conditions…"
-                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                  className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-              <button onClick={save} disabled={actionInFlight || !country || !nature} className="text-xs px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 disabled:opacity-40">
+              <button onClick={save} disabled={actionInFlight || !country || !nature} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {saving ? "Saving…" : "Save reading"}
               </button>
             </div>

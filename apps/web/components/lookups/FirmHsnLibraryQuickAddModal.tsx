@@ -35,7 +35,7 @@ export interface FirmHsnLibraryRow {
 }
 
 const inputCls =
-  "w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
+  "w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand";
 
 export function FirmHsnLibraryQuickAddModal({
   seedCode,
@@ -157,7 +157,7 @@ export function FirmHsnLibraryQuickAddModal({
           <button
             onClick={submit}
             disabled={!canSave}
-            className="text-sm px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5"
+            className="text-sm px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5"
           >
             {saving && <Loader2 size={14} className="animate-spin" />} Add to library
           </button>

@@ -160,7 +160,7 @@ export default function NotificationsPage() {
             onClick={() => !n.is_read && markRead(n.id)}
           >
             <span className="flex items-center gap-1.5">
-              {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />}
+              {!n.is_read && <span className="w-2 h-2 rounded-full bg-brand shrink-0" />}
               <span className={`text-sm leading-snug ${n.is_read ? "text-ps-body" : "text-ps-ink font-semibold"}`}>
                 {n.title}
               </span>

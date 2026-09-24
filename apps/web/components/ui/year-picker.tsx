@@ -21,8 +21,8 @@
 
  * ── WHY ─────────────────────────────────────────────────────────────────────
  * 21 of these across 24 files, in **14 distinct class strings** and FOUR
- * different focus treatments — `focus:border-blue-500`, `focus:ring-2
- * focus:ring-blue-500`, `focus:border-blue-400`, and four with none at all —
+ * different focus treatments — `focus:border-brand`, `focus:ring-2
+ * focus:ring-brand`, `focus:border-brand`, and four with none at all —
  * one of them on a raw `border-gray-300`. Every one of them is the same
  * control asking the same question.
  *

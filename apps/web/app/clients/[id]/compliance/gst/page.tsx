@@ -649,7 +649,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
             Compute from Books
           </button>
           <button onClick={() => setShowNew(true)}
-            className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
             + New GSTR-1
           </button>
         </div>
@@ -668,7 +668,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
           {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <button onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
-              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
             </button>
             <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
@@ -749,7 +749,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
             className="w-full border rounded px-3 py-1.5 text-sm" />
           <div className="flex gap-2">
             <button onClick={saveNew} disabled={actionInFlight || !period || !gstin}
-              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save Draft"}
             </button>
             <button onClick={() => setShowNew(false)}
@@ -1112,7 +1112,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             Compute from Books
           </button>
           <button onClick={() => setShowNew(true)}
-            className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
             + New GSTR-3B
           </button>
         </div>
@@ -1141,7 +1141,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <button onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
-              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
             </button>
             <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
@@ -1357,7 +1357,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             className="w-full border rounded px-3 py-1.5 text-sm" />
           <div className="flex gap-2">
             <button onClick={saveNew} disabled={actionInFlight || !period || !gstin}
-              className="px-3 py-1 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save Draft"}
             </button>
             <button onClick={() => setShowNew(false)}
@@ -1655,7 +1655,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
           rows={8} className="w-full border rounded px-3 py-2 text-sm font-mono" />
         {error && <p className="text-red-600 text-sm">{error}</p>}
         <button onClick={upload} disabled={loading || !period || !jsonText}
-          className="px-4 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+          className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
           {loading ? "Reconciling…" : "Upload & Reconcile"}
         </button>
       </div>
@@ -2064,7 +2064,7 @@ export default function GSTWorkspacePage() {
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
-                ? "border-blue-600 text-blue-700"
+                ? "border-brand text-blue-700"
                 : "border-transparent text-ps-label hover:text-ps-body"
             }`}>
             {t.label}

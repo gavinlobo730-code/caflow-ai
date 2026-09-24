@@ -385,7 +385,7 @@ function EmployeesTab({ clientId }: { clientId: string }) {
           <button onClick={() => downloadCsv("employees.csv", toCsv(employees, EMPLOYEE_EXPORT_COLUMNS))} disabled={employees.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 border border-ps-border text-ps-label text-xs font-medium rounded-lg hover:bg-ps-muted transition-colors disabled:opacity-50">
             <Download size={13} /> Export
           </button>
-          <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
+          <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-xs font-medium rounded-lg hover:bg-brand-dark transition-colors">
             <Plus size={13} /> Add Employee
           </button>
         </div>
@@ -707,10 +707,10 @@ function RunsTab({ clientId, firmId, openDoc }:
           <div>
             <label className="block text-2xs text-ps-label mb-1">Month</label>
             <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-              className="border border-ps-border rounded-lg px-3 py-1.5 text-sm text-ps-ink outline-none focus:border-blue-400" />
+              className="border border-ps-border rounded-lg px-3 py-1.5 text-sm text-ps-ink outline-none focus:border-brand" />
           </div>
           <button onClick={createRun} disabled={creating}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-brand text-white text-xs font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
             <Play size={12} /> {creating ? "Computing…" : "Compute & Draft"}
           </button>
         </div>
@@ -968,8 +968,8 @@ function StatutoryTab({ clientId }: { clientId: string }) {
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3">
         <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-          className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400" />
-        <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-brand" />
+        <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand-dark disabled:opacity-50">
           {loading ? "Loading…" : "Load"}
         </button>
       </div>
@@ -1157,7 +1157,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                     <td className="px-3 py-2 text-right space-x-2 whitespace-nowrap">
                       {finalized && (
                         <button onClick={() => setDisburseRun(r)} disabled={busy === r.id}
-                          className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                          className="px-3 py-1 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                           Record payment
                         </button>
                       )}
@@ -1279,7 +1279,7 @@ function OutputsTab({ clientId }: { clientId: string }) {
       <div className="flex items-center gap-3 flex-wrap">
         <label className="text-2xs text-ps-label">Month</label>
         <select value={runId} onChange={(e) => { setRunId(e.target.value); setMsg(null); }}
-          className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400">
+          className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-brand">
           {runs.map((r) => <option key={r.id} value={r.id}>{fmtMonth(r.month)} · {r.status}</option>)}
         </select>
       </div>
@@ -1731,7 +1731,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
           <Field label="PTEC number" value={ptForm.ptec_number} placeholder="optional"
             onChange={v => setPtForm({ ...ptForm, ptec_number: v })} />
           <button onClick={savePt} disabled={saving === "pt"}
-            className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            className="px-4 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving === "pt" ? "Saving…" : "Add"}
           </button>
         </div>
@@ -1762,7 +1762,7 @@ function IdentityRow({ field, value, saving, justSaved, onSave }: {
           value={draft}
           onChange={e => setDraft(e.target.value)}
           placeholder="Not recorded"
-          className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-blue-400"
+          className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-brand"
         />
       </div>
       <button onClick={() => onSave(draft)} disabled={saving || !dirty}
@@ -1808,7 +1808,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }: { label: 
     <div>
       <label className="block text-2xs text-ps-label mb-0.5">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-blue-400" />
+        className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-brand" />
     </div>
   );
 }
@@ -1868,7 +1868,7 @@ export default function PayrollPage() {
               onClick={() => setTab(t.id)}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
-                tab === t.id ? "bg-blue-600 text-white" : "text-ps-label hover:text-ps-ink hover:bg-ps-muted"
+                tab === t.id ? "bg-brand text-white" : "text-ps-label hover:text-ps-ink hover:bg-ps-muted"
               )}
             >
               <t.icon size={12} />
@@ -2001,7 +2001,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-ps-ink">Reusable Salary Templates</p>
-        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">
+        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand-dark">
           <Plus size={13} /> Add Structure
         </button>
       </div>
@@ -2022,7 +2022,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
           </div>
           {saveError && <Callout tone="problem">{saveError}</Callout>}
           <div className="flex gap-2">
-            <button onClick={addStructure} disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
+            <button onClick={addStructure} disabled={saving} className="px-4 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand-dark disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
             <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 text-xs text-ps-label border border-ps-border rounded-lg">Cancel</button>
           </div>
         </div>
@@ -2110,8 +2110,8 @@ function ReportsTab({ clientId }: { clientId: string }) {
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3">
         <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-          className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400" />
-        <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-brand" />
+        <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand-dark disabled:opacity-50">
           {loading ? "Loading…" : "Load Salary Register"}
         </button>
         <button onClick={downloadRegister} disabled={downloading}

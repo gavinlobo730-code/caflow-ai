@@ -152,12 +152,12 @@ function ChangePasswordCard() {
                 value={reauthOtp}
                 onChange={(e) => setReauthOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
                 inputMode="numeric" maxLength={8} placeholder="123456"
-                className="w-36 text-center tracking-widest font-mono text-base border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-36 text-center tracking-widest font-mono text-base border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
               />
               <button
                 onClick={verifyReauth}
                 disabled={busy || reauthOtp.length < 6}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50"
               >
                 {busy ? "Verifying…" : "Verify & update"}
               </button>
@@ -176,7 +176,7 @@ function ChangePasswordCard() {
               <input
                 type={showPw ? "text" : "password"} value={current} onChange={(e) => setCurrent(e.target.value)}
                 autoComplete="current-password"
-                className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
               />
             </div>
             <div className="space-y-1.5">
@@ -185,7 +185,7 @@ function ChangePasswordCard() {
                 <input
                   type={showPw ? "text" : "password"} value={next} onChange={(e) => setNext(e.target.value)}
                   autoComplete="new-password" placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
-                  className="w-full px-3 py-2 pr-10 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 pr-10 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 />
                 <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide passwords" : "Show passwords"}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
@@ -198,13 +198,13 @@ function ChangePasswordCard() {
               <input
                 type={showPw ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)}
                 autoComplete="new-password"
-                className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
               />
             </div>
             <button
               onClick={submit}
               disabled={busy || !current || !next || !confirm}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50"
             >
               {busy ? "Updating…" : "Update password"}
             </button>
@@ -351,12 +351,12 @@ function MfaCard() {
                     inputMode="numeric"
                     maxLength={6}
                     placeholder="123456"
-                    className="w-36 text-center tracking-widest font-mono text-base border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-36 text-center tracking-widest font-mono text-base border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand"
                   />
                   <button
                     onClick={verifyEnroll}
                     disabled={busy || code.length < 6}
-                    className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50"
                   >
                     {busy ? "Verifying…" : "Verify & enable"}
                   </button>
@@ -405,7 +405,7 @@ function MfaCard() {
               <button
                 onClick={startEnroll}
                 disabled={busy}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50"
               >
                 <Smartphone size={15} /> {busy ? "Starting…" : "Set up authenticator app"}
               </button>

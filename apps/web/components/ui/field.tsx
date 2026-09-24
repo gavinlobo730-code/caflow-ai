@@ -13,7 +13,7 @@
  * spelling, counted:
  *
  *     <input>     w-full border border-ps-border rounded-lg px-3 py-2 text-sm
- *                 focus:outline-none focus:ring-2 focus:ring-blue-500     (29)
+ *                 focus:outline-none focus:ring-2 focus:ring-brand     (29)
  *     <select>    the same string                                          (17)
  *     <label>     block text-xs font-medium text-ps-label mb-1            (180)
  *

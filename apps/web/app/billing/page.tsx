@@ -180,7 +180,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Service Type</label>
             <select value={serviceType} onChange={e => setServiceType(e.target.value as ServiceType)}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
               {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
@@ -189,12 +189,12 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
               <label className="text-xs font-medium text-ps-body block mb-1">Fee (₹)</label>
               <input type="number" min="0" step="0.01" value={feeRs} onChange={e => setFeeRs(e.target.value)}
                 placeholder="5000"
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Billing Cycle</label>
               <select value={billingCycle} onChange={e => setBillingCycle(e.target.value as BillingCycle)}
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
                 {BILLING_CYCLES.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
@@ -202,7 +202,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Start Date</label>
             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
           </div>
         </div>
         <div className="flex gap-2 pt-1">
@@ -211,7 +211,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
             Cancel
           </button>
           <button onClick={handleSave} disabled={saving}
-            className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm hover:bg-blue-700 disabled:opacity-60">
+            className="flex-1 bg-brand text-white rounded-lg py-2 text-sm hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : "Save Engagement"}
           </button>
         </div>
@@ -269,7 +269,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Invoice</label>
             <select value={invoiceId} onChange={e => setInvoiceId(e.target.value)}
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
               {unpaid.map(i => (
                 <option key={i.id} value={i.id}>
                   {i.invoice_no} — {i.client_name} — {fmtPaise(i.total_paise)}
@@ -281,19 +281,19 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Receipt Date</label>
               <input type="date" value={receiptDate} onChange={e => setReceiptDate(e.target.value)}
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Amount (₹)</label>
               <input type="number" min="0" step="0.01" value={amountRs} onChange={e => setAmountRs(e.target.value)}
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Payment Mode</label>
               <select value={paymentMode} onChange={e => setPaymentMode(e.target.value as PaymentMode)}
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
                 {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
@@ -301,7 +301,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
               <label className="text-xs font-medium text-ps-body block mb-1">Reference No.</label>
               <input type="text" value={referenceNo} onChange={e => setReferenceNo(e.target.value)}
                 placeholder="UTR / Cheque no."
-                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
             </div>
           </div>
         </div>
@@ -534,7 +534,7 @@ export default function BillingPage() {
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-              tab === t.id ? "border-blue-600 text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"
+              tab === t.id ? "border-brand text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"
             }`}>
             {t.label}
           </button>
@@ -614,7 +614,7 @@ export default function BillingPage() {
         <div className="space-y-4">
           <div className="flex justify-end">
             <button onClick={() => setShowEngModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+              className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark">
               <Plus size={15} /> Add Engagement
             </button>
           </div>
@@ -669,7 +669,7 @@ export default function BillingPage() {
                 <Clock size={15} /> {runningOverdueCheck ? "Checking…" : "Run Overdue Check"}
               </button>
               <button onClick={handleRaiseInvoice} disabled={actionInFlight}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-60">
+                className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark disabled:opacity-60">
                 <IndianRupee size={15} /> {raisingInvoice ? "Raising…" : "Raise Invoice"}
               </button>
             </div>

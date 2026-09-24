@@ -183,7 +183,7 @@ function formatDate(isoDate: string): string {
 }
 
 const inputCls =
-  "w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
+  "w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand bg-white";
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -502,7 +502,7 @@ export default function LoansAndFDPage() {
         </div>
         <button
           onClick={() => tab === "loans" ? setShowAddLoan(true) : setShowAddFD(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
         >
           <Plus className="w-4 h-4" />
           {tab === "loans" ? "Add Loan" : "Add FD"}
@@ -691,7 +691,7 @@ export default function LoansAndFDPage() {
             <div className="mt-4 flex items-center gap-4">
               <button
                 onClick={runEMICalc}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
               >
                 Calculate EMI
               </button>
@@ -921,7 +921,7 @@ export default function LoansAndFDPage() {
             </div>
             <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
               <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-              <button onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              <button onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {loanSaving ? "Saving…" : "Add Loan"}
               </button>
             </div>
@@ -1018,7 +1018,7 @@ export default function LoansAndFDPage() {
             </div>
             <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
               <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-              <button onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              <button onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {fdSaving ? "Saving…" : "Add FD"}
               </button>
             </div>
