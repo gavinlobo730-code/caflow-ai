@@ -144,14 +144,14 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-ps-bg">
       <div className="w-full max-w-[380px]">
         <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-[13px] font-bold text-white">P</div>
-          <span className="text-[16px] font-bold text-ps-ink">PracticeSync AI</span>
+          <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-sm font-bold text-white">P</div>
+          <span className="text-base font-bold text-ps-ink">PracticeSync AI</span>
         </div>
 
         {stage === "verifying" && (
           <div className="text-center py-8">
             <span className="inline-block w-6 h-6 border-2 border-ps-border border-t-blue-600 rounded-full animate-spin" />
-            <p className="text-[13px] text-ps-label mt-4">Verifying your reset link…</p>
+            <p className="text-sm text-ps-label mt-4">Verifying your reset link…</p>
           </div>
         )}
 
@@ -160,13 +160,13 @@ export default function ResetPasswordPage() {
             <div className="w-12 h-12 rounded-full bg-state-problem-surface flex items-center justify-center mx-auto mb-4">
               <AlertCircle size={22} className="text-red-500" />
             </div>
-            <h2 className="text-[22px] font-bold text-ps-ink tracking-tight">Link invalid or expired</h2>
-            <p className="text-[14px] text-ps-label mt-2 leading-relaxed">
+            <h2 className="text-xl font-bold text-ps-ink tracking-tight">Link invalid or expired</h2>
+            <p className="text-sm text-ps-label mt-2 leading-relaxed">
               This password reset link no longer works. Request a new one to continue.
             </p>
             <Link
               href="/login/forgot-password"
-              className="inline-flex items-center gap-1.5 text-[13px] text-blue-600 hover:text-blue-700 font-medium mt-6"
+              className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium mt-6"
             >
               Request a new link <ArrowRight size={14} />
             </Link>
@@ -176,18 +176,18 @@ export default function ResetPasswordPage() {
         {stage === "form" && (
           <>
             <div className="mb-8">
-              <h2 className="text-[26px] font-bold text-ps-ink tracking-tight">Set a new password</h2>
-              <p className="text-[14px] text-ps-label mt-1">Choose a new password for your account.</p>
+              <h2 className="text-2xl font-bold text-ps-ink tracking-tight">Set a new password</h2>
+              <p className="text-sm text-ps-label mt-1">Choose a new password for your account.</p>
             </div>
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-1.5">
-                <label className="block text-[13px] font-semibold text-ps-ink">New password</label>
+                <label className="block text-sm font-semibold text-ps-ink">New password</label>
                 <div className="relative">
                   <input
                     autoFocus type={showPw ? "text" : "password"} required value={pw}
                     onChange={(e) => setPw(e.target.value)} autoComplete="new-password"
                     placeholder={`At least ${MIN_LENGTH} characters`}
-                    className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 pr-11 text-[14px] text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                    className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 pr-11 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
                   />
                   <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide password" : "Show password"}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
@@ -196,12 +196,12 @@ export default function ResetPasswordPage() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="block text-[13px] font-semibold text-ps-ink">Confirm password</label>
+                <label className="block text-sm font-semibold text-ps-ink">Confirm password</label>
                 <input
                   type={showPw ? "text" : "password"} required value={pw2}
                   onChange={(e) => setPw2(e.target.value)} autoComplete="new-password"
                   placeholder="Re-enter your password"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-[14px] text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
                 />
               </div>
 
@@ -210,13 +210,13 @@ export default function ResetPasswordPage() {
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-red-500 text-3xs font-bold leading-none">!</span>
                   </div>
-                  <p className="text-[13px] text-red-600 leading-snug">{error}</p>
+                  <p className="text-sm text-red-600 leading-snug">{error}</p>
                 </div>
               )}
 
               <button
                 type="submit" disabled={saving}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[14px] font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
               >
                 {saving ? (
                   <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Updating…</>
@@ -231,19 +231,19 @@ export default function ResetPasswordPage() {
         {stage === "reauth" && (
           <>
             <div className="mb-8">
-              <h2 className="text-[26px] font-bold text-ps-ink tracking-tight">Confirm it&apos;s you</h2>
-              <p className="text-[14px] text-ps-label mt-1">
+              <h2 className="text-2xl font-bold text-ps-ink tracking-tight">Confirm it&apos;s you</h2>
+              <p className="text-sm text-ps-label mt-1">
                 For your security, we sent a verification code to your email. Enter it below to finish resetting your password.
               </p>
             </div>
             <form onSubmit={verifyReauth} className="space-y-5">
               <div className="space-y-1.5">
-                <label className="block text-[13px] font-semibold text-ps-ink">Verification code</label>
+                <label className="block text-sm font-semibold text-ps-ink">Verification code</label>
                 <input
                   autoFocus inputMode="numeric" value={reauthOtp} maxLength={8}
                   onChange={(e) => setReauthOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
                   placeholder="123456"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-[18px] tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-disabled outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/[0.08] transition-all"
                 />
               </div>
               {reauthError && (
@@ -251,12 +251,12 @@ export default function ResetPasswordPage() {
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-red-500 text-3xs font-bold leading-none">!</span>
                   </div>
-                  <p className="text-[13px] text-red-600 leading-snug">{reauthError}</p>
+                  <p className="text-sm text-red-600 leading-snug">{reauthError}</p>
                 </div>
               )}
               <button
                 type="submit" disabled={saving || reauthOtp.length < 6}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[14px] font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
               >
                 {saving ? (
                   <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Verifying…</>
@@ -273,8 +273,8 @@ export default function ResetPasswordPage() {
             <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
               <ShieldCheck size={22} className="text-emerald-600" />
             </div>
-            <h2 className="text-[22px] font-bold text-ps-ink tracking-tight">Password updated</h2>
-            <p className="text-[14px] text-ps-label mt-2">Taking you to your workspace…</p>
+            <h2 className="text-xl font-bold text-ps-ink tracking-tight">Password updated</h2>
+            <p className="text-sm text-ps-label mt-2">Taking you to your workspace…</p>
           </div>
         )}
       </div>

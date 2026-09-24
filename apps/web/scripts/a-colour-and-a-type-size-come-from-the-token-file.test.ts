@@ -120,6 +120,24 @@ function count(re: RegExp): { total: number; byFile: Map<string, number> } {
 // no name at all, and `text-[9px]` (29) deliberately has none: it is below the
 // size at which the remaining steps are distinguishable, and naming it would
 // bless it. Each needs a decision, which belongs with the reference screens.
+//
+// 380 → 277 on 24-09-2026, AND THE REFERENCE SCREENS ARE WHAT DECIDED IT.
+// 103 of the 380 — 27% — were in SIX files: login, signup, forgot-password,
+// reset-password, portal/login and portal/activate, carrying 32/26/22/18/16/
+// 14/13/12px. That is not sprawl, it is a family with its own ladder, written
+// as arbitrary values because three of its steps (22, 26, 32) sit BETWEEN
+// Tailwind's. They now take `text-xs`/`sm`/`base`/`lg`/`xl`/`2xl`/`3xl`, which
+// moves those three by 2px each and pulls the leading in on every one — so
+// this was decided by looking, not by arithmetic: the smoke walk was run
+// before and after and the four observable screens read as neutral-to-better,
+// slightly more compact, nothing broken. 13px and 14px both went to `text-sm`
+// deliberately: they were never two steps, and collapsing them widens the gap
+// to the 12px caption beside them from 1px to 2px.
+//
+// The other two screens could not be photographed at all, which is the half
+// worth keeping: the walk SIGNS IN, so `/login` and `/login/forgot-password`
+// bounced to `/`. `--anon` was added for exactly this and the pair was read
+// before and after like the rest.
 // 98 → 44 on 24-09-2026. The 54 removed were ONE colour family in five files:
 // the indigo the config's own comment names as a rival primary — "#4338CA in
 // banking" — carried by `components/ui/data-table.tsx` (18, every one of them
@@ -130,10 +148,22 @@ function count(re: RegExp): { total: number; byFile: Map<string, number> } {
 // `brand-dark`, a white chip under the cursor to `ps-hover`, which is what
 // that token means — never by nearest value.
 const HEX_BUDGET = 44;
-// 392 since 24-09-2026: the three screens tokenised that day carried a few
-// arbitrary sizes alongside their colours. Lowered to what is actually there,
-// because a budget with slack in it is a budget that permits a regression.
-const PX_TEXT_BUDGET = 392;
+// 392 → 289 on 24-09-2026, the auth family converted (see above). Lowered to
+// what is actually there each time, because a budget with slack in it is a
+// budget that permits a regression.
+//
+// ⚠️ 289 AND NOT 277, AND THE 12 ARE A FINDING. `PX_TEXT` matches a DECIMAL
+// (`\d+(\.\d+)?px`) and the census everyone has been quoting — including
+// THE-PLAN's own DONE WHEN — greps `text-\[[0-9]+px\]`, which does not. So
+// thirteen `text-[12.5px]` were invisible to every count of this taken so far,
+// and twelve of them are in ONE family: `ActivityRail` and the seven panels of
+// `ContextPanel`, the navigation chrome on every screen in the product. A HALF
+// PIXEL is not a step of any scale — it is what you write when you are nudging
+// one label against another — so they are a module of their own to convert,
+// not stragglers. The metric in THE-PLAN was corrected to this regex in the
+// same commit: a metric and the guard that enforces it must count the same
+// population, which this file's own history already records going wrong once.
+const PX_TEXT_BUDGET = 289;
 
 // ── THE SECOND WAY TO WRITE A COLOUR, WHICH THIS FILE COULD NOT SEE ─────────
 //
