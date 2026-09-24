@@ -320,10 +320,18 @@ class BankEntryService:
             return {"transaction_id": str(txn_id), "already_resolved": True,
                     "tds_decision_resolved_at": txn["tds_decision_resolved_at"],
                     "tds_decision_resolved_by": txn.get("tds_decision_resolved_by")}
-        stamp = {"tds_decision_resolved_at": _now(), "tds_decision_resolved_by": actor_id}
-        (db.table("bank_transactions").update(stamp)
+        # THE PAYLOAD IS A LITERAL, not a `stamp` dict handed to `.update()`.
+        # A write whose column names arrive through a name is invisible to
+        # `tests/test_backend_columns_exist_pg.py`, whose budget is exact —
+        # and the point of that budget is that a column this service writes
+        # gets checked against the real schema. It found this on the first
+        # real-Postgres run, which is the guard doing its job.
+        at = _now()
+        (db.table("bank_transactions")
+           .update({"tds_decision_resolved_at": at, "tds_decision_resolved_by": actor_id})
            .eq("id", txn_id).eq("firm_id", firm_id).execute())
-        return {"transaction_id": str(txn_id), "already_resolved": False, **stamp}
+        return {"transaction_id": str(txn_id), "already_resolved": False,
+                "tds_decision_resolved_at": at, "tds_decision_resolved_by": actor_id}
 
     def _annotate(self, db, firm_id: str, rows: list[dict]) -> None:
         """What every reader of a line needs and no column holds: the kind,

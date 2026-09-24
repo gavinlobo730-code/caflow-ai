@@ -11,7 +11,7 @@
     "partial": "verified against the code: part of the finding is fixed and part is still true. `why` says which part is closed and `what_is_left` says what is not. Never quote one of these as done."
   },
   "_the_stale_problem_this_exists_to_end": "docs/audits/2026-09-11-the-verification-pass.md measured the backlog ~10% stale. Five days later docs/audits/2026-09-12-the-probe-pass/ measured the same backlog 38-59% stale by subsystem, because five tranches had landed and nothing re-scored. On 12 September a further hand-check found INV-04, INV-07, FA-03, FA-16, FA-18, PAY-17, PAY-18, PUR-30, TDS-31, GST-03 and PUR-12 all recorded open and all in fact closed. A status that is only ever written by an audit is a status that is wrong by the time it is read.",
-  "verified_on": "2026-09-18",
+  "verified_on": "2026-09-24",
   "findings": {
     "INV-04": {
       "status": "closed",
@@ -165,11 +165,10 @@
       "reread_on": "2026-09-17"
     },
     "GST-11": {
-      "status": "partial",
-      "verified_on": "2026-09-17",
-      "why": "The RETURN ENGINE is done. domain/gst/return_period.py is the authority, both from-books builders take a quarter, the filing record, the ITC reversal register, Table 11 advances and Rule 36(4) all read the quarter's three months, and the frequency comes off client_gst_registrations (GST-20's fact), never inferred from turnover. A quarter is keyed on its FIRST month because routers/compliance.py already writes and reads that key.",
-      "what_is_left": "Rule 59(2)'s INVOICE FURNISHING FACILITY — a different return with its own due date and no storage of its own. Deliberately not built: it is widening the engine rather than making a period mean three months, and it is NAMED on every quarterly GSTR-1 so a CA knows the recipient's credit waits. Also open and named rather than resolved: whether the form's own fp/ret_period wants the quarter's first or last month ([S], egress refused), and whether Rule 43(1)(c)'s tax period is the quarter for a QRMP filer.",
-      "note": "The finding's own fix was materially INCOMPLETE. It named only the date-ranged reads; GSTR-2B is generated MONTHLY for a quarterly filer too, so following it literally gives a return whose documents cover three months and whose Rule 36(4) ceiling, ITC reversal register and Table 11 advances cover one — silently, with the tax coming out plausible. Its premise was also stale: GST-20 moved filing frequency onto the REGISTRATION."
+      "status": "closed",
+      "verified_on": "2026-09-24",
+      "why": "The RETURN ENGINE was already done (see the 17-09 note). Its remaining half — CGST Rule 59(2)'s INVOICE FURNISHING FACILITY — is now built: domain/gst/iff.py is the rule, gst_return_service.iff_from_books fetches, GET /api/gst-workspace/iff/compute serves, and components/gst/IffPanel renders on BOTH GSTR-1 screens. `return_period.IFF_NOT_BUILT` is renamed IFF_AVAILABLE and points at the panel.",
+      "what_is_left": "Two things NAMED rather than built, each with the reason on every answer. (1) AMENDMENT sections — whether the facility accepts amended-B2B / amended-CDNR could not be checked from this environment, and the error directions are asymmetric: an amendment omitted is furnished a few weeks later in the quarterly return, while a section the facility does not carry fails at upload or is accepted against the wrong period. Settled by GST document #5 (the offline utilities). (2) The PAYLOAD ENVELOPE, refused under GST-32's standing reason. Neither is a gap in the figures: what is furnished is built by gstr1_builder's own section builders, which the GSTR-1 path is already tested on."
     },
     "GST-20": {
       "status": "closed",
@@ -533,11 +532,10 @@
       "reread_on": "2026-09-17"
     },
     "BANK-11": {
-      "status": "partial",
-      "verified_on": "2026-09-17",
-      "why": "migration 380 gives the rule row priority, match_field, match_operator and description_patterns, and domain/banking/rules.py reads all four: precedence is priority then created_at, a pattern can be read against the reference_no or the payee_name or all three, contains/starts_with/equals, and one rule can carry several alternatives. Every default reproduces the old behaviour exactly, so no existing rule changes which transactions it fires on or which rule it beats. STEP 3'S PARTY HALF IS BUILT (migration 404, 17-09-2026): bank_matching_rules gains payee_type/payee_id and bank_transactions gains draft_payee_type/draft_payee_id, carried by RuleSuggestion, Draft.as_columns and _apply_draft, applied through the same bank_payee_service.set_payee a human uses — and what the line already says WINS. It is safe unattended because the pair LABELS a transaction: posting_map.build_lines, the settlement and the reversal never read it, coded_by_a_human does not count it, and the settlement target is matched_entity_*, a different pair — so a trusted rule that tags a party changes no figure. AND THE FINDING'S OWN WORKED EXAMPLE was already built: ₹11,800 = ₹10,000 rent + ₹1,800 GST is suggested_gst_rate_bps + suggested_is_interstate, which have travelled through draft_gst_rate_bps into build_inclusive_lines since migration 254",
-      "what_is_left": "Two limbs of step 3, and each is a RECORDED REFUSAL with its reason rather than unscheduled work — both asserted by name in tests/test_a_bank_rule_says_which_field_and_which_one_wins.py so neither can arrive by accident. A general SPLIT LEG is not settled by the finding's own decision at all: a rule cannot know a future amount, so a fixed amount fires only on identical totals and PERCENTAGES are the only form that generalises — a different feature from the ₹11,800 example, and an owner decision of its own. A TDS treatment stays out permanently: §201 puts the tax and §201(1A) interest on the deductor, so it belongs in front of a human and not in a payload that passes with no click. Reopen only on an owner decision naming the percentage-split shape.",
-      "reread_on": "2026-09-17"
+      "status": "closed",
+      "verified_on": "2026-09-24",
+      "why": "Steps 1 and 2 landed with migration 380 — priority, match_field, match_operator, description_patterns, and the party. Step 3 was an OWNER DECISION (D19, taken 24-09-2026) about what else a TRUSTED rule may propose, and the answer was the middle one: it may post the payment and FLAG the line for a person to decide the withholding, and may never decide it. Migration 413 plus the screen — the rule checkbox, the TDS? chip, the count and filter above the queue, and TDS decided as a bulk action. A guard holds the write ONE-WAY: a rule may only ever set the flag, because one that could clear it would silently dismiss an outstanding withholding question, and an under-deduction disallows the whole expenditure under s.40(a)(ia).",
+      "what_is_left": "Nothing of the finding. What a rule may PROPOSE is deliberately unwidened beyond the flag — a split leg or a TDS treatment on a rule that posts unattended is the thing D19 declined, and a guard asserts RuleSuggestion gained no field."
     },
     "IT-31": {
       "status": "closed",
