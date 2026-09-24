@@ -46,6 +46,16 @@ export type FirmProfile = {
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** A row of `GET /api/clients`, narrowed to what a picker needs. The endpoint
+ *  serves the whole `clients` row; naming only these keeps a caller from
+ *  quietly depending on a column that is not part of the contract. */
+export interface ClientSummary {
+  id: string;
+  client_name: string;
+  entity_type?: string | null;
+  gstin?: string | null;
+}
+
 /** One statutory settlement on the handoff screen, exactly as
  *  domain/payroll/handoff.py serialises it. Every string here is composed on
  *  the SERVER — render them, do not rebuild them: they carry statutory
@@ -2450,7 +2460,13 @@ export const api = {
       `/api/tds/treaty-rates/${id}`, { method: "DELETE" }),
   },
   clients: {
-    list: () => request("/api/clients"),
+    /** The caller's OWN clients: `rbac("client","read")` plus
+     *  `effective_client_ids`, so an Executive or Reviewer gets the ones they
+     *  are assigned to. Read straight from PostgREST the SELECT policy is
+     *  firm-scoped with no assignment test, which is why the client switcher
+     *  goes through here. Typed rather than `{}` so a caller is not free to
+     *  read a field the endpoint does not serve. */
+    list: () => request<ApiResp<{ clients: ClientSummary[]; total: number }>>("/api/clients"),
     getWorkspace: (id: string) => request(`/api/clients/${id}`),
     create: (body: unknown) => request("/api/clients", { method: "POST", body: JSON.stringify(body) }),
     update: (id: string, body: unknown) => request(`/api/clients/${id}`, { method: "PATCH", body: JSON.stringify(body) }),

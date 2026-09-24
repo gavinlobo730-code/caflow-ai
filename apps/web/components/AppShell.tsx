@@ -76,40 +76,57 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Global command palette */}
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
 
-      {/* Mobile hamburger */}
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-white text-ps-label hover:text-ps-ink border border-ps-border shadow-sm"
-        aria-label="Open menu"
-      >
-        <Menu size={18} />
-      </button>
+      {/* Mobile hamburger, backdrop and drawer — THE FIRM-LEVEL ONES ONLY.
+          The desktop branch below already hides this shell's rails inside the
+          client workspace, because that workspace owns its own; the mobile
+          half did not, so on a phone at /clients/:id the two triggers rendered
+          on top of each other — this one `fixed top-3 left-3 z-40` in white,
+          ClientContextPanel's `fixed top-2.5 left-2.5 z-50` in navy — offset
+          by 2px and differing in size, so the white one showed as a rim around
+          two edges of the navy one. Tapping that rim opened the FIRM drawer
+          over the client workspace.
 
-      {/* Mobile backdrop */}
-      {mobileOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-40 bg-brand/70 backdrop-blur-sm"
-          onClick={() => setMobileOpen(false)}
-        />
+          Hiding it loses nothing: the client drawer's own header carries the
+          `/clients` back link (ArrowLeft, "Client Workspace"), which is the
+          same way out the desktop panel gives. `ClientHeader` reserves the
+          space with `pl-12 md:px-4`, sized for ONE trigger. */}
+      {!isClientWorkspace && (
+        <>
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="md:hidden fixed top-3 left-3 z-40 p-2 rounded-lg bg-white text-ps-label hover:text-ps-ink border border-ps-border shadow-sm"
+            aria-label="Open menu"
+          >
+            <Menu size={18} />
+          </button>
+
+          {/* Mobile backdrop */}
+          {mobileOpen && (
+            <div
+              className="md:hidden fixed inset-0 z-40 bg-brand/70 backdrop-blur-sm"
+              onClick={() => setMobileOpen(false)}
+            />
+          )}
+
+          {/* Mobile slide-in drawer */}
+          <div
+            className={cn(
+              "md:hidden fixed inset-y-0 left-0 z-50 flex transition-transform duration-200",
+              mobileOpen ? "translate-x-0" : "-translate-x-full"
+            )}
+          >
+            <button
+              onClick={() => setMobileOpen(false)}
+              className="absolute top-3 right-[-40px] z-10 p-1.5 rounded-md bg-white text-ps-hint hover:text-ps-label"
+              aria-label="Close menu"
+            >
+              <X size={15} />
+            </button>
+            <ActivityRail onOpenSearch={() => { setMobileOpen(false); setSearchOpen(true); }} />
+            <ContextPanel onOpenSearch={() => { setMobileOpen(false); setSearchOpen(true); }} />
+          </div>
+        </>
       )}
-
-      {/* Mobile slide-in drawer */}
-      <div
-        className={cn(
-          "md:hidden fixed inset-y-0 left-0 z-50 flex transition-transform duration-200",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        <button
-          onClick={() => setMobileOpen(false)}
-          className="absolute top-3 right-[-40px] z-10 p-1.5 rounded-md bg-white text-ps-hint hover:text-ps-label"
-          aria-label="Close menu"
-        >
-          <X size={15} />
-        </button>
-        <ActivityRail onOpenSearch={() => { setMobileOpen(false); setSearchOpen(true); }} />
-        <ContextPanel onOpenSearch={() => { setMobileOpen(false); setSearchOpen(true); }} />
-      </div>
 
       {/* Main layout */}
       <div className="flex h-screen overflow-hidden bg-ps-bg">

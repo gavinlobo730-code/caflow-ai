@@ -34,6 +34,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api, type ApiResp } from "@/lib/api";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import {
   apiErr, employeeGrossPaise,
   type Client, type Employee,
@@ -74,14 +75,19 @@ export default function PayrollPeoplePage() {
     setLoadError(null);
     try {
       const [cRes, eRes] = await Promise.all([
-        api.clients.list() as Promise<ApiResp<Client[]>>,
+        api.clients.list(),
         api.payroll.listEmployees() as Promise<ApiResp<Employee[]>>,
       ]);
       if (!cRes.success || !eRes.success) {
         setLoadError(cRes.error ?? eRes.error ?? "Could not load the roster.");
         return;
       }
-      setClients(cRes.data ?? []);
+      // `GET /api/clients` answers `{clients, total}`. The cast above used to
+      // say `ApiResp<Client[]>`, so this put the whole ENVELOPE OBJECT into a
+      // `Client[]` state and the next `clients.find(...)` threw
+      // "clients.find is not a function". `useState<Client[]>([])` cannot see
+      // that and neither could tsc, because the cast asserted it away.
+      setClients(arrayOrEmpty<Client>(cRes.data?.clients));
       setEmployees(eRes.data ?? []);
     } catch (e) {
       setLoadError(apiErr(e, "Could not load the roster."));

@@ -3,11 +3,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link2, Search, Check, Loader2, ShieldAlert } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
+import type { ClientSummary } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
 
 interface Member { id: string; full_name?: string; email?: string; role?: string }
-interface Client { id: string; client_name?: string; entity_type?: string; gstin?: string }
+// The row shape is `ClientSummary` from lib/api — the endpoint's own type.
+// The local interface this replaced declared `entity_type?: string`, and
+// `clients.entity_type` is NULLABLE, so it was wrong in a way only the
+// removed cast was hiding.
+type Client = ClientSummary;
 
 // Module 9.0 M3 — Client Assignment Administration.
 // Partner assigns clients to staff; this controls what each user can discover,
@@ -33,7 +38,7 @@ export default function AssignmentsPage() {
       try {
         const [t, c] = await Promise.all([
           api.team.list() as Promise<ApiResp<Member[] | { members: Member[] }>>,
-          api.clients.list() as Promise<ApiResp<{ clients: Client[] }>>,
+          api.clients.list(),
         ]);
         const mem = Array.isArray(t.data) ? t.data : (t.data?.members ?? []);
         setMembers(mem.filter((m) => m.role !== "Partner")); // Partners are firm-wide; no assignment needed

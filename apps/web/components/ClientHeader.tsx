@@ -7,6 +7,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getLatestHealthScore } from "@/lib/services/health-score-compute";
 import { HealthBadge } from "@/components/HealthBadge";
+import { ClientSwitcher } from "@/components/ClientSwitcher";
 
 interface ClientData {
   id: string;
@@ -62,9 +63,25 @@ export function ClientHeader() {
       <Building2 size={15} className="text-gray-400 shrink-0" />
 
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <span className={cn("text-sm font-semibold truncate", clientLoadFailed ? "text-red-600" : "text-brand")}>
-          {client?.client_name ?? (clientLoadFailed ? "Couldn't load client" : "Loading…")}
-        </span>
+        {/* The client's name IS the switcher (Phase 2.3) — but only once we
+            know the name. While the client is still loading, or if it failed,
+            there is nothing honest to put on the trigger and the plain span
+            says so; offering a picker over "Couldn't load client" would invite
+            a CA to navigate from a header that does not know where it is.
+            `text-state-problem` rather than a raw red: the failure is a STATE,
+            which is what the token vocabulary is for. */}
+        {client ? (
+          <ClientSwitcher
+            clientId={clientId}
+            clientName={client.client_name}
+            className="min-w-0 flex-shrink"
+          />
+        ) : (
+          <span className={cn("text-sm font-semibold truncate",
+                              clientLoadFailed ? "text-state-problem" : "text-ps-hint")}>
+            {clientLoadFailed ? "Couldn't load client" : "Loading…"}
+          </span>
+        )}
         {client?.entity_type && (
           <span className="text-3xs font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">
             {client.entity_type}
