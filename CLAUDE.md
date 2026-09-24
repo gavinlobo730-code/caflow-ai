@@ -2687,10 +2687,20 @@ object-typed `useState<X | null>(null)` "is a separate shape whose guard is
 `objectOrNull` at the read" — and no guard for that shape exists. **Both
 components named above are that shape**: `ExpiringEwayBills` held a `report`
 object and read `report.bills.length`, `FxRatesPanel` held one and read
-`types.find`. Measured 24-09-2026: **65 object-state variables are set from a
-payload and then read with a nested `.map`/`.length`/`.filter`, and 62 of them
-do not pass the setter through `objectOrNull`.** A tranche of its own, and the
-one fixed so far is `components/inventory/ReorderPanel.tsx` — fixed because the
+`types.find`. Measured 24-09-2026: **66 object-state
+variables are set from a payload and then read with a nested
+`.map`/`.length`/`.filter` without the setter passing through `objectOrNull`**,
+and `scripts/an-object-payload-is-not-its-fields-until-it-is-checked.test.ts`
+is the guard — a FROZEN LIST rather than a count, because a budget is one
+number somebody raises and a named list can only shrink, asserted as an
+EQUALITY so a fix that leaves its entry behind fails as loudly as a new
+offender. ⚠️ **The first sweep found 62 and was wrong, and its own negative
+control is what said so**: it matched `x.field.map` and not `x?.field.map`,
+and the optional-chained form is the DANGEROUS one — `?.` guards `x` being
+null and says nothing about `field` being absent, so it throws on `{}` exactly
+as the plain form does. A probe adding one passed against the narrow regex.
+A tranche of its own, and the one fixed so far is
+`components/inventory/ReorderPanel.tsx` — fixed because the
 `fetch_all` repair above made its success path reachable **for the first time
 ever**, so a latent crash became a live one in the same commit.
 **`objectOrNull` IS NECESSARY AND NOT SUFFICIENT**, which is the part to read
