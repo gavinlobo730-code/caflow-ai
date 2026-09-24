@@ -17,6 +17,51 @@ about, not started).
 
 ---
 
+## G3 — **Five of the hub's fifteen tiles have no firm-level screen to open** · 🤝 needs you
+
+**Not blocking.** The hub's domain authority is built and this is modelled
+honestly; I am asking because the answer changes how the firm hub LOOKS, and
+you have said you care about that.
+
+D1 fixes the hub at fifteen tiles. Writing the guard that checks each tile's
+destination — rather than trusting the path I had typed — found that **five
+modules have no firm-level screen at all**:
+
+| tile | firm-level screen |
+|---|---|
+| Banking | **none** |
+| Purchases | **none** (`/accounting/payables` does not exist) |
+| Fixed Assets | **a tombstone** — `/accounting/fixed-assets` renders `MovedToClientWorkspace` |
+| Inventory | **none** |
+| Year-End | **none** |
+
+The tombstone is the one worth pausing on: it is *worse* than a missing route.
+A 404 is obvious. A page that exists, renders, and says "this feature moved to
+the client workspace" looks like a working destination right up until the CA
+reads it — and a tile showing a real number above it is the exact stub 2.2
+exists to forbid. `/accounting/invoices` is the same shape.
+
+The ten others are real screens and open properly.
+
+**What I would do, if you would rather not think about it: build the five.**
+A firm-level roll-up is a STATIC route, so — and this is the part that makes
+it cheap — **it costs none of D10's dynamic redirect rules.** The constraint
+that forbids new routes under `/clients/[id]`, the one that 404'd the whole
+client workspace once, does not reach these at all. Each is a list of clients
+with that module's outstanding figure beside each, which is the same query the
+tile already needs.
+
+**The alternative** is that those five tiles show their firm-wide figure and
+link to the client list, so the CA picks a client first. Cheaper, and honest,
+but five of fifteen tiles landing on the same page is a worse hub than the
+other ten deserve.
+
+Either way the code change is one line per tile: `firm_href` is `None` today
+and `MODULES_WITH_NO_FIRM_SCREEN` names all five, with a test that fails if a
+tile claims a firm screen it does not have — or points at a tombstone.
+
+---
+
 ## ONE THING CHANGED TODAY THAT AFFECTS THE WHOLE FILE
 
 I can **search** the web from here. I could not, and this file was written
