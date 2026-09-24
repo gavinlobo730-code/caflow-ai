@@ -807,8 +807,12 @@ class EntriesPassReadyIn(BaseModel):
 
 
 class PassEntryIn(BaseModel):
-    """Pass ONE line. Optional GST treatment for a line the CA coded
-    themselves — a draft carries its own. Same vocabulary as PostBankTxnIn."""
+    """Pass ONE line. The GST treatment is the ONLY thing this door takes from
+    the caller — there are deliberately no account fields, because Pass applies
+    the DRAFT on the row. A coding the CA chooses themselves goes through
+    `PostBankTxnIn` on `POST /transactions/{id}/post`. Same GST vocabulary as
+    that model, which is what "same vocabulary as PostBankTxnIn" meant; an
+    earlier wording read as though a CA could code a line here."""
     gst_rate_bps: Optional[int] = None
     is_interstate: bool = False
 

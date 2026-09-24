@@ -2102,9 +2102,19 @@ def pass_entry(
     data: Optional[PassEntryIn] = None,
     current_user: dict = Depends(rbac("banking", "write")),
 ):
-    """Pass ONE line: apply its draft (or the CA's own coding) and post it
-    through the one posting path. A PROPOSED draft may be passed here — the
-    click is the CA accepting it — but never in bulk.
+    """Pass ONE line: apply THE DRAFT ON THE ROW and post it through the one
+    posting path. A PROPOSED draft may be passed here — the click is the CA
+    accepting it — but never in bulk.
+
+    THE ONLY THING THIS DOOR TAKES FROM THE CALLER IS THE GST TREATMENT.
+    `PassEntryIn` carries `gst_rate_bps` and `is_interstate` and no account
+    fields, so the counter account, the bank account and a transfer's
+    destination all come from the draft `bank_entry_service` wrote. An earlier
+    wording here said "or the CA's own coding", which this signature cannot
+    express and which made `POST /transactions/{id}/post` — the door that CAN
+    take a coding — read as a duplicate of this one. It is not: accepting a
+    machine proposal and coding a line yourself are two different acts, and
+    only the first has a screen. See THE-PLAN Phase 3.
     CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     db = _db()
