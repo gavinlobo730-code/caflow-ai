@@ -67,9 +67,23 @@ export type McaRegime = "companies-act" | "llp-act" | "none";
 /** Case- and spacing-insensitive key. `clients.entity_type` is constrained by
  *  a CHECK to the canonical spellings (migration 001), but this module is also
  *  handed values from elsewhere (mca_companies.company_type uses short codes),
- *  so it normalises rather than trusting the exact string. */
+ *  so it normalises rather than trusting the exact string.
+ *
+ *  UNDERSCORES FOLD TOO, AND THEY DID NOT UNTIL 24-09-2026. The server's
+ *  `services/compliance_obligation_service.normalise_entity_type` has folded
+ *  `[\s_]+` since it was written, and its docstring records why: the
+ *  income-tax page renders entity types with `.replace(/_/g, " ")`, so
+ *  underscored spellings have been seen in this data, and the bug it replaced
+ *  was a title-case value tested against an underscored constant. This copy
+ *  folded whitespace ALONE, so `private_limited` was a Companies Act company
+ *  on the server and not here — the compliance calendar generated AOC-4,
+ *  MGT-7 and ADT-1 for a client whose MCA workspace this module then refused
+ *  to offer, and Year End declined to call their statements Schedule III.
+ *
+ *  `shared/entity-type-vectors.json` runs both implementations over the same
+ *  strings now, from the Python side. */
 function key(entityType: EntityTypeInput): string {
-  return String(entityType ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return String(entityType ?? "").trim().toLowerCase().replace(/[\s_]+/g, " ");
 }
 
 /**
