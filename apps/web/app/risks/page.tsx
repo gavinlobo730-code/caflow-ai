@@ -1,8 +1,37 @@
 "use client";
 
+/**
+ * Risk Intelligence — the firm-wide statutory risk register.
+ *
+ * ── WHAT THIS SCREEN USED TO BE ─────────────────────────────────────────────
+ * 856 lines that made six PostgREST reads of their own and derived NINE kinds
+ * of statutory risk in the browser: which filings are overdue and how badly,
+ * which TDS statements are in default, which GSTINs are wrong, which clients
+ * have gone quiet, which advance-tax instalments were missed, which DSCs are
+ * about to lapse, which loans are overdue, which deposits are maturing, and
+ * which clients have no PAN. It cited CGST §47, IT §200A, §201(1A), §234B/C,
+ * §139A and §194A while doing it.
+ *
+ * Every part of that is business logic in the frontend, which this codebase's
+ * first rule forbids — and it was not abstract. `rbac()` ran on none of the six
+ * reads and neither did `core.authz`'s assignment scope, so an Executive who
+ * cannot see a client still read that client's compliance calendar, loans and
+ * fixed deposits. Two statutory figures were wrong as a result; see
+ * `apps/api/domain/risk/register.py`, which is now the rule.
+ *
+ * ── WHAT IT IS NOW ──────────────────────────────────────────────────────────
+ * One call to `GET /api/risks/register`, and a renderer. **THE BROWSER HOLDS
+ * NO PER-KIND KNOWLEDGE**: each row carries a `particulars` map the server
+ * decided — "Filing Type" for an overdue return, "DSC Holder" for a
+ * certificate, "Lender" and "Loan Type" for a loan — in display order, so the
+ * nine hand-written tables collapse into one generic one. Adding a tenth kind
+ * of risk is a change to the domain module and to nothing here.
+ *
+ * The CSV export builds from what the server sent, through the one CSV writer.
+ */
+
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  ShieldAlert,
   AlertTriangle,
   AlertCircle,
   Info,
@@ -10,169 +39,63 @@ import {
   Loader2,
   Download,
   RefreshCw,
-  KeyRound,
-  Landmark,
-  CalendarClock,
-  UserX,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { selectAll } from "@/lib/supabase/selectAll";
-import { getFirmId } from "@/lib/data/getFirmId";
-import { getClients } from "@/lib/data/clients";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
-import { gstinProblem } from "@/lib/gst/gstin";
-import { toLocalISO, todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { todayLocalISO } from "@/lib/dateMath";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { api } from "@/lib/api";
 
-interface ComplianceEntry {
-  id: string;
+// ─── The server's shape ───────────────────────────────────────────────────────
+
+interface RiskRow {
   client_id: string;
-  compliance_type: string;
-  due_date: string;
-  filing_status: string;
-}
-
-interface OverdueRisk {
-  clientId: string;
-  clientName: string;
-  filingType: string;
-  dueDate: string;
-  daysOverdue: number;
-  riskLevel: "high" | "medium" | "low";
-}
-
-interface InvalidGstinClient {
-  clientId: string;
-  clientName: string;
-  gstin: string;
-  reason: string;
-}
-
-interface InactiveClient {
-  clientId: string;
-  clientName: string;
-  daysInactive: number;
-}
-
-interface RiskRegisterRow {
-  clientName: string;
-  riskType: string;
+  client_name: string;
+  risk_type: string;
   description: string;
   severity: "critical" | "high" | "medium" | "low";
   action: string;
-  // Optional sortable dimensions carried from the per-category source rows so the
-  // unified register can sort by days-overdue / amount / date. Undefined where the
-  // category has no such dimension (nullish sinks to the end when sorting).
-  daysOverdue?: number;
-  amountPaise?: number; // integer paise (CGST Act) — never floating point
-  date?: string; // ISO date (due / expiry / maturity) for the row
+  days_overdue: number | null;
+  amount_paise: number | null;
+  date: string | null;
+  particulars: Record<string, string>;
 }
 
-interface AdvanceTaxRisk {
-  clientId: string;
-  clientName: string;
-  installment: string;
-  dueDate: string;
-  daysOverdue: number;
+interface RegisterPayload {
+  as_at: string;
+  counts: Record<string, number>;
+  notes: string[];
+  gaps: string[];
+  rows: RiskRow[];
 }
 
-interface DscExpiryRisk {
-  clientId: string;
-  clientName: string;
-  dscHolder: string;
-  expiryDate: string;
-  daysLeft: number;
-}
-
-interface LoanOverdueRisk {
-  clientId: string;
-  clientName: string;
-  lenderName: string;
-  loanType: string;
-  outstandingPaise: number;
-}
-
-interface FdMaturityRisk {
-  clientId: string;
-  clientName: string;
-  bankName: string;
-  maturityDate: string;
-  daysLeft: number;
-  maturityAmountPaise: number;
-}
-
-interface MissingPanRisk {
-  clientId: string;
-  clientName: string;
-}
-
-// The quarterly TDS statements, which this page scores under IT Act §200A
-// rather than as ordinary overdue filings. ONE list, because it is read twice —
-// once to exclude these from the general overdue bucket and once to select them
-// into the TDS one — and two copies is how 27Q would have landed in the wrong
-// bucket instead of failing visibly.
-//
-// 27Q is the payments-to-non-residents statement (Rule 31A(4)(b)). §200A's
-// late-filing fee does not care which form it is, so it belongs here with the
-// other two. 27EQ is TCS under §206C and is deliberately absent: nothing in
-// this codebase generates it.
-const TDS_STATEMENT_TYPES = ["TDS24Q", "TDS26Q", "TDS27Q"];
-
-// THE SCREEN THAT EXISTS TO FIND A WRONG GSTIN USED THE ONE TEST THAT CANNOT
-// FIND THE COMMONEST WRONG GSTIN.
-//
-// This carried its own shape regex — a third copy of a rule the browser already
-// has exactly one of, `lib/gst/gstin.gstinProblem`, pinned to
-// apps/api/domain/gst/gstin.py by tests/fixtures/gstin.json. The shape accepts
-// every transposition inside the PAN (27AAPFU0939F1ZV and 27AAPFU0399F1ZV are
-// both well-formed) and accepts a state code that does not exist, so the GSTIN
-// Mismatch section reported clean on precisely the errors a CA opens this page
-// to be told about. `gstinProblem` names the character to look at, which is
-// what the `reason` column here is for.
-
-
-// Days elapsed since `dateStr`, both anchored to LOCAL midnight.
-//
-// The form this replaced — Math.floor((localMidnightToday - new Date(dateStr)) /
-// 86400000) — was short by exactly one day EVERY time, not just overnight.
-// `new Date("2026-09-01")` is UTC midnight; local midnight in IST is 18:30 UTC
-// on the previous day, so the difference is always 5.5 hours under a whole
-// number of days and floor() takes the day off. A filing 10 days overdue read
-// 9, and overdueRiskLevel() turns on 30 and 15.
-function daysBetween(dateStr: string, todayISO: string): number {
-  return daysBetweenLocalISO(String(dateStr).slice(0, 10), todayISO) ?? 0;
-}
-
-function overdueRiskLevel(days: number): "high" | "medium" | "low" {
-  if (days > 30) return "high";
-  if (days >= 15) return "medium";
-  return "low";
-}
+// The order the categories are shown in, worst first. A LABEL LIST, not a
+// vocabulary: a kind the server sends that is missing here still renders, in
+// its own section at the end, so a tenth risk cannot go unseen because nobody
+// edited this array. That is the `table_4a_gaps` discipline — a nil meaning
+// "we did not look" is not a nil meaning "there was none".
+const CATEGORY_ORDER = [
+  "Overdue Filing",
+  "TDS Default",
+  "Advance Tax Default",
+  "GSTIN Mismatch",
+  "DSC Expiry",
+  "Loan Overdue",
+  "Missing PAN",
+  "Inactive Client",
+  "FD Maturing Soon",
+];
 
 function riskColor(level: string) {
-  const m: Record<string, string> = { critical: "text-state-problem bg-red-100", high: "text-state-problem bg-red-100", medium: "text-orange-700 bg-orange-100", low: "text-yellow-700 bg-yellow-100" };
+  const m: Record<string, string> = {
+    critical: "text-state-problem bg-red-100",
+    high: "text-state-problem bg-red-100",
+    medium: "text-orange-700 bg-orange-100",
+    low: "text-yellow-700 bg-yellow-100",
+  };
   return m[level] ?? "text-ps-body bg-ps-muted";
-}
-
-function riskRowColor(level: string) {
-  const m: Record<string, string> = { high: "bg-state-problem-surface", medium: "bg-orange-50", low: "bg-yellow-50" };
-  return m[level] ?? "";
-}
-
-function exportCsv(rows: RiskRegisterRow[]) {
-  // The client name and the risk type used to go out UNQUOTED, so a client
-  // called "Sharma, Gupta & Co" shifted every column after it by one — for
-  // that row alone, so the file opened and one line sat under the wrong
-  // headings. `toCsvRows` quotes what needs quoting and doubles the quotes
-  // inside a description.
-  downloadCsv(`risk-report-${todayLocalISO()}.csv`, toCsvRows([
-    ["Client", "Risk Type", "Description", "Severity", "Recommended Action"],
-    ...rows.map((r) => [r.clientName, r.riskType, r.description, r.severity, r.action]),
-  ]));
 }
 
 function OverallScoreCard({ total }: { total: number }) {
@@ -196,7 +119,9 @@ function OverallScoreCard({ total }: { total: number }) {
   );
 }
 
-function MiniCard({ label, count, color, icon: Icon }: { label: string; count: number; color: string; icon: React.ElementType }) {
+function MiniCard({ label, count, color, icon: Icon }: {
+  label: string; count: number; color: string; icon: React.ElementType;
+}) {
   return (
     <div className={`rounded-xl border p-4 flex items-center gap-3 ${color}`}>
       <Icon size={20} className="shrink-0" />
@@ -208,215 +133,92 @@ function MiniCard({ label, count, color, icon: Icon }: { label: string; count: n
   );
 }
 
+/**
+ * One category's table, with the columns the SERVER named.
+ *
+ * The union of every row's `particulars` keys, in first-seen order, is the
+ * column set — so two rows of one kind that carry different particulars (a
+ * loan with no lender recorded, say) both render, with a dash where a value is
+ * absent rather than the row being dropped.
+ */
+function CategoryCard({ title, rows }: { title: string; rows: RiskRow[] }) {
+  const columns = useMemo(() => {
+    const seen: string[] = [];
+    for (const r of rows) {
+      for (const k of Object.keys(r.particulars ?? {})) {
+        if (!seen.includes(k)) seen.push(k);
+      }
+    }
+    return seen;
+  }, [rows]);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <AlertCircle size={16} className="text-red-500" />
+          {title}
+          <span className="ml-auto text-xs font-medium bg-red-100 text-state-problem px-2 py-0.5 rounded-full">
+            {rows.length}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-ps-muted bg-ps-bg text-left">
+                <th className="px-4 py-3 font-medium text-ps-label">Client</th>
+                {columns.map((c) => (
+                  <th key={c} className="px-4 py-3 font-medium text-ps-label">{c}</th>
+                ))}
+                <th className="px-4 py-3 font-medium text-ps-label">Severity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={`${r.client_id}-${r.risk_type}-${i}`} className="border-b border-ps-muted last:border-0">
+                  <td className="px-4 py-3 font-medium text-ps-ink">{r.client_name}</td>
+                  {columns.map((c) => (
+                    <td key={c} className="px-4 py-3 text-ps-label">
+                      {r.particulars?.[c] ?? <span className="text-ps-hint">—</span>}
+                    </td>
+                  ))}
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${riskColor(r.severity)}`}>
+                      {r.severity}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function RisksPage() {
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [overdueRisks, setOverdueRisks] = useState<OverdueRisk[]>([]);
-  const [gstinRisks, setGstinRisks] = useState<InvalidGstinClient[]>([]);
-  const [tdsRisks, setTdsRisks] = useState<OverdueRisk[]>([]);
-  const [inactiveClients, setInactiveClients] = useState<InactiveClient[]>([]);
-  const [advanceTaxRisks, setAdvanceTaxRisks] = useState<AdvanceTaxRisk[]>([]);
-  const [dscExpiryRisks, setDscExpiryRisks] = useState<DscExpiryRisk[]>([]);
-  const [loanOverdueRisks, setLoanOverdueRisks] = useState<LoanOverdueRisk[]>([]);
-  const [fdMaturityRisks, setFdMaturityRisks] = useState<FdMaturityRisk[]>([]);
-  const [missingPanRisks, setMissingPanRisks] = useState<MissingPanRisk[]>([]);
+  const [register, setRegister] = useState<RegisterPayload | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setPageError(null);
     try {
-      const [clients, firmId] = await Promise.all([getClients(), getFirmId()]);
-      const sb = getSupabaseClient();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayStr = toLocalISO(today);
-
-      // Compliance calendar.
-      //
-      // EVERY READ ON THIS SCREEN PAGES, because the Export button builds a CSV
-      // straight from what these queries return. PostgREST caps a response at
-      // ~1000 rows and says nothing when it does — no error, no flag — so an
-      // unpaged read produces a risk report that is short by however much the
-      // cap removed, with nothing on the page or in the file to say so.
-      // compliance_calendar carries one row per obligation per client per
-      // period, so a 50-client book passes 1000 inside a single year.
-      //
-      // `.order("id")` is not cosmetic: selectAll pages by OFFSET, so without a
-      // stable TOTAL ordering rows can shift between pages and be duplicated or
-      // skipped. See lib/supabase/selectAll.
-      const { data: complianceData, error: compErr } = await selectAll(() => sb
-        .from("compliance_calendar")
-        .select("id, client_id, compliance_type, due_date, filing_status")
-        .eq("firm_id", firmId)
-        .lt("due_date", todayStr)
-        .order("id"));
-      // M17: a failed category query must surface as pageError (retryable),
-      // never be swallowed to [] and rendered as a reassuring "All Clear".
-      if (compErr) throw compErr;
-
-      const compliance: ComplianceEntry[] = (complianceData ?? []) as ComplianceEntry[];
-      const clientMap: Record<string, string> = Object.fromEntries(clients.map((c) => [c.id, c.client_name]));
-
-      // Overdue filing risk
-      setOverdueRisks(
-        compliance
-          .filter((e) => e.filing_status !== "filed" && !TDS_STATEMENT_TYPES.includes(e.compliance_type))
-          .map((e) => {
-            const days = daysBetween(e.due_date, todayStr);
-            return { clientId: e.client_id, clientName: clientMap[e.client_id] ?? "Unknown", filingType: e.compliance_type, dueDate: e.due_date, daysOverdue: days, riskLevel: overdueRiskLevel(days) };
-          })
-          .sort((a, b) => b.daysOverdue - a.daysOverdue)
-      );
-
-      // TDS default risk — IT Act Section 200A
-      setTdsRisks(
-        compliance
-          .filter((e) => TDS_STATEMENT_TYPES.includes(e.compliance_type) && e.filing_status !== "filed")
-          .map((e) => ({ clientId: e.client_id, clientName: clientMap[e.client_id] ?? "Unknown", filingType: e.compliance_type, dueDate: e.due_date, daysOverdue: daysBetween(e.due_date, todayStr), riskLevel: "high" as const }))
-          .sort((a, b) => b.daysOverdue - a.daysOverdue)
-      );
-
-      // GSTIN mismatch — CGST Act Section 25
-      setGstinRisks(
-        clients
-          .filter((c) => c.gstin && c.gstin.trim().length > 0)
-          .flatMap((c) => {
-            const reason = gstinProblem(c.gstin);
-            return reason ? [{ clientId: c.id, clientName: c.client_name, gstin: c.gstin!, reason }] : [];
-          })
-      );
-
-      // Inactive clients (no entries in last 90 days)
-      const ninetyAgo = new Date(today);
-      ninetyAgo.setDate(ninetyAgo.getDate() - 90);
-      const { data: recentData, error: recentErr } = await selectAll(() => sb
-        .from("compliance_calendar").select("client_id").eq("firm_id", firmId)
-        .gte("due_date", toLocalISO(ninetyAgo))
-        .order("id"));
-      if (recentErr) throw recentErr;
-      const activeIds = new Set((recentData ?? []).map((r: { client_id: string }) => r.client_id));
-      setInactiveClients(clients.filter((c) => !activeIds.has(c.id)).map((c) => ({ clientId: c.id, clientName: c.client_name, daysInactive: 90 })));
-
-      // Missing PAN — blocks TDS deduction and ITR filing (IT Act Section 139A)
-      setMissingPanRisks(
-        clients
-          .filter((c) => !c.pan || c.pan.trim().length === 0)
-          .map((c) => ({ clientId: c.id, clientName: c.client_name }))
-      );
-
-      // Advance Tax Default — IT Act Section 208/234B/234C
-      // Due dates: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
-      const curYear = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
-      const advanceTaxInstallments = [
-        { label: "1st Installment (15%)", date: `${curYear}-06-15` },
-        { label: "2nd Installment (45%)", date: `${curYear}-09-15` },
-        { label: "3rd Installment (75%)", date: `${curYear}-12-15` },
-        { label: "4th Installment (100%)", date: `${curYear + 1}-03-15` },
-      ];
-      const { data: advTaxData, error: advTaxErr } = await selectAll(() => sb
-        .from("compliance_calendar")
-        .select("client_id, compliance_type, due_date, filing_status")
-        .eq("firm_id", firmId)
-        .eq("compliance_type", "ADVANCE_TAX")
-        .lt("due_date", todayStr)
-        .order("id"));
-      if (advTaxErr) throw advTaxErr;
-      const filedAdvTax = new Set(
-        ((advTaxData ?? []) as { client_id: string; due_date: string; filing_status: string }[])
-          .filter((e) => e.filing_status === "filed")
-          .map((e) => `${e.client_id}|${e.due_date}`)
-      );
-      const advRisks: AdvanceTaxRisk[] = [];
-      for (const client of clients) {
-        for (const inst of advanceTaxInstallments) {
-          if (inst.date < todayStr && !filedAdvTax.has(`${client.id}|${inst.date}`)) {
-            // Only flag if there's a compliance entry for this client (i.e. they're tracked for advance tax)
-            const tracked = (advTaxData ?? []) as { client_id: string }[];
-            if (tracked.some((e) => e.client_id === client.id)) {
-              advRisks.push({
-                clientId: client.id,
-                clientName: client.client_name,
-                installment: inst.label,
-                dueDate: inst.date,
-                daysOverdue: daysBetween(inst.date, todayStr),
-              });
-            }
-          }
-        }
+      // The GST workspace router answers a refusal as HTTP 200 with
+      // `{success: false}`, so an unchecked call renders an empty register as
+      // though it were a clean one. Check it.
+      const res = (await api.risks.register()) as
+        { success: boolean; data: RegisterPayload | null; error?: string | null };
+      if (!res.success || !res.data) {
+        throw new Error(res.error || "Could not load the risk register");
       }
-      setAdvanceTaxRisks(advRisks);
-
-      // DSC Expiry — within 60 days (IT Act Rule 12 — digital signature for e-filing)
-      const sixtyAhead = new Date(today);
-      sixtyAhead.setDate(sixtyAhead.getDate() + 60);
-      const sixtyAheadStr = toLocalISO(sixtyAhead);
-      // dsc_records, not "dsc_tracker" — the latter has never existed, and this
-      // query threw partway through load(), so every risk section below it was
-      // left empty too.
-      //
-      // A DSC is held by a PERSON and registered to the firm: dsc_records has
-      // holder_name but no client_id, so there is no client to attribute one to.
-      // The client column therefore reads "Firm-wide" rather than inventing an
-      // owner — the holder name in the next column is the identifying fact.
-      const { data: dscData, error: dscErr } = await selectAll(() => sb
-        .from("dsc_records")
-        .select("id, holder_name, expiry_date")
-        .eq("firm_id", firmId)
-        .is("deleted_at", null)
-        .lte("expiry_date", sixtyAheadStr)
-        .gte("expiry_date", todayStr)
-        .order("id"));
-      if (dscErr) throw dscErr;
-      setDscExpiryRisks(
-        ((dscData ?? []) as { id: string; holder_name: string; expiry_date: string }[]).map((d) => ({
-          clientId: "",
-          clientName: "Firm-wide",
-          dscHolder: d.holder_name,
-          expiryDate: d.expiry_date,
-          daysLeft: daysBetweenLocalISO(todayStr, String(d.expiry_date).slice(0, 10)) ?? 0,
-        }))
-      );
-
-      // Loan Overdue
-      const { data: loanData, error: loanErr } = await selectAll(() => sb
-        .from("loans")
-        .select("client_id, lender_name, loan_type, outstanding_paise")
-        .eq("firm_id", firmId)
-        .eq("status", "overdue")
-        .order("id"));
-      if (loanErr) throw loanErr;
-      setLoanOverdueRisks(
-        ((loanData ?? []) as { client_id: string; lender_name: string; loan_type: string; outstanding_paise: number }[]).map((l) => ({
-          clientId: l.client_id,
-          clientName: clientMap[l.client_id] ?? "Unknown",
-          lenderName: l.lender_name,
-          loanType: l.loan_type,
-          outstandingPaise: l.outstanding_paise,
-        }))
-      );
-
-      // FD Maturity within 30 days — Section 194A TDS on interest
-      const thirtyAhead = new Date(today);
-      thirtyAhead.setDate(thirtyAhead.getDate() + 30);
-      const { data: fdData, error: fdErr } = await selectAll(() => sb
-        .from("fixed_deposits")
-        .select("client_id, bank_name, maturity_date, maturity_amount_paise")
-        .eq("firm_id", firmId)
-        .eq("status", "active")
-        .lte("maturity_date", toLocalISO(thirtyAhead))
-        .gte("maturity_date", todayStr)
-        .order("id"));
-      if (fdErr) throw fdErr;
-      setFdMaturityRisks(
-        ((fdData ?? []) as { client_id: string; bank_name: string; maturity_date: string; maturity_amount_paise: number }[]).map((f) => ({
-          clientId: f.client_id,
-          clientName: clientMap[f.client_id] ?? "Unknown",
-          bankName: f.bank_name,
-          maturityDate: f.maturity_date,
-          daysLeft: daysBetweenLocalISO(todayStr, String(f.maturity_date).slice(0, 10)) ?? 0,
-          maturityAmountPaise: f.maturity_amount_paise,
-        }))
-      );
+      setRegister(res.data);
     } catch (err) {
       setPageError(err instanceof Error ? err.message : "Failed to load risk data");
     } finally {
@@ -426,35 +228,39 @@ export default function RisksPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const riskRegister: RiskRegisterRow[] = [
-    ...overdueRisks.map((r) => ({ clientName: r.clientName, riskType: "Overdue Filing", description: `${r.filingType} overdue by ${r.daysOverdue} days (due ${r.dueDate})`, severity: r.riskLevel as "high" | "medium" | "low", action: "File immediately and pay late fee under CGST Act Section 47", daysOverdue: r.daysOverdue, date: r.dueDate })),
-    ...tdsRisks.map((r) => ({ clientName: r.clientName, riskType: "TDS Default", description: `${r.filingType} overdue by ${r.daysOverdue} days — IT Act Section 200A interest applies`, severity: "high" as const, action: "File TDS return and compute interest u/s 201(1A)", daysOverdue: r.daysOverdue, date: r.dueDate })),
-    ...gstinRisks.map((r) => ({ clientName: r.clientName, riskType: "GSTIN Mismatch", description: `GSTIN ${r.gstin} is invalid: ${r.reason}`, severity: "medium" as const, action: "Verify GSTIN on GST portal and update client record" })),
-    ...inactiveClients.map((c) => ({ clientName: c.clientName, riskType: "Inactive Client", description: "No compliance entries in last 90 days", severity: "low" as const, action: "Confirm client status and add compliance calendar entries if active" })),
-    ...advanceTaxRisks.map((r) => ({ clientName: r.clientName, riskType: "Advance Tax Default", description: `${r.installment} not filed — due ${r.dueDate}, ${r.daysOverdue} days overdue`, severity: "high" as const, action: "Pay advance tax with interest u/s 234B/234C of IT Act", daysOverdue: r.daysOverdue, date: r.dueDate })),
-    ...dscExpiryRisks.map((r) => ({ clientName: r.clientName, riskType: "DSC Expiry", description: `DSC of ${r.dscHolder} expires on ${r.expiryDate} (${r.daysLeft} days left)`, severity: (r.daysLeft <= 15 ? "high" : "medium") as "high" | "medium", action: "Renew DSC before expiry — required for e-filing under IT Act Rule 12", date: r.expiryDate })),
-    ...loanOverdueRisks.map((r) => ({ clientName: r.clientName, riskType: "Loan Overdue", description: `${r.loanType} from ${r.lenderName} is overdue — ${formatPaise(r.outstandingPaise)} outstanding`, severity: "high" as const, action: "Contact lender immediately — overdue may affect credit rating and attract penal interest", amountPaise: r.outstandingPaise })),
-    ...fdMaturityRisks.map((r) => ({ clientName: r.clientName, riskType: "FD Maturing Soon", description: `FD at ${r.bankName} matures on ${r.maturityDate} (${r.daysLeft} days) — ${formatPaise(r.maturityAmountPaise)}`, severity: "low" as const, action: "Advise client on renewal or withdrawal — TDS applicable u/s 194A if interest > ₹40,000", amountPaise: r.maturityAmountPaise, date: r.maturityDate })),
-    ...missingPanRisks.map((r) => ({ clientName: r.clientName, riskType: "Missing PAN", description: "Client has no PAN on record", severity: "medium" as const, action: "Obtain PAN — mandatory for TDS deduction and ITR filing u/s 139A of IT Act" })),
-  ];
+  const rows = register?.rows ?? [];
+  const counts = register?.counts ?? {};
+  const total = counts.total ?? 0;
 
-  const totalRisks = riskRegister.length;
-  const highCount = riskRegister.filter((r) => r.severity === "high" || r.severity === "critical").length;
-  const mediumCount = riskRegister.filter((r) => r.severity === "medium").length;
-  const lowCount = riskRegister.filter((r) => r.severity === "low").length;
+  // Worst first, then whatever the server sent that this list does not name.
+  const grouped = useMemo(() => {
+    const byType = new Map<string, RiskRow[]>();
+    for (const r of rows) {
+      const list = byType.get(r.risk_type) ?? [];
+      list.push(r);
+      byType.set(r.risk_type, list);
+    }
+    const named = CATEGORY_ORDER.filter((t) => byType.has(t));
+    const unnamed = Array.from(byType.keys()).filter((t) => !CATEGORY_ORDER.includes(t)).sort();
+    return [...named, ...unnamed].map((t) => ({ title: t, rows: byType.get(t) ?? [] }));
+  }, [rows]);
 
-  // ── Risk Register DataTable: columns / filters ───────────────────────────────
-  // Amounts are integer paise (CGST Act) — accessor returns paise for numeric
-  // sorting; the cell renders via the shared formatPaise, exported in rupees.
-  const registerColumns: Column<RiskRegisterRow>[] = useMemo(() => [
+  function exportCsv() {
+    downloadCsv(`risk-report-${todayLocalISO()}.csv`, toCsvRows([
+      ["Client", "Risk Type", "Description", "Severity", "Recommended Action"],
+      ...rows.map((r) => [r.client_name, r.risk_type, r.description, r.severity, r.action]),
+    ]));
+  }
+
+  const registerColumns: Column<RiskRow>[] = useMemo(() => [
     {
-      key: "clientName", header: "Client", accessor: (r) => r.clientName,
+      key: "clientName", header: "Client", accessor: (r) => r.client_name,
       searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (r) => <span className="font-medium text-ps-ink">{r.clientName}</span>,
+      render: (r) => <span className="font-medium text-ps-ink">{r.client_name}</span>,
     },
     {
-      key: "riskType", header: "Risk Type", accessor: (r) => r.riskType, sortable: true,
-      render: (r) => <span className="text-ps-label">{r.riskType}</span>,
+      key: "riskType", header: "Risk Type", accessor: (r) => r.risk_type, sortable: true,
+      render: (r) => <span className="text-ps-label">{r.risk_type}</span>,
     },
     {
       key: "severity", header: "Severity", accessor: (r) => r.severity,
@@ -465,16 +271,19 @@ export default function RisksPage() {
       ),
     },
     {
-      key: "daysOverdue", header: "Days Overdue", accessor: (r) => r.daysOverdue ?? null,
+      key: "daysOverdue", header: "Days Overdue", accessor: (r) => r.days_overdue ?? null,
       sortable: true, align: "right",
-      render: (r) =>
-        r.daysOverdue == null ? <span className="text-ps-hint">—</span> : <span className="font-semibold text-ps-ink">{r.daysOverdue}</span>,
+      render: (r) => r.days_overdue == null
+        ? <span className="text-ps-hint">—</span>
+        : <span className="font-semibold text-ps-ink">{r.days_overdue}</span>,
     },
     {
-      key: "amount", header: "Amount", accessor: (r) => r.amountPaise ?? null,
-      sortable: true, align: "right", exportValue: (r) => (r.amountPaise == null ? "" : r.amountPaise / 100),
-      render: (r) =>
-        r.amountPaise == null ? <span className="text-ps-hint">—</span> : <span className="text-ps-body">{formatPaise(r.amountPaise)}</span>,
+      key: "amount", header: "Amount", accessor: (r) => r.amount_paise ?? null,
+      sortable: true, align: "right",
+      exportValue: (r) => (r.amount_paise == null ? "" : r.amount_paise / 100),
+      render: (r) => r.amount_paise == null
+        ? <span className="text-ps-hint">—</span>
+        : <span className="text-ps-body">{formatPaise(r.amount_paise)}</span>,
     },
     {
       key: "date", header: "Date", accessor: (r) => r.date ?? "", sortable: true,
@@ -490,41 +299,39 @@ export default function RisksPage() {
     },
   ], []);
 
-  const registerFilters: FilterDef<RiskRegisterRow>[] = useMemo(() => [
+  // The category filter is built from what ARRIVED, not from a list kept here.
+  // A hardcoded option list is how a screen comes to offer a category the
+  // engine no longer emits, and to omit one it does.
+  const registerFilters: FilterDef<RiskRow>[] = useMemo(() => [
     {
-      key: "riskType", label: "Category", type: "select", accessor: (r) => r.riskType,
-      options: [
-        "Overdue Filing",
-        "TDS Default",
-        "GSTIN Mismatch",
-        "Inactive Client",
-        "Advance Tax Default",
-        "DSC Expiry",
-        "Loan Overdue",
-        "FD Maturing Soon",
-        "Missing PAN",
-      ].map((t) => ({ value: t, label: t })),
+      key: "riskType", label: "Category", type: "select", accessor: (r) => r.risk_type,
+      options: Array.from(new Set(rows.map((r) => r.risk_type))).sort().map((t) => ({ value: t, label: t })),
     },
     {
       key: "severity", label: "Severity", type: "select", accessor: (r) => r.severity,
-      options: (["critical", "high", "medium", "low"]).map((s) => ({ value: s, label: s[0].toUpperCase() + s.slice(1) })),
+      options: (["critical", "high", "medium", "low"]).map((s) => ({
+        value: s, label: s[0].toUpperCase() + s.slice(1),
+      })),
     },
-  ], []);
+  ], [rows]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-ps-ink">Risk Intelligence</h1>
-          <p className="text-sm text-ps-label mt-0.5">Real-time risk monitoring across all clients</p>
+          <p className="text-sm text-ps-label mt-0.5">
+            Statutory risk across the clients you can see
+            {register?.as_at ? ` · as at ${formatDate(register.as_at)}` : ""}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={loadData} disabled={loading} className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50">
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             Refresh
           </button>
-          {riskRegister.length > 0 && (
-            <button onClick={() => exportCsv(riskRegister)} className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+          {rows.length > 0 && (
+            <button onClick={exportCsv} className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
               <Download size={14} />
               Export CSV
             </button>
@@ -543,313 +350,71 @@ export default function RisksPage() {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="sm:col-span-2 lg:col-span-1"><OverallScoreCard total={totalRisks} /></div>
-            <MiniCard label="High / Critical" count={highCount} color="text-red-600 bg-state-problem-surface border-state-problem-border border" icon={AlertCircle} />
-            <MiniCard label="Medium Risk" count={mediumCount} color="text-orange-600 bg-orange-50 border-orange-200 border" icon={AlertTriangle} />
-            <MiniCard label="Low Risk" count={lowCount} color="text-yellow-600 bg-yellow-50 border-yellow-200 border" icon={Info} />
+            <div className="sm:col-span-2 lg:col-span-1"><OverallScoreCard total={total} /></div>
+            <MiniCard label="High / Critical" count={(counts.high ?? 0) + (counts.critical ?? 0)} color="text-red-600 bg-state-problem-surface border-state-problem-border border" icon={AlertCircle} />
+            <MiniCard label="Medium Risk" count={counts.medium ?? 0} color="text-orange-600 bg-orange-50 border-orange-200 border" icon={AlertTriangle} />
+            <MiniCard label="Low Risk" count={counts.low ?? 0} color="text-yellow-600 bg-yellow-50 border-yellow-200 border" icon={Info} />
           </div>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <AlertCircle size={16} className="text-red-500" />
-                Overdue Filing Risk
-                {overdueRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-state-problem px-2 py-0.5 rounded-full">{overdueRisks.length} overdue</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {overdueRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-ps-label">No overdue filings detected.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-ps-muted bg-ps-bg text-left"><th className="px-4 py-3 font-medium text-ps-label">Client</th><th className="px-4 py-3 font-medium text-ps-label">Filing Type</th><th className="px-4 py-3 font-medium text-ps-label">Due Date</th><th className="px-4 py-3 font-medium text-ps-label">Days Overdue</th><th className="px-4 py-3 font-medium text-ps-label">Risk Level</th></tr></thead>
-                    <tbody className="divide-y divide-ps-bg">
-                      {overdueRisks.map((r, i) => (
-                        <tr key={i} className={`hover:bg-ps-bg transition-colors ${riskRowColor(r.riskLevel)}`}>
-                          <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.filingType}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.dueDate}</td>
-                          <td className="px-4 py-3 font-semibold text-ps-ink">{r.daysOverdue}</td>
-                          <td className="px-4 py-3"><span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${riskColor(r.riskLevel)}`}>{r.riskLevel}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <ShieldAlert size={16} className="text-orange-500" />
-                GSTIN Mismatch Risk
-                {gstinRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{gstinRisks.length} invalid</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {gstinRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-ps-label">All GSTINs are valid.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-ps-muted bg-ps-bg text-left"><th className="px-4 py-3 font-medium text-ps-label">Client</th><th className="px-4 py-3 font-medium text-ps-label">GSTIN</th><th className="px-4 py-3 font-medium text-ps-label">Issue</th></tr></thead>
-                    <tbody className="divide-y divide-ps-bg">
-                      {gstinRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-ps-bg bg-orange-50 transition-colors">
-                          <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
-                          <td className="px-4 py-3 font-mono text-ps-label">{r.gstin}</td>
-                          <td className="px-4 py-3 text-orange-700">{r.reason}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <AlertTriangle size={16} className="text-red-500" />
-                TDS Default Risk
-                {tdsRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-state-problem px-2 py-0.5 rounded-full">{tdsRisks.length} defaulted</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {tdsRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-ps-label">No TDS defaults detected.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-ps-muted bg-ps-bg text-left"><th className="px-4 py-3 font-medium text-ps-label">Client</th><th className="px-4 py-3 font-medium text-ps-label">Return Type</th><th className="px-4 py-3 font-medium text-ps-label">Due Date</th><th className="px-4 py-3 font-medium text-ps-label">Days Overdue</th></tr></thead>
-                    <tbody className="divide-y divide-ps-bg">
-                      {tdsRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-ps-bg bg-state-problem-surface transition-colors">
-                          <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.filingType}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.dueDate}</td>
-                          <td className="px-4 py-3 font-semibold text-state-problem">{r.daysOverdue}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Info size={16} className="text-ps-hint" />
-                Inactive Clients (no entries in 90 days)
-                {inactiveClients.length > 0 && <span className="ml-auto text-xs font-medium bg-ps-muted text-ps-label px-2 py-0.5 rounded-full">{inactiveClients.length} inactive</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {inactiveClients.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-ps-label">All clients have recent activity.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2 px-4 py-3">
-                  {inactiveClients.map((c) => (
-                    <span key={c.clientId} className="inline-flex items-center rounded-full border border-ps-border bg-ps-bg px-3 py-1 text-xs font-medium text-ps-label">{c.clientName}</span>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Advance Tax Default */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <CalendarClock size={16} className="text-red-500" />
-                Advance Tax Default Risk
-                {advanceTaxRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-state-problem px-2 py-0.5 rounded-full">{advanceTaxRisks.length} defaulted</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {advanceTaxRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-ps-label">No advance tax defaults detected.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-ps-muted bg-ps-bg text-left"><th className="px-4 py-3 font-medium text-ps-label">Client</th><th className="px-4 py-3 font-medium text-ps-label">Installment</th><th className="px-4 py-3 font-medium text-ps-label">Due Date</th><th className="px-4 py-3 font-medium text-ps-label">Days Overdue</th></tr></thead>
-                    <tbody className="divide-y divide-ps-bg">
-                      {advanceTaxRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-ps-bg bg-state-problem-surface transition-colors">
-                          <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.installment}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.dueDate}</td>
-                          <td className="px-4 py-3 font-semibold text-state-problem">{r.daysOverdue}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* DSC Expiry */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <KeyRound size={16} className="text-orange-500" />
-                DSC Expiry Risk
-                {dscExpiryRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{dscExpiryRisks.length} expiring</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {dscExpiryRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-ps-label">No DSCs expiring in the next 60 days.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-ps-muted bg-ps-bg text-left"><th className="px-4 py-3 font-medium text-ps-label">Client</th><th className="px-4 py-3 font-medium text-ps-label">DSC Holder</th><th className="px-4 py-3 font-medium text-ps-label">Expiry Date</th><th className="px-4 py-3 font-medium text-ps-label">Days Left</th></tr></thead>
-                    <tbody className="divide-y divide-ps-bg">
-                      {dscExpiryRisks.map((r, i) => (
-                        <tr key={i} className={`hover:bg-ps-bg transition-colors ${r.daysLeft <= 15 ? "bg-state-problem-surface" : "bg-orange-50"}`}>
-                          <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.dscHolder}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.expiryDate}</td>
-                          <td className={`px-4 py-3 font-semibold ${r.daysLeft <= 15 ? "text-state-problem" : "text-orange-700"}`}>{r.daysLeft}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Loan Overdue */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Landmark size={16} className="text-red-500" />
-                Loan Overdue Risk
-                {loanOverdueRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-state-problem px-2 py-0.5 rounded-full">{loanOverdueRisks.length} overdue</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {loanOverdueRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-ps-label">No overdue loans detected.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-ps-muted bg-ps-bg text-left"><th className="px-4 py-3 font-medium text-ps-label">Client</th><th className="px-4 py-3 font-medium text-ps-label">Lender</th><th className="px-4 py-3 font-medium text-ps-label">Loan Type</th><th className="px-4 py-3 font-medium text-ps-label">Outstanding</th></tr></thead>
-                    <tbody className="divide-y divide-ps-bg">
-                      {loanOverdueRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-ps-bg bg-state-problem-surface transition-colors">
-                          <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.lenderName}</td>
-                          <td className="px-4 py-3 text-ps-label capitalize">{r.loanType.replace(/_/g, " ")}</td>
-                          <td className="px-4 py-3 font-semibold text-state-problem">{formatPaise(r.outstandingPaise)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* FD Maturity */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Info size={16} className="text-blue-500" />
-                FD Maturing in 30 Days
-                {fdMaturityRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{fdMaturityRisks.length} maturing</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {fdMaturityRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-ps-label">No FDs maturing in the next 30 days.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-ps-muted bg-ps-bg text-left"><th className="px-4 py-3 font-medium text-ps-label">Client</th><th className="px-4 py-3 font-medium text-ps-label">Bank</th><th className="px-4 py-3 font-medium text-ps-label">Maturity Date</th><th className="px-4 py-3 font-medium text-ps-label">Days Left</th><th className="px-4 py-3 font-medium text-ps-label">Amount</th></tr></thead>
-                    <tbody className="divide-y divide-ps-bg">
-                      {fdMaturityRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-ps-bg bg-blue-50 transition-colors">
-                          <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.bankName}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.maturityDate}</td>
-                          <td className="px-4 py-3 font-semibold text-blue-700">{r.daysLeft}</td>
-                          <td className="px-4 py-3 text-ps-body">{formatPaise(r.maturityAmountPaise)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Missing PAN */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <UserX size={16} className="text-orange-500" />
-                Missing PAN
-                {missingPanRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{missingPanRisks.length} missing</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {missingPanRisks.length === 0 ? (
-                <p className="px-6 py-4 text-sm text-ps-label">All clients have PAN on record.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2 px-4 py-3">
-                  {missingPanRisks.map((c) => (
-                    <span key={c.clientId} className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700">{c.clientName}</span>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {riskRegister.length > 0 && (
+          {/* What the engine could not establish, and the conventions it applied.
+              Rendered because a register read without them reads as complete. */}
+          {((register?.notes?.length ?? 0) > 0 || (register?.gaps?.length ?? 0) > 0) && (
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <ShieldAlert size={16} className="text-blue-500" />
-                  Risk Register — All Risks
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* Consolidated register — shared DataTable (search, category/severity filters,
-                    sort by days-overdue / amount / date, pagination, CSV export, prefs). */}
-                <DataTable
-                  data={riskRegister}
-                  columns={registerColumns}
-                  filters={registerFilters}
-                  getRowId={(r) => `${r.clientName}|${r.riskType}|${r.date ?? ""}|${r.description}`}
-                  loading={loading}
-                  error={pageError}
-                  onRetry={loadData}
-                  onRefresh={loadData}
-                  searchPlaceholder="Search by client or description…"
-                  initialSort={{ key: "daysOverdue", dir: "desc" }}
-                  exportFilename="risk-register"
-                  persistKey="risks.register"
-                  emptyTitle="No risks in register"
-                />
+              <CardContent className="py-4 space-y-1.5">
+                {register?.gaps?.map((g) => (
+                  <p key={g} className="text-xs text-orange-700 flex gap-2">
+                    <AlertTriangle size={13} className="shrink-0 mt-0.5" />{g}
+                  </p>
+                ))}
+                {register?.notes?.map((n) => (
+                  <p key={n} className="text-xs text-ps-label flex gap-2">
+                    <Info size={13} className="shrink-0 mt-0.5" />{n}
+                  </p>
+                ))}
               </CardContent>
             </Card>
           )}
 
-          {totalRisks === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-ps-border bg-ps-bg py-20 text-center">
-              <CheckCircle className="h-12 w-12 text-green-400 mb-3" />
-              <p className="text-sm font-medium text-ps-body">No risks detected</p>
-              <p className="text-xs text-ps-hint mt-1">All clients have valid GSTINs, no overdue filings, and recent activity.</p>
-            </div>
+          {total === 0 ? (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <CheckCircle className="h-10 w-10 text-green-600 mx-auto mb-3" />
+                <p className="text-sm font-medium text-ps-ink">Nothing outstanding</p>
+                <p className="text-xs text-ps-label mt-1">
+                  No overdue filing, TDS default, invalid GSTIN, missed instalment,
+                  expiring certificate, overdue loan or maturing deposit.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {grouped.map((g) => (
+                <CategoryCard key={g.title} title={g.title} rows={g.rows} />
+              ))}
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Consolidated Register</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <DataTable
+                    data={rows}
+                    columns={registerColumns}
+                    filters={registerFilters}
+                    getRowId={(r) => `${r.client_id}|${r.risk_type}|${r.date ?? ""}|${r.description}`}
+                    loading={loading}
+                    error={pageError}
+                    onRetry={loadData}
+                    onRefresh={loadData}
+                    searchPlaceholder="Search by client or description…"
+                    initialSort={{ key: "daysOverdue", dir: "desc" }}
+                    exportFilename="risk-register"
+                    persistKey="risks.register"
+                    emptyTitle="No risks in register"
+                  />
+                </CardContent>
+              </Card>
+            </>
           )}
         </>
       )}

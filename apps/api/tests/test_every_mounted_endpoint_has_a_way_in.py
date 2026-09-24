@@ -95,7 +95,12 @@ BUDGET: dict[str, int] = {
     "/api/memory": 7, "/api/relationships": 7, "/api/ai-insights": 6,
     "/api/compliance-records": 6, "/api/intelligence": 6, "/api/payroll": 6,
     "/api/analytics": 5, "/api/automation": 5, "/api/gst-portal": 5,
-    "/api/itr": 5, "/api/lifecycle": 5, "/api/portal": 5, "/api/risks": 5,
+    "/api/itr": 5, "/api/lifecycle": 5, "/api/portal": 5,
+    # /api/risks 5 -> 3 on 24-09-2026: `app/risks/page.tsx` derived its
+    # whole register in the browser from six PostgREST reads and called no
+    # endpoint on this prefix at all. It asks GET /register now, and the
+    # ratchet credits what that screen reaches.
+    "/api/risks": 3,
     "/api/sales-invoices": 5, "/api/compliance": 4,
     "/api/firm-hsn-rate-history": 4, "/api/gst": 4, "/api/health": 4,
     "/api/mca-workspace": 4, "/api/recurring-invoices": 4, "/api/xbrl": 4,

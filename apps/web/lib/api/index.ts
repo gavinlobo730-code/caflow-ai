@@ -3293,6 +3293,9 @@ export const api = {
     clientRisks: (clientId: string) => request(`/api/risks/client/${clientId}`),
     update: (riskId: string, data: unknown) => request(`/api/risks/${riskId}`, { method: "PATCH", body: JSON.stringify(data) }),
     firmScore: () => request("/api/risks/firm/score"),
+    // The firm-wide statutory register. A SEPARATE endpoint from `list`, which
+    // reads `document_risks`; see routers/risks.py for why they are not one.
+    register: () => request("/api/risks/register"),
   },
   aiInsights: {
     list: (params?: Record<string, string>) => request(`/api/ai-insights${params ? "?" + new URLSearchParams(params) : ""}`),

@@ -166,16 +166,31 @@ _WEB = Path(__file__).resolve().parents[2] / "web"
 
 
 def test_the_deadline_list_could_already_filter_to_a_type_nothing_generated():
-    """Both screens list TDS24Q among the types. Recorded as a test rather than
-    a note because it is the measure of the gap: the filter existed, the rows
-    did not."""
-    for rel in ("app/deadlines/page.tsx", "app/risks/page.tsx"):
-        f = _WEB / rel
-        if not f.is_file():
-            continue
-        code = re.sub(r"/\*.*?\*/", "", f.read_text(), flags=re.S)
+    """The screens can filter to TDS24Q. Recorded as a test rather than a note
+    because it is the measure of the gap: the filter existed, the rows did not.
+
+    ⚠️ THIS ASSERTED A SPELLING AND BROKE ON A CHANGE THAT MADE ONE SCREEN
+    STRICTLY BETTER. It required the literal `"TDS24Q"` in both files. When the
+    risk register moved into `apps/api`, `app/risks/page.tsx` stopped keeping a
+    hardcoded list of nine categories and started building its filter from the
+    rows that ARRIVE — which offers TDS24Q whenever the engine emits it, and
+    keeps offering whatever is added next. Asserting the literal there asserted
+    the very thing the fix removed. The deadlines screen still enumerates its
+    types, so the literal is the right test THERE; the risks screen is held to
+    the stronger property instead. Write the rule, not a spelling of it."""
+    deadlines = _WEB / "app" / "deadlines" / "page.tsx"
+    if deadlines.is_file():
+        code = re.sub(r"/\*.*?\*/", "", deadlines.read_text(), flags=re.S)
         code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
-        assert '"TDS24Q"' in code, f"{rel} no longer offers the filter"
+        assert '"TDS24Q"' in code, "app/deadlines/page.tsx no longer offers the filter"
+
+    risks = _WEB / "app" / "risks" / "page.tsx"
+    if risks.is_file():
+        src = risks.read_text()
+        assert "new Set(rows.map((r) => r.risk_type))" in src, (
+            "app/risks/page.tsx must build its category filter from the rows it "
+            "received, so every type the engine emits is offered"
+        )
 
 
 def test_marking_it_filed_says_what_it_does_not_lock():
