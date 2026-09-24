@@ -47,7 +47,7 @@ function fmt(paise?: number | string | null) {
 }
 
 const FIELD =
-  "border border-ps-border rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400";
 
 export default function ApplyStructureModal({
   structureId, structureName, clientId, employees, onClose, onApplied,
@@ -136,14 +136,14 @@ export default function ApplyStructureModal({
         onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
           <div>
-            <p className="text-[14px] font-semibold text-ps-ink">Apply “{structureName}”</p>
+            <p className="text-sm font-semibold text-ps-ink">Apply “{structureName}”</p>
             <p className="text-2xs text-ps-hint">
               Writes a salary revision per employee, effective from the date below.
               Months already released keep the figures they were paid on.
             </p>
           </div>
           <button onClick={onClose}
-            className="text-[12px] text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
+            className="text-xs text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
             Close
           </button>
         </div>
@@ -177,7 +177,7 @@ export default function ApplyStructureModal({
               </button>
             </div>
             {employees.length === 0 ? (
-              <p className="p-4 text-[12px] text-ps-hint text-center">
+              <p className="p-4 text-xs text-ps-hint text-center">
                 This client has no employees to apply a structure to.
               </p>
             ) : (
@@ -269,7 +269,7 @@ export default function ApplyStructureModal({
                 </p>
               )}
               {!result.preview && (
-                <p className="text-[12px] px-3 py-2 rounded-lg bg-green-50 text-green-700">
+                <p className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700">
                   Applied to {result.applied} employee(s).
                 </p>
               )}
@@ -278,14 +278,14 @@ export default function ApplyStructureModal({
 
           <div className="flex justify-end gap-2">
             <button onClick={() => send(true)} disabled={!ready || busy !== null}
-              className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
+              className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
               {busy === "preview" ? "Computing…" : "Preview"}
             </button>
             {/* Apply is offered only AFTER a preview has come back, so nobody
                 writes a revision for a whole roster without having seen it. */}
             <button onClick={() => send(false)}
               disabled={!ready || busy !== null || !result?.preview}
-              className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
+              className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
               {busy === "apply" ? "Applying…" : "Apply"}
             </button>
           </div>

@@ -75,7 +75,7 @@ function fmt(paise?: number | null) {
 }
 
 const FIELD =
-  "border border-ps-border rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400 w-full";
+  "border border-ps-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 w-full";
 const LABEL = "text-2xs text-ps-label block";
 
 /** A typed rupee amount, through the one parser. Returns null for anything that
@@ -135,14 +135,14 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
         onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[14px] font-semibold text-ps-ink truncate">{employee.name}</p>
+            <p className="text-sm font-semibold text-ps-ink truncate">{employee.name}</p>
             <p className="text-2xs text-ps-hint">
               {[employee.designation, employee.department].filter(Boolean).join(" · ") || "—"}
               {employee.status && employee.status !== "active" ? ` · ${employee.status}` : ""}
             </p>
           </div>
           <button onClick={onClose}
-            className="text-[12px] text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
+            className="text-xs text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
             Close
           </button>
         </div>
@@ -150,7 +150,7 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
         <div className="px-5 pt-3 flex gap-1.5 flex-wrap border-b border-ps-muted pb-3">
           {SECTIONS.map((s) => (
             <button key={s.key} onClick={() => setSection(s.key)}
-              className={`px-2.5 py-1 text-[12px] rounded-lg border ${
+              className={`px-2.5 py-1 text-xs rounded-lg border ${
                 section === s.key
                   ? "bg-brand-dark text-white border-brand-dark"
                   : "border-ps-border text-ps-label hover:bg-ps-bg"}`}>
@@ -334,14 +334,14 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
 
       <div className="flex items-center gap-2">
         <button onClick={preview} disabled={!canPreview || busy !== null}
-          className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
+          className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
           {busy === "preview" ? "Computing…" : "Compute"}
         </button>
         {!canPreview && <span className="text-2xs text-ps-hint">A last working day first.</span>}
       </div>
 
       {err && <Callout tone="problem">{err}</Callout>}
-      {done && <p className="text-[12px] px-3 py-2 rounded-lg bg-green-50 text-green-700">{done}</p>}
+      {done && <p className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700">{done}</p>}
 
       {result && (
         <div className="space-y-3">
@@ -385,7 +385,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
               ["Net payable", result.totals.net_payable_paise]].map(([label, value]) => (
               <div key={String(label)} className="rounded-lg border border-ps-border p-2.5">
                 <p className="text-3xs text-ps-hint">{label}</p>
-                <p className="text-[13px] font-semibold text-ps-ink">{fmt(Number(value ?? 0))}</p>
+                <p className="text-sm font-semibold text-ps-ink">{fmt(Number(value ?? 0))}</p>
               </div>
             ))}
           </div>
@@ -414,17 +414,17 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
                 {confirming ? (
                   <>
                     <button onClick={record} disabled={busy !== null}
-                      className="px-3 py-1.5 text-[12px] rounded-lg bg-state-problem text-white disabled:opacity-40">
+                      className="px-3 py-1.5 text-xs rounded-lg bg-state-problem text-white disabled:opacity-40">
                       {busy === "record" ? "Recording…" : "Yes, record it"}
                     </button>
                     <button onClick={() => setConfirming(false)}
-                      className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg text-ps-body">
+                      className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body">
                       Cancel
                     </button>
                   </>
                 ) : (
                   <button onClick={() => setConfirming(true)} disabled={busy !== null}
-                    className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
+                    className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
                     Record settlement
                   </button>
                 )}
@@ -536,15 +536,15 @@ function RevisionsSection({ employee, clientId, onSaved }: {
         {err && <Callout tone="problem">{err}</Callout>}
         <div className="mt-3 flex justify-end">
           <button onClick={save} disabled={busy || !effectiveFrom}
-            className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
+            className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
             {busy ? "Saving…" : "Record revision"}
           </button>
         </div>
       </div>
 
-      {loading ? <p className="text-[12px] text-ps-hint">Loading…</p>
+      {loading ? <p className="text-xs text-ps-hint">Loading…</p>
         : rows.length === 0
-          ? <p className="text-[12px] text-ps-hint">No revisions recorded. The employee master&apos;s own figures apply.</p>
+          ? <p className="text-xs text-ps-hint">No revisions recorded. The employee master&apos;s own figures apply.</p>
           : (
             <table className="w-full text-2xs">
               <thead>
@@ -653,15 +653,15 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
         )}
         <div className="mt-3 flex justify-end">
           <button onClick={save} disabled={busy || !principal.trim()}
-            className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
+            className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
             {busy ? "Saving…" : "Record loan"}
           </button>
         </div>
       </div>
 
-      {loading ? <p className="text-[12px] text-ps-hint">Loading…</p>
+      {loading ? <p className="text-xs text-ps-hint">Loading…</p>
         : rows.length === 0
-          ? <p className="text-[12px] text-ps-hint">No loans or advances recorded.</p>
+          ? <p className="text-xs text-ps-hint">No loans or advances recorded.</p>
           : (
             <table className="w-full text-2xs">
               <thead>
@@ -868,13 +868,13 @@ function PerquisitesSection({ employee, clientId }: {
 
       <div className="flex items-center gap-2">
         <button onClick={value} disabled={busy !== null}
-          className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
+          className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
           {busy === "value" ? "Valuing…" : "Value under Rule 3"}
         </button>
       </div>
 
       {err && <Callout tone="problem">{err}</Callout>}
-      {done && <p className="text-[12px] px-3 py-2 rounded-lg bg-green-50 text-green-700">{done}</p>}
+      {done && <p className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700">{done}</p>}
 
       {result && (
         <div className="space-y-3">
@@ -903,7 +903,7 @@ function PerquisitesSection({ employee, clientId }: {
               </tbody>
             </table>
           ) : (
-            <p className="text-[12px] text-ps-hint">Nothing valued — no benefit was described.</p>
+            <p className="text-xs text-ps-hint">Nothing valued — no benefit was described.</p>
           )}
 
           <Notes gaps={result.gaps} />
@@ -918,7 +918,7 @@ function PerquisitesSection({ employee, clientId }: {
               </p>
               <div className="mt-2 flex justify-end">
                 <button onClick={record} disabled={busy !== null}
-                  className="px-3 py-1.5 text-[12px] rounded-lg bg-brand-dark text-white disabled:opacity-40">
+                  className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
                   {busy === "record" ? "Recording…" : "Record for the year"}
                 </button>
               </div>
@@ -1037,7 +1037,7 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
       </div>
 
       <button onClick={compute} disabled={busy}
-        className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
+        className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
         {busy ? "Computing…" : "Compute §89 relief"}
       </button>
 
@@ -1063,7 +1063,7 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
                 ["§89 relief", result.relief_paise]].map(([label, v]) => (
                 <div key={String(label)} className="rounded-lg border border-ps-border p-2.5">
                   <p className="text-3xs text-ps-hint">{label}</p>
-                  <p className="text-[13px] font-semibold text-ps-ink">{fmt(Number(v ?? 0))}</p>
+                  <p className="text-sm font-semibold text-ps-ink">{fmt(Number(v ?? 0))}</p>
                 </div>
               ))}
             </div>

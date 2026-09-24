@@ -99,9 +99,9 @@ function IdentityRow({ label, value, note }: {
       <div className="min-w-0">
         <p className="text-2xs text-ps-label">{label}</p>
         {value ? (
-          <p className="text-[13px] font-mono text-ps-ink break-all">{value}</p>
+          <p className="text-sm font-mono text-ps-ink break-all">{value}</p>
         ) : (
-          <p className="text-[12px] text-red-600">Not recorded</p>
+          <p className="text-xs text-red-600">Not recorded</p>
         )}
         {note && <p className="text-3xs text-ps-hint mt-0.5">{note}</p>}
       </div>
@@ -209,7 +209,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
               Return type
             </label>
             <select value={returnType} onChange={(e) => setReturnType(e.target.value)}
-              className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-[12px]
+              className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
                          outline-none focus:border-blue-400">
               <option value="regular">
                 Regular — every active member for the month
@@ -229,13 +229,13 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           </label>
           <input value={reference} onChange={(e) => setReference(e.target.value)}
             placeholder={isEpf ? "as shown on the receipt" : "from the challan"}
-            className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-[12px]
+            className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
                        outline-none focus:border-blue-400" />
         </div>
         <div>
           <label className="block text-3xs text-ps-label mb-0.5">Date</label>
           <input type="date" value={on} onChange={(e) => setOn(e.target.value)}
-            className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-[12px]
+            className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
                        outline-none focus:border-blue-400" />
         </div>
         {!isEpf && (
@@ -245,7 +245,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
             </label>
             <input value={amount} onChange={(e) => setAmount(e.target.value)}
               inputMode="decimal" placeholder="what left the bank"
-              className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-[12px]
+              className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
                          outline-none focus:border-blue-400" />
           </div>
         )}
@@ -271,7 +271,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
         </p>
       )}
       <button onClick={submit} disabled={busy}
-        className="px-3 py-1.5 text-[12px] bg-blue-600 text-white rounded-lg
+        className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg
                    hover:bg-blue-700 disabled:opacity-40">
         {busy ? "Saving…" : "Record it"}
       </button>
@@ -332,11 +332,11 @@ function MappedIpCheck({ runId }: { runId: string }) {
           </p>
           <textarea value={pasted} onChange={(e) => setPasted(e.target.value)}
             rows={4} placeholder={"3113456789 ASHA KUMARI\n3113456790 BIMAL ROY"}
-            className="w-full border border-ps-border rounded-lg px-2.5 py-2 text-[12px]
+            className="w-full border border-ps-border rounded-lg px-2.5 py-2 text-xs
                        font-mono outline-none focus:border-blue-400" />
           <div className="flex items-center gap-2">
             <button onClick={check} disabled={busy}
-              className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg
+              className="px-3 py-1.5 text-xs border border-ps-border rounded-lg
                          hover:bg-ps-bg text-ps-body disabled:opacity-40">
               {busy ? "Checking…" : "Check"}
             </button>
@@ -425,7 +425,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
       {/* ── who, where, by when ─────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
-          <p className="text-[13px] font-semibold text-ps-ink">{o.title}</p>
+          <p className="text-sm font-semibold text-ps-ink">{o.title}</p>
           <p className="text-2xs text-ps-label">
             {o.authority} · {o.period_label}
           </p>
@@ -490,7 +490,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
         <p className="text-3xs uppercase tracking-wide text-ps-hint mb-1">
           Check these against the portal before you submit
         </p>
-        <table className="w-full text-[12px]">
+        <table className="w-full text-xs">
           <tbody>
             {o.confirm.map((f) => (
               <tr key={f.label} className="border-b border-ps-bg last:border-0">
@@ -522,7 +522,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
       <div className="border-t border-ps-muted pt-3">
         {o.artefact.available ? (
           <button onClick={download} disabled={busy}
-            className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg
+            className="px-3 py-1.5 text-xs border border-ps-border rounded-lg
                        hover:bg-ps-bg text-ps-body disabled:opacity-40
                        flex items-center gap-1.5">
             <Download size={12} />
@@ -706,7 +706,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
   return (
     <div className="bg-white rounded-xl border border-state-attention-border p-4 space-y-3">
       <div>
-        <p className="text-[13px] font-semibold text-ps-ink">
+        <p className="text-sm font-semibold text-ps-ink">
           Paid, but not yet matched to a bank payment ({rows.length})
         </p>
         <p className="text-2xs text-ps-label mt-0.5">
@@ -725,14 +725,14 @@ function UnmatchedRemittances({ clientId, onLinked }: {
       {rows.map((r) => (
         <div key={r.id} className="border-t border-ps-muted pt-3">
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
-            <p className="text-[12px] text-ps-ink">
+            <p className="text-xs text-ps-ink">
               <span className="font-semibold">
                 {r.scheme === "esic" ? "ESI" : `Professional tax — ${r.state ?? ""}`}
               </span>
               {" · "}{fmtMonth(r.wage_month)}
               {r.challan_number ? ` · challan ${r.challan_number}` : ""}
             </p>
-            <p className="text-[12px] font-mono text-ps-ink">
+            <p className="text-xs font-mono text-ps-ink">
               {fmtPaise(r.amount_paise)}
             </p>
           </div>
@@ -755,7 +755,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
                   <div className="min-w-0">
                     <p className="text-2xs text-ps-ink">
                       <span className={`inline-block px-1.5 py-0.5 rounded mr-1.5
-                        text-[9px] font-semibold uppercase tracking-wide ${
+                        text-3xs font-semibold uppercase tracking-wide ${
                         c.grade === "exact" ? "bg-green-100 text-green-800"
                                             : "bg-slate-100 text-slate-600"}`}>
                         {c.grade}
@@ -833,7 +833,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
   const run = runs.find((r) => r.id === runId);
 
   if (loading) {
-    return <p className="p-5 text-[12px] text-ps-hint">Loading…</p>;
+    return <p className="p-5 text-xs text-ps-hint">Loading…</p>;
   }
   if (!runs.length) {
     return <p className="p-5 text-center text-sm text-ps-hint py-10">
@@ -846,7 +846,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
       <div className="flex items-center gap-3 flex-wrap">
         <label className="text-2xs text-ps-label">Month</label>
         <select value={runId} onChange={(e) => setRunId(e.target.value)}
-          className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px]
+          className="border border-ps-border rounded-lg px-3 py-1.5 text-sm
                      outline-none focus:border-blue-400">
           {runs.map((r) => (
             <option key={r.id} value={r.id}>{fmtMonth(r.month)} · {r.status}</option>
@@ -864,7 +864,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
       </p>
 
       {err && (
-        <p className="text-[12px] px-3 py-2 rounded-lg bg-state-attention-surface text-amber-800">
+        <p className="text-xs px-3 py-2 rounded-lg bg-state-attention-surface text-amber-800">
           {err}
         </p>
       )}
@@ -889,7 +889,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
             onChanged={() => { load(); toast({ title: "Recorded" }); }} />
         ))
       ) : !err ? (
-        <p className="text-[12px] text-ps-hint">
+        <p className="text-xs text-ps-hint">
           {run && run.status !== "finalized" && run.status !== "paid"
             ? "This month is still a draft. The returns report contributions "
               + "actually made, so finalise it under Release first."

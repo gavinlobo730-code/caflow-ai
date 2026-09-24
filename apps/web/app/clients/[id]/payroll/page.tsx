@@ -379,13 +379,13 @@ function EmployeesTab({ clientId }: { clientId: string }) {
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-ps-ink">{employees.length} active employees</p>
         <div className="flex gap-2">
-          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-1.5 border border-ps-border text-ps-label text-[12px] font-medium rounded-lg hover:bg-ps-muted transition-colors">
+          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-1.5 border border-ps-border text-ps-label text-xs font-medium rounded-lg hover:bg-ps-muted transition-colors">
             <Upload size={13} /> Import
           </button>
-          <button onClick={() => downloadCsv("employees.csv", toCsv(employees, EMPLOYEE_EXPORT_COLUMNS))} disabled={employees.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 border border-ps-border text-ps-label text-[12px] font-medium rounded-lg hover:bg-ps-muted transition-colors disabled:opacity-50">
+          <button onClick={() => downloadCsv("employees.csv", toCsv(employees, EMPLOYEE_EXPORT_COLUMNS))} disabled={employees.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 border border-ps-border text-ps-label text-xs font-medium rounded-lg hover:bg-ps-muted transition-colors disabled:opacity-50">
             <Download size={13} /> Export
           </button>
-          <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-[12px] font-medium rounded-lg hover:bg-blue-700 transition-colors">
+          <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
             <Plus size={13} /> Add Employee
           </button>
         </div>
@@ -702,15 +702,15 @@ function RunsTab({ clientId, firmId, openDoc }:
         />
       )}
       <div className="bg-white rounded-xl border border-ps-border p-4">
-        <p className="text-[12px] font-semibold text-ps-ink mb-3">Create New Run</p>
+        <p className="text-xs font-semibold text-ps-ink mb-3">Create New Run</p>
         <div className="flex items-end gap-3">
           <div>
             <label className="block text-2xs text-ps-label mb-1">Month</label>
             <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-              className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px] text-ps-ink outline-none focus:border-blue-400" />
+              className="border border-ps-border rounded-lg px-3 py-1.5 text-sm text-ps-ink outline-none focus:border-blue-400" />
           </div>
           <button onClick={createRun} disabled={creating}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white text-[12px] font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
             <Play size={12} /> {creating ? "Computing…" : "Compute & Draft"}
           </button>
         </div>
@@ -774,7 +774,7 @@ function RunsTab({ clientId, firmId, openDoc }:
               onChange={e => setOverrideReason(e.target.value)}
               rows={2}
               placeholder="e.g. Client confirmed by email on the 3rd that nobody was on leave."
-              className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-amber-500 bg-white"
+              className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-amber-500 bg-white"
             />
             <p className="text-3xs text-state-attention mt-0.5">
               {overrideReason.trim().length}/{OVERRIDE_REASON_MIN} characters
@@ -968,8 +968,8 @@ function StatutoryTab({ clientId }: { clientId: string }) {
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3">
         <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-          className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px] outline-none focus:border-blue-400" />
-        <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400" />
+        <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">
           {loading ? "Loading…" : "Load"}
         </button>
       </div>
@@ -1111,7 +1111,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
   return (
     <div className="p-5 space-y-4">
       {msg && (
-        <p className={`text-[12px] px-3 py-2 rounded-lg ${msg.kind === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
+        <p className={`text-xs px-3 py-2 rounded-lg ${msg.kind === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.text}
         </p>
       )}
@@ -1127,7 +1127,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
         </p>
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-          <table className="w-full text-[12px]">
+          <table className="w-full text-xs">
             <thead>
               <tr className="bg-ps-bg border-b border-ps-muted text-3xs font-semibold text-ps-hint uppercase">
                 <th className="px-3 py-2 text-left">Month</th>
@@ -1279,13 +1279,13 @@ function OutputsTab({ clientId }: { clientId: string }) {
       <div className="flex items-center gap-3 flex-wrap">
         <label className="text-2xs text-ps-label">Month</label>
         <select value={runId} onChange={(e) => { setRunId(e.target.value); setMsg(null); }}
-          className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px] outline-none focus:border-blue-400">
+          className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400">
           {runs.map((r) => <option key={r.id} value={r.id}>{fmtMonth(r.month)} · {r.status}</option>)}
         </select>
       </div>
 
       {msg && (
-        <p className={`text-[12px] px-3 py-2 rounded-lg ${
+        <p className={`text-xs px-3 py-2 rounded-lg ${
           msg.kind === "ok" ? "bg-green-50 text-green-700"
           : msg.kind === "warn" ? "bg-state-attention-surface text-amber-800"
           : "bg-state-problem-surface text-red-600"}`}>{msg.text}</p>
@@ -1314,10 +1314,10 @@ function OutputsTab({ clientId }: { clientId: string }) {
       <div className="grid grid-cols-2 gap-3">
         {items.map((it) => (
           <div key={it.key} className="bg-white rounded-xl border border-ps-border p-4">
-            <p className="text-[12px] font-semibold text-ps-ink">{it.label}</p>
+            <p className="text-xs font-semibold text-ps-ink">{it.label}</p>
             <p className="text-3xs text-ps-hint mt-1 min-h-[28px]">{it.hint}</p>
             <button onClick={it.run} disabled={!it.ready || busy !== null}
-              className="mt-2 px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
+              className="mt-2 px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
               {busy === it.key ? "Building…" : it.ready ? "Download" : "Not yet"}
             </button>
           </div>
@@ -1402,7 +1402,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
     <div className="bg-white rounded-xl border border-ps-border p-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
-          <p className="text-[12px] font-semibold text-ps-ink">
+          <p className="text-xs font-semibold text-ps-ink">
             Form 24Q Annexure II — annual salary detail
           </p>
           <p className="text-3xs text-ps-hint mt-1 max-w-[60ch]">
@@ -1414,7 +1414,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
         <div className="flex items-center gap-2 shrink-0">
           <YearPicker value={fy} onChange={setFy} anchorMonth={month} size="sm" className="w-auto" />
           <button onClick={() => setOpen((v) => !v)}
-            className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
+            className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
             {open ? "Hide" : "Show"}
           </button>
           <button
@@ -1425,7 +1425,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
               finally { setBusy(false); }
             }}
             disabled={busy}
-            className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
+            className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
             {busy ? "Building…" : "Download CSV"}
           </button>
         </div>
@@ -1455,7 +1455,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
                    title="What payroll cannot know — the employee holds these" />
 
           {rows.length === 0 ? (
-            <p className="text-[12px] text-ps-hint py-6 text-center">
+            <p className="text-xs text-ps-hint py-6 text-center">
               No finalised payroll in {fy}, so there is no annual salary detail to show.
             </p>
           ) : (
@@ -1666,7 +1666,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
   return (
     <div className="p-5 space-y-4">
       <div className="bg-white rounded-xl border border-ps-border p-4">
-        <h2 className="text-[13px] font-semibold text-ps-ink">Statutory registrations</h2>
+        <h2 className="text-sm font-semibold text-ps-ink">Statutory registrations</h2>
         <p className="text-2xs text-ps-label mt-0.5">
           The numbers this client&apos;s own returns are filed under. Form 24Q carries the TAN;
           the EPFO and ESIC portals take the establishment from the login, so those two are
@@ -1692,7 +1692,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
       {/* ── Professional tax, one registration per state ─────────────────── */}
       <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
         <div>
-          <h2 className="text-[13px] font-semibold text-ps-ink">Professional tax registrations</h2>
+          <h2 className="text-sm font-semibold text-ps-ink">Professional tax registrations</h2>
           <p className="text-2xs text-ps-label mt-0.5">
             One per state — PT is a state levy under Article 276(2). The PTRC is the
             employer&apos;s authority to <em>deduct</em> from employees and deposit; the PTEC is the
@@ -1701,7 +1701,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
         </div>
 
         {pt.length > 0 && (
-          <table className="w-full text-[12px]">
+          <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-3xs text-ps-hint border-b border-ps-muted">
                 <th className="py-1.5">State</th><th>PTRC</th><th>PTEC</th><th></th>
@@ -1731,7 +1731,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
           <Field label="PTEC number" value={ptForm.ptec_number} placeholder="optional"
             onChange={v => setPtForm({ ...ptForm, ptec_number: v })} />
           <button onClick={savePt} disabled={saving === "pt"}
-            className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">
             {saving === "pt" ? "Saving…" : "Add"}
           </button>
         </div>
@@ -1762,11 +1762,11 @@ function IdentityRow({ field, value, saving, justSaved, onSave }: {
           value={draft}
           onChange={e => setDraft(e.target.value)}
           placeholder="Not recorded"
-          className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-blue-400"
+          className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-blue-400"
         />
       </div>
       <button onClick={() => onSave(draft)} disabled={saving || !dirty}
-        className="px-3 py-1.5 text-[12px] rounded-lg border border-ps-border text-ps-body hover:bg-ps-bg disabled:opacity-40 shrink-0">
+        className="px-3 py-1.5 text-xs rounded-lg border border-ps-border text-ps-body hover:bg-ps-bg disabled:opacity-40 shrink-0">
         {saving ? "Saving…" : justSaved && !dirty ? "Saved" : "Save"}
       </button>
     </div>
@@ -1808,7 +1808,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }: { label: 
     <div>
       <label className="block text-2xs text-ps-label mb-0.5">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-blue-400" />
+        className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-blue-400" />
     </div>
   );
 }
@@ -1859,7 +1859,7 @@ export default function PayrollPage() {
       <div className="bg-white border-b border-ps-border px-5 py-4 shrink-0">
         <div className="flex items-center gap-2 mb-3">
           <Users size={16} className="text-blue-600" />
-          <h1 className="text-[15px] font-semibold text-ps-ink">Payroll</h1>
+          <h1 className="text-base font-semibold text-ps-ink">Payroll</h1>
         </div>
         <div className="flex items-center gap-0.5">
           {TABS.map(t => (
@@ -1867,7 +1867,7 @@ export default function PayrollPage() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-lg transition-colors",
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
                 tab === t.id ? "bg-blue-600 text-white" : "text-ps-label hover:text-ps-ink hover:bg-ps-muted"
               )}
             >
@@ -2001,7 +2001,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-ps-ink">Reusable Salary Templates</p>
-        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700">
+        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">
           <Plus size={13} /> Add Structure
         </button>
       </div>
@@ -2014,7 +2014,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
           </div>
           <div className="flex items-center gap-4">
             {(["pf_applicable", "esi_applicable"] as const).map(k => (
-              <label key={k} className="flex items-center gap-1.5 text-[12px] text-ps-label cursor-pointer">
+              <label key={k} className="flex items-center gap-1.5 text-xs text-ps-label cursor-pointer">
                 <input type="checkbox" checked={form[k]} onChange={e => setForm(f => ({...f, [k]: e.target.checked}))} />
                 {k === "pf_applicable" ? "PF" : "ESI"}
               </label>
@@ -2022,8 +2022,8 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
           </div>
           {saveError && <Callout tone="problem">{saveError}</Callout>}
           <div className="flex gap-2">
-            <button onClick={addStructure} disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 text-[12px] text-ps-label border border-ps-border rounded-lg">Cancel</button>
+            <button onClick={addStructure} disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
+            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 text-xs text-ps-label border border-ps-border rounded-lg">Cancel</button>
           </div>
         </div>
       )}
@@ -2031,13 +2031,13 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
         {structures.length === 0 && <p className="col-span-2 text-sm text-ps-hint text-center py-8">No structures yet</p>}
         {structures.map(s => (
           <div key={s.id} className="bg-white rounded-xl border border-ps-border p-4">
-            <p className="font-semibold text-[13px] text-ps-ink">{s.name}</p>
+            <p className="font-semibold text-sm text-ps-ink">{s.name}</p>
             <div className="mt-2 space-y-1 text-2xs text-ps-label">
               <p>Basic {s.basic_percent}% · HRA {s.hra_percent}%</p>
               <p>{s.pf_applicable ? "PF ✓" : "PF ✗"} · {s.esi_applicable ? "ESI ✓" : "ESI ✗"}</p>
             </div>
             <button onClick={() => { setApplying(s); setApplied(null); }}
-              className="mt-3 px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
+              className="mt-3 px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
               Apply to employees
             </button>
           </div>
@@ -2045,7 +2045,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
       </div>
 
       {applied && (
-        <p className="text-[12px] px-3 py-2 rounded-lg bg-green-50 text-green-700">{applied}</p>
+        <p className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700">{applied}</p>
       )}
 
       {applying && (
@@ -2110,12 +2110,12 @@ function ReportsTab({ clientId }: { clientId: string }) {
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3">
         <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-          className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px] outline-none focus:border-blue-400" />
-        <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400" />
+        <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">
           {loading ? "Loading…" : "Load Salary Register"}
         </button>
         <button onClick={downloadRegister} disabled={downloading}
-          className="px-4 py-1.5 border border-ps-border text-[12px] rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-50">
+          className="px-4 py-1.5 border border-ps-border text-xs rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-50">
           {downloading ? "Building…" : "Download CSV"}
         </button>
       </div>
@@ -2123,7 +2123,7 @@ function ReportsTab({ clientId }: { clientId: string }) {
       {(data?.slips?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-4 py-3 border-b border-ps-muted flex items-center justify-between">
-            <p className="text-[12px] font-semibold text-ps-ink">Salary Register — {fmtMonth(month)}</p>
+            <p className="text-xs font-semibold text-ps-ink">Salary Register — {fmtMonth(month)}</p>
             <span className="text-2xs text-ps-hint">{data!.slips.length} employees</span>
           </div>
           <table className="w-full text-2xs">
