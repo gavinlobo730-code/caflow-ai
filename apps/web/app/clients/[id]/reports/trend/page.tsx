@@ -214,7 +214,7 @@ export default function ClientTrendPage() {
           </div>
 
           {trend.dropped_fys.length > 0 && (
-            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+            <div className="flex items-start gap-2.5 bg-state-attention-surface border border-amber-100 rounded-xl px-4 py-3">
               <AlertTriangle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
               <p className="text-2xs text-amber-900">
                 <span className="font-medium">
@@ -233,7 +233,7 @@ export default function ClientTrendPage() {
               records for those years; this one says the request failed and the
               books may be complete. */}
           {trend.unreadable_fys.length > 0 && (
-            <div className="flex items-start gap-2.5 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+            <div className="flex items-start gap-2.5 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
               <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
               <p className="text-2xs text-red-800">
                 <span className="font-medium">
@@ -364,7 +364,7 @@ function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[]
                   {/* A gap is stated, never left blank — a dash reads as
                       "nothing to report", which is its opposite. */}
                   {s.unavailable_reason && (
-                    <p className="text-3xs text-amber-800 mt-1 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                    <p className="text-3xs text-amber-800 mt-1 bg-state-attention-surface border border-amber-100 rounded-lg px-2 py-1">
                       {s.unavailable_reason}
                     </p>
                   )}

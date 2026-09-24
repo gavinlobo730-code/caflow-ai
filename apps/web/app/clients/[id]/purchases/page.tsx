@@ -295,9 +295,9 @@ export default function PurchasesPage() {
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
   received: "bg-blue-100 text-blue-700",
-  partially_paid: "bg-amber-100 text-amber-700",
+  partially_paid: "bg-amber-100 text-state-attention",
   paid: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-700",
+  cancelled: "bg-red-100 text-state-problem",
   issued: "bg-green-100 text-green-700",
 };
 
@@ -873,17 +873,17 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
         const r = recon2B[b.id];
         if (!r) {
           return reconciledPeriods.has(periodOf(b.bill_date))
-            ? <span className="text-3xs text-red-700" title="This period's GSTR-2B was reconciled and this bill is not in it — §16(2)(aa) holds the credit back until the supplier files.">supplier has not filed</span>
+            ? <span className="text-3xs text-state-problem" title="This period's GSTR-2B was reconciled and this bill is not in it — §16(2)(aa) holds the credit back until the supplier files.">supplier has not filed</span>
             : <span className="text-3xs text-ps-hint" title="No GSTR-2B has been reconciled for this bill's period. Upload it on the GST tab.">not reconciled</span>;
         }
         if (r.itc_available === "N") {
-          return <span className="text-3xs text-amber-700" title={r.itc_unavailable_reason}>2B: ITC not available</span>;
+          return <span className="text-3xs text-state-attention" title={r.itc_unavailable_reason}>2B: ITC not available</span>;
         }
         if (r.match_status === "matched") {
           return <span className="text-3xs text-green-700" title={r.supplier_filed_on ? `Supplier filed on ${r.supplier_filed_on}` : undefined}>matched</span>;
         }
         if (r.match_status === "amount_mismatch") {
-          return <span className="text-3xs text-amber-700" title={`Books claim ${fmt(Math.abs(r.match_difference_paise))} ${r.match_difference_paise > 0 ? "more" : "less"} tax than 2B carries`}>amount mismatch</span>;
+          return <span className="text-3xs text-state-attention" title={`Books claim ${fmt(Math.abs(r.match_difference_paise))} ${r.match_difference_paise > 0 ? "more" : "less"} tax than 2B carries`}>amount mismatch</span>;
         }
         return <span className="text-3xs text-ps-label">{r.match_status}</span>;
       } },
@@ -970,7 +970,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   return (
     <div className="space-y-4 max-w-screen-2xl mx-auto">
       {msg && (
-        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
           {msg.text}
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
@@ -992,9 +992,9 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
           taxable x rate, because s.200 credits what earlier bills withheld and
           this one carries the balance. */}
       {registerNotes.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3">
           <div className="flex items-start gap-2">
-            <AlertTriangle size={14} className="text-amber-700 mt-0.5 flex-shrink-0" />
+            <AlertTriangle size={14} className="text-state-attention mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-medium text-amber-900">
                 Received. {registerNotes.length} thing{registerNotes.length === 1 ? "" : "s"} the
@@ -1007,13 +1007,13 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                   </li>
                 ))}
               </ul>
-              <p className="text-2xs text-amber-700 mt-1.5">
+              <p className="text-2xs text-state-attention mt-1.5">
                 Nothing is blocked — the bill and its journal are posted. These decide which
                 statement the deduction lands in and what its deductee row must carry, so they
                 are cheaper to settle now than at the quarter end.
               </p>
             </div>
-            <button onClick={() => setRegisterNotes([])} className="text-amber-700"><X size={13} /></button>
+            <button onClick={() => setRegisterNotes([])} className="text-state-attention"><X size={13} /></button>
           </div>
         </div>
       )}
@@ -1159,7 +1159,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); setDeleteTarget(b); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
                     Delete draft
                   </button>
                 </>
@@ -1168,7 +1168,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); cancelBill(b); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
                     Cancel bill
                   </button>
                 </>
@@ -1259,7 +1259,7 @@ function DeleteBillModal({
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
         <div className="flex items-start gap-3 mb-4">
-          <div className="p-2 rounded-full bg-red-50 text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
+          <div className="p-2 rounded-full bg-state-problem-surface text-red-600 flex-shrink-0"><AlertTriangle size={16} /></div>
           <div>
             <h3 className="text-sm font-semibold text-ps-ink">Delete draft purchase bill?</h3>
             <p className="text-xs text-ps-label mt-1">
@@ -1692,7 +1692,7 @@ function Vendors({ clientId }: { clientId: string }) {
     { key: "residential_status", header: "Residence", accessor: (v) => v.residential_status ?? "",
       render: (v) =>
         v.residential_status === "non_resident"
-          ? <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-amber-100 text-amber-700">
+          ? <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-amber-100 text-state-attention">
               Non-resident{v.country_of_residence ? ` · ${v.country_of_residence}` : ""}
             </span>
           : v.residential_status === "resident"
@@ -1749,7 +1749,7 @@ function Vendors({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4 max-w-screen-2xl mx-auto">
       {msg && (
-        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
           {msg.text}
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
@@ -1914,7 +1914,7 @@ function Vendors({ clientId }: { clientId: string }) {
                 </button>
               )}
               <button onClick={() => { setMenu(null); startDelete(v); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
                 <Trash2 size={13} /> Delete
               </button>
             </div>
@@ -2159,14 +2159,14 @@ function Vendors({ clientId }: { clientId: string }) {
                   </p>
                 )}
                 {trcOnFile && !treatyRate.trim() && (
-                  <p className="text-xs text-amber-700">
+                  <p className="text-xs text-state-attention">
                     §90(2) gives this vendor whichever of the Act and the DTAA is more beneficial,
                     but the software holds no treaty rates. Read the relevant article and enter the
                     rate, or bills for this vendor will be refused rather than deducted at the
                     higher Act rate.
                   </p>
                 )}
-                <p className="text-xs text-amber-700">
+                <p className="text-xs text-state-attention">
                   Complete Form 15CA/15CB under Rule 37BB before remitting, then record the
                   acknowledgement on the BILL — 15CA is per remittance, so a vendor paid four
                   times in a year needs four of them, and the field is in the bill editor rather
@@ -2623,7 +2623,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
       render: (p) => <span className="text-3xs text-ps-hint">{p.reference_no ?? "—"}</span> },
     { key: "is_reversed", header: "Status", accessor: (p) => (p.is_reversed ? "Reversed" : "Active"),
       render: (p) => p.is_reversed ? (
-        <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-red-100 text-red-700">Reversed</span>
+        <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-red-100 text-state-problem">Reversed</span>
       ) : null },
   ], []);
 
@@ -2637,7 +2637,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
   return (
     <div className="space-y-4 max-w-screen-2xl mx-auto">
       {msg && (
-        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
           {msg.text}
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
@@ -2818,7 +2818,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                                 placeholder="0.00"
                                 aria-label={`Allocate to ${b.our_reference ?? b.bill_no ?? "bill"}`}
                                 aria-invalid={bad || undefined}
-                                className={`w-32 px-2 py-1 text-xs border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${bad ? "border-red-400 bg-red-50" : "border-ps-border"}`}
+                                className={`w-32 px-2 py-1 text-xs border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${bad ? "border-red-400 bg-state-problem-surface" : "border-ps-border"}`}
                               />
                             </td>
                           </tr>
@@ -3220,7 +3220,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
   return (
     <div className="space-y-4 max-w-screen-2xl mx-auto">
       {msg && (
-        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
           {msg.text}
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
@@ -3235,9 +3235,9 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
           software states the divergence and adjusts no figure. The wording is
           the backend's, so this cannot be phrased differently here. */}
       {registerNotes.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3">
           <div className="flex items-start gap-2">
-            <AlertTriangle size={14} className="text-amber-700 mt-0.5 flex-shrink-0" />
+            <AlertTriangle size={14} className="text-state-attention mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-medium text-amber-900">
                 Issued. The TDS register has something to settle before the quarter is filed:
@@ -3250,7 +3250,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
                 ))}
               </ul>
             </div>
-            <button onClick={() => setRegisterNotes([])} className="text-amber-700"><X size={13} /></button>
+            <button onClick={() => setRegisterNotes([])} className="text-state-attention"><X size={13} /></button>
           </div>
         </div>
       )}
@@ -3288,7 +3288,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deleteDebitNote(d); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
                     Delete draft
                   </button>
                 </>
@@ -3685,7 +3685,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
   return (
     <div className="space-y-4 max-w-screen-2xl mx-auto">
       {msg && (
-        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
           {msg.text}
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
@@ -3700,9 +3700,9 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
           software states the divergence and adjusts no figure. The wording is
           the backend's, so this cannot be phrased differently here. */}
       {registerNotes.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3">
           <div className="flex items-start gap-2">
-            <AlertTriangle size={14} className="text-amber-700 mt-0.5 flex-shrink-0" />
+            <AlertTriangle size={14} className="text-state-attention mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-medium text-amber-900">
                 Issued. The TDS register has something to settle before the quarter is filed:
@@ -3715,7 +3715,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
                 ))}
               </ul>
             </div>
-            <button onClick={() => setRegisterNotes([])} className="text-amber-700"><X size={13} /></button>
+            <button onClick={() => setRegisterNotes([])} className="text-state-attention"><X size={13} /></button>
           </div>
         </div>
       )}
@@ -3753,7 +3753,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
                 <>
                   <div className="my-1 border-t border-ps-muted" />
                   <button onClick={() => { setMenu(null); deletePcn(d); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-red-50 text-red-600">
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-surface text-red-600">
                     Delete draft
                   </button>
                 </>

@@ -41,7 +41,7 @@ interface Deadline {
 // ─── COLOUR SCHEME ────────────────────────────────────────────────────────────
 
 const CATEGORY_STYLES: Record<DeadlineCategory, { chip: string; dot: string; badge: string }> = {
-  GST:        { chip: "bg-red-100 text-red-700 border-red-200",     dot: "bg-red-500",    badge: "bg-red-500" },
+  GST:        { chip: "bg-red-100 text-state-problem border-state-problem-border",     dot: "bg-red-500",    badge: "bg-red-500" },
   IncomeTax:  { chip: "bg-blue-100 text-blue-700 border-blue-200",  dot: "bg-blue-500",   badge: "bg-blue-500" },
   TDS:        { chip: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-500", badge: "bg-orange-500" },
   MCA:        { chip: "bg-purple-100 text-purple-700 border-purple-200", dot: "bg-purple-500", badge: "bg-purple-500" },
@@ -442,12 +442,12 @@ export default function CalendarPage() {
           this calendar, and silence there looks exactly like "nothing due".
           Named, for the same reason a payroll run names its statutory gaps. */}
       {agmGaps.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
           <p className="text-xs font-medium text-amber-800">
             {agmGaps.length} compan{agmGaps.length === 1 ? "y has" : "ies have"} no AGM
             date recorded, so their ADT-1, AOC-4 and MGT-7 deadlines are not shown
           </p>
-          <p className="text-xs text-amber-700 mt-0.5">
+          <p className="text-xs text-state-attention mt-0.5">
             All three are counted from the AGM, so there is no date to compute —
             record it on the client&apos;s MCA tab.{" "}
             {agmGaps.map(g => g.company_name).filter(Boolean).join(", ")}

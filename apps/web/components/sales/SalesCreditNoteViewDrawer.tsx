@@ -39,7 +39,7 @@ function Action({ children, onClick, icon, primary, danger }: {
   children: React.ReactNode; onClick: () => void; icon: React.ReactNode; primary?: boolean; danger?: boolean;
 }) {
   const cls = primary ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600"
-    : danger ? "border-ps-border text-red-600 hover:bg-red-50"
+    : danger ? "border-ps-border text-red-600 hover:bg-state-problem-surface"
     : "border-ps-border text-ps-label hover:bg-ps-bg";
   return (
     <button onClick={onClick} className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 ${cls}`}>
@@ -182,7 +182,7 @@ export function SalesCreditNoteViewDrawer({
                 red: the note is a lawful commercial credit; what it cannot do
                 is reduce output tax. */}
             {cn.section_34_2_warning && (
-              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-2xs leading-relaxed text-amber-800">
+              <p className="mt-2 rounded-lg border border-state-attention-border bg-state-attention-surface px-2.5 py-2 text-2xs leading-relaxed text-amber-800">
                 {cn.section_34_2_warning}
               </p>
             )}

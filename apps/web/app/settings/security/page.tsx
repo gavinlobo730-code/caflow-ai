@@ -382,7 +382,7 @@ function MfaCard() {
                   <button
                     onClick={() => removeFactor(f.id)}
                     disabled={busy}
-                    className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                    className="flex items-center gap-1 text-xs text-red-600 hover:text-state-problem disabled:opacity-50"
                   >
                     <Trash2 size={12} /> Remove
                   </button>

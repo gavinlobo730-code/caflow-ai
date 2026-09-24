@@ -20,9 +20,9 @@ import { formatDate } from "@/lib/services/formatting";
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const PRIORITY_BADGE: Record<TaskPriority, string> = {
-  critical: "bg-red-100 text-red-700 border border-red-200",
+  critical: "bg-red-100 text-state-problem border border-state-problem-border",
   high:     "bg-orange-100 text-orange-700 border border-orange-200",
-  medium:   "bg-amber-100 text-amber-700 border border-amber-200",
+  medium:   "bg-amber-100 text-state-attention border border-state-attention-border",
   low:      "bg-ps-muted text-ps-label border border-ps-border",
 };
 
@@ -30,7 +30,7 @@ const STATUS_BADGE: Record<TaskStatus, string> = {
   todo:            "bg-ps-muted text-ps-body",
   in_progress:     "bg-blue-100 text-blue-700",
   waiting_client:  "bg-purple-100 text-purple-700",
-  review_required: "bg-amber-100 text-amber-700",
+  review_required: "bg-amber-100 text-state-attention",
   completed:       "bg-green-100 text-green-700",
 };
 
@@ -365,7 +365,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                   {STATUS_LABEL[task.status]}
                 </span>
                 {overdue && (
-                  <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-red-100 text-red-700 flex items-center gap-1">
+                  <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-red-100 text-state-problem flex items-center gap-1">
                     <AlertTriangle size={10} /> Overdue
                   </span>
                 )}
@@ -654,14 +654,14 @@ export default function TasksPage() {
         <SummaryCard label="Pending" value={stats.pending} color="bg-slate-50 border-slate-200 text-slate-700" />
         <SummaryCard label="In Progress" value={stats.in_progress} color="bg-blue-50 border-blue-200 text-blue-700" />
         <SummaryCard label="Completed" value={stats.completed} color="bg-green-50 border-green-200 text-green-700" />
-        <SummaryCard label="Overdue" value={stats.overdue} color="bg-red-50 border-red-200 text-red-700" />
+        <SummaryCard label="Overdue" value={stats.overdue} color="bg-state-problem-surface border-state-problem-border text-state-problem" />
       </div>
 
       {/* The ceiling was reached, so the table below is a PREFIX of the tasks
           and its "of N" is the cap. Said out loud rather than left for someone
           to discover by missing a task. */}
       {tasksCapped && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2 text-xs text-amber-800">
           Showing the first {TASK_FETCH_LIMIT.toLocaleString("en-IN")} tasks — there
           may be more. Narrow by client, status or assignee to be sure you are
           seeing all of them.

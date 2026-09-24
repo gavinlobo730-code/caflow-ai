@@ -152,13 +152,13 @@ function Skeleton({ className }: { className?: string }) {
 
 function DeadlineBadge({ daysLeft }: { daysLeft: number }) {
   if (daysLeft === 0) return (
-    <span className="text-2xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-bold ring-1 ring-red-500/20">Today</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-state-problem-surface text-red-600 font-bold ring-1 ring-red-500/20">Today</span>
   );
   if (daysLeft <= 3) return (
-    <span className="text-2xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-semibold">{daysLeft}d</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-state-problem-surface text-red-600 font-semibold">{daysLeft}d</span>
   );
   if (daysLeft <= 7) return (
-    <span className="text-2xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-semibold">{daysLeft}d</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-state-attention-surface text-amber-600 font-semibold">{daysLeft}d</span>
   );
   if (daysLeft <= 14) return (
     <span className="text-2xs px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 font-medium">{daysLeft}d</span>
@@ -172,7 +172,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   completed:       { label: "Done",        color: "text-emerald-600 bg-emerald-50" },
   in_progress:     { label: "In Progress", color: "text-blue-600 bg-blue-50" },
   todo:            { label: "To Do",       color: "text-ps-label bg-ps-muted" },
-  review_required: { label: "Review",      color: "text-amber-600 bg-amber-50" },
+  review_required: { label: "Review",      color: "text-amber-600 bg-state-attention-surface" },
   waiting_client:  { label: "Waiting",     color: "text-purple-600 bg-purple-50" },
 };
 
@@ -303,14 +303,14 @@ export default function DashboardContent() {
       {/* A failed load must never read as "0 Clients / All caught up". Keep the
           KPIs on screen but make it explicit they may be stale, and offer Retry. */}
       {loadFailed && (
-        <div role="alert" className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+        <div role="alert" className="flex items-center gap-3 rounded-xl border border-state-problem-border bg-state-problem-surface px-4 py-3">
           <AlertTriangle size={16} className="text-red-600 shrink-0" />
-          <p className="text-[13px] text-red-700 flex-1">
+          <p className="text-[13px] text-state-problem flex-1">
             Couldn&apos;t load your dashboard — please retry. The figures below may be stale.
           </p>
           <button
             onClick={() => setReloadKey((k) => k + 1)}
-            className="text-[12px] font-medium text-red-700 underline shrink-0"
+            className="text-[12px] font-medium text-state-problem underline shrink-0"
           >
             Retry
           </button>
@@ -396,7 +396,7 @@ export default function DashboardContent() {
         </Link>
         <div className="w-px h-8 bg-ps-muted" />
         <Link href="/work" className="flex items-center gap-2.5 group">
-          <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-state-attention-surface flex items-center justify-center">
             <Clock size={13} className="text-amber-600" />
           </div>
           {loading ? <Skeleton className="h-5 w-10" /> : (
@@ -420,7 +420,7 @@ export default function DashboardContent() {
         </Link>
         <div className="w-px h-8 bg-ps-muted" />
         <Link href="/deadlines" className="flex items-center gap-2.5 group">
-          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", (kpis?.overdueFilings ?? 0) > 0 ? "bg-red-50" : "bg-ps-bg")}>
+          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", (kpis?.overdueFilings ?? 0) > 0 ? "bg-state-problem-surface" : "bg-ps-bg")}>
             <AlertTriangle size={13} className={(kpis?.overdueFilings ?? 0) > 0 ? "text-red-600" : "text-ps-disabled"} />
           </div>
           {loading ? <Skeleton className="h-5 w-10" /> : (
@@ -442,7 +442,7 @@ export default function DashboardContent() {
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center">
+              <div className="w-7 h-7 rounded-lg bg-state-attention-surface flex items-center justify-center">
                 <Calendar size={14} className="text-amber-600" />
               </div>
               <h2 className="text-[13px] font-semibold text-ps-ink">Upcoming Deadlines</h2>
@@ -534,7 +534,7 @@ export default function DashboardContent() {
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center">
+              <div className="w-7 h-7 rounded-lg bg-state-attention-surface flex items-center justify-center">
                 <Clock size={14} className="text-amber-600" />
               </div>
               <h2 className="text-[13px] font-semibold text-ps-ink">Pending Tasks</h2>

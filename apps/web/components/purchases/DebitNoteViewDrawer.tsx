@@ -38,7 +38,7 @@ function Action({ children, onClick, icon, primary, danger }: {
   children: React.ReactNode; onClick: () => void; icon: React.ReactNode; primary?: boolean; danger?: boolean;
 }) {
   const cls = primary ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600"
-    : danger ? "border-ps-border text-red-600 hover:bg-red-50"
+    : danger ? "border-ps-border text-red-600 hover:bg-state-problem-surface"
     : "border-ps-border text-ps-label hover:bg-ps-bg";
   return (
     <button onClick={onClick} className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 ${cls}`}>
@@ -186,7 +186,7 @@ export function DebitNoteViewDrawer({
               {dn.is_reverse_charge && (
                 <>
                   <span className="text-ps-border">·</span>
-                  <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-amber-50 text-amber-700 border border-amber-200">RCM</span>
+                  <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-state-attention-surface text-state-attention border border-state-attention-border">RCM</span>
                 </>
               )}
               {dn.document_url && (

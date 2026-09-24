@@ -112,7 +112,7 @@ export default function CrossClientMatchesPage() {
       return <Badge className="bg-yellow-100 text-yellow-700">Pending</Badge>;
     if (m.is_confirmed)
       return <Badge className="bg-emerald-100 text-emerald-700">Confirmed</Badge>;
-    return <Badge className="bg-red-100 text-red-700">Rejected</Badge>;
+    return <Badge className="bg-red-100 text-state-problem">Rejected</Badge>;
   };
 
   return (
@@ -161,7 +161,7 @@ export default function CrossClientMatchesPage() {
       )}
 
       {error && (
-        <Card role="alert" className="bg-red-50 border-red-200">
+        <Card role="alert" className="bg-state-problem-surface border-state-problem-border">
           <CardContent className="p-4 text-sm text-red-600">{error}</CardContent>
         </Card>
       )}
@@ -212,7 +212,7 @@ export default function CrossClientMatchesPage() {
                       <button
                         disabled={updating === m.id}
                         onClick={() => handleReview(m.id, false)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 text-xs font-medium transition-colors disabled:opacity-50 border border-red-200"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-state-problem-surface text-red-600 hover:bg-red-100 text-xs font-medium transition-colors disabled:opacity-50 border border-state-problem-border"
                       >
                         <XCircle className="w-3.5 h-3.5" />
                         Reject

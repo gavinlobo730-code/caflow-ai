@@ -208,13 +208,13 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       {msg && (
         <div className={`rounded-lg px-3 py-2 text-xs ${msg.type === "ok"
           ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
-          : "bg-red-50 border border-red-200 text-red-700"}`}>
+          : "bg-state-problem-surface border border-state-problem-border text-state-problem"}`}>
           {msg.text}
         </div>
       )}
 
       {loadFailed && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 flex gap-2">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 text-xs text-amber-900 flex gap-2">
           <AlertTriangle size={13} className="shrink-0 mt-0.5" />
           <span>The opening documents could not be read, so nothing below is the whole of them. Reload before adding one.</span>
         </div>
@@ -244,13 +244,13 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
           Which of the two is the mistake is the CA's answer, so the panel shows
           both figures and offers no difference. */}
       {doubles.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-800 space-y-1">
+        <div className="bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 text-xs text-red-800 space-y-1">
           <p className="font-semibold flex items-center gap-1.5">
             <AlertTriangle size={12} /> {doubles.length}{" "}
             {doubles.length === 1 ? "account was" : "accounts were"} opened twice
           </p>
           {doubles.map((d) => <p key={d.account_id}>{d.sentence}</p>)}
-          <p className="text-3xs text-red-700/80 pt-0.5">
+          <p className="text-3xs text-state-problem/80 pt-0.5">
             Reverse whichever opening you did not mean. Nothing here is undone
             automatically — both postings are real journal entries.
           </p>
@@ -261,7 +261,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
           an ageing schedule that does not foot to its own control account is
           exactly the disclosure a reader would rely on. */}
       {unreconciled.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 space-y-1">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 text-xs text-amber-900 space-y-1">
           <p className="font-semibold flex items-center gap-1.5">
             <Info size={12} /> {unreconciled.length} {unreconciled.length === 1 ? "party does" : "parties do"} not add up
           </p>

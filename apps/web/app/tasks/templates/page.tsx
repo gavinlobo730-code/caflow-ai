@@ -23,8 +23,8 @@ import { Callout } from "@/components/ui/callout";
 const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-ps-muted text-ps-label",
   medium: "bg-blue-100 text-blue-700",
-  high: "bg-amber-100 text-amber-700",
-  critical: "bg-red-100 text-red-700",
+  high: "bg-amber-100 text-state-attention",
+  critical: "bg-red-100 text-state-problem",
 };
 
 const ROLE_OPTIONS = ["Partner", "Manager", "Executive", "Reviewer"];
@@ -238,7 +238,7 @@ export default function TaskTemplatesPage() {
                     {t.firm_id && (
                       <button
                         onClick={() => handleDelete(t.id)}
-                        className="p-1.5 rounded text-ps-hint hover:text-red-600 hover:bg-red-50 transition-colors"
+                        className="p-1.5 rounded text-ps-hint hover:text-red-600 hover:bg-state-problem-surface transition-colors"
                       >
                         <Trash2 size={14} />
                       </button>

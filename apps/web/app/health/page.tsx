@@ -114,7 +114,7 @@ function gradeBadge(grade: Grade): string {
     "Good":            "bg-blue-100 text-blue-700",
     "Needs Attention": "bg-yellow-100 text-yellow-700",
     "At Risk":         "bg-orange-100 text-orange-700",
-    "Critical":        "bg-red-100 text-red-700",
+    "Critical":        "bg-red-100 text-state-problem",
   };
   return map[grade] ?? "bg-gray-100 text-gray-700";
 }
@@ -346,13 +346,13 @@ export default function HealthPage() {
             <p className="text-xs text-gray-500 mt-1">Avg Score</p>
           </CardContent>
         </Card>
-        <Card className="bg-red-50 border-red-200 shadow-sm">
+        <Card className="bg-state-problem-surface border-state-problem-border shadow-sm">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-red-600">{criticalCount}</p>
             <p className="text-xs text-red-500 mt-1">Critical (0–34)</p>
           </CardContent>
         </Card>
-        <Card className="bg-amber-50 border-amber-200 shadow-sm">
+        <Card className="bg-state-attention-surface border-state-attention-border shadow-sm">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-amber-600">{atRiskCount}</p>
             <p className="text-xs text-amber-500 mt-1">At Risk (35–49)</p>

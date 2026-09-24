@@ -178,10 +178,10 @@ export default function TrialBalanceImportPage() {
         </div>
 
         {err && (
-          <Card role="alert" className="mb-4 border-red-200 bg-red-50">
+          <Card role="alert" className="mb-4 border-state-problem-border bg-state-problem-surface">
             <CardContent className="pt-4 flex gap-2">
               <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{err}</p>
+              <p className="text-sm text-state-problem">{err}</p>
             </CardContent>
           </Card>
         )}
@@ -307,7 +307,7 @@ export default function TrialBalanceImportPage() {
             </div>
 
             {unreadable.length > 0 && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <div className="rounded-lg border border-state-problem-border bg-state-problem-surface p-3 text-sm text-red-800">
                 <p className="font-medium">
                   {unreadable.length} row{unreadable.length === 1 ? "" : "s"} carry an amount this importer cannot read.
                 </p>

@@ -152,12 +152,12 @@ function overdueRiskLevel(days: number): "high" | "medium" | "low" {
 }
 
 function riskColor(level: string) {
-  const m: Record<string, string> = { critical: "text-red-700 bg-red-100", high: "text-red-700 bg-red-100", medium: "text-orange-700 bg-orange-100", low: "text-yellow-700 bg-yellow-100" };
+  const m: Record<string, string> = { critical: "text-state-problem bg-red-100", high: "text-state-problem bg-red-100", medium: "text-orange-700 bg-orange-100", low: "text-yellow-700 bg-yellow-100" };
   return m[level] ?? "text-ps-body bg-ps-muted";
 }
 
 function riskRowColor(level: string) {
-  const m: Record<string, string> = { high: "bg-red-50", medium: "bg-orange-50", low: "bg-yellow-50" };
+  const m: Record<string, string> = { high: "bg-state-problem-surface", medium: "bg-orange-50", low: "bg-yellow-50" };
   return m[level] ?? "";
 }
 
@@ -180,7 +180,7 @@ function OverallScoreCard({ total }: { total: number }) {
     ? { label: "Low Risk", color: "text-yellow-600 bg-yellow-50 border-yellow-200", Icon: Info }
     : total <= 8
     ? { label: "Medium Risk", color: "text-orange-600 bg-orange-50 border-orange-200", Icon: AlertTriangle }
-    : { label: "High Risk", color: "text-red-600 bg-red-50 border-red-200", Icon: AlertCircle };
+    : { label: "High Risk", color: "text-red-600 bg-state-problem-surface border-state-problem-border", Icon: AlertCircle };
   const { label, color, Icon } = items;
   return (
     <div className={`rounded-xl border p-5 flex items-center gap-4 ${color}`}>
@@ -535,14 +535,14 @@ export default function RisksPage() {
       ) : pageError ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <AlertCircle className="h-10 w-10 text-red-600 mb-3" />
-          <p className="text-sm font-medium text-red-700">{pageError}</p>
+          <p className="text-sm font-medium text-state-problem">{pageError}</p>
           <button onClick={loadData} className="mt-3 text-xs text-blue-600 hover:underline">Retry</button>
         </div>
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="sm:col-span-2 lg:col-span-1"><OverallScoreCard total={totalRisks} /></div>
-            <MiniCard label="High / Critical" count={highCount} color="text-red-600 bg-red-50 border-red-200 border" icon={AlertCircle} />
+            <MiniCard label="High / Critical" count={highCount} color="text-red-600 bg-state-problem-surface border-state-problem-border border" icon={AlertCircle} />
             <MiniCard label="Medium Risk" count={mediumCount} color="text-orange-600 bg-orange-50 border-orange-200 border" icon={AlertTriangle} />
             <MiniCard label="Low Risk" count={lowCount} color="text-yellow-600 bg-yellow-50 border-yellow-200 border" icon={Info} />
           </div>
@@ -552,7 +552,7 @@ export default function RisksPage() {
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertCircle size={16} className="text-red-500" />
                 Overdue Filing Risk
-                {overdueRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{overdueRisks.length} overdue</span>}
+                {overdueRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-state-problem px-2 py-0.5 rounded-full">{overdueRisks.length} overdue</span>}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -614,7 +614,7 @@ export default function RisksPage() {
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertTriangle size={16} className="text-red-500" />
                 TDS Default Risk
-                {tdsRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{tdsRisks.length} defaulted</span>}
+                {tdsRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-state-problem px-2 py-0.5 rounded-full">{tdsRisks.length} defaulted</span>}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -626,11 +626,11 @@ export default function RisksPage() {
                     <thead><tr className="border-b border-ps-muted bg-ps-bg text-left"><th className="px-4 py-3 font-medium text-ps-label">Client</th><th className="px-4 py-3 font-medium text-ps-label">Return Type</th><th className="px-4 py-3 font-medium text-ps-label">Due Date</th><th className="px-4 py-3 font-medium text-ps-label">Days Overdue</th></tr></thead>
                     <tbody className="divide-y divide-ps-bg">
                       {tdsRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-ps-bg bg-red-50 transition-colors">
+                        <tr key={i} className="hover:bg-ps-bg bg-state-problem-surface transition-colors">
                           <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
                           <td className="px-4 py-3 text-ps-label">{r.filingType}</td>
                           <td className="px-4 py-3 text-ps-label">{r.dueDate}</td>
-                          <td className="px-4 py-3 font-semibold text-red-700">{r.daysOverdue}</td>
+                          <td className="px-4 py-3 font-semibold text-state-problem">{r.daysOverdue}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -667,7 +667,7 @@ export default function RisksPage() {
               <CardTitle className="text-base flex items-center gap-2">
                 <CalendarClock size={16} className="text-red-500" />
                 Advance Tax Default Risk
-                {advanceTaxRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{advanceTaxRisks.length} defaulted</span>}
+                {advanceTaxRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-state-problem px-2 py-0.5 rounded-full">{advanceTaxRisks.length} defaulted</span>}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -679,11 +679,11 @@ export default function RisksPage() {
                     <thead><tr className="border-b border-ps-muted bg-ps-bg text-left"><th className="px-4 py-3 font-medium text-ps-label">Client</th><th className="px-4 py-3 font-medium text-ps-label">Installment</th><th className="px-4 py-3 font-medium text-ps-label">Due Date</th><th className="px-4 py-3 font-medium text-ps-label">Days Overdue</th></tr></thead>
                     <tbody className="divide-y divide-ps-bg">
                       {advanceTaxRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-ps-bg bg-red-50 transition-colors">
+                        <tr key={i} className="hover:bg-ps-bg bg-state-problem-surface transition-colors">
                           <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
                           <td className="px-4 py-3 text-ps-label">{r.installment}</td>
                           <td className="px-4 py-3 text-ps-label">{r.dueDate}</td>
-                          <td className="px-4 py-3 font-semibold text-red-700">{r.daysOverdue}</td>
+                          <td className="px-4 py-3 font-semibold text-state-problem">{r.daysOverdue}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -711,11 +711,11 @@ export default function RisksPage() {
                     <thead><tr className="border-b border-ps-muted bg-ps-bg text-left"><th className="px-4 py-3 font-medium text-ps-label">Client</th><th className="px-4 py-3 font-medium text-ps-label">DSC Holder</th><th className="px-4 py-3 font-medium text-ps-label">Expiry Date</th><th className="px-4 py-3 font-medium text-ps-label">Days Left</th></tr></thead>
                     <tbody className="divide-y divide-ps-bg">
                       {dscExpiryRisks.map((r, i) => (
-                        <tr key={i} className={`hover:bg-ps-bg transition-colors ${r.daysLeft <= 15 ? "bg-red-50" : "bg-orange-50"}`}>
+                        <tr key={i} className={`hover:bg-ps-bg transition-colors ${r.daysLeft <= 15 ? "bg-state-problem-surface" : "bg-orange-50"}`}>
                           <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
                           <td className="px-4 py-3 text-ps-label">{r.dscHolder}</td>
                           <td className="px-4 py-3 text-ps-label">{r.expiryDate}</td>
-                          <td className={`px-4 py-3 font-semibold ${r.daysLeft <= 15 ? "text-red-700" : "text-orange-700"}`}>{r.daysLeft}</td>
+                          <td className={`px-4 py-3 font-semibold ${r.daysLeft <= 15 ? "text-state-problem" : "text-orange-700"}`}>{r.daysLeft}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -731,7 +731,7 @@ export default function RisksPage() {
               <CardTitle className="text-base flex items-center gap-2">
                 <Landmark size={16} className="text-red-500" />
                 Loan Overdue Risk
-                {loanOverdueRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{loanOverdueRisks.length} overdue</span>}
+                {loanOverdueRisks.length > 0 && <span className="ml-auto text-xs font-medium bg-red-100 text-state-problem px-2 py-0.5 rounded-full">{loanOverdueRisks.length} overdue</span>}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -743,11 +743,11 @@ export default function RisksPage() {
                     <thead><tr className="border-b border-ps-muted bg-ps-bg text-left"><th className="px-4 py-3 font-medium text-ps-label">Client</th><th className="px-4 py-3 font-medium text-ps-label">Lender</th><th className="px-4 py-3 font-medium text-ps-label">Loan Type</th><th className="px-4 py-3 font-medium text-ps-label">Outstanding</th></tr></thead>
                     <tbody className="divide-y divide-ps-bg">
                       {loanOverdueRisks.map((r, i) => (
-                        <tr key={i} className="hover:bg-ps-bg bg-red-50 transition-colors">
+                        <tr key={i} className="hover:bg-ps-bg bg-state-problem-surface transition-colors">
                           <td className="px-4 py-3 font-medium text-ps-ink">{r.clientName}</td>
                           <td className="px-4 py-3 text-ps-label">{r.lenderName}</td>
                           <td className="px-4 py-3 text-ps-label capitalize">{r.loanType.replace(/_/g, " ")}</td>
-                          <td className="px-4 py-3 font-semibold text-red-700">{formatPaise(r.outstandingPaise)}</td>
+                          <td className="px-4 py-3 font-semibold text-state-problem">{formatPaise(r.outstandingPaise)}</td>
                         </tr>
                       ))}
                     </tbody>

@@ -269,7 +269,7 @@ export default function FilingDemoWizard({
 
               {stage?.kind === "warning" && (
                 <>
-                  <div className="border-2 border-amber-400 bg-amber-50 rounded p-3">
+                  <div className="border-2 border-amber-400 bg-state-attention-surface rounded p-3">
                     <p className="text-sm font-semibold text-amber-900">{stage.text}</p>
                   </div>
                   <div className="flex gap-2">
@@ -429,7 +429,7 @@ export default function FilingDemoWizard({
                     </div>
                     <p className="text-xs text-green-800">{stage.filed_line}</p>
                   </div>
-                  <div className="rounded border border-amber-300 bg-amber-50 p-3 space-y-1">
+                  <div className="rounded border border-amber-300 bg-state-attention-surface p-3 space-y-1">
                     {(stage.truth ?? []).map((t) => (
                       <p key={t} className="text-xs text-amber-900">{t}</p>
                     ))}

@@ -337,7 +337,7 @@ function RegisterTab({ clientId, openDoc }:
 
   const LIFECYCLE_BADGE: Record<string, string> = {
     active:             "bg-green-100 text-green-700",
-    disposed:           "bg-red-100 text-red-700",
+    disposed:           "bg-red-100 text-state-problem",
     fully_depreciated:  "bg-gray-100 text-gray-600",
   };
 
@@ -412,7 +412,7 @@ function RegisterTab({ clientId, openDoc }:
                   <tr
                     key={a.id}
                     className={"hover:bg-ps-bg cursor-pointer" +
-                      (openDoc && a.id === openDoc ? " bg-amber-50 ring-2 ring-inset ring-amber-300" : "")}
+                      (openDoc && a.id === openDoc ? " bg-state-attention-surface ring-2 ring-inset ring-amber-300" : "")}
                     onClick={() => setExpanded(expanded === a.id ? null : a.id)}
                   >
                     <td className="px-4 py-2.5 text-ps-hint">
@@ -423,7 +423,7 @@ function RegisterTab({ clientId, openDoc }:
                     <td className="px-3 py-2.5 text-ps-label">{a.asset_category}</td>
                     <td className="px-3 py-2.5 text-ps-label">{fmtDate(a.purchase_date)}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(a.purchase_cost_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(a.accumulated_depreciation_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-state-attention">{fmt(a.accumulated_depreciation_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-semibold text-ps-ink">
                       {fmt(a.purchase_cost_paise - a.accumulated_depreciation_paise)}
                     </td>
@@ -886,7 +886,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
             </Field>
           </div>
           {catsFailed && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-amber-800 text-2xs flex items-center justify-between gap-3">
+            <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 text-amber-800 text-2xs flex items-center justify-between gap-3">
               {/* No fallback list: a category picked from a stale copy of the
                   Schedule is the defect this change removed. The form waits. */}
               <span>Couldn&apos;t load the Schedule II categories — the request failed or timed out.</span>
@@ -1423,14 +1423,14 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                     {r.depreciation_method === "WDV" ? `WDV ${r.wdv_rate_percent ?? "—"}%` : `SL ${r.useful_life_years ?? "—"}yr`}
                   </td>
                   <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(r.current_wdv_paise)}</td>
-                  <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(r.annual_depreciation_paise)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-state-attention">{fmt(r.annual_depreciation_paise)}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-ps-label">{fmt(r.monthly_depreciation_paise)}</td>
                   <td className="px-3 py-2.5">
                     {r.statutory_gap ? (
                       // A zero with a reason beside it is not the same number
                       // as a zero: this asset has no statutory basis for a
                       // charge, so nothing is posted until a CA records one.
-                      <span className="text-3xs text-amber-700">{r.statutory_gap}</span>
+                      <span className="text-3xs text-state-attention">{r.statutory_gap}</span>
                     ) : r.annual_depreciation_paise > 0 ? (
                       <>
                         <button
@@ -1441,7 +1441,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                           {posting === r.asset_id ? "Posting…" : `Post ${period}`}
                         </button>
                         {notices[r.asset_id] && (
-                          <span className="block text-3xs text-amber-700 mt-1 max-w-xs">{notices[r.asset_id]}</span>
+                          <span className="block text-3xs text-state-attention mt-1 max-w-xs">{notices[r.asset_id]}</span>
                         )}
                         {errors[r.asset_id] && (
                           <span className="block text-3xs text-red-600 mt-1 max-w-xs">{errors[r.asset_id]}</span>
@@ -1471,9 +1471,9 @@ function DepreciationTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+      <div className="bg-state-attention-surface border border-amber-100 rounded-xl px-4 py-3">
         <p className="text-xs font-semibold text-amber-800">CA Review Required</p>
-        <p className="text-2xs text-amber-700 mt-1">
+        <p className="text-2xs text-state-attention mt-1">
           Depreciation journals are posted to the ledger after CA review. Rates follow <strong>Companies Act 2013, Schedule II</strong>.
           WDV rates are applied to the Written Down Value; SL rates to the original cost less salvage.
         </p>
@@ -1664,7 +1664,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
             {fmt(Math.abs(lastDisposal.gainLoss))}
           </p>
           {lastDisposal.partMonthUncharged && (
-            <p className="text-2xs text-amber-700">
+            <p className="text-2xs text-state-attention">
               Part-month depreciation was NOT charged. Depreciation posts whole
               months — Schedule II Note 3 makes the purchase month the only
               pro-rated one — so the days between the last month end and the
@@ -1673,11 +1673,11 @@ function DisposalTab({ clientId }: { clientId: string }) {
           )}
         </div>
       )}
-      <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 flex gap-2">
+      <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3 flex gap-2">
         <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
         <div>
           <p className="text-xs font-semibold text-red-800">Asset Disposal — CA Review Required</p>
-          <p className="text-2xs text-red-700 mt-0.5">
+          <p className="text-2xs text-state-problem mt-0.5">
             Disposal creates a journal entry: Dr Accumulated Depreciation + Dr/Cr Bank / Cr Fixed Asset ± Profit/Loss on Disposal.
             This action cannot be undone. CA must review before confirming.
           </p>
@@ -1709,10 +1709,10 @@ function DisposalTab({ clientId }: { clientId: string }) {
             </thead>
             <tbody className="divide-y divide-ps-bg">
               {assets.map((a) => (
-                <tr key={a.id} className={`hover:bg-ps-bg ${selected?.id === a.id ? "bg-red-50" : ""}`}>
+                <tr key={a.id} className={`hover:bg-ps-bg ${selected?.id === a.id ? "bg-state-problem-surface" : ""}`}>
                   <td className="px-4 py-2.5 font-medium text-ps-ink">{a.asset_name}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(a.purchase_cost_paise)}</td>
-                  <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(a.accumulated_depreciation_paise)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-state-attention">{fmt(a.accumulated_depreciation_paise)}</td>
                   <td className="px-3 py-2.5 text-right font-mono font-semibold text-ps-ink">
                     {fmt(a.purchase_cost_paise - a.accumulated_depreciation_paise)}
                   </td>
@@ -1732,7 +1732,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
       )}
 
       {selected && (
-        <div className="bg-white rounded-xl border border-red-200 px-5 py-5 space-y-4">
+        <div className="bg-white rounded-xl border border-state-problem-border px-5 py-5 space-y-4">
           <p className="text-xs font-semibold text-ps-ink">Dispose: {selected.asset_name}</p>
           {error && <Callout tone="problem">{error}</Callout>}
           <div className="grid grid-cols-2 gap-4">
@@ -1795,7 +1795,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
                 (preview
                   ? preview.gain_loss_paise
                   : (proceedsPaise ?? 0) - (selected.purchase_cost_paise - selected.accumulated_depreciation_paise)
-                ) >= 0 ? "text-green-700" : "text-red-700"
+                ) >= 0 ? "text-green-700" : "text-state-problem"
               }`}>
                 {proceedsPaise === null
                   ? "—"
@@ -2044,10 +2044,10 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
                     <td className="px-5 py-2.5 font-medium text-ps-ink whitespace-nowrap">{c.asset_class}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-ps-label">{fmt(c.opening_gross_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-green-700">{c.additions_paise ? fmt(c.additions_paise) : "—"}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-red-700">{c.deductions_paise ? fmt(c.deductions_paise) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-state-problem">{c.deductions_paise ? fmt(c.deductions_paise) : "—"}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(c.closing_gross_paise)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-amber-700">{c.charge_paise ? fmt(c.charge_paise) : "—"}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(c.closing_accum_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-state-attention">{c.charge_paise ? fmt(c.charge_paise) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-state-attention">{fmt(c.closing_accum_paise)}</td>
                     <td className="px-5 py-2.5 text-right font-mono font-semibold text-ps-ink">{fmt(c.closing_net_paise)}</td>
                   </tr>
                 ))}
@@ -2191,7 +2191,7 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
       )}
 
       {state.phase === "error" && (
-        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        <p className="text-xs text-red-600 bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2">
           {state.message} — this is a failed check, not a clean register.
         </p>
       )}
@@ -2212,7 +2212,7 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
           <ul className="space-y-2">
             {state.findings.map((f, i) => (
               <li key={`${f.kind}-${f.asset_code ?? f.asset_codes?.join(",") ?? i}`}
-                  className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                  className="rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2">
                 <div className="flex items-start gap-2">
                   <AlertCircle size={12} className="text-amber-600 mt-0.5 shrink-0" />
                   <div className="min-w-0">
@@ -2228,13 +2228,13 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
                         it states. Rendered, never rebuilt here. */}
                     <p className="text-2xs text-amber-800 mt-0.5">{f.what_it_means}</p>
                     {f.field === "wdv_rate_percent" && f.schedule_ii_prescribes?.length ? (
-                      <p className="text-3xs text-amber-700 mt-0.5">
+                      <p className="text-3xs text-state-attention mt-0.5">
                         Stored {f.stored}% · Schedule II Part C prescribes{" "}
                         {f.schedule_ii_prescribes.join("%, ")}% for {f.asset_category}
                       </p>
                     ) : null}
                     {f.field === "useful_life_years" && f.schedule_ii_prescribes?.length ? (
-                      <p className="text-3xs text-amber-700 mt-0.5">
+                      <p className="text-3xs text-state-attention mt-0.5">
                         Stored {f.stored} years · Schedule II Part C prescribes{" "}
                         {f.schedule_ii_prescribes.join(", ")} for {f.asset_category}
                       </p>

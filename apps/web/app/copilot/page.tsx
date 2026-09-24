@@ -56,9 +56,9 @@ const CONTEXT_ICONS: Record<string, JSX.Element> = {
 };
 
 const PRIORITY_STYLES: Record<string, string> = {
-  critical: "bg-red-100 text-red-700 border-red-200",
+  critical: "bg-red-100 text-state-problem border-state-problem-border",
   high:     "bg-orange-100 text-orange-700 border-orange-200",
-  medium:   "bg-amber-100 text-amber-700 border-amber-200",
+  medium:   "bg-amber-100 text-state-attention border-state-attention-border",
   low:      "bg-gray-100 text-gray-600 border-gray-200",
 };
 
@@ -117,7 +117,7 @@ function MessageBubble({ msg, onRate }: { msg: Message; onRate: (id: string, rat
               </button>
               <button
                 onClick={() => onRate(msg.id, 1)}
-                className={`p-1 rounded hover:bg-red-50 transition-colors ${msg.feedback_rating === 1 ? "text-red-500" : "text-ps-disabled hover:text-red-400"}`}
+                className={`p-1 rounded hover:bg-state-problem-surface transition-colors ${msg.feedback_rating === 1 ? "text-red-500" : "text-ps-disabled hover:text-red-400"}`}
               >
                 <ThumbsDown size={11} />
               </button>
@@ -461,8 +461,8 @@ export default function CopilotPage() {
               {/* Input */}
               <div className="px-6 py-4 border-t border-ps-border bg-white flex-shrink-0">
                 {chatError && (
-                  <div role="alert" className="max-w-3xl mx-auto mb-2 flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-                    <p className="text-xs text-red-700">{chatError}</p>
+                  <div role="alert" className="max-w-3xl mx-auto mb-2 flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-lg px-3 py-2">
+                    <p className="text-xs text-state-problem">{chatError}</p>
                     <button onClick={() => setChatError(null)} className="text-red-400 hover:text-red-600 shrink-0">✕</button>
                   </div>
                 )}

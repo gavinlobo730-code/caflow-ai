@@ -58,8 +58,8 @@ const FIELD =
  *  whichever is EARLIER, and filing the annual return early shuts it early. */
 function WindowBadge({ window: w }: { window?: { status?: string; closes_on?: string } }) {
   if (!w?.status) return null;
-  const tone = w.status === "expired" ? "bg-red-50 text-red-700 border-red-200"
-    : w.status === "closing_soon" ? "bg-amber-50 text-amber-800 border-amber-200"
+  const tone = w.status === "expired" ? "bg-state-problem-surface text-state-problem border-state-problem-border"
+    : w.status === "closing_soon" ? "bg-state-attention-surface text-amber-800 border-state-attention-border"
     : "bg-emerald-50 text-emerald-700 border-emerald-200";
   return (
     <span className={`text-3xs px-1.5 py-0.5 rounded-full border ${tone}`}>
@@ -113,7 +113,7 @@ function DocList({ title, why, docs }: {
                   <span className="font-mono text-ps-ink">{d.doc_no ?? "—"}</span>
                   {d.doc_date && <span className="block text-3xs text-ps-hint">{d.doc_date}</span>}
                   {d.filed_section && d.books_section && (
-                    <span className="block text-3xs text-amber-700">
+                    <span className="block text-3xs text-state-attention">
                       {d.filed_section} → {d.books_section}
                     </span>
                   )}
@@ -217,7 +217,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
         {exceptions && exceptions.status !== "ok" && (
           <div className={`rounded-lg border p-3 ${
             exceptions.status === "payload_missing"
-              ? "border-amber-200 bg-amber-50" : "border-ps-border bg-white"}`}>
+              ? "border-state-attention-border bg-state-attention-surface" : "border-ps-border bg-white"}`}>
             <p className={`text-[12px] ${
               exceptions.status === "payload_missing" ? "text-amber-800" : "text-ps-label"}`}>
               {exceptions.message}
@@ -348,13 +348,13 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
                 shown because a CA needs to know, not because there is an
                 action. */}
             {!!amendments.expired?.length && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                <p className="text-2xs font-semibold text-red-700">
+              <div className="rounded-lg border border-state-problem-border bg-state-problem-surface p-3">
+                <p className="text-2xs font-semibold text-state-problem">
                   {amendments.expired.length} period(s) beyond repair — the correction
                   window has closed
                 </p>
                 {amendments.expired.map((e, i) => (
-                  <p key={i} className="text-2xs text-red-700 mt-0.5">
+                  <p key={i} className="text-2xs text-state-problem mt-0.5">
                     · {periodLabel(e.period)} <WindowBadge window={e.window} />
                     {e.window?.reason ? ` — ${e.window.reason}` : ""}
                   </p>
@@ -363,7 +363,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
             )}
 
             {!!amendments.closing_soon?.length && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3">
                 <p className="text-2xs font-semibold text-amber-800">
                   Still fixable, but not for much longer
                 </p>
@@ -376,7 +376,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
             )}
 
             {!!amendments.needs_decision?.length && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3">
                 <p className="text-2xs font-semibold text-amber-800">
                   {amendments.needs_decision.length} need your decision
                 </p>
@@ -433,7 +433,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
                 className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
                 Download the payload
               </button>
-              <span className="text-3xs text-amber-700">
+              <span className="text-3xs text-state-attention">
                 CA REVIEW REQUIRED — uploading it to gst.gov.in stays a deliberate human act.
               </span>
             </div>

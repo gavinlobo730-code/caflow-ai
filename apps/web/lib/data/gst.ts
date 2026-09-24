@@ -492,25 +492,27 @@ export function fromPeriod(period: string): string {
 // same supplies server-side from the live invoice/bill/note tables, so there is
 // nothing for a replacement to do here.
 
-/** Fetch GSTR-2A records for the period. Period format: MMYYYY. */
-export async function fetchGSTR2ARecords(
-  clientId: string,
-  period: string,  // MMYYYY
-): Promise<GSTR2ARecord[]> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-
-  const { data, error } = await sb
-    .from("gstr2a_records")
-    .select("id,supplier_gstin,supplier_name,invoice_number,invoice_date,taxable_value_paise,igst_paise,cgst_paise,sgst_paise")
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .eq("return_period", period);
-
-  if (error) throw new Error(`Failed to fetch GSTR-2A records: ${error.message}`);
-  return (data ?? []) as GSTR2ARecord[];
-}
-
+// fetchGSTR2ARecords lived here, and it is GONE rather than paged.
+//
+// It read `gstr2a_records` for one client and one return period with NO PAGING,
+// and a month's GSTR-2B for an active client routinely holds more than
+// PostgREST's ~1000-row cap — a distributor with 1,500 purchase invoices in a
+// month is ordinary. Truncating the 2B side of a reconciliation is not a
+// display bug: an invoice the supplier DID file reads as "missing in 2B", so
+// §16(2)(aa) withholds credit the client is entitled to, and Rule 36(4) is
+// applied against a population that is short by an unknown amount.
+//
+// It had ZERO CALLERS. The reconciliation moved into `apps/api`
+// (`gst_2b_reconciliation_service`, which reads the purchase register itself)
+// and this was left behind — the shape this codebase keeps naming, an exported
+// function nothing reads, which the next person has to check before trusting.
+// Paging it would have preserved a trap in better condition; the reconciliation
+// must not be driven from the browser at all, which is what
+// `scripts/the-2b-reconciliation-reads-the-books.test.ts` exists to hold.
+//
+// The `GSTR2ARecord` interface above is now unreferenced and is KEPT: a type
+// carries no behaviour and no read, and it is an accurate description of the
+// table's shape for anyone rendering those rows. The trap was the function.
 // fetchTransactionLines lived here. It read `transaction_lines`, dropped by the
 // same migration 139; GSTR-1 line detail now comes from the from-books payload.
 

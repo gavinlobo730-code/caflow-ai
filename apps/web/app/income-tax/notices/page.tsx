@@ -56,8 +56,8 @@ const STORAGE_BUCKET = "Documents";
 
 function statusBadge(status: NoticeStatus) {
   switch (status) {
-    case "pending": return { cls: "text-red-700 bg-red-50", icon: AlertTriangle, label: "Pending" };
-    case "responded": return { cls: "text-amber-700 bg-amber-50", icon: Clock, label: "Responded" };
+    case "pending": return { cls: "text-state-problem bg-state-problem-surface", icon: AlertTriangle, label: "Pending" };
+    case "responded": return { cls: "text-state-attention bg-state-attention-surface", icon: Clock, label: "Responded" };
     case "closed": return { cls: "text-green-700 bg-green-50", icon: CheckCircle, label: "Closed" };
     case "appeal": return { cls: "text-blue-700 bg-blue-50", icon: AlertTriangle, label: "In Appeal" };
   }
@@ -353,7 +353,7 @@ export default function ITNoticesPage() {
       </div>
 
       {urgentCount > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3 flex items-center gap-3">
+        <div className="bg-state-problem-surface border border-state-problem-border rounded-xl px-5 py-3 flex items-center gap-3">
           <AlertTriangle size={16} className="text-red-600 shrink-0" />
           <p className="text-sm text-red-800 font-medium">{urgentCount} notice{urgentCount !== 1 ? "s" : ""} overdue — response date has passed</p>
         </div>
@@ -428,7 +428,7 @@ export default function ITNoticesPage() {
                   const Icon = badge.icon;
                   const overdue = isOverdue(n);
                   return (
-                    <tr key={n.id} className={`hover:bg-ps-bg ${overdue ? "bg-red-50/40" : ""}`}>
+                    <tr key={n.id} className={`hover:bg-ps-bg ${overdue ? "bg-state-problem-surface/40" : ""}`}>
                       <td className="px-5 py-3 text-sm font-medium text-ps-ink">{clientName(n.client_id)}</td>
                       <td className="px-3 py-3 text-sm">Sec. {n.notice_type}</td>
                       <td className="px-3 py-3 text-xs text-ps-label">{n.assessment_year}</td>
@@ -437,7 +437,7 @@ export default function ITNoticesPage() {
                         {n.response_due_date ?? "—"}
                         {overdue && " ⚠"}
                       </td>
-                      <td className="px-3 py-3 text-sm tabular-nums text-right font-medium text-red-700">
+                      <td className="px-3 py-3 text-sm tabular-nums text-right font-medium text-state-problem">
                         {n.amount_demanded_paise > 0 ? formatPaise(n.amount_demanded_paise) : "—"}
                       </td>
                       <td className="px-3 py-3">
@@ -463,7 +463,7 @@ export default function ITNoticesPage() {
                         <div className="flex items-center gap-1.5">
                           {n.status === "pending" && (
                             <button onClick={() => updateStatus(n.id, "responded")}
-                              className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded hover:bg-amber-100">
+                              className="text-xs px-2 py-1 bg-state-attention-surface text-state-attention rounded hover:bg-amber-100">
                               Responded
                             </button>
                           )}

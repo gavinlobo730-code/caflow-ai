@@ -50,7 +50,7 @@ interface Plan {
 
 function delta(paise: number | null) {
   if (paise === null || paise === 0) return <span className="font-mono text-ps-hint">—</span>;
-  const cls = paise > 0 ? "text-green-700" : "text-red-700";
+  const cls = paise > 0 ? "text-green-700" : "text-state-problem";
   return <span className={`font-mono ${cls}`}>{paise > 0 ? "+" : "−"}{formatPaise(Math.abs(paise))}</span>;
 }
 
@@ -152,7 +152,7 @@ export default function FxRevaluationPanel({
       </div>
 
       {plan.period_problem && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 text-xs text-amber-900">
           {plan.period_problem}
         </div>
       )}

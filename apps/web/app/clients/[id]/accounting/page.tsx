@@ -493,7 +493,7 @@ function AccountingDashboard({
           activity. Zeros on an accounting dashboard are a claim about the
           books, and this one would be false. */}
       {loadFailed && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+        <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3 text-xs text-amber-900">
           These figures could not be loaded, so they are not shown. Check your
           connection and reopen this tab.
         </div>
@@ -551,9 +551,9 @@ function AccountingDashboard({
 
 function DashCard({ label, value, accent, action }: { label: string; value: string; accent: string; action?: () => void }) {
   const colors: Record<string, string> = {
-    green: "bg-green-50 border-green-100", red: "bg-red-50 border-red-100",
+    green: "bg-green-50 border-green-100", red: "bg-state-problem-surface border-red-100",
     emerald: "bg-emerald-50 border-emerald-100", orange: "bg-orange-50 border-orange-100",
-    blue: "bg-blue-50 border-blue-100", amber: "bg-amber-50 border-amber-100",
+    blue: "bg-blue-50 border-blue-100", amber: "bg-state-attention-surface border-amber-100",
     gray: "bg-white border-ps-muted",
   };
   const textColors: Record<string, string> = {
@@ -580,7 +580,7 @@ function ChartOfAccounts({ accounts, loading, error, onRefresh }: { accounts: Ac
   // sortable table). Type order also drives the default account_type sort tie-break.
   const TYPE_COLORS: Record<string, string> = {
     Asset: "text-blue-600 bg-blue-50", Liability: "text-orange-600 bg-orange-50",
-    Equity: "text-purple-600 bg-purple-50", Revenue: "text-green-600 bg-green-50", Expense: "text-red-600 bg-red-50",
+    Equity: "text-purple-600 bg-purple-50", Revenue: "text-green-600 bg-green-50", Expense: "text-red-600 bg-state-problem-surface",
   };
 
   const columns: Column<Account>[] = [
@@ -1390,14 +1390,14 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
         </div>
       </div>
       {basis === "cash" && (
-        <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded px-3 py-2 text-xs text-state-attention">
           Cash basis — management reporting only (IT Act §145). GST returns remain invoice-based per CGST Act.
         </div>
       )}
       {/* ACC-08. The backend's sentence, shown because the alternative is a
           report that looks like the year and is not one. */}
       {periodGap && (
-        <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-800">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded px-3 py-2 text-xs text-amber-800">
           {periodGap}
         </div>
       )}
@@ -1687,7 +1687,7 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
       <div className="space-y-3">
         <div className="flex gap-3 text-xs">
           <div className="flex-1 bg-green-50 border border-green-200 rounded-lg px-3 py-2"><p className="text-ps-hint">Gain</p><p className="font-mono font-semibold text-green-700">{formatPaise(d.gain_paise)}</p></div>
-          <div className="flex-1 bg-red-50 border border-red-200 rounded-lg px-3 py-2"><p className="text-ps-hint">Loss</p><p className="font-mono font-semibold text-red-700">{formatPaise(d.loss_paise)}</p></div>
+          <div className="flex-1 bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2"><p className="text-ps-hint">Loss</p><p className="font-mono font-semibold text-state-problem">{formatPaise(d.loss_paise)}</p></div>
           <div className="flex-1 bg-ps-bg border border-ps-border rounded-lg px-3 py-2"><p className="text-ps-hint">Net</p><p className="font-mono font-semibold text-ps-ink">{fxDelta(d.net_paise)}</p></div>
         </div>
         <div className={wrap}>
@@ -1809,7 +1809,7 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
   return (
     <div className="space-y-3">
       {d.overridden_count > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded px-3 py-2 text-xs text-state-attention">
           {d.overridden_count} document rate{d.overridden_count === 1 ? "" : "s"} manually overridden — review provenance below.
         </div>
       )}
@@ -2087,7 +2087,7 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
 
       {/* Cash basis disclaimer — IT Act §44AA */}
       {basis === "cash" && (
-        <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded px-3 py-2 text-xs text-state-attention">
           Cash basis — management reporting only (IT Act §44AA). Revenue shown only when collected; expenses when paid. GST returns are not affected.
         </div>
       )}
@@ -2130,9 +2130,9 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
                 <td className="px-5 py-2.5 text-ps-ink">Total Expenses (II)</td>
                 {totalExpensesByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-ps-ink">{fmt(v)}</td>)}
               </tr>
-              <tr className={`border-t-2 border-gray-300 font-bold text-sm ${netPL >= 0 ? "bg-green-50" : "bg-red-50"}`}>
+              <tr className={`border-t-2 border-gray-300 font-bold text-sm ${netPL >= 0 ? "bg-green-50" : "bg-state-problem-surface"}`}>
                 <td className="px-5 py-3 text-ps-ink">{netPL >= 0 ? "III. Profit for the Period (I − II)" : "III. Loss for the Period (II − I)"}</td>
-                {netByCol.map((v, i) => <td key={i} className={`px-4 py-3 text-right font-mono ${v >= 0 ? "text-green-700" : "text-red-700"}`}>{fmt(Math.abs(v))}</td>)}
+                {netByCol.map((v, i) => <td key={i} className={`px-4 py-3 text-right font-mono ${v >= 0 ? "text-green-700" : "text-state-problem"}`}>{fmt(Math.abs(v))}</td>)}
               </tr>
             </tbody>
           </table>
@@ -2435,7 +2435,7 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
 
       {/* Cash basis disclaimer — Companies Act §128 */}
       {basis === "cash" && (
-        <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded px-3 py-2 text-xs text-state-attention">
           Cash basis — management reporting only (IT Act §145). Companies Act §128 requires accrual for statutory accounts. Unpaid receivables and payables are excluded from this view.
         </div>
       )}
@@ -2500,7 +2500,7 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
               </tbody>
             </table>
           </div>
-          <div className={`rounded-lg px-4 py-3 text-xs font-medium ${isBalanced ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+          <div className={`rounded-lg px-4 py-3 text-xs font-medium ${isBalanced ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-state-problem"}`}>
             {isBalanced ? "✓ Balance Sheet balances — Assets = Equity + Liabilities" : "✗ Out of balance in at least one period — check for unposted entries"}
           </div>
           {columns.some((c) => c.error) ? (
@@ -2564,9 +2564,9 @@ function CFSectionBlock({ title, section }: { title: string; section: CFSection 
   const pos = section.total_paise >= 0;
   return (
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className={`px-5 py-3 border-b border-gray-50 flex items-center justify-between ${pos ? "bg-green-50/50" : "bg-red-50/50"}`}>
+      <div className={`px-5 py-3 border-b border-gray-50 flex items-center justify-between ${pos ? "bg-green-50/50" : "bg-state-problem-surface/50"}`}>
         <h3 className="text-xs font-semibold text-ps-body">{title}</h3>
-        <span className={`text-sm font-bold ${pos ? "text-green-700" : "text-red-700"}`}>{fmtSigned(section.total_paise)}</span>
+        <span className={`text-sm font-bold ${pos ? "text-green-700" : "text-state-problem"}`}>{fmtSigned(section.total_paise)}</span>
       </div>
       {section.lines.length === 0 ? (
         <p className="px-5 py-4 text-xs text-ps-hint">No transactions in this category</p>
@@ -2576,14 +2576,14 @@ function CFSectionBlock({ title, section }: { title: string; section: CFSection 
             {section.lines.map((l) => (
               <tr key={l.account_id} className="hover:bg-ps-bg">
                 <td className="px-5 py-2 text-ps-body">{l.account_name}</td>
-                <td className={`px-5 py-2 text-right font-mono font-medium ${l.amount_paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(l.amount_paise)}</td>
+                <td className={`px-5 py-2 text-right font-mono font-medium ${l.amount_paise >= 0 ? "text-green-700" : "text-state-problem"}`}>{fmtSigned(l.amount_paise)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="border-t border-ps-border bg-ps-bg">
               <td className="px-5 py-2 text-xs font-semibold text-ps-body">Net Cash</td>
-              <td className={`px-5 py-2 text-right font-mono text-sm font-bold ${pos ? "text-green-700" : "text-red-700"}`}>{fmtSigned(section.total_paise)}</td>
+              <td className={`px-5 py-2 text-right font-mono text-sm font-bold ${pos ? "text-green-700" : "text-state-problem"}`}>{fmtSigned(section.total_paise)}</td>
             </tr>
           </tfoot>
         </table>
@@ -2606,7 +2606,7 @@ const CF_RECON_ROWS: { label: string; of: (r: NonNullable<CFData["operating_reco
 function CFCell({ paise, bold }: { paise: number; bold?: boolean }) {
   return (
     <td className={`px-4 py-2 text-right font-mono tabular-nums whitespace-nowrap ${bold ? "font-bold" : "font-medium"} ${
-      paise > 0 ? "text-green-700" : paise < 0 ? "text-red-700" : "text-ps-hint"}`}>
+      paise > 0 ? "text-green-700" : paise < 0 ? "text-state-problem" : "text-ps-hint"}`}>
       {paise === 0 ? "—" : fmtSigned(paise)}
     </td>
   );
@@ -2915,7 +2915,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
       {!loading && agg && (
         <>
           {!agg.complete && (
-            <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700 flex items-center justify-between gap-3 flex-wrap">
+            <div className="bg-state-attention-surface border border-state-attention-border rounded px-3 py-2 text-xs text-state-attention flex items-center justify-between gap-3 flex-wrap">
               <span>
                 {columns.length - withData.length} of {columns.length} periods failed to load. The totals below cover only the periods that did — Opening + Net Change will not tie to Closing.
               </span>
@@ -2929,7 +2929,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
             </div>
           )}
           {!agg.reconciles && (
-            <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-700">
+            <div className="bg-state-attention-surface border border-state-attention-border rounded px-3 py-2 text-xs text-state-attention">
               Cash flow does not reconcile to the change in cash balances for this period. Please review the ledger.
             </div>
           )}
@@ -2944,7 +2944,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
             ].map((s) => (
               <div key={s.label} className="rounded-xl border border-ps-muted bg-white p-3 text-center">
                 <p className="text-3xs font-medium text-ps-label mb-1">{s.label}</p>
-                <p className={`text-sm font-bold tabular-nums ${s.paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(s.paise)}</p>
+                <p className={`text-sm font-bold tabular-nums ${s.paise >= 0 ? "text-green-700" : "text-state-problem"}`}>{fmtSigned(s.paise)}</p>
               </div>
             ))}
           </div>
@@ -2958,7 +2958,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
             <span className="text-ps-disabled font-medium">+</span>
             <div>
               <p className="text-3xs text-ps-hint">Net Change</p>
-              <p className={`text-sm font-semibold ${agg.netChange >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(agg.netChange)}</p>
+              <p className={`text-sm font-semibold ${agg.netChange >= 0 ? "text-green-700" : "text-state-problem"}`}>{fmtSigned(agg.netChange)}</p>
             </div>
             <span className="text-ps-disabled font-medium">=</span>
             <div>
@@ -2987,7 +2987,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
                         return paise !== 0 ? (
                           <tr key={label} className="hover:bg-ps-bg">
                             <td className="px-5 py-2 pl-8 text-ps-body">{label}</td>
-                            <td className={`px-5 py-2 text-right font-mono font-medium ${paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(paise)}</td>
+                            <td className={`px-5 py-2 text-right font-mono font-medium ${paise >= 0 ? "text-green-700" : "text-state-problem"}`}>{fmtSigned(paise)}</td>
                           </tr>
                         ) : null;
                       })}
@@ -2995,7 +2995,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
                     <tfoot>
                       <tr className="border-t border-ps-border bg-ps-bg">
                         <td className="px-5 py-2 text-xs font-semibold text-ps-body">Net Cash from Operations</td>
-                        <td className={`px-5 py-2 text-right font-mono text-sm font-bold ${r.net_cash_operating_paise >= 0 ? "text-green-700" : "text-red-700"}`}>{fmtSigned(r.net_cash_operating_paise)}</td>
+                        <td className={`px-5 py-2 text-right font-mono text-sm font-bold ${r.net_cash_operating_paise >= 0 ? "text-green-700" : "text-state-problem"}`}>{fmtSigned(r.net_cash_operating_paise)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -3145,8 +3145,8 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
 // nothing here auto-corrects a finding, matching the same "a human decides
 // the fix" posture this session's own manual corrections used.
 const SEVERITY_STYLE: Record<string, string> = {
-  critical: "bg-red-50 text-red-700 border-red-100",
-  warning: "bg-amber-50 text-amber-700 border-amber-100",
+  critical: "bg-state-problem-surface text-state-problem border-red-100",
+  warning: "bg-state-attention-surface text-state-attention border-amber-100",
 };
 
 const CHECK_LABEL: Record<string, string> = {
@@ -3288,7 +3288,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
           No verification has been run for this client yet. Click &ldquo;Verify Books&rdquo; to check it now.
         </div>
       ) : activeRun.status === "failed" ? (
-        <div className="bg-red-50 border border-red-100 rounded-xl p-5 text-sm text-red-700">
+        <div className="bg-state-problem-surface border border-red-100 rounded-xl p-5 text-sm text-state-problem">
           The verification run itself failed to complete: {activeRun.error}
         </div>
       ) : findings.length === 0 ? (

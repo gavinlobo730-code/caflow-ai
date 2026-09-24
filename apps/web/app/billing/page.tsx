@@ -109,7 +109,7 @@ const STATUS_COLORS: Record<InvoiceStatus, string> = {
   Draft: "bg-ps-muted text-ps-label",
   Issued: "bg-blue-100 text-blue-700",
   Paid: "bg-green-100 text-green-700",
-  Overdue: "bg-red-100 text-red-700",
+  Overdue: "bg-red-100 text-state-problem",
 };
 
 // ─── Modals ───────────────────────────────────────────────────────────────────
@@ -527,7 +527,7 @@ export default function BillingPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">{error}</div>
+        <div className="rounded-lg bg-state-attention-surface border border-state-attention-border px-4 py-3 text-sm text-amber-800">{error}</div>
       )}
 
       <div className="flex gap-1 border-b border-ps-border overflow-x-auto">
@@ -552,10 +552,10 @@ export default function BillingPage() {
             </div>
             <div className="bg-white border rounded-xl p-4">
               <p className="text-xs text-ps-label">Outstanding</p>
-              <p className={`text-xl font-bold mt-1 ${dash.outstandingPaise > 0 ? "text-amber-700" : "text-ps-ink"}`}>{fmtPaise(dash.outstandingPaise)}</p>
+              <p className={`text-xl font-bold mt-1 ${dash.outstandingPaise > 0 ? "text-state-attention" : "text-ps-ink"}`}>{fmtPaise(dash.outstandingPaise)}</p>
               <p className="text-2xs text-ps-hint mt-0.5">{dash.sentCount} issued invoices</p>
             </div>
-            <div className={`bg-white border rounded-xl p-4 ${dash.overduePaise > 0 ? "border-red-200" : ""}`}>
+            <div className={`bg-white border rounded-xl p-4 ${dash.overduePaise > 0 ? "border-state-problem-border" : ""}`}>
               <p className="text-xs text-ps-label">Overdue</p>
               <p className={`text-xl font-bold mt-1 ${dash.overduePaise > 0 ? "text-red-600" : "text-ps-ink"}`}>{fmtPaise(dash.overduePaise)}</p>
               <p className="text-2xs text-ps-hint mt-0.5">{dash.overdueCount} invoices</p>

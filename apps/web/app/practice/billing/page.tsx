@@ -127,7 +127,7 @@ function Billing() {
               placeholder="Product/Service…"
             />
           ) : (
-            <p className="text-2xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 col-span-1 flex items-center">
+            <p className="text-2xs text-state-attention bg-state-attention-surface rounded-lg px-3 py-2 col-span-1 flex items-center">
               Provision the practice (internal client) before billing — see Practice settings.
             </p>
           )}

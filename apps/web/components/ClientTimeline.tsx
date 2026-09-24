@@ -29,8 +29,8 @@ const CATEGORY_ICONS: Record<EventCategory, React.ElementType> = {
 const SEVERITY_STYLES = {
   info:     "border-l-ps-border bg-ps-bg",
   success:  "border-l-emerald-300 bg-emerald-50/50",
-  warning:  "border-l-amber-300 bg-amber-50/50",
-  critical: "border-l-red-300 bg-red-50/50",
+  warning:  "border-l-amber-300 bg-state-attention-surface/50",
+  critical: "border-l-red-300 bg-state-problem-surface/50",
 };
 
 const SEVERITY_DOT = {
@@ -215,7 +215,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
 
       {loadError && (
         <div className="flex flex-col items-center justify-center py-10 text-center space-y-2">
-          <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-full bg-state-problem-surface flex items-center justify-center">
             <Shield size={18} className="text-red-400" />
           </div>
           <p className="text-sm text-red-600 font-medium">{loadError}</p>

@@ -129,8 +129,8 @@ function fyFromPeriodStart(periodStart: string): string {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700",
-  overdue: "bg-red-100 text-red-700",
+  pending: "bg-amber-100 text-state-attention",
+  overdue: "bg-red-100 text-state-problem",
   filed: "bg-green-100 text-green-700",
   in_progress: "bg-blue-100 text-blue-700",
 };
@@ -285,11 +285,11 @@ function BulkMarkFiledModal({
 
         <div className="px-6 py-5 space-y-4">
           {/* Warning banner — CA Review */}
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+          <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
             <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
               CA Confirmation Required
             </p>
-            <p className="text-xs text-amber-700 mt-1">
+            <p className="text-xs text-state-attention mt-1">
               This records already-filed returns. PracticeSync does NOT
               auto-submit to the Income Tax Portal. Verify every
               acknowledgement number before saving.
@@ -1113,7 +1113,7 @@ export default function IncomeTaxPage() {
                           isPast
                             ? "bg-ps-muted text-ps-label"
                             : isUpcoming
-                            ? "bg-amber-100 text-amber-700"
+                            ? "bg-amber-100 text-state-attention"
                             : "bg-blue-50 text-blue-600"
                         }`}
                       >
@@ -1167,12 +1167,12 @@ export default function IncomeTaxPage() {
             Open AIS Tool →
           </Link>
         </div>
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-5 py-4 flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1">
               IT Notice Tracker
             </p>
-            <p className="text-sm text-amber-700">
+            <p className="text-sm text-state-attention">
               Track and manage IT notices, faceless assessments, demand notices and penalty proceedings.
             </p>
           </div>
@@ -1288,7 +1288,7 @@ export default function IncomeTaxPage() {
                 )}
 
                 {dueDateError && (
-                  <p role="alert" className="mt-1.5 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+                  <p role="alert" className="mt-1.5 text-xs text-red-600 bg-state-problem-surface px-3 py-2 rounded-lg">
                     {dueDateError} — enter the date yourself and check it against
                     §139(1).
                   </p>
@@ -1356,11 +1356,11 @@ export default function IncomeTaxPage() {
 
             <div className="px-6 py-5 space-y-4">
               {/* Warning banner — CA Review */}
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+              <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
                 <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
                   CA Confirmation Required
                 </p>
-                <p className="text-xs text-amber-700 mt-1">
+                <p className="text-xs text-state-attention mt-1">
                   This records an already-filed return. PracticeSync does NOT
                   auto-submit to the Income Tax Portal. Verify the
                   acknowledgement number before saving.

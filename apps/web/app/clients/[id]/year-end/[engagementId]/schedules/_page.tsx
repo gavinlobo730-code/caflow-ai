@@ -198,7 +198,7 @@ export default function SchedulesPage() {
           {loading && !currentData ? (
             <TableSkeleton rows={5} />
           ) : error ? (
-            <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-4 text-sm text-red-700">
+            <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-4 text-sm text-state-problem">
               {error}
               <button onClick={forceReload} className="ml-3 underline text-xs">Retry</button>
             </div>
@@ -226,7 +226,7 @@ function ScheduleTable({ data }: { data: ScheduleData }) {
             which is a different thing and is the CA's to fix. */}
         {data.gaps.length > 0 ? (
           data.gaps.map((g) => (
-            <p key={g} className="text-xs text-amber-700 mt-2 max-w-lg mx-auto">{g}</p>
+            <p key={g} className="text-xs text-state-attention mt-2 max-w-lg mx-auto">{g}</p>
           ))
         ) : (
           <p className="text-xs text-ps-hint mt-1">

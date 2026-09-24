@@ -154,7 +154,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
   return (
     <div className="space-y-5">
       {error && (
-        <div role="alert" className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex gap-2">
+        <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 text-xs text-state-problem flex gap-2">
           <AlertCircle size={13} className="shrink-0 mt-0.5" /><span>{error}</span>
         </div>
       )}
@@ -196,7 +196,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
               <tbody className="divide-y divide-ps-bg">
                 {register?.projects?.map((p) => (
                   <tr key={p.id} className={openDoc && p.id === openDoc
-                      ? "bg-amber-50 ring-2 ring-inset ring-amber-300" : undefined}>
+                      ? "bg-state-attention-surface ring-2 ring-inset ring-amber-300" : undefined}>
                     <td className="px-5 py-2 text-ps-ink">
                       {p.project_name}
                       {p.project_code && (
@@ -218,7 +218,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
                     <td className="px-5 py-2">
                       <span className={`text-2xs px-1.5 py-0.5 rounded ${
                         p.status === "capitalised" ? "bg-emerald-50 text-emerald-700"
-                        : p.status === "suspended" ? "bg-amber-50 text-amber-700"
+                        : p.status === "suspended" ? "bg-state-attention-surface text-state-attention"
                         : p.status === "abandoned" ? "bg-ps-muted text-ps-label"
                         : "bg-blue-50 text-blue-700"}`}>
                         {p.status.replace("_", " ")}
@@ -350,7 +350,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
                         {/* A band nobody stated renders as a gap, never as the
                             longest one — that would assert something false. */}
                         {r.bucket ? cs.bucket_labels[r.bucket]
-                          : <span className="text-amber-700">Not stated</span>}
+                          : <span className="text-state-attention">Not stated</span>}
                       </td>
                     </tr>
                   ))}
@@ -361,7 +361,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
           {/* Gaps are ACTIONABLE — nobody can yet tell — and render differently
               from the settled notes above, the same split the RCM panel makes. */}
           {cs.gaps.length > 0 && (
-            <div className="px-5 py-3 border-t border-ps-muted bg-amber-50 space-y-1">
+            <div className="px-5 py-3 border-t border-ps-muted bg-state-attention-surface space-y-1">
               {cs.gaps.map((g, i) => <p key={i} className="text-2xs text-amber-900">{g}</p>)}
             </div>
           )}
@@ -534,7 +534,7 @@ function CapitaliseModal({ clientId, project, onClose, onSaved }: {
       <Field label="Useful life (years, optional)">
         <input value={life} inputMode="numeric" onChange={(e) => setLife(e.target.value)} className={INPUT} />
       </Field>
-      <p className="text-2xs text-amber-700">
+      <p className="text-2xs text-state-attention">
         This cannot be undone from here — it creates the asset and posts a journal entry.
       </p>
     </Shell>

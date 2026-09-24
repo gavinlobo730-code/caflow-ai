@@ -71,7 +71,7 @@ const BUCKET_COLOR: Record<AgingRow["bucket"], string> = {
   "current": "bg-green-50 text-green-700",
   "1-30": "bg-yellow-50 text-yellow-700",
   "31-60": "bg-orange-50 text-orange-700",
-  "61-90": "bg-red-50 text-red-700",
+  "61-90": "bg-state-problem-surface text-state-problem",
   "90+": "bg-red-100 text-red-800",
 };
 
@@ -79,7 +79,7 @@ const ROW_COLOR: Record<AgingRow["bucket"], string> = {
   "current": "bg-green-50/30",
   "1-30": "bg-yellow-50/30",
   "31-60": "bg-orange-50/30",
-  "61-90": "bg-red-50/30",
+  "61-90": "bg-state-problem-surface/30",
   "90+": "bg-red-100/40",
 };
 
@@ -254,8 +254,8 @@ export default function ReceivablesAgingPage() {
           {[
             { label: "Total Outstanding", value: fmtRs(totalOutstanding), cls: "text-ps-ink" },
             { label: "Current (Not Due)", value: fmtRs(currentAmt), cls: "text-green-700" },
-            { label: "Overdue", value: fmtRs(overdueAmt), cls: "text-amber-700" },
-            { label: "90+ Days Overdue", value: fmtRs(ninetyPlusAmt), cls: "text-red-700" },
+            { label: "Overdue", value: fmtRs(overdueAmt), cls: "text-state-attention" },
+            { label: "90+ Days Overdue", value: fmtRs(ninetyPlusAmt), cls: "text-state-problem" },
           ].map(s => (
             <Card key={s.label}>
               <CardContent className="pt-4 pb-3">

@@ -91,7 +91,7 @@ const DIMENSION_KEYS = Object.keys(DIMENSION_LABELS);
 const SEVERITY_COLORS: Record<string, string> = {
   info:     "bg-blue-100 text-blue-700",
   warning:  "bg-yellow-100 text-yellow-700",
-  critical: "bg-red-100 text-red-700",
+  critical: "bg-red-100 text-state-problem",
 };
 
 function scoreColor(s: number) {
@@ -112,7 +112,7 @@ function gradeBadge(g: Grade) {
     B: "bg-blue-100 text-blue-700",
     C: "bg-yellow-100 text-yellow-700",
     D: "bg-orange-100 text-orange-700",
-    F: "bg-red-100 text-red-700",
+    F: "bg-red-100 text-state-problem",
   };
   return map[g] ?? "bg-gray-100 text-gray-600";
 }
@@ -326,8 +326,8 @@ export default function ClientHealthPage() {
             </div>
             <div className="w-px h-16 bg-gray-200" />
             <div className="space-y-1">
-              {score.is_critical && <Badge className="bg-red-100 text-red-700 text-3xs">CRITICAL</Badge>}
-              {score.is_at_risk && !score.is_critical && <Badge className="bg-amber-100 text-amber-700 text-3xs">AT RISK</Badge>}
+              {score.is_critical && <Badge className="bg-red-100 text-state-problem text-3xs">CRITICAL</Badge>}
+              {score.is_at_risk && !score.is_critical && <Badge className="bg-amber-100 text-state-attention text-3xs">AT RISK</Badge>}
               <p className="text-2xs text-gray-500">Last: {formatDate(score.last_calculated_at)}</p>
             </div>
           </div>

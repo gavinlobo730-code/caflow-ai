@@ -134,7 +134,7 @@ export default function ScheduleIIIMappingPage() {
       <TableSkeleton cols={4} rows={4} />
     </div>
   );
-  if (error) return <div className="p-6"><div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div></div>;
+  if (error) return <div className="p-6"><div className="bg-state-problem-surface text-state-problem rounded-lg px-5 py-4 text-sm">{error}</div></div>;
 
   const picker = (acc: CoaRow) => (
     <select
@@ -203,12 +203,12 @@ export default function ScheduleIIIMappingPage() {
       {saveError && <Callout tone="problem">{saveError}</Callout>}
 
       {unrecognised.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
           <p className="text-xs font-medium text-amber-800">
             {unrecognised.length} account{unrecognised.length !== 1 ? "s carry" : " carries"} a
             mapping this version does not present
           </p>
-          <p className="text-xs text-amber-700 mt-0.5">
+          <p className="text-xs text-state-attention mt-0.5">
             The choice is recorded but the statements fall back to the account&apos;s subtype.
             Re-pick below to make it count: {unrecognised.map(a => a.schedule_iii_mapping).filter((v, i, s) => s.indexOf(v) === i).join(", ")}
           </p>

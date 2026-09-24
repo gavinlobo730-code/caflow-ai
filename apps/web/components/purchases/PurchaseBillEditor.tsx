@@ -752,7 +752,7 @@ export function PurchaseBillEditor({
         {gstAuto ? `${isInterstate ? "Interstate" : "Intra-state"} — ${isInterstate ? "IGST" : "CGST + SGST"} (CGST Act §8)` : "Pick a vendor to preview CGST/SGST vs IGST."}
       </p>
       {isReverseCharge && (
-        <p className="text-3xs text-amber-700">
+        <p className="text-3xs text-state-attention">
           Reverse charge — the GST above is self-assessed by you (GSTR-3B 3.1(d)), not payable to the vendor.
         </p>
       )}
@@ -785,7 +785,7 @@ export function PurchaseBillEditor({
               that crosses it. */}
           {tds.loading && <Row label="TDS" value="…" muted />}
           {!tds.loading && tds.error && (
-            <p className="text-3xs text-red-600 bg-red-50 rounded px-2 py-1.5">{tds.error}</p>
+            <p className="text-3xs text-red-600 bg-state-problem-surface rounded px-2 py-1.5">{tds.error}</p>
           )}
           {!tds.loading && !tds.error && tds.data && tdsPaise !== null && netPayable !== null && (
             <>
@@ -806,7 +806,7 @@ export function PurchaseBillEditor({
                   re-charges it — but a net payable of nil is not where a CA
                   should have to infer that from. */}
               {tds.data.tds_shortfall_paise > 0 && (
-                <p className="text-3xs text-amber-700 bg-amber-50 rounded px-2 py-1.5">
+                <p className="text-3xs text-state-attention bg-state-attention-surface rounded px-2 py-1.5">
                   The year&apos;s aggregate demands {fmt(tds.data.tds_shortfall_paise)} more than this
                   bill can carry. It is recovered on the next bill to this payee; §201(1A) interest
                   runs at 1% a month until it is deducted.
@@ -822,7 +822,7 @@ export function PurchaseBillEditor({
         is computed by the server now, by the same code that will withhold it.
       </p>
       {attempted && !validation.ok && (
-        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-red-50 rounded px-2 py-1.5">
+        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-state-problem-surface rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.lines ?? validation.errors.exchangeRate}</span>
         </div>
@@ -848,14 +848,14 @@ export function PurchaseBillEditor({
             would silently overwrite manually-corrected fields. */}
         {isEdit ? (
           documentUrl && (
-            <section className="bg-amber-50 border border-amber-100 rounded-lg p-3">
-              <p className="text-3xs text-amber-700">
+            <section className="bg-state-attention-surface border border-amber-100 rounded-lg p-3">
+              <p className="text-3xs text-state-attention">
                 📎 Original invoice attached — retained on this bill as supporting evidence (CGST Rule 36).
               </p>
             </section>
           )
         ) : (
-          <section className="bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-2">
+          <section className="bg-state-attention-surface border border-amber-100 rounded-lg p-3 space-y-2">
             <p className="text-xs font-medium text-amber-800 flex items-center gap-1.5"><Upload size={12} /> Upload Invoice (AI Extract)</p>
             <div className="flex items-center gap-2">
               <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
@@ -864,7 +864,7 @@ export function PurchaseBillEditor({
               </button>
             </div>
             {aiExtracted && (
-              <div className="mt-1 text-3xs text-amber-700 bg-amber-100 rounded px-2 py-1.5">
+              <div className="mt-1 text-3xs text-state-attention bg-amber-100 rounded px-2 py-1.5">
                 ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>
               </div>
             )}
@@ -877,7 +877,7 @@ export function PurchaseBillEditor({
                 moves the total by up to 50 paise (CGST s.170), and refusing a
                 save over that would stop a CA saving a correct bill. */}
             {aiExtracted && (
-              <div className="mt-1 rounded border border-amber-200 bg-white px-2 py-1.5 space-y-1">
+              <div className="mt-1 rounded border border-state-attention-border bg-white px-2 py-1.5 space-y-1">
                 <p className="text-3xs font-medium text-ps-label">Read from the document</p>
                 <div className="grid grid-cols-5 gap-1 text-3xs text-ps-label">
                   {([
@@ -896,7 +896,7 @@ export function PurchaseBillEditor({
                   ))}
                 </div>
                 {aiTotals?.checked && !aiTotals.agrees && (
-                  <p className="flex items-start gap-1 text-3xs text-red-700 bg-red-50 rounded px-1.5 py-1">
+                  <p className="flex items-start gap-1 text-3xs text-state-problem bg-state-problem-surface rounded px-1.5 py-1">
                     <AlertTriangle size={11} className="mt-px flex-shrink-0" />
                     <span>
                       These do not add up — off by {fmt(Math.abs(aiTotals.difference_paise))}.{" "}
@@ -915,7 +915,7 @@ export function PurchaseBillEditor({
                 {totals.grand_total_paise > 0
                   && Number(aiExtracted.total_paise ?? 0) > 0
                   && Math.abs(totals.grand_total_paise - Number(aiExtracted.total_paise ?? 0)) > 100 && (
-                  <p className="flex items-start gap-1 text-3xs text-amber-800 bg-amber-50 rounded px-1.5 py-1">
+                  <p className="flex items-start gap-1 text-3xs text-amber-800 bg-state-attention-surface rounded px-1.5 py-1">
                     <AlertTriangle size={11} className="mt-px flex-shrink-0" />
                     <span>
                       The lines below come to {fmtAmt(totals.grand_total_paise)} against the{" "}
@@ -928,7 +928,7 @@ export function PurchaseBillEditor({
               </div>
             )}
             {documentUrl && (
-              <p className="text-3xs text-amber-700">
+              <p className="text-3xs text-state-attention">
                 📎 Original invoice attached — retained on this bill as supporting evidence (CGST Rule 36).
               </p>
             )}
@@ -1065,7 +1065,7 @@ export function PurchaseBillEditor({
               </div>
             </div>
             {!form15caAckNo.trim() && (
-              <p className="mt-3 text-3xs text-amber-700 bg-amber-50 rounded px-2 py-1.5">
+              <p className="mt-3 text-3xs text-state-attention bg-state-attention-surface rounded px-2 py-1.5">
                 Recorded as a gap on the TDS register until the acknowledgement is
                 entered. Not a refusal — the bill saves either way, because the
                 15CA is filed when the money moves and that may be after this.
@@ -1075,7 +1075,7 @@ export function PurchaseBillEditor({
         )}
 
         {blockedCreditHits.length > 0 && (
-          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
+          <div className="flex items-start gap-2 bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2.5 text-xs text-amber-800">
             <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
             <div className="space-y-1">
               <p className="font-medium">Possible blocked ITC — review before saving (CGST Act §17(5))</p>
@@ -1097,7 +1097,7 @@ export function PurchaseBillEditor({
                   )}
                 </p>
               ))}
-              <p className="text-3xs text-amber-700">This is a heuristic prompt, not a legal determination — confirm eligibility before claiming ITC.</p>
+              <p className="text-3xs text-state-attention">This is a heuristic prompt, not a legal determination — confirm eligibility before claiming ITC.</p>
             </div>
           </div>
         )}
@@ -1159,7 +1159,7 @@ export function PurchaseBillEditor({
                   const g = previewBillTotals([line], isInterstate);
                   const invalid = attempted && !isValidBillLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
-                    <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
+                    <tr key={line._k} className={invalid ? "bg-state-problem-surface/40" : undefined}>
                       <td className="py-1.5 pr-2">
                         <ServiceCataloguePicker clientId={clientId} value={line.product} onPick={(item) => onPickProduct(idx, item)} size="sm" ariaLabel={`Line ${idx + 1} product or service`} />
                         {/* HSN-based catalogue hints (see matchLinesByHsn) — only
@@ -1292,7 +1292,7 @@ export function PurchaseBillEditor({
         </section>
 
         {!nearDupes && dupeAhead.length > 0 && (
-          <div className="text-xs bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 space-y-1.5">
+          <div className="text-xs bg-state-attention-surface border border-amber-300 rounded-lg px-3 py-2.5 space-y-1.5">
             <p className="font-semibold text-amber-900">
               This vendor already has {dupeAhead.length === 1 ? "a bill" : "bills"} that may be the
               same invoice.
@@ -1313,7 +1313,7 @@ export function PurchaseBillEditor({
           </div>
         )}
         {nearDupes && (
-          <div className="text-xs bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 space-y-2">
+          <div className="text-xs bg-state-attention-surface border border-amber-300 rounded-lg px-3 py-2.5 space-y-2">
             <p className="font-semibold text-amber-900">
               Saved — but this vendor already has {nearDupes.length === 1 ? "a bill" : "bills"} that
               may be the same invoice.

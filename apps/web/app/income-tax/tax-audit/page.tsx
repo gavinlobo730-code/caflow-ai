@@ -69,7 +69,7 @@ function statusBadge(status: AuditStatus) {
   switch (status) {
     case "not_started": return { cls: "text-ps-label bg-ps-muted", icon: Clock, label: "Not Started" };
     case "in_progress": return { cls: "text-blue-700 bg-blue-50", icon: Clock, label: "In Progress" };
-    case "completed": return { cls: "text-amber-700 bg-amber-50", icon: CheckCircle, label: "Completed" };
+    case "completed": return { cls: "text-state-attention bg-state-attention-surface", icon: CheckCircle, label: "Completed" };
     case "filed": return { cls: "text-green-700 bg-green-50", icon: CheckCircle, label: "Filed" };
   }
 }
@@ -344,14 +344,14 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
           )}
 
           {applicabilityError && (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2">
               {applicabilityError}
             </p>
           )}
           {applicability && (
             <div className={`rounded-lg border px-3 py-2 space-y-2 ${
               applicability.required
-                ? "bg-amber-50 border-amber-200"
+                ? "bg-state-attention-surface border-state-attention-border"
                 : "bg-ps-bg border-ps-border"}`}>
               <p className="text-xs font-medium text-ps-ink">{applicability.basis}</p>
               {applicability.required && applicability.report_due_date && (
@@ -495,7 +495,7 @@ export default function TaxAuditPage() {
       </div>
 
       {/* Notice */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 flex items-start gap-3">
+      <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-5 py-3 flex items-start gap-3">
         <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
         <p className="text-sm text-amber-800">
           §44AB(a) reaches a business and §44AB(b) a profession, on different figures —

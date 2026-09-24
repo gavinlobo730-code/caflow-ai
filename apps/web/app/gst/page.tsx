@@ -121,7 +121,7 @@ function keyDeadlines() {
       label: "GSTR-3B",
       date: `20 ${month} ${year}`,
       note: "CGST Act Section 39 — Monthly Summary",
-      color: "bg-amber-50 border-amber-200 text-amber-700",
+      color: "bg-state-attention-surface border-state-attention-border text-state-attention",
     },
     {
       label: "GSTR-9",
@@ -136,8 +136,8 @@ function keyDeadlines() {
 
 const STATUS_STYLE: Record<FilingStatus, string> = {
   Filed: "bg-green-100 text-green-700",
-  Pending: "bg-amber-100 text-amber-700",
-  Overdue: "bg-red-100 text-red-700",
+  Pending: "bg-amber-100 text-state-attention",
+  Overdue: "bg-red-100 text-state-problem",
 };
 
 // ─── Add Filing Modal ─────────────────────────────────────────────────────────
@@ -366,7 +366,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
           </button>
         </div>
 
-        <p className="text-3xs text-amber-600 bg-amber-50 rounded px-2 py-1.5">
+        <p className="text-3xs text-amber-600 bg-state-attention-surface rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           PracticeSync never auto-submits to the GST portal. Always file manually after CA review.
         </p>
@@ -490,9 +490,9 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
         </div>
 
         <div className="px-6 py-5 space-y-4 overflow-y-auto">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+          <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
             <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
-            <p className="text-xs text-amber-700 mt-1">
+            <p className="text-xs text-state-attention mt-1">
               This records already-filed returns. PracticeSync does NOT auto-submit to the GST Portal.
               Verify each acknowledgement number before saving.
             </p>
@@ -911,7 +911,7 @@ export default function GSTPage() {
 
         <div className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-state-attention-surface flex items-center justify-center">
               <Clock className="w-4 h-4 text-amber-600" />
             </div>
             <span className="text-xs text-ps-label">Pending This Month</span>
@@ -922,7 +922,7 @@ export default function GSTPage() {
 
         <div className="bg-white rounded-xl border border-ps-muted p-4">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-state-problem-surface flex items-center justify-center">
               <AlertCircle className="w-4 h-4 text-red-600" />
             </div>
             <span className="text-xs text-ps-label">Overdue</span>
@@ -1031,9 +1031,9 @@ export default function GSTPage() {
             </div>
 
             <div className="px-6 py-5 space-y-4">
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+              <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
                 <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">CA Confirmation Required</p>
-                <p className="text-xs text-amber-700 mt-1">
+                <p className="text-xs text-state-attention mt-1">
                   This records an already-filed return. PracticeSync does NOT auto-submit to the GST Portal.
                   Verify the acknowledgement number before saving.
                 </p>

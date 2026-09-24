@@ -91,7 +91,7 @@ export default function AssignmentsPage() {
       </p>
 
       {!canAssign && (
-        <div className="flex items-center gap-2 text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+        <div className="flex items-center gap-2 text-[12px] text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-4">
           <ShieldAlert size={14} /> View only — only a Partner can change assignments.
         </div>
       )}

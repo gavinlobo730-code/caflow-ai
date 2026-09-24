@@ -39,10 +39,10 @@ async function apiFetch(path: string, opts?: RequestInit) {
 type ComplianceSubTab = "all" | "gst" | "tds" | "income_tax" | "mca";
 
 const FILING_STATUS_COLORS: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700",
+  pending: "bg-amber-100 text-state-attention",
   in_progress: "bg-blue-100 text-blue-700",
   filed: "bg-green-100 text-green-700",
-  overdue: "bg-red-100 text-red-700",
+  overdue: "bg-red-100 text-state-problem",
   na: "bg-ps-muted text-ps-label",
 };
 
@@ -101,7 +101,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
   }
 
   const STATUS_COLORS: Record<string, string> = {
-    open: "bg-red-100 text-red-700",
+    open: "bg-red-100 text-state-problem",
     in_progress: "bg-blue-100 text-blue-700",
     responded: "bg-green-100 text-green-700",
     closed: "bg-ps-muted text-ps-label",
@@ -121,7 +121,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
       <CardContent className="space-y-3">
         {showExtract && (
           <div className="border rounded p-4 bg-ps-bg space-y-3">
-            <p className="text-xs font-medium text-amber-700">⚠ CA Review Required — AI extraction only. CA must approve before action.</p>
+            <p className="text-xs font-medium text-state-attention">⚠ CA Review Required — AI extraction only. CA must approve before action.</p>
             <textarea placeholder="Paste government notice text here…"
               value={noticeText} onChange={(e) => setNoticeText(e.target.value)}
               rows={6} className="w-full border rounded px-3 py-2 text-sm" />

@@ -443,7 +443,7 @@ function EmployeesTab({ clientId }: { clientId: string }) {
                 <td className="px-4 py-3 font-mono text-ps-ink">{fmt(e.basic_paise)}</td>
                 <td className="px-4 py-3">{e.pf_applicable ? <span className="text-3xs px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-3xs text-ps-hint">No</span>}</td>
                 <td className="px-4 py-3">{e.esi_applicable ? <span className="text-3xs px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-3xs text-ps-hint">No</span>}</td>
-                <td className="px-4 py-3"><span className={cn("text-3xs px-1.5 py-0.5 rounded font-medium", e.status === "active" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600")}>{e.status}</span></td>
+                <td className="px-4 py-3"><span className={cn("text-3xs px-1.5 py-0.5 rounded font-medium", e.status === "active" ? "bg-emerald-50 text-emerald-600" : "bg-state-problem-surface text-red-600")}>{e.status}</span></td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => setOpenEmployee(e)}
                     className="text-2xs px-2 py-1 border border-ps-border rounded-lg text-ps-body hover:bg-ps-muted">
@@ -716,7 +716,7 @@ function RunsTab({ clientId, firmId, openDoc }:
         </div>
         {createError && <Callout tone="problem">{createError}</Callout>}
         {runGaps.length > 0 && (
-          <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2">
+          <div className="mt-3 rounded border border-state-attention-border bg-state-attention-surface px-3 py-2">
             <p className="text-xs font-medium text-amber-900">
               This run computed, but {runGaps.length} thing{runGaps.length === 1 ? "" : "s"} could not be established:
             </p>
@@ -725,7 +725,7 @@ function RunsTab({ clientId, firmId, openDoc }:
                 <li key={i} className="text-2xs text-amber-800">· {g}</li>
               ))}
             </ul>
-            <p className="text-2xs text-amber-700 mt-1.5">
+            <p className="text-2xs text-state-attention mt-1.5">
               The run is a draft — nothing is posted or paid. Fix these and create it again,
               or finalise it if the figures are right.
             </p>
@@ -755,7 +755,7 @@ function RunsTab({ clientId, firmId, openDoc }:
           than warned about. The gaps are NAMED — a count would send the CA back
           to the draft to work out which. */}
       {blockedRun && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 space-y-2">
+        <div className="rounded-lg border border-amber-300 bg-state-attention-surface px-4 py-3 space-y-2">
           <p className="text-xs font-semibold text-amber-900">
             {blockedRun.message || "This run has things it could not establish."}
           </p>
@@ -776,7 +776,7 @@ function RunsTab({ clientId, firmId, openDoc }:
               placeholder="e.g. Client confirmed by email on the 3rd that nobody was on leave."
               className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-amber-500 bg-white"
             />
-            <p className="text-3xs text-amber-700 mt-0.5">
+            <p className="text-3xs text-state-attention mt-0.5">
               {overrideReason.trim().length}/{OVERRIDE_REASON_MIN} characters
             </p>
           </div>
@@ -862,7 +862,7 @@ function RunsTab({ clientId, firmId, openDoc }:
                   ) : (
                     <button onClick={() => setConfirmDelete(r.id)}
                       title="Throw this draft away — the month becomes creatable again"
-                      className="text-2xs px-2.5 py-1.5 border border-red-200 rounded-lg hover:bg-red-50 text-red-700">
+                      className="text-2xs px-2.5 py-1.5 border border-state-problem-border rounded-lg hover:bg-state-problem-surface text-state-problem">
                       Delete
                     </button>
                   )
@@ -873,13 +873,13 @@ function RunsTab({ clientId, firmId, openDoc }:
                     wizards can never be open at once. */}
                 {(r.status === "finalized" || r.status === "paid") && demoFlows.includes("pf") && (
                   <button onClick={() => setDemo({ flow: "pf", runId: r.id })}
-                    className="text-2xs px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-amber-50 text-amber-800">
+                    className="text-2xs px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-state-attention-surface text-amber-800">
                     PF ECR (demo)
                   </button>
                 )}
                 {(r.status === "finalized" || r.status === "paid") && demoFlows.includes("esi") && (
                   <button onClick={() => setDemo({ flow: "esi", runId: r.id })}
-                    className="text-2xs px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-amber-50 text-amber-800">
+                    className="text-2xs px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-state-attention-surface text-amber-800">
                     ESI (demo)
                   </button>
                 )}
@@ -1111,7 +1111,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
   return (
     <div className="p-5 space-y-4">
       {msg && (
-        <p className={`text-[12px] px-3 py-2 rounded-lg ${msg.kind === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+        <p className={`text-[12px] px-3 py-2 rounded-lg ${msg.kind === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
           {msg.text}
         </p>
       )}
@@ -1164,7 +1164,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                       {(finalized || paid) && (
                         // Never primary. It is a correction to posted books.
                         <button onClick={() => reverse(r)} disabled={busy === r.id}
-                          className="px-3 py-1 border border-ps-border rounded-lg text-ps-label hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
+                          className="px-3 py-1 border border-ps-border rounded-lg text-ps-label hover:bg-state-problem-surface hover:text-red-600 disabled:opacity-50">
                           {busy === r.id ? "Reversing…" : "Reverse"}
                         </button>
                       )}
@@ -1287,8 +1287,8 @@ function OutputsTab({ clientId }: { clientId: string }) {
       {msg && (
         <p className={`text-[12px] px-3 py-2 rounded-lg ${
           msg.kind === "ok" ? "bg-green-50 text-green-700"
-          : msg.kind === "warn" ? "bg-amber-50 text-amber-800"
-          : "bg-red-50 text-red-600"}`}>{msg.text}</p>
+          : msg.kind === "warn" ? "bg-state-attention-surface text-amber-800"
+          : "bg-state-problem-surface text-red-600"}`}>{msg.text}</p>
       )}
 
       {/* THE EPFO QUEUE. Since the ECR was revamped (circulars 26-09-2025 and
@@ -1299,7 +1299,7 @@ function OutputsTab({ clientId }: { clientId: string }) {
           business logic this codebase keeps out of the browser. */}
       {ecrSeq?.note && (
         <div className={`rounded-xl border p-3 ${(ecrSeq.outstanding?.length ?? 0)
-          ? "border-amber-200 bg-amber-50" : "border-ps-border bg-white"}`}>
+          ? "border-state-attention-border bg-state-attention-surface" : "border-ps-border bg-white"}`}>
           <p className="text-2xs font-semibold text-ps-ink">EPFO filing order</p>
           <p className="text-2xs text-ps-label mt-1">{ecrSeq.note}</p>
           {!!ecrSeq.filings?.length && (
@@ -1440,13 +1440,13 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
               exemption, Chapter VI-A), and an annexure with no Chapter VI-A is
               correct for someone who declared none. */}
           {!!data?.problems?.length && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-              <p className="text-2xs font-semibold text-red-700">
+            <div className="rounded-lg border border-state-problem-border bg-state-problem-surface p-3">
+              <p className="text-2xs font-semibold text-state-problem">
                 Not ready to file — {data.problems.length} problem{data.problems.length === 1 ? "" : "s"}
               </p>
               <ul className="mt-1 space-y-0.5">
                 {data.problems.map((p, i) => (
-                  <li key={i} className="text-2xs text-red-700">· {p}</li>
+                  <li key={i} className="text-2xs text-state-problem">· {p}</li>
                 ))}
               </ul>
             </div>
@@ -1796,7 +1796,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     draft:     "bg-ps-muted text-ps-label",
-    review:    "bg-amber-50 text-amber-600",
+    review:    "bg-state-attention-surface text-amber-600",
     finalized: "bg-emerald-50 text-emerald-600",
     paid:      "bg-sky-50 text-sky-600",
   };

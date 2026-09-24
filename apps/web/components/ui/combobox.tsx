@@ -556,7 +556,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
             {displayError ? (
               <div className="px-3 py-3 text-center text-2xs text-red-600">
                 {displayError}.{" "}
-                <button type="button" onClick={doRetry} className="underline hover:text-red-700">
+                <button type="button" onClick={doRetry} className="underline hover:text-state-problem">
                   Retry
                 </button>
               </div>

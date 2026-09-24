@@ -149,8 +149,8 @@ export default function ApprovalsPage() {
         </div>
 
         {respondError && (
-          <div role="alert" className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
-            <p className="text-xs text-red-700">{respondError}</p>
+          <div role="alert" className="flex items-center justify-between gap-2 bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-2.5">
+            <p className="text-xs text-state-problem">{respondError}</p>
             <button onClick={() => setRespondError(null)} className="text-xs text-red-500 hover:underline shrink-0">Dismiss</button>
           </div>
         )}
@@ -177,14 +177,14 @@ export default function ApprovalsPage() {
                 <div
                   key={approval.id}
                   className={`bg-white border rounded-xl p-5 ${
-                    overdue ? "border-red-200 bg-red-50/30" : "border-ps-border"
+                    overdue ? "border-state-problem-border bg-state-problem-surface/30" : "border-ps-border"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         {overdue && (
-                          <span className="flex items-center gap-1 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                          <span className="flex items-center gap-1 text-xs bg-red-100 text-state-problem px-2 py-0.5 rounded-full font-medium">
                             <AlertTriangle size={10} /> Overdue
                           </span>
                         )}
@@ -225,7 +225,7 @@ export default function ApprovalsPage() {
                         </span>
                       )}
                       {approval.status === "rejected" && (
-                        <span className="flex items-center gap-1 text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg font-medium">
+                        <span className="flex items-center gap-1 text-xs bg-red-100 text-state-problem px-3 py-1.5 rounded-lg font-medium">
                           <XCircle size={12} /> Rejected
                         </span>
                       )}
@@ -259,7 +259,7 @@ export default function ApprovalsPage() {
                         <button
                           onClick={() => respond(approval.id, "rejected")}
                           disabled={responding === approval.id}
-                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 disabled:opacity-50"
+                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-state-problem-surface text-state-problem border border-state-problem-border hover:bg-red-100 disabled:opacity-50"
                         >
                           <XCircle size={12} />
                           Reject

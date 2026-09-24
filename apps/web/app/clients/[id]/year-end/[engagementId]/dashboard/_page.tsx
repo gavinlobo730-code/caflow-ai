@@ -55,7 +55,7 @@ const STATUS_LABEL: Record<EngagementStatus, string> = {
 
 const STATUS_COLOR: Record<EngagementStatus, string> = {
   draft: "text-ps-label bg-ps-muted",
-  in_review: "text-amber-700 bg-amber-50",
+  in_review: "text-state-attention bg-state-attention-surface",
   approved: "text-green-700 bg-green-50",
   locked: "text-blue-700 bg-blue-50",
 };
@@ -264,7 +264,7 @@ export default function YearEndDashboardPage() {
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-4 text-sm text-red-700">
+        <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-4 text-sm text-state-problem">
           {error}
           <button onClick={load} className="ml-3 underline text-xs">Retry</button>
         </div>

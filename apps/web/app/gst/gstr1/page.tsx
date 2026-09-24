@@ -203,7 +203,7 @@ export default function GSTR1Page() {
       </div>
 
       {/* CA Review Banner */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+      <div className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3 flex items-start gap-2">
         <Info className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
         <p className="text-sm text-amber-800">
           <strong>CA Review Required.</strong> Verify invoice classifications and tax amounts before downloading.
@@ -571,7 +571,7 @@ export default function GSTR1Page() {
                                 <td className="px-4 py-2.5 font-mono text-xs text-ps-label">{g.ctin}</td>
                                 <td className="px-4 py-2.5">
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                    nt.ntty === "C" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+                                    nt.ntty === "C" ? "bg-red-100 text-state-problem" : "bg-blue-100 text-blue-700"
                                   }`}>
                                     {nt.ntty === "C" ? "Credit" : "Debit"}
                                   </span>

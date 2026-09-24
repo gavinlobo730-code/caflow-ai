@@ -28,6 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { api } from "@/lib/api";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
@@ -257,7 +258,14 @@ export default function AttendancePage() {
       const sb = getSupabaseClient();
 
       // Load employees from payroll_employees table
-      const empRes = await sb.from("payroll_employees").select("id, name, designation, client_id").eq("firm_id", fid);
+      // PAGED, because what these feed is an EXPORT. PostgREST caps a response
+      // at ~1000 rows and says nothing when it does, so an unpaged firm-wide
+      // roster silently truncates and the CSV goes out short with no error
+      // anywhere. `.order("id")` is not cosmetic: selectAll pages by OFFSET, so
+      // without a stable TOTAL ordering a row can land either side of a page
+      // boundary and be duplicated or skipped. See lib/supabase/selectAll.
+      const empRes = await selectAll(() => sb.from("payroll_employees")
+        .select("id, name, designation, client_id").eq("firm_id", fid).order("id"));
       if (empRes.error) throw empRes.error;
       const emps: Employee[] = empRes.data ?? [];
       setEmployees(emps);
@@ -265,7 +273,7 @@ export default function AttendancePage() {
       // Names for the clients this firm actually runs payroll for. Firm-scoped
       // like every other read on this page — RLS is the control here, but the
       // filter is the primary one and omitting it is what CLAUDE.md forbids.
-      const cliRes = await sb.from("clients").select("id, client_name").eq("firm_id", fid);
+      const cliRes = await selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", fid).order("id"));
       setClientNames(Object.fromEntries(
         (cliRes.data ?? []).map((c: { id: string; client_name: string }) =>
           [c.id, c.client_name])));
@@ -844,7 +852,7 @@ export default function AttendancePage() {
                           const isEntered = entered.has(emp.id);
                           const isTouched = touched.has(emp.id);
                           return (
-                            <tr key={emp.id} className={`border-b hover:bg-ps-bg ${remainder < 0 ? "bg-red-50" : ""}`}>
+                            <tr key={emp.id} className={`border-b hover:bg-ps-bg ${remainder < 0 ? "bg-state-problem-surface" : ""}`}>
                               <td className="py-3 px-4">
                                 <div className="font-medium text-ps-ink">{emp.name}</div>
                                 {emp.designation && <div className="text-xs text-ps-label">{emp.designation}</div>}
@@ -880,7 +888,7 @@ export default function AttendancePage() {
                                   // Shown rather than floored. The server refuses
                                   // this row, and quietly displaying 0 would leave
                                   // the CA wondering why the save was rejected.
-                                  <span className="text-3xs font-medium text-red-700">
+                                  <span className="text-3xs font-medium text-state-problem">
                                     {row.days_present + row.casual_leaves + row.sick_leaves + row.earned_leaves} days
                                     entered vs {row.working_days} working
                                   </span>
@@ -936,7 +944,7 @@ export default function AttendancePage() {
                     invented — and the invented figure was what "Remaining"
                     was measured against. It shows an em dash now, and says
                     what the product does not do rather than papering over it. */}
-                <p className="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                <p className="text-xs text-state-attention mt-2 bg-state-attention-surface border border-state-attention-border rounded px-2 py-1.5">
                   An allocation shown as “—” has not been recorded for {leaveYear}; it is not
                   zero and it is not a default. Nothing here accrues leave monthly or carries a
                   balance into the next year — the figure is what the employment contract or
@@ -1169,7 +1177,7 @@ export default function AttendancePage() {
                 )}
 
                 {earnLocked && (
-                  <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2
+                  <div className="mb-4 rounded-lg border border-amber-300 bg-state-attention-surface px-3 py-2
                                   text-sm text-amber-900 flex items-start gap-2">
                     <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                     <span>

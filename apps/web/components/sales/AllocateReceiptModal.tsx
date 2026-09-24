@@ -206,7 +206,7 @@ export default function AllocateReceiptModal({
                         <td className="py-1.5 pr-2 font-mono text-ps-ink">{inv.invoice_no}</td>
                         <td className="py-1.5 pr-2 text-ps-label">{inv.invoice_date}</td>
                         <td className="py-1.5 pr-2 text-right font-mono">{fmt(inv.total_paise)}</td>
-                        <td className="py-1.5 pr-2 text-right font-mono text-amber-700">
+                        <td className="py-1.5 pr-2 text-right font-mono text-state-attention">
                           {fmt(ceilingFor(inv))}
                         </td>
                         <td className="py-1.5">
@@ -239,7 +239,7 @@ export default function AllocateReceiptModal({
               Applying <span className="font-mono text-ps-ink">{fmt(total)}</span> of{" "}
               <span className="font-mono">{fmt(settlement)}</span>
               {total < settlement && (
-                <> · <span className="text-amber-700">{fmt(settlement - total)} left as an advance</span></>
+                <> · <span className="text-state-attention">{fmt(settlement - total)} left as an advance</span></>
               )}
             </span>
             <div className="flex gap-2">

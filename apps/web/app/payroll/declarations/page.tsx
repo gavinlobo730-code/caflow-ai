@@ -459,7 +459,7 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
         </label>
 
         {error && (
-          <p className="text-sm text-state-problem bg-state-problem-surface border border-state-problem-border rounded-lg p-3">
+          <p role="alert" className="text-sm text-state-problem bg-state-problem-surface border border-state-problem-border rounded-lg p-3">
             {error}
           </p>
         )}

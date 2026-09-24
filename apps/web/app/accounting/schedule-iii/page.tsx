@@ -522,7 +522,7 @@ export default function ScheduleIIIPage() {
 
               {/* Balance check indicator */}
               {(bs?.totalAssets ?? 0) > 0 && (
-                <div className={`mx-4 mt-3 mb-4 px-4 py-2.5 rounded-lg text-xs flex items-center gap-2 font-medium print:hidden ${isBalanced ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
+                <div className={`mx-4 mt-3 mb-4 px-4 py-2.5 rounded-lg text-xs flex items-center gap-2 font-medium print:hidden ${isBalanced ? "bg-green-50 text-green-700" : "bg-state-attention-surface text-state-attention"}`}>
                   {isBalanced
                     ? "Balance Sheet balances — Total Assets = Total Equity & Liabilities"
                     : <><AlertTriangle size={14} /> Balance Sheet does not balance — verify opening entries and retained earnings</>}
@@ -559,7 +559,7 @@ export default function ScheduleIIIPage() {
               <div className="mx-4 mb-4 mt-2 border border-ps-border rounded-lg overflow-hidden">
                 <div className="flex items-baseline px-4 py-2.5 bg-ps-bg border-b border-ps-border">
                   <span className="text-sm font-semibold text-ps-ink flex-1">Profit Before Tax (I - II)</span>
-                  <span className={`text-sm tabular-nums font-bold w-36 text-right ${(pl?.profitBeforeTax ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
+                  <span className={`text-sm tabular-nums font-bold w-36 text-right ${(pl?.profitBeforeTax ?? 0) >= 0 ? "text-green-700" : "text-state-problem"}`}>
                     {amount(pl?.profitBeforeTax ?? 0)}
                   </span>
                   {showPrior && (

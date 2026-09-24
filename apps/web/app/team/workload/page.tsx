@@ -115,8 +115,8 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
   const initials = member.user_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
   return (
     <Card className={`transition-shadow hover:shadow-md ${
-      member.is_overloaded ? "border-red-200 bg-red-50/30" :
-      member.is_underutilised ? "border-amber-200 bg-amber-50/20" :
+      member.is_overloaded ? "border-state-problem-border bg-state-problem-surface/30" :
+      member.is_underutilised ? "border-state-attention-border bg-state-attention-surface/20" :
       ""
     }`}>
       <CardContent className="py-4 px-5 space-y-3">
@@ -132,12 +132,12 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
           </div>
           <div className="flex gap-1 shrink-0">
             {member.is_overloaded && (
-              <Badge className="text-3xs px-1.5 py-0 bg-red-100 text-red-700 gap-0.5">
+              <Badge className="text-3xs px-1.5 py-0 bg-red-100 text-state-problem gap-0.5">
                 <AlertTriangle size={9} /> Overloaded
               </Badge>
             )}
             {member.is_underutilised && !member.is_overloaded && (
-              <Badge className="text-3xs px-1.5 py-0 bg-amber-100 text-amber-700 gap-0.5">
+              <Badge className="text-3xs px-1.5 py-0 bg-amber-100 text-state-attention gap-0.5">
                 <TrendingDown size={9} /> Underutilised
               </Badge>
             )}
@@ -249,7 +249,7 @@ export default function WorkloadPage() {
                 </p>
               </CardContent>
             </Card>
-            <Card className={workload.overloaded_count > 0 ? "border-red-200" : ""}>
+            <Card className={workload.overloaded_count > 0 ? "border-state-problem-border" : ""}>
               <CardContent className="py-4">
                 <p className="text-xs text-ps-label">Overloaded</p>
                 <p className={`text-2xl font-bold mt-1 ${workload.overloaded_count > 0 ? "text-red-600" : "text-ps-ink"}`}>
@@ -269,18 +269,18 @@ export default function WorkloadPage() {
           {(overloaded.length > 0 || underutilised.length > 0) && (
             <div className="space-y-2">
               {overloaded.length > 0 && (
-                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                <div className="flex items-start gap-2 bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3">
                   <AlertTriangle size={14} className="text-red-500 mt-0.5 shrink-0" />
-                  <p className="text-sm text-red-700">
+                  <p className="text-sm text-state-problem">
                     <strong>{overloaded.map(m => m.user_name).join(", ")}</strong>
                     {overloaded.length === 1 ? " is" : " are"} overloaded. Consider redistributing tasks.
                   </p>
                 </div>
               )}
               {underutilised.length > 0 && (
-                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                <div className="flex items-start gap-2 bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
                   <TrendingDown size={14} className="text-amber-500 mt-0.5 shrink-0" />
-                  <p className="text-sm text-amber-700">
+                  <p className="text-sm text-state-attention">
                     <strong>{underutilised.map(m => m.user_name).join(", ")}</strong>
                     {underutilised.length === 1 ? " has" : " have"} low workload and can take on more tasks.
                   </p>
@@ -292,7 +292,7 @@ export default function WorkloadPage() {
           {/* Member cards — grouped */}
           {overloaded.length > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-red-700 flex items-center gap-1.5">
+              <h2 className="text-sm font-semibold text-state-problem flex items-center gap-1.5">
                 <AlertTriangle size={13} /> Overloaded ({overloaded.length})
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -314,7 +314,7 @@ export default function WorkloadPage() {
 
           {underutilised.length > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-amber-700 flex items-center gap-1.5">
+              <h2 className="text-sm font-semibold text-state-attention flex items-center gap-1.5">
                 <TrendingDown size={13} /> Underutilised ({underutilised.length})
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

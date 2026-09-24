@@ -139,7 +139,7 @@ export default function MultiCurrencyPage() {
             {/* THE PLATFORM GATE — shown, never offered. It is an environment
                 variable so it can be turned off without a database. */}
             {!platformOn && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-900 space-y-1">
+              <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 text-xs text-amber-900 space-y-1">
                 <p className="font-semibold">Multi-currency is off for this deployment.</p>
                 <p>{firmGates?.platform.why ?? "MULTI_CURRENCY_ENABLED is not set."}</p>
                 <p>Nothing below takes effect until it is switched on in the environment.</p>
@@ -205,7 +205,7 @@ export default function MultiCurrencyPage() {
                                 <Check size={12} /> Active
                               </span>
                             ) : !supported ? (
-                              <span className="text-amber-700">
+                              <span className="text-state-attention">
                                 Books kept in {policy?.gates.functional_currency} — not supported
                               </span>
                             ) : (

@@ -14,9 +14,9 @@ function isMfaError(msg: string) {
 // Module 9.0 M4 — Governance Approval Inbox (maker-checker).
 // Partners approve/reject; everyone with access sees pending + history.
 const STATUS_STYLE: Record<string, string> = {
-  pending: "bg-amber-50 text-amber-700",
+  pending: "bg-state-attention-surface text-state-attention",
   approved: "bg-emerald-50 text-emerald-700",
-  rejected: "bg-red-50 text-red-700",
+  rejected: "bg-state-problem-surface text-state-problem",
   cancelled: "bg-gray-100 text-gray-500",
 };
 
@@ -93,7 +93,7 @@ export default function ApprovalsPage() {
 
       {error && (isMfaError(error) ? (
         <div className="flex flex-col items-center gap-3 py-14 text-center">
-          <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-full bg-state-attention-surface flex items-center justify-center">
             <Lock size={20} className="text-amber-600" />
           </div>
           <div>

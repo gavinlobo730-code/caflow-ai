@@ -430,7 +430,7 @@ export default function SuppliersPage() {
                     <td className="px-4 py-3 text-ps-label font-mono text-xs">{v.pan ?? "—"}</td>
                     <td className="px-4 py-3">
                       {v.tds_section ? (
-                        <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">{v.tds_section}</span>
+                        <span className="bg-amber-100 text-state-attention text-xs px-2 py-0.5 rounded-full font-medium">{v.tds_section}</span>
                       ) : (
                         <span className="text-ps-hint text-xs">No TDS</span>
                       )}
@@ -564,15 +564,15 @@ export default function SuppliersPage() {
 
               {/* TDS Calculator */}
               {form.tds_section && (
-                <div className="bg-amber-50 rounded-lg p-4 space-y-3">
+                <div className="bg-state-attention-surface rounded-lg p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <IndianRupee className="w-4 h-4 text-amber-600" />
                     <p className="text-xs font-semibold text-amber-800">Calculate TDS on Bill</p>
                   </div>
-                  <p className="text-xs text-amber-700">IT Act Section {form.tds_section} — deduct at source before payment to supplier</p>
+                  <p className="text-xs text-state-attention">IT Act Section {form.tds_section} — deduct at source before payment to supplier</p>
                   <div>
                     <label className="text-xs font-medium text-ps-body block mb-1">Bill Amount (₹)</label>
-                    <input type="number" min="0" className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" value={billRs} onChange={e => setBillRs(e.target.value)} placeholder="0" />
+                    <input type="number" min="0" className="w-full border border-state-attention-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" value={billRs} onChange={e => setBillRs(e.target.value)} placeholder="0" />
                   </div>
                   {billPaise > 0 && tdsCalcError && (
                     <p className="text-xs text-red-600">{tdsCalcError}</p>
@@ -592,7 +592,7 @@ export default function SuppliersPage() {
                         <span>TDS @ {tdsCalc.applicable_rate_pct}% (Section {tdsCalc.section}, FY {tdsCalc.fy})</span>
                         <span className="font-medium text-red-600">- {fmtRs(tdsCalc.tds_paise)}</span>
                       </div>
-                      <div className="flex justify-between text-xs font-semibold text-ps-ink border-t border-amber-200 pt-1">
+                      <div className="flex justify-between text-xs font-semibold text-ps-ink border-t border-state-attention-border pt-1">
                         <span>Net Payment to Supplier</span>
                         <span className="text-green-700">{fmtRs(billPaise - tdsCalc.tds_paise)}</span>
                       </div>

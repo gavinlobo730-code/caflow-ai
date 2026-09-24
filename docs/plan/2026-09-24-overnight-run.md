@@ -137,7 +137,7 @@ in T6, and it is independent of T4.
       ignored **silently**. Added to the owner questions as a one-request
       observation, since a Cloudflare preview already deploys on every PR.
 
-## Batch 4 — T5b, the exports that bypass `rbac()`
+## Batch 4 — T5b, the exports that bypass `rbac()` ⏸ **partly; 4.4 scoped, not built**
 
 Default taken on T5b-3's open scope question: **convert the `rbac()`-bypassing
 exports first**. That is the security half and cannot be the wrong call,
@@ -173,10 +173,38 @@ whichever way the full-scope question is eventually answered.
       (openpyxl, `services/time_export_service.py`'s shape), uploads, and inserts —
       with the browser holding neither the storage write nor the table insert.
 
-## Batch 5 — the backlog residue and the unpaged reads
+## Batch 5 — the backlog residue and the unpaged reads ✅ **LANDED**
 
-- [ ] **5.1** Account for all 14 open+partial findings; close what needs no document.
-- [ ] **5.2** The unpaged PostgREST reads that feed an export or a statutory figure. The ones bounded by one client or one month stay as recorded findings.
+- [x] **5.1** ✅ All 14 accounted for, and **none is a quick win hiding in the list**.
+      The two marked `open` are the document-blocked pair the checkpoint named —
+      **TDS-16** (FVU/RPU needs the NSDL layout) and **GST-25** (composition,
+      e-commerce TCS and GSTR-9C: the forms' own layouts, plus a product decision
+      about scope). Of the twelve `partial`, each is either done-in-substance with
+      a named residue (PAY-27's bank advice and month-on-month are built; SALES-28's
+      IRN scope, IRP validations and e-way validity are built and the JSON payload
+      is *deliberately* refused by GST-32; GST-11's QRMP is built; INV-09's
+      alternate unit landed in migration 409; BANK-11 steps 1–2 landed in migration
+      380) or blocked on exactly the two things this run may not settle: a document
+      (**TDS-22** needs the Finance Act read for §194I(a)/§194J(a)'s 2%) or an owner
+      decision (**ACC-03**'s `is_fallback`/`reason` reach no caller, and *where* a
+      CA is told is a product call; **BANK-11** step 3 widens what a TRUSTED rule
+      may post unattended).
+
+- [x] **5.2** ✅ Measured rather than assumed: **74** files touch PostgREST without
+      `selectAll`, and **9** of those also build a downloadable file — the class
+      where truncation is silent AND leaves the building. Three were genuinely
+      unbounded and are fixed; the rest are bounded by one client or one period.
+
+      | file | what was unbounded |
+      |---|---|
+      | `app/payroll/reports/page.tsx` | `payroll_runs` firm-wide — a row per client per month, so a fifty-client practice crosses 1000 inside two years |
+      | `app/payroll/attendance/page.tsx` | the employee roster the attendance CSV maps over (the attendance read itself is month-bounded and was fine) |
+      | `app/payroll/statutory/page.tsx` | the client picker |
+
+      Must-fix class now **9 → 6**, and the six left are single-row or client-scoped
+      reads. The other 65 stay a recorded finding: most are bounded in practice, a
+      screen that truncates is at least a screen somebody is looking at, and a
+      budget over 65 files is the shape that gets raised until it means nothing.
 
 ---
 
@@ -193,3 +221,28 @@ whichever way the full-scope question is eventually answered.
 
 A design preference is **not** on this list. Take the defensible default,
 record it above, move on.
+
+---
+
+## Found while working — defects no plan row and no finding covered
+
+Each was turned up by reading code for something else, which is the argument for
+doing these sweeps by hand rather than by grep.
+
+| what | where | why it matters |
+|---|---|---|
+| **A UTC date compared with an Indian one**, three sites | `recurring_task_service._is_already_generated_today`, `customer_statement_service.ar_aging`, `vendor_statement_service.ap_aging` | between 18:30 and 24:00 UTC the two are different days. The first regenerated a recurring compliance task that had just been generated; the other two dated an ageing report yesterday and shifted every bucket |
+| **A button that has never once worked** | `shareToPortal("trial")` | wrote `report_type: "trial"` against a CHECK that has never contained it, and the workbook uploads BEFORE the insert, so every press orphaned a file in storage |
+| **A roster read that truncates an export** | `app/payroll/{reports,attendance,statutory}` | `payroll_runs` firm-wide is a row per client per month; a fifty-client practice crosses PostgREST's 1000 cap inside two years |
+| **A dead reader that would have truncated a reconciliation** | `lib/data/gst.fetchGSTR2ARecords` | unpaged `gstr2a_records` for a period, zero callers. Deleted rather than paged |
+| **An inactive icon at 2.56:1** | `app/workflows/page.tsx` | the exact value the token file records moving `ps.hint` OFF |
+
+## Two lessons recorded in CLAUDE.md
+
+1. **A stored instant and `ist_today()` are not comparable until one of them
+   moves.** The earlier naive-clock sweep missed all three sites above because
+   it searched for `date.today()` and these write
+   `datetime.now(timezone.utc).date()` — the same defect in a different
+   spelling, which is this repository's most-repeated lesson.
+2. **A metric and the guard that enforces it must count the same population**,
+   or the metric reports a regression the guard cannot see and nobody can find.

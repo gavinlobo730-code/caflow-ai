@@ -145,7 +145,7 @@ const STATUS_COLORS: Record<EngagementLetter["status"], string> = {
   Sent: "bg-indigo-100 text-indigo-700",
   Viewed: "bg-purple-100 text-purple-700",
   Signed: "bg-green-100 text-green-700",
-  Rejected: "bg-red-100 text-red-700",
+  Rejected: "bg-red-100 text-state-problem",
   Expired: "bg-orange-100 text-orange-700",
 };
 
@@ -954,7 +954,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                     </button>
                     <button
                       onClick={() => { setShowRejectInput(true); }}
-                      className="flex items-center gap-1.5 rounded-lg bg-red-50 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-100 border border-red-200 transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg bg-state-problem-surface px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-100 border border-state-problem-border transition-colors"
                     >
                       <XCircle size={13} />
                       Reject
@@ -962,7 +962,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                     <button
                       disabled={actionLoading}
                       onClick={() => setShowRegenConfirm(true)}
-                      className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-2 text-sm font-medium text-state-attention hover:bg-amber-100 disabled:opacity-50 transition-colors"
                     >
                       <RefreshCw size={13} />
                       Generate New Signing Link
@@ -1008,9 +1008,9 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                 )}
 
                 {showRegenConfirm && (
-                  <div className="w-full space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="w-full space-y-2 rounded-lg border border-state-attention-border bg-state-attention-surface p-3">
                     <p className="text-sm font-semibold text-amber-800">Generate a new signing link?</p>
-                    <p className="text-xs text-amber-700">
+                    <p className="text-xs text-state-attention">
                       This will <strong>invalidate every previously shared link</strong> (email and WhatsApp).
                       Anyone opening an old link will see &ldquo;invalid or expired&rdquo;. A fresh link is created.
                     </p>
@@ -1018,7 +1018,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       <button
                         disabled={actionLoading}
                         onClick={() => doRegenerate(false)}
-                        className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                        className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-state-attention hover:bg-amber-100 disabled:opacity-50 transition-colors"
                       >
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                         Generate Only
@@ -1098,7 +1098,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
               <button
                 disabled={actionLoading}
                 onClick={doDelete}
-                className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-state-problem disabled:opacity-50"
               >
                 <Trash2 size={13} />
                 Delete engagement
@@ -1333,7 +1333,7 @@ function EngagementsPageInner() {
           </button>
           <button
             onClick={() => setDetailLetter(letter)}
-            className="flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
+            className="flex items-center gap-1 rounded-md bg-state-problem-surface px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
           >
             <XCircle size={11} />
             Reject
@@ -1465,9 +1465,9 @@ function EngagementsPageInner() {
 
       {/* Error banner */}
       {error && (
-        <div role="alert" className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+        <div role="alert" className="flex items-start gap-3 bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3">
           <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
-          <div className="flex-1 text-sm text-red-700">
+          <div className="flex-1 text-sm text-state-problem">
             <span className="font-semibold">Error: </span>{error}
           </div>
           <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 shrink-0">

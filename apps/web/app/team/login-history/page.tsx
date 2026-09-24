@@ -14,9 +14,9 @@ const LOGIN_HISTORY_DEFAULT_LIMIT = 200;
 const EVENT_STYLE: Record<string, string> = {
   login: "bg-emerald-50 text-emerald-700",
   logout: "bg-gray-100 text-gray-500",
-  failed_login: "bg-red-50 text-red-700",
-  forced_logout: "bg-amber-50 text-amber-700",
-  suspended: "bg-red-50 text-red-700",
+  failed_login: "bg-state-problem-surface text-state-problem",
+  forced_logout: "bg-state-attention-surface text-state-attention",
+  suspended: "bg-state-problem-surface text-state-problem",
 };
 
 export default function LoginHistoryPage() {
@@ -79,7 +79,7 @@ export default function LoginHistoryPage() {
         </div>
         {canForceLogout && (
           <button onClick={forceLogoutAll} disabled={busy}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-60">
+            className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-state-problem-surface disabled:opacity-60">
             {busy ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />} Sign out all users
           </button>
         )}
@@ -90,7 +90,7 @@ export default function LoginHistoryPage() {
       </p>
 
       {!canViewHistory && (
-        <div className="flex items-center gap-2 text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+        <div className="flex items-center gap-2 text-[12px] text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-3">
           <ShieldAlert size={14} /> Login history is visible to Managers and Partners only.
         </div>
       )}

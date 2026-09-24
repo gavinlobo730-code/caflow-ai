@@ -116,10 +116,10 @@ function actionBadgeClass(action: string): string {
   const a = action.toLowerCase();
   if (["create", "captured", "recurring_generated"].includes(a)) return "bg-green-100 text-green-700";
   if (["update", "assignment_change"].includes(a)) return "bg-blue-100 text-blue-700";
-  if (["delete", "platform_delete", "reject", "signature_failed"].includes(a)) return "bg-red-100 text-red-700";
+  if (["delete", "platform_delete", "reject", "signature_failed"].includes(a)) return "bg-red-100 text-state-problem";
   if (["approve", "final_approve", "reactivate", "platform_unsuspend"].includes(a)) return "bg-purple-100 text-purple-700";
   if (["suspend", "platform_suspend", "force_logout", "force_logout_all", "request_revision"].includes(a)) return "bg-orange-100 text-orange-700";
-  if (a.includes("status") || a.includes("review") || a.includes("send") || a.includes("reminder")) return "bg-amber-100 text-amber-700";
+  if (a.includes("status") || a.includes("review") || a.includes("send") || a.includes("reminder")) return "bg-amber-100 text-state-attention";
   return "bg-ps-muted text-ps-label";
 }
 

@@ -634,13 +634,13 @@ export default function CapitalGainsPage() {
                       </div>
                       <div>
                         <p className="text-xs text-ps-hint">Classification</p>
-                        <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.is_long_term ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                        <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.is_long_term ? "bg-green-100 text-green-700" : "bg-amber-100 text-state-attention"}`}>
                           {result.is_long_term ? "Long Term" : "Short Term"} Capital Gain
                         </span>
                       </div>
                       <div>
                         <p className="text-xs text-ps-hint">Capital Gain</p>
-                        <p className={`text-sm font-semibold ${result.gain_paise >= 0 ? "text-green-700" : "text-red-700"}`}>
+                        <p className={`text-sm font-semibold ${result.gain_paise >= 0 ? "text-green-700" : "text-state-problem"}`}>
                           {result.gain_paise >= 0 ? "+" : ""}{formatPaise(result.gain_paise)}
                         </p>
                       </div>
@@ -679,7 +679,7 @@ export default function CapitalGainsPage() {
                       )}
                       <div className="border-t border-ps-muted pt-2 flex justify-between text-sm font-semibold">
                         <span className="text-ps-ink">Capital Gain</span>
-                        <span className={result.gain_paise >= 0 ? "text-green-700" : "text-red-700"}>
+                        <span className={result.gain_paise >= 0 ? "text-green-700" : "text-state-problem"}>
                           {formatPaise(result.gain_paise)}
                         </span>
                       </div>
@@ -693,7 +693,7 @@ export default function CapitalGainsPage() {
                           </div>
                           <div className="flex justify-between text-sm font-semibold mt-1">
                             <span className="text-ps-ink">Gain (indexed)</span>
-                            <span className={result.gain_with_indexation_paise >= 0 ? "text-green-700" : "text-red-700"}>
+                            <span className={result.gain_with_indexation_paise >= 0 ? "text-green-700" : "text-state-problem"}>
                               {formatPaise(result.gain_with_indexation_paise)}
                             </span>
                           </div>
@@ -766,11 +766,11 @@ export default function CapitalGainsPage() {
                     </div>
                   )}
 
-                  <div className="bg-amber-50 rounded-lg p-3 flex gap-2">
+                  <div className="bg-state-attention-surface rounded-lg p-3 flex gap-2">
                     <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div>
                       <p className="text-xs text-amber-800 font-medium">{result.section_ref}</p>
-                      <p className="text-xs text-amber-700 mt-0.5">{result.note}</p>
+                      <p className="text-xs text-state-attention mt-0.5">{result.note}</p>
                       <p className="text-3xs text-amber-600 mt-1">
                         {result.is_slab_rate_estimate
                           ? "This rate is an ESTIMATE at the highest slab — your actual liability depends on your own income slab. "
@@ -846,7 +846,7 @@ export default function CapitalGainsPage() {
             </CardHeader>
             {regLoadError && (
               <div className="px-4 pb-3">
-                <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg flex items-center justify-between gap-3">
+                <div className="bg-state-problem-surface text-state-problem text-xs px-3 py-2 rounded-lg flex items-center justify-between gap-3">
                   <span>{regLoadError}</span>
                   <button onClick={loadRecords} className="underline hover:no-underline shrink-0">Retry</button>
                 </div>
@@ -885,7 +885,7 @@ export default function CapitalGainsPage() {
                           <td className="px-4 py-3 text-right text-ps-body">{fmtRs(r.sale_value_paise)}</td>
                           <td className="px-4 py-3 text-right text-ps-label text-xs">{r.indexed_cost_paise != null ? fmtRs(r.indexed_cost_paise) : "—"}</td>
                           <td className="px-4 py-3 text-center">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.gain_type === "LTCG" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.gain_type === "LTCG" ? "bg-green-100 text-green-700" : "bg-amber-100 text-state-attention"}`}>
                               {r.gain_type ?? "—"}
                             </span>
                           </td>
@@ -898,7 +898,7 @@ export default function CapitalGainsPage() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-col items-end gap-1">
-                              <span className={`text-xs font-semibold ${gain >= 0 ? "text-green-700" : "text-red-700"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
+                              <span className={`text-xs font-semibold ${gain >= 0 ? "text-green-700" : "text-state-problem"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
                               <button onClick={() => handleDeleteRecord(r.id)} className="text-ps-disabled hover:text-red-500 transition-colors">
                                 <Trash2 className="w-3 h-3" />
                               </button>
@@ -949,7 +949,7 @@ export default function CapitalGainsPage() {
                         <p className="text-2xs text-emerald-700">Exempt</p>
                         <p className="text-sm font-semibold text-emerald-800">{fmtRs(exemption.total_exemption_paise)}</p>
                       </div>
-                      <div className="bg-amber-50 rounded-lg px-3 py-2">
+                      <div className="bg-state-attention-surface rounded-lg px-3 py-2">
                         <p className="text-2xs text-amber-800">Still taxable</p>
                         <p className="text-sm font-semibold text-amber-900">{fmtRs(exemption.taxable_gain_paise)}</p>
                       </div>
@@ -1269,7 +1269,7 @@ export default function CapitalGainsPage() {
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-ps-label">Classification</span>
-                        <span className={`font-semibold ${regPreview.gain_type === "LTCG" ? "text-green-700" : "text-amber-700"}`}>{regPreview.gain_type}</span>
+                        <span className={`font-semibold ${regPreview.gain_type === "LTCG" ? "text-green-700" : "text-state-attention"}`}>{regPreview.gain_type}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-ps-label">Tax Rate</span>

@@ -299,7 +299,7 @@ export default function ClientDocumentsPage() {
 
       {/* Expiry alert banner */}
       {expiringDocs.length > 0 && (
-        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <div className="flex items-start gap-3 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
           <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-medium text-amber-800">
@@ -313,7 +313,7 @@ export default function ClientDocumentsPage() {
       )}
 
       {error && (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">{error}</div>
+        <div className="rounded-lg bg-state-attention-surface border border-state-attention-border px-4 py-3 text-sm text-amber-800">{error}</div>
       )}
 
       {/* Category tabs */}
@@ -351,7 +351,7 @@ export default function ClientDocumentsPage() {
 
           return (
             <div key={doc.id}
-              className={`bg-white rounded-xl border p-4 space-y-3 ${isExpired ? "border-red-200" : isExpiringSoon ? "border-amber-200" : "border-ps-border"}`}>
+              className={`bg-white rounded-xl border p-4 space-y-3 ${isExpired ? "border-state-problem-border" : isExpiringSoon ? "border-state-attention-border" : "border-ps-border"}`}>
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
                   <p className="font-medium text-ps-ink text-sm truncate">{doc.description ?? doc.file_name}</p>
@@ -381,7 +381,7 @@ export default function ClientDocumentsPage() {
                   </a>
                 )}
                 <button onClick={() => handleDelete(doc)}
-                  className="flex items-center justify-center gap-1 px-3 py-1.5 border border-red-100 rounded-lg text-xs text-red-600 hover:bg-red-50">
+                  className="flex items-center justify-center gap-1 px-3 py-1.5 border border-red-100 rounded-lg text-xs text-red-600 hover:bg-state-problem-surface">
                   <Trash2 size={12} /> Delete
                 </button>
               </div>

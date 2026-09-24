@@ -130,7 +130,7 @@ export default function SignPage() {
         )}
 
         {!loading && error && (
-          <div className="rounded-xl border border-red-200 bg-white p-8 text-center">
+          <div className="rounded-xl border border-state-problem-border bg-white p-8 text-center">
             <AlertCircle size={32} className="mx-auto mb-3 text-red-500" />
             <h1 className="text-lg font-semibold text-slate-900">Link unavailable</h1>
             <p className="mt-1 text-sm text-slate-600">{error}</p>
@@ -162,11 +162,11 @@ export default function SignPage() {
                 </div>
               )}
               {letter.status === "Rejected" && (
-                <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                <div className="flex items-start gap-3 rounded-lg border border-state-problem-border bg-state-problem-surface px-4 py-3">
                   <XCircle size={20} className="mt-0.5 shrink-0 text-red-500" />
                   <div>
                     <p className="text-sm font-semibold text-red-800">Engagement declined</p>
-                    <p className="text-sm text-red-700">
+                    <p className="text-sm text-state-problem">
                       You declined this engagement{letter.rejected_at ? ` on ${fmtDate(letter.rejected_at)}` : ""}.
                       If this was a mistake, please contact {letter.firm_name}.
                     </p>
@@ -176,11 +176,11 @@ export default function SignPage() {
 
               {/* Expired — past validity date, can no longer be signed */}
               {letter.expired && letter.status !== "Signed" && letter.status !== "Rejected" && (
-                <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <div className="flex items-start gap-3 rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3">
                   <AlertCircle size={20} className="mt-0.5 shrink-0 text-amber-600" />
                   <div>
                     <p className="text-sm font-semibold text-amber-800">This letter has expired</p>
-                    <p className="text-sm text-amber-700">
+                    <p className="text-sm text-state-attention">
                       This engagement letter is past its validity date and can no longer be signed
                       online. Please contact {letter.firm_name} to request an updated copy.
                     </p>
@@ -222,7 +222,7 @@ export default function SignPage() {
                       </label>
 
                       {actionErr && (
-                        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                        <div role="alert" className="flex items-start gap-2 rounded-lg border border-state-problem-border bg-state-problem-surface px-3 py-2 text-sm text-red-600">
                           <AlertCircle size={14} className="mt-0.5 shrink-0" />
                           {actionErr}
                         </div>
@@ -262,7 +262,7 @@ export default function SignPage() {
                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
                       />
                       {actionErr && (
-                        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                        <div role="alert" className="flex items-start gap-2 rounded-lg border border-state-problem-border bg-state-problem-surface px-3 py-2 text-sm text-red-600">
                           <AlertCircle size={14} className="mt-0.5 shrink-0" />
                           {actionErr}
                         </div>

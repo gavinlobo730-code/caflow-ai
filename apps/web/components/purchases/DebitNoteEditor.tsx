@@ -389,7 +389,7 @@ export function DebitNoteEditor({
         {isInterstate ? "Interstate — IGST" : "Intra-state — CGST + SGST"} (CGST Act §8)
       </p>
       {isReverseCharge && (
-        <p className="text-3xs text-amber-700">
+        <p className="text-3xs text-state-attention">
           Reverse charge — the GST above was self-assessed by you, not paid to the vendor (CGST Act §9(3)/(4)).
         </p>
       )}
@@ -401,7 +401,7 @@ export function DebitNoteEditor({
         <p className="text-3xs text-ps-hint pt-1">
           Bill outstanding: {fmt(billOutstanding(selectedBill))}
           {totals.grand_total_paise > billOutstanding(selectedBill) && (
-            <span className="block text-amber-700 mt-0.5">
+            <span className="block text-state-attention mt-0.5">
               Exceeds the bill&apos;s outstanding — issuing will be rejected unless this is reduced.
             </span>
           )}
@@ -411,7 +411,7 @@ export function DebitNoteEditor({
         Preview — GST is confirmed by the server on save.
       </p>
       {attempted && !validation.ok && (
-        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-red-50 rounded px-2 py-1.5">
+        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-state-problem-surface rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.vendor ?? validation.errors.debitNoteDate ?? validation.errors.lines}</span>
         </div>
@@ -433,7 +433,7 @@ export function DebitNoteEditor({
       summary={summary}
     >
       <div className="space-y-5">
-        <section className="bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-2">
+        <section className="bg-state-attention-surface border border-amber-100 rounded-lg p-3 space-y-2">
           <p className="text-xs font-medium text-amber-800 flex items-center gap-1.5"><Upload size={12} /> Attachment</p>
           {!isLocked && (
             <div className="flex items-center gap-2">
@@ -444,7 +444,7 @@ export function DebitNoteEditor({
             </div>
           )}
           {documentUrl && (
-            <p className="text-3xs text-amber-700">📎 Attachment on file — supporting evidence for this return.</p>
+            <p className="text-3xs text-state-attention">📎 Attachment on file — supporting evidence for this return.</p>
           )}
         </section>
 
@@ -532,7 +532,7 @@ export function DebitNoteEditor({
                   const g = previewDebitNoteTotals([line], isInterstate);
                   const invalid = attempted && !isValidDebitNoteLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
-                    <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
+                    <tr key={line._k} className={invalid ? "bg-state-problem-surface/40" : undefined}>
                       <td className="py-1.5 pr-2">
                         <ServiceCataloguePicker clientId={clientId} value={line.product} onPick={(item) => onPickProduct(idx, item)} size="sm" ariaLabel={`Line ${idx + 1} product or service`} />
                       </td>

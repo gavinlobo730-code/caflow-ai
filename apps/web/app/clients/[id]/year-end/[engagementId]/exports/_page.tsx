@@ -165,7 +165,7 @@ export default function ExportsPage() {
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-4 text-sm text-red-700">
+        <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-4 text-sm text-state-problem">
           {error}
           <button onClick={load} className="ml-3 underline text-xs">Retry</button>
         </div>
@@ -176,16 +176,16 @@ export default function ExportsPage() {
   return (
     <div className="p-6 space-y-5 max-w-4xl mx-auto">
       {toast && (
-        <div className={`rounded-lg px-4 py-3 text-xs font-medium border ${toast.ok ? "bg-green-50 border-green-100 text-green-700" : "bg-red-50 border-red-100 text-red-700"}`}>
+        <div className={`rounded-lg px-4 py-3 text-xs font-medium border ${toast.ok ? "bg-green-50 border-green-100 text-green-700" : "bg-state-problem-surface border-red-100 text-state-problem"}`}>
           {toast.msg}
         </div>
       )}
 
       {/* Draft warning banner */}
       {isDraft && (
-        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <div className="flex items-center gap-2 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
           <AlertTriangle size={14} className="text-amber-600 flex-shrink-0" />
-          <p className="text-xs font-medium text-amber-700">
+          <p className="text-xs font-medium text-state-attention">
             DRAFT — All exports will be watermarked. Approve the engagement to generate final copies.
           </p>
         </div>
@@ -284,7 +284,7 @@ export default function ExportsPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       {(exp.is_draft ?? false) ? (
-                        <span className="text-3xs font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Draft</span>
+                        <span className="text-3xs font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-state-attention">Draft</span>
                       ) : (
                         <span className="text-3xs font-medium px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Final</span>
                       )}

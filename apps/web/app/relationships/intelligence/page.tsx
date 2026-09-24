@@ -237,7 +237,7 @@ export default function RelationshipIntelligencePage() {
       )}
 
       {error && (
-        <Card role="alert" className="bg-red-50 border-red-200">
+        <Card role="alert" className="bg-state-problem-surface border-state-problem-border">
           <CardContent className="p-4 text-sm text-red-600">{error}</CardContent>
         </Card>
       )}
@@ -247,7 +247,7 @@ export default function RelationshipIntelligencePage() {
         <div className="space-y-4">
           {/* Section 185 alert banner */}
           {sec185Loans.length > 0 && (
-            <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+            <div className="flex items-start gap-3 bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
               <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
               <div>
                 <p className="text-sm font-medium text-amber-800">
@@ -302,7 +302,7 @@ export default function RelationshipIntelligencePage() {
                         key={loan.id}
                         className={
                           loan.section_185_flagged
-                            ? "bg-amber-50/40"
+                            ? "bg-state-attention-surface/40"
                             : "hover:bg-gray-50"
                         }
                       >
@@ -321,7 +321,7 @@ export default function RelationshipIntelligencePage() {
                         <td className="px-3 py-3">
                           <div className="flex gap-1 flex-wrap">
                             {loan.section_185_flagged && (
-                              <Badge className="bg-amber-100 text-amber-700 text-3xs">
+                              <Badge className="bg-amber-100 text-state-attention text-3xs">
                                 Sec 185
                               </Badge>
                             )}
@@ -433,7 +433,7 @@ export default function RelationshipIntelligencePage() {
                           className={
                             m.confirmed
                               ? "bg-emerald-100 text-emerald-700"
-                              : "bg-red-100 text-red-700"
+                              : "bg-red-100 text-state-problem"
                           }
                         >
                           {m.confirmed ? "Confirmed" : "Rejected"}

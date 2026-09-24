@@ -214,10 +214,10 @@ export default function CoaImportPage() {
 
       {/* Parse errors */}
       {parseErrors.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-1">
+        <div className="bg-state-problem-surface border border-state-problem-border rounded-xl p-4 space-y-1">
           <p className="text-xs font-semibold text-red-800">{parseErrors.length} validation error{parseErrors.length !== 1 ? "s" : ""} found</p>
           {parseErrors.slice(0, 10).map((e, i) => (
-            <p key={i} className="text-xs text-red-700">Row {e.row}: {e.message}</p>
+            <p key={i} className="text-xs text-state-problem">Row {e.row}: {e.message}</p>
           ))}
           {parseErrors.length > 10 && <p className="text-xs text-red-500">…and {parseErrors.length - 10} more</p>}
         </div>
@@ -270,7 +270,7 @@ export default function CoaImportPage() {
       {/* Result */}
       {step === "done" && result && (
         <div className="space-y-4">
-          <div className={`rounded-xl border p-5 ${result.errors.length === 0 ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
+          <div className={`rounded-xl border p-5 ${result.errors.length === 0 ? "bg-green-50 border-green-200" : "bg-state-attention-surface border-state-attention-border"}`}>
             <div className="flex items-center gap-2 mb-3">
               {result.errors.length === 0
                 ? <CheckCircle size={18} className="text-green-600" />
@@ -285,8 +285,8 @@ export default function CoaImportPage() {
             </div>
           </div>
           {result.errors.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-1">
-              {result.errors.map((e, i) => <p key={i} className="text-xs text-red-700">{e.message}</p>)}
+            <div className="bg-state-problem-surface border border-state-problem-border rounded-xl p-4 space-y-1">
+              {result.errors.map((e, i) => <p key={i} className="text-xs text-state-problem">{e.message}</p>)}
             </div>
           )}
           <div className="flex gap-2">

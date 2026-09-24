@@ -37,7 +37,7 @@ const STATUS_CONFIG: Record<TDSReturnStatus, { label: string; color: string }> =
   prepared:    { label: "Prepared",    color: "bg-blue-100 text-blue-700" },
   ca_approved: { label: "CA Approved", color: "bg-green-100 text-green-700" },
   filed:       { label: "Filed",       color: "bg-emerald-100 text-emerald-700" },
-  revised:     { label: "Revised",     color: "bg-amber-100 text-amber-700" },
+  revised:     { label: "Revised",     color: "bg-amber-100 text-state-attention" },
 };
 
 const QUARTERS: TDSQuarter[] = ["Q1", "Q2", "Q3", "Q4"];
@@ -185,7 +185,7 @@ export default function TDSReturnsPage() {
       </div>
 
       {/* CA Review Banner */}
-      <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+      <div className="flex items-start gap-3 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
         <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
         <p className="text-sm text-amber-800">
           <strong>CA Review Required.</strong> Review all figures before filing. Do not upload without explicit CA approval. Returns are filed manually on the Income Tax e-filing portal (incometax.gov.in) under the deductor&apos;s TAN login — not on TRACES, which is post-filing only (Form 16/16A, defaults, corrections).
@@ -256,8 +256,8 @@ export default function TDSReturnsPage() {
         <div className="space-y-4">
           {/* Validation errors */}
           {result.validation_errors.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-1">
-              <p className="text-sm font-semibold text-red-700 flex items-center gap-2">
+            <div className="bg-state-problem-surface border border-state-problem-border rounded-xl p-4 space-y-1">
+              <p className="text-sm font-semibold text-state-problem flex items-center gap-2">
                 <AlertTriangle size={14} /> {result.validation_errors.length} Validation Error(s)
               </p>
               {result.validation_errors.map((e, i) => (
@@ -267,12 +267,12 @@ export default function TDSReturnsPage() {
           )}
 
           {result.warnings.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
-              <p className="text-sm font-semibold text-amber-700 flex items-center gap-2">
+            <div className="bg-state-attention-surface border border-state-attention-border rounded-xl p-4 space-y-1">
+              <p className="text-sm font-semibold text-state-attention flex items-center gap-2">
                 <Info size={14} /> {result.warnings.length} Warning(s)
               </p>
               {result.warnings.map((w, i) => (
-                <p key={i} className="text-xs text-amber-700 pl-5">• {w}</p>
+                <p key={i} className="text-xs text-state-attention pl-5">• {w}</p>
               ))}
             </div>
           )}
@@ -324,8 +324,8 @@ export default function TDSReturnsPage() {
                       1.5% a month from the date of DEDUCTION, not from the
                       due date. */}
                   {result.total_tds_deducted_paise > result.total_tds_deposited_paise && (
-                    <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                      <p className="text-sm font-semibold text-red-700">
+                    <div className="bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-3">
+                      <p className="text-sm font-semibold text-state-problem">
                         {r(result.total_tds_deducted_paise - result.total_tds_deposited_paise)} deducted
                         and not yet matched to a challan
                       </p>
@@ -342,12 +342,12 @@ export default function TDSReturnsPage() {
                       return is assembled and its figures are right. A deductee
                       with no challan is a 26AS entry that reads 'U'. */}
                   {(result.challan_gaps?.length ?? 0) > 0 && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-1">
+                    <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 space-y-1">
                       <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
                         Challan matching — {result.challan_gaps!.length} unresolved
                       </p>
                       {result.challan_gaps!.map((g, i) => (
-                        <p key={i} className="text-xs text-amber-700">• {g}</p>
+                        <p key={i} className="text-xs text-state-attention">• {g}</p>
                       ))}
                     </div>
                   )}
@@ -374,7 +374,7 @@ export default function TDSReturnsPage() {
                     {result.reconciliation && (
                       <p>
                         Ledger tie-up:{" "}
-                        <strong className={result.reconciliation.matched ? "text-green-700" : "text-amber-700"}>
+                        <strong className={result.reconciliation.matched ? "text-green-700" : "text-state-attention"}>
                           {!result.reconciliation.account_found
                             ? "the TDS Payable control account was not found"
                             : result.reconciliation.matched
@@ -496,7 +496,7 @@ export default function TDSReturnsPage() {
                 the walk-through exists — the dead-control rule. */}
             {filingStatus === "ca_approved" && returnId && demoFlows.includes("tds") && (
               <button onClick={() => setShowDemo(true)}
-                className="flex items-center gap-2 bg-white border border-amber-300 text-amber-800 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-50">
+                className="flex items-center gap-2 bg-white border border-amber-300 text-amber-800 px-4 py-2 rounded-lg text-sm font-medium hover:bg-state-attention-surface">
                 File (demo)
               </button>
             )}

@@ -242,7 +242,7 @@ export default function GSTR3BPage() {
       </div>
 
       {/* CA Review Banner */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+      <div className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3 flex items-start gap-2">
         <Info className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
         <p className="text-sm text-amber-800">
           <strong>CA Review Required.</strong> Verify all figures before downloading JSON for portal upload.
@@ -867,7 +867,7 @@ export default function GSTR3BPage() {
                     This is the challan figure — the set-off result plus the reverse-charge tax.
                   </p>
                 </div>
-                <p className="text-xl font-bold font-mono text-red-700">{r(w.net_payable.challan_total_paise)}</p>
+                <p className="text-xl font-bold font-mono text-state-problem">{r(w.net_payable.challan_total_paise)}</p>
               </div>
             </div>
             {/* A total of zero says nothing about whether credit was exhausted
@@ -1022,8 +1022,8 @@ export default function GSTR3BPage() {
             }
 
             return (
-              <section className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-amber-200 flex items-start gap-2">
+              <section className="bg-state-attention-surface border border-state-attention-border rounded-xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-state-attention-border flex items-start gap-2">
                   <Clock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                   <div>
                     <h3 className="font-semibold text-amber-900 text-sm">
@@ -1051,7 +1051,7 @@ export default function GSTR3BPage() {
                         <li key={b.bill_id} className="text-xs text-amber-800 flex items-baseline justify-between gap-4">
                           <span>
                             <span className="font-mono">{b.bill_no ?? b.bill_id.slice(0, 8)}</span>
-                            <span className="text-amber-700 ml-2">
+                            <span className="text-state-attention ml-2">
                               {b.bill_date} · {b.days_outstanding} days · {r(b.unpaid_paise)} unpaid
                             </span>
                           </span>
@@ -1063,17 +1063,17 @@ export default function GSTR3BPage() {
                     {/* §50 interest. Two figures because the rule no longer
                         says which clock, and showing one would over- or
                         under-state a sum the client pays over. */}
-                    <div className="mt-4 pt-3 border-t border-amber-200">
+                    <div className="mt-4 pt-3 border-t border-state-attention-border">
                       <p className="text-xs text-amber-900 font-semibold mb-1.5">
                         Interest under §50(1) on that reversal, to {rule37!.as_of}
                       </p>
                       <div className="grid grid-cols-2 gap-2">
-                        <div className="rounded-lg bg-white/70 border border-amber-200 px-3 py-2">
-                          <p className="text-3xs text-amber-700">From the date the credit was availed</p>
+                        <div className="rounded-lg bg-white/70 border border-state-attention-border px-3 py-2">
+                          <p className="text-3xs text-state-attention">From the date the credit was availed</p>
                           <p className="font-mono text-sm text-amber-900">{r(dueInterest.availment)}</p>
                         </div>
-                        <div className="rounded-lg bg-white/70 border border-amber-200 px-3 py-2">
-                          <p className="text-3xs text-amber-700">From the day the 180 days expired</p>
+                        <div className="rounded-lg bg-white/70 border border-state-attention-border px-3 py-2">
+                          <p className="text-3xs text-state-attention">From the day the 180 days expired</p>
                           <p className="font-mono text-sm text-amber-900">{r(dueInterest.expiry)}</p>
                         </div>
                       </div>
@@ -1093,7 +1093,7 @@ export default function GSTR3BPage() {
                 )}
 
                 {overdueEarlier.length > 0 && (
-                  <div className="px-5 py-3 border-t border-amber-200 text-xs text-amber-800">
+                  <div className="px-5 py-3 border-t border-state-attention-border text-xs text-amber-800">
                     <strong>{overdueEarlier.length}</strong> more bill
                     {overdueEarlier.length !== 1 ? "s" : ""} ({r(earlierTotal)}) crossed 180 days in an
                     earlier period. Rule 37(1) puts those in the return for the period after the one
@@ -1101,7 +1101,7 @@ export default function GSTR3BPage() {
                   </div>
                 )}
 
-                <div className="px-5 py-3 bg-amber-100/60 border-t border-amber-200 text-xs text-amber-900">
+                <div className="px-5 py-3 bg-amber-100/60 border-t border-state-attention-border text-xs text-amber-900">
                   <strong>Not included in Table 4(B) above.</strong> PracticeSync computes this return
                   from posted books, and no journal has been posted for these reversals — so adding
                   them here would put the return out of step with the ledger and the reconciliation
@@ -1168,8 +1168,8 @@ export default function GSTR3BPage() {
             }
 
             return (
-              <section className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-amber-200 flex items-start gap-2">
+              <section className="bg-state-attention-surface border border-state-attention-border rounded-xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-state-attention-border flex items-start gap-2">
                   <Clock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                   <div>
                     <h3 className="font-semibold text-amber-900 text-sm">
@@ -1194,8 +1194,8 @@ export default function GSTR3BPage() {
                     </div>
                     <div className="grid grid-cols-3 gap-2 mb-3">
                       {(["igst", "cgst", "sgst"] as const).map(h => (
-                        <div key={h} className="rounded-lg bg-white/70 border border-amber-200 px-3 py-2">
-                          <p className="text-3xs uppercase tracking-wide text-amber-700">{h}</p>
+                        <div key={h} className="rounded-lg bg-white/70 border border-state-attention-border px-3 py-2">
+                          <p className="text-3xs uppercase tracking-wide text-state-attention">{h}</p>
                           <p className="font-mono text-sm text-amber-900">{r(r43.te_paise[h])}</p>
                         </div>
                       ))}
@@ -1213,7 +1213,7 @@ export default function GSTR3BPage() {
                         <li key={a.asset_id} className="text-xs text-amber-800 flex items-baseline justify-between gap-4">
                           <span>
                             {a.asset_name}
-                            <span className="text-amber-700 ml-2">
+                            <span className="text-state-attention ml-2">
                               instalment {a.period_index} of {r43.useful_life_months}
                             </span>
                           </span>
@@ -1230,7 +1230,7 @@ export default function GSTR3BPage() {
                     so the figure above is understated by whatever it carries —
                     and a CA cannot know that from a number. */}
                 {r43.gaps.length > 0 && (
-                  <div className="px-5 py-3 border-t border-amber-200">
+                  <div className="px-5 py-3 border-t border-state-attention-border">
                     <p className="text-xs font-semibold text-amber-900 mb-1.5">
                       {r43.gaps.length} asset{r43.gaps.length !== 1 ? "s are" : " is"} not in this
                       working, and should be
@@ -1240,7 +1240,7 @@ export default function GSTR3BPage() {
                         <li key={i} className="text-xs text-amber-800">• {g}</li>
                       ))}
                     </ul>
-                    <p className="text-2xs text-amber-700 mt-2">
+                    <p className="text-2xs text-state-attention mt-2">
                       Record the use on the asset in the client&apos;s Fixed Assets tab, then
                       recompute.
                     </p>
@@ -1248,14 +1248,14 @@ export default function GSTR3BPage() {
                 )}
 
                 {r43.caveats.length > 0 && (
-                  <div className="px-5 py-3 border-t border-amber-200 bg-white/70 space-y-1">
+                  <div className="px-5 py-3 border-t border-state-attention-border bg-white/70 space-y-1">
                     {r43.caveats.map((c, i) => (
                       <p key={i} className="text-2xs text-ps-label">{c}</p>
                     ))}
                   </div>
                 )}
 
-                <div className="px-5 py-3 bg-amber-100/60 border-t border-amber-200 text-xs text-amber-900">
+                <div className="px-5 py-3 bg-amber-100/60 border-t border-state-attention-border text-xs text-amber-900">
                   <strong>Not included in Table 4(B) above.</strong> {r43.how_to_declare}
                 </div>
               </section>
@@ -1283,14 +1283,14 @@ export default function GSTR3BPage() {
 
           {/* Validation warnings */}
           {result.validation_warnings.length > 0 && (
-            <section className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+            <section className="bg-state-attention-surface border border-state-attention-border rounded-xl p-5">
               <h3 className="font-semibold text-amber-800 text-sm mb-3 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" />
                 Validation Warnings ({result.validation_warnings.length})
               </h3>
               <ul className="space-y-2">
                 {result.validation_warnings.map((w, i) => (
-                  <li key={i} className="text-sm text-amber-700 flex items-start gap-2">
+                  <li key={i} className="text-sm text-state-attention flex items-start gap-2">
                     <ChevronRight className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                     <span>
                       {w.invoice_ref && <span className="font-mono mr-1">[{w.invoice_ref}]</span>}

@@ -152,7 +152,7 @@ export default function BookToTaxBridgePage() {
         <YearPicker value={fy} onChange={setFy} className="w-auto" />
       </div>
 
-      {error && <div className="bg-state-problem-surface text-state-problem rounded-lg px-5 py-4 text-sm">{error}</div>}
+      {error && <div role="alert" className="bg-state-problem-surface text-state-problem rounded-lg px-5 py-4 text-sm">{error}</div>}
 
       {!clientId && (
         <div className="bg-ps-bg border border-ps-border rounded-xl px-5 py-4 text-sm text-ps-label">

@@ -19,7 +19,7 @@ interface ClientScore {
 
 function scoreColor(s: number) { return s >= 70 ? "text-green-600" : s >= 40 ? "text-amber-600" : "text-red-600"; }
 function gradeBadge(g: Grade) {
-  const m: Record<Grade, string> = { A: "bg-green-100 text-green-700", B: "bg-blue-100 text-blue-700", C: "bg-yellow-100 text-yellow-700", D: "bg-orange-100 text-orange-700", F: "bg-red-100 text-red-700" };
+  const m: Record<Grade, string> = { A: "bg-green-100 text-green-700", B: "bg-blue-100 text-blue-700", C: "bg-yellow-100 text-yellow-700", D: "bg-orange-100 text-orange-700", F: "bg-red-100 text-state-problem" };
   return m[g] ?? "bg-gray-100 text-gray-600";
 }
 function formatDate(d?: string | null) { if (!d) return "—"; try { return formatDateShared(d); } catch { return d; } }

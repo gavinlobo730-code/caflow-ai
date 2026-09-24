@@ -193,7 +193,7 @@ export default function ClientRatioNotePage() {
       {!loading && note && (
         <>
           {outstanding > 0 && (
-            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+            <div className="flex items-start gap-2.5 bg-state-attention-surface border border-amber-100 rounded-xl px-4 py-3">
               <AlertTriangle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
               <p className="text-2xs text-amber-900">
                 <span className="font-medium">
@@ -267,7 +267,7 @@ function RatioRow({
 }) {
   const flagged = r.needs_explanation && !r.explanation;
   return (
-    <div className={`px-4 py-3 ${flagged ? "bg-amber-50/40" : ""}`}>
+    <div className={`px-4 py-3 ${flagged ? "bg-state-attention-surface/40" : ""}`}>
       <div className="flex items-start gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -287,7 +287,7 @@ function RatioRow({
             </p>
           )}
           {r.unavailable_reason && (
-            <p className="text-3xs text-amber-800 mt-1.5 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+            <p className="text-3xs text-amber-800 mt-1.5 bg-state-attention-surface border border-amber-100 rounded-lg px-2.5 py-1.5">
               {r.unavailable_reason}
             </p>
           )}
@@ -304,13 +304,13 @@ function RatioRow({
           )}
           {r.variance_bps !== null && (
             <p className={`text-3xs mt-0.5 tabular-nums ${
-              r.needs_explanation ? "text-amber-700 font-medium" : "text-ps-hint"
+              r.needs_explanation ? "text-state-attention font-medium" : "text-ps-hint"
             }`}>
               {formatVariance(r.variance_bps)}
             </p>
           )}
           {r.needs_explanation && r.variance_bps === null && (
-            <p className="text-3xs mt-0.5 text-amber-700 font-medium">
+            <p className="text-3xs mt-0.5 text-state-attention font-medium">
               was nil last year
             </p>
           )}
@@ -377,7 +377,7 @@ function RatioRow({
           ) : (
             <button
               onClick={onEdit}
-              className="text-3xs border border-amber-200 bg-amber-50 text-amber-800 rounded-md px-2.5 py-1 hover:bg-amber-100"
+              className="text-3xs border border-state-attention-border bg-state-attention-surface text-amber-800 rounded-md px-2.5 py-1 hover:bg-amber-100"
             >
               Explain this movement
             </button>

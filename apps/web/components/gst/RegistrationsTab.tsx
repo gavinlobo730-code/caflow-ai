@@ -224,7 +224,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       {msg && (
         <div className={`rounded-lg px-3 py-2 text-xs ${msg.type === "ok"
           ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
-          : "bg-red-50 border border-red-200 text-red-700"}`}>
+          : "bg-state-problem-surface border border-state-problem-border text-state-problem"}`}>
           {msg.text}
         </div>
       )}
@@ -253,7 +253,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
         {turnover && (
           <div className={`rounded-lg px-3 py-2 text-2xs flex items-start gap-1.5 ${
             turnover.governing_turnover_paise === null
-              ? "bg-amber-50 border border-amber-200 text-amber-900"
+              ? "bg-state-attention-surface border border-state-attention-border text-amber-900"
               : "bg-ps-bg border border-ps-border text-ps-label"}`}>
             <Info size={12} className="shrink-0 mt-0.5" />
             <span>
@@ -319,7 +319,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       </div>
 
       {loadFailed && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 flex gap-2">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 text-xs text-amber-900 flex gap-2">
           <AlertTriangle size={13} className="shrink-0 mt-0.5" />
           <span>The registrations could not be read, so this list is not the whole of them. Reload before adding one.</span>
         </div>

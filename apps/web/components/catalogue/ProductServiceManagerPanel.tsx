@@ -319,7 +319,7 @@ export function ProductServiceManagerPanel({
       {/* The ceiling was reached: the table below is a PREFIX of the catalogue
           and its "of N" is the cap, not the count. */}
       {capped && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2 text-xs text-amber-800">
           Showing the first {CATALOGUE_FETCH_LIMIT} items — there may be more.
           Search to narrow the list.
         </div>
@@ -380,11 +380,11 @@ export function ProductServiceManagerPanel({
             )}
             <button onClick={() => setEditing(s)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
             {s.is_active ? (
-              <button disabled={rowBusy} onClick={() => setActive(s, false)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-amber-50 rounded" aria-label="Archive"><Archive size={14} /></button>
+              <button disabled={rowBusy} onClick={() => setActive(s, false)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-state-attention-surface rounded" aria-label="Archive"><Archive size={14} /></button>
             ) : (
               <button disabled={rowBusy} onClick={() => setActive(s, true)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
             )}
-            <button disabled={rowBusy} onClick={() => deleteItem(s)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-red-50 rounded" aria-label="Delete"><Trash2 size={14} /></button>
+            <button disabled={rowBusy} onClick={() => deleteItem(s)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-state-problem-surface rounded" aria-label="Delete"><Trash2 size={14} /></button>
           </div>
         )}
       />

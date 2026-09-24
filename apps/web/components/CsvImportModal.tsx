@@ -399,9 +399,9 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
             const groups = computeMissing(rows, resolvers);
             return (
               <div className="space-y-4">
-                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                <div className="bg-state-attention-surface border border-amber-100 rounded-xl p-4">
                   <p className="text-sm font-medium text-amber-900">Some rows reference records that don&apos;t exist yet</p>
-                  <p className="text-xs text-amber-700 mt-0.5">
+                  <p className="text-xs text-state-attention mt-0.5">
                     Add them now, or continue — rows referencing anything still unresolved will be skipped and listed in the import report.
                   </p>
                 </div>
@@ -462,7 +462,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                   </thead>
                   <tbody className="divide-y divide-ps-border">
                     {rows.map(row => (
-                      <tr key={row.index} className={row.errors.length > 0 ? "bg-red-50" : ""}>
+                      <tr key={row.index} className={row.errors.length > 0 ? "bg-state-problem-surface" : ""}>
                         <td className="px-3 py-2 text-ps-hint tabular-nums">{row.index}</td>
                         {columns.map(c => (
                           <td key={c.key} className="px-3 py-2 text-ps-body max-w-[120px] truncate" title={row.data[c.key.toLowerCase()]}>
@@ -517,29 +517,29 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                   <p className="text-lg font-semibold text-green-700 tabular-nums">{result.imported}</p>
                   <p className="text-2xs text-green-600">New</p>
                 </div>
-                <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-center">
-                  <p className="text-lg font-semibold text-amber-700 tabular-nums">{result.skipped ?? 0}</p>
+                <div className="rounded-xl border border-amber-100 bg-state-attention-surface px-3 py-2.5 text-center">
+                  <p className="text-lg font-semibold text-state-attention tabular-nums">{result.skipped ?? 0}</p>
                   <p className="text-2xs text-amber-600">Already existed</p>
                 </div>
-                <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-center">
+                <div className="rounded-xl border border-red-100 bg-state-problem-surface px-3 py-2.5 text-center">
                   <p className="text-lg font-semibold text-red-600 tabular-nums">{result.errors.length}</p>
                   <p className="text-2xs text-red-500">Failed</p>
                 </div>
               </div>
 
               {result.skippedDetail && result.skippedDetail.length > 0 && (
-                <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 space-y-1 max-h-40 overflow-y-auto">
-                  <p className="text-xs font-semibold text-amber-700 mb-1">
+                <div className="bg-state-attention-surface border border-amber-100 rounded-xl px-4 py-3 space-y-1 max-h-40 overflow-y-auto">
+                  <p className="text-xs font-semibold text-state-attention mb-1">
                     Skipped (already in your customer list — no duplicates created):
                   </p>
                   {result.skippedDetail.map((s, i) => (
-                    <p key={i} className="text-xs text-amber-700">{s}</p>
+                    <p key={i} className="text-xs text-state-attention">{s}</p>
                   ))}
                 </div>
               )}
 
               {result.errors.length > 0 && (
-                <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 space-y-1 max-h-40 overflow-y-auto">
+                <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3 space-y-1 max-h-40 overflow-y-auto">
                   {result.errors.map((e, i) => (
                     <p key={i} className="text-xs text-red-600">{e}</p>
                   ))}

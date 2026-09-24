@@ -32,7 +32,7 @@ interface HealthAlert {
 const SEVERITY_COLORS: Record<string, string> = {
   info: "bg-blue-100 text-blue-700",
   warning: "bg-yellow-100 text-yellow-700",
-  critical: "bg-red-100 text-red-700",
+  critical: "bg-red-100 text-state-problem",
 };
 function formatDate(d: string) { try { return formatDateShared(d); } catch { return d; } }
 

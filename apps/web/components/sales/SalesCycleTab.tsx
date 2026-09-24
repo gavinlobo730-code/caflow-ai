@@ -202,7 +202,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   if (loadFailed) {
     return (
       <div className="p-6">
-        <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="rounded border border-state-problem-border bg-state-problem-surface p-4 text-sm text-red-800">
           The sales cycle could not be loaded.{" "}
           <button onClick={() => void load()} className="underline">Try again</button>
         </div>
@@ -221,7 +221,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
       )}
 
       {overdue.length > 0 && (
-        <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+        <div className="rounded border border-red-300 bg-state-problem-surface p-3 text-sm text-red-900">
           <div className="flex items-center gap-2 font-medium">
             <AlertTriangle size={16} />
             {overdue.length} challan{overdue.length === 1 ? "" : "s"} past the
@@ -239,7 +239,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
       )}
 
       {undecided.length > 0 && (
-        <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <div className="rounded border border-amber-300 bg-state-attention-surface p-3 text-sm text-amber-900">
           <div className="flex items-center gap-2 font-medium">
             <Clock size={16} />
             {undecided.length} challan{undecided.length === 1 ? "" : "s"} cannot
@@ -282,7 +282,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
 
       {msg && (
         <div className={`rounded p-2 text-sm ${
-          msg.type === "ok" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"
+          msg.type === "ok" ? "bg-green-50 text-green-800" : "bg-state-problem-surface text-red-800"
         }`}>{msg.text}</div>
       )}
 
@@ -685,7 +685,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                 empty=""
               />
               {detail.missing.length > 0 && (
-                <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <div className="mt-3 rounded border border-amber-300 bg-state-attention-surface p-3 text-sm text-amber-900">
                   <div className="font-medium">Still to be recorded</div>
                   <ul className="mt-1 list-disc pl-5">
                     {detail.missing.map((m) => <li key={m}>{m}</li>)}

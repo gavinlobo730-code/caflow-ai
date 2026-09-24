@@ -1028,15 +1028,15 @@ export default function TaxComputationPage() {
       </div>
 
       {/* CA Review Banner */}
-      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+      <div className="flex items-center gap-2 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-2.5">
         <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
         <p className="text-xs text-amber-800 font-medium">CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT</p>
       </div>
 
       {loadError && (
-        <div role="alert" className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
-          <p className="text-xs text-red-700 font-medium">{loadError}</p>
-          <button onClick={() => load()} className="text-xs px-3 py-1 border border-red-200 rounded hover:bg-red-100 text-red-700 shrink-0">Retry</button>
+        <div role="alert" className="flex items-center justify-between gap-2 bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">
+          <p className="text-xs text-state-problem font-medium">{loadError}</p>
+          <button onClick={() => load()} className="text-xs px-3 py-1 border border-state-problem-border rounded hover:bg-red-100 text-state-problem shrink-0">Retry</button>
         </div>
       )}
 
@@ -1146,7 +1146,7 @@ export default function TaxComputationPage() {
             </div>
 
             {assesseeRefusal ? (
-              <p className="text-2xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">
+              <p className="text-2xs text-state-problem bg-state-problem-surface border border-state-problem-border rounded-lg p-2.5">
                 {assesseeRefusal}
               </p>
             ) : entityType ? (
@@ -1162,7 +1162,7 @@ export default function TaxComputationPage() {
                 the claim and the books are the check on it. */}
             {claim && (
               <div className={`rounded-lg border px-4 py-3 ${
-                claim.available ? "border-blue-100 bg-blue-50/50" : "border-amber-200 bg-amber-50"}`}>
+                claim.available ? "border-blue-100 bg-blue-50/50" : "border-state-attention-border bg-state-attention-surface"}`}>
                 {!claim.available ? (
                   <p className="text-2xs text-amber-900">{claim.reason}</p>
                 ) : (
@@ -1220,7 +1220,7 @@ export default function TaxComputationPage() {
                                 <td className="py-0.5 text-right tabular-nums text-ps-body">
                                   {paise(d.claimable_paise)}
                                 </td>
-                                <td className="py-0.5 pl-2 text-right tabular-nums text-amber-700">
+                                <td className="py-0.5 pl-2 text-right tabular-nums text-state-attention">
                                   {d.provisional_paise > 0 ? `+${paise(d.provisional_paise)} not final` : ""}
                                 </td>
                               </tr>
@@ -1398,7 +1398,7 @@ export default function TaxComputationPage() {
                     <div className={`rounded-lg border p-3 space-y-1.5 ${
                       presResult.eligible
                         ? "border-ps-border bg-ps-bg"
-                        : "border-amber-200 bg-amber-50"}`}>
+                        : "border-state-attention-border bg-state-attention-surface"}`}>
                       <p className="text-xs font-semibold text-ps-ink">
                         {presResult.eligible
                           ? `${presResult.section} — ${paise(presResult.declared_income_paise)} will be taken as the business income`
@@ -1850,7 +1850,7 @@ export default function TaxComputationPage() {
             </button>
 
             {computeResult && computeResult.fy && computeResult.fy !== fy && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+              <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-3">
                 <p className="text-2xs text-amber-800">
                   Computed at <strong>FY {computeResult.fy}</strong> rates, not
                   FY {fy} — this build has no rate table for the year you
@@ -1859,7 +1859,7 @@ export default function TaxComputationPage() {
               </div>
             )}
             {computeResult && computeResult.rates_verified === false && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+              <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-3">
                 <p className="text-2xs text-amber-800">
                   FY {computeResult.fy} rates are <strong>provisional</strong> —
                   carried forward pending the Finance Act.
@@ -1911,7 +1911,7 @@ export default function TaxComputationPage() {
                     the credit recorded turns a timing difference into a
                     permanent cost that is invisible in the year it arises. */}
                 {computeResult.minimum_tax?.applied && (
-                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1">
+                  <div className="mt-2 rounded-lg border border-state-attention-border bg-state-attention-surface p-2.5 space-y-1">
                     <p className="text-2xs font-medium text-amber-900">
                       §{computeResult.minimum_tax.section} minimum tax applies —{" "}
                       {paise(computeResult.minimum_tax.minimum_tax_paise)} is payable
@@ -2059,7 +2059,7 @@ export default function TaxComputationPage() {
         >
           <div className="flex items-center gap-2">
             <p className="text-xs font-semibold text-ps-body">Disallowances</p>
-            <span className="text-3xs px-1.5 py-0.5 bg-red-50 text-red-600 rounded-full">
+            <span className="text-3xs px-1.5 py-0.5 bg-state-problem-surface text-red-600 rounded-full">
               {disallowances.length}
             </span>
           </div>
@@ -2198,7 +2198,7 @@ export default function TaxComputationPage() {
         >
           <div className="flex items-center gap-2">
             <p className="text-xs font-semibold text-ps-body">Brought Forward Losses</p>
-            <span className="text-3xs px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-full">
+            <span className="text-3xs px-1.5 py-0.5 bg-state-attention-surface text-amber-600 rounded-full">
               {bfLosses.length}
             </span>
           </div>
@@ -2296,7 +2296,7 @@ export default function TaxComputationPage() {
                 {lossNotModelled.length > 0 && (
                   <ul className="space-y-0.5">
                     {lossNotModelled.map(n => (
-                      <li key={n.what} className="text-3xs text-[#92400E] bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                      <li key={n.what} className="text-3xs text-[#92400E] bg-state-attention-surface border border-state-attention-border rounded px-2 py-1">
                         <span className="font-medium">{n.what}</span> — {n.why}
                       </li>
                     ))}

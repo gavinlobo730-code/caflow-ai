@@ -201,7 +201,7 @@ export function StockCountSheetPanel({
                       )}
                     </td>
                     <td className={`px-3 py-2 text-right font-mono ${
-                      l.direction === "decrease" ? "text-red-700"
+                      l.direction === "decrease" ? "text-state-problem"
                         : l.direction === "increase" ? "text-emerald-700" : "text-ps-hint"}`}>
                       {l.variance_qty_units ?? "—"}
                     </td>

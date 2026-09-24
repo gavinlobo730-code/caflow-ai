@@ -340,7 +340,7 @@ export default function FinancialStatementsPage() {
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-4 text-sm text-red-700">
+        <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-4 text-sm text-state-problem">
           {error}
           <button onClick={load} className="ml-3 underline text-xs">Retry</button>
         </div>
@@ -384,7 +384,7 @@ export default function FinancialStatementsPage() {
         )}
 
         {/* Balance indicator */}
-        <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${isBalanced ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+        <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${isBalanced ? "bg-green-100 text-green-700" : "bg-red-100 text-state-problem"}`}>
           {isBalanced ? "✓ Balanced" : "✗ Not Balanced"}
         </span>
 
@@ -444,7 +444,7 @@ export default function FinancialStatementsPage() {
               thing a reader assumes is a bug in the software rather than an
               entry in the books. */}
           {(activeData?.closing_entry_dates?.length ?? 0) > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+            <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3 text-xs text-amber-900">
               <p className="font-semibold">
                 This year already carries a closing entry
                 {(activeData?.closing_entry_dates?.length ?? 0) > 1 ? " on each of these dates" : ""}:{" "}
@@ -657,9 +657,9 @@ function ProfitLossView({ lines, money, amountHeader, previousHeader }:
           {lines.map((line, i) => {
             if (line.is_total) {
               return (
-                <tr key={i} className={`border-t-2 border-ps-border font-bold ${(line.amount_paise ?? 0) >= 0 ? "bg-green-50" : "bg-red-50"}`}>
+                <tr key={i} className={`border-t-2 border-ps-border font-bold ${(line.amount_paise ?? 0) >= 0 ? "bg-green-50" : "bg-state-problem-surface"}`}>
                   <td className="px-5 py-2.5 text-ps-ink text-sm">{line.label}</td>
-                  <td className={`px-4 py-2.5 text-right font-mono text-sm ${(line.amount_paise ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
+                  <td className={`px-4 py-2.5 text-right font-mono text-sm ${(line.amount_paise ?? 0) >= 0 ? "text-green-700" : "text-state-problem"}`}>
                     {money(line.amount_paise ?? 0)}
                   </td>
                   {hasPrevious && (

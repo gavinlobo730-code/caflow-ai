@@ -93,7 +93,7 @@ export default function AccountingHubPage() {
                   <p className="text-sm font-semibold text-ps-ink">{card.label}</p>
                   <p className="text-xs text-ps-label mt-0.5 leading-tight">{card.description}</p>
                   {card.notShared && (
-                    <p className="text-2xs text-amber-700 mt-1 leading-tight">
+                    <p className="text-2xs text-state-attention mt-1 leading-tight">
                       Saved in this browser only — not shared with the firm, and not
                       posted automatically.
                     </p>

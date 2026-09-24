@@ -178,7 +178,7 @@ export default function ClientRelationshipsPage() {
           <button
             onClick={handleDetectMatches}
             disabled={actionInFlight}
-            className="flex items-center gap-1 text-xs text-amber-700 border border-amber-300 px-2.5 py-1.5 rounded hover:bg-amber-50 disabled:opacity-50"
+            className="flex items-center gap-1 text-xs text-state-attention border border-amber-300 px-2.5 py-1.5 rounded hover:bg-state-attention-surface disabled:opacity-50"
           >
             <Network size={12} /> Detect Matches
           </button>
@@ -249,10 +249,10 @@ export default function ClientRelationshipsPage() {
       {/* Cross-client matches */}
       {matches.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-amber-700 mb-3">
+          <h2 className="text-sm font-semibold text-state-attention mb-3">
             ⚠ Cross-Client Matches ({matches.length})
           </h2>
-          <Card className="bg-white border border-amber-200">
+          <Card className="bg-white border border-state-attention-border">
             <CardContent className="p-0">
               <table className="w-full text-sm">
                 <thead>
@@ -267,14 +267,14 @@ export default function ClientRelationshipsPage() {
                   {matches.map((m) => (
                     <tr key={m.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3">
-                        <Badge className="bg-amber-100 text-amber-700 text-3xs">{m.match_type.toUpperCase()}</Badge>
+                        <Badge className="bg-amber-100 text-state-attention text-3xs">{m.match_type.toUpperCase()}</Badge>
                       </td>
                       <td className="px-3 py-3 text-gray-700 text-xs font-mono">{m.pan}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">
                         {m.client_id_a === clientId ? m.client_id_b.slice(0, 8) : m.client_id_a.slice(0, 8)}…
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={m.is_confirmed ? "bg-red-100 text-red-700 text-3xs" : "bg-amber-100 text-amber-700 text-3xs"}>
+                        <Badge className={m.is_confirmed ? "bg-red-100 text-state-problem text-3xs" : "bg-amber-100 text-state-attention text-3xs"}>
                           {m.is_reviewed ? (m.is_confirmed ? "Confirmed" : "Dismissed") : "Pending"}
                         </Badge>
                       </td>

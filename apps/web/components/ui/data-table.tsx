@@ -433,7 +433,7 @@ export function DataTable<T>({
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                   a.variant === "danger"
-                    ? "border border-red-200 bg-white text-red-700 hover:bg-red-50"
+                    ? "border border-state-problem-border bg-white text-state-problem hover:bg-state-problem-surface"
                     : "border border-brand-light bg-white text-brand hover:bg-ps-hover",
                 )}
               >
@@ -521,7 +521,7 @@ export function DataTable<T>({
                     ref={lit ? highlightRef : undefined}
                     className={cn("hover:bg-ps-bg", rowClassName?.(row),
                                   sel && "bg-brand-surface", clickable && "cursor-pointer",
-                                  lit && "bg-amber-50 ring-2 ring-inset ring-amber-300")}
+                                  lit && "bg-state-attention-surface ring-2 ring-inset ring-amber-300")}
                     onClick={clickable ? () => onRowClick!(row) : undefined}
                   >
                     {hasBulk && (

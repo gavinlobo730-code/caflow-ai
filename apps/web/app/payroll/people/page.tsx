@@ -339,7 +339,7 @@ export default function PayrollPeoplePage() {
               </CardHeader>
               <CardContent>
                 {empActionMsg && (
-                  <div className={`mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${empActionMsg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+                  <div className={`mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${empActionMsg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-red-600"}`}>
                     {empActionMsg.text}
                     <button onClick={() => setEmpActionMsg(null)} className="ml-auto"><X size={12} /></button>
                   </div>
@@ -365,13 +365,13 @@ export default function PayrollPeoplePage() {
                           className="p-1.5 rounded-lg text-ps-label hover:bg-ps-muted hover:text-ps-body"><Pencil size={14} /></button>
                         {active ? (
                           <button onClick={() => setEmployeeStatus(e, "resigned")} title="Deactivate"
-                            className="p-1.5 rounded-lg text-ps-label hover:bg-amber-50 hover:text-amber-700"><Ban size={14} /></button>
+                            className="p-1.5 rounded-lg text-ps-label hover:bg-state-attention-surface hover:text-state-attention"><Ban size={14} /></button>
                         ) : (
                           <button onClick={() => setEmployeeStatus(e, "active")} title="Reactivate"
                             className="p-1.5 rounded-lg text-ps-label hover:bg-green-50 hover:text-green-700"><RotateCcw size={14} /></button>
                         )}
                         <button onClick={() => deleteEmployeeAction(e)} title="Delete (only if no payroll history)"
-                          className="p-1.5 rounded-lg text-ps-label hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
+                          className="p-1.5 rounded-lg text-ps-label hover:bg-state-problem-surface hover:text-red-600"><Trash2 size={14} /></button>
                       </div>
                     );
                   }}

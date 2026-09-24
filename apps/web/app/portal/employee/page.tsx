@@ -263,7 +263,7 @@ export default function EmployeePortalPage() {
     return (
       <div className="min-h-screen bg-ps-bg flex items-center justify-center p-4">
         <div className="bg-white rounded-xl border border-ps-border p-8 max-w-md text-center space-y-3">
-          <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto">
+          <div className="w-12 h-12 rounded-full bg-state-problem-surface flex items-center justify-center mx-auto">
             <User className="w-6 h-6 text-red-600" />
           </div>
           <p className="text-sm font-semibold text-ps-ink">Access Unavailable</p>

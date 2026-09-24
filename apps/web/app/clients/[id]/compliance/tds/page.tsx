@@ -72,7 +72,7 @@ interface ChallanGap {
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-ps-muted text-ps-body",
   deposited: "bg-blue-100 text-blue-700",
-  prepared: "bg-amber-100 text-amber-700",
+  prepared: "bg-amber-100 text-state-attention",
   ca_approved: "bg-green-100 text-green-700",
   filed: "bg-emerald-100 text-emerald-800",
   draft: "bg-ps-muted text-ps-body",
@@ -80,8 +80,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 const KYC_COLORS: Record<string, string> = {
   active: "bg-green-100 text-green-700",
-  pending: "bg-amber-100 text-amber-700",
-  expired: "bg-red-100 text-red-700",
+  pending: "bg-amber-100 text-state-attention",
+  expired: "bg-red-100 text-state-problem",
 };
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ function TDSDashboard({ clientId }: { clientId: string }) {
         <p className="text-xs text-ps-label">Total Deposited</p>
         <p className="text-2xl font-bold">{rupees(summary.total_deposited_paise)}</p>
       </div>
-      <div className="rounded border p-4 bg-amber-50">
+      <div className="rounded border p-4 bg-state-attention-surface">
         <p className="text-xs text-ps-label">TDS Returns</p>
         <p className="text-2xl font-bold">{summary.total_returns}</p>
       </div>
@@ -565,7 +565,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
             <p className="text-xs text-ps-hint">Reading the deductor details on file…</p>
           )}
           {deductorGaps.length > 0 && (
-            <div className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 space-y-1">
+            <div className="text-xs text-amber-800 bg-state-attention-surface border border-amber-100 rounded-lg px-3 py-2 space-y-1">
               <p className="font-medium">
                 The deductor block is not complete on file, so these boxes could not be
                 pre-filled. Record it once against the client and every quarter reads it.
@@ -590,7 +590,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
             const accountFound = Boolean(rec?.account_found);
             return (
               <div className="border-t pt-3 space-y-2">
-                <div className={`text-sm px-3 py-2 rounded ${matched ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"}`}>
+                <div className={`text-sm px-3 py-2 rounded ${matched ? "bg-green-50 text-green-700" : "bg-state-attention-surface text-amber-800"}`}>
                   {!accountFound
                     ? "⚠ Couldn't find the TDS Payable control account in the Chart of Accounts — reconciliation skipped."
                     : matched ? "✓ Reconciled to the General Ledger"
@@ -655,7 +655,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                   );
                 })()}
                 {((computeResult.challan_gaps as ChallanGap[]) ?? []).length > 0 && (
-                  <div className="space-y-1 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  <div className="space-y-1 bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
                     {(computeResult.challan_gaps as ChallanGap[]).map((g, i) => (
                       <p key={i} className="text-xs text-amber-800">
                         ⚠ <span className="font-medium">
@@ -862,10 +862,10 @@ function Form26ASTab({ clientId }: { clientId: string }) {
                   (summary.net_variance_paise ?? 0) > 0 ? "more" : "less"}`
               : " — they agree"}.
           </p>
-          <Rows title="Amount differs" tone="text-amber-700" rows={bucket("mismatched")} />
-          <Rows title="On the portal, not in the register" tone="text-red-700"
+          <Rows title="Amount differs" tone="text-state-attention" rows={bucket("mismatched")} />
+          <Rows title="On the portal, not in the register" tone="text-state-problem"
             rows={bucket("missing_in_books")} />
-          <Rows title="In the register, not on the portal" tone="text-red-700"
+          <Rows title="In the register, not on the portal" tone="text-state-problem"
             rows={bucket("missing_in_26as")} />
           <Rows title="No deductee PAN — cannot be looked up" tone="text-ps-label"
             rows={bucket("no_pan")} />
@@ -939,7 +939,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
           + Generate Draft
         </button>
       </div>
-      <div className="rounded border p-3 bg-amber-50 text-xs text-amber-800">
+      <div className="rounded border p-3 bg-state-attention-surface text-xs text-amber-800">
         ⚠ Certificates are draft only. CA must review and sign before issuance. IT Act §203.
       </div>
 
@@ -1001,7 +1001,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2">
                   Form {(r.certificate_form as string) ?? (r.certificate_type as string)}
                   {r.certificate_note ? (
-                    <span className="block text-2xs text-amber-700">{r.certificate_note as string}</span>
+                    <span className="block text-2xs text-state-attention">{r.certificate_note as string}</span>
                   ) : null}
                 </td>
                 <td className="px-3 py-2">{r.deductee_name as string}</td>
@@ -1058,7 +1058,7 @@ export default function TDSWorkspacePage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">TDS Compliance Workspace</h2>
-        <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50 text-xs">
+        <Badge variant="outline" className="text-state-attention border-amber-300 bg-state-attention-surface text-xs">
           CA Review Required before filing
         </Badge>
       </div>

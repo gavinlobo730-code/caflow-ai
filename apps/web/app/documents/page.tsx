@@ -114,7 +114,7 @@ function docTypeBadgeColor(value: string): string {
     TDS_CERTIFICATE: "bg-purple-100 text-purple-700",
     BANK_STATEMENT: "bg-yellow-100 text-yellow-700",
     INVOICE: "bg-orange-100 text-orange-700",
-    AUDIT_REPORT: "bg-red-100 text-red-700",
+    AUDIT_REPORT: "bg-red-100 text-state-problem",
     AGREEMENT: "bg-blue-50 text-blue-600",
     OTHER: "bg-ps-muted text-ps-label",
   };
@@ -573,7 +573,7 @@ export default function DocumentsPage() {
               onClick={() => handleDelete(doc)}
               disabled={deleting === doc.id}
               title="Delete"
-              className="rounded p-1.5 text-ps-hint hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+              className="rounded p-1.5 text-ps-hint hover:bg-state-problem-surface hover:text-red-600 disabled:opacity-40"
             >
               {deleting === doc.id ? (
                 <Loader2 size={15} className="animate-spin" />

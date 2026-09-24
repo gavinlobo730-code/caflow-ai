@@ -233,7 +233,7 @@ export default function DocumentsPage() {
       {loading ? (
         <TableSkeleton cols={5} rows={5} />
       ) : loadError ? (
-        <div className="bg-white rounded-xl border border-red-200 px-5 py-12 text-center space-y-2">
+        <div className="bg-white rounded-xl border border-state-problem-border px-5 py-12 text-center space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
           <button disabled={actionInFlight} onClick={loadDocuments} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>

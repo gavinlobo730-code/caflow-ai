@@ -386,7 +386,7 @@ export default function ClientAgeingSchedulePage() {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {detailError && (
-        <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+        <div className="flex items-start gap-2.5 bg-state-attention-surface border border-amber-100 rounded-xl px-4 py-3">
           <AlertTriangle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <p className="text-2xs text-amber-900">{detailError}</p>
         </div>
@@ -415,8 +415,8 @@ export default function ClientAgeingSchedulePage() {
               </section>
 
               {unclassified.length > 0 && (
-                <section className="bg-white rounded-xl border border-amber-200 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50">
+                <section className="bg-white rounded-xl border border-state-attention-border overflow-hidden">
+                  <div className="px-4 py-3 border-b border-amber-100 bg-state-attention-surface/50">
                     <p className="text-xs font-semibold text-ps-body">
                       Classify these vendors before signing the payables note
                     </p>
@@ -529,7 +529,7 @@ function UnbilledLine({ table, reviewedOn, onReview }: {
         </p>
         {paise === null ? (
           <button onClick={onReview}
-            className="text-3xs border border-amber-200 bg-amber-50 text-amber-800 rounded-md px-2 py-0.5 hover:bg-amber-100">
+            className="text-3xs border border-state-attention-border bg-state-attention-surface text-amber-800 rounded-md px-2 py-0.5 hover:bg-amber-100">
             Not reviewed — review the accounts
           </button>
         ) : (
@@ -638,7 +638,7 @@ function AdvancesPanel({ kind, section }: {
       </div>
 
       {section.gaps.length > 0 && (
-        <div className="px-4 py-3 bg-amber-50/60 border-b border-amber-100 space-y-1.5">
+        <div className="px-4 py-3 bg-state-attention-surface/60 border-b border-amber-100 space-y-1.5">
           {section.gaps.map((g, i) => (
             <div key={i} className="flex items-start gap-2">
               <AlertTriangle size={12} className="text-amber-600 flex-shrink-0 mt-0.5" />
@@ -818,7 +818,7 @@ function MarkToggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClick
       aria-pressed={on}
       className={`text-3xs border rounded-md px-2 py-0.5 disabled:opacity-50 transition-colors ${
         on
-          ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+          ? "border-amber-300 bg-state-attention-surface text-amber-800 hover:bg-amber-100"
           : "border-ps-border text-ps-hint hover:bg-ps-muted hover:text-ps-label"
       }`}
     >
@@ -860,7 +860,7 @@ function UnbilledPanel({
   return (
     <div className="space-y-5">
       <section className={`rounded-xl border overflow-hidden ${
-        reviewedOn ? "bg-white border-ps-muted" : "bg-amber-50/50 border-amber-200"}`}>
+        reviewedOn ? "bg-white border-ps-muted" : "bg-state-attention-surface/50 border-state-attention-border"}`}>
         <div className="px-4 py-3">
           <p className="text-xs font-semibold text-ps-body">
             {reviewedOn ? `Reviewed ${reviewedOn}` : "Not yet reviewed"}

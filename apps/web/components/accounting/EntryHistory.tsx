@@ -52,10 +52,10 @@ function actionLabel(action: string): string {
 }
 
 function actionClass(action: string): string {
-  if (action === "delete") return "bg-red-50 text-red-700";
+  if (action === "delete") return "bg-state-problem-surface text-state-problem";
   if (action === "create") return "bg-green-50 text-green-700";
   if (action === "approve") return "bg-blue-50 text-blue-700";
-  return "bg-amber-50 text-amber-700";
+  return "bg-state-attention-surface text-state-attention";
 }
 
 /** The fields that actually moved, so a reader is not handed two whole rows. */

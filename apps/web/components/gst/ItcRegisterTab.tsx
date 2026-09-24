@@ -322,7 +322,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
                   ))}
                 </select>
                 {!register?.reversals?.length && (
-                  <span className="block text-3xs text-amber-700 mt-0.5">
+                  <span className="block text-3xs text-state-attention mt-0.5">
                     Load a period that has a reversal first — a reclaim has to name one.
                   </span>
                 )}
@@ -391,7 +391,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
               does not compute Table 11 while their filed GSTR-1 carried it. */}
           <div className={advances.table_11_computed
             ? "rounded-lg border border-ps-border bg-ps-bg p-2.5"
-            : "rounded-lg border border-amber-200 bg-amber-50 p-2.5"}>
+            : "rounded-lg border border-state-attention-border bg-state-attention-surface p-2.5"}>
             <p className={`text-2xs font-semibold ${
               advances.table_11_computed ? "text-ps-body" : "text-amber-800"}`}>
               {advances.table_11_computed
@@ -404,7 +404,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
             </p>
             {advances.rule && (
               <p className={`text-3xs mt-1 ${
-                advances.table_11_computed ? "text-ps-label" : "text-amber-700"}`}>
+                advances.table_11_computed ? "text-ps-label" : "text-state-attention"}`}>
                 {advances.rule}
               </p>
             )}
@@ -439,7 +439,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
                       )}
                     </td>
                     <td className="py-1.5 pr-2 text-right font-mono">{money(a.amount_paise)}</td>
-                    <td className="py-1.5 text-right font-mono text-amber-700">
+                    <td className="py-1.5 text-right font-mono text-state-attention">
                       {money(a.unadjusted_paise)}
                     </td>
                   </tr>

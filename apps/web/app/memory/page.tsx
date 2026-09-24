@@ -65,7 +65,7 @@ interface PatternAnomaly {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const SEVERITY_STYLES: Record<string, string> = {
-  critical: "bg-red-100 text-red-700 border border-red-200",
+  critical: "bg-red-100 text-state-problem border border-state-problem-border",
   high: "bg-orange-100 text-orange-700 border border-orange-200",
   medium: "bg-yellow-100 text-yellow-700 border border-yellow-200",
   low: "bg-blue-100 text-blue-700 border border-blue-200",

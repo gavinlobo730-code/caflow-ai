@@ -222,20 +222,20 @@ export default function ApplyStructureModal({
           )}
 
           {err && (
-            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3">
-              <p className="text-2xs font-semibold text-red-700">
+            <div role="alert" className="rounded-lg border border-state-problem-border bg-state-problem-surface p-3">
+              <p className="text-2xs font-semibold text-state-problem">
                 Nothing was changed
               </p>
               {problems.length
-                ? problems.map((p, i) => <p key={i} className="text-2xs text-red-700 mt-0.5">· {p}</p>)
-                : <p className="text-2xs text-red-700 mt-0.5">{err}</p>}
+                ? problems.map((p, i) => <p key={i} className="text-2xs text-state-problem mt-0.5">· {p}</p>)
+                : <p className="text-2xs text-state-problem mt-0.5">{err}</p>}
             </div>
           )}
 
           {result && (
             <div className="space-y-3">
               {!!result.notes?.length && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3">
                   {result.notes.map((n, i) => (
                     <p key={i} className="text-2xs text-amber-800">· {n}</p>
                   ))}

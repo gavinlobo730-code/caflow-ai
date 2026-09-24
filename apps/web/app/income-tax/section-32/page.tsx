@@ -254,7 +254,7 @@ export default function Section32Page() {
             ].map(s => (
               <Card key={s.label}>
                 <CardContent className="pt-4 pb-3">
-                  <p className={`text-lg font-bold tabular-nums ${s.red ? "text-amber-700" : "text-ps-ink"}`}>{s.value}</p>
+                  <p className={`text-lg font-bold tabular-nums ${s.red ? "text-state-attention" : "text-ps-ink"}`}>{s.value}</p>
                   <p className="text-xs text-ps-label mt-0.5">{s.label}</p>
                 </CardContent>
               </Card>
@@ -297,7 +297,7 @@ export default function Section32Page() {
                     <td className="px-4 py-3">
                       <p className="font-medium text-ps-ink">{b.block_key}</p>
                       {b.gaps.map((g, i) => (
-                        <p key={i} className="text-3xs text-amber-700 mt-0.5">{g}</p>
+                        <p key={i} className="text-3xs text-state-attention mt-0.5">{g}</p>
                       ))}
                       {b.short_term_capital_gain_paise !== 0 && (
                         <p className="text-3xs text-amber-800 mt-0.5">
@@ -337,7 +337,7 @@ export default function Section32Page() {
             /* Named, not placed. There is no safe default: the wrong block
                charges the wrong rate on the wrong base for the life of the
                asset, and no block silently drops its cost. */
-            <div className="bg-white rounded-xl border border-amber-200 px-5 py-4 space-y-2">
+            <div className="bg-white rounded-xl border border-state-attention-border px-5 py-4 space-y-2">
               <p className="text-sm font-medium text-ps-ink">
                 Assets not assigned to a §32 block
               </p>
