@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **266** | re-read against the code. The defect is gone. |
-| partial | **6** | part of the finding is answered, part is not. Each says which. |
+| closed | **267** | re-read against the code. The defect is gone. |
+| partial | **5** | part of the finding is answered, part is not. Each says which. |
 | open | **2** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **0** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 8 items — 2 open and 6 partial — not 254.**
+**The work left is 7 items — 2 open and 5 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -44,7 +44,6 @@ is left as "unknown".
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
-| medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 
 
 ## Not a defect as stated
@@ -277,6 +276,7 @@ _none_
 | medium | **SALES-19** | The export/SEZ treatment is captured twice in two different vocabularies that can disagree, and  |
 | medium | **SALES-20** | No GST compensation cess on a sales line |
 | medium | **SALES-21** | No quotation, proforma invoice, sales order or delivery challan — the sales cycle starts at the  |
+| medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 | medium | **SALES-24** | Receipt and credit-note numbers take their financial year from today's date, not the document da |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
 | medium | **SALES-26** | Nowhere in the sales screens can a CA see what a single invoice still owes |
