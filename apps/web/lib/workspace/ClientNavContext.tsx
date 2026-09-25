@@ -2,12 +2,20 @@
 
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import { usePathname } from "next/navigation";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { PLACEHOLDER_CLIENT_ID, type ClientResolution } from "./clientGate";
+
+export { PLACEHOLDER_CLIENT_ID } from "./clientGate";
+export type { ClientResolution, GateVerdict } from "./clientGate";
+export { gateVerdict, refusalAddress, clientSectionSegment } from "./clientGate";
 
 export type ClientSection =
   | "overview"
@@ -124,8 +132,33 @@ export function getSectionForPathname(pathname: string): ClientSection {
   return "overview";
 }
 
+/**
+ * ONE LOOKUP, TWO READERS.
+ *
+ * `ClientTopBar` used to run this query itself and keep the answer private, so
+ * every screen under `/clients/[id]/**` rendered as though a client that does
+ * not exist were simply slow to arrive. The bar and the layout's gate now read
+ * the same answer; two lookups would be two answers, which is the mistake this
+ * codebase keeps having to delete.
+ *
+ * The six states, and why "still loading", "does not exist" and "the lookup
+ * failed" are three of them rather than one, are in `clientGate.ts` — which
+ * has no imports so a `node --test` guard can exercise the decision itself.
+ */
+export interface ResolvedClient {
+  id: string;
+  client_name: string;
+  entity_type?: string;
+  gstin?: string;
+}
+
 export interface ClientNavContextValue {
   clientId: string;
+  /** The row, or null in every state but `"resolved"`. */
+  client: ResolvedClient | null;
+  resolution: ClientResolution;
+  /** Re-run the lookup. For the `"unavailable"` state's Try again. */
+  reloadClient: () => void;
 }
 
 const ClientNavContext = createContext<ClientNavContextValue | null>(null);
@@ -151,7 +184,78 @@ export function ClientNavProvider({ children }: ClientNavProviderProps) {
     const id = m ? decodeURIComponent(m[1]) : "";
     setClientId(id);
   }, [pathname]);
-  const value: ClientNavContextValue = { clientId };
+
+  const [client, setClient] = useState<ResolvedClient | null>(null);
+  // The state the SERVER renders, and it must be one that renders the page:
+  // `output: "export"` builds this HTML with no window, so `clientId` is ""
+  // there and every client screen would otherwise be pre-rendered as its own
+  // refusal.
+  const [resolution, setResolution] = useState<ClientResolution>("off-route");
+  const [attempt, setAttempt] = useState(0);
+  const reloadClient = useCallback(() => setAttempt((n) => n + 1), []);
+
+  useEffect(() => {
+    if (!clientId) { setClient(null); setResolution("off-route"); return; }
+    if (clientId === PLACEHOLDER_CLIENT_ID) {
+      // No lookup: `id=eq._placeholder` against a uuid column is SQLSTATE
+      // 22P02, which was logged in production on every client page load
+      // before ClientTopBar grew the same guard.
+      setClient(null);
+      setResolution("unnamed");
+      return;
+    }
+    let cancelled = false;
+    setClient(null);
+    setResolution("resolving");
+    let supabase;
+    try {
+      supabase = getSupabaseClient();
+    } catch (e) {
+      // A missing key throws here rather than answering an error, and an
+      // unconfigured browser must not be told the client does not exist.
+      console.error("ClientNavProvider: no Supabase client", e);
+      setResolution("unavailable");
+      return;
+    }
+    supabase
+      .from("clients")
+      .select("id, client_name, entity_type, gstin")
+      .eq("id", clientId)
+      // `.maybeSingle()`, deliberately, where the bar used `.single()`: single
+      // answers an ERROR for zero rows, so "this client does not exist" and
+      // "the request failed" arrive down one channel and cannot be told apart.
+      // maybeSingle answers `data: null, error: null` for zero rows, which is
+      // what makes `absent` and `unavailable` two states rather than a guess.
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("ClientNavProvider: client lookup failed", error);
+          setResolution("unavailable");
+          return;
+        }
+        if (!data) { setResolution("absent"); return; }
+        setClient(data as ResolvedClient);
+        setResolution("resolved");
+      },
+      // The rejection handler is the SECOND ARGUMENT rather than a `.catch()`
+      // because the builder is a PromiseLike, not a Promise, and has no
+      // `.catch` to chain — the type checker says so and it is worth keeping.
+      // A thrown request resolves nothing and the default state renders the
+      // page, so without this a transport failure would leave every screen in
+      // `resolving` for ever, which is the defect being fixed.
+      (e: unknown) => {
+        if (cancelled) return;
+        console.error("ClientNavProvider: client lookup threw", e);
+        setResolution("unavailable");
+      });
+    return () => { cancelled = true; };
+  }, [clientId, attempt]);
+
+  const value: ClientNavContextValue = useMemo(
+    () => ({ clientId, client, resolution, reloadClient }),
+    [clientId, client, resolution, reloadClient],
+  );
 
   return (
     <ClientNavContext.Provider value={value}>

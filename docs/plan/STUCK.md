@@ -55,7 +55,7 @@ history the first one did not capture.
 
 ---
 
-## 2 · The four §C partials still blocked on a document or a decision
+## 2 · The five §C partials still blocked on a document
 
 Unchanged from the plan's Track 1 §C, restated here so this file is the one
 place to look. None of these is something I can settle:
@@ -67,16 +67,20 @@ place to look. None of these is something I can settle:
 | **FA-11** shift working, NESD markings | document #9 |
 | **TDS-16** the FVU/RPU file writer | document #3 (the TDS file layouts) |
 | **GST-25** composition, GSTR-8 TCS, GSTR-9C | document #5 |
-| **SALES-23** may the nightly sweep EMAIL a client's own customers | **your call** — it sends mail outward on the client's behalf |
-| **ACC-13** cost centres as a dimension on `journal_lines` | **your call** — a migration on the hottest table in the schema |
+
+Two rows left this table on 25 September, both answered by the owner: **SALES-23**
+(may the nightly sweep email a client's own customers — *no, the CA presses
+send*, now **D27**) and **ACC-13** (cost centres on `journal_lines` — *build
+it*, now **D29**). Neither was ever a research question; both were the owner's
+to take, which is why they sat here rather than in a phase.
 
 ---
 
-## 3 · What a client screen should render when the client id resolves to nothing
+## 3 · What a client screen renders when the client id resolves to nothing — **ANSWERED, built 25 Sep (D28)**
 
-**Track 4, gate 2.** `pnpm smoke` renders all 166 screens with **0 per-screen
-problems** and then **fails its own duplicate-body check**, exit 1. Six routes
-share one body:
+**Track 4, gate 2 — now passing.** `pnpm smoke` reported *166 screens walked, 0
+with a problem* and then failed its own duplicate-body check, exit 1, because
+six routes shared one body:
 
     /clients/_placeholder/overview
     /clients/_placeholder/sales
@@ -85,43 +89,59 @@ share one body:
     /clients/_placeholder/relationships
     /clients/_placeholder/accounting/journal/_placeholder/edit
 
-**What I did.** Read the guard rather than the number. `MAX_ROUTES_PER_DIGEST`
-is 5 and the script's own comment names this exact group as the headroom,
-sitting exactly on the limit, and says a sixth *should* trip it — *"six screens
-showing a CA nothing but navigation is the finding, not the false alarm."* The
-sixth is `relationships`, from the related-party work. So the guard is behaving
-as designed and **I did not raise the threshold**: softening a check because it
-fired is the move this repository keeps recording as the mistake.
+**What I did NOT do.** `MAX_ROUTES_PER_DIGEST` is 5, the script's own comment
+names this exact group as the headroom and says a sixth *should* trip it —
+*"six screens showing a CA nothing but navigation is the finding, not the false
+alarm."* The threshold was not raised and the group was not exempted.
 
-**Where I stopped.** The comment also says *"a seeded demo firm (T2) is what
-fixes that"*, and **that is not true** — I checked. The walk feeds every `:id`
-the literal string `_placeholder`, which resolves to no client whatever is
-seeded; `--real-client` swaps in a fixed UUID that no seeded firm will own
-either. So seeding the demo, which I have now built, does not close this gate.
+**What the cause turned out to be.** Not the walk. Every one of the forty routes
+under `app/clients/[id]/**` opens its loader with some spelling of
+`if (!clientId || clientId === "_placeholder") return;` **inside a
+`useEffect`** — the early return skips `setLoading(false)`, so the page holds
+its skeleton for ever. That is what a CA gets from a stale bookmark or a
+deleted client too, which is why the answer is a product change rather than a
+test change. The comment's claim that *"a seeded demo firm (T2) is what fixes
+that"* is false and was checked: the walk feeds every `:id` the literal
+`_placeholder`, which resolves to no client whatever is seeded.
 
-**What I would do, and it is a decision about what a CA sees.** Two defensible
-answers and they are not the same product:
+**What was built.** The owner chose the named not-found state over the
+exemption: *"Each section says 'Sales — no such client' instead of spinning.
+Better for a real CA hitting a dead bookmark, and the gate closes as a side
+effect rather than by exemption."*
 
-* **Give the screens a named not-found state.** A client route whose id
-  resolves to nothing currently shows navigation and nothing else — which is
-  also what a CA gets from a stale bookmark or a deleted client. Each section
-  saying *"Sales — no such client"* is better UX AND makes the six bodies
-  distinct, so the gate closes as a side effect rather than by exemption. It
-  is six screens' empty states, and the risk is conflating *still loading*
-  with *not found*.
-* **Exclude the placeholder group from the digest check.** State the rule —
-  a screen that cannot resolve its subject renders its shell, and that is not
-  the duplication this check is for — and keep the check live everywhere else.
-  Cheaper, and it removes those six screens from the guard's reach, which is
-  precisely what its author did not want.
+* **One gate**, `ClientResolutionGate`, in `app/clients/[id]/layout.tsx` — the
+  layout all forty routes share. Not forty empty states that would then have to
+  be kept in step.
+* **One lookup.** `ClientTopBar` used to run the `clients` query itself and keep
+  the answer private, which is exactly how the bar could know a client did not
+  exist while every screen beneath it spun. The lookup is hoisted into
+  `ClientNavProvider`; the bar and the gate read the same answer.
+* **`.maybeSingle()`, not `.single()`.** `single` answers an ERROR for zero
+  rows, so "this client does not exist" and "the request failed" arrive down one
+  channel. `maybeSingle` answers `data: null, error: null`, which is what makes
+  `absent` and `unavailable` two states rather than a guess.
+* **Six resolution states**, and the risk this file named — *"conflating still
+  loading with not found"* — is a state of its own: `resolving` RENDERS the
+  screen. So is `off-route`, which is what the static export pre-renders, so a
+  real client's screens behave exactly as they did.
+* **The refusal names the screen and the address.** The first draft named only
+  the MODULE, and turned six identical bodies into five smaller groups of
+  identical bodies (reports 5, tax 4, sales 4, purchases 4, compliance 4) —
+  which passes the check with zero headroom, and is the exemption wearing a
+  different hat. Reports is five routes; "Reports — no client selected" five
+  times says less than the address the visitor actually asked for.
 
-I lean to the first. It is the one that changes what a person sees rather than
-what a test counts.
+**The result.** *166 screens walked, 0 with a problem · 160 distinct bodies
+across the 160 routes that stayed put.* No duplicate group at all, where the
+check tolerates up to five. `/clients/_placeholder` keeps its redirect to the
+list — the front door already answers an unnamed id, and the gate leaves it
+alone; only a real id naming no client is refused there too.
 
-**What it costs to be wrong.** Picking the second and being wrong means six
-client screens can go blank again with nothing failing. Picking the first and
-being wrong means a screen briefly says "no such client" while it is still
-loading, which is a visible bug and would be caught immediately.
+**What could still be wrong.** The gate fires on `absent`, and under
+`--real-client` the smoke stub answers every `clients` lookup with `null`, so
+that mode will now show the refusal on every client screen. That is the stub
+being honest rather than a defect, but it makes `--real-client` less useful for
+looking at the workspace until the stub carries a client row.
 
 ---
 

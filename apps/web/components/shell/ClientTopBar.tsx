@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { ArrowLeft, Building2, ChevronDown, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientNav, CLIENT_SECTIONS } from "@/lib/workspace/ClientNavContext";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import { getLatestHealthScore } from "@/lib/services/health-score-compute";
 import { HealthBadge } from "@/components/HealthBadge";
 import { ClientSwitcher } from "@/components/ClientSwitcher";
@@ -45,18 +44,23 @@ import { ClientModuleGrid } from "@/components/client/ClientModuleGrid";
  * it is something a person just asked for, so it may arrive. The grid itself
  * does not animate in — the front door must be readable in its first frame.
  */
-interface ClientData {
-  id: string;
-  client_name: string;
-  entity_type?: string;
-  gstin?: string;
-}
-
 export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
-  const { clientId } = useClientNav();
+  // THE LOOKUP MOVED UP, and the bar reads the answer rather than its own.
+  //
+  // It used to run this query itself, keeping `client` and `clientLoadFailed`
+  // privately — so the bar knew a client did not exist and no screen under it
+  // could find out, which is how forty screens came to spin for ever on a dead
+  // link. `ClientNavProvider` resolves it once; `ClientResolutionGate` and this
+  // bar read the same answer. Two lookups would be two answers.
+  const { clientId, client, resolution } = useClientNav();
   const pathname = usePathname();
-  const [client, setClient] = useState<ClientData | null>(null);
-  const [clientLoadFailed, setClientLoadFailed] = useState(false);
+  // Three states, three sentences. The bar used to say "Couldn't load client"
+  // for a client that does not exist, which sends a CA to check their
+  // connection over a link that will never work whatever the network does.
+  const nameless =
+    resolution === "absent" ? "No such client"
+    : resolution === "unavailable" ? "Couldn't load client"
+    : null;
   const [health, setHealth] = useState<{ overall_score: number; trend: "improving" | "stable" | "declining" | null } | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -82,28 +86,14 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
   }, [gridOpen]);
 
   useEffect(() => {
-    setClient(null);
-    setClientLoadFailed(false);
+    // The health score is still the bar's own: nothing else reads it, and it
+    // is a second, much heavier call that no other screen should wait on.
     // clientId is empty on the first render after a route change and is the
     // literal "_placeholder" on the statically-exported shell. Either sent to
     // PostgREST produces `id=eq.` against a uuid column — SQLSTATE 22P02, which
     // was logged in production on every client page load before this guard.
+    setHealth(null);
     if (!clientId || clientId === "_placeholder") return;
-    const supabase = getSupabaseClient();
-    supabase
-      .from("clients")
-      .select("id, client_name, entity_type, gstin")
-      .eq("id", clientId)
-      .single()
-      .then(({ data, error }) => {
-        // "Still loading" and "failed to load" must look different, or a failed
-        // fetch leaves the bar saying "Loading…" for ever.
-        if (data) setClient(data as ClientData);
-        else {
-          setClientLoadFailed(true);
-          if (error) console.error("ClientTopBar: failed to load client", error);
-        }
-      });
     getLatestHealthScore(clientId)
       .then((h) => { if (h) setHealth({ overall_score: h.overall_score, trend: h.trend }); })
       .catch((e) => console.error("ClientTopBar: failed to load health score", e));
@@ -139,8 +129,8 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
             />
           ) : (
             <span className={cn("text-sm font-semibold truncate",
-                                clientLoadFailed ? "text-state-problem" : "text-ps-hint")}>
-              {clientLoadFailed ? "Couldn't load client" : "Loading…"}
+                                nameless ? "text-state-problem" : "text-ps-hint")}>
+              {nameless ?? "Loading…"}
             </span>
           )}
           {client?.entity_type && (
