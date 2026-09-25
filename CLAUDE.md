@@ -1085,19 +1085,32 @@ change. The code is the authority; keep this file in step with it.
   behaves exactly as before — and `minor_head` is settable (200 = paid over by
   the deductor, 400 = against a demand; the company / non-company split is the
   MAJOR head 0020/0021, which migration 037's inline comment had backwards).
-- **§194I AND §194J EACH CHARGE TWO RATES, AND THE CLAUSE IS NOW RECORDABLE
-  WITHOUT THE RATE BEING INVENTED** (TDS-22). §194I charges rent of plant,
-  machinery or equipment at a lower rate than rent of land, buildings or
-  furniture; §194J charges fees for technical services at a lower rate than
-  professional fees. `domain/tds/section_rates.py` holds one key per section
-  plus four clause limbs — `194I(A)`, `194I(B)`, `194J(A)`, `194J(B)` — and the
-  distinction matters twice: **the (b) limbs ARE the rate the registry already
-  holds** (land/building/furniture rent, and professional fees), so selecting
-  one is complete and carries no gap, while **the (a) limbs withhold at the
-  parent's higher rate and say so** in `rate_gap`. Nothing in the module states
-  2%: an under-deduction disallows the whole expenditure under §40(a)(ia) while
-  an excess is the payee's to reclaim, so over-deducting is the direction a
-  rate nobody has read off the Finance Act may take.
+- **§194I AND §194J EACH CHARGE TWO RATES, AND BOTH ARE NOW HELD** (TDS-22,
+  closed 25-09-2026). §194I charges rent of plant, machinery or equipment at a
+  lower rate than rent of land, buildings or furniture; §194J charges fees for
+  technical services at a lower rate than professional fees. `domain/tds/
+  section_rates.py` holds one key per section plus four clause limbs —
+  `194I(A)`, `194I(B)`, `194J(A)`, `194J(B)` — and **all four are complete**:
+  the (b) limbs carry the rate the registry already held (land/building/
+  furniture rent, and professional fees), and **the (a) limbs now carry their
+  own confirmed 2%**, read directly from the bare text of both sections on
+  incometaxindia.gov.in (Income-tax Act, 1961) — a `[P]`-graded primary source,
+  not a recollection: "two per cent for the use of any machinery or plant or
+  equipment" (§194-I(a)) and "two per cent ... in case of fees for technical
+  services (not being a professional service)" (§194J(1)), against 10% for the
+  other limb of each. Neither limb carries a `rate_gap` any more.
+  **THE BARE SECTIONS STILL WARN, and the warning's job changed.** A payment
+  recorded under the bare "194I" or "194J" — no clause chosen — still cannot
+  tell which limb it is, so it withholds at the higher rate by default
+  (over-deducting is the recoverable direction: an excess is the payee's to
+  reclaim, while an under-deduction disallows the whole expenditure under
+  §40(a)(ia)). The `rate_gap` on the bare section now NAMES the confirmed 2%
+  and 10% and tells the CA to record the clause to get it directly, rather
+  than saying the rate is unheld.
+  **NOT MODELLED, and named rather than guessed**: §194J's proviso also cuts
+  the rate to 2% for a payee whose business is *only* operating a call centre
+  — a fact about the payee's business, not a clause of the bill, and this
+  registry carries no payee-level facts of that kind.
   **The clause CODES are a primary source inside this repository** — the ITD's
   own ITR-6 AY 2026-27 schema, `domain/income_tax/schemas/ITR6_2026_Main_V1.0.json`,
   enumerates `4-IA:194I(a)`, `4-IB:194I(b)`, `94J-A:194J(a)`, `94J-B:194J(b)` —

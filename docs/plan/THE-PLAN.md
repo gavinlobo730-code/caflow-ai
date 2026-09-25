@@ -53,8 +53,8 @@ block a track.
 
 | what | now | was 24 Sep | how it was measured |
 |---|---|---|---|
-| Audit findings closed | **266 of 279** | 265 | `docs/audits/findings-status.json` |
-| — partial | 6 | 6 | ACC-13, FA-11, IT-11, PAY-27, SALES-23, TDS-22 |
+| Audit findings closed | **269 of 279** | 265 | `docs/audits/findings-status.json` |
+| — partial | 3 | 6 | FA-11, IT-11, PAY-27 |
 | — open | 2 | 2 | TDS-16, GST-25 — both blocked on a document |
 | — not a defect as stated | 5 | 5 | including **PAY-28**, re-read after the redesign |
 | Migrations | **416** | 416 | `ls apps/api/migrations/ \| tail -1` — Tracks 1–3 carried none |
@@ -188,16 +188,24 @@ until somebody read the callers.
 | 3c-3 | **Fee concentration** — if the largest client leaves, what happens | **done 25 Sep** ✅ `domain/practice/concentration.py` + `GET /api/analytics/concentration`, rendered on `/practice/profitability`. The ICAI fee-dependence threat is NAMED and no threshold is drawn: icai.org is refused at this environment's proxy, and a percentage from memory on an independence question hands a firm a clean bill of health nobody issued |
 | 3c-1, 3c-2, 3c-4, and the tax half of 3c-5 | Effective tax rate trend · ITC leakage trend · GST/TDS/payroll trends · cross-client tax benchmarking | **done 25 Sep** ✅ **Migration 417** `client_period_metrics`, D30's twelve figures, one row per (client, financial year), re-derived nightly by the 06:00 IST sweep beside the two steps that already pay the per-client read. `domain/practice/client_metrics.py` is the authority, `GET /api/analytics/benchmark` serves it and `/practice/benchmark` renders it beside Profitability — the fee and tax halves of one question. The trends are free, because a year of rows IS the trend. **Every figure is NULLABLE with no default and NULL is excluded from the distribution**: in a benchmark a nil that means *not derived* moves every median it is counted in and makes the client it belongs to read as the firm's best performer on a ratio nobody computed for them. It ranks and never judges — no band, no threshold, no verdict |
 
-### §C — the six partials (was Phase 1.6)
+### §C — the remaining findings (was Phase 1.6, was "the six partials")
+
+Two left this table already: **SALES-23** (may the nightly sweep email a
+client's own customers — *no, the CA presses send*, D27) and **ACC-13** (cost
+centres and a party-wise ledger — *build it*, D29, migrations 418+419), both
+closed 25 Sep. **TDS-22 is the third**, closed the same day: the owner fetched
+the bare text of §194-I and §194J from incometaxindia.gov.in and pasted it in —
+2% for plant/machinery/equipment and technical services, 10% for the other
+limb of each — a `[P]`-graded primary source. `domain/tds/section_rates.py`'s
+194I(A)/194J(A) now carry that rate with no `rate_gap`; the bare (clause-less)
+sections still warn, reworded to name the confirmed split rather than an
+unheld rate.
 
 | finding | what remains | blocked? |
 |---|---|---|
 | PAY-27 | three more payroll report shapes, if wanted | no |
 | IT-11 | **Form 3CD** — a clause workspace, needs a migration | document #4 |
-| SALES-23 | ~~whether the nightly sweep may EMAIL a client's customers~~ | **answered — D27, no.** Closed 25 Sep |
-| ACC-13 | **cost centres** — a dimension on `journal_lines` | **answered — D29, and CLOSED, both halves.** Migration 418: a `cost_centres` master, a nullable `journal_lines.cost_centre_id`, and an allocation report whose unallocated balance is its own row. Migration 419: the party-wise ledger, DERIVED from `source_type`/`source_id` with no column, whose unattributed rows are the difference between the control account and the Customer Statement |
-| TDS-22 | two numbers for the §194I(a)/§194J(a) limbs | document #4 |
-| FA-11 | shift working (NESD markings); revaluation and component accounting unstarted | document #9 |
+| FA-11 | shift working (NESD markings); revaluation and component accounting unstarted | not a document — an owner build-order call |
 | TDS-16 *(open)* | the FVU/RPU file writer | document #3 |
 | GST-25 *(open)* | composition, TCS on GSTR-8, GSTR-9C | document #5 |
 

@@ -62,7 +62,10 @@ silently under-deducts; the CA reviews every figure before filing anyway:
     matches the statute for the ordinary monthly-rent-bill case; a single
     bill covering many months may over-flag (never under-flags).
   * 194J: ₹50,000 threshold; 10% is the professional-fees rate. Fees for
-    technical services / call centres are 2% — not separately modelled.
+    technical services are 2% and ARE separately modelled — see "194J(A)"
+    below (TDS-22). A payee whose business is only operating a call centre
+    is charged 2% instead of 10% by a separate proviso and is NOT modelled:
+    that is a fact about the payee's business, not a clause of the bill.
   * 194D: 2% individual rate (Finance (No. 2) Act 2024, from 1 April 2025);
     10% remains the rate for payments to domestic companies.
 
@@ -154,16 +157,26 @@ class TDSSectionRule:
     # Same shape as charge_on_excess_only above: a property of the rule, never
     # a special case in the engine.
     parent_section: str | None = None
-    # WHY THIS LIMB'S OWN RATE IS NOT HELD, or None. A limb whose concessional
-    # rate cannot be confirmed still gets a key — so a CA can RECORD which limb
-    # a payment falls in, which the 26Q deductee row needs — and withholds at
-    # the parent's unmarked rate, which OVER-deducts. The gap says so; it is not
-    # a silent approximation.
+    # WHY THIS KEY DOES NOT RESOLVE TO A SINGLE CONFIRMED RATE, or None. Two
+    # distinct reasons share this one field, and TDS-22's own rate question
+    # settled the first without touching the second:
     #
-    # Over-deducting is the safe direction here and under-deducting is not: an
-    # under-deduction disallows the whole expenditure under s.40(a)(ia), while
-    # an excess is the payee's to reclaim. So the parent rate is the honest
-    # placeholder and a guessed concessional rate is not.
+    #   1. A CLAUSE whose own concessional rate cannot be confirmed still gets
+    #      a key — so a CA can RECORD which limb a payment falls in, which the
+    #      26Q deductee row needs — and withholds at the parent's unmarked
+    #      rate, which OVER-deducts. The gap says so; it is not a silent
+    #      approximation. (No live example remains below: s.194I(a) and
+    #      s.194J(a) both carry their confirmed 2% now.)
+    #   2. A BARE PARENT SECTION (s.194I, s.194J) holds BOTH confirmed rates
+    #      but does not know WHICH clause a payment recorded under the bare
+    #      section belongs to, so it withholds at the higher one by default.
+    #      Here the gap names the confirmed lower rate and how to record it —
+    #      it is a completeness nudge, not an unknown rate.
+    #
+    # Over-deducting is the safe direction in both cases and under-deducting is
+    # not: an under-deduction disallows the whole expenditure under s.40(a)(ia),
+    # while an excess is the payee's to reclaim. So the higher rate is the
+    # honest default and a guessed concessional rate is not.
     rate_gap: str | None = None
 
 
@@ -228,69 +241,93 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     "194H":  TDSSectionRule(20_000_00, 200, 200, aggregate_threshold_paise=20_000_00),
     # Rent — ₹2,40,000/yr → ₹50,000 per month or part (FA 2025); 10%. Modelled
     # per-payment (see module docstring).
-    # ── s.194I AND s.194J EACH HAVE TWO LIMBS, AND THIS HOLDS ONE RATE ──────
+    # ── s.194I AND s.194J EACH HAVE TWO LIMBS ────────────────────────────────
     #
     # s.194I charges rent of PLANT, MACHINERY OR EQUIPMENT at a lower rate than
     # rent of land, building, furniture or fittings. s.194J charges fees for
-    # TECHNICAL services at a lower rate than professional fees. Both are held
-    # here at the higher rate only, so every plant rental and every technical
-    # engagement OVER-deducts by the difference.
+    # TECHNICAL services at a lower rate than professional fees.
     #
-    # TWO REFUSALS, and each is deliberate:
+    # TWO REFUSALS STOOD HERE, and both are now resolved (TDS-22):
     #
-    # 1. NO CONCESSIONAL RATE. This repository CONTRADICTS ITSELF on s.194-I(a)
-    #    — routers/assistant.py says 2%, domain/banking/matcher.py says 5%, and
-    #    matcher's neighbouring s.194H figure of 5% is provably a Finance Act
-    #    behind (200 bps below). s.194J's technical rate is stated consistently
-    #    but only as PROSE, never as a registry number carrying the `verified`
-    #    flag FYTDSRates requires. A rate nobody has checked against the
-    #    Finance Act is not a rate this file will state.
+    # 1. ~~NO CONCESSIONAL RATE.~~ **RESOLVED 25-09-2026.** This repository
+    #    used to CONTRADICT ITSELF on s.194-I(a) — routers/assistant.py said
+    #    2%, domain/banking/matcher.py said 5% — and neither carried the
+    #    `verified` flag FYTDSRates requires. The bare text of both sections,
+    #    read directly from incometaxindia.gov.in (Income-tax Act, 1961) on
+    #    25-09-2026, states them without ambiguity:
+    #      s.194-I(a): "two per cent for the use of any machinery or plant or
+    #                   equipment"
+    #      s.194-I(b): "ten per cent for the use of any land or building ...
+    #                   or furniture or fittings"
+    #      s.194J(1):  "two per cent of such sum in case of fees for technical
+    #                   services (not being a professional service)" and
+    #                   "ten per cent ... in other cases" (professional fees,
+    #                   royalty other than for cinematograph films, s.28(va)
+    #                   sums, and director's fees/commission under clause
+    #                   (ba)).
+    #    This is a `[P]`-graded figure — read directly, not a search-engine
+    #    summary — and it is what closes the gap below.
     #
-    # 2. ~~NO SPLIT KEY.~~ **THIS HALF IS RESOLVED (TDS-22).** The objection was
-    #    that a separate key lands on the 26Q deductee row as a code the FVU
-    #    reads, and "the clause labels cannot be confirmed here either". They
-    #    can: the Income Tax Department's own ITR-6 schema for AY 2026-27, in
-    #    this repository at
-    #    `domain/income_tax/schemas/ITR6_2026_Main_V1.0.json`, enumerates them
+    # 2. ~~NO SPLIT KEY.~~ **RESOLVED EARLIER.** The objection was that a
+    #    separate key lands on the 26Q deductee row as a code the FVU reads,
+    #    and "the clause labels cannot be confirmed here either". They can:
+    #    the Income Tax Department's own ITR-6 schema for AY 2026-27, in this
+    #    repository at `domain/income_tax/schemas/ITR6_2026_Main_V1.0.json`,
+    #    enumerates them
     #      4-IA  : 194I(a) - Rent on hiring of plant and machinery
     #      4-IB  : 194I(b) - Rent on other than plant and machinery
     #      94J-A : 194J(a) - Fees for technical services
     #      94J-B : 194J(b) - Fees for professional services or royalty etc
-    #    which is a primary source, not a recollection. So the four limbs
-    #    exist below.
+    #    which is a primary source, not a recollection.
     #
-    # SO THE GAP IS NAMED ON THE LIMB THAT HAS ONE and the withholding stays at
-    # the higher rate. Over-deducting is the recoverable direction — the excess
-    # is the payee's to reclaim — while under-deducting disallows the whole
-    # expenditure under s.40(a)(ia). When the rate AND the clause code are read
-    # off the Act, add the limb with parent_section= and the machinery in
-    # parent_of() already keeps the FY aggregate and the challan match whole.
+    # SO THE FOUR CLAUSE KEYS BELOW ARE ALL COMPLETE, and carry no rate_gap.
+    # The BARE parent sections still do — not because a rate is unknown any
+    # more, but because a payment recorded under the bare section has not said
+    # WHICH clause it is, and the software cannot guess that from the amount.
+    # It withholds at the higher rate by default (over-deducting is the
+    # recoverable direction — the excess is the payee's to reclaim, while
+    # under-deducting disallows the whole expenditure under s.40(a)(ia)) and
+    # names the confirmed lower rate so a CA can record the clause and get it
+    # directly.
+    #
+    # NOT MODELLED, and named rather than guessed: s.194J's proviso also cuts
+    # the rate to 2% (from 10%) for a payee whose business is ONLY operating a
+    # call centre. That is a fact about the PAYEE'S BUSINESS, not a clause of
+    # the bill, and nothing in this registry carries payee-level facts of that
+    # kind (the same reason 194A's bank/senior-citizen thresholds aren't
+    # separately modelled — see the module docstring).
     "194I":  TDSSectionRule(
         50_000_00, 1000, 1000,
         rate_gap="Section 194I charges rent of PLANT, MACHINERY OR EQUIPMENT "
-                 "at a lower rate than rent of land, buildings or furniture, "
-                 "and this software holds only the higher one. If this payment "
-                 "is plant or equipment hire it has OVER-deducted. The excess "
-                 "is the payee's to reclaim, so nothing is blocked — but if it "
-                 "matters, establish the rate for that limb and deduct outside "
-                 "this bill. Record WHICH limb by choosing 194I(a) or 194I(b) "
-                 "instead of the bare section: 194I(b) is land, building or "
-                 "furniture and this rate is correct for it, with no gap."),
+                 "at 2%, lower than the 10% rate for land, buildings or "
+                 "furniture — and the bare section withholds at 10% by "
+                 "default because it does not know which one this payment "
+                 "is. If this is plant or equipment hire it has "
+                 "OVER-deducted; the excess is the payee's to reclaim, so "
+                 "nothing is blocked — but record WHICH limb by choosing "
+                 "194I(a) (plant, machinery or equipment, 2%) or 194I(b) "
+                 "(land, building or furniture, 10%) instead of the bare "
+                 "section, and the correct rate applies directly with no "
+                 "gap."),
     # Professional fees — Rs 30,000 -> Rs 50,000 (FA 2025); 10% professional
     # rate. The s. 194J proviso: "if such sum or, as the case may be, the
     # aggregate of the sums credited or paid ... during the financial year does
     # not exceed fifty thousand rupees" — one amount, both limbs.
     "194J":  TDSSectionRule(
         50_000_00, 1000, 1000, aggregate_threshold_paise=50_000_00,
-        rate_gap="Section 194J charges fees for TECHNICAL services at a lower "
-                 "rate than professional fees, and this software holds only "
-                 "the professional one. If this payment is for technical "
-                 "services it has OVER-deducted. The excess is the payee's to "
-                 "reclaim, so nothing is blocked — but if it matters, "
-                 "establish the rate for that limb and deduct outside this "
-                 "bill. Record WHICH limb by choosing 194J(a) or 194J(b) "
-                 "instead of the bare section: 194J(b) is professional fees "
-                 "or royalty and this rate is correct for it, with no gap."),
+        rate_gap="Section 194J charges fees for TECHNICAL services at 2%, "
+                 "lower than the 10% professional-fee rate — and the bare "
+                 "section withholds at 10% by default because it does not "
+                 "know which one this payment is. If this is a "
+                 "technical-services fee it has OVER-deducted; the excess is "
+                 "the payee's to reclaim, so nothing is blocked — but record "
+                 "WHICH limb by choosing 194J(a) (technical services, 2%) or "
+                 "194J(b) (professional fees, royalty or a s.28(va) sum, "
+                 "10%) instead of the bare section, and the correct rate "
+                 "applies directly with no gap. A payee whose business is "
+                 "only operating a call centre is charged 2% instead of 10% "
+                 "under a separate proviso, not modelled here — that is a "
+                 "fact about the payee, not the clause."),
     # Mutual-fund income — ₹5,000 → ₹10,000 (FA 2025). Proviso: "where the
     # amount of such income or, as the case may be, the AGGREGATE OF THE
     # AMOUNTS of such income ... during the financial year does not exceed ten
@@ -298,14 +335,12 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     "194K":  TDSSectionRule(10_000_00, 1000, 1000, aggregate_threshold_paise=10_000_00),
     # ── The clauses of s.194I and s.194J ─────────────────────────────────────
     #
-    # WHY THESE EXIST WHEN THEIR PARENTS ALREADY DO. Two of the four carry the
-    # rate this file already holds and are therefore COMPLETE — s.194I(b) is
-    # the "land, building or furniture" rent the parent's 10% is, and
-    # s.194J(b) is the professional fee its 10% is. Selecting them gets the
-    # right withholding AND the right clause on the 26Q deductee row, with no
-    # gap warning at all. The other two are the concessional limbs whose own
-    # rate this file will not state (see the four paragraphs above): they
-    # withhold at the parent's higher rate, which OVER-deducts, and say so.
+    # ALL FOUR ARE NOW COMPLETE (TDS-22, resolved 25-09-2026). s.194I(b) is the
+    # "land, building or furniture" rent the parent's 10% is; s.194J(b) is the
+    # professional fee its 10% is; s.194I(a) is the plant/machinery/equipment
+    # rent at 2%; s.194J(a) is the technical-services fee at 2%. Selecting any
+    # of the four gets the right withholding AND the right clause on the 26Q
+    # deductee row, with no gap warning.
     #
     # A CA could not previously record the distinction at all. The deductee row
     # went out under the bare section, so a technical-services payment and a
@@ -316,9 +351,9 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     # vendor moved from "194J" to "194J(a)" mid-year keeps the year's running
     # total and still matches a challan somebody typed as "194J".
     #
-    # ⚠️ Labels and codes are from the ITD's ITR-6 AY 2026-27 schema in this
-    # repo. The RATES of the (a) limbs are not in that schema and remain
-    # unheld — nothing here states 2%.
+    # Labels and codes are from the ITD's ITR-6 AY 2026-27 schema in this repo;
+    # the RATES are from the bare Act text (see the parent entries' comment
+    # above for the provenance and the exact wording).
     #
     # THE KEYS ARE UPPER CASE because every lookup in this module is
     # `.upper().strip()`; the ITD writes them "194I(a)". A lower-case key here
@@ -327,24 +362,15 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     # becomes per-clause and the withholding drops below the section's. That
     # happened while writing this and is why it is on the label.
     "194I(A)": TDSSectionRule(
-        50_000_00, 1000, 1000, parent_section="194I",
-        rate_gap="Rent of PLANT, MACHINERY OR EQUIPMENT is charged at a lower "
-                 "rate than rent of land, buildings or furniture, and this "
-                 "software does not hold that rate. This has withheld at the "
-                 "higher one, so it has OVER-deducted; the excess is the "
-                 "payee's to reclaim and nothing is blocked. The clause is "
-                 "recorded correctly on the return either way."),
+        50_000_00, 200, 200, parent_section="194I"),
     "194I(B)": TDSSectionRule(
         50_000_00, 1000, 1000, parent_section="194I"),
     "194J(A)": TDSSectionRule(
+        50_000_00, 200, 200, parent_section="194J",
+        aggregate_threshold_paise=50_000_00),
+    "194J(B)": TDSSectionRule(
         50_000_00, 1000, 1000, parent_section="194J",
-        aggregate_threshold_paise=50_000_00,
-        rate_gap="Fees for TECHNICAL services are charged at a lower rate than "
-                 "professional fees, and this software does not hold that "
-                 "rate. This has withheld at the professional one, so it has "
-                 "OVER-deducted; the excess is the payee's to reclaim and "
-                 "nothing is blocked. The clause is recorded correctly on the "
-                 "return either way."),
+        aggregate_threshold_paise=50_000_00),
     "194J(B)": TDSSectionRule(
         50_000_00, 1000, 1000, parent_section="194J",
         aggregate_threshold_paise=50_000_00),

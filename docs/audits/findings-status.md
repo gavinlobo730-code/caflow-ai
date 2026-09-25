@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **268** | re-read against the code. The defect is gone. |
-| partial | **4** | part of the finding is answered, part is not. Each says which. |
+| closed | **269** | re-read against the code. The defect is gone. |
+| partial | **3** | part of the finding is answered, part is not. Each says which. |
 | open | **2** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **0** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 6 items — 2 open and 4 partial — not 254.**
+**The work left is 5 items — 2 open and 3 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -40,7 +40,6 @@ is left as "unknown".
 | severity | finding | what it is |
 |---|---|---|
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
-| high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
 
@@ -170,6 +169,7 @@ _none_
 | high | **TDS-13** | No §197 lower-deduction certificate anywhere, and vendors.tds_rate_bps is captured, displayed an |
 | high | **TDS-14** | The purchase-bill editor previews a TDS figure the backend will not compute — no threshold, no § |
 | high | **TDS-15** | The /tds screen's Challans tab never saves anything, and its Returns and Certificates tabs read  |
+| high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | high | **TDS-26** | §195 surcharge picks the wrong ladder and the wrong 'other sums' rate for a non-resident firm, L |
 | medium | **ACC-04** | An auto-posted journal (sales invoice, purchase bill, payroll, depreciation) can be edited throu |
 | medium | **ACC-08** | The Trial Balance is always inception-to-date — choosing a financial year only moves the as-at d |

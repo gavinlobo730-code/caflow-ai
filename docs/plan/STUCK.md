@@ -77,33 +77,31 @@ re-exports both, so every existing importer is untouched.
 
 ---
 
-## 2 · The five §C partials still blocked on a document
+## 2 · What is left, and what each item is actually blocked on
 
-Unchanged from the plan's Track 1 §C, restated here so this file is the one
-place to look. None of these is something I can settle:
+Restated here so this file is the one place to look. Four of these five need a
+document; one is a build-order call, not a fetch:
 
 | item | what it needs |
 |---|---|
-| **IT-11** Form 3CD clause workspace | document #4 (the ICAI/CBDT 3CD form) |
-| **TDS-22** the §194I(a) / §194J(a) rates | document #4 — the module deliberately withholds rather than over-deducting |
-| **FA-11** shift working, NESD markings | document #9 |
-| **TDS-16** the FVU/RPU file writer | document #3 (the TDS file layouts) |
-| **GST-25** composition, GSTR-8 TCS, GSTR-9C | document #5 |
+| **IT-11** Form 3CD clause workspace | a document — the ICAI/CBDT 3CD form (`docs/audits/what-to-fetch-for-me.md` §4b) |
+| **TDS-16** the FVU/RPU file writer | a document — the TDS file layouts (§3) |
+| **GST-25** composition, GSTR-8 TCS, GSTR-9C | a document — three return schemas (§5) |
+| **PAY-27** the per-bank salary file | a document, but the OWNER decides first — which banks the clients actually use (§6) |
+| **FA-11** componentisation, revaluation, impairment | **not a document.** An owner build-order call: which of the remaining fixed-assets pieces to do next |
 
-Two rows left this table on 25 September, both answered by the owner: **SALES-23**
-(may the nightly sweep email a client's own customers — *no, the CA presses
-send*, now **D27**) and **ACC-13** (cost centres on `journal_lines` — *build
-it*, now **D29**). Neither was ever a research question; both were the owner's
-to take, which is why they sat here rather than in a phase.
+Three rows left this table already, none of them research questions — all
+three were the owner's to take or fetch: **SALES-23** (may the nightly sweep
+email a client's own customers — *no, the CA presses send*, D27, 25 Sep),
+**ACC-13** (cost centres and a party-wise ledger on `journal_lines` — *build
+it*, D29, migrations 418+419, 25 Sep) and **TDS-22** (the §194I(a)/§194J(a)
+concessional rates — the owner fetched incometaxindia.gov.in's bare Act text
+directly and pasted it in: 2% for plant/machinery/equipment and technical
+services, 10% for the other limb of each. `domain/tds/section_rates.py`'s
+194I(A)/194J(A) now carry that rate with no `rate_gap`, closed 25 Sep).
 
-**Both are now built, and ACC-13 is CLOSED** — D27 in the same commit as §3's
-gate, D29 as migration 418, and ACC-13's other half as migration 419: a
-party-wise ledger DERIVED from `journal_entries.source_type`/`source_id`, with
-no column added, whose unattributed rows are exactly the difference between a
-control account and the per-party statements.
-
-**So this file is now only §2, and every row in it is blocked on a document.**
-Nothing here is waiting on work; six findings are waiting on five documents.
+**So this file's remaining rows are four documents and one owner decision.**
+Nothing here is waiting on work I can do alone.
 
 ---
 

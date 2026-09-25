@@ -7,7 +7,7 @@ a CA could not record which limb a payment fell in — the 26Q deductee row went
 out under the bare section, and a technical-services payment was
 indistinguishable from a professional fee even where the CA knew which it was.
 
-WHAT CHANGED AND WHAT DID NOT.
+WHAT CHANGED IN TWO STEPS.
 
 The machinery for a clause key — `parent_section`, `rate_gap`, `parent_of()` —
 was already written and documented, and the recorded reason for not using it
@@ -15,7 +15,7 @@ was in two parts: the concessional RATE could not be confirmed, and neither
 could the CLAUSE CODES ("an invented code on a statutory return is worse than
 the over-deduction it would fix").
 
-The second half is now answerable from a PRIMARY SOURCE INSIDE THIS
+The second half was answered first, from a PRIMARY SOURCE INSIDE THIS
 REPOSITORY: the Income Tax Department's own ITR-6 schema for AY 2026-27,
 `domain/income_tax/schemas/ITR6_2026_Main_V1.0.json`, enumerates
 
@@ -24,11 +24,18 @@ REPOSITORY: the Income Tax Department's own ITR-6 schema for AY 2026-27,
     94J-A : 194J(a) - Fees for technical services
     94J-B : 194J(b) - Fees for professional services or royalty etc
 
-The first half is NOT answered and this change does not pretend otherwise:
-NOTHING here states 2%. The (a) limbs withhold at the parent's higher rate and
-carry a `rate_gap` saying so, which OVER-deducts — the recoverable direction,
-because an excess is the payee's to reclaim while an under-deduction disallows
-the whole expenditure under s.40(a)(ia).
+so the four limbs went in with the (a) limbs withholding at the parent's
+higher rate and a `rate_gap` saying the concessional rate was not held.
+
+THE RATE IS NOW ANSWERED TOO (25-09-2026), and it closes the gap rather than
+widening the model: the bare text of both sections, read directly from
+incometaxindia.gov.in, states 194-I(a) at 2% (machinery, plant or equipment)
+against 194-I(b) at 10%, and 194J's technical-services limb at 2% against its
+professional-fee limb at 10%. Both (a) limbs now carry that rate and no
+`rate_gap`. The BARE parent sections (194I, 194J — no clause recorded) still
+carry a `rate_gap`, but its meaning changed: it is no longer "this software
+does not hold the rate", it is "record which clause this is, because the bare
+section cannot tell and defaults to the higher one".
 """
 import json
 import pathlib
@@ -68,47 +75,57 @@ def test_the_keys_are_found_whatever_case_they_are_written_in():
     while writing this."""
     assert parent_of("194j(a)") == "194J"
     assert parent_of("194I(b)") == "194I"
-    assert rate_gap_for("194j(a)") is not None
+    assert rate_gap_for("194j(a)") is None  # the concessional rate is confirmed now
 
 
-@pytest.mark.parametrize("limb", ("194I(A)", "194J(A)"))
-def test_the_concessional_limb_names_its_gap_and_does_not_invent_a_rate(limb):
-    rule = tds_rates_for("2026-27").sections[limb]
-    parent = tds_rates_for("2026-27").sections[parent_of(limb)]
-    assert rule.rate_gap, "a limb whose rate is not held must say so"
-    assert rule.company_rate_bps == parent.company_rate_bps, (
-        "it withholds at the parent's higher rate — over-deducting, which is "
-        "the recoverable direction")
-    assert rule.individual_rate_bps == parent.individual_rate_bps
-
-
-@pytest.mark.parametrize("limb", ("194I(B)", "194J(B)"))
-def test_the_ordinary_limb_is_complete_and_carries_no_gap(limb):
-    """194I(b) IS the land/building/furniture rent the parent's 10% is, and
-    194J(b) IS the professional fee. Selecting them gets the right withholding
-    AND the right clause, so warning about a rate that is correct would train
-    a CA to ignore the warning."""
+@pytest.mark.parametrize("limb", LIMBS)
+def test_every_limb_is_complete_and_carries_no_gap(limb):
+    """194I(a) and 194J(a) are the concessional rates the Act's bare text
+    confirms at 2%; 194I(b) and 194J(b) are the parent's own 10%. All four are
+    complete: selecting any of them gets the right withholding AND the right
+    clause, so warning about a rate that is correct would train a CA to ignore
+    the warning."""
     rule = tds_rates_for("2026-27").sections[limb]
     assert rule.rate_gap is None
-    assert rule.company_rate_bps == tds_rates_for("2026-27").sections[parent_of(limb)].company_rate_bps
 
 
-def test_nothing_in_the_registry_states_the_concessional_rate():
-    """The whole point. 200 bps must not appear on any 194I or 194J key —
-    writing a rate nobody checked against the Finance Act is the thing this
-    module refuses to do."""
-    for key, rule in tds_rates_for("2026-27").sections.items():
-        if key.startswith(("194I", "194J")):
-            assert rule.company_rate_bps != 200, key
-            assert rule.individual_rate_bps != 200, key
+@pytest.mark.parametrize("limb,expected_bps", [
+    ("194I(A)", 200), ("194I(B)", 1000),
+    ("194J(A)", 200), ("194J(B)", 1000),
+])
+def test_each_limb_carries_its_own_confirmed_rate(limb, expected_bps):
+    """The whole point of closing TDS-22's remaining half. 194I(a)/194J(a) no
+    longer withhold at the parent's higher rate — they carry their own 2%,
+    read from the bare Act text on incometaxindia.gov.in (Income-tax Act,
+    1961), not a recollection and not the parent's placeholder."""
+    rule = tds_rates_for("2026-27").sections[limb]
+    assert rule.company_rate_bps == expected_bps
+    assert rule.individual_rate_bps == expected_bps
 
 
-def test_the_bare_section_still_warns_and_now_says_what_to_choose():
+def test_the_registry_now_states_the_concessional_rate():
+    """The inverse of the old pin. 200 bps DOES appear now, and only on the two
+    concessional limbs — not on the bare sections, which still default to the
+    higher rate absent a recorded clause."""
+    rates_2026_27 = tds_rates_for("2026-27")
+    assert rates_2026_27.sections["194I(A)"].company_rate_bps == 200
+    assert rates_2026_27.sections["194J(A)"].company_rate_bps == 200
+    for bare in ("194I", "194J"):
+        assert rates_2026_27.sections[bare].company_rate_bps == 1000, (
+            f"the bare section {bare} still defaults to the higher rate — "
+            f"only a recorded clause gets the concessional one")
+
+
+def test_the_bare_section_still_warns_and_now_states_the_confirmed_rates():
     """The bare key means the CA has not said which limb, so the warning is
-    still right — it might be plant and machinery."""
+    still right — it might be plant and machinery, or a technical fee — and it
+    now names the real numbers rather than saying the rate is unheld."""
     for parent in ("194I", "194J"):
         gap = rate_gap_for(parent)
         assert gap and f"{parent}(a)" in gap and f"{parent}(b)" in gap, parent
+        assert "2%" in gap and "10%" in gap, (
+            f"{parent}'s bare-section gap should now state the confirmed "
+            f"rates so a CA reads a number, not a shrug")
 
 
 @pytest.mark.parametrize("limb", LIMBS)
@@ -132,13 +149,14 @@ def test_a_limb_is_still_eligible_for_a_lower_deduction_certificate(limb):
         "as ineligible")
 
 
-def test_the_dropdown_is_told_which_limb_has_no_rate_of_its_own():
+def test_the_dropdown_still_carries_the_rate_gap_field():
     import inspect
     from routers import tds as r
     src = inspect.getsource(r.list_tds_sections)
     assert '"rate_gap": rule.rate_gap' in src, (
-        'offering "194J(a) — technical services" without saying the '
-        "concessional rate is not modelled reads as a rate the software has")
+        "the field stays even though no clause limb uses it any more — the "
+        "bare parent sections still do, and a screen offering \"194I\" with "
+        "no clause needs the nudge to record one")
     assert '"parent_section": parent_of(sec, fy)' in src
 
 

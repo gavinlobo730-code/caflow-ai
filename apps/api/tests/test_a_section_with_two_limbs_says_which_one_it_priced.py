@@ -9,26 +9,41 @@ WHAT WAS WRONG
     every technical engagement withheld at the professional/land rate and said
     nothing about it.
 
-WHY THE FIX IS A NAMED GAP AND NOT A RATE
-    Two refusals, and the second is the one that changed my mind mid-change.
+WHY THE FIRST FIX WAS A NAMED GAP AND NOT A RATE
+    Two refusals stood here, and the second is the one that changed my mind
+    mid-change at the time.
 
-    1. THE CONCESSIONAL RATE IS NOT HELD. This repository contradicted itself
-       on s.194-I(a) — routers/assistant.py said 2%, domain/banking/matcher.py
-       said 5% — and matcher's neighbouring s.194H figure of 5% is provably a
-       Finance Act behind, which is what a wrong-and-confident rate looks like.
-       s.194J's technical rate was stated consistently but only as prose, never
-       as a registry number carrying the `verified` flag.
+    1. THE CONCESSIONAL RATE WAS NOT HELD (RESOLVED 25-09-2026, see below).
+       This repository contradicted itself on s.194-I(a) —
+       routers/assistant.py said 2%, domain/banking/matcher.py said 5% — and
+       matcher's neighbouring s.194H figure of 5% is provably a Finance Act
+       behind, which is what a wrong-and-confident rate looks like. s.194J's
+       technical rate was stated consistently but only as prose, never as a
+       registry number carrying the `verified` flag.
 
-    2. A SPLIT KEY WOULD PUT AN INVENTED CODE ON A STATUTORY RETURN. The first
-       attempt added "194I(A)" / "194J(BA)" keys. Those land on the 26Q
-       deductee row as the section code the FVU reads, and the clause labels
-       cannot be confirmed here either — so the fix for an over-deduction would
-       have been a wrong code in a filed return. Backed out.
+    2. A SPLIT KEY WOULD PUT AN INVENTED CODE ON A STATUTORY RETURN
+       (RESOLVED). The first attempt added "194I(A)" / "194J(BA)" keys. Those
+       land on the 26Q deductee row as the section code the FVU reads, and the
+       clause labels cannot be confirmed here either — so the fix for an
+       over-deduction would have been a wrong code in a filed return. Backed
+       out, then reinstated once the ITD's own ITR-6 schema in this repository
+       gave the labels a primary source (TDS-22, `194I(A)`/`194I(B)`/
+       `194J(A)`/`194J(B)`).
 
-    So the withholding stays at the higher rate, which OVER-deducts, and the
-    reason is said on the bill. Over-deducting is the recoverable direction —
+    So the withholding stayed at the higher rate, which OVER-deducts, and the
+    reason was said on the bill. Over-deducting is the recoverable direction —
     the excess is the payee's to reclaim — while under-deducting disallows the
     whole expenditure under s.40(a)(ia).
+
+THE RATE IS NOW CONFIRMED (25-09-2026)
+    The bare text of both sections, read directly from incometaxindia.gov.in
+    (Income-tax Act, 1961) — a `[P]`-graded primary source, not a search-engine
+    summary — states 194-I(a) at 2% and 194J's technical-services limb at 2%,
+    against the parent's 10% for the other limb of each. `194I(A)` and
+    `194J(A)` carry that rate now and no `rate_gap`; only the BARE sections
+    (194I, 194J, no clause recorded) still warn, because they cannot tell
+    which clause a payment is and default to the higher rate — the warning's
+    job changed from "the rate is unknown" to "record the clause to get it".
 
 WHAT SHIPPED FOR THE SPLIT THAT DOES NOT EXIST YET
     parent_of() and TDSSectionRule.parent_section, plus the two call sites that
@@ -49,13 +64,10 @@ from domain.tds.tds_computer import TDSComputer
 FYS = ("2025-26", "2026-27")
 TWO_LIMB_SECTIONS = ("194I", "194J")
 
-#: The concessional clause of each — the limb whose own rate this repository
-#: does not hold. They withhold at the parent's higher rate and say so.
-CONCESSIONAL_LIMBS = frozenset({"194I(A)", "194J(A)"})
-
-#: Every clause key in the registry, and the section it belongs to. The
-#: (b) limbs carry the rate the parent already holds, so they are complete and
-#: warn about nothing; the (a) limbs are in CONCESSIONAL_LIMBS above.
+#: Every clause key in the registry, and the section it belongs to. All four
+#: are now complete — the (a) limbs carry their own confirmed 2% (TDS-22) and
+#: the (b) limbs carry the rate the parent already holds — so NONE of them
+#: carries a `rate_gap` any more. Only the bare parent sections do.
 ORDINARY_LIMBS = {
     "194I(A)": "194I", "194I(B)": "194I",
     "194J(A)": "194J", "194J(B)": "194J",
@@ -79,24 +91,25 @@ def test_both_two_limb_sections_carry_a_gap(fy):
 @pytest.mark.parametrize("fy", FYS)
 def test_no_other_section_claims_a_limb_it_does_not_have(fy):
     """A gap on a single-limb section would be noise on every bill, and noise
-    is how a real warning stops being read."""
+    is how a real warning stops being read. Only the bare parent sections
+    carry one now (the CA has not said which limb) — every clause key,
+    including the two concessional (a) limbs, is complete since TDS-22's rate
+    question closed."""
     for section, rule in tds_rates_for(fy).sections.items():
-        # The bare section carries the gap (the CA has not said which limb),
-        # and so does the CONCESSIONAL limb (its own rate is not held). The
-        # ordinary limb carries none, because the rate held IS its rate.
-        if section in TWO_LIMB_SECTIONS or section in CONCESSIONAL_LIMBS:
+        if section in TWO_LIMB_SECTIONS:
             continue
         assert rule.rate_gap is None, f"{section} should carry no limb gap"
 
 
-def test_the_gap_names_no_rate_for_the_limb_it_cannot_price():
-    """The whole point. A sentence that ends '...is 2%' would be the third
-    unverified figure in this repository, and the two that exist disagree."""
+def test_the_gap_now_names_the_confirmed_rate_for_each_limb():
+    """The inverse of the old pin. A sentence naming '2%' and '10%' is now
+    correct, because both figures are read directly from the bare Act text on
+    incometaxindia.gov.in — no longer an unverified guess."""
     for section in TWO_LIMB_SECTIONS:
         gap = rate_gap_for(section)
-        assert "%" not in gap, (
-            f"{section}'s gap quotes a percentage — it must not, because no "
-            f"verified figure for the concessional limb exists here")
+        assert "2%" in gap and "10%" in gap, (
+            f"{section}'s gap should state both confirmed rates so a CA "
+            f"reads a number, not a shrug")
 
 
 def test_the_gap_reaches_the_bill_that_it_is_about():
