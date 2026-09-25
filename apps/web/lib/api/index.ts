@@ -180,6 +180,32 @@ export interface ComplianceRiskPayload {
   computed_at?: string | null;
 }
 
+/** `GET /api/cash-flow-forecast`. Every figure is integer paise and every one
+ *  of them is a document somebody issued or received — nothing here is an
+ *  average month or a seasonal fill. `unpriced` names the legs deliberately
+ *  left out (statutory, payroll) and arrives on EVERY answer, because a dip a
+ *  CA is reading has to say what it excludes. */
+export interface CashFlowForecastPayload {
+  as_at: string;
+  opening_paise: number;
+  months: {
+    period: string;
+    label: string;
+    opening_paise: number;
+    inflows_paise: number;
+    outflows_paise: number;
+    closing_paise: number;
+    by_kind: Record<string, number>;
+    is_shortfall: boolean;
+  }[];
+  first_shortfall: string | null;
+  overdue_in_paise: number;
+  overdue_out_paise: number;
+  undated: { amount_paise: number; kind: string; reference: string; party: string }[];
+  unpriced: { leg: string; why: string }[];
+  gaps: string[];
+}
+
 /** `GET /api/intelligence/relationship-health`. `outstanding_paise` is REAL
  *  money — summed off invoices with status Issued or Overdue — not a figure
  *  derived from task counts, which is the trap CLAUDE.md records and which the
@@ -4322,6 +4348,13 @@ export const api = {
     setCapacity: (body: { user_id: string; weekly_capacity_hours: number; max_concurrent_tasks: number }) =>
       request("/api/workload/capacity", { method: "PUT", body: JSON.stringify(body) }),
   },
+  /* 3b-2. Its own prefix rather than an /api/accounting/reports entry: that
+     one serves the AS-3 cash flow STATEMENT (what happened), this is a
+     projection (what is expected to). */
+  cashFlowForecast: (clientId: string, months = 6) =>
+    request<ApiResp<CashFlowForecastPayload>>(
+      `/api/cash-flow-forecast?client_id=${encodeURIComponent(clientId)}&months=${months}`),
+
   intelligence: {
     /* Typed for the Insights screen (Phase 3a-5). The three client-facing
        reads narrow their rows to the caller's assigned book inside the router,
