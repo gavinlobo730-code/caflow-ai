@@ -46,6 +46,8 @@ from core.observability import capture_soft_failure
 from core.authz import filter_by_client, assert_client_access, can_access_client, effective_client_ids
 from services.timeline_service import timeline_service
 from core.ist_clock import ist_today
+from domain.health.scoring import DIMENSION_WEIGHTS_BP, DIMENSIONS, grade, weighted_score
+from domain.health.overrides import apply_overrides, as_payload
 
 router = APIRouter(prefix="/api/health", tags=["health"])
 
@@ -79,46 +81,17 @@ class AlertResolveIn(BaseModel):
     resolution_notes: Optional[str] = None
 
 
-# ─── Product Bible Chapter 16 — dimension weights in basis points (bp) ───────
-# Using integer basis points (1% = 100 bp) to avoid float arithmetic.
-# sum of all weights = 10000 bp = 100%
-
-DIMENSION_WEIGHTS_BP: dict[str, int] = {
-    "compliance_health":     2500,   # 25%
-    "accounting_quality":    2000,   # 20%
-    "work_progress":         1500,   # 15%
-    "document_health":       1500,   # 15%
-    "ai_risk_signals":       1000,   # 10%
-    "open_notices":          1000,   # 10%
-    "client_responsiveness":  500,   #  5%
-}
-
-# Grade bands (Product Bible Chapter 16)
-def _grade(score: int) -> str:
-    """Derive score band label from integer score. No float arithmetic."""
-    if score >= 80:
-        return "Healthy"
-    if score >= 65:
-        return "Good"
-    if score >= 50:
-        return "Needs Attention"
-    if score >= 35:
-        return "At Risk"
-    return "Critical"
-
-
-def _weighted_score(dimension_scores: dict[str, int]) -> int:
-    """
-    Compute composite score from 7 dimensions using basis-point weights.
-    Formula: sum(score_i * weight_bp_i) // 10000
-    Integer arithmetic only — no float.
-    """
-    total_bp = 0
-    for dim, weight_bp in DIMENSION_WEIGHTS_BP.items():
-        score = dimension_scores.get(dim, 100)
-        total_bp += score * weight_bp
-    # integer division by 10000 (total basis points)
-    return total_bp // 10000
+# ─── Product Bible Chapter 16 — the weights, bands and composite ─────────────
+# MOVED to domain/health/scoring.py on 25-09-2026 and RE-EXPORTED here, so
+# every existing `from routers.health import DIMENSION_WEIGHTS_BP` still works.
+# The move was forced by `domain/health/overrides.py`, which has to recompute
+# the composite after a CA replaces a dimension's score: a domain module
+# importing a router is the wrong direction and one refactor from a cycle —
+# the reasoning `domain/fixed_assets/schedule_ii.py` records for Schedule II
+# Part C. Nothing about the numbers changed; a test asserts the router's names
+# ARE the domain module's objects rather than copies of them.
+_grade = grade
+_weighted_score = weighted_score
 
 
 # The Product Bible scores this dimension on two tiers, "critical" and
@@ -472,6 +445,50 @@ def _dim_client_responsiveness_db(db, client_id: str, firm_id: str) -> int:
     return max(0, score)
 
 
+# ─── Manual overrides: fetch, and what must never reach a write ──────────────
+
+#: Keys `_calculate_scores_*` returns that are NOT columns of `health_scores`.
+#: `dimensions` IS one (jsonb); these two are not, and the returned dict is
+#: spread into an upsert at two call sites — so sending them raises PGRST204
+#: against a real database and passes in mock mode, which is exactly the shape
+#: migration 291 had to repair on `form_26as_reconciliations`.
+_NOT_COLUMNS = ("overridden_dimensions", "ignored_overrides")
+
+
+def _columns_only(scores: dict) -> dict:
+    """The half of a computed score that `health_scores` can store."""
+    return {k: v for k, v in scores.items() if k not in _NOT_COLUMNS}
+
+
+def _overrides_mock(client_id: str) -> list[dict]:
+    return [o for o in _MOCK_OVERRIDES
+            if o.get("client_id") == client_id and o.get("is_active")]
+
+
+def _overrides_db(db, client_id: str, firm_id: str) -> list[dict]:
+    """The client's live overrides. Bounded by construction — a handful of rows
+    per client — beside the seven dimension queries this calculation already
+    makes, so it adds one round trip and no scan.
+
+    Only `is_active` rows: a withdrawn override is history and the CA already
+    saw it go. Expiry is NOT filtered here and is deliberately the domain
+    module's job, because `expires_at` is a timestamptz and the question is
+    which INDIAN day it is — a `lte` against a UTC now is wrong for five and a
+    half hours of every day.
+    """
+    try:
+        res = (db.table("health_overrides")
+               .select("id, dimension, override_score, reason, expires_at, "
+                       "is_active, override_at, created_at")
+               .eq("firm_id", firm_id).eq("client_id", client_id)
+               .eq("is_active", True).execute())
+        return res.data or []
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.overrides_db",
+                             firm_id=firm_id, client_id=client_id)
+        return []
+
+
 # ─── Score calculation ────────────────────────────────────────────────────────
 
 def _calculate_scores_mock(client_id: str) -> dict:
@@ -489,14 +506,22 @@ def _calculate_scores_mock(client_id: str) -> dict:
         "client_responsiveness": 48,
     }
 
-    overall_score = _weighted_score(dim_scores)
-    grade = _grade(overall_score)
+    # The CA's own corrections replace their dimensions FIRST, and the hard
+    # override is applied AFTER — so a manual override can raise a score and
+    # still not mask a Chapter 16 Critical condition, which the create_override
+    # handler's own comment names as the thing to prevent.
+    _applied = apply_overrides(dim_scores, _overrides_mock(client_id),
+                               as_at=ist_today())
+    dim_scores = _applied.scores
+    overall_score = _applied.overall_score
+    band = _grade(overall_score)
     hard_override = _detect_hard_override_mock(client_id)
     if hard_override:
-        grade = "Critical"
+        band = "Critical"
         overall_score = min(overall_score, 34)
 
     return {
+        **as_payload(_applied),
         **{f"{k}_score": v for k, v in dim_scores.items()},
         "dimensions": {
             k: {
@@ -507,8 +532,8 @@ def _calculate_scores_mock(client_id: str) -> dict:
             for k, v in dim_scores.items()
         },
         "overall_score":  overall_score,
-        "grade":          grade,
-        "health_grade":   grade,      # legacy alias
+        "grade":          band,
+        "health_grade":   band,      # legacy alias
         "trend":          "+0",
         "hard_override":  hard_override,
         "hard_override_reason": HARD_OVERRIDE_REASONS.get(hard_override) if hard_override else None,
@@ -540,14 +565,19 @@ def _calculate_scores_db(db, client_id: str, firm_id: str) -> dict:
         "client_responsiveness": _dim_client_responsiveness_db(db, client_id, firm_id),
     }
 
-    overall_score = _weighted_score(dim_scores)
+    # See the mock twin above: overrides first, hard override last.
+    _applied = apply_overrides(dim_scores, _overrides_db(db, client_id, firm_id),
+                               as_at=ist_today())
+    dim_scores = _applied.scores
+    overall_score = _applied.overall_score
     hard_override = _detect_hard_override_db(db, client_id, firm_id)
-    grade = _grade(overall_score)
+    band = _grade(overall_score)
     if hard_override:
-        grade = "Critical"
+        band = "Critical"
         overall_score = min(overall_score, 34)
 
     return {
+        **as_payload(_applied),
         **{f"{k}_score": v for k, v in dim_scores.items()},
         "dimensions": {
             k: {
@@ -558,8 +588,8 @@ def _calculate_scores_db(db, client_id: str, firm_id: str) -> dict:
             for k, v in dim_scores.items()
         },
         "overall_score":  overall_score,
-        "grade":          grade,
-        "health_grade":   grade,
+        "grade":          band,
+        "health_grade":   band,
         "trend":          "+0",
         "hard_override":  hard_override,
         "hard_override_reason": HARD_OVERRIDE_REASONS.get(hard_override) if hard_override else None,
@@ -957,7 +987,10 @@ def calculate_score(
             "client_id":         client_id,
             "firm_id":           firm_id,
             "last_calculated_at": now,
-            **scores,
+            # Stripped here too although the mock store would take anything:
+            # a mock row whose SHAPE differs from the production one is how a
+            # slice comes to pass under test and fail against a database.
+            **_columns_only(scores),
         }
         _MOCK_SCORES[client_id] = row
         _MOCK_HISTORY.append({**row, "id": str(uuid.uuid4()), "score_id": row["id"]})
@@ -993,7 +1026,9 @@ def calculate_score(
         "firm_id":            firm_id,
         "last_calculated_at": now,
         "client_name":        client.get("client_name", ""),
-        **scores,
+        # `_columns_only` — the computed score now carries the override
+        # working, which `health_scores` has no column for. See _NOT_COLUMNS.
+        **_columns_only(scores),
     }
 
     # A plain upsert on the (firm_id, client_id) unique key is sufficient — the
@@ -1013,7 +1048,8 @@ def calculate_score(
             "overall_score": scores["overall_score"],
             "health_grade":  scores["health_grade"],
             "recorded_at":   now,
-            "snapshot_data": {k: v for k, v in scores.items() if not isinstance(v, dict)},
+            "snapshot_data": {k: v for k, v in _columns_only(scores).items()
+                              if not isinstance(v, dict)},
         }).execute()
     except Exception as exc:
         capture_soft_failure(exc, operation="health.calculate_score", client_id=client_id)
@@ -1072,19 +1108,89 @@ def _assert_override_scope(current_user: dict, override_id: str) -> dict:
     return row
 
 
+def _annotate_overrides(rows: list[dict], dimension_scores: dict[str, int]) -> list[dict]:
+    """Say, per recorded override, whether it is in force and if not why.
+
+    THE SCREEN MUST NOT WORK THIS OUT. Until 25-09-2026 both health screens
+    read `health_overrides` straight over PostgREST and rendered every
+    `is_active` row under "Active overrides" — so one that lapsed in March was
+    still presented as in force in September, and one naming a dimension the
+    model does not have looked identical to one that was replacing a score.
+    Whether an override applies is the same rule the calculation uses, and
+    there is one of it.
+    """
+    outcome = apply_overrides(dimension_scores, rows, as_at=ist_today())
+    applied = {a.override_id: a for a in outcome.applied}
+    ignored = {i.override_id: i for i in outcome.ignored}
+    out: list[dict] = []
+    for row in rows:
+        oid = row.get("id")
+        hit = applied.get(oid)
+        miss = ignored.get(oid)
+        out.append({
+            **row,
+            "in_force": hit is not None,
+            # Always present, null where the override IS in force — an absent
+            # key and a null key read the same to a screen and are different
+            # bugs (`domain/accounting/journal_source`'s discipline).
+            "not_in_force_because": None if hit else (miss.why if miss else None),
+            "explanation": None if hit else (miss.explanation if miss else None),
+            "computed_score": hit.computed_score if hit else None,
+        })
+    return out
+
+
 @router.get("/overrides")
 def list_overrides(
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    """The client's recorded overrides, each saying whether it is in force.
+
+    `is_active` still filters at the query, because a WITHDRAWN override is
+    history and the CA already saw it go; what this adds is the lapsed, the
+    unscored and the dimension this model does not have, all of which are
+    `is_active` and none of which is replacing anything.
+    """
     assert_client_access(current_user, client_id)
     db = _db()
     if not db:
-        result = [o for o in _MOCK_OVERRIDES if o.get("client_id") == client_id and o.get("is_active")]
-        return api_response(True, result)
+        rows = [o for o in _MOCK_OVERRIDES
+                if o.get("client_id") == client_id and o.get("is_active")]
+        scored = _MOCK_SCORES.get(client_id) or {}
+        dims = {k: int(scored.get(f"{k}_score", 100) or 100) for k in DIMENSIONS}
+        return api_response(True, _annotate_overrides(rows, dims))
 
-    res = db.table("health_overrides").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("is_active", True).order("created_at", desc=True).execute()
-    return api_response(True, res.data or [])
+    firm_id = current_user["firm_id"]
+    res = (db.table("health_overrides").select("*")
+           .eq("firm_id", firm_id).eq("client_id", client_id)
+           .eq("is_active", True).order("created_at", desc=True).execute())
+    rows = res.data or []
+
+    # The stored dimension scores, so the screen can show "48 → 90" rather than
+    # a bare override figure. One keyed read; absent (no score calculated yet)
+    # falls back to the same 100 `weighted_score` uses for a missing dimension.
+    dims = {k: 100 for k in DIMENSIONS}
+    try:
+        # Written out rather than joined from DIMENSIONS, although the join
+        # would be shorter: `tests/test_backend_columns_exist_pg.py` reads
+        # every `.select()` as a STRING, so a projection reached through a
+        # name is invisible to it — the trap `domain/firm/identity` records,
+        # and its budget for unreadable projections is exact with no headroom.
+        scored = (db.table("health_scores")
+                  .select("compliance_health_score, accounting_quality_score, "
+                          "work_progress_score, document_health_score, "
+                          "ai_risk_signals_score, open_notices_score, "
+                          "client_responsiveness_score")
+                  .eq("firm_id", firm_id).eq("client_id", client_id)
+                  .limit(1).execute().data or [])
+        if scored:
+            dims = {k: int(scored[0].get(f"{k}_score") or 100) for k in DIMENSIONS}
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.list_overrides.scores",
+                             firm_id=firm_id, client_id=client_id)
+
+    return api_response(True, _annotate_overrides(rows, dims))
 
 
 @router.post("/recalculate-all")
@@ -1118,7 +1224,7 @@ def recalculate_all(
             score_id = str(uuid.uuid4())
             upsert_payload = {
                 "id": score_id, "client_id": client["id"], "firm_id": firm_id,
-                "last_calculated_at": now, **scores,
+                "last_calculated_at": now, **_columns_only(scores),
             }
             db.table("health_scores").upsert(upsert_payload, on_conflict="client_id,firm_id").execute()
             db.table("health_score_history").insert({
@@ -1126,7 +1232,8 @@ def recalculate_all(
                 "overall_score": scores["overall_score"],
                 "health_grade":  scores["health_grade"],
                 "recorded_at":   now,
-                "snapshot_data": {k: v for k, v in scores.items() if not isinstance(v, dict)},
+                "snapshot_data": {k: v for k, v in _columns_only(scores).items()
+                                  if not isinstance(v, dict)},
             }).execute()
             updated += 1
         except Exception as exc:

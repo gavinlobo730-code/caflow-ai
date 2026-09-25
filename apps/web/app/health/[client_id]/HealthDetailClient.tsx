@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 import { Callout } from "@/components/ui/callout";
+import { arrayOrEmpty } from "@/lib/api/shape";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -93,6 +94,15 @@ interface HealthOverride {
   created_by: string;
   expires_at: string | null;
   created_at: string;
+  // Answered by GET /api/health/overrides. Whether an override is actually
+  // replacing a score is the same rule the CALCULATION uses — an expiry the
+  // browser compares itself would be a second copy of it, and this screen
+  // used to present every is_active row as in force, so one that lapsed in
+  // March still read as live in September.
+  in_force?: boolean;
+  not_in_force_because?: string | null;
+  explanation?: string | null;
+  computed_score?: number | null;
 }
 
 interface ApiResponse<T> {
@@ -354,14 +364,28 @@ export default function ClientHealthDetailPage() {
   const [overrideForm, setOverrideForm] = useState(EMPTY_OVERRIDE_FORM);
   const [savingOverride, setSavingOverride] = useState(false);
   const [overrideSaveError, setOverrideSaveError] = useState<string | null>(null);
+  const [removingOverride, setRemovingOverride] = useState<string | null>(null);
+
+  const loadOverrides = useCallback(async () => {
+    const json: ApiResponse<HealthOverride[]> = await apiFetch(
+      `/api/health/overrides?client_id=${encodeURIComponent(clientId)}`
+    );
+    if (!json.success) throw new Error(json.error ?? "Failed to load overrides");
+    setOverrides(arrayOrEmpty<HealthOverride>(json.data));
+  }, [clientId]);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // Direct Supabase for all 4 reads below, not the /api/health/* backend
+      // Direct Supabase for the 3 reads below, not the /api/health/*
+      // backend routes. OVERRIDES ARE NO LONGER ONE OF THEM: whether a
+      // recorded override is in force is a rule (expiry in IST, an
+      // unknown dimension, a later override superseding it) and the
+      // calculation applies the same one, so it is served rather than
+      // re-derived here — see loadOverrides.
       // routes — each is a plain firm-scoped filtered select (routers/
-      // health.py's list_alerts/list_overrides/get_score_history do nothing
+      // health.py's list_alerts/get_score_history do nothing
       // beyond that; get_client_health does one cheap, deterministic
       // reshape — reconstructing the `dimensions` object from the legacy
       // flat *_score columns when the JSONB column is empty — replicated
@@ -374,7 +398,7 @@ export default function ClientHealthDetailPage() {
       // factors) is genuine cross-table business logic and stays
       // backend-routed — see DimensionCard's handleExpand above.
       const supabase = getSupabaseClient();
-      const [scoreRes, historyRes, alertsRes, overridesRes] = await Promise.all([
+      const [scoreRes, historyRes, alertsRes] = await Promise.all([
         supabase.from("health_scores").select("*").eq("client_id", clientId).limit(1).maybeSingle(),
         supabase
           .from("health_score_history")
@@ -387,12 +411,6 @@ export default function ClientHealthDetailPage() {
           .select("*")
           .eq("client_id", clientId)
           .eq("is_resolved", false)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("health_overrides")
-          .select("*")
-          .eq("client_id", clientId)
-          .eq("is_active", true)
           .order("created_at", { ascending: false }),
       ]);
       if (scoreRes.error) throw scoreRes.error;
@@ -432,14 +450,13 @@ export default function ClientHealthDetailPage() {
       if (alertsRes.error) throw alertsRes.error;
       setAlerts((alertsRes.data as HealthAlert[]) ?? []);
 
-      if (overridesRes.error) throw overridesRes.error;
-      setOverrides((overridesRes.data as HealthOverride[]) ?? []);
+      await loadOverrides();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, loadOverrides]);
 
   useEffect(() => {
     // "" until the effect above resolves the id, "_placeholder" only if the
@@ -468,13 +485,36 @@ export default function ClientHealthDetailPage() {
         }
       );
       if (!json.success) throw new Error(json.error ?? "Failed to save override");
-      setOverrides((prev) => [json.data, ...prev]);
+      // Re-read rather than unshifting `json.data`: the create response is the
+      // stored row and carries no `in_force`, so pushing it in would show a
+      // brand-new override with no sign of whether it is actually replacing
+      // anything — the one question this screen could not answer before.
+      await loadOverrides();
       setOverrideModalOpen(false);
       setOverrideForm(EMPTY_OVERRIDE_FORM);
     } catch (e) {
       setOverrideSaveError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSavingOverride(false);
+    }
+  }
+
+  async function handleRemoveOverride(overrideId: string) {
+    // `DELETE /api/health/overrides/{id}` has existed, firm- and
+    // assignment-guarded, since migration 059 and had no caller at all — so an
+    // override recorded without an end date could never be withdrawn.
+    setRemovingOverride(overrideId);
+    setOverrideSaveError(null);
+    try {
+      const json: ApiResponse<unknown> = await apiFetch(
+        `/api/health/overrides/${overrideId}`, { method: "DELETE" }
+      );
+      if (!json.success) throw new Error(json.error ?? "Failed to remove override");
+      await loadOverrides();
+    } catch (e) {
+      setOverrideSaveError(e instanceof Error ? e.message : "Failed to remove");
+    } finally {
+      setRemovingOverride(null);
     }
   }
 
@@ -689,7 +729,7 @@ export default function ClientHealthDetailPage() {
       {/* Active overrides */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-brand">Active Overrides</h3>
+          <h3 className="text-sm font-semibold text-brand">Overrides</h3>
           <button
             onClick={() => {
               setOverrideForm(EMPTY_OVERRIDE_FORM);
@@ -705,39 +745,77 @@ export default function ClientHealthDetailPage() {
           <CardContent className="p-0">
             {overrides.length === 0 ? (
               <div className="text-center py-10">
-                <p className="text-sm text-gray-500">No active overrides</p>
+                <p className="text-sm text-gray-500">No overrides recorded</p>
               </div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-gray-500 border-b border-gray-200">
                     <th className="px-5 py-3 text-left font-medium">Dimension</th>
-                    <th className="px-3 py-3 text-left font-medium">Override Score</th>
+                    <th className="px-3 py-3 text-left font-medium">Score</th>
                     <th className="px-3 py-3 text-left font-medium">Reason</th>
                     <th className="px-3 py-3 text-left font-medium">Expires</th>
                     <th className="px-3 py-3 text-left font-medium">Created By</th>
+                    <th className="px-3 py-3 text-right font-medium">&nbsp;</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {overrides.map((override) => (
-                    <tr key={override.id} className="hover:bg-gray-50">
+                  {overrides.map((override) => {
+                    // `in_force` is the SERVER's answer, never re-derived here
+                    // — the calculation applies the same rule, and a screen
+                    // that worked out its own idea of "expired" would be a
+                    // second copy of it. An absent key reads as in force, so a
+                    // browser deployed ahead of its backend renders as before.
+                    const live = override.in_force !== false;
+                    return (
+                    <tr key={override.id} className={live ? "hover:bg-ps-hover" : "bg-ps-muted"}>
                       <td className="px-5 py-3">
-                        <Badge className="bg-emerald-100 text-emerald-700 text-2xs">
+                        <Badge className={live
+                          ? "bg-state-ready-surface text-state-ready text-2xs"
+                          : "bg-ps-muted text-ps-hint text-2xs"}>
                           {DIMENSION_META[override.dimension as DimensionKey]?.label ?? override.dimension}
                         </Badge>
+                        {!live && (
+                          <p className="text-3xs text-ps-hint mt-1 max-w-xs">
+                            {override.explanation ?? "Not in force."}
+                          </p>
+                        )}
                       </td>
                       <td className="px-3 py-3">
-                        <span className={`font-bold ${scoreColor(override.override_score)}`}>
-                          {override.override_score}
-                        </span>
+                        {live ? (
+                          <span className="whitespace-nowrap">
+                            {override.computed_score != null && (
+                              <span className="text-ps-hint text-xs line-through mr-1.5">
+                                {override.computed_score}
+                              </span>
+                            )}
+                            <span className={`font-bold ${scoreColor(override.override_score)}`}>
+                              {override.override_score}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="font-bold text-ps-hint line-through">
+                            {override.override_score}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-gray-700 text-xs max-w-xs truncate">
                         {override.reason}
                       </td>
                       <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(override.expires_at)}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">{override.created_by}</td>
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          onClick={() => handleRemoveOverride(override.id)}
+                          disabled={removingOverride === override.id}
+                          className="text-xs text-state-problem hover:underline disabled:opacity-50"
+                        >
+                          {removingOverride === override.id ? "Removing…" : "Remove"}
+                        </button>
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             )}
