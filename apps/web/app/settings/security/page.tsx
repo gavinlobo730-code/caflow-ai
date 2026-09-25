@@ -128,7 +128,7 @@ function ChangePasswordCard() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
         <KeyRound size={15} className="text-blue-600" />
         <h2 className="text-sm font-semibold text-ps-ink">Change Password</h2>
@@ -306,7 +306,7 @@ function MfaCard() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
         <ShieldCheck size={15} className="text-blue-600" />
         <h2 className="text-sm font-semibold text-ps-ink">Two-Factor Authentication (TOTP)</h2>

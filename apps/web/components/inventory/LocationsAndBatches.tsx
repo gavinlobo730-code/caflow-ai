@@ -145,7 +145,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
       )}
 
       {/* ── godowns ──────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-5 py-3 border-b border-ps-border flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <Warehouse size={15} className="text-blue-600" /> Godowns
@@ -164,7 +164,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint">
+                <tr className="border-b border-ps-border text-ps-hint">
                   <th className="px-5 py-2 text-left font-semibold">Godown</th>
                   <th className="px-5 py-2 text-left font-semibold">State</th>
                   <th className="px-5 py-2 text-left font-semibold">Registration</th>
@@ -172,7 +172,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                   <th className="px-5 py-2 text-right font-semibold"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {godowns.map((g) => (
                   <tr key={g.id} className={g.is_active ? "" : "opacity-50"}>
                     <td className="px-5 py-2 text-ps-ink">
@@ -209,7 +209,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
           </div>
         )}
         {unallocated.length > 0 && unallocatedMeans && (
-          <div className="px-5 py-3 border-t border-ps-muted bg-ps-bg flex gap-2">
+          <div className="px-5 py-3 border-t border-ps-border bg-ps-bg flex gap-2">
             <Info size={13} className="shrink-0 mt-0.5 text-ps-hint" />
             <span className="text-2xs text-ps-label">{unallocatedMeans}</span>
           </div>
@@ -217,7 +217,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
       </div>
 
       {/* ── the position, per godown per batch ───────────────────────── */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-5 py-3 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">Stock by godown and lot</h3>
           <p className="text-2xs text-ps-hint mt-0.5">As at {asOf}</p>
@@ -228,7 +228,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint">
+                <tr className="border-b border-ps-border text-ps-hint">
                   <th className="px-5 py-2 text-left font-semibold">Item</th>
                   <th className="px-5 py-2 text-left font-semibold">Godown</th>
                   <th className="px-5 py-2 text-left font-semibold">Lot</th>
@@ -237,7 +237,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                   <th className="px-5 py-2 text-right font-semibold">Value</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {detail.map((r, i) => (
                   <tr key={i}>
                     <td className="px-5 py-2 text-ps-ink">{r.item_name}</td>
@@ -257,7 +257,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
       </div>
 
       {/* ── lots ─────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-5 py-3 border-b border-ps-border flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <Boxes size={15} className="text-blue-600" /> Lots
@@ -275,14 +275,14 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint">
+                <tr className="border-b border-ps-border text-ps-hint">
                   <th className="px-5 py-2 text-left font-semibold">Lot</th>
                   <th className="px-5 py-2 text-left font-semibold">Item</th>
                   <th className="px-5 py-2 text-left font-semibold">Manufactured</th>
                   <th className="px-5 py-2 text-left font-semibold">Expires</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {batches.map((b) => (
                   <tr key={b.id}>
                     <td className="px-5 py-2 text-ps-ink">{b.batch_no}</td>
@@ -306,7 +306,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
 
       {/* ── expiry ───────────────────────────────────────────────────── */}
       {expiry && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-5 py-3 border-b border-ps-border">
             <h3 className="text-sm font-semibold text-ps-ink">Expiry</h3>
           </div>
@@ -324,10 +324,10 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
             ))}
           </div>
           {expiry.rows.length > 0 && (
-            <div className="overflow-x-auto border-t border-ps-muted">
+            <div className="overflow-x-auto border-t border-ps-border">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-ps-muted text-ps-hint">
+                  <tr className="border-b border-ps-border text-ps-hint">
                     <th className="px-5 py-2 text-left font-semibold">Lot</th>
                     <th className="px-5 py-2 text-left font-semibold">Item</th>
                     <th className="px-5 py-2 text-left font-semibold">Godown</th>
@@ -336,7 +336,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                     <th className="px-5 py-2 text-left font-semibold">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-bg">
+                <tbody className="divide-y divide-ps-border">
                   {expiry.rows.map((r, i) => (
                     <tr key={i}>
                       <td className="px-5 py-2 text-ps-ink">{r.batch_no ?? "—"}</td>
@@ -366,7 +366,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
             </div>
           )}
           {expiry.notes.length > 0 && (
-            <div className="px-5 py-3 border-t border-ps-muted space-y-1">
+            <div className="px-5 py-3 border-t border-ps-border space-y-1">
               {expiry.notes.map((n, i) => (
                 <p key={i} className="text-2xs text-ps-label">{n}</p>
               ))}
@@ -447,7 +447,7 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className="px-5 py-3 border-b border-ps-border">
         <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
           <ArrowRightLeft size={15} className="text-blue-600" /> Move stock between godowns
@@ -541,7 +541,7 @@ function GodownModal({ clientId, onClose, onSaved }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-        <div className="px-5 py-4 border-b border-ps-muted">
+        <div className="px-5 py-4 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">New godown</h3>
         </div>
         <div className="px-5 py-4 space-y-3">
@@ -583,7 +583,7 @@ function GodownModal({ clientId, onClose, onSaved }: {
             Stock movements default to this godown
           </label>
         </div>
-        <div className="px-5 py-3 border-t border-ps-muted flex justify-end gap-2">
+        <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
           <button onClick={onClose}
             className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
             Cancel
@@ -633,7 +633,7 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-        <div className="px-5 py-4 border-b border-ps-muted">
+        <div className="px-5 py-4 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">New lot</h3>
         </div>
         <div className="px-5 py-4 space-y-3">
@@ -664,7 +664,7 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
             </label>
           </div>
         </div>
-        <div className="px-5 py-3 border-t border-ps-muted flex justify-end gap-2">
+        <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
           <button onClick={onClose}
             className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
             Cancel

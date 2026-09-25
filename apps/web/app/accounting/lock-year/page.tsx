@@ -267,14 +267,14 @@ function LockYearContent() {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {/* FY list */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-5 py-3 border-b border-ps-border bg-ps-bg">
           <p className="text-xs font-semibold text-ps-label uppercase tracking-wide">Financial Years</p>
         </div>
         {loading ? (
           <TableSkeleton bare rows={4} cols={3} />
         ) : (
-          <div className="divide-y divide-ps-bg">
+          <div className="divide-y divide-ps-border">
             {fyRows(lockedYears).map((fy) => {
               const isLocked = lockedYears.includes(fy.label);
               const isSaving = saving === fy.label;

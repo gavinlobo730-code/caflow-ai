@@ -1087,7 +1087,7 @@ export default function TaxComputationPage() {
         </button>
 
         {activeSection === "compute" && (
-          <div className="px-5 pb-5 border-t border-ps-muted space-y-4 pt-4">
+          <div className="px-5 pb-5 border-t border-ps-border space-y-4 pt-4">
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="text-3xs text-ps-label mb-1 block">Assessment Year</label>
@@ -1281,7 +1281,7 @@ export default function TaxComputationPage() {
                 §44ADA name who they reach and the SERVER answers on the
                 client's recorded entity type; a list of eligible kinds in this
                 file would be a second copy of the section. */}
-            <div className="space-y-3 border-t border-ps-muted pt-3">
+            <div className="space-y-3 border-t border-ps-border pt-3">
               <div className="flex items-center gap-3">
                 <label className="text-2xs font-semibold text-ps-body whitespace-nowrap">
                   Presumptive scheme
@@ -1422,7 +1422,7 @@ export default function TaxComputationPage() {
                 VI-A head §115BAC(2) leaves standing, so neither belongs behind
                 the old-regime gate below. */}
             {!isEntity && (
-              <div className="space-y-3 border-t border-ps-muted pt-3">
+              <div className="space-y-3 border-t border-ps-border pt-3">
                 <p className="text-2xs font-semibold text-ps-body">
                   Residence and employer NPS
                   <span className="font-normal text-ps-hint"> — both regimes</span>
@@ -1482,7 +1482,7 @@ export default function TaxComputationPage() {
                 that cannot change the answer is worse than not offering
                 them — it reads as relief that was claimed and refused. */}
             {!isEntity && regime === "old" && (
-              <div className="space-y-3 border-t border-ps-muted pt-3">
+              <div className="space-y-3 border-t border-ps-border pt-3">
                 <p className="text-2xs font-semibold text-ps-body">
                   Chapter VI-A deductions
                   <span className="font-normal text-ps-hint"> — old regime only</span>
@@ -1945,7 +1945,7 @@ export default function TaxComputationPage() {
                     row shows it. */}
                 {computeResult.capital_gains?.lines?.some(
                   l => l.gross_paise > 0) ? (
-                  <div className="mt-3 border-t border-ps-muted pt-2 space-y-1.5">
+                  <div className="mt-3 border-t border-ps-border pt-2 space-y-1.5">
                     <p className="text-3xs font-semibold text-ps-body">
                       Capital gains — {paise(computeResult.capital_gains.tax_paise)} tax
                     </p>
@@ -2018,7 +2018,7 @@ export default function TaxComputationPage() {
                     zero beside "set off" and a loss simply missing from the
                     list are opposite statements, and the CA needs the first. */}
                 {computeResult.brought_forward?.lines?.length ? (
-                  <div className="mt-3 border-t border-ps-muted pt-2 space-y-1.5">
+                  <div className="mt-3 border-t border-ps-border pt-2 space-y-1.5">
                     <p className="text-3xs font-semibold text-ps-body">
                       Brought-forward losses — {paise(computeResult.brought_forward.set_off_paise)} set off
                     </p>
@@ -2068,7 +2068,7 @@ export default function TaxComputationPage() {
         </button>
 
         {activeSection === "disallowances" && (
-          <div className="px-5 pb-5 border-t border-ps-muted pt-4 space-y-3">
+          <div className="px-5 pb-5 border-t border-ps-border pt-4 space-y-3">
             <p className="text-2xs text-ps-label">
               IT Act §40A(3): Cash payments &gt;₹10,000 | §43B: Unpaid statutory liabilities
             </p>
@@ -2134,7 +2134,7 @@ export default function TaxComputationPage() {
                 amber rows totalling ₹4,00,000 has no way to tell, from the
                 rows alone, that the computation is using none of them. */}
             {disallowances.length > 0 && (
-              <p className="text-2xs text-ps-label border-t border-ps-muted pt-2">
+              <p className="text-2xs text-ps-label border-t border-ps-border pt-2">
                 Added back to income:{" "}
                 <span className="font-mono text-ps-body">
                   {paise(disallowances.filter(d => d.status === "accepted")
@@ -2207,7 +2207,7 @@ export default function TaxComputationPage() {
         </button>
 
         {activeSection === "losses" && (
-          <div className="px-5 pb-5 border-t border-ps-muted pt-4 space-y-3">
+          <div className="px-5 pb-5 border-t border-ps-border pt-4 space-y-3">
             {/* THE PERIODS COME FROM THE SERVER, one line per head. The old
                 text here read "§72 (Business, 8 yrs) · §74 (Capital, 8 yrs)"
                 and was hardcoded — true of three heads and wrong about
@@ -2353,7 +2353,7 @@ export default function TaxComputationPage() {
             {activeSection === "history" ? <ChevronUp size={14} className="text-ps-hint" /> : <ChevronDown size={14} className="text-ps-hint" />}
           </button>
           {activeSection === "history" && (
-            <div className="px-5 pb-5 border-t border-ps-muted pt-4 space-y-2">
+            <div className="px-5 pb-5 border-t border-ps-border pt-4 space-y-2">
               {snapshots.map(s => (
                 <div key={s.id} className="flex items-center justify-between p-3 bg-ps-bg rounded-lg">
                   <div>

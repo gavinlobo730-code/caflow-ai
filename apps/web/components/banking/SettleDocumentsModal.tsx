@@ -233,7 +233,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
   return (
     <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
           <div>
             <h3 className="text-sm font-semibold text-ps-ink">Settle {docLabel}s</h3>
             <p className="text-xs text-ps-label mt-0.5">{txn.description} · {fmt(txnAmount)} {isCredit ? "credit" : "debit"}</p>
@@ -258,7 +258,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
             ) : docs.length === 0 ? (
               <p className="text-xs text-ps-hint text-center py-6">No open {docLabel}s for this {isCredit ? "customer" : "vendor"}.</p>
             ) : (
-              <div className="border border-ps-muted rounded-lg divide-y divide-ps-bg">
+              <div className="border border-ps-border rounded-lg divide-y divide-ps-border">
                 {docs.map((d) => (
                   <div key={d.id} className="flex items-center gap-2 px-3 py-2">
                     <input type="checkbox" checked={checked.has(d.id)} onChange={() => toggle(d)} className="h-3.5 w-3.5 rounded border-ps-disabled shrink-0" />
@@ -316,7 +316,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
           )}
           {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
         </div>
-        <div className="flex gap-3 justify-end px-5 py-4 border-t border-ps-muted">
+        <div className="flex gap-3 justify-end px-5 py-4 border-t border-ps-border">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={save} disabled={saving || checked.size === 0 || remaining < 0} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Settling…" : `Confirm allocation`}

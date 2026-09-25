@@ -212,7 +212,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       {msg && (
         <div className={`rounded-lg px-3 py-2 text-xs ${msg.type === "ok"
-          ? "bg-green-50 text-green-700 border border-green-200"
+          ? "bg-state-ready-surface text-state-ready border border-state-ready-border"
           : "bg-state-problem-surface text-state-problem border border-state-problem-border"}`}>
           {msg.text}
         </div>
@@ -275,15 +275,15 @@ export function RecurringBills({ clientId }: { clientId: string }) {
           </button>
         </div>
       ) : templates.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16">
-          <Clock size={32} className="text-gray-200 mx-auto mb-3" />
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16">
+          <Clock size={32} className="text-ps-disabled mx-auto mb-3" />
           <p className="text-sm text-ps-label">No recurring bills yet</p>
           <p className="text-xs text-ps-hint mt-1">
             Set one up for the rent or a monthly retainer and the draft appears on schedule.
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-ps-bg text-3xs uppercase tracking-wide text-ps-hint">
@@ -299,7 +299,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
               </thead>
               <tbody>
                 {templates.map((t) => (
-                  <tr key={t.id} className="border-t border-ps-bg">
+                  <tr key={t.id} className="border-t border-ps-border">
                     <td className="px-3 py-2">
                       <p className="font-medium text-ps-ink">{t.title}</p>
                       {t.description && <p className="text-3xs text-ps-hint">{t.description}</p>}
@@ -349,7 +349,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
                         )}
                         {t.status !== "archived" && (
                           <button onClick={() => changeStatus(t, "archive")} disabled={busy === t.id}
-                            className="text-2xs px-2 py-1 border border-state-problem-border text-red-600 rounded-md hover:bg-state-problem-hover disabled:opacity-40">
+                            className="text-2xs px-2 py-1 border border-state-problem-border text-state-problem rounded-md hover:bg-state-problem-hover disabled:opacity-40">
                             Archive
                           </button>
                         )}
@@ -518,7 +518,7 @@ function RecurringBillEditor({
   return (
     <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-center overflow-y-auto p-4">
       <div className="bg-white rounded-xl w-full max-w-4xl my-8 shadow-xl">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">
             {existing ? "Edit recurring bill" : "New recurring bill"}
           </h3>
@@ -568,15 +568,15 @@ function RecurringBillEditor({
             </div>
           </div>
 
-          <div className="border border-ps-muted rounded-lg">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-ps-muted bg-ps-bg rounded-t-lg">
+          <div className="border border-ps-border rounded-lg">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-ps-border bg-ps-bg rounded-t-lg">
               <p className="text-xs font-semibold text-ps-body">Lines</p>
               <button type="button" onClick={() => setLines((ls) => [...ls, blankLine()])}
                 className="text-2xs px-2.5 py-1 border border-ps-border bg-white rounded-md hover:bg-ps-muted">
                 <Plus size={11} className="inline mr-1" />Add line
               </button>
             </div>
-            <div className="divide-y divide-ps-bg">
+            <div className="divide-y divide-ps-border">
               {lines.map((l, i) => (
                 <div key={i} className="p-3 space-y-2">
                   <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
@@ -684,7 +684,7 @@ function RecurringBillEditor({
           </p>
         </div>
 
-        <div className="flex gap-3 justify-end px-5 py-3 border-t border-ps-muted">
+        <div className="flex gap-3 justify-end px-5 py-3 border-t border-ps-border">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
             Cancel
           </button>
@@ -740,7 +740,7 @@ function RecurringBillHistory({
   return (
     <div className="fixed inset-0 z-50 bg-black/30 flex items-start justify-end">
       <div className="bg-white h-full w-full max-w-lg shadow-xl overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-ps-muted sticky top-0 bg-white">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-ps-border sticky top-0 bg-white">
           <div>
             <h3 className="text-sm font-semibold text-ps-ink">{template.title}</h3>
             <p className="text-2xs text-ps-hint">{vendorName}</p>
@@ -777,11 +777,11 @@ function RecurringBillHistory({
                 </thead>
                 <tbody>
                   {runs.map((r) => (
-                    <tr key={r.id} className="border-t border-ps-bg">
+                    <tr key={r.id} className="border-t border-ps-border">
                       <td className="py-1.5 tabular-nums text-ps-label">{r.occurrence_date}</td>
                       <td className="py-1.5 text-ps-ink">
                         {r.status === "failed" ? (
-                          <span className="text-red-600">
+                          <span className="text-state-problem">
                             Failed{r.detail ? ` — ${String((r.detail as { error?: string })?.error ?? "")}` : ""}
                           </span>
                         ) : (

@@ -218,7 +218,7 @@ function ScheduleTable({ data }: { data: ScheduleData }) {
 
   if (!rows.length) {
     return (
-      <div className="bg-white rounded-xl border border-ps-muted text-center py-12">
+      <div className="bg-white rounded-xl border border-ps-border text-center py-12">
         <p className="text-sm text-ps-label">No data for this schedule.</p>
         {/* THE SERVER'S REASON, where it has one. An empty schedule with the
             generic line below is a CLAIM — "this client has none" — and the
@@ -248,11 +248,11 @@ function ScheduleTable({ data }: { data: ScheduleData }) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-ps-muted text-ps-hint">
+            <tr className="border-b border-ps-border text-ps-hint">
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -263,7 +263,7 @@ function ScheduleTable({ data }: { data: ScheduleData }) {
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-ps-bg">
+          <tbody className="divide-y divide-ps-border">
             {rows.map((row, ri) => (
               <tr key={ri} className="hover:bg-ps-bg">
                 {columns.map((col) => (

@@ -275,7 +275,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
   }
   if (loadFailed || !decl) {
     return (
-      <div className="bg-white rounded-xl border border-ps-muted px-5 py-8 text-center text-sm text-state-problem">
+      <div className="bg-white rounded-xl border border-ps-border px-5 py-8 text-center text-sm text-state-problem">
         Could not load your declaration.
         <button onClick={() => void load()} className="underline ml-1">Try again</button>.
       </div>
@@ -286,7 +286,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-5 py-4 border-b border-ps-border">
           <h2 className="text-sm font-semibold text-ps-ink">
             Tax declaration — {fy}
@@ -429,7 +429,7 @@ function Section({ title, note, children }: {
   title: string; note?: string; children: React.ReactNode;
 }) {
   return (
-    <div className="border-t border-ps-muted pt-4 space-y-3">
+    <div className="border-t border-ps-border pt-4 space-y-3">
       <div>
         <h3 className="text-sm font-medium text-ps-ink">{title}</h3>
         {note && <p className="text-xs text-ps-hint mt-0.5">{note}</p>}

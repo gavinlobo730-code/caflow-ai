@@ -368,7 +368,7 @@ export default function WorkflowsPage() {
                 </thead>
                 <tbody>
                   {analytics.by_template.map((row: WorkflowAnalytics["by_template"][number], i: number) => (
-                    <tr key={row.template_id} className={`border-b border-ps-muted hover:bg-ps-bg ${i % 2 === 0 ? "" : "bg-ps-bg"}`}>
+                    <tr key={row.template_id} className={`border-b border-ps-border hover:bg-ps-bg ${i % 2 === 0 ? "" : "bg-ps-bg"}`}>
                       <td className="px-4 py-3 font-medium text-brand">{row.template_name}</td>
                       <td className="px-4 py-3 text-ps-body">{row.total_executions}</td>
                       <td className="px-4 py-3 text-green-600 font-medium">{row.successful}</td>
@@ -468,7 +468,7 @@ function WorkflowInstancesTab() {
             </thead>
             <tbody>
               {instances.map((inst: WorkflowInstance) => (
-                <tr key={inst.id} className="border-b border-ps-muted hover:bg-ps-bg">
+                <tr key={inst.id} className="border-b border-ps-border hover:bg-ps-bg">
                   <td className="px-4 py-3 font-mono text-xs text-ps-label">{inst.id.slice(0,12)}...</td>
                   <td className="px-4 py-3 text-ps-body">{TRIGGER_LABELS[inst.trigger_event] || inst.trigger_event}</td>
                   <td className="px-4 py-3">

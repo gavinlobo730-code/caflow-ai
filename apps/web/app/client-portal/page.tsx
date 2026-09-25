@@ -531,7 +531,7 @@ export default function ClientPortalPage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 border-b border-ps-muted overflow-x-auto">
+          <div className="flex gap-1 border-b border-ps-border overflow-x-auto">
             {PORTAL_TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -590,7 +590,7 @@ export default function ClientPortalPage() {
                         {docRequests.map((req) => (
                           <div
                             key={req.id}
-                            className="flex items-start gap-3 p-3 rounded-lg border border-ps-muted hover:bg-ps-bg"
+                            className="flex items-start gap-3 p-3 rounded-lg border border-ps-border hover:bg-ps-bg"
                           >
                             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
                               <FileText size={14} />
@@ -689,7 +689,7 @@ export default function ClientPortalPage() {
                         {sharedDocs.map((doc) => (
                           <div
                             key={doc.id}
-                            className="flex items-center gap-3 p-3 rounded-lg border border-ps-muted hover:bg-ps-bg"
+                            className="flex items-center gap-3 p-3 rounded-lg border border-ps-border hover:bg-ps-bg"
                           >
                             <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                               <FolderOpen size={14} />
@@ -745,7 +745,7 @@ export default function ClientPortalPage() {
                         <p className="text-xs mt-1 text-ps-disabled">Go to Reports → Financial Statements → Generate → Share with Client</p>
                       </div>
                     ) : (
-                      <div className="divide-y divide-ps-bg">
+                      <div className="divide-y divide-ps-border">
                         {sharedReports.map((r) => (
                           <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-4">
                             <div className="min-w-0">
@@ -798,7 +798,7 @@ export default function ClientPortalPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-ps-muted text-xs text-ps-hint">
+                        <tr className="border-b border-ps-border text-xs text-ps-hint">
                           <th className="px-5 py-3 text-left font-semibold">Form</th>
                           <th className="px-3 py-3 text-left font-semibold">Period</th>
                           <th className="px-3 py-3 text-left font-semibold">Status</th>
@@ -806,7 +806,7 @@ export default function ClientPortalPage() {
                           <th className="px-5 py-3 text-left font-semibold">ARN</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-ps-bg">
+                      <tbody className="divide-y divide-ps-border">
                         {recentFilings.length > 0
                           ? recentFilings.map((c) => (
                               <tr key={c.id} className="hover:bg-ps-bg">
@@ -880,7 +880,7 @@ export default function ClientPortalPage() {
                         return apiDues.map((due) => (
                           <div
                             key={due.id}
-                            className="flex items-center gap-4 p-3 rounded-lg border border-ps-muted hover:bg-ps-bg"
+                            className="flex items-center gap-4 p-3 rounded-lg border border-ps-border hover:bg-ps-bg"
                           >
                             <div className="flex-1">
                               <p className="text-sm font-medium text-ps-ink">{due.party_name}</p>
@@ -903,7 +903,7 @@ export default function ClientPortalPage() {
                       return unpaidInvoices.map((t) => (
                         <div
                           key={t.id}
-                          className="flex items-center gap-4 p-3 rounded-lg border border-ps-muted hover:bg-ps-bg"
+                          className="flex items-center gap-4 p-3 rounded-lg border border-ps-border hover:bg-ps-bg"
                         >
                           <div className="flex-1">
                             <p className="text-sm font-medium text-ps-ink">{t.party_name}</p>
@@ -957,7 +957,7 @@ export default function ClientPortalPage() {
                         </div>
                       ))
                     )}
-                    <div className="pt-2 border-t border-ps-muted space-y-2">
+                    <div className="pt-2 border-t border-ps-border space-y-2">
                       <textarea
                         rows={2}
                         placeholder="Type a message to send to this client…"

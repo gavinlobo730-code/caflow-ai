@@ -1031,15 +1031,15 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
 
       {/* Summary strip */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <p className="text-3xs text-ps-label mb-1">Outstanding Payable</p>
           <p className="text-lg font-bold text-orange-700 tabular-nums">{loadFailed ? "—" : fmt(totalPayable)}</p>
         </div>
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <p className="text-3xs text-ps-label mb-1">Total Bills (Selected Period)</p>
           <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : fmt(totalThisFy)}</p>
         </div>
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <p className="text-3xs text-ps-label mb-1">Bills in Selected Period</p>
           <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : bills.length}</p>
         </div>
@@ -1167,7 +1167,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
               )}
               {b.status === "draft" && (
                 <>
-                  <div className="my-1 border-t border-ps-muted" />
+                  <div className="my-1 border-t border-ps-border" />
                   <button onClick={() => { setMenu(null); setDeleteTarget(b); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
@@ -1176,7 +1176,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
               )}
               {b.status === "received" && (
                 <>
-                  <div className="my-1 border-t border-ps-muted" />
+                  <div className="my-1 border-t border-ps-border" />
                   <button onClick={() => { setMenu(null); cancelBill(b); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Cancel bill
@@ -1777,7 +1777,7 @@ function Vendors({ clientId }: { clientId: string }) {
       {deactivateTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="px-6 py-5 border-b border-ps-muted">
+            <div className="px-6 py-5 border-b border-ps-border">
               <h2 className="text-base font-semibold text-ps-ink">Deactivate Vendor?</h2>
             </div>
             <div className="px-6 py-5 space-y-2">
@@ -1790,7 +1790,7 @@ function Vendors({ clientId }: { clientId: string }) {
                 this vendor later.
               </p>
             </div>
-            <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
               <button
                 onClick={() => setDeactivateTarget(null)}
                 disabled={deactivating}
@@ -1820,7 +1820,7 @@ function Vendors({ clientId }: { clientId: string }) {
               </div>
             ) : deleteDeps.can_delete ? (
               <>
-                <div className="px-6 py-5 border-b border-ps-muted">
+                <div className="px-6 py-5 border-b border-ps-border">
                   <h2 className="text-base font-semibold text-ps-ink">Delete Vendor?</h2>
                 </div>
                 <div className="px-6 py-5 space-y-2">
@@ -1832,7 +1832,7 @@ function Vendors({ clientId }: { clientId: string }) {
                     This permanently removes the vendor and cannot be undone.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
+                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     disabled={deleteBusy}
@@ -1851,7 +1851,7 @@ function Vendors({ clientId }: { clientId: string }) {
               </>
             ) : (
               <>
-                <div className="px-6 py-5 border-b border-ps-muted flex items-center gap-2">
+                <div className="px-6 py-5 border-b border-ps-border flex items-center gap-2">
                   <AlertTriangle size={18} className="text-amber-500" />
                   <h2 className="text-base font-semibold text-ps-ink">Can&apos;t delete this vendor</h2>
                 </div>
@@ -1883,7 +1883,7 @@ function Vendors({ clientId }: { clientId: string }) {
                     bills.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
+                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg"
@@ -1951,7 +1951,7 @@ function Vendors({ clientId }: { clientId: string }) {
       )}
 
       {showForm && (
-        <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
+        <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-ps-ink">New Vendor</h3>
             <button onClick={() => setShowForm(false)}><X size={16} className="text-ps-hint" /></button>
@@ -2711,11 +2711,11 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <p className="text-3xs text-ps-label mb-1">Total Paid (FY)</p>
           <p className="text-lg font-bold text-green-700 tabular-nums">{loadFailed ? "—" : fmt(totalPaid)}</p>
         </div>
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <p className="text-3xs text-ps-label mb-1">Transactions</p>
           <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : payments.length}</p>
         </div>
@@ -2726,7 +2726,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
       </div>
 
       {showForm && (
-        <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
+        <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-ps-ink">Record Payment</h3>
             <button onClick={() => setShowForm(false)}><X size={16} className="text-ps-hint" /></button>
@@ -2826,8 +2826,8 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
               at credit or payment whichever is earlier, so the server
               withholds on the remainder — which is why it is shown. */}
           {!isForeign && vendorId && (
-            <div className="border border-ps-muted rounded-lg">
-              <div className="flex items-center justify-between px-3 py-2 border-b border-ps-muted bg-ps-bg rounded-t-lg">
+            <div className="border border-ps-border rounded-lg">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-ps-border bg-ps-bg rounded-t-lg">
                 <p className="text-xs font-semibold text-ps-body">
                   Settle bills{allocatableBills.length ? ` (${allocatableBills.length} open)` : ""}
                 </p>
@@ -2871,7 +2871,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                         const typed = alloc[b.id] ?? "";
                         const bad = typed.trim() !== "" && paiseFromRupeeInput(typed) === null;
                         return (
-                          <tr key={b.id} className="border-t border-ps-bg">
+                          <tr key={b.id} className="border-t border-ps-border">
                             <td className="px-3 py-1.5 text-ps-ink">{b.our_reference ?? b.bill_no ?? "—"}</td>
                             <td className="px-3 py-1.5 text-ps-label">{b.bill_date ?? "—"}</td>
                             <td className="px-3 py-1.5 text-right tabular-nums text-ps-label">{fmt(open)}</td>
@@ -2894,11 +2894,11 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                   </table>
                 </div>
               )}
-              <div className="flex items-center justify-between px-3 py-2 border-t border-ps-muted text-xs">
+              <div className="flex items-center justify-between px-3 py-2 border-t border-ps-border text-xs">
                 <span className="text-ps-label">Allocated</span>
                 <span className="tabular-nums font-semibold text-ps-ink">{fmt(allocTotal)}</span>
               </div>
-              <div className="flex items-center justify-between px-3 py-2 border-t border-ps-muted text-xs rounded-b-lg">
+              <div className="flex items-center justify-between px-3 py-2 border-t border-ps-border text-xs rounded-b-lg">
                 <span className="text-ps-label">
                   Unallocated {unallocatedPaise > 0 ? "(recorded as an advance)" : ""}
                 </span>
@@ -3375,7 +3375,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
               </button>
               {d.status === "draft" && (
                 <>
-                  <div className="my-1 border-t border-ps-muted" />
+                  <div className="my-1 border-t border-ps-border" />
                   <button onClick={() => { setMenu(null); deleteDebitNote(d); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
@@ -3840,7 +3840,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
               </button>
               {d.status === "draft" && (
                 <>
-                  <div className="my-1 border-t border-ps-muted" />
+                  <div className="my-1 border-t border-ps-border" />
                   <button onClick={() => { setMenu(null); deletePcn(d); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft

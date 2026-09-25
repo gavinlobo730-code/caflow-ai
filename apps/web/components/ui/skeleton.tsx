@@ -76,14 +76,14 @@ export function TableSkeleton({
   className?: string;
 }) {
   const header = (
-    <div className="flex gap-4 border-b border-ps-muted bg-ps-bg px-4 py-3">
+    <div className="flex gap-4 border-b border-ps-border bg-ps-bg px-4 py-3">
       {Array.from({ length: cols }).map((_, i) => (
         <Skeleton key={i} className="h-3 flex-1" />
       ))}
     </div>
   );
   const body = (
-    <div className="divide-y divide-ps-muted">
+    <div className="divide-y divide-ps-border">
       {Array.from({ length: rows }).map((_, r) => (
         <div key={r} className="flex items-center gap-4 px-4 py-4">
           {Array.from({ length: cols }).map((_, c) => (
@@ -243,10 +243,10 @@ export function StatementSkeleton({
       aria-label="Loading statement"
       className={cn("overflow-hidden rounded-xl border border-ps-border bg-white", className)}
     >
-      <div className="border-b border-ps-muted bg-ps-bg px-5 py-4">
+      <div className="border-b border-ps-border bg-ps-bg px-5 py-4">
         <Skeleton className="h-3 w-48" />
       </div>
-      <div className="divide-y divide-ps-muted px-5 py-4">
+      <div className="divide-y divide-ps-border px-5 py-4">
         {Array.from({ length: sections }).map((_, s) => (
           <div key={s} className="space-y-2.5 py-3 first:pt-0 last:pb-0">
             <Skeleton className="h-2.5 w-32" />
@@ -277,7 +277,7 @@ export function TransactionListSkeleton({ rows = 4, className }: { rows?: number
     <div
       role="status"
       aria-label="Loading transactions"
-      className={cn("overflow-hidden rounded-xl border border-ps-border bg-white divide-y divide-ps-muted", className)}
+      className={cn("overflow-hidden rounded-xl border border-ps-border bg-white divide-y divide-ps-border", className)}
     >
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex items-start justify-between gap-4 px-4 py-3">

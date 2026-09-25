@@ -529,13 +529,13 @@ function AccountingDashboard({
 
       {/* Recent journal entries */}
       {recentEntries.length > 0 && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">
             <p className="text-xs font-semibold text-ps-body">Recent Entries</p>
             <button onClick={() => onNavigate("journal")} className="text-xs text-blue-600 hover:underline">View all</button>
           </div>
           <table className="w-full text-xs">
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {recentEntries.map((e) => (
                 <tr key={e.id} className="hover:bg-ps-bg">
                   <td className="px-4 py-2.5 text-ps-label whitespace-nowrap w-24">{e.entry_date}</td>
@@ -561,7 +561,7 @@ function DashCard({ label, value, accent, action }: { label: string; value: stri
     green: "bg-green-50 border-green-100", red: "bg-state-problem-surface border-red-100",
     emerald: "bg-emerald-50 border-emerald-100", orange: "bg-orange-50 border-orange-100",
     blue: "bg-blue-50 border-blue-100", amber: "bg-state-attention-surface border-amber-100",
-    gray: "bg-white border-ps-muted",
+    gray: "bg-white border-ps-border",
   };
   const textColors: Record<string, string> = {
     green: "text-green-800", red: "text-red-800", emerald: "text-emerald-800",
@@ -1147,7 +1147,7 @@ function LedgerDrillDown({
   return (
     <div className="fixed inset-0 bg-brand-dark/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between shrink-0">
+        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <div>
             <p className="text-sm font-semibold text-ps-ink">{accountName || "Ledger"}</p>
             <p className="text-2xs text-ps-hint mt-0.5">Account ledger</p>
@@ -1155,7 +1155,7 @@ function LedgerDrillDown({
           <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Back">×</button>
         </div>
 
-        <div className="px-5 py-3 border-b border-ps-muted flex items-end gap-3 flex-wrap shrink-0">
+        <div className="px-5 py-3 border-b border-ps-border flex items-end gap-3 flex-wrap shrink-0">
           <div className="w-64">
             <label className="block text-3xs font-medium text-ps-hint mb-1">Account</label>
             <AccountLookup
@@ -1189,7 +1189,7 @@ function LedgerDrillDown({
             <div className="space-y-3">
               {/* Opening / Closing are backend-computed context — kept outside the
                   table so search/sort/pagination never repositions them. */}
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ps-muted bg-ps-bg px-4 py-2 text-xs text-ps-label">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ps-border bg-ps-bg px-4 py-2 text-xs text-ps-label">
                 <span>Opening Balance</span>
                 <span className="font-mono font-semibold text-ps-body">{bal(ledger.opening_balance_paise, ledger.opening_is_debit)}</span>
               </div>
@@ -1409,7 +1409,7 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
         </div>
       )}
       {loading ? <TableSkeleton cols={5} rows={6} /> : loaded && rows.length > 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
             <thead>
               {periodic && (
@@ -1420,7 +1420,7 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
                   <th colSpan={2} className="px-4 pt-2 text-center font-semibold">Closing</th>
                 </tr>
               )}
-              <tr className="border-b border-ps-muted text-ps-hint">
+              <tr className="border-b border-ps-border text-ps-hint">
                 <th className="px-4 py-3 text-left font-semibold">Code</th>
                 <th className="px-3 py-3 text-left font-semibold">Account</th>
                 <th className="px-3 py-3 text-left font-semibold">Type</th>
@@ -1432,7 +1432,7 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
                 <th className="px-4 py-3 text-right font-semibold">{periodic ? "Cr (₹)" : "Credit (₹)"}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {rows.map((r) => {
                 // The brought-forward surplus is DERIVED, not an account, so it
                 // has no ledger to drill into — the same reason the Balance
@@ -1655,7 +1655,7 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
   // holding a second idea of what this report says.
   clientId: string; periodEnd: string; onPosted: () => void;
 }) {
-  const wrap = "bg-white rounded-xl border border-ps-muted overflow-hidden";
+  const wrap = "bg-white rounded-xl border border-ps-border overflow-hidden";
   const th = "px-3 py-3 text-left font-semibold";
   const thr = "px-3 py-3 text-right font-semibold";
 
@@ -1665,11 +1665,11 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
     return (
       <div className={wrap}>
         <table className="w-full text-xs">
-          <thead><tr className="border-b border-ps-muted text-ps-hint">
+          <thead><tr className="border-b border-ps-border text-ps-hint">
             <th className={th}>Currency</th><th className={thr}>Receivable</th><th className={thr}>Payable</th>
             <th className={thr}>Bank</th><th className={thr}>Net (foreign)</th><th className={thr}>Net (₹ base)</th>
           </tr></thead>
-          <tbody className="divide-y divide-ps-bg">
+          <tbody className="divide-y divide-ps-border">
             {rows.map((r) => (
               <tr key={r.currency} className="hover:bg-ps-bg">
                 <td className="px-3 py-2"><CcyBadge code={r.currency} /></td>
@@ -1699,8 +1699,8 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
         </div>
         <div className={wrap}>
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-ps-muted text-ps-hint"><th className={th}>Date</th><th className={th}>Document</th><th className={th}>Currency</th><th className={thr}>Settle rate</th><th className={thr}>Gain / (Loss)</th></tr></thead>
-            <tbody className="divide-y divide-ps-bg">
+            <thead><tr className="border-b border-ps-border text-ps-hint"><th className={th}>Date</th><th className={th}>Document</th><th className={th}>Currency</th><th className={thr}>Settle rate</th><th className={thr}>Gain / (Loss)</th></tr></thead>
+            <tbody className="divide-y divide-ps-border">
               {lines.map((l, i) => (
                 <tr key={i} className="hover:bg-ps-bg">
                   <td className="px-3 py-2 text-ps-label">{l.date}</td>
@@ -1735,8 +1735,8 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
       {panel}
       <div className={wrap}>
         <table className="w-full text-xs">
-          <thead><tr className="border-b border-ps-muted text-ps-hint"><th className={th}>Period end</th><th className={th}>Currency</th><th className={th}>Item</th><th className={thr}>Closing rate</th><th className={thr}>Cumulative</th><th className={thr}>Runs</th></tr></thead>
-          <tbody className="divide-y divide-ps-bg">
+          <thead><tr className="border-b border-ps-border text-ps-hint"><th className={th}>Period end</th><th className={th}>Currency</th><th className={th}>Item</th><th className={thr}>Closing rate</th><th className={thr}>Cumulative</th><th className={thr}>Runs</th></tr></thead>
+          <tbody className="divide-y divide-ps-border">
             {lines.map((l, i) => (
               <tr key={i} className="hover:bg-ps-bg">
                 <td className="px-3 py-2 text-ps-label">{l.period_end}</td>
@@ -1765,8 +1765,8 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
         <p className="text-xs font-semibold text-ps-body">{title}</p>
         <div className={wrap}>
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-ps-muted text-ps-hint"><th className={th}>Document</th><th className={th}>Currency</th><th className={thr}>Rate</th><th className={thr}>Foreign outstanding</th><th className={thr}>Base (₹)</th></tr></thead>
-            <tbody className="divide-y divide-ps-bg">
+            <thead><tr className="border-b border-ps-border text-ps-hint"><th className={th}>Document</th><th className={th}>Currency</th><th className={thr}>Rate</th><th className={thr}>Foreign outstanding</th><th className={thr}>Base (₹)</th></tr></thead>
+            <tbody className="divide-y divide-ps-border">
               {rows.map((r, i) => (
                 <tr key={i} className="hover:bg-ps-bg">
                   <td className="px-3 py-2 text-ps-label">{r.doc_no}</td>
@@ -1790,8 +1790,8 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
             <p className="text-xs font-semibold text-ps-body">Bank accounts</p>
             <div className={wrap}>
               <table className="w-full text-xs">
-                <thead><tr className="border-b border-ps-muted text-ps-hint"><th className={th}>Account</th><th className={th}>Currency</th><th className={thr}>Foreign balance</th><th className={thr}>Base (₹)</th></tr></thead>
-                <tbody className="divide-y divide-ps-bg">
+                <thead><tr className="border-b border-ps-border text-ps-hint"><th className={th}>Account</th><th className={th}>Currency</th><th className={thr}>Foreign balance</th><th className={thr}>Base (₹)</th></tr></thead>
+                <tbody className="divide-y divide-ps-border">
                   {banks.map((b, i) => (
                     <tr key={i} className="hover:bg-ps-bg">
                       <td className="px-3 py-2 text-ps-label">{b.name}</td>
@@ -1822,8 +1822,8 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
       )}
       <div className={wrap}>
         <table className="w-full text-xs">
-          <thead><tr className="border-b border-ps-muted text-ps-hint"><th className={th}>Date</th><th className={th}>Document</th><th className={th}>Currency</th><th className={thr}>Rate</th><th className={th}>Source</th><th className={th}>Overridden</th></tr></thead>
-          <tbody className="divide-y divide-ps-bg">
+          <thead><tr className="border-b border-ps-border text-ps-hint"><th className={th}>Date</th><th className={th}>Document</th><th className={th}>Currency</th><th className={thr}>Rate</th><th className={th}>Source</th><th className={th}>Overridden</th></tr></thead>
+          <tbody className="divide-y divide-ps-border">
             {docs.map((r, i) => (
               <tr key={i} className="hover:bg-ps-bg">
                 <td className="px-3 py-2 text-ps-label">{r.date}</td>
@@ -2102,8 +2102,8 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
       {loading && <StatementSkeleton sections={2} rowsPerSection={3} />}
 
       {!loading && loaded && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-x-auto print:border-0">
-          <div className="px-5 py-4 bg-ps-bg border-b border-ps-muted print:bg-white">
+        <div className="bg-white rounded-xl border border-ps-border overflow-x-auto print:border-0">
+          <div className="px-5 py-4 bg-ps-bg border-b border-ps-border print:bg-white">
             <p className="text-xs font-bold text-ps-label uppercase tracking-wide">Statement of Profit & Loss{basis === "cash" ? " (Cash Basis)" : ""}</p>
             <p className="text-3xs text-ps-hint mt-0.5">
               {columns.length > 1 ? `${columns.length} periods: ${columns[0]?.label} – ${columns[columns.length - 1]?.label}` : columns[0]?.label}
@@ -2111,7 +2111,7 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
           </div>
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-ps-muted text-ps-hint text-3xs">
+              <tr className="border-b border-ps-border text-ps-hint text-3xs">
                 <th className="px-5 py-2 text-left font-semibold">Particulars</th>
                 {columns.map((c, i) => <th key={i} className="px-4 py-2 text-right font-semibold whitespace-nowrap">{c.label} (₹)</th>)}
               </tr>
@@ -2456,13 +2456,13 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
               {columns.length} snapshots, each as of the end of its period: {columns[0]?.label} – {columns[columns.length - 1]?.label}
             </p>
           )}
-          <div className="bg-white rounded-xl border border-ps-muted overflow-x-auto">
-            <div className="px-5 py-3 bg-ps-bg border-b border-ps-muted">
+          <div className="bg-white rounded-xl border border-ps-border overflow-x-auto">
+            <div className="px-5 py-3 bg-ps-bg border-b border-ps-border">
               <p className="text-xs font-bold text-ps-label uppercase tracking-wide">I. Equity & Liabilities{basis === "cash" ? " (Cash Basis)" : ""}</p>
             </div>
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint text-3xs">
+                <tr className="border-b border-ps-border text-ps-hint text-3xs">
                   <th className="px-5 py-2 text-left font-semibold">Particulars</th>
                   {columns.map((c, i) => <th key={i} className="px-4 py-2 text-right font-semibold whitespace-nowrap">{c.label} (₹)</th>)}
                 </tr>
@@ -2487,13 +2487,13 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
               </tbody>
             </table>
           </div>
-          <div className="bg-white rounded-xl border border-ps-muted overflow-x-auto">
-            <div className="px-5 py-3 bg-ps-bg border-b border-ps-muted">
+          <div className="bg-white rounded-xl border border-ps-border overflow-x-auto">
+            <div className="px-5 py-3 bg-ps-bg border-b border-ps-border">
               <p className="text-xs font-bold text-ps-label uppercase tracking-wide">II. Assets{basis === "cash" ? " (Cash Basis)" : ""}</p>
             </div>
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint text-3xs">
+                <tr className="border-b border-ps-border text-ps-hint text-3xs">
                   <th className="px-5 py-2 text-left font-semibold">Particulars</th>
                   {columns.map((c, i) => <th key={i} className="px-4 py-2 text-right font-semibold whitespace-nowrap">{c.label} (₹)</th>)}
                 </tr>
@@ -2570,7 +2570,7 @@ function fmtSigned(paise: number): string {
 function CFSectionBlock({ title, section }: { title: string; section: CFSection }) {
   const pos = section.total_paise >= 0;
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className={`px-5 py-3 border-b border-ps-border flex items-center justify-between ${pos ? "bg-green-50/50" : "bg-state-problem-surface/50"}`}>
         <h3 className="text-xs font-semibold text-ps-body">{title}</h3>
         <span className={`text-sm font-bold ${pos ? "text-green-700" : "text-state-problem"}`}>{fmtSigned(section.total_paise)}</span>
@@ -2579,7 +2579,7 @@ function CFSectionBlock({ title, section }: { title: string; section: CFSection 
         <p className="px-5 py-4 text-xs text-ps-hint">No transactions in this category</p>
       ) : (
         <table className="w-full text-xs">
-          <tbody className="divide-y divide-ps-bg">
+          <tbody className="divide-y divide-ps-border">
             {section.lines.map((l) => (
               <tr key={l.account_id} className="hover:bg-ps-bg">
                 <td className="px-5 py-2 text-ps-body">{l.account_name}</td>
@@ -2640,7 +2640,7 @@ function CFMatrix({ columns }: { columns: CFColumn[] }) {
   return (
     // The table scrolls inside its own box: twelve monthly columns is wider than
     // the page, and a body that scrolls sideways moves the whole app with it.
-    <div className="bg-white rounded-xl border border-ps-muted overflow-x-auto">
+    <div className="bg-white rounded-xl border border-ps-border overflow-x-auto">
       <table className="w-full text-xs min-w-max">
         <thead>
           <tr className="bg-ps-bg border-b border-ps-border">
@@ -2653,7 +2653,7 @@ function CFMatrix({ columns }: { columns: CFColumn[] }) {
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-ps-bg">
+        <tbody className="divide-y divide-ps-border">
           {sections.map(({ title, pick }) => {
             const accounts = cfUnion(columns, pick);
             return (
@@ -2949,7 +2949,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
               { label: "Financing", paise: agg.financing },
               { label: "Net Change", paise: agg.netChange },
             ].map((s) => (
-              <div key={s.label} className="rounded-xl border border-ps-muted bg-white p-3 text-center">
+              <div key={s.label} className="rounded-xl border border-ps-border bg-white p-3 text-center">
                 <p className="text-3xs font-medium text-ps-label mb-1">{s.label}</p>
                 <p className={`text-sm font-bold tabular-nums ${s.paise >= 0 ? "text-green-700" : "text-state-problem"}`}>{fmtSigned(s.paise)}</p>
               </div>
@@ -2957,7 +2957,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
           </div>
 
           {/* Opening → Closing */}
-          <div className="bg-white rounded-xl border border-ps-muted p-4 flex items-center gap-4 flex-wrap">
+          <div className="bg-white rounded-xl border border-ps-border p-4 flex items-center gap-4 flex-wrap">
             <div>
               <p className="text-3xs text-ps-hint">Opening Cash</p>
               <p className="text-sm font-semibold text-ps-ink">{fmtSigned(agg.opening)}</p>
@@ -2983,12 +2983,12 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
 
               {/* Operating reconciliation (indirect method) */}
               {r && (
-                <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+                <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
                   <div className="px-5 py-3 border-b border-ps-border bg-ps-bg">
                     <h3 className="text-xs font-semibold text-ps-body">Operating Reconciliation — Indirect Method</h3>
                   </div>
                   <table className="w-full text-xs">
-                    <tbody className="divide-y divide-ps-bg">
+                    <tbody className="divide-y divide-ps-border">
                       {CF_RECON_ROWS.map(({ label, of }) => {
                         const paise = of(r);
                         return paise !== 0 ? (
@@ -3091,11 +3091,11 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {loading ? <TableSkeleton cols={6} rows={5} /> : rows.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted p-10 text-center text-sm text-ps-hint">
+        <div className="bg-white rounded-xl border border-ps-border p-10 text-center text-sm text-ps-hint">
           {status === "draft" ? "No drafts awaiting approval." : "No posted journals yet."}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
             <thead className="bg-ps-bg text-ps-label"><tr>
               <th className="px-3 py-2 text-left font-medium">Date</th>
@@ -3106,7 +3106,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
               <th className="px-3 py-2 text-right font-medium">Credit</th>
               <th className="px-3 py-2 text-right font-medium">{status === "draft" ? "Action" : "Posted At"}</th>
             </tr></thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {rows.map((j) => {
                 const balanced = j.total_debit_paise === j.total_credit_paise && j.total_debit_paise > 0;
                 return (
@@ -3285,7 +3285,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4 max-w-ps-data mx-auto">
-      <div className="bg-white rounded-xl border border-ps-muted p-5 flex items-center justify-between gap-4">
+      <div className="bg-white rounded-xl border border-ps-border p-5 flex items-center justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Verify Books</h3>
           {/* The blurb was a SECOND copy of the vocabulary and had gone stale
@@ -3319,7 +3319,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {showChecks && catalogue && (
-        <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
+        <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
           <ul className="space-y-2">
             {checks.map((c) => (
               <li key={c.check_name} className="flex gap-2.5 text-xs">
@@ -3337,7 +3337,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
             ))}
           </ul>
           {catalogue.not_checked.length > 0 && (
-            <div className="border-t border-ps-muted pt-3">
+            <div className="border-t border-ps-border pt-3">
               {/* A clean run must not be read as a clean set of books. */}
               <p className="text-3xs uppercase tracking-wide text-ps-hint mb-1.5">
                 Not checked
@@ -3356,7 +3356,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
       )}
 
       {runs.length > 0 && (
-        <div className="bg-white rounded-xl border border-ps-muted p-3 flex items-center gap-2 overflow-x-auto">
+        <div className="bg-white rounded-xl border border-ps-border p-3 flex items-center gap-2 overflow-x-auto">
           <span className="text-3xs text-ps-hint flex-shrink-0 pl-1">Past runs:</span>
           {runs.map((r) => (
             <button
@@ -3376,7 +3376,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
       {loadingRuns || loadingFindings ? (
         <TableSkeleton cols={3} rows={4} />
       ) : !activeRun ? (
-        <div className="bg-white rounded-xl border border-ps-muted p-10 text-center text-sm text-ps-hint">
+        <div className="bg-white rounded-xl border border-ps-border p-10 text-center text-sm text-ps-hint">
           No verification has been run for this client yet. Click &ldquo;Verify Books&rdquo; to check it now.
         </div>
       ) : activeRun.status === "failed" ? (
@@ -3390,7 +3390,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
       ) : (
         <div className="space-y-3">
           {openFindings.map((f) => (
-            <div key={f.id} className="bg-white rounded-xl border border-ps-muted p-4 space-y-2">
+            <div key={f.id} className="bg-white rounded-xl border border-ps-border p-4 space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
@@ -3425,13 +3425,13 @@ function VerifyBooks({ clientId }: { clientId: string }) {
           ))}
 
           {resolvedFindings.length > 0 && (
-            <details className="bg-white rounded-xl border border-ps-muted p-4">
+            <details className="bg-white rounded-xl border border-ps-border p-4">
               <summary className="text-xs text-ps-label cursor-pointer">
                 {resolvedFindings.length} reviewed finding{resolvedFindings.length === 1 ? "" : "s"}
               </summary>
               <div className="mt-3 space-y-2">
                 {resolvedFindings.map((f) => (
-                  <div key={f.id} className="text-xs text-ps-hint border-t border-ps-bg pt-2">
+                  <div key={f.id} className="text-xs text-ps-hint border-t border-ps-border pt-2">
                     <span className={`px-1.5 py-0.5 rounded-full border mr-2 ${SEVERITY_STYLE[f.severity] ?? SEVERITY_STYLE.warning}`}>
                       {checkLabel(f.check_name, checks)}
                     </span>
@@ -3692,7 +3692,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       />
 
       {/* ── Financial statements ── */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-5 py-4 border-b border-ps-border">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold text-ps-body">Financial Statements</p>
@@ -3700,7 +3700,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
           </div>
           <p className="text-3xs text-ps-hint mt-0.5">Export to XLSX or share directly to the client portal. The year above also decides which year Year-End Close locks.</p>
         </div>
-        <div className="divide-y divide-ps-bg">
+        <div className="divide-y divide-ps-border">
           {REPORT_LINKS.map((r) => (
             <div key={r.id} className="px-5 py-4 flex items-center gap-4">
               <span className="text-2xl">{r.icon}</span>
@@ -3747,7 +3747,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
           INR-only client sees no added complexity (CLAUDE.md). Previously this
           gated a whole top-level tab; now it gates one card. */}
       {mcActive && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-5 py-4 border-b border-ps-border">
             <p className="text-xs font-semibold text-ps-body">Foreign Currency</p>
             <p className="text-3xs text-ps-hint mt-0.5">Exposure, realized and unrealized gain/loss, open items, and the rate audit trail.</p>
@@ -3797,7 +3797,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       </div>
 
       {/* Shared reports history */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-5 py-4 border-b border-ps-border">
           <p className="text-xs font-semibold text-ps-body">Shared Reports</p>
           <p className="text-3xs text-ps-hint mt-0.5">Reports previously shared with this client via portal.</p>
@@ -3808,8 +3808,8 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
           <div className="text-center py-8 text-ps-hint text-sm">No reports shared yet.</div>
         ) : (
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-ps-muted text-ps-hint"><th className="px-5 py-2 text-left font-semibold">Report</th><th className="px-3 py-2 text-left font-semibold">FY</th><th className="px-3 py-2 text-left font-semibold">File</th><th className="px-4 py-2 text-left font-semibold">Shared On</th><th className="px-3 py-2"></th></tr></thead>
-            <tbody className="divide-y divide-ps-bg">
+            <thead><tr className="border-b border-ps-border text-ps-hint"><th className="px-5 py-2 text-left font-semibold">Report</th><th className="px-3 py-2 text-left font-semibold">FY</th><th className="px-3 py-2 text-left font-semibold">File</th><th className="px-4 py-2 text-left font-semibold">Shared On</th><th className="px-3 py-2"></th></tr></thead>
+            <tbody className="divide-y divide-ps-border">
               {sharedReports.map((r) => (
                 <tr key={r.id} className="hover:bg-ps-bg">
                   <td className="px-5 py-2.5 font-medium text-ps-ink">{r.report_label}</td>

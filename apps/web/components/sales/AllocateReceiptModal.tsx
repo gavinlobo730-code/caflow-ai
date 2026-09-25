@@ -174,7 +174,7 @@ export default function AllocateReceiptModal({
           {loading ? <p className="text-xs text-ps-hint">Loading open invoices…</p>
             : loadFailed ? (
               <div className="flex items-center gap-3">
-                <p className="text-xs text-red-600">
+                <p className="text-xs text-state-problem">
                   Couldn&apos;t load this customer&apos;s invoices — the request failed.
                 </p>
                 <button onClick={load}
@@ -202,7 +202,7 @@ export default function AllocateReceiptModal({
                   {invoices.map((inv) => {
                     const problem = messageFor(inv.id);
                     return (
-                      <tr key={inv.id} className="border-b border-ps-muted">
+                      <tr key={inv.id} className="border-b border-ps-border">
                         <td className="py-1.5 pr-2 font-mono text-ps-ink">{inv.invoice_no}</td>
                         <td className="py-1.5 pr-2 text-ps-label">{inv.invoice_date}</td>
                         <td className="py-1.5 pr-2 text-right font-mono">{fmt(inv.total_paise)}</td>
@@ -215,7 +215,7 @@ export default function AllocateReceiptModal({
                               aria-label={`Amount to apply to ${inv.invoice_no}`}
                               onChange={(ev) => setAmounts((a) => ({ ...a, [inv.id]: ev.target.value }))}
                               className={`w-28 px-2 py-1 border rounded text-right text-2xs outline-none focus:border-brand ${
-                                problem ? "border-red-300" : "border-ps-border"}`} />
+                                problem ? "border-state-problem" : "border-ps-border"}`} />
                             <button type="button"
                               onClick={() => setAmounts((a) => ({
                                 ...a, [inv.id]: String(ceilingFor(inv) / 100) }))}
@@ -224,7 +224,7 @@ export default function AllocateReceiptModal({
                             </button>
                           </div>
                           {problem && (
-                            <p className="text-3xs text-red-600 mt-0.5">{problem}</p>
+                            <p className="text-3xs text-state-problem mt-0.5">{problem}</p>
                           )}
                         </td>
                       </tr>
@@ -255,7 +255,7 @@ export default function AllocateReceiptModal({
           </div>
 
           {overRun && (
-            <p className="text-2xs text-red-600">
+            <p className="text-2xs text-state-problem">
               That is more than the receipt settles. Reduce a line, or record a
               second receipt.
             </p>

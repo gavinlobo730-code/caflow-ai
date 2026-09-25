@@ -355,7 +355,7 @@ function BudgetTable({
       <CardContent className="p-0 overflow-x-auto">
         <table className="w-full text-sm min-w-[800px]">
           <thead>
-            <tr className="text-xs text-ps-hint border-b border-ps-muted">
+            <tr className="text-xs text-ps-hint border-b border-ps-border">
               <th className="px-5 py-2.5 text-left font-medium w-48">Account</th>
               <th className="px-3 py-2.5 text-right font-medium">Annual Budget</th>
               {quarterLabels.map(q => (
@@ -366,7 +366,7 @@ function BudgetTable({
               <th className="px-5 py-2.5 text-right font-medium">Var %</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ps-bg">
+          <tbody className="divide-y divide-ps-border">
             {rows.map(row => {
               const isEditing = editingId === row.account_id;
               return (

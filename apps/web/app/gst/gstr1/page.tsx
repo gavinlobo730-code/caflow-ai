@@ -368,12 +368,12 @@ export default function GSTR1Page() {
                   </div>
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-xs text-ps-label border-b border-ps-muted">
+                      <tr className="text-xs text-ps-label border-b border-ps-border">
                         <th className="text-left py-2 font-medium">Tax Type</th>
                         <th className="text-right py-2 font-medium">Amount</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-ps-bg">
+                    <tbody className="divide-y divide-ps-border">
                       {[
                         { label: "Taxable Value", value: result.summary.totals_rupees.taxable ?? 0 },
                         { label: "CGST",  value: result.summary.totals_rupees.cgst ?? 0 },
@@ -436,7 +436,7 @@ export default function GSTR1Page() {
                           <th className="text-center px-4 py-2.5 font-medium">RCM</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-ps-bg">
+                      <tbody className="divide-y divide-ps-border">
                         {(b2b as { ctin: string; inv: Record<string, unknown>[] }[]).flatMap(g =>
                           g.inv.map((inv, i) => {
                             const itm = ((inv.itms as Record<string, unknown>[])?.[0]?.itm_det as Record<string, unknown>) ?? {};
@@ -479,7 +479,7 @@ export default function GSTR1Page() {
                           <th className="text-right px-4 py-2.5 font-medium">SGST</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-ps-bg">
+                      <tbody className="divide-y divide-ps-border">
                         {b2cs.map((row, i) => {
                           // "sply_ty" is the GSTN key. "sply_tp" was this
                           // codebase's misspelling, and a GSTR-1 saved before
@@ -534,7 +534,7 @@ export default function GSTR1Page() {
                           <th className="text-right px-4 py-2.5 font-medium">IGST</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-ps-bg">
+                      <tbody className="divide-y divide-ps-border">
                         {(b2cl as { pos: string; inv: Record<string, unknown>[] }[]).flatMap(g =>
                           g.inv.map((inv, i) => {
                             const itm = ((inv.itms as Record<string, unknown>[])?.[0]?.itm_det as Record<string, unknown>) ?? {};
@@ -574,7 +574,7 @@ export default function GSTR1Page() {
                           <th className="text-right px-4 py-2.5 font-medium">Taxable</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-ps-bg">
+                      <tbody className="divide-y divide-ps-border">
                         {(cdnr as { ctin: string; nt: Record<string, unknown>[] }[]).flatMap(g =>
                           g.nt.map((nt, i) => {
                             const itm = ((nt.itms as Record<string, unknown>[])?.[0]?.itm_det as Record<string, unknown>) ?? {};
@@ -619,7 +619,7 @@ export default function GSTR1Page() {
                           <th className="text-right px-4 py-2.5 font-medium">IGST</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-ps-bg">
+                      <tbody className="divide-y divide-ps-border">
                         {(exp as { exp_typ: string; inv: Record<string, unknown>[] }[]).flatMap(g =>
                           g.inv.map((inv, i) => {
                             const itm = ((inv.itms as Record<string, unknown>[])?.[0]?.itm_det as Record<string, unknown>) ?? {};
@@ -665,7 +665,7 @@ export default function GSTR1Page() {
                           <th className="text-right px-4 py-2.5 font-medium">SGST</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-ps-bg">
+                      <tbody className="divide-y divide-ps-border">
                         {hsn.map((row, i) => (
                           <tr key={i} className="hover:bg-ps-bg">
                             <td className="px-4 py-2.5 font-mono text-xs font-semibold text-ps-body">{row.hsn_sc as string}</td>
@@ -686,7 +686,7 @@ export default function GSTR1Page() {
               {/* JSON Preview tab */}
               {activeTab === "json" && (
                 <div>
-                  <div className="px-4 py-3 bg-ps-bg border-b border-ps-muted flex items-center justify-between">
+                  <div className="px-4 py-3 bg-ps-bg border-b border-ps-border flex items-center justify-between">
                     <p className="text-xs text-ps-label">
                       GSTN-compatible payload. This JSON is uploaded to gst.gov.in after CA approval.
                       Max 5 MB / 19,000 line items per upload.

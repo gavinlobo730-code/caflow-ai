@@ -346,7 +346,7 @@ export function PurchaseCreditNoteEditor({
   }
 
   const busy = saving;
-  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-3xs text-red-600">{msg}</p> : null);
+  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-3xs text-state-problem">{msg}</p> : null);
 
   const toolbar = (
     <>
@@ -360,7 +360,7 @@ export function PurchaseCreditNoteEditor({
   );
 
   const summary = (
-    <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-2 text-xs">
+    <div className="bg-white rounded-xl border border-ps-border p-4 space-y-2 text-xs">
       <p className="font-semibold text-ps-body">Summary</p>
       <Row label="Taxable value" value={fmt(totals.taxable_paise)} />
       {isInterstate ? (
@@ -392,7 +392,7 @@ export function PurchaseCreditNoteEditor({
         Preview — GST is confirmed by the server on save.
       </p>
       {attempted && !validation.ok && (
-        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-state-problem-surface rounded px-2 py-1.5">
+        <div className="flex items-start gap-1.5 text-3xs text-state-problem bg-state-problem-surface rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.vendor ?? validation.errors.creditNoteDate ?? validation.errors.lines}</span>
         </div>
@@ -409,17 +409,17 @@ export function PurchaseCreditNoteEditor({
       ]}
       title={isEdit ? `Edit ${existing?.credit_note_no || "Credit Note"}` : "New Credit Note"}
       statusPill={<span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">{isEdit ? (existing?.status ?? "draft") : "Draft"}</span>}
-      dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Unsaved changes</span> : undefined}
+      dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-state-attention" /> Unsaved changes</span> : undefined}
       toolbar={toolbar}
       summary={summary}
     >
       <div className="space-y-5">
-        <section className="bg-state-attention-surface border border-amber-100 rounded-lg p-3 space-y-2">
-          <p className="text-xs font-medium text-amber-800 flex items-center gap-1.5"><Upload size={12} /> Attachment</p>
+        <section className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3 space-y-2">
+          <p className="text-xs font-medium text-state-attention flex items-center gap-1.5"><Upload size={12} /> Attachment</p>
           {!isLocked && (
             <div className="flex items-center gap-2">
               <input type="file" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
-              <button onClick={handleUpload} disabled={!uploadFile || uploading} className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
+              <button onClick={handleUpload} disabled={!uploadFile || uploading} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {uploading ? "Uploading…" : "Upload"}
               </button>
             </div>
@@ -429,7 +429,7 @@ export function PurchaseCreditNoteEditor({
           )}
         </section>
 
-        <section className="bg-white rounded-xl border border-ps-muted p-4">
+        <section className="bg-white rounded-xl border border-ps-border p-4">
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
@@ -483,7 +483,7 @@ export function PurchaseCreditNoteEditor({
           </div>
         </section>
 
-        <section className="bg-white rounded-xl border border-ps-muted p-4">
+        <section className="bg-white rounded-xl border border-ps-border p-4">
           <h2 className="text-xs font-semibold text-ps-body mb-2">Line items</h2>
           {isLocked && (
             <p className="mb-2 text-3xs text-ps-hint">
@@ -494,7 +494,7 @@ export function PurchaseCreditNoteEditor({
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[760px]">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint">
+                <tr className="border-b border-ps-border text-ps-hint">
                   <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
                   <th className="pb-2 text-left font-semibold">Description</th>
                   <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
@@ -506,7 +506,7 @@ export function PurchaseCreditNoteEditor({
                   <th className="pb-2 w-6" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {lines.map((line, idx) => {
                   const g = previewPurchaseCreditNoteTotals([line], isInterstate);
                   const invalid = attempted && !isValidPurchaseCreditNoteLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
@@ -547,7 +547,7 @@ export function PurchaseCreditNoteEditor({
                       <td className="py-1.5 px-2 text-right font-mono text-ps-body">{g.grand_total_paise > 0 ? fmt(g.grand_total_paise) : "—"}</td>
                       <td className="py-1.5">
                         {lines.length > 1 && (
-                          <button onClick={() => removeLine(idx)} className="text-ps-disabled hover:text-red-600" aria-label="Remove line">
+                          <button onClick={() => removeLine(idx)} className="text-ps-disabled hover:text-state-problem" aria-label="Remove line">
                             <Trash2 size={13} />
                           </button>
                         )}

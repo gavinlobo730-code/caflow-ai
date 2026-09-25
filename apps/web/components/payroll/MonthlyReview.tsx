@@ -142,7 +142,7 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
 
         {variance?.comparable ? (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-ps-muted border-b border-ps-muted">
+            <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-ps-border border-b border-ps-border">
               {[
                 { label: "Gross", now: variance.gross_paise, was: variance.prior_gross_paise },
                 { label: "Net", now: variance.net_paise, was: variance.prior_net_paise },
@@ -178,7 +178,7 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
                     <th className="text-left py-2 px-5 font-medium">What moved</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-muted">
+                <tbody className="divide-y divide-ps-border">
                   {variance.employees.filter(e => e.status !== "unchanged").map(e => (
                     <tr key={e.employee_id} className="hover:bg-ps-bg align-top">
                       <td className="py-2 px-5 text-ps-ink">
@@ -230,7 +230,7 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
         ) : null}
 
         {(variance?.notes.length ?? 0) > 0 && (
-          <div className="px-5 py-3 border-t border-ps-muted bg-ps-bg space-y-1">
+          <div className="px-5 py-3 border-t border-ps-border bg-ps-bg space-y-1">
             {variance!.notes.map((n, i) => (
               <p key={i} className="text-xs text-ps-label flex gap-2">
                 <Info size={12} className="mt-0.5 flex-shrink-0 text-ps-hint" />
@@ -267,7 +267,7 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
                   <th className="text-right py-2 px-5 font-medium">Cost</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-muted">
+              <tbody className="divide-y divide-ps-border">
                 {departments.rows.map(r => (
                   <tr key={r.department} className="hover:bg-ps-bg">
                     <td className="py-2 px-5 text-ps-ink">{r.department}</td>
@@ -289,7 +289,7 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
               </tfoot>
             </table>
           </div>
-          <div className="px-5 py-3 border-t border-ps-muted bg-ps-bg space-y-1">
+          <div className="px-5 py-3 border-t border-ps-border bg-ps-bg space-y-1">
             {departments.notes.map((n, i) => (
               <p key={i} className="text-xs text-ps-label flex gap-2">
                 <Info size={12} className="mt-0.5 flex-shrink-0 text-ps-hint" />
@@ -352,7 +352,7 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
                     <th className="text-right py-2 px-5 font-medium">Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-muted">
+                <tbody className="divide-y divide-ps-border">
                   {advice.rows.map(r => (
                     <tr key={r.employee_id} className="hover:bg-ps-bg">
                       <td className="py-2 px-5 text-ps-ink">{r.name || "(unnamed)"}</td>
@@ -378,7 +378,7 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
             </div>
           )}
 
-          <div className="px-5 py-3 border-t border-ps-muted bg-ps-bg space-y-1">
+          <div className="px-5 py-3 border-t border-ps-border bg-ps-bg space-y-1">
             {advice.notes.map((n, i) => (
               <p key={i} className="text-xs text-ps-label flex gap-2">
                 <Info size={12} className="mt-0.5 flex-shrink-0 text-ps-hint" />

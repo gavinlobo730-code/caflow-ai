@@ -943,7 +943,7 @@ function TdsProjectionTab({ employees, fyOptions }: {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            <div className="p-3 bg-ps-bg rounded-lg border border-ps-muted">
+            <div className="p-3 bg-ps-bg rounded-lg border border-ps-border">
               <p className="text-xs text-ps-label">Est. Annual Gross</p>
               <p className="text-base font-bold text-ps-ink mt-0.5">{fmtPaise(estimatedAnnualGross)}</p>
             </div>
@@ -1159,7 +1159,7 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 border-b">
-              <div className="p-3 bg-ps-bg rounded-lg border border-ps-muted">
+              <div className="p-3 bg-ps-bg rounded-lg border border-ps-border">
                 <p className="text-xs text-ps-label">Total Gross Paid</p>
                 <p className="text-lg font-bold text-ps-ink mt-0.5">{fmtPaise(grandTotal.gross)}</p>
               </div>

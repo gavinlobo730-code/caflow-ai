@@ -332,7 +332,7 @@ export default function AISPage() {
       </div>
 
       {/* Client and assessment year */}
-      <div className="bg-white rounded-xl border border-ps-muted px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="bg-white rounded-xl border border-ps-border px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-ps-body mb-1.5">Client</label>
           <select
@@ -372,7 +372,7 @@ export default function AISPage() {
       )}
 
       {/* Upload */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-5 py-4 border-b border-ps-border">
           <h2 className="text-sm font-semibold text-ps-ink">Step 1 — Upload the AIS JSON</h2>
           <p className="text-xs text-ps-hint mt-0.5">
@@ -397,7 +397,7 @@ export default function AISPage() {
             onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
             className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
               clientId ? "border-ps-border cursor-pointer hover:border-brand-light hover:bg-brand-surface/40"
-                       : "border-ps-muted cursor-not-allowed"}`}
+                       : "border-ps-border cursor-not-allowed"}`}
           >
             <Upload className="w-8 h-8 text-ps-disabled mx-auto mb-3" />
             <p className="text-sm font-medium text-ps-label">
@@ -413,7 +413,7 @@ export default function AISPage() {
 
       {/* What the statement itself says */}
       {statement?.upload && (
-        <div className="bg-white rounded-xl border border-ps-muted px-5 py-4 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-border px-5 py-4 space-y-3">
           <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs">
             <div>
               <span className="text-ps-hint">PAN on the statement</span>
@@ -455,7 +455,7 @@ export default function AISPage() {
 
       {/* The lines */}
       {lines.length > 0 && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-ps-ink">Step 2 — What the books carry</h2>
@@ -482,7 +482,7 @@ export default function AISPage() {
                   <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {lines.map((line) => {
                   const diff = line.books_amount_paise === null
                     ? null : line.amount_paise - line.books_amount_paise;
@@ -638,7 +638,7 @@ export default function AISPage() {
 
       {/* What is open */}
       {summary && lines.length > 0 && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-5 py-4 border-b border-ps-border">
             <h2 className="text-sm font-semibold text-ps-ink">Step 3 — What is still open</h2>
           </div>
@@ -698,7 +698,7 @@ export default function AISPage() {
       )}
 
       {!loading && lines.length === 0 && (
-        <div className="bg-white rounded-xl border border-ps-muted px-5 py-14 text-center space-y-3">
+        <div className="bg-white rounded-xl border border-ps-border px-5 py-14 text-center space-y-3">
           <FileText className="w-10 h-10 text-ps-disabled mx-auto" />
           <p className="text-sm font-medium text-ps-label">
             {clientId ? `No AIS uploaded for AY ${assessmentYear}` : "Pick a client to begin"}

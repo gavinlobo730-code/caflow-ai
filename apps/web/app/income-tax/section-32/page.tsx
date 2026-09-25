@@ -188,7 +188,7 @@ export default function Section32Page() {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {!clientId ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16">
           <p className="text-sm text-ps-hint">Select a client to see its blocks.</p>
         </div>
       ) : loading ? (
@@ -273,7 +273,7 @@ export default function Section32Page() {
             </p>
           )}
 
-          <div className="bg-white rounded-xl border border-ps-muted overflow-x-auto">
+          <div className="bg-white rounded-xl border border-ps-border overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-ps-bg text-ps-label">
                 <tr>
@@ -287,7 +287,7 @@ export default function Section32Page() {
                   <th className="px-4 py-3 text-right font-semibold">Closing WDV</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {answer.blocks.length === 0 ? (
                   <tr><td colSpan={8} className="px-4 py-10 text-center text-ps-hint">
                     No blocks recorded for FY {fy}. Add one with its opening written-down

@@ -220,7 +220,7 @@ function SectionTable({ section, showPrior }: { section: ScheduleSection; showPr
         <p className="text-xs font-semibold text-ps-body uppercase tracking-wide">{section.heading}</p>
       </div>
       {section.lines.map((line) => (
-        <div key={line.label} className="flex items-baseline px-4 py-2 border-b border-ps-muted last:border-b-0">
+        <div key={line.label} className="flex items-baseline px-4 py-2 border-b border-ps-border last:border-b-0">
           <span className={`text-sm text-ps-body flex-1 ${line.indent ? "pl-4" : ""}`}>{line.label}</span>
           <span className="text-sm tabular-nums text-ps-ink font-medium w-36 text-right">
             {amount(line.paise)}

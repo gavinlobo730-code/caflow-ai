@@ -110,7 +110,7 @@ function RegisterTable({ rows, title, table, empty }: {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b border-ps-muted">
+                <tr key={r.id} className="border-b border-ps-border">
                   <td className="py-1.5 pr-2 text-ps-ink">
                     {REASONS.find((x) => x.code === r.reason_code)?.label
                       ?? r.reason_code ?? "—"}
@@ -428,7 +428,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
               </thead>
               <tbody>
                 {advances.unadjusted_advances.map((a) => (
-                  <tr key={a.receipt_id} className="border-b border-ps-muted">
+                  <tr key={a.receipt_id} className="border-b border-ps-border">
                     <td className="py-1.5 pr-2 font-mono text-ps-ink">{a.receipt_no ?? "—"}</td>
                     <td className="py-1.5 pr-2 text-ps-label">{a.receipt_date ?? "—"}</td>
                     <td className="py-1.5 pr-2 text-ps-label">

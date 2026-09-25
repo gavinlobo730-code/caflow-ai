@@ -501,7 +501,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
               static button/chip even while open (see above), so its search
               box still lives here, inside the panel, exactly as before. */}
           {plain && (
-            <div className="flex items-center gap-2 border-b border-ps-muted px-2.5 py-2">
+            <div className="flex items-center gap-2 border-b border-ps-border px-2.5 py-2">
               <Search size={13} className="flex-shrink-0 text-ps-hint" />
               <input
                 ref={inputRef}
@@ -544,7 +544,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                 onMouseEnter={() => setHighlighted(createIdx)}
                 onClick={() => void doCreate()}
                 className={cn(
-                  "flex cursor-pointer items-center gap-1.5 border-b border-ps-muted px-3 py-1.5 text-xs text-blue-600",
+                  "flex cursor-pointer items-center gap-1.5 border-b border-ps-border px-3 py-1.5 text-xs text-blue-600",
                   highlighted === createIdx ? "bg-[#EFF6FF]" : "hover:bg-ps-bg",
                 )}
               >
@@ -640,7 +640,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                     onMouseEnter={() => setHighlighted(createIdx)}
                     onClick={() => void doCreate()}
                     className={cn(
-                      "flex cursor-pointer items-center gap-1.5 border-t border-ps-muted px-3 py-1.5 text-xs text-blue-600",
+                      "flex cursor-pointer items-center gap-1.5 border-t border-ps-border px-3 py-1.5 text-xs text-blue-600",
                       highlighted === createIdx ? "bg-[#EFF6FF]" : "hover:bg-ps-bg",
                     )}
                   >

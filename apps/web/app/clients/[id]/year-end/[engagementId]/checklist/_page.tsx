@@ -164,14 +164,14 @@ export default function ChecklistPage() {
   if (loading) {
     return (
       <div className="p-6 space-y-4 max-w-3xl mx-auto">
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <div className="flex items-center justify-between mb-2">
             <Skeleton className="h-2.5 w-32" />
             <Skeleton className="h-2.5 w-8" />
           </div>
           <Skeleton className="h-2 w-full rounded-full" />
         </div>
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <TimelineSkeleton rows={4} />
         </div>
       </div>
@@ -198,7 +198,7 @@ export default function ChecklistPage() {
         </div>
       )}
       {/* Progress bar */}
-      <div className="bg-white rounded-xl border border-ps-muted p-4">
+      <div className="bg-white rounded-xl border border-ps-border p-4">
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold text-ps-body">
             {complete} of {total} complete
@@ -215,11 +215,11 @@ export default function ChecklistPage() {
 
       {/* Grouped items */}
       {Object.entries(grouped).map(([category, catItems]) => (
-        <div key={category} className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-ps-bg bg-ps-bg">
+        <div key={category} className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-ps-border bg-ps-bg">
             <p className="text-3xs font-semibold uppercase tracking-wide text-ps-label">{category}</p>
           </div>
-          <div className="divide-y divide-ps-bg">
+          <div className="divide-y divide-ps-border">
             {catItems.map((item) => {
               const isEditing = item.id in editingNotes;
               const noteValue = isEditing ? editingNotes[item.id] : (item.notes ?? "");

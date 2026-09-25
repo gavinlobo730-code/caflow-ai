@@ -81,11 +81,11 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
   // recording here lags the portal by days more often than not.
   const [filedDate, setFiledDate] = useState(todayLocalISO());
   return (
-    <div className="border border-green-200 bg-green-50 rounded p-3 mb-3 space-y-2">
-      <p className="text-sm font-medium text-green-900">
+    <div className="border border-state-ready-border bg-state-ready-surface rounded p-3 mb-3 space-y-2">
+      <p className="text-sm font-medium text-state-ready">
         Record the filing of {period}
       </p>
-      <p className="text-xs text-green-800">
+      <p className="text-xs text-state-ready">
         You filed this on the GST portal. Recording it here writes the acknowledgement
         against the return and locks the period against further postings that would
         change what was filed.
@@ -118,12 +118,12 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
         The ARN can be left blank and added later. The date cannot: the correction
         window under CGST §37(3) and the period lock are both measured from it.
       </p>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-state-problem">{error}</p>}
       <div className="flex gap-2">
         <button
           onClick={() => onConfirm(arn.trim(), filedDate)}
           disabled={saving || !filedDate}
-          className="text-sm px-3 py-1 bg-green-700 text-white rounded disabled:opacity-50"
+          className="text-sm px-3 py-1 bg-state-ready-solid text-white rounded disabled:opacity-50"
         >
           {saving ? "Recording…" : "Record as filed"}
         </button>
@@ -148,8 +148,8 @@ type GSTTab = "dashboard" | "gstr1" | "amendments" | "gstr3b" | "itc" | "gstr2b"
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-ps-muted text-ps-body",
   validated: "bg-blue-100 text-blue-700",
-  ca_approved: "bg-green-100 text-green-700",
-  submitted: "bg-emerald-100 text-emerald-800",
+  ca_approved: "bg-state-ready-surface text-state-ready",
+  submitted: "bg-state-ready-surface text-state-ready",
 };
 
 
@@ -229,11 +229,11 @@ function GSTR3BDetailDrawer({
         </div>
 
         <div className="p-5 space-y-3">
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-state-problem">{error}</p>}
 
           {totals && (
             <div className={`text-xs px-3 py-2 rounded ${
-              matches === false ? "bg-state-attention-surface text-amber-800" : "bg-green-50 text-green-700"}`}>
+              matches === false ? "bg-state-attention-surface text-state-attention" : "bg-state-ready-surface text-state-ready"}`}>
               {matches === false
                 ? `These documents total ${rupees(totals.tax)}, but the return shows ${rupees(expectedPaise ?? 0)}. They should agree — review before filing.`
                 : `${rows?.length ?? 0} document${rows?.length === 1 ? "" : "s"}, totalling ${rupees(totals.tax)} tax — matches the return.`}
@@ -418,7 +418,7 @@ function GSTDashboard({ clientId }: { clientId: string }) {
           <span className="text-ps-hint">· month {data.monthInQuarter} of the quarter</span>
         )}
         {quarterly && data.stateCategory === null && (
-          <span className="px-2 py-1 rounded-full bg-state-attention-surface text-amber-800 ring-1 ring-amber-200">
+          <span className="px-2 py-1 rounded-full bg-state-attention-surface text-state-attention ring-1 ring-state-attention-border">
             State not set — GSTR-3B date shown is the earlier of the two (22nd)
           </span>
         )}
@@ -666,7 +666,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
           <input placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
             onChange={(e) => setComputePeriod(e.target.value)}
             className="w-full border rounded px-3 py-1.5 text-sm" />
-          {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
+          {computeError && <p className="text-state-problem text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <button onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
@@ -682,7 +682,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
             const reconciled = Boolean(rec?.reconciled);
             return (
               <div className="border-t pt-3 space-y-2">
-                <div className={`text-sm px-3 py-2 rounded ${reconciled ? "bg-green-50 text-green-700" : "bg-state-attention-surface text-amber-800"}`}>
+                <div className={`text-sm px-3 py-2 rounded ${reconciled ? "bg-state-ready-surface text-state-ready" : "bg-state-attention-surface text-state-attention"}`}>
                   {reconciled ? "✓ Reconciled to the General Ledger" : "⚠ Does not reconcile to the General Ledger — review before saving"}
                   {!reconciled && netOut && (
                     <span className="block mt-1 text-xs">
@@ -730,7 +730,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   );
                 })()}
                 <button onClick={saveComputed} disabled={actionInFlight}
-                  className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
+                  className="px-3 py-1 bg-state-ready-solid text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
                 </button>
               </div>
@@ -769,7 +769,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
         />
       )}
       {rowError && !filingRow && (
-        <p className="text-sm text-red-600 border border-state-problem-border bg-state-problem-surface rounded px-3 py-2 mb-3">
+        <p className="text-sm text-state-problem border border-state-problem-border bg-state-problem-surface rounded px-3 py-2 mb-3">
           {rowError}
         </p>
       )}
@@ -803,13 +803,13 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   )}
                   {r.status === "validated" && (
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">CA Approve</button>
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</button>
                   )}
                   {/* Only on an approved statement, and only where the server
                       says the walk-through exists — the dead-control rule. */}
                   {r.status === "ca_approved" && demoFlows.includes("gstr1") && (
                     <button onClick={() => setDemo({ id: r.id as string })}
-                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-state-attention-hover text-amber-800">
+                      className="text-xs px-2 py-0.5 border border-state-attention-border rounded hover:bg-state-attention-hover text-state-attention">
                       File (demo)
                     </button>
                   )}
@@ -819,7 +819,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   {r.status === "ca_approved" && (
                     <button onClick={() => setFilingRow({ id: r.id as string,
                                                           period: r.period as string })}
-                      className="text-xs px-2 py-0.5 border border-green-300 rounded hover:bg-green-50 text-green-800">
+                      className="text-xs px-2 py-0.5 border border-state-ready-border rounded hover:bg-state-ready-surface text-state-ready">
                       Mark as filed
                     </button>
                   )}
@@ -833,7 +833,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
             ))}
             {loadError ? (
               <tr><td colSpan={5} className="px-3 py-6 text-center">
-                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <p className="text-sm text-state-problem font-medium">{loadError}</p>
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : returns.length === 0 && (
@@ -1090,7 +1090,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           point of the gate — swallowing it would leave a CA believing they had
           approved a return the server declined. */}
       {rowError && !filingRow && (
-        <div className="text-sm px-3 py-2 rounded bg-state-attention-surface text-amber-900 border border-state-attention-border flex items-start justify-between gap-3">
+        <div className="text-sm px-3 py-2 rounded bg-state-attention-surface text-state-attention border border-state-attention-border flex items-start justify-between gap-3">
           <span>{rowError}</span>
           <button onClick={() => setRowError(null)}
             className="text-xs underline shrink-0">Dismiss</button>
@@ -1139,7 +1139,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               </p>
             </div>
           </div>
-          {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
+          {computeError && <p className="text-state-problem text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <button onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
@@ -1157,7 +1157,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             const cf = (computeResult.itc_carried_forward_paise as number) ?? 0;
             return (
               <div className="border-t pt-3 space-y-2">
-                <div className={`text-sm px-3 py-2 rounded ${reconciled ? "bg-green-50 text-green-700" : "bg-state-attention-surface text-amber-800"}`}>
+                <div className={`text-sm px-3 py-2 rounded ${reconciled ? "bg-state-ready-surface text-state-ready" : "bg-state-attention-surface text-state-attention"}`}>
                   {reconciled ? "✓ Reconciled to the General Ledger" : "⚠ Does not reconcile to the General Ledger — review before saving"}
                   {!reconciled && (
                     <div className="mt-1 text-xs space-y-0.5">
@@ -1338,7 +1338,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                   })()}
                 </details>
                 <button onClick={saveComputed} disabled={actionInFlight}
-                  className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
+                  className="px-3 py-1 bg-state-ready-solid text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
                 </button>
               </div>
@@ -1411,7 +1411,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
                       disabled={busyRow === r.id}
                       title="Approval re-checks the return against the books first, which can take a few seconds"
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700 disabled:opacity-40">
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready disabled:opacity-40">
                       {busyRow === r.id ? "Checking books…" : "CA Approve"}</button>
                   )}
                   {/* Only on an approved return, because that is where real
@@ -1420,7 +1420,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       than no control. */}
                   {r.status === "ca_approved" && demoFlows.includes("gstr3b") && (
                     <button onClick={() => setDemo({ id: r.id as string })}
-                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-state-attention-hover text-amber-800">
+                      className="text-xs px-2 py-0.5 border border-state-attention-border rounded hover:bg-state-attention-hover text-state-attention">
                       File (demo)
                     </button>
                   )}
@@ -1433,7 +1433,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     <button onClick={() => setFilingRow({ id: r.id as string,
                                                           period: r.period as string })}
                       disabled={busyRow === r.id}
-                      className="text-xs px-2 py-0.5 border border-green-300 rounded hover:bg-green-50 text-green-800 disabled:opacity-40">
+                      className="text-xs px-2 py-0.5 border border-state-ready-border rounded hover:bg-state-ready-surface text-state-ready disabled:opacity-40">
                       Mark as filed
                     </button>
                   )}
@@ -1463,7 +1463,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 <tr key={`${r.id}-fresh`}>
                   <td colSpan={6} className="px-3 pb-3">
                     {freshness[r.id as string].stale ? (
-                      <div className="text-xs bg-state-attention-surface text-amber-900 border border-state-attention-border rounded px-3 py-2 space-y-1">
+                      <div className="text-xs bg-state-attention-surface text-state-attention border border-state-attention-border rounded px-3 py-2 space-y-1">
                         <p className="font-semibold">
                           The books have changed since this return was computed.
                         </p>
@@ -1479,7 +1479,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                         <div className="pt-1">
                           <button onClick={() => recompute(r.id as string)}
                             disabled={busyRow === r.id}
-                            className="text-xs px-2 py-0.5 border border-amber-400 rounded hover:bg-amber-100 disabled:opacity-40">
+                            className="text-xs px-2 py-0.5 border border-state-attention-border rounded hover:bg-state-attention-hover disabled:opacity-40">
                             {busyRow === r.id ? "Recomputing…" : "Recompute from books"}
                           </button>
                           <span className="ml-2 text-2xs">
@@ -1489,7 +1489,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+                      <p className="text-xs text-state-ready bg-state-ready-surface border border-state-ready-border rounded px-3 py-2">
                         Still matches the books.
                       </p>
                     )}
@@ -1499,7 +1499,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             ])}
             {loadError ? (
               <tr><td colSpan={6} className="px-3 py-6 text-center">
-                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <p className="text-sm text-state-problem font-medium">{loadError}</p>
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : returns.length === 0 && (
@@ -1568,7 +1568,7 @@ interface Recon2BResult {
 }
 
 const RECON_2B_BUCKETS: { status: string; label: string; hint: string; tone: string }[] = [
-  { status: "matched", label: "Matched", tone: "text-green-700",
+  { status: "matched", label: "Matched", tone: "text-state-ready",
     hint: "The bill and the 2B document agree, to the paisa." },
   { status: "amount_mismatch", label: "Amount mismatch", tone: "text-state-attention",
     hint: "Both exist and the tax differs — one of the two documents is wrong." },
@@ -1654,7 +1654,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
         <textarea placeholder="Paste the GSTR-2B JSON downloaded from the portal"
           value={jsonText} onChange={(e) => setJsonText(e.target.value)}
           rows={8} className="w-full border rounded px-3 py-2 text-sm font-mono" />
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+        {error && <p className="text-state-problem text-sm">{error}</p>}
         <button onClick={upload} disabled={loading || !period || !jsonText}
           className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
           {loading ? "Reconciling…" : "Upload & Reconcile"}
@@ -1664,7 +1664,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
       {result && (result.problems?.length ?? 0) > 0 && (
         <div className="border border-state-attention-border bg-state-attention-surface rounded p-3 space-y-1">
           {result.problems.map((p, i) => (
-            <p key={i} className="text-xs text-amber-900">{p}</p>
+            <p key={i} className="text-xs text-state-attention">{p}</p>
           ))}
         </div>
       )}
@@ -1699,7 +1699,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
             </div>
             <div>
               <p className="text-xs text-ps-label">Available per GSTR-2B</p>
-              <p className="font-medium text-green-700">{rupees(summary.itc_available_per_2b_paise)}</p>
+              <p className="font-medium text-state-ready">{rupees(summary.itc_available_per_2b_paise)}</p>
             </div>
             <div>
               <p className="text-xs text-ps-label">At risk — supplier has not filed</p>
@@ -1707,7 +1707,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
             </div>
           </div>
           {summary.itc_blocked_by_2b_paise > 0 && (
-            <p className="text-xs text-amber-800 bg-state-attention-surface border border-state-attention-border rounded p-2">
+            <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded p-2">
               {rupees(summary.itc_blocked_by_2b_paise)} of matched credit is marked
               UNAVAILABLE by GSTR-2B itself — the figures agreeing does not make it
               claimable (§16(2)(aa)).
@@ -1950,7 +1950,7 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
         </select>
       </div>
 
-      <div className="rounded border p-4 bg-state-attention-surface text-sm text-amber-800">
+      <div className="rounded border p-4 bg-state-attention-surface text-sm text-state-attention">
         <p className="font-medium">⚠ CA Review Required</p>
         <p className="mt-1">CGST Act §44 — the annual return is due 31 December following the
           financial year, and filing it closes the year&apos;s correction window early
@@ -1961,7 +1961,7 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
         <TableSkeleton cols={4} bare />
       ) : loadError ? (
         <div className="space-y-2">
-          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <p className="text-sm text-state-problem font-medium">{loadError}</p>
           <button onClick={load}
             className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">
             Retry
@@ -1998,7 +1998,7 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
               is loaded — the dead-control rule. */}
           {demoFlows.includes("gstr9") && (
             <button onClick={() => setDemo({ id: draft.id as string })}
-              className="text-xs px-3 py-1.5 border border-amber-300 rounded hover:bg-state-attention-hover text-amber-800">
+              className="text-xs px-3 py-1.5 border border-state-attention-border rounded hover:bg-state-attention-hover text-state-attention">
               File (demo)
             </button>
           )}

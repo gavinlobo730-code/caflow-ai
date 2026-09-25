@@ -147,7 +147,7 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
       ) : (
         <div className="space-y-1.5">
           {deps.map(d => (
-            <div key={d.id} className="flex items-center justify-between gap-2 bg-ps-bg border border-ps-muted rounded-lg px-3 py-2">
+            <div key={d.id} className="flex items-center justify-between gap-2 bg-ps-bg border border-ps-border rounded-lg px-3 py-2">
               <span className="text-xs text-ps-body line-clamp-1">
                 {d.depends_on_title ?? titleMap.get(d.depends_on_task_id) ?? d.depends_on_task_id}
               </span>
@@ -237,7 +237,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
       <div className="absolute inset-0 pointer-events-auto" onClick={onClose} />
       <div className="relative w-96 h-full bg-white border-l border-ps-border shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
         {/* Panel header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">Task Detail</h3>
           <div className="flex items-center gap-2">
             {!editing && (

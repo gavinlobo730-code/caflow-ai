@@ -184,7 +184,7 @@ export function CompliancePanel({
       <h4 className="text-xs font-semibold text-ps-body flex items-center gap-1.5"><ShieldCheck size={13} /> Compliance</h4>
 
       {/* GST treatment + place of supply */}
-      <div className="rounded-lg border border-ps-muted p-3 space-y-2">
+      <div className="rounded-lg border border-ps-border p-3 space-y-2">
         <Row label="GST treatment" value={treatment.label} />
         <Row label="Recipient GSTIN" value={recipientGstin || "Unregistered (B2C)"} mono={!!recipientGstin} />
         <Row label="Place of supply" value={invoice.supply_state_code || "—"} />
@@ -206,7 +206,7 @@ export function CompliancePanel({
             <Row label="IRN" value={irn.irn ?? "—"} mono />
             {irn.record?.ack_number && <Row label="Ack no." value={irn.record.ack_number} mono />}
             {irn.qrData && (
-              <div className="rounded bg-ps-bg border border-ps-muted p-2">
+              <div className="rounded bg-ps-bg border border-ps-border p-2">
                 <p className="text-3xs text-ps-hint flex items-center gap-1 mb-1"><QrCode size={11} /> Signed QR payload</p>
                 <p className="text-3xs font-mono text-ps-label break-all max-h-16 overflow-y-auto">{irn.qrData}</p>
               </div>
@@ -310,7 +310,7 @@ const STATE_BADGE: Record<string, string> = {
 
 function ComplianceCard({ icon, title, state, children }: { icon: React.ReactNode; title: string; state: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-ps-muted p-3 space-y-2">
+    <div className="rounded-lg border border-ps-border p-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-2xs font-semibold text-ps-body flex items-center gap-1.5">{icon} {title}</span>
         <span className={`px-2 py-0.5 rounded-full text-3xs font-medium ${STATE_BADGE[state] ?? STATE_BADGE.none}`}>

@@ -480,7 +480,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
           <h3 className="text-base font-semibold text-ps-ink">
             Mark {rows.length} Filing{rows.length > 1 ? "s" : ""} as Filed
           </h3>
@@ -540,7 +540,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
           {formError && <Callout tone="problem">{formError}</Callout>}
         </div>
 
-        <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
+        <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
@@ -864,7 +864,7 @@ export default function GSTPage() {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {/* Key Deadlines Banner — CGST Act Sections 37, 39, 44 */}
-      <div className="bg-white rounded-xl border border-ps-muted p-4">
+      <div className="bg-white rounded-xl border border-ps-border p-4">
         <div className="flex items-center gap-2 mb-3">
           <Calendar className="w-4 h-4 text-ps-label" />
           <span className="text-xs font-semibold text-ps-body">
@@ -887,7 +887,7 @@ export default function GSTPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
               <Users className="w-4 h-4 text-blue-600" />
@@ -898,7 +898,7 @@ export default function GSTPage() {
           <p className="text-xs text-ps-hint mt-0.5">With GST filings tracked</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
               <CheckCircle className="w-4 h-4 text-green-600" />
@@ -909,7 +909,7 @@ export default function GSTPage() {
           <p className="text-xs text-ps-hint mt-0.5">{currentPeriod}</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-state-attention-surface flex items-center justify-center">
               <Clock className="w-4 h-4 text-amber-600" />
@@ -920,7 +920,7 @@ export default function GSTPage() {
           <p className="text-xs text-ps-hint mt-0.5">{currentPeriod}</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-state-problem-surface flex items-center justify-center">
               <AlertCircle className="w-4 h-4 text-red-600" />
@@ -1023,7 +1023,7 @@ export default function GSTPage() {
       {filedModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
               <h3 className="text-base font-semibold text-ps-ink">Mark {filedModal.filing.return_type} as Filed</h3>
               <button onClick={() => setFiledModal(null)} className="text-ps-hint hover:text-ps-label transition-colors">
                 <X className="w-5 h-5" />
@@ -1074,7 +1074,7 @@ export default function GSTPage() {
               {filedError && <Callout tone="problem">{filedError}</Callout>}
             </div>
 
-            <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
               <button
                 onClick={() => setFiledModal(null)}
                 className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"

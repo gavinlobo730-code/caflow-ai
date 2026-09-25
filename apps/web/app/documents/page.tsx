@@ -201,7 +201,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
       <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
         {/* Modal header */}
-        <div className="flex items-center justify-between border-b border-ps-muted px-6 py-4">
+        <div className="flex items-center justify-between border-b border-ps-border px-6 py-4">
           <h2 className="text-base font-semibold text-ps-ink">Upload Document</h2>
           <button
             onClick={onClose}
@@ -300,7 +300,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
         </div>
 
         {/* Modal footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-ps-muted px-6 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-ps-border px-6 py-4">
           <button
             onClick={onClose}
             disabled={uploading}

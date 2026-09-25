@@ -322,7 +322,7 @@ function MappedIpCheck({ runId }: { runId: string }) {
   }
 
   return (
-    <div className="border-t border-ps-muted pt-3">
+    <div className="border-t border-ps-border pt-3">
       {!open ? (
         <button onClick={() => setOpen(true)}
           className="text-2xs text-blue-700 hover:underline">
@@ -481,7 +481,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
       ))}
 
       {/* ── 1. the identifiers the portal asks for ──────────────────────── */}
-      <div className="border-t border-ps-muted pt-2">
+      <div className="border-t border-ps-border pt-2">
         <p className="text-3xs uppercase tracking-wide text-ps-hint mb-1">
           What identifies this filing
         </p>
@@ -491,14 +491,14 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
       </div>
 
       {/* ── 2. the figures the portal will show back ────────────────────── */}
-      <div className="border-t border-ps-muted pt-2">
+      <div className="border-t border-ps-border pt-2">
         <p className="text-3xs uppercase tracking-wide text-ps-hint mb-1">
           Check these against the portal before you submit
         </p>
         <table className="w-full text-xs">
           <tbody>
             {o.confirm.map((f) => (
-              <tr key={f.label} className="border-b border-ps-bg last:border-0">
+              <tr key={f.label} className="border-b border-ps-border last:border-0">
                 <td className="py-1.5 pr-2 text-ps-label align-top">
                   {f.label}
                   {f.note && (
@@ -524,7 +524,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
       {o.scheme === "esic" && o.artefact.available && <MappedIpCheck runId={runId} />}
 
       {/* ── 3. the file ─────────────────────────────────────────────────── */}
-      <div className="border-t border-ps-muted pt-3">
+      <div className="border-t border-ps-border pt-3">
         {o.artefact.available ? (
           <button onClick={download} disabled={busy}
             className="px-3 py-1.5 text-xs border border-ps-border rounded-lg
@@ -548,7 +548,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
 
       {/* ── 4. what came back ───────────────────────────────────────────── */}
       {recorded ? (
-        <div className="border-t border-ps-muted pt-3">
+        <div className="border-t border-ps-border pt-3">
           <p className="text-2xs text-green-800 bg-green-50 border border-green-200
                         rounded-lg px-3 py-2 flex items-start gap-2">
             <Check size={12} className="mt-0.5 shrink-0" />
@@ -728,7 +728,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
       )}
 
       {rows.map((r) => (
-        <div key={r.id} className="border-t border-ps-muted pt-3">
+        <div key={r.id} className="border-t border-ps-border pt-3">
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
             <p className="text-xs text-ps-ink">
               <span className="font-semibold">

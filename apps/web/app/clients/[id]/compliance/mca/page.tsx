@@ -174,7 +174,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
 
       {loading ? <ListSkeleton rows={3} /> : loadError ? (
         <div className="text-center py-6 space-y-2">
-          <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          <p className="text-sm text-state-problem font-medium">{loadError}</p>
           <button onClick={load} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : (
@@ -326,7 +326,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2">
                   {r.kyc_status !== "active" && (
                     <button onClick={() => updateKYC(r.id as string, "active")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
                       Mark KYC Active
                     </button>
                   )}
@@ -335,7 +335,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
             ))}
             {loadError ? (
               <tr><td colSpan={6} className="px-3 py-6 text-center">
-                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <p className="text-sm text-state-problem font-medium">{loadError}</p>
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
@@ -530,7 +530,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                   )}
                   {r.status === "in_progress" && (
                     <button onClick={() => openConfirmFiling(r)}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
                       Mark Filed (CA)
                     </button>
                   )}
@@ -539,7 +539,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                   {category === "annual" && r.status !== "filed" &&
                     demoFlows.includes("mca") && demoForms.includes(r.form_type as string) && (
                     <button onClick={() => setDemo({ id: r.id as string })}
-                      className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-state-attention-hover text-amber-800">
+                      className="text-xs px-2 py-0.5 border border-state-attention-border rounded hover:bg-state-attention-hover text-state-attention">
                       File (demo)
                     </button>
                   )}
@@ -548,7 +548,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
             ))}
             {loadError ? (
               <tr><td colSpan={5} className="px-3 py-6 text-center">
-                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <p className="text-sm text-state-problem font-medium">{loadError}</p>
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
@@ -575,10 +575,10 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
               onChange={(e) => setFilingDate(e.target.value)}
               className="border rounded px-3 py-1.5 text-sm" />
           </div>
-          {confirmError && <p className="text-xs text-red-600">{confirmError}</p>}
+          {confirmError && <p className="text-xs text-state-problem">{confirmError}</p>}
           <div className="flex gap-2">
             <button onClick={confirmMarkFiled} disabled={confirming}
-              className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
+              className="px-3 py-1 bg-state-ready-solid text-white rounded text-sm disabled:opacity-50">
               {confirming ? "Saving…" : "Confirm Filing"}
             </button>
             <button onClick={() => setConfirmFiling(null)} className="px-3 py-1 border rounded text-sm">Cancel</button>
@@ -640,7 +640,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
             ))}
             {loadError ? (
               <tr><td colSpan={5} className="px-3 py-6 text-center">
-                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <p className="text-sm text-state-problem font-medium">{loadError}</p>
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (

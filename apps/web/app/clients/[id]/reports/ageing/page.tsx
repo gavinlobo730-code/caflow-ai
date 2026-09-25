@@ -360,7 +360,7 @@ export default function ClientAgeingSchedulePage() {
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-ps-muted">
+      <div className="flex gap-1 border-b border-ps-border">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -399,7 +399,7 @@ export default function ClientAgeingSchedulePage() {
 
           {tab === "note" && (
             <div className="space-y-5">
-              <section className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+              <section className="bg-white rounded-xl border border-ps-border overflow-hidden">
                 <div className="px-4 py-3 border-b border-ps-border">
                   <p className="text-xs font-semibold text-ps-body">
                     {schedule.receivables.title}
@@ -452,7 +452,7 @@ export default function ClientAgeingSchedulePage() {
                 </section>
               )}
 
-              <section className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+              <section className="bg-white rounded-xl border border-ps-border overflow-hidden">
                 <div className="px-4 py-3 border-b border-ps-border">
                   <p className="text-xs font-semibold text-ps-body">
                     {schedule.payables.title}
@@ -623,7 +623,7 @@ function AdvancesPanel({ kind, section }: {
   const noun = isAr ? "customer advance" : "supplier advance";
 
   return (
-    <section className="bg-white rounded-xl border border-ps-muted overflow-hidden mb-5">
+    <section className="bg-white rounded-xl border border-ps-border overflow-hidden mb-5">
       <div className="px-4 py-3 border-b border-ps-border">
         <p className="text-xs font-semibold text-ps-body">
           {isAr ? "Advances received" : "Advances paid"} — on account
@@ -687,7 +687,7 @@ function AdvancesPanel({ kind, section }: {
       )}
 
       {/* THE TIE-UP. Three lines, in the order a CA checks them. */}
-      <div className="px-4 py-3 border-t border-ps-muted bg-ps-bg space-y-1">
+      <div className="px-4 py-3 border-t border-ps-border bg-ps-bg space-y-1">
         <div className="flex justify-between text-2xs text-ps-label">
           <span>{isAr ? "Open invoices" : "Open bills"}</span>
           <span className="tabular-nums">{formatPaise(section.total_outstanding_paise)}</span>
@@ -728,13 +728,13 @@ function DocumentList({ kind, rows, saving, onClassify, clientId }: {
   }
   if (rows.length === 0) {
     return (
-      <div className="text-2xs text-ps-hint py-8 text-center bg-white rounded-xl border border-ps-muted">
+      <div className="text-2xs text-ps-hint py-8 text-center bg-white rounded-xl border border-ps-border">
         Nothing outstanding.
       </div>
     );
   }
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className="px-4 py-3 border-b border-ps-border">
         <p className="text-xs font-semibold text-ps-body">
           {isAr ? "Open invoices" : "Open bills"}
@@ -860,7 +860,7 @@ function UnbilledPanel({
   return (
     <div className="space-y-5">
       <section className={`rounded-xl border overflow-hidden ${
-        reviewedOn ? "bg-white border-ps-muted" : "bg-state-attention-surface/50 border-state-attention-border"}`}>
+        reviewedOn ? "bg-white border-ps-border" : "bg-state-attention-surface/50 border-state-attention-border"}`}>
         <div className="px-4 py-3">
           <p className="text-xs font-semibold text-ps-body">
             {reviewedOn ? `Reviewed ${reviewedOn}` : "Not yet reviewed"}
@@ -905,7 +905,7 @@ function UnbilledPanel({
         </div>
       </section>
 
-      <section className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <section className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-4 py-3 border-b border-ps-border">
           <p className="text-xs font-semibold text-ps-body">
             Which accounts hold unbilled dues

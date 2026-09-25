@@ -271,7 +271,7 @@ export default function StatutoryValuesPage() {
                   const first = bandRows[0];
                   return (
                     <div key={key} className="bg-white border border-ps-border rounded-xl overflow-hidden">
-                      <div className="px-4 py-3 flex items-start justify-between border-b border-ps-muted">
+                      <div className="px-4 py-3 flex items-start justify-between border-b border-ps-border">
                         <div>
                           <p className="text-sm font-semibold text-ps-ink">
                             {first.state} — effective {first.effective_from}
@@ -306,7 +306,7 @@ export default function StatutoryValuesPage() {
                         </thead>
                         <tbody>
                           {[...bandRows].sort((a, b) => a.from_paise - b.from_paise).map(b => (
-                            <tr key={b.id} className="border-t border-ps-bg">
+                            <tr key={b.id} className="border-t border-ps-border">
                               <td className="px-4 py-2 text-ps-body">{rupees(b.from_paise)}</td>
                               <td className="px-4 py-2 text-ps-body">
                                 {b.to_paise === null
@@ -353,7 +353,7 @@ export default function StatutoryValuesPage() {
         {showForm && (
           <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-6 overflow-y-auto z-50">
             <div className="bg-white rounded-xl w-full max-w-2xl my-8">
-              <div className="px-5 py-4 flex items-center justify-between border-b border-ps-muted">
+              <div className="px-5 py-4 flex items-center justify-between border-b border-ps-border">
                 <h2 className="text-sm font-semibold text-ps-ink">Record a notification</h2>
                 <button onClick={() => setShowForm(false)} className="text-ps-hint hover:text-ps-ink">
                   <X size={16} />
@@ -429,7 +429,7 @@ export default function StatutoryValuesPage() {
                 <Field label="Note (optional)" value={note} onChange={setNote} placeholder="Anything the next reviewer should know" />
               </div>
 
-              <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-ps-muted">
+              <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-ps-border">
                 <button onClick={() => setShowForm(false)}
                   className="px-4 py-1.5 text-sm text-ps-label hover:bg-ps-bg rounded-lg">Cancel</button>
                 <button onClick={save} disabled={actionInFlight}

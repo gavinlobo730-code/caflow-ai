@@ -214,7 +214,7 @@ export default function BookToTaxBridgePage() {
                     </td>
                   </tr>
                   {bridge.lines.map((l, i) => (
-                    <tr key={i} className="border-b border-ps-muted">
+                    <tr key={i} className="border-b border-ps-border">
                       <td className="px-4 py-3 text-ps-ink">
                         {l.label}
                         <span className="ml-2 text-3xs text-ps-hint">{l.reference}</span>

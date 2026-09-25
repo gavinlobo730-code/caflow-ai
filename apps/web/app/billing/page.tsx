@@ -696,7 +696,7 @@ export default function BillingPage() {
                     <th className="text-left px-4 py-3 font-medium text-ps-label">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-muted">
+                <tbody className="divide-y divide-ps-border">
                   {engagements.length === 0 && (
                     <tr><td colSpan={6} className="text-center py-8 text-ps-hint">No engagements yet</td></tr>
                   )}
@@ -779,7 +779,7 @@ export default function BillingPage() {
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-muted">
+                <tbody className="divide-y divide-ps-border">
                   {invoices.length === 0 && (
                     <tr><td colSpan={8} className="text-center py-8 text-ps-hint">No invoices yet — click &quot;Raise Invoice&quot; to generate</td></tr>
                   )}
@@ -830,7 +830,7 @@ export default function BillingPage() {
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-muted">
+              <tbody className="divide-y divide-ps-border">
                 {outstanding.length === 0 && (
                   <tr><td colSpan={8} className="text-center py-8 text-ps-hint">No outstanding invoices</td></tr>
                 )}
@@ -883,7 +883,7 @@ export default function BillingPage() {
                   <th className="text-left px-4 py-3 font-medium text-ps-label">Reference</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-muted">
+              <tbody className="divide-y divide-ps-border">
                 {receipts.length === 0 && (
                   <tr><td colSpan={6} className="text-center py-8 text-ps-hint">No receipts recorded</td></tr>
                 )}

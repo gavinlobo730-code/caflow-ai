@@ -148,7 +148,7 @@ function TDSDashboard({ clientId }: { clientId: string }) {
         <p className="text-xs text-ps-label">Total Challans</p>
         <p className="text-2xl font-bold">{summary.total_challans}</p>
       </div>
-      <div className="rounded border p-4 bg-green-50">
+      <div className="rounded border p-4 bg-state-ready-surface">
         <p className="text-xs text-ps-label">Total Deposited</p>
         <p className="text-2xl font-bold">{rupees(summary.total_deposited_paise)}</p>
       </div>
@@ -213,7 +213,7 @@ function DeductionsTab({ clientId }: { clientId: string }) {
             ))}
             {loadError ? (
               <tr><td colSpan={6} className="px-3 py-6 text-center">
-                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <p className="text-sm text-state-problem font-medium">{loadError}</p>
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
@@ -338,7 +338,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
             ))}
             {loadError ? (
               <tr><td colSpan={7} className="px-3 py-6 text-center">
-                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <p className="text-sm text-state-problem font-medium">{loadError}</p>
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
@@ -566,7 +566,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
             <p className="text-xs text-ps-hint">Reading the deductor details on file…</p>
           )}
           {deductorGaps.length > 0 && (
-            <div className="text-xs text-amber-800 bg-state-attention-surface border border-amber-100 rounded-lg px-3 py-2 space-y-1">
+            <div className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 space-y-1">
               <p className="font-medium">
                 The deductor block is not complete on file, so these boxes could not be
                 pre-filled. Record it once against the client and every quarter reads it.
@@ -574,7 +574,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               {deductorGaps.map(g => <p key={g.code}>{g.message}</p>)}
             </div>
           )}
-          {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
+          {computeError && <p className="text-state-problem text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <button onClick={computeFromBooks}
               disabled={actionInFlight || !computeForm.financial_year || !computeForm.tan || !computeForm.deductor_name || !computeForm.deductor_pan}
@@ -591,7 +591,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
             const accountFound = Boolean(rec?.account_found);
             return (
               <div className="border-t pt-3 space-y-2">
-                <div className={`text-sm px-3 py-2 rounded ${matched ? "bg-green-50 text-green-700" : "bg-state-attention-surface text-amber-800"}`}>
+                <div className={`text-sm px-3 py-2 rounded ${matched ? "bg-state-ready-surface text-state-ready" : "bg-state-attention-surface text-state-attention"}`}>
                   {!accountFound
                     ? "⚠ Couldn't find the TDS Payable control account in the Chart of Accounts — reconciliation skipped."
                     : matched ? "✓ Reconciled to the General Ledger"
@@ -626,7 +626,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                 {((computeResult.validation_errors as string[]) ?? []).length > 0 && (
                   <div className="space-y-1">
                     {(computeResult.validation_errors as string[]).map((e, i) => (
-                      <p key={i} className="text-xs text-red-600">⚠ {e}</p>
+                      <p key={i} className="text-xs text-state-problem">⚠ {e}</p>
                     ))}
                   </div>
                 )}
@@ -658,7 +658,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                 {((computeResult.challan_gaps as ChallanGap[]) ?? []).length > 0 && (
                   <div className="space-y-1 bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
                     {(computeResult.challan_gaps as ChallanGap[]).map((g, i) => (
-                      <p key={i} className="text-xs text-amber-800">
+                      <p key={i} className="text-xs text-state-attention">
                         ⚠ <span className="font-medium">
                           {g.section ? `§${g.section}: ` : ""}
                         </span>
@@ -672,7 +672,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                   </div>
                 )}
                 <button onClick={saveComputed} disabled={actionInFlight}
-                  className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
+                  className="px-3 py-1 bg-state-ready-solid text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
                 </button>
               </div>
@@ -735,14 +735,14 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                   )}
                   {r.status === "prepared" && (
                     <button onClick={() => updateStatus(r.id as string, "ca_approved")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">CA Approve</button>
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</button>
                   )}
                 </td>
               </tr>
             ))}
             {loadError ? (
               <tr><td colSpan={6} className="px-3 py-6 text-center">
-                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <p className="text-sm text-state-problem font-medium">{loadError}</p>
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
@@ -836,7 +836,7 @@ function Form26ASTab({ clientId }: { clientId: string }) {
           placeholder={'[{"pan": "<deductee PAN>", "section": "194C", "amount_paise": 10000}]'}
           value={jsonText} onChange={(e) => setJsonText(e.target.value)}
           rows={8} className="w-full border rounded px-3 py-2 text-sm font-mono" />
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+        {error && <p className="text-state-problem text-sm">{error}</p>}
         <button onClick={upload} disabled={loading || !fy || !jsonText}
           className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
           {loading ? "Reconciling…" : "Reconcile"}
@@ -847,10 +847,10 @@ function Form26ASTab({ clientId }: { clientId: string }) {
         <div className="border rounded p-4 space-y-3">
           <p className="font-medium text-sm">Reconciliation Result</p>
           <div className="flex flex-wrap gap-4 text-sm">
-            <span className="text-green-700">✓ Matched: {summary.matched_count ?? 0}</span>
-            <span className="text-amber-600">⚠ Amount differs: {summary.mismatch_count ?? 0}</span>
-            <span className="text-red-600">✗ Not in the register: {summary.missing_in_books_count ?? 0}</span>
-            <span className="text-red-600">✗ Not in 26AS: {summary.missing_count ?? 0}</span>
+            <span className="text-state-ready">✓ Matched: {summary.matched_count ?? 0}</span>
+            <span className="text-state-attention">⚠ Amount differs: {summary.mismatch_count ?? 0}</span>
+            <span className="text-state-problem">✗ Not in the register: {summary.missing_in_books_count ?? 0}</span>
+            <span className="text-state-problem">✗ Not in 26AS: {summary.missing_count ?? 0}</span>
             {(summary.no_pan_count ?? 0) > 0 && (
               <span className="text-ps-label">No PAN: {summary.no_pan_count}</span>
             )}
@@ -940,7 +940,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
           + Generate Draft
         </button>
       </div>
-      <div className="rounded border p-3 bg-state-attention-surface text-xs text-amber-800">
+      <div className="rounded border p-3 bg-state-attention-surface text-xs text-state-attention">
         ⚠ Certificates are draft only. CA must review and sign before issuance. IT Act §203.
       </div>
 
@@ -971,7 +971,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
               <option value="16A">Form 16A — non-salary</option>
             </select>
           </div>
-          {saveError && <p className="text-sm text-red-600">{saveError}</p>}
+          {saveError && <p className="text-sm text-state-problem">{saveError}</p>}
           <div className="flex gap-2">
             <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Generate Draft</button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
@@ -1018,7 +1018,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
             ))}
             {loadError ? (
               <tr><td colSpan={6} className="px-3 py-6 text-center">
-                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <p className="text-sm text-state-problem font-medium">{loadError}</p>
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
@@ -1235,7 +1235,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
         </button>
       </div>
 
-      {loadError && <p className="text-sm text-red-600">{loadError}</p>}
+      {loadError && <p className="text-sm text-state-problem">{loadError}</p>}
 
       {/* NAMED RATHER THAN SILENTLY ABSENT. §197(1) reaches these too, and this
           product cannot price a bill under them — so a certificate recorded
@@ -1254,7 +1254,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
 
       {showNew && (
         <div className="border rounded p-4 bg-ps-bg space-y-3">
-          {saveError && <p className="text-sm text-red-600">{saveError}</p>}
+          {saveError && <p className="text-sm text-state-problem">{saveError}</p>}
           <div className="grid grid-cols-3 gap-3">
             <select value={form.vendor_id} onChange={(e) => setForm((f) => ({ ...f, vendor_id: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
@@ -1286,7 +1286,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
             <button onClick={() => setShowNew(false)}
               className="text-sm px-3 py-1 border rounded">Cancel</button>
             <button onClick={saveNew} disabled={saving}
-              className="text-sm px-3 py-1 bg-green-600 text-white rounded disabled:opacity-50">
+              className="text-sm px-3 py-1 bg-state-ready-solid text-white rounded disabled:opacity-50">
               {saving ? "Saving…" : "Save"}
             </button>
           </div>

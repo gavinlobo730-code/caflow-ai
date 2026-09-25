@@ -136,7 +136,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
         )}
         {noticesError ? (
           <div className="text-center py-4 space-y-2">
-            <p className="text-sm text-red-600 font-medium">{noticesError}</p>
+            <p className="text-sm text-state-problem font-medium">{noticesError}</p>
             <button onClick={loadNotices} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
           </div>
         ) : notices.length === 0 ? (
@@ -167,10 +167,10 @@ function NoticesSection({ clientId }: { clientId: string }) {
                   </td>
                   <td className="px-3 py-2">
                     {n.ca_approved ? (
-                      <span className="text-xs text-green-700">✓ Approved</span>
+                      <span className="text-xs text-state-ready">✓ Approved</span>
                     ) : (
                       <button onClick={() => approveNotice(n.id as string)}
-                        className="text-xs px-2 py-0.5 border rounded hover:bg-green-50 text-green-700">
+                        className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
                         CA Approve
                       </button>
                     )}
@@ -373,9 +373,21 @@ export default function CompliancePage() {
     <div className="p-6 max-w-ps-data mx-auto space-y-4">
       {/* Workspace Navigation Cards */}
       <div className="grid grid-cols-3 gap-4">
+        {/* ── ONE SURFACE FOR ALL THREE, AND THE TINTS WERE A REAL DEFECT ──
+            GST was green, TDS blue and MCA purple — decoration, but in a
+            product whose colour vocabulary is STATE it said the GST workspace
+            was `ready` and the TDS one `working`. Neither is a fact about
+            either module, and a CA reads this screen for state before they
+            read it for text. They are navigation, so they wear the navigation
+            surface: the same card and the same hover the module grid uses.
+            The `color` field is gone rather than made uniform, because a field
+            whose three values are identical is an invitation to make them
+            differ again. (The purple was also invisible to the named-palette
+            ratchet, whose family list has no `purple` — so it could never have
+            been counted, only read.) */}
         {[
-          { label: "GST Workspace", desc: "GSTR-1, GSTR-3B, 2B Reconciliation", path: "gst", color: "bg-green-50 border-green-200 hover:bg-green-100" },
-          { label: "TDS Workspace", desc: "Challans, Returns, 26AS Reconciliation", path: "tds", color: "bg-blue-50 border-blue-200 hover:bg-blue-100" },
+          { label: "GST Workspace", desc: "GSTR-1, GSTR-3B, 2B Reconciliation", path: "gst" },
+          { label: "TDS Workspace", desc: "Challans, Returns, 26AS Reconciliation", path: "tds" },
           // The MCA card is absent, not disabled, for an entity with nothing to
           // file with the Ministry of Corporate Affairs — a proprietorship has
           // no registration with the Registrar of Companies, and a partnership
@@ -390,13 +402,12 @@ export default function CompliancePage() {
                   ? "Form 11 & Form 8 (LLP Act 2008)"
                   : "Company Master, Directors, Filings",
                 path: "mca",
-                color: "bg-purple-50 border-purple-200 hover:bg-purple-100",
               }]
             : []),
-        ].map(({ label, desc, path, color }) => (
+        ].map(({ label, desc, path }) => (
           <button key={path}
             onClick={() => router.push(`/clients/${clientId}/compliance/${path}`)}
-            className={`border rounded-lg p-4 text-left transition-colors ${color}`}>
+            className="border border-ps-border bg-white rounded-lg p-4 text-left transition-colors hover:bg-ps-hover">
             <p className="font-semibold text-sm">{label}</p>
             <p className="text-xs text-ps-label mt-1">{desc}</p>
           </button>
@@ -487,11 +498,11 @@ export default function CompliancePage() {
                 </div>
               </div>
             )}
-            {bulkError && <p className="mx-5 mt-2 text-2xs text-red-600">{bulkError}</p>}
+            {bulkError && <p className="mx-5 mt-2 text-2xs text-state-problem">{bulkError}</p>}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-ps-muted text-xs text-ps-hint">
+                <tr className="border-b border-ps-border text-xs text-ps-hint">
                   <th className="px-5 py-3 text-left font-semibold w-8">
                     <input
                       type="checkbox"
@@ -510,7 +521,7 @@ export default function CompliancePage() {
                   <th className="px-5 py-3 text-left font-semibold">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {filtered.map((c) => (
                   <tr key={c.id} className="hover:bg-ps-bg">
                     <td className="px-5 py-3">
@@ -529,7 +540,7 @@ export default function CompliancePage() {
                     <td
                       className={`px-3 py-3 text-xs whitespace-nowrap ${
                         c.due_date < today && c.filing_status !== "filed"
-                          ? "text-red-600 font-medium"
+                          ? "text-state-problem font-medium"
                           : "text-ps-label"
                       }`}
                     >
@@ -557,7 +568,7 @@ export default function CompliancePage() {
             </table>
             {loadError ? (
               <div className="text-center py-12 space-y-2">
-                <p className="text-sm text-red-600 font-medium">{loadError}</p>
+                <p className="text-sm text-state-problem font-medium">{loadError}</p>
                 <button onClick={reloadCompliance} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </div>
             ) : filtered.length === 0 && (

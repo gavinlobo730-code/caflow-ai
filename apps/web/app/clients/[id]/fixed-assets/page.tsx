@@ -379,21 +379,21 @@ function RegisterTab({ clientId, openDoc }:
       {loading ? (
         <TableSkeleton cols={11} rows={4} />
       ) : loadFailed ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load the asset register — the request failed or timed out.</p>
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : assets.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-3">
           <TrendingDown size={32} className="text-gray-200 mx-auto" />
           <p className="text-sm text-ps-label">No assets added yet</p>
           <button onClick={() => setShowAdd(true)} className="text-xs text-blue-600 hover:underline">Add your first asset</button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-ps-muted text-ps-hint">
+              <tr className="border-b border-ps-border text-ps-hint">
                 <th className="px-4 py-3 text-left font-semibold w-5"></th>
                 <th className="px-2 py-3 text-left font-semibold">Code</th>
                 <th className="px-3 py-3 text-left font-semibold">Asset Name</th>
@@ -407,7 +407,7 @@ function RegisterTab({ clientId, openDoc }:
                 <th className="px-3 py-3 text-right font-semibold">Correct</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {assets.map((a) => (
                 <>
                   <tr
@@ -972,7 +972,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
               Defaulting every asset to `paid` was not a neutral default: a
               machine bought on credit went in as if cash had left the
               building, and one already on a purchase bill went in TWICE. */}
-          <div className="border-t border-ps-muted pt-4 space-y-3">
+          <div className="border-t border-ps-border pt-4 space-y-3">
             <p className="text-2xs font-semibold text-ps-body">How was it acquired?</p>
             <div className="space-y-1.5">
               {([
@@ -1056,7 +1056,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
               than being claimed. That is why the question has to be answered
               rather than defaulted: it changes the balance sheet and every
               depreciation charge the asset will ever take. */}
-          <div className="border-t border-ps-muted pt-4 space-y-3">
+          <div className="border-t border-ps-border pt-4 space-y-3">
             <p className="text-2xs font-semibold text-ps-body">GST on the purchase</p>
             <div className="grid grid-cols-3 gap-2">
               <Field label="IGST (₹)">
@@ -1392,15 +1392,15 @@ function DepreciationTab({ clientId }: { clientId: string }) {
       {loading ? (
         <TableSkeleton cols={6} rows={3} />
       ) : loadFailed ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load assets — the request failed or timed out.</p>
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-ps-muted text-ps-hint">
+              <tr className="border-b border-ps-border text-ps-hint">
                 <th className="px-4 py-3 text-left font-semibold">Asset</th>
                 <th className="px-3 py-3 text-left font-semibold">Method</th>
                 <th className="px-3 py-3 text-right font-semibold">Opening WDV</th>
@@ -1409,7 +1409,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                 <th className="px-3 py-3 text-left font-semibold">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {rows.map((r) => (
                 <tr key={r.asset_id} className="hover:bg-ps-bg align-top">
                   <td className="px-4 py-2.5 font-medium text-ps-ink">
@@ -1688,19 +1688,19 @@ function DisposalTab({ clientId }: { clientId: string }) {
       {loading ? (
         <TableSkeleton cols={5} rows={3} />
       ) : loadFailed ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-12 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-12 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load assets — the request failed or timed out.</p>
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : assets.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-12">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-12">
           <p className="text-sm text-ps-label">No active assets available for disposal.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-ps-muted text-ps-hint">
+              <tr className="border-b border-ps-border text-ps-hint">
                 <th className="px-4 py-3 text-left font-semibold">Asset</th>
                 <th className="px-3 py-3 text-right font-semibold">Cost</th>
                 <th className="px-3 py-3 text-right font-semibold">Accum Depn</th>
@@ -1708,7 +1708,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
                 <th className="px-3 py-3 text-left font-semibold">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {assets.map((a) => (
                 <tr key={a.id} className={`hover:bg-ps-bg ${selected?.id === a.id ? "bg-state-problem-surface" : ""}`}>
                   <td className="px-4 py-2.5 font-medium text-ps-ink">{a.asset_name}</td>
@@ -1980,7 +1980,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
   if (loadFailed) {
     return (
       <div className="space-y-5 max-w-ps-data mx-auto">
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load the fixed-asset report — the request failed or timed out.</p>
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
@@ -2011,7 +2011,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
                title="What this movement does not account for" />
 
       {/* The Schedule III movement */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-5 py-3 border-b border-ps-border">
           <p className="text-xs font-semibold text-ps-body">
             Movement in Fixed Assets — FY {movement?.financial_year ?? financialYear}
@@ -2029,7 +2029,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead><tr className="border-b border-ps-muted text-ps-hint">
+              <thead><tr className="border-b border-ps-border text-ps-hint">
                 <th className="px-5 py-2.5 text-left font-semibold">Class</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Opening Gross</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Additions</th>
@@ -2039,7 +2039,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
                 <th className="px-3 py-2.5 text-right font-semibold">Closing Depn</th>
                 <th className="px-5 py-2.5 text-right font-semibold">Closing Net</th>
               </tr></thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {(movement?.classes ?? []).map(c => (
                   <tr key={c.asset_class} className="hover:bg-ps-bg">
                     <td className="px-5 py-2.5 font-medium text-ps-ink whitespace-nowrap">{c.asset_class}</td>
@@ -2069,7 +2069,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
           </div>
         )}
         {movement?.posted_depreciation_paise != null && (
-          <div className="px-5 py-2.5 border-t border-ps-muted flex justify-between text-2xs">
+          <div className="px-5 py-2.5 border-t border-ps-border flex justify-between text-2xs">
             <span className="text-ps-hint">Depreciation posted to the ledger this year</span>
             <span className="font-mono text-ps-ink">{fmt(movement.posted_depreciation_paise)}</span>
           </div>
@@ -2078,7 +2078,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
 
       {/* Disposed in the year + fully depreciated */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-ps-muted px-5 py-4">
+        <div className="bg-white rounded-xl border border-ps-border px-5 py-4">
           <p className="text-xs font-semibold text-ps-body mb-2">Disposed in FY {financialYear} ({disposedThisYear.length})</p>
           {disposedThisYear.length === 0 ? <p className="text-xs text-ps-hint">No disposals in this financial year.</p> : (
             <ul className="space-y-1">{disposedThisYear.slice(0, 5).map(a => (
@@ -2086,7 +2086,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
             ))}</ul>
           )}
         </div>
-        <div className="bg-white rounded-xl border border-ps-muted px-5 py-4">
+        <div className="bg-white rounded-xl border border-ps-border px-5 py-4">
           <p className="text-xs font-semibold text-ps-body mb-2">Fully Depreciated ({fullyDep.length})</p>
           {fullyDep.length === 0 ? <p className="text-xs text-ps-hint">None fully depreciated.</p> : (
             <ul className="space-y-1">{fullyDep.slice(0, 5).map(a => <li key={a.id} className="text-xs text-ps-label">{a.asset_name}</li>)}</ul>
@@ -2173,7 +2173,7 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted px-5 py-4 space-y-3">
+    <div className="bg-white rounded-xl border border-ps-border px-5 py-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold text-ps-body">Register integrity</p>

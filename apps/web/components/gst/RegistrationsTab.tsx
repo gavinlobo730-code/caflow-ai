@@ -270,13 +270,13 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
         {turnover && turnover.years.length > 0 && (
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-ps-hint border-b border-ps-muted">
+              <tr className="text-left text-ps-hint border-b border-ps-border">
                 <th className="py-1.5 font-semibold">Financial year</th>
                 <th className="py-1.5 font-semibold text-right">Aggregate turnover</th>
                 <th className="py-1.5 font-semibold">Source</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {turnover.years.map((y) => (
                 <tr key={y.id}>
                   <td className="py-1.5 font-mono text-ps-body">{y.financial_year}</td>
@@ -337,7 +337,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-ps-muted text-ps-hint text-left">
+              <tr className="border-b border-ps-border text-ps-hint text-left">
                 <th className="py-2 font-semibold">GSTIN</th>
                 <th className="py-2 font-semibold">State</th>
                 <th className="py-2 font-semibold">Type</th>
@@ -346,7 +346,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                 <th className="py-2 font-semibold" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {rows.map((r) => (
                 <tr key={r.gstin} className="align-top">
                   <td className="py-2">
@@ -431,7 +431,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       {showForm && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
           <div className="w-full max-w-md h-full bg-white shadow-xl flex flex-col">
-            <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
               <p className="text-sm font-semibold text-ps-ink">Add a GST registration</p>
               <button onClick={() => setShowForm(false)} aria-label="Close"
                 className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
@@ -501,7 +501,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
               </label>
             </div>
 
-            <div className="px-5 py-3 border-t border-ps-muted flex justify-end gap-2">
+            <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
               <button onClick={() => setShowForm(false)}
                 className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                 Cancel

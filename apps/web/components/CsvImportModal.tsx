@@ -306,7 +306,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ps-bg/60 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
           <h2 className="text-base font-semibold text-ps-ink">{title}</h2>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
             <X className="w-5 h-5" />
@@ -342,13 +342,13 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
               </div>
 
               {/* Template column reference */}
-              <div className="bg-ps-bg rounded-xl border border-ps-muted overflow-hidden">
-                <div className="px-4 py-2 border-b border-ps-muted">
+              <div className="bg-ps-bg rounded-xl border border-ps-border overflow-hidden">
+                <div className="px-4 py-2 border-b border-ps-border">
                   <p className="text-xs font-semibold text-ps-label uppercase tracking-wide">Template Columns</p>
                 </div>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-ps-muted">
+                    <tr className="border-b border-ps-border">
                       <th className="px-4 py-2 text-left font-medium text-ps-label">Column</th>
                       <th className="px-4 py-2 text-left font-medium text-ps-label">Required</th>
                       <th className="px-4 py-2 text-left font-medium text-ps-label">Notes</th>
@@ -406,13 +406,13 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                   </p>
                 </div>
                 {groups.map(({ resolver, missing }) => (
-                  <div key={resolver.label} className="rounded-xl border border-ps-muted overflow-hidden">
-                    <div className="px-4 py-2 border-b border-ps-muted bg-ps-bg">
+                  <div key={resolver.label} className="rounded-xl border border-ps-border overflow-hidden">
+                    <div className="px-4 py-2 border-b border-ps-border bg-ps-bg">
                       <p className="text-xs font-semibold text-ps-label uppercase tracking-wide">
                         {resolver.label} ({missing.length} missing)
                       </p>
                     </div>
-                    <ul className="divide-y divide-ps-muted">
+                    <ul className="divide-y divide-ps-border">
                       {missing.map((name) => (
                         <li key={name} className="flex items-center justify-between gap-3 px-4 py-2">
                           <span className="text-xs text-ps-body truncate">{name}</span>
@@ -449,10 +449,10 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
               </div>
 
               {/* Preview table */}
-              <div className="overflow-x-auto rounded-xl border border-ps-muted">
+              <div className="overflow-x-auto rounded-xl border border-ps-border">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="bg-ps-bg border-b border-ps-muted">
+                    <tr className="bg-ps-bg border-b border-ps-border">
                       <th className="px-3 py-2 text-left text-ps-label">#</th>
                       {columns.map(c => (
                         <th key={c.key} className="px-3 py-2 text-left text-ps-label">{c.label}</th>
@@ -550,7 +550,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-ps-muted flex justify-between items-center">
+        <div className="px-6 py-4 border-t border-ps-border flex justify-between items-center">
           <button onClick={onClose} className="text-sm text-ps-label hover:text-ps-body">
             {step === "done" ? "Close" : "Cancel"}
           </button>

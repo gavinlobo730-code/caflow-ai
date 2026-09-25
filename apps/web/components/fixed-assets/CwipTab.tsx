@@ -79,14 +79,14 @@ function Shell({ title, children, onClose, onSave, saving, error, cta }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-        <div className="px-5 py-4 border-b border-ps-muted">
+        <div className="px-5 py-4 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">{title}</h3>
         </div>
         <div className="px-5 py-4 space-y-3">
           {error && <Callout tone="problem">{error}</Callout>}
           {children}
         </div>
-        <div className="px-5 py-3 border-t border-ps-muted flex justify-end gap-2">
+        <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
             Cancel
           </button>
@@ -169,7 +169,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-5 py-3 border-b border-ps-border flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <HardHat size={15} className="text-amber-600" /> Projects under construction
@@ -185,7 +185,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint">
+                <tr className="border-b border-ps-border text-ps-hint">
                   <th className="px-5 py-2 text-left font-semibold">Project</th>
                   <th className="px-5 py-2 text-left font-semibold">Started</th>
                   <th className="px-5 py-2 text-right font-semibold">Spent</th>
@@ -194,7 +194,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
                   <th className="px-5 py-2 text-right font-semibold"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {register?.projects?.map((p) => (
                   <tr key={p.id} className={openDoc && p.id === openDoc
                       ? "bg-state-attention-surface ring-2 ring-inset ring-amber-300" : undefined}>
@@ -262,7 +262,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
       </div>
 
       {ag && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-5 py-3 border-b border-ps-border">
             <h3 className="text-sm font-semibold text-ps-ink">CWIP ageing schedule</h3>
             <p className="text-2xs text-ps-hint mt-0.5">Schedule III, as at {ag.as_of}</p>
@@ -270,7 +270,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint">
+                <tr className="border-b border-ps-border text-ps-hint">
                   <th className="px-5 py-2 text-left font-semibold">Amount in CWIP for a period of</th>
                   {ag.bucket_order.map((b) => (
                     <th key={b} className="px-5 py-2 text-right font-semibold">{ag.bucket_labels[b]}</th>
@@ -278,7 +278,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
                   <th className="px-5 py-2 text-right font-semibold">Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {ag.row_order.map((r) => (
                   <tr key={r}>
                     <td className="px-5 py-2 text-ps-ink">{ag.row_labels[r]}</td>
@@ -312,7 +312,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
             </table>
           </div>
           {ag.notes.length > 0 && (
-            <div className="px-5 py-3 border-t border-ps-muted space-y-1">
+            <div className="px-5 py-3 border-t border-ps-border space-y-1">
               {ag.notes.map((n, i) => <p key={i} className="text-2xs text-ps-label">{n}</p>)}
             </div>
           )}
@@ -320,7 +320,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
       )}
 
       {cs && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-5 py-3 border-b border-ps-border">
             <h3 className="text-sm font-semibold text-ps-ink">
               Completion schedule — overdue or over budget
@@ -334,14 +334,14 @@ export function CwipTab({ clientId, asOf, openDoc }:
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-ps-muted text-ps-hint">
+                  <tr className="border-b border-ps-border text-ps-hint">
                     <th className="px-5 py-2 text-left font-semibold">Project</th>
                     <th className="px-5 py-2 text-left font-semibold">Why it is reported</th>
                     <th className="px-5 py-2 text-right font-semibold">Amount</th>
                     <th className="px-5 py-2 text-left font-semibold">To be completed in</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-bg">
+                <tbody className="divide-y divide-ps-border">
                   {cs.rows.map((r, i) => (
                     <tr key={i}>
                       <td className="px-5 py-2 text-ps-ink">{r.project_name}</td>
@@ -362,7 +362,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
           {/* Gaps are ACTIONABLE — nobody can yet tell — and render differently
               from the settled notes above, the same split the RCM panel makes. */}
           {cs.gaps.length > 0 && (
-            <div className="px-5 py-3 border-t border-ps-muted bg-state-attention-surface space-y-1">
+            <div className="px-5 py-3 border-t border-ps-border bg-state-attention-surface space-y-1">
               {cs.gaps.map((g, i) => <p key={i} className="text-2xs text-amber-900">{g}</p>)}
             </div>
           )}

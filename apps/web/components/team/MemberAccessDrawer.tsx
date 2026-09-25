@@ -180,7 +180,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
         role="dialog"
         aria-label="Member access"
       >
-        <div className="px-5 py-4 border-b border-ps-muted flex items-start justify-between gap-4">
+        <div className="px-5 py-4 border-b border-ps-border flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-ps-ink truncate">
               {grid?.full_name || "Member access"}
@@ -195,7 +195,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
           </button>
         </div>
 
-        <div className="px-5 py-3 border-b border-ps-muted bg-ps-bg/60">
+        <div className="px-5 py-3 border-b border-ps-border bg-ps-bg/60">
           <p className="text-xs text-ps-label">
             <strong className="font-medium text-ps-ink">Role</strong> means no override — this
             person gets whatever their role gives them, and follows it if the role changes.{" "}
@@ -210,7 +210,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
         </div>
 
         {error && (
-          <div className="px-5 py-3 border-b border-ps-muted">
+          <div className="px-5 py-3 border-b border-ps-border">
             <p className="text-xs text-state-problem">{error}</p>
           </div>
         )}
@@ -297,7 +297,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-ps-muted flex items-center justify-between gap-3">
+        <div className="px-5 py-3 border-t border-ps-border flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={resetAll}

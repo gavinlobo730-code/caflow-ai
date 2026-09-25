@@ -565,7 +565,7 @@ export default function LoansAndFDPage() {
           </div>
 
           {/* Loans table */}
-          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <div className="px-5 py-4 border-b border-ps-border">
               <h2 className="text-sm font-semibold text-ps-ink">Loan Register</h2>
             </div>
@@ -598,7 +598,7 @@ export default function LoansAndFDPage() {
                       <th className="text-left px-4 py-2.5">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ps-bg">
+                  <tbody className="divide-y divide-ps-border">
                     {loans.map((loan) => (
                       <tr key={loan.id} className="hover:bg-ps-bg/50">
                         <td className="px-5 py-3">
@@ -642,7 +642,7 @@ export default function LoansAndFDPage() {
           </div>
 
           {/* EMI Calculator */}
-          <div className="bg-white rounded-xl border border-ps-muted p-5">
+          <div className="bg-white rounded-xl border border-ps-border p-5">
             <div className="flex items-center gap-2 mb-4">
               <Calculator className="w-5 h-5 text-blue-600" />
               <h2 className="text-sm font-semibold text-ps-ink">EMI Calculator</h2>
@@ -764,7 +764,7 @@ export default function LoansAndFDPage() {
           </div>
 
           {/* FD table */}
-          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <div className="px-5 py-4 border-b border-ps-border">
               <h2 className="text-sm font-semibold text-ps-ink">FD Register</h2>
               <p className="text-xs text-ps-hint mt-0.5">
@@ -803,7 +803,7 @@ export default function LoansAndFDPage() {
                       <th className="text-left px-4 py-2.5">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ps-bg">
+                  <tbody className="divide-y divide-ps-border">
                     {fds.map((fd) => {
                       const days = daysToDate(fd.maturity_date);
                       const isMaturingSoon = fd.status === "active" && days >= 0 && days <= 30;
@@ -861,7 +861,7 @@ export default function LoansAndFDPage() {
       {showAddLoan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
               <h3 className="text-base font-semibold text-ps-ink">Add Loan</h3>
               <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="text-ps-hint hover:text-ps-label">
                 <X className="w-5 h-5" />
@@ -919,7 +919,7 @@ export default function LoansAndFDPage() {
               </FormField>
               {loanError && <Callout tone="problem">{loanError}</Callout>}
             </div>
-            <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
               <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
               <button onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {loanSaving ? "Saving…" : "Add Loan"}
@@ -935,7 +935,7 @@ export default function LoansAndFDPage() {
       {showAddFD && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
               <h3 className="text-base font-semibold text-ps-ink">Add Fixed Deposit</h3>
               <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="text-ps-hint hover:text-ps-label">
                 <X className="w-5 h-5" />
@@ -1016,7 +1016,7 @@ export default function LoansAndFDPage() {
               </FormField>
               {fdError && <Callout tone="problem">{fdError}</Callout>}
             </div>
-            <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
               <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
               <button onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {fdSaving ? "Saving…" : "Add FD"}
@@ -1045,7 +1045,7 @@ function SummaryCard({
   sub: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-ps-muted p-4">
+    <div className="bg-white rounded-xl border border-ps-border p-4">
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center`}>{icon}</div>
         <span className="text-xs text-ps-label">{label}</span>

@@ -103,8 +103,8 @@ export function StatementAnalysisPanel({
   const r = data?.ratios;
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between gap-3">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+      <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-ps-body">Statement analysis</p>
           <p className="text-3xs text-ps-hint mt-0.5">

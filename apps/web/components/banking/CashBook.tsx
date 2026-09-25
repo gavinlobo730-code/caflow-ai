@@ -154,8 +154,8 @@ export function CashRegister({ clientId }: { clientId: string }) {
       )}
 
       {book?.accounts?.map((a) => (
-        <div key={a.account_id} className="rounded-xl border border-ps-muted bg-white">
-          <div className="flex items-baseline justify-between px-4 py-2.5 border-b border-ps-muted">
+        <div key={a.account_id} className="rounded-xl border border-ps-border bg-white">
+          <div className="flex items-baseline justify-between px-4 py-2.5 border-b border-ps-border">
             <h3 className="text-xs font-semibold text-ps-ink">
               {a.account_code} {a.account_name}
             </h3>
@@ -174,7 +174,7 @@ export function CashRegister({ clientId }: { clientId: string }) {
             <div className="overflow-x-auto">
               <table className="w-full text-2xs">
                 <thead>
-                  <tr className="text-ps-label border-b border-ps-muted">
+                  <tr className="text-ps-label border-b border-ps-border">
                     <th className="text-left font-medium px-4 py-1.5">Date</th>
                     <th className="text-left font-medium px-4 py-1.5">Particulars</th>
                     <th className="text-right font-medium px-4 py-1.5">Receipts</th>
@@ -184,7 +184,7 @@ export function CashRegister({ clientId }: { clientId: string }) {
                 </thead>
                 <tbody>
                   {a.lines.map((l, i) => (
-                    <tr key={`${a.account_id}-${i}`} className="border-b border-ps-bg">
+                    <tr key={`${a.account_id}-${i}`} className="border-b border-ps-border">
                       <td className="px-4 py-1.5 whitespace-nowrap">{l.entry_date}</td>
                       <td className="px-4 py-1.5">{l.narration ?? l.reference_no ?? ""}</td>
                       <td className="px-4 py-1.5 text-right font-mono">

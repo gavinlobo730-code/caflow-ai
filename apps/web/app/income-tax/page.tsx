@@ -271,7 +271,7 @@ function BulkMarkFiledModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
           <h3 className="text-base font-semibold text-ps-ink">
             Mark {pending.length} ITR Filing{pending.length === 1 ? "" : "s"} as Filed
           </h3>
@@ -318,14 +318,14 @@ function BulkMarkFiledModal({
               Acknowledgement Number (ARN) — one per filing{" "}
               <span className="text-state-problem">*</span>
             </label>
-            <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-ps-muted">
+            <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-ps-border">
               {pending.map((entry) => {
                 const isDone = succeededIds.has(entry.id);
                 const rowError = rowErrors[entry.id];
                 return (
                   <div
                     key={entry.id}
-                    className="flex items-center gap-3 px-4 py-3 border-b border-ps-muted last:border-0 bg-white"
+                    className="flex items-center gap-3 px-4 py-3 border-b border-ps-border last:border-0 bg-white"
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-ps-ink truncate">
@@ -366,7 +366,7 @@ function BulkMarkFiledModal({
           {error && <Callout tone="problem">{error}</Callout>}
         </div>
 
-        <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
+        <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
@@ -891,7 +891,7 @@ export default function IncomeTaxPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-ps-muted">
+      <div className="flex gap-1 border-b border-ps-border">
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -913,7 +913,7 @@ export default function IncomeTaxPage() {
       {activeTab === "ITR Status" && (
         <div className="space-y-4">
           {/* ITR Status Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
-          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
               <h2 className="text-sm font-semibold text-ps-ink">
                 ITR Status — FY {currentFY}
@@ -978,7 +978,7 @@ export default function IncomeTaxPage() {
           </div>
 
           {/* ITR Form Guide — collapsible */}
-          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <button
               onClick={() => setShowGuide((v) => !v)}
               className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-ps-ink hover:bg-ps-bg/50 transition-colors"
@@ -1056,7 +1056,7 @@ export default function IncomeTaxPage() {
       {/* ------------------------------------------------------------------ */}
       {activeTab === "Advance Tax" && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <div className="px-5 py-4 border-b border-ps-border">
               <h2 className="text-sm font-semibold text-ps-ink">
                 Advance Tax Installments{advanceTaxFy ? ` — FY ${advanceTaxFy}` : ""}
@@ -1065,7 +1065,7 @@ export default function IncomeTaxPage() {
                 IT Act Section 208 — applicable when tax liability ≥ ₹10,000
               </p>
             </div>
-            <div className="divide-y divide-ps-bg">
+            <div className="divide-y divide-ps-border">
               {advanceTax.length === 0 ? (
                 <p className="px-5 py-6 text-sm text-ps-hint">
                   Instalment dates unavailable — the server could not be
@@ -1187,7 +1187,7 @@ export default function IncomeTaxPage() {
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
               <h3 className="text-base font-semibold text-ps-ink">
                 Add ITR Deadline
               </h3>
@@ -1309,7 +1309,7 @@ export default function IncomeTaxPage() {
               {addError && <Callout tone="problem">{addError}</Callout>}
             </div>
 
-            <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
               <button
                 onClick={() => setShowAddModal(false)}
                 className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
@@ -1338,7 +1338,7 @@ export default function IncomeTaxPage() {
       {filedModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
               <h3 className="text-base font-semibold text-ps-ink">
                 Mark ITR as Filed
               </h3>
@@ -1408,7 +1408,7 @@ export default function IncomeTaxPage() {
               {filedError && <Callout tone="problem">{filedError}</Callout>}
             </div>
 
-            <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
               <button
                 onClick={() => setFiledModal(null)}
                 className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"

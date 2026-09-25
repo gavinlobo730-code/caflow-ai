@@ -299,7 +299,7 @@ export default function EmployeePortalPage() {
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
       <div>
-        <div className="flex gap-1 bg-white rounded-xl border border-ps-muted p-1 mb-6">
+        <div className="flex gap-1 bg-white rounded-xl border border-ps-border p-1 mb-6">
           {TABS.map(tab => (
             <button
               key={tab.id}
@@ -324,7 +324,7 @@ export default function EmployeePortalPage() {
                 <Loader2 className="w-4 h-4 animate-spin" /> Loading payslips…
               </div>
             ) : payslipsError ? (
-              <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center space-y-3">
+              <div className="bg-white rounded-xl border border-ps-border px-5 py-12 text-center space-y-3">
                 <p className="text-sm text-state-problem font-medium">Couldn&apos;t load your payslips — the request failed or timed out.</p>
                 <button
                   onClick={() => loadPayslips()}
@@ -334,22 +334,22 @@ export default function EmployeePortalPage() {
                 </button>
               </div>
             ) : payslips.length === 0 ? (
-              <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center">
+              <div className="bg-white rounded-xl border border-ps-border px-5 py-12 text-center">
                 <FileText className="w-8 h-8 text-ps-border mx-auto mb-2" />
                 <p className="text-sm text-ps-hint">No payslips found</p>
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+              <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-ps-muted text-xs text-ps-hint">
+                    <tr className="border-b border-ps-border text-xs text-ps-hint">
                       <th className="px-5 py-3 text-left font-semibold">Period</th>
                       <th className="px-4 py-3 text-right font-semibold">Gross</th>
                       <th className="px-4 py-3 text-right font-semibold">Net Pay</th>
                       <th className="px-5 py-3 text-left font-semibold">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ps-bg">
+                  <tbody className="divide-y divide-ps-border">
                     {payslips.map(slip => (
                       <tr key={slip.id} className="hover:bg-ps-bg">
                         <td className="px-5 py-3 font-medium text-ps-ink">
@@ -391,7 +391,7 @@ export default function EmployeePortalPage() {
                 <Loader2 className="w-4 h-4 animate-spin" /> Loading leave balances…
               </div>
             ) : leaveError ? (
-              <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center space-y-3">
+              <div className="bg-white rounded-xl border border-ps-border px-5 py-12 text-center space-y-3">
                 <p className="text-sm text-state-problem font-medium">Couldn&apos;t load your leave balances — the request failed or timed out.</p>
                 <button
                   onClick={() => loadLeaveBalances()}
@@ -401,20 +401,20 @@ export default function EmployeePortalPage() {
                 </button>
               </div>
             ) : leaveBalances.length === 0 ? (
-              <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center">
+              <div className="bg-white rounded-xl border border-ps-border px-5 py-12 text-center">
                 <Calendar className="w-8 h-8 text-ps-border mx-auto mb-2" />
                 <p className="text-sm text-ps-hint">No leave records found for current year</p>
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+              <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-ps-muted text-xs text-ps-hint">
+                    <tr className="border-b border-ps-border text-xs text-ps-hint">
                       <th className="px-5 py-3 text-left font-semibold">Leave Type</th>
                       <th className="px-4 py-3 text-right font-semibold">Days Remaining</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ps-bg">
+                  <tbody className="divide-y divide-ps-border">
                     {/* One row per leave type, unpacked from the single
                         leave_balances row for the year. Days taken are not
                         recorded anywhere, so there is no Used column to fill. */}
@@ -450,8 +450,8 @@ export default function EmployeePortalPage() {
 
         {/* Profile Tab */}
         {activeTab === "profile" && (
-          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-5 py-4 border-b border-ps-muted">
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+            <div className="px-5 py-4 border-b border-ps-border">
               <h2 className="text-sm font-semibold text-ps-ink">Employee Profile</h2>
               <p className="text-xs text-ps-hint mt-0.5">Read-only — contact HR to update your details</p>
             </div>
@@ -468,7 +468,7 @@ export default function EmployeePortalPage() {
                 },
                 { label: "IFSC Code", value: employee.bank_ifsc ?? "—" },
               ].map(field => (
-                <div key={field.label} className="flex items-center justify-between py-1 border-b border-ps-muted last:border-0">
+                <div key={field.label} className="flex items-center justify-between py-1 border-b border-ps-border last:border-0">
                   <span className="text-xs text-ps-label">{field.label}</span>
                   <span className="text-sm font-medium text-ps-ink">{field.value}</span>
                 </div>

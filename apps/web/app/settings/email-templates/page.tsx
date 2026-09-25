@@ -317,9 +317,9 @@ export default function EmailTemplatesPage() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           {/* Tabs */}
-          <div className="border-b border-ps-muted overflow-x-auto">
+          <div className="border-b border-ps-border overflow-x-auto">
             <div className="flex px-2 pt-2 gap-1 min-w-max">
               {TEMPLATE_TABS.map((tab) => (
                 <button

@@ -152,7 +152,7 @@ export default function EmployeeActivatePage() {
 
   const shell = (children: React.ReactNode) => (
     <div className="min-h-screen bg-ps-bg flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-xl border border-ps-muted p-6 shadow-sm">
+      <div className="w-full max-w-md bg-white rounded-xl border border-ps-border p-6 shadow-sm">
         {children}
       </div>
     </div>

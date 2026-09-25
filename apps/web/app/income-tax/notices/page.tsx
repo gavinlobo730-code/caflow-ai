@@ -142,7 +142,7 @@ function AddModal({ clients, onClose, onAdded }: {
   return (
     <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-ps-muted">
+        <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">Add IT Notice</h3>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
@@ -205,7 +205,7 @@ function AddModal({ clients, onClose, onAdded }: {
               placeholder="Additional details…" />
           </div>
         </div>
-        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-muted flex gap-2 justify-end">
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : "Add Notice"}
@@ -410,7 +410,7 @@ export default function ITNoticesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[1000px]">
               <thead>
-                <tr className="border-b border-ps-muted text-xs text-ps-hint">
+                <tr className="border-b border-ps-border text-xs text-ps-hint">
                   <th className="px-5 py-3 text-left">Client</th>
                   <th className="px-3 py-3 text-left">Notice Type</th>
                   <th className="px-3 py-3 text-left">AY</th>
@@ -422,7 +422,7 @@ export default function ITNoticesPage() {
                   <th className="px-5 py-3 text-left">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {filtered.map(n => {
                   const badge = statusBadge(n.status);
                   const Icon = badge.icon;

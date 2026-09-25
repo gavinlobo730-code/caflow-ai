@@ -100,7 +100,7 @@ export default function ReviewPage() {
     return (
       <div className="p-6 space-y-5 max-w-2xl mx-auto">
         {/* Three-step timeline placeholder */}
-        <div className="bg-white rounded-xl border border-ps-muted p-5">
+        <div className="bg-white rounded-xl border border-ps-border p-5">
           <Skeleton className="h-3 w-32 mb-4" />
           <div className="flex items-start gap-4">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -112,9 +112,9 @@ export default function ReviewPage() {
           </div>
         </div>
         {/* Action panel placeholder */}
-        <FormSkeleton fields={1} className="bg-white rounded-xl border border-ps-muted p-5" />
+        <FormSkeleton fields={1} className="bg-white rounded-xl border border-ps-border p-5" />
         {/* Review history placeholder */}
-        <TimelineSkeleton rows={3} className="bg-white rounded-xl border border-ps-muted p-5" />
+        <TimelineSkeleton rows={3} className="bg-white rounded-xl border border-ps-border p-5" />
       </div>
     );
   }
@@ -142,7 +142,7 @@ export default function ReviewPage() {
     <div className="p-6 space-y-5 max-w-2xl mx-auto">
 
       {/* Three-step timeline */}
-      <div className="bg-white rounded-xl border border-ps-muted p-5">
+      <div className="bg-white rounded-xl border border-ps-border p-5">
         <p className="text-xs font-semibold text-ps-body mb-4">Review Timeline</p>
         <div className="flex items-start gap-0 relative">
           {(["prepared", "reviewed", "approved"] as const).map((stepKey, idx) => {
@@ -193,7 +193,7 @@ export default function ReviewPage() {
       </div>
 
       {/* Action panel */}
-      <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-3">
+      <div className="bg-white rounded-xl border border-ps-border p-5 space-y-3">
         <p className="text-xs font-semibold text-ps-body">Your Action</p>
 
         <div>
@@ -277,11 +277,11 @@ export default function ReviewPage() {
 
       {/* Review history */}
       {history.length > 0 && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-4 py-3 border-b border-ps-bg">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-ps-border">
             <p className="text-xs font-semibold text-ps-body">Review History</p>
           </div>
-          <div className="divide-y divide-ps-bg">
+          <div className="divide-y divide-ps-border">
             {history.map((h) => (
               <div key={h.id} className="px-4 py-3 flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-ps-muted flex items-center justify-center flex-shrink-0 mt-0.5">

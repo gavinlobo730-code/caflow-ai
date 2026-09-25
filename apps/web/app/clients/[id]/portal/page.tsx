@@ -160,7 +160,7 @@ export default function PortalPage() {
           <p className="text-xs text-state-problem font-medium">{pageLoadError}</p>
         </div>
       )}
-      <div className="bg-white rounded-xl border border-ps-muted p-6">
+      <div className="bg-white rounded-xl border border-ps-border p-6">
         <div className="flex items-start gap-3">
           <Globe className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
           <div className="flex-1">
@@ -190,7 +190,7 @@ export default function PortalPage() {
         </div>
 
         {contacts.length > 0 && (
-          <div className="mt-4 divide-y divide-ps-muted border border-ps-muted rounded-lg overflow-hidden">
+          <div className="mt-4 divide-y divide-ps-border border border-ps-border rounded-lg overflow-hidden">
             {contacts.map((c) => (
               <div key={c.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
                 <div className="min-w-0">

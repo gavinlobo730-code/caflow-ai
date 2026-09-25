@@ -234,17 +234,17 @@ export default function CoaImportPage() {
               <X size={12} /> Clear
             </button>
           </div>
-          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden max-h-72 overflow-y-auto">
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden max-h-72 overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-ps-bg">
-                <tr className="text-3xs text-ps-hint border-b border-ps-muted">
+                <tr className="text-3xs text-ps-hint border-b border-ps-border">
                   <th className="px-4 py-2 text-left font-medium w-16">Code</th>
                   <th className="px-3 py-2 text-left font-medium">Name</th>
                   <th className="px-3 py-2 text-left font-medium">Type</th>
                   <th className="px-3 py-2 text-left font-medium">Group</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {preview.map((row, i) => (
                   <tr key={i} className="hover:bg-ps-bg">
                     <td className="px-4 py-2 font-mono text-3xs text-ps-hint">{row.account_code}</td>

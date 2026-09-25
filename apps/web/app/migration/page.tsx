@@ -455,7 +455,7 @@ export default function MigrationPage() {
           <button onClick={load} className="text-xs text-blue-600 hover:underline">Try again</button>
         </div>
       ) : jobs.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-2">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-2">
           <Database size={28} className="text-gray-200 mx-auto" />
           <p className="text-sm text-ps-label">No migration jobs yet</p>
           <p className="text-xs text-ps-hint">Click &quot;New Import&quot; to migrate data from Tally.</p>
@@ -463,7 +463,7 @@ export default function MigrationPage() {
       ) : (
         <div className="space-y-2">
           {jobs.map(j => (
-            <div key={j.id} className="bg-white border border-ps-muted rounded-xl px-4 py-3 flex items-center gap-3">
+            <div key={j.id} className="bg-white border border-ps-border rounded-xl px-4 py-3 flex items-center gap-3">
               <Database size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-ps-ink">{j.name}</p>

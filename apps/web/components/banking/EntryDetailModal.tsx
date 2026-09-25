@@ -416,7 +416,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
                 <p className="text-2xs text-ps-hint">Looking for {t.credit_paise > 0 ? "invoices" : "bills"} that match this amount…</p>
               )}
               {t.suggestions.length > 0 && (
-                <ul className="divide-y divide-ps-muted border border-ps-border rounded-lg overflow-hidden">
+                <ul className="divide-y divide-ps-border border border-ps-border rounded-lg overflow-hidden">
                   {t.suggestions.slice(0, 5).map((sg) => (
                     <li key={sg.matched_entity_id} className="flex items-center gap-2 px-3 py-1.5">
                       <div className="min-w-0 flex-1">
@@ -520,7 +520,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
         <p className="text-2xs font-medium text-ps-label">Supporting documents</p>
 
         {attachments.length > 0 && (
-          <ul className="divide-y divide-ps-muted border border-ps-border rounded-lg overflow-hidden">
+          <ul className="divide-y divide-ps-border border border-ps-border rounded-lg overflow-hidden">
             {attachments.map((a) => (
               <li key={a.document_id ?? a.url} className="flex items-center gap-2 px-3 py-1.5">
                 <Paperclip size={12} className="text-ps-hint shrink-0" />
@@ -623,7 +623,7 @@ function Shell({ title, note, footer, onClose, children }: {
   return (
     <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
-        <div className="flex items-start justify-between px-5 py-4 border-b border-ps-muted">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-ps-border">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-ps-ink truncate" title={title}>{title}</h3>
             {note && <p className="text-xs text-ps-label mt-0.5">{note}</p>}
@@ -631,7 +631,7 @@ function Shell({ title, note, footer, onClose, children }: {
           <button onClick={onClose} aria-label="Close" className="text-ps-hint hover:text-ps-label shrink-0"><X size={16} /></button>
         </div>
         <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">{children}</div>
-        {footer && <div className="px-5 py-3 border-t border-ps-muted flex items-center justify-end gap-2">{footer}</div>}
+        {footer && <div className="px-5 py-3 border-t border-ps-border flex items-center justify-end gap-2">{footer}</div>}
       </div>
     </div>
   );

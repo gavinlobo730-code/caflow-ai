@@ -139,7 +139,7 @@ export default function FxRevaluationPanel({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted p-3 space-y-3">
+    <div className="bg-white rounded-xl border border-ps-border p-3 space-y-3">
       <div>
         <p className="text-xs font-semibold text-ps-body">
           Revalue open foreign items at {plan.period_end}
@@ -158,10 +158,10 @@ export default function FxRevaluationPanel({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-ps-muted">
+      <div className="overflow-hidden rounded-lg border border-ps-border">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-ps-muted text-ps-hint">
+            <tr className="border-b border-ps-border text-ps-hint">
               <th className="px-3 py-2 text-left font-semibold">Currency</th>
               <th className="px-3 py-2 text-left font-semibold">Item</th>
               <th className="px-3 py-2 text-right font-semibold">Foreign open</th>
@@ -171,7 +171,7 @@ export default function FxRevaluationPanel({
               <th className="px-3 py-2 text-right font-semibold">This run</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ps-bg">
+          <tbody className="divide-y divide-ps-border">
             {plan.rows.map((r, i) => (
               <tr key={`${r.currency}-${r.item_type}-${r.item_ref ?? ""}-${i}`} className="hover:bg-ps-bg">
                 <td className="px-3 py-2 font-mono text-ps-body">{r.currency}</td>

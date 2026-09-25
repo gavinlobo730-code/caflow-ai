@@ -257,7 +257,7 @@ export default function TreatyRatesPage() {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-t border-ps-muted">
+                  <tr key={r.id} className="border-t border-ps-border">
                     <td className="px-4 py-2 font-mono text-ps-ink">{r.country_code}</td>
                     <td className="px-4 py-2 text-ps-label">{NATURE_LABELS[r.nature] ?? r.nature}</td>
                     <td className="px-4 py-2 text-right">

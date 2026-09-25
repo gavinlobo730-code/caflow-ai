@@ -172,7 +172,7 @@ export function SplitAcrossLedgersModal({
   return (
     <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-ps-ink">Split across ledgers</h3>
             <p className="text-xs text-ps-label mt-0.5 truncate" title={description}>
@@ -259,7 +259,7 @@ export function SplitAcrossLedgersModal({
           {error && <p className="text-2xs text-state-problem">{error}</p>}
         </div>
 
-        <div className="px-5 py-3 border-t border-ps-muted flex items-center gap-3">
+        <div className="px-5 py-3 border-t border-ps-border flex items-center gap-3">
           {/* The figure that has to reach zero, kept in front of the reader
               rather than produced as a validation error on Save. */}
           <p className={`text-xs font-mono ${left === 0 ? "text-state-ready" : "text-state-attention"}`}>

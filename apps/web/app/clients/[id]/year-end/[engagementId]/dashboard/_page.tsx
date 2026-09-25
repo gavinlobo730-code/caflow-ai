@@ -303,7 +303,7 @@ export default function YearEndDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Checklist progress */}
         <div
-          className="bg-white rounded-xl border border-ps-muted p-4 cursor-pointer hover:shadow-sm transition-shadow"
+          className="bg-white rounded-xl border border-ps-border p-4 cursor-pointer hover:shadow-sm transition-shadow"
           onClick={() => router.push(`${base}/?tab=checklist`)}
         >
           <div className="flex items-center gap-2 mb-3">
@@ -326,7 +326,7 @@ export default function YearEndDashboardPage() {
 
         {/* Adjustments */}
         <div
-          className="bg-white rounded-xl border border-ps-muted p-4 cursor-pointer hover:shadow-sm transition-shadow"
+          className="bg-white rounded-xl border border-ps-border p-4 cursor-pointer hover:shadow-sm transition-shadow"
           onClick={() => router.push(`${base}/?tab=adjustments`)}
         >
           <div className="flex items-center gap-2 mb-3">
@@ -341,7 +341,7 @@ export default function YearEndDashboardPage() {
 
         {/* Financial Statements */}
         <div
-          className="bg-white rounded-xl border border-ps-muted p-4 cursor-pointer hover:shadow-sm transition-shadow"
+          className="bg-white rounded-xl border border-ps-border p-4 cursor-pointer hover:shadow-sm transition-shadow"
           onClick={() => router.push(`${base}/?tab=financial-statements`)}
         >
           <div className="flex items-center gap-2 mb-3">
@@ -365,7 +365,7 @@ export default function YearEndDashboardPage() {
       </div>
 
       {/* Quick actions */}
-      <div className="bg-white rounded-xl border border-ps-muted p-4">
+      <div className="bg-white rounded-xl border border-ps-border p-4">
         <p className="text-xs font-semibold text-ps-body mb-3">Quick Actions</p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -391,11 +391,11 @@ export default function YearEndDashboardPage() {
 
       {/* Recent activity */}
       {recent_events.length > 0 && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-4 py-3 border-b border-ps-bg">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-ps-border">
             <p className="text-xs font-semibold text-ps-body">Recent Activity</p>
           </div>
-          <div className="divide-y divide-ps-bg">
+          <div className="divide-y divide-ps-border">
             {recent_events.map((event) => (
               <div key={event.id} className="px-4 py-2.5 flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-ps-muted flex items-center justify-center flex-shrink-0 mt-0.5">

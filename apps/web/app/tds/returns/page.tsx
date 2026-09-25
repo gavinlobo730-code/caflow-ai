@@ -386,7 +386,7 @@ export default function TDSReturnsPage() {
                   </div>
 
                   {(result.statutory_gaps?.length ?? 0) > 0 && (
-                    <div className="text-xs text-ps-label space-y-1 border-t border-ps-muted pt-3">
+                    <div className="text-xs text-ps-label space-y-1 border-t border-ps-border pt-3">
                       {result.statutory_gaps!.map((g, i) => <p key={i}>• {g}</p>)}
                     </div>
                   )}
@@ -407,7 +407,7 @@ export default function TDSReturnsPage() {
                         <th className="text-right px-3 py-2 text-ps-label">TDS Deposited</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-ps-muted">
+                    <tbody className="divide-y divide-ps-border">
                       {result.deductees.map((d, i) => (
                         <tr key={i} className="bg-white hover:bg-ps-bg">
                           <td className="px-3 py-2">{d.deductee_name}</td>
@@ -449,7 +449,7 @@ export default function TDSReturnsPage() {
                           <th className="text-right px-3 py-2 text-ps-label">Total</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-ps-muted">
+                      <tbody className="divide-y divide-ps-border">
                         {result.challans.map((c, i) => (
                           <tr key={i} className="bg-white">
                             <td className="px-3 py-2 font-mono">{c.challan_no}</td>

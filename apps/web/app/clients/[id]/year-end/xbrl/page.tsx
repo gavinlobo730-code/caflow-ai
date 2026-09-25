@@ -215,7 +215,7 @@ export default function XBRLPage() {
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : packages.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-2">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-2">
           <Code size={28} className="text-gray-200 mx-auto" />
           <p className="text-sm text-ps-label">No XBRL packages yet</p>
           <p className="text-xs text-ps-hint">Create a package to start XBRL generation.</p>
@@ -226,7 +226,7 @@ export default function XBRLPage() {
             <button key={pkg.id}
               onClick={() => setSelected(pkg)}
               className={`w-full bg-white rounded-xl border px-4 py-3 flex items-center gap-3 hover:bg-ps-bg text-left ${
-                selected?.id === pkg.id ? "border-blue-200" : "border-ps-muted"
+                selected?.id === pkg.id ? "border-blue-200" : "border-ps-border"
               }`}>
               <Code size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">

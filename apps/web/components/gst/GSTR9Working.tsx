@@ -59,7 +59,7 @@ export default function GSTR9Working({
   }, [clientId, financialYear]);
 
   return (
-    <div className="space-y-4 border-t border-ps-muted pt-4">
+    <div className="space-y-4 border-t border-ps-border pt-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h4 className="text-sm font-semibold text-ps-ink">
@@ -115,7 +115,7 @@ export default function GSTR9Working({
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-ps-muted text-ps-hint text-left">
+                      <tr className="border-b border-ps-border text-ps-hint text-left">
                         <th className="py-1.5 font-semibold w-16">Row</th>
                         <th className="py-1.5 font-semibold">Particulars</th>
                         <th className="py-1.5 font-semibold text-right">Taxable value</th>
@@ -125,7 +125,7 @@ export default function GSTR9Working({
                         <th className="py-1.5 font-semibold text-right">Cess</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-ps-bg">
+                    <tbody className="divide-y divide-ps-border">
                       {rows.map((r) => (
                         <tr key={r.code} className="align-top">
                           <td className="py-1.5 font-mono text-ps-label">{r.code}</td>
@@ -164,7 +164,7 @@ export default function GSTR9Working({
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-ps-muted text-ps-hint text-left">
+                    <tr className="border-b border-ps-border text-ps-hint text-left">
                       <th className="py-1.5 font-semibold">HSN / SAC</th>
                       <th className="py-1.5 font-semibold">Description</th>
                       <th className="py-1.5 font-semibold">UQC</th>
@@ -175,7 +175,7 @@ export default function GSTR9Working({
                       <th className="py-1.5 font-semibold text-right">SGST</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ps-bg">
+                  <tbody className="divide-y divide-ps-border">
                     {working.hsn.map((h) => (
                       <tr key={h.hsn_sc}>
                         <td className="py-1.5 font-mono text-ps-ink">{h.hsn_sc}</td>

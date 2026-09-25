@@ -13,7 +13,7 @@
  */
 import { Skeleton } from "@/components/ui/skeleton";
 
-const CARD = "bg-white rounded-xl border border-ps-muted p-4";
+const CARD = "bg-white rounded-xl border border-ps-border p-4";
 
 function FieldSkeleton({ wide }: { wide?: boolean }) {
   return (
@@ -59,7 +59,7 @@ export function InvoiceEditorSkeleton() {
           <Skeleton className="h-3 w-24" />
           <Skeleton className="h-7 w-40 rounded-lg" />
         </div>
-        <div className="flex items-center gap-2 pb-2 border-b border-ps-muted">
+        <div className="flex items-center gap-2 pb-2 border-b border-ps-border">
           <Skeleton className="h-2.5 flex-[2]" />
           <Skeleton className="h-2.5 w-24" />
           <Skeleton className="h-2.5 w-12" />
@@ -68,7 +68,7 @@ export function InvoiceEditorSkeleton() {
           <Skeleton className="h-2.5 w-14" />
           <Skeleton className="h-2.5 w-16" />
         </div>
-        <div className="divide-y divide-ps-bg">
+        <div className="divide-y divide-ps-border">
           <LineRowSkeleton />
           <LineRowSkeleton />
           <LineRowSkeleton />
@@ -101,7 +101,7 @@ export function SummaryPanelSkeleton() {
         <Skeleton className="h-3.5 w-16" />
         <Skeleton className="h-3.5 w-20" />
       </div>
-      <div className="border-t border-ps-muted pt-2 space-y-2">
+      <div className="border-t border-ps-border pt-2 space-y-2">
         <div className="flex justify-between">
           <Skeleton className="h-2.5 w-14" />
           <Skeleton className="h-2.5 w-16" />

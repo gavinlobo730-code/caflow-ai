@@ -603,7 +603,7 @@ export default function OnboardingPage() {
   // ─── Render ────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-ps-bg flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-ps-muted p-8">
+      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-ps-border p-8">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">

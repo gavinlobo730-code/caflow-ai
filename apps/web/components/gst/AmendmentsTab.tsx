@@ -109,7 +109,7 @@ function DocList({ title, why, docs }: {
           </thead>
           <tbody>
             {docs.map((d, i) => (
-              <tr key={`${d.doc_no ?? "row"}-${i}`} className="border-b border-ps-muted align-top">
+              <tr key={`${d.doc_no ?? "row"}-${i}`} className="border-b border-ps-border align-top">
                 <td className="py-1.5 pr-2">
                   <span className="font-mono text-ps-ink">{d.doc_no ?? "—"}</span>
                   {d.doc_date && <span className="block text-3xs text-ps-hint">{d.doc_date}</span>}
@@ -288,7 +288,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
                     </thead>
                     <tbody>
                       {exceptions.b2cs.changed.map((r, i) => (
-                        <tr key={i} className="border-b border-ps-muted">
+                        <tr key={i} className="border-b border-ps-border">
                           <td className="py-1.5 pr-2 text-ps-ink">
                             {(r as { place_of_supply?: string }).place_of_supply ?? "—"}
                           </td>

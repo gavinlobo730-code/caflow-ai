@@ -28,7 +28,7 @@ export default function MovedToClientWorkspace({
         <h1 className="text-xl font-semibold text-ps-ink">{feature}</h1>
       </div>
 
-      <div className="bg-white rounded-xl border border-ps-muted p-8 text-center space-y-4">
+      <div className="bg-white rounded-xl border border-ps-border p-8 text-center space-y-4">
         <div className="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center mx-auto">
           <Building2 className="w-5 h-5 text-blue-500" />
         </div>

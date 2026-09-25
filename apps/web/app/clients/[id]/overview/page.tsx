@@ -167,7 +167,7 @@ export default function OverviewPage() {
       </div>
 
       {/* ── Right sidebar ───────────────────────────────────── */}
-      <div className="w-[240px] shrink-0 border-l border-ps-muted overflow-y-auto p-4 space-y-4 hidden lg:block">
+      <div className="w-[240px] shrink-0 border-l border-ps-border overflow-y-auto p-4 space-y-4 hidden lg:block">
         {/* Health Alerts */}
         {alerts.length > 0 && (
           <div className="space-y-1">
@@ -299,7 +299,7 @@ function StatCard({
 }) {
   const bg = accent === "indigo" && value > 0 ? "bg-blue-50 border-blue-500/20/15"
     : accent === "amber" && value > 0 ? "bg-state-attention-surface border-amber-500/15"
-    : "bg-ps-bg border-ps-muted";
+    : "bg-ps-bg border-ps-border";
   return (
     <div className={`rounded-xl border p-3 space-y-1 ${bg}`}>
       <div className="flex items-center gap-1.5">

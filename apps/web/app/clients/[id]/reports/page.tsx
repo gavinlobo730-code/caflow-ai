@@ -172,7 +172,7 @@ export default function ClientReportsPage() {
       {GROUPS.map((group) => {
         const GroupIcon = group.icon;
         return (
-          <div key={group.id} className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div key={group.id} className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <div className="px-5 py-4 border-b border-ps-border flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg border border-blue-100 bg-blue-50 flex items-center justify-center flex-shrink-0">
                 <GroupIcon size={15} className="text-blue-600" />
@@ -209,7 +209,7 @@ export default function ClientReportsPage() {
       })}
 
       {NOT_BUILT.length > 0 && (
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <div className="px-5 py-4 border-b border-ps-border flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg border border-ps-border bg-ps-bg flex items-center justify-center flex-shrink-0">
             <Boxes size={15} className="text-ps-hint" />

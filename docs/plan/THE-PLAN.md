@@ -53,20 +53,34 @@ block a track.
 
 | what | now | was 24 Sep | how it was measured |
 |---|---|---|---|
-| Audit findings closed | **265 of 279** | 265 | `docs/audits/findings-status.json` |
+| Audit findings closed | **266 of 279** | 265 | `docs/audits/findings-status.json` |
 | — partial | 6 | 6 | ACC-13, FA-11, IT-11, PAY-27, SALES-23, TDS-22 |
 | — open | 2 | 2 | TDS-16, GST-25 — both blocked on a document |
-| — deferred to the redesign | 1 | 1 | **PAY-28 — the redesign is now done, so this needs re-reading** |
-| Migrations | **416** | 412 | `ls apps/api/migrations/ \| tail -1` |
-| Backend tests | **17,263 pass**, 1,623 skip | ~17,200 | `pytest tests/` |
-| Frontend guards | **1,644 pass** | 1,638 | `pnpm test` |
-| Routes in the app | **166** | 161 | `find apps/web/app -name page.tsx \| wc -l` |
-| Endpoints a screen can reach | **856 of 1,069** | 829 of 1,064 | the reachability ratchet |
-| Distinct smoke screenshots | **163** | 154 | target ≥150 ✅ |
+| — not a defect as stated | 5 | 5 | including **PAY-28**, re-read after the redesign |
+| Migrations | **416** | 416 | `ls apps/api/migrations/ \| tail -1` — Tracks 1–3 carried none |
+| Backend tests | **17,460 pass**, 1,621 skip | 17,263 | `pytest tests/` |
+| Real-Postgres suite | **1,571 pass** | not tracked | `HARNESS_PG=… pytest tests/test_migrations_apply.py tests/test_*_pg.py` |
+| Frontend guards | **1,655 pass** | 1,644 | `pnpm test` |
+| Routes in the app | **166** | 166 | `find apps/web/app -name page.tsx \| wc -l` |
+| Endpoints a screen can reach | **856 of 1,069** | 856 | the reachability ratchet |
+| Smoke walk | **166 screens, 0 problems** | not tracked | `pnpm smoke:build && pnpm smoke` |
 | Error boundaries | **65** | 65 | target ≥14 ✅ |
-| **Arbitrary font sizes** | **0** | 379 | **target 0 — D12 is COMPLETE** ✅ |
-| Hardcoded hex (coarse) | 70 | 70 | the guard is the authority, not this grep |
+| **Arbitrary font sizes** | **0** | 0 | **target 0 — D12 is COMPLETE** ✅ |
+| **Named palette colours** | **3,712** | *4,043 — but see below* | the guard is the authority |
+| Invisible dividers | **0** | 1,009 | `a-divider-you-cannot-see-is-not-a-divider.test.ts` |
+| Hardcoded hex (coarse) | 83 | 70 | the guard is the authority, not this grep |
 | Cloudflare redirect rules | **98** | 98 | **HARD CAP 100, fails silently** |
+
+⚠️ **THE NAMED-PALETTE FIGURE IS NOT COMPARABLE WITH THE ONE ABOVE IT, AND
+THAT IS THE POINT.** The guard's family list was **eleven of Tailwind's
+twenty-two**, so purple (69), indigo (59), violet (56), cyan (16), sky (14)
+and pink (2) — **216 sites** — had never been counted by anything, and the
+count could not have gone up when somebody wrote a purple chip. Indigo is the
+one that stings: the token file names it as the *fourth primary* and G0
+converted 92 sites of it on that argument, with 59 more sitting in a family
+the ratchet could not see. Found by converting a compliance screen whose three
+navigation cards were tinted green, blue and **purple** — two counted, one
+not. The list is Tailwind's own now; 3,712 is the first honest number.
 
 **Two numbers moved that are worth naming.** Arbitrary font sizes went 379 → 0,
 which closes D12 outright. Endpoint reachability went 829 → 856 without a
@@ -156,17 +170,17 @@ until somebody read the callers.
 
 | ID | item | state | DONE WHEN |
 |---|---|---|---|
-| 1A-1 | **Related parties / AS 18** | **in flight** | `GET /related-party-report` had zero callers and dropped a Karta, a Proprietor and a Beneficiary from a statutory note in silence. `domain/related_party/disclosure.py` + `services/related_party_service.py` + a client tab that lists roles, picks an entity and renders the note with its gaps. Transactions matched on PAN against the customer and vendor masters. 30 tests green |
-| 1A-2 | **Sweep for the rest of the class** | not started | A guard, not a list: every FastAPI route whose response is a computed REPORT must have a caller, or an exemption naming why. The reachability ratchet counts endpoints; this counts *outputs nobody can see* |
-| 1A-3 | Re-read **PAY-28** | not started | Marked `deferred_to_the_redesign`. The redesign is done, so it is either closed or it is real |
+| 1A-1 | **Related parties / AS 18** | **done 25 Sep** ✅ | `GET /related-party-report` had zero callers and dropped a Karta, a Proprietor and a Beneficiary from a statutory note in silence. `domain/related_party/disclosure.py` + `services/related_party_service.py` + a client tab that lists roles, picks an entity and renders the note with its gaps. Transactions matched on PAN against the customer and vendor masters. 30 tests green |
+| 1A-2 | **Sweep for the rest of the class** | **done 25 Sep** ✅ | `tests/test_a_computed_answer_nobody_can_open_is_named.py`. A guard, not a list: every GET whose response is a computed REPORT has a caller or a named exemption. **12 named with reasons, frozen as an EQUALITY** rather than a budget, so a fix that leaves its entry behind fails as loudly as a regression. Three left the list the same day and for different reasons — one wired, one wired, one DELETED as a byte-identical duplicate |
+| 1A-3 | Re-read **PAY-28** | **done 25 Sep** ✅ | Re-read against the code; `not_a_defect_as_stated` |
 
 ### §B — analytics with no screen (was Phase 3b / 3c)
 
 | ID | item | state |
 |---|---|---|
-| 3b-1 | Ledger anomaly detection over `account_period_balances` | not started |
-| 3b-4 | Firm-wide capacity risk | not started — premise measured: `/api/workload/capacity` is fully reached and `workload-insights` describes the current state, so this is a genuine build |
-| 3b-5 | Surface `workload-insights` | not started — small; drops `/api/intelligence` unreached from 3 → 2 |
+| 3b-1 | Ledger anomaly detection | **done 25 Sep** ✅ — and **NOT over `account_period_balances`**, reversing the plan. That table is a cache with a healing auditor, and a check looking for things wrong with the ledger must not read something that can itself be wrong; it reads the posted entries the runner already fetched. A tenth check in the existing Verify Books engine rather than a parallel feature. Three kinds, all `warning`, each with the innocent reading beside the guilty one. ⚠️ Two of my own defects here, both caught by a negative control: the dormant check as first written **could never fire** (the closing balance IS the sum of the months), and the median's justification was wrong — a probe swapping `_median` for a mean passed every test |
+| 3b-4 | Firm-wide capacity risk | **done 25 Sep** ✅ `domain/practice/capacity_risk.py` + `GET /api/workload/capacity-risk`, 13 weeks ahead. It refuses two numbers it would be easy to invent: hours are reported only where a workflow step recorded one, and load is measured against the practice's **own median week**, never `max_concurrent_tasks`, which is a limit on what may be OPEN |
+| 3b-5 | Surface `workload-insights` | **done 25 Sep** ✅ — by rendering the **unassigned backlog only**. `overload` and `idle` restate what `/team/workload`'s own member grouping already says from the same tasks, and two authorities on who is overloaded disagree the first time either threshold moves |
 | 3c-3 | **Fee concentration** — if the largest client leaves, what happens | **done 25 Sep** ✅ `domain/practice/concentration.py` + `GET /api/analytics/concentration`, rendered on `/practice/profitability`. The ICAI fee-dependence threat is NAMED and no threshold is drawn: icai.org is refused at this environment's proxy, and a percentage from memory on an independence question hands a firm a clean bill of health nobody issued |
 | 3c-1, 3c-2, 3c-4, and the tax half of 3c-5 | Effective tax rate trend · ITC leakage trend · GST/TDS/payroll trends · cross-client tax benchmarking | **blocked — STUCK.md §1.** Not a judgement call: each figure is derived from a client's whole ledger for a period, so computing it for every client to compare one against them is a read proportional to transaction volume × client count. Needs a `client_period_metrics` table on the `account_period_balances` shape, maintained by the nightly sweep. **Which columns it holds is the owner's**, because a column added later cannot be back-filled for a period whose books are locked |
 
@@ -233,11 +247,13 @@ classified cannot show it.
 
 ### My gates — I do not book the session until all five pass
 
-1. Every track above closed or explicitly deferred by you
-2. Backend and frontend suites green, smoke walk renders every route
-3. No screen renders a figure the server did not compute
-4. The filing simulation says plainly what it is (D17)
-5. The demo firm has a full year of believable data
+| # | gate | state on 25 Sep |
+|---|---|---|
+| 1 | Every track above closed or explicitly deferred by you | **Tracks 1–3 closed.** What is left inside Track 1 is §B's tax benchmarking (blocked, STUCK.md §1) and §C's partials — four on a document, two on you |
+| 2 | Backend and frontend suites green, smoke walk renders every route | **passing.** 17,460 backend · 1,571 real-Postgres · 1,655 frontend · **smoke walk 166 screens, 0 with a problem** |
+| 3 | No screen renders a figure the server did not compute | **not re-measured since Phase 3.** The guards that hold it (`a-computed-figure-reaches-the-screen`, the browser-logic scans) pass, but the claim deserves a fresh sweep before the session |
+| 4 | The filing simulation says plainly what it is (D17) | **passing** — one posture, one wording, pinned from the Python side |
+| 5 | The demo firm has a full year of believable data | **passing** — Track 3, and it has not yet been SEEDED anywhere; `scripts/seed_demo_firm.py` is a dry run until `--confirm` and the target firm is yours to choose |
 
 ---
 
@@ -255,8 +271,9 @@ registration. Months of lead time; the demo is what justifies starting them.
 |---|---|
 | **Platform: Pages → Workers** (D26) | waiting on the owner. Removes the silent 100-rule cap |
 | **Platform: Render free → paid** (~$7/mo) | waiting on the owner. The free tier sleeps; the ten-second cold start is what killed D25's figures, and it will be the first thing a CA notices in a demo |
-| Named-palette judgement pass | ongoing, one module per PR. Next by count: `clients/[id]/accounting` 99, `memory` 96, `health/[client_id]` 84, `payroll/reports` 79 |
-| 95 `border-gray-50` card dividers (1.05:1) | not started. Not a WCAG fix — `ps.border` is 1.23:1 |
+| Three navigation cards tinted by state | **done 25 Sep** ✅ `/clients/{id}/compliance` painted GST green, TDS blue and MCA purple. Decoration — but in a product whose colour vocabulary IS state, it said the GST workspace was `ready` and the TDS one `working`. All three wear the navigation surface now, and the `color` field is gone rather than made uniform |
+| Named-palette judgement pass | ongoing, one module per PR. **25 Sep: purchases 154→15, sales 100→11, compliance 145→39** — every one mapped by ROLE, and the residues NAMED in the code rather than flattened (a `text-blue-600` link, because 1.3d left those alone at 64 sites; a derived cost column the state set has no word for; a suggestion chip whose base is blue-50, for which mapping to `working-surface` would make it the same colour as its own hover; a `cancelled` badge that is neither `problem` nor `done`). **Next by count**: `components` 97, `memory` 96, `clients/[id]/accounting` 93, `clients/[id]/tax` 90 |
+| ~~1,009 invisible dividers~~ | **done 25 Sep** ✅ Not the 95 this row claimed: 136 in the Tailwind families and **873 more written in the product's OWN surface tokens** (`border-ps-muted`, `divide-ps-bg`), which T3-a's pure hex→token rename had faithfully preserved. The guard states a CONTRAST against `ps.border`, read out of the token file, in both vocabularies — its first version knew one and was silently wrong about the other, over the larger population |
 | The six documents (D18) | 2 of 8 fetched. Each is NAMED as a gap in the product, which is the safe direction |
 | Findings status hygiene | `findings-status.json` is amended in the commit that closes a finding. The only rule that keeps it honest |
 

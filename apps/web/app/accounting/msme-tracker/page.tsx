@@ -238,7 +238,7 @@ export default function MSME43BHPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[980px]">
                   <thead>
-                    <tr className="border-b border-ps-muted text-xs text-ps-hint">
+                    <tr className="border-b border-ps-border text-xs text-ps-hint">
                       <th className="px-5 py-3 text-left">Supplier</th>
                       <th className="px-3 py-3 text-left">Bill</th>
                       <th className="px-3 py-3 text-left">Bill date</th>
@@ -249,7 +249,7 @@ export default function MSME43BHPage() {
                       <th className="px-5 py-3 text-right">Disallowed</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ps-bg">
+                  <tbody className="divide-y divide-ps-border">
                     {rows.length === 0 && (
                       <tr><td colSpan={8} className="text-center text-ps-hint py-8 text-sm">
                         No purchase bills for this client.
@@ -374,7 +374,7 @@ function MsmedInterestPanel({ interest }: { interest: MSMEDInterest }) {
           </thead>
           <tbody>
             {rows.map((a, i) => (
-              <tr key={`${a.bill_id}-${i}`} className="border-b border-ps-muted last:border-0">
+              <tr key={`${a.bill_id}-${i}`} className="border-b border-ps-border last:border-0">
                 <td className="px-3 py-2.5 text-ps-ink">{a.vendor_name}</td>
                 <td className="px-3 py-2.5 text-ps-label">{a.bill_no ?? "—"}</td>
                 <td className="px-3 py-2.5 tabular-nums text-right">{formatPaise(a.principal_paise)}</td>

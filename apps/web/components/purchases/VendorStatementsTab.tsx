@@ -181,28 +181,28 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
         <CardContent className="p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[14rem] flex-1">
-              <label htmlFor="vs-vendor" className="text-xs text-gray-600">Vendor</label>
+              <label htmlFor="vs-vendor" className="text-xs text-ps-label">Vendor</label>
               <select
                 id="vs-vendor"
                 value={vendorId}
                 onChange={(e) => { setVendorId(e.target.value); setStmt(null); }}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-ps-border rounded-md text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
               >
                 <option value="">{vendors.length ? "Choose a vendor…" : "No vendor recorded yet"}</option>
                 {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
             </div>
             <div>
-              <label htmlFor="vs-start" className="text-xs text-gray-600">From</label>
+              <label htmlFor="vs-start" className="text-xs text-ps-label">From</label>
               <input id="vs-start" type="date" value={start}
                      onChange={(e) => setStart(e.target.value)}
-                     className="mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand" />
+                     className="mt-1 px-3 py-2 text-sm bg-white border border-ps-border rounded-md text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
-              <label htmlFor="vs-end" className="text-xs text-gray-600">To</label>
+              <label htmlFor="vs-end" className="text-xs text-ps-label">To</label>
               <input id="vs-end" type="date" value={end}
                      onChange={(e) => setEnd(e.target.value)}
-                     className="mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand" />
+                     className="mt-1 px-3 py-2 text-sm bg-white border border-ps-border rounded-md text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <button
               onClick={generate}
@@ -262,12 +262,12 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
                   <td className="px-5 py-2.5 text-right">{payable(stmt.opening_balance_paise)}</td>
                 </tr>
                 {stmt.transactions.map((t, i) => (
-                  <tr key={`${t.type}-${t.reference ?? i}-${i}`} className="hover:bg-gray-50">
-                    <td className="px-5 py-2.5 text-gray-600 whitespace-nowrap">{t.date}</td>
+                  <tr key={`${t.type}-${t.reference ?? i}-${i}`} className="hover:bg-ps-hover">
+                    <td className="px-5 py-2.5 text-ps-label whitespace-nowrap">{t.date}</td>
                     <td className="px-3 py-2.5 text-ps-ink">{t.particulars}</td>
-                    <td className="px-3 py-2.5 text-gray-500">{t.reference ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-gray-700">{amount(t.debit_paise)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums text-gray-700">{amount(t.credit_paise)}</td>
+                    <td className="px-3 py-2.5 text-ps-hint">{t.reference ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-ps-body">{amount(t.debit_paise)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-ps-body">{amount(t.credit_paise)}</td>
                     <td className="px-5 py-2.5 text-right">{payable(t.running_balance_paise)}</td>
                   </tr>
                 ))}

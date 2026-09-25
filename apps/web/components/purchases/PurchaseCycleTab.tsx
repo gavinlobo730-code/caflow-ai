@@ -171,11 +171,11 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
     setMatched(objectWithLists<ThreeWayMatch>(res.data, "caveats", "differences", "gaps", "lines") ?? null);
   }
 
-  if (loading) return <div className="p-6 text-sm text-gray-500">Loading…</div>;
+  if (loading) return <div className="p-6 text-sm text-ps-hint">Loading…</div>;
   if (loadFailed) {
     return (
       <div className="p-6">
-        <div className="rounded border border-state-problem-border bg-state-problem-surface p-4 text-sm text-red-800">
+        <div className="rounded border border-state-problem-border bg-state-problem-surface p-4 text-sm text-state-problem">
           The purchase cycle could not be loaded.{" "}
           <button onClick={() => void load()} className="underline">Try again</button>
         </div>
@@ -186,14 +186,14 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-6 p-1">
       {vocab && (
-        <div className="flex items-start gap-2 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+        <div className="flex items-start gap-2 rounded border border-ps-border bg-ps-muted p-3 text-sm text-ps-body">
           <Info size={16} className="mt-0.5 shrink-0" />
           <span>{vocab.posts_nothing}</span>
         </div>
       )}
 
       {openObjections.length > 0 && (
-        <div className="rounded border border-amber-300 bg-state-attention-surface p-3 text-sm text-amber-900">
+        <div className="rounded border border-state-attention-border bg-state-attention-surface p-3 text-sm text-state-attention">
           <div className="flex items-center gap-2 font-medium">
             <AlertTriangle size={16} />
             {openObjections.length} goods receipt
@@ -220,13 +220,13 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
             key={id}
             onClick={() => { setTab(id); setShowForm(false); setPosition(null); }}
             className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
-              tab === id ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700"
+              tab === id ? "bg-brand text-white" : "bg-ps-muted text-ps-body"
             }`}
           >
             <Icon size={14} /> {label}
           </button>
         ))}
-        <span className="ml-3 text-xs text-gray-500">
+        <span className="ml-3 text-xs text-ps-hint">
           {open.length} order{open.length === 1 ? "" : "s"} still open
         </span>
         <button
@@ -239,12 +239,12 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
 
       {msg && (
         <div className={`rounded p-2 text-sm ${
-          msg.type === "ok" ? "bg-green-50 text-green-800" : "bg-state-problem-surface text-red-800"
+          msg.type === "ok" ? "bg-state-ready-surface text-state-ready" : "bg-state-problem-surface text-state-problem"
         }`}>{msg.text}</div>
       )}
 
       {showForm && (
-        <div className="rounded border border-gray-200 bg-white p-4">
+        <div className="rounded border border-ps-border bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold">
               New {tab === "orders" ? "purchase order" : "goods receipt"}
@@ -254,11 +254,11 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <label className="text-sm">
-              <span className="mb-1 block text-gray-600">Supplier</span>
+              <span className="mb-1 block text-ps-label">Supplier</span>
               <select
                 value={form.vendor_id}
                 onChange={(e) => setForm({ ...form, vendor_id: e.target.value })}
-                className="w-full rounded border border-gray-300 px-2 py-1.5"
+                className="w-full rounded border border-ps-border px-2 py-1.5"
               >
                 <option value="">Select…</option>
                 {vendors.map((v) => (
@@ -270,55 +270,55 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
             </label>
 
             <label className="text-sm">
-              <span className="mb-1 block text-gray-600">Number</span>
+              <span className="mb-1 block text-ps-label">Number</span>
               <input
                 value={form.document_no}
                 onChange={(e) => setForm({ ...form, document_no: e.target.value })}
                 placeholder={tab === "orders" ? "PO/2026-27/0001" : "GRN/2026-27/0001"}
-                className="w-full rounded border border-gray-300 px-2 py-1.5"
+                className="w-full rounded border border-ps-border px-2 py-1.5"
               />
             </label>
 
             {tab === "orders" ? (
               <>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">Order date</span>
+                  <span className="mb-1 block text-ps-label">Order date</span>
                   <input
                     type="date"
                     value={form.document_date}
                     onChange={(e) => setForm({ ...form, document_date: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">Expected by</span>
+                  <span className="mb-1 block text-ps-label">Expected by</span>
                   <input
                     type="date"
                     value={form.expected_date}
                     onChange={(e) => setForm({ ...form, expected_date: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
               </>
             ) : (
               <>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">
+                  <span className="mb-1 block text-ps-label">
                     Goods arrived on
                   </span>
                   <input
                     type="date"
                     value={form.received_on}
                     onChange={(e) => setForm({ ...form, received_on: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">Against order</span>
+                  <span className="mb-1 block text-ps-label">Against order</span>
                   <select
                     value={form.order_id}
                     onChange={(e) => setForm({ ...form, order_id: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   >
                     <option value="">No order</option>
                     {open.map((o) => (
@@ -327,21 +327,21 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                   </select>
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">
+                  <span className="mb-1 block text-ps-label">
                     Supplier&apos;s challan number
                   </span>
                   <input
                     value={form.vendor_challan_no}
                     onChange={(e) => setForm({ ...form, vendor_challan_no: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">Vehicle number</span>
+                  <span className="mb-1 block text-ps-label">Vehicle number</span>
                   <input
                     value={form.vehicle_no}
                     onChange={(e) => setForm({ ...form, vehicle_no: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
               </>
@@ -360,7 +360,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
           </div>
 
           <div className="mt-4">
-            <div className="mb-2 text-sm font-medium text-gray-700">Lines</div>
+            <div className="mb-2 text-sm font-medium text-ps-body">Lines</div>
             <div className="space-y-2">
               {lines.map((l, i) => (
                 <div key={i} className="grid gap-2 sm:grid-cols-6">
@@ -372,7 +372,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                       next[i] = { ...l, description: e.target.value };
                       setLines(next);
                     }}
-                    className="rounded border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2"
+                    className="rounded border border-ps-border px-2 py-1.5 text-sm sm:col-span-2"
                   />
                   <input
                     value={l.hsn_sac}
@@ -382,7 +382,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                       next[i] = { ...l, hsn_sac: e.target.value };
                       setLines(next);
                     }}
-                    className="rounded border border-gray-300 px-2 py-1.5 text-sm font-mono"
+                    className="rounded border border-ps-border px-2 py-1.5 text-sm font-mono"
                   />
                   <input
                     value={l.quantity}
@@ -392,7 +392,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                       next[i] = { ...l, quantity: e.target.value };
                       setLines(next);
                     }}
-                    className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="rounded border border-ps-border px-2 py-1.5 text-sm"
                   />
                   <input
                     value={l.rate}
@@ -402,7 +402,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                       next[i] = { ...l, rate: e.target.value };
                       setLines(next);
                     }}
-                    className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="rounded border border-ps-border px-2 py-1.5 text-sm"
                   />
                   <input
                     value={l.gst_rate_percent}
@@ -412,7 +412,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                       next[i] = { ...l, gst_rate_percent: e.target.value };
                       setLines(next);
                     }}
-                    className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="rounded border border-ps-border px-2 py-1.5 text-sm"
                   />
                 </div>
               ))}
@@ -435,7 +435,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
             </button>
             <button
               onClick={() => setShowForm(false)}
-              className="rounded border border-gray-300 px-4 py-1.5 text-sm"
+              className="rounded border border-ps-border px-4 py-1.5 text-sm"
             >
               Cancel
             </button>
@@ -458,7 +458,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
             }}
           />
           {position && (
-            <div className="rounded border border-gray-200 bg-white p-4">
+            <div className="rounded border border-ps-border bg-white p-4">
               <div className="mb-2 flex items-center justify-between">
                 <h4 className="text-sm font-semibold">What is still open</h4>
                 <button onClick={() => setPosition(null)}><X size={14} /></button>
@@ -471,7 +471,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                 ])}
                 empty="This order has no lines."
               />
-              <p className="mt-2 text-xs text-gray-600">{position.posts_nothing}</p>
+              <p className="mt-2 text-xs text-ps-label">{position.posts_nothing}</p>
             </div>
           )}
         </div>
@@ -495,7 +495,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
       )}
 
       {/* The three-way match, against a bill the CA names. */}
-      <div className="rounded border border-gray-200 bg-white p-4">
+      <div className="rounded border border-ps-border bg-white p-4">
         <h4 className="mb-2 text-sm font-semibold">
           Match a bill against its order and its receipts
         </h4>
@@ -504,11 +504,11 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
             value={matchBillId}
             onChange={(e) => setMatchBillId(e.target.value)}
             placeholder="Purchase bill id"
-            className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+            className="rounded border border-ps-border px-2 py-1.5 text-sm"
           />
           <button
             onClick={() => void runMatch()}
-            className="rounded bg-gray-900 px-3 py-1.5 text-sm text-white"
+            className="rounded bg-brand px-3 py-1.5 text-sm text-white"
           >
             Match
           </button>
@@ -528,13 +528,13 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
               empty="This bill has no lines."
             />
             {matched.differences.map((d) => (
-              <p key={d} className="rounded bg-state-problem-surface p-2 text-red-900">{d}</p>
+              <p key={d} className="rounded bg-state-problem-surface p-2 text-state-problem">{d}</p>
             ))}
             {matched.gaps.map((g) => (
-              <p key={g} className="rounded bg-state-attention-surface p-2 text-amber-900">{g}</p>
+              <p key={g} className="rounded bg-state-attention-surface p-2 text-state-attention">{g}</p>
             ))}
             {matched.acceptance_date && (
-              <p className="text-gray-700">
+              <p className="text-ps-body">
                 Day of acceptance: {matched.acceptance_date}.{" "}
                 {matched.acceptance_source}
               </p>
@@ -555,11 +555,11 @@ function Table({ head, rows, empty, onRow }: {
   empty: string;
   onRow?: (index: number) => void;
 }) {
-  if (!rows.length) return <p className="p-4 text-sm text-gray-500">{empty}</p>;
+  if (!rows.length) return <p className="p-4 text-sm text-ps-hint">{empty}</p>;
   return (
-    <div className="overflow-x-auto rounded border border-gray-200">
+    <div className="overflow-x-auto rounded border border-ps-border">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+        <thead className="bg-ps-muted text-left text-xs uppercase text-ps-hint">
           <tr>{head.map((h) => <th key={h} className="px-3 py-2">{h}</th>)}</tr>
         </thead>
         <tbody>
@@ -567,7 +567,7 @@ function Table({ head, rows, empty, onRow }: {
             <tr
               key={i}
               onClick={onRow ? () => onRow(i) : undefined}
-              className={`border-t border-ps-border ${onRow ? "cursor-pointer hover:bg-gray-50" : ""}`}
+              className={`border-t border-ps-border ${onRow ? "cursor-pointer hover:bg-ps-hover" : ""}`}
             >
               {r.map((cell, j) => (
                 <td key={j} className="px-3 py-2 tabular-nums">{cell}</td>

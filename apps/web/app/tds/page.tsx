@@ -492,7 +492,7 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
   }, [clientId, month]);
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">Due for deposit</h2>
@@ -539,7 +539,7 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-bg">
+                <tbody className="divide-y divide-ps-border">
                   {state.sheet.sections.map(row => (
                     <tr key={row.section} className="hover:bg-ps-bg/50">
                       <td className="px-4 py-3 text-xs font-mono text-blue-700">{row.section}</td>
@@ -995,7 +995,7 @@ export default function TDSPage() {
           { icon: <Calendar className="w-4 h-4 text-red-600" />, bg: "bg-state-problem-surface", label: "Returns Due", value: String(pendingReturns), sub: "24Q/26Q/27Q" },
           { icon: <Award className="w-4 h-4 text-purple-600" />, bg: "bg-purple-50", label: "Certificates Pending", value: String(pendingCerts), sub: "Form 16/16A" },
         ].map(c => (
-          <div key={c.label} className="bg-white rounded-xl border border-ps-muted p-4">
+          <div key={c.label} className="bg-white rounded-xl border border-ps-border p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center`}>{c.icon}</div>
               <span className="text-xs text-ps-label">{c.label}</span>
@@ -1007,7 +1007,7 @@ export default function TDSPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-ps-muted">
+      <div className="flex gap-1 border-b border-ps-border">
         {TABS.map((tab, i) => (
           <button key={tab} onClick={() => setActiveTab(i)}
             className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-brand text-blue-700" : "border-transparent text-ps-label hover:text-ps-body"}`}>
@@ -1063,7 +1063,7 @@ export default function TDSPage() {
       {activeTab === 1 && (
         <div className="space-y-4">
         <DepositDuePanel clientId={selectedClientId} />
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-ps-ink">Challan 281 Tracker</h2>
@@ -1086,7 +1086,7 @@ export default function TDSPage() {
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-bg">
+                <tbody className="divide-y divide-ps-border">
                   {challans.map(c => (
                     <tr key={c.id} className="hover:bg-ps-bg/50">
                       <td className="px-4 py-3 text-xs font-mono text-ps-ink">{c.bsr_code || "—"}</td>
@@ -1122,7 +1122,7 @@ export default function TDSPage() {
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <p className="text-sm text-state-attention">File 24Q/26Q returns manually on the Income Tax e-filing portal (incometax.gov.in), under the deductor&apos;s TAN login. TRACES is post-filing only (Form 16/16A, defaults, corrections). PracticeSync does not auto-submit to any government portal.</p>
           </div>
-          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-ps-ink">TDS Returns (24Q / 26Q / 27Q)</h2>
@@ -1157,7 +1157,7 @@ export default function TDSPage() {
 
       {/* Tab: Certificates */}
       {activeTab === 3 && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-5 py-4 border-b border-ps-border">
             <h2 className="text-sm font-semibold text-ps-ink">Form 16A Certificates</h2>
             <p className="text-xs text-ps-hint mt-0.5">TDS certificates issued to deductees — IT Act Section 203</p>
@@ -1171,7 +1171,7 @@ export default function TDSPage() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {certificates.map(c => (
                   <tr key={c.id} className="hover:bg-ps-bg/50">
                     {/* certificate_form is the FY's own name for it, derived

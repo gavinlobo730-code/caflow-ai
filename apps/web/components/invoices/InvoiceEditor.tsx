@@ -835,7 +835,7 @@ export function InvoiceEditor({
   // ── Sticky summary panel ──────────────────────────────────────────────────────
   const outstanding = isEdit && existing ? totals.grand_total_paise - (existing.paid_paise ?? 0) : null;
   const summary = (
-    <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-2 text-xs">
+    <div className="bg-white rounded-xl border border-ps-border p-4 space-y-2 text-xs">
       <p className="font-semibold text-ps-body">Summary{isForeign ? ` (${currency})` : ""}</p>
       {/* CGST §15(3)(a): the discount is EXCLUDED from the value of supply, so
           the gross and the deduction are both shown and the taxable value is
@@ -910,7 +910,7 @@ export function InvoiceEditor({
       {isForeign && estimatedBasePaise != null && (
         <Row label="≈ INR total" value={fmt(estimatedBasePaise)} muted />
       )}
-      <div className="border-t border-ps-muted pt-2 mt-1 space-y-1.5">
+      <div className="border-t border-ps-border pt-2 mt-1 space-y-1.5">
         <Row label="Due date" value={dueDate || "—"} />
         {outstanding != null && <Row label="Outstanding" value={fmtAmt(outstanding)} />}
       </div>
@@ -941,7 +941,7 @@ export function InvoiceEditor({
     >
       <div className="space-y-5">
         {/* Party + metadata */}
-        <section className="bg-white rounded-xl border border-ps-muted p-4">
+        <section className="bg-white rounded-xl border border-ps-border p-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
@@ -1066,7 +1066,7 @@ export function InvoiceEditor({
               the return this invoice lands in. Frozen once issued, matching the
               server's _SOFT_UPDATE_FIELDS — changing the table an issued invoice
               belongs to needs a credit note (CGST §34), not a silent edit. */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3 pt-3 border-t border-ps-muted">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3 pt-3 border-t border-ps-border">
             <div>
               <label htmlFor="inv-supply-type" className="block text-xs font-medium text-ps-label mb-1">Supply Type</label>
               <select id="inv-supply-type" value={supplyType} disabled={isLocked}
@@ -1112,7 +1112,7 @@ export function InvoiceEditor({
               would mean they could never be recorded at all. */}
           {(supplyType === "zero_rated" || supplyStateCode === "96")
             && invoiceType === "Regular" && (
-            <div className="mt-3 pt-3 border-t border-ps-muted">
+            <div className="mt-3 pt-3 border-t border-ps-border">
               <p className="text-xs font-medium text-ps-label mb-2">
                 Shipping bill
                 <span className="ml-1 font-normal text-ps-hint">
@@ -1162,7 +1162,7 @@ export function InvoiceEditor({
 
           {/* Multi-currency (create-only) */}
           {!isEdit && mcActive && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-ps-muted">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-ps-border">
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
                 <select value={currency} onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
@@ -1200,7 +1200,7 @@ export function InvoiceEditor({
             cell. "Add line" and end-of-row Tab both create a new row whose
             first field is the Product/Service selector, never a blank
             Description box. */}
-        <section className="bg-white rounded-xl border border-ps-muted p-4">
+        <section className="bg-white rounded-xl border border-ps-border p-4">
           <div className="mb-2 flex items-center justify-between gap-3">
             <h2 className="text-xs font-semibold text-ps-body">Line items</h2>
             {!isLocked && (
@@ -1223,7 +1223,7 @@ export function InvoiceEditor({
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[900px]">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint">
+                <tr className="border-b border-ps-border text-ps-hint">
                   <th className="pb-2 text-left font-semibold w-40">Product/Service *</th>
                   <th className="pb-2 text-left font-semibold">Description</th>
                   <th className="pb-2 text-left font-semibold w-28">HSN/SAC</th>
@@ -1253,7 +1253,7 @@ export function InvoiceEditor({
                   <th className="pb-2 w-6" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {lines.map((line, idx) => {
                   // Same canonical mirror the summary uses, so the per-line
                   // column and the invoice total can never disagree with the
@@ -1437,7 +1437,7 @@ export function InvoiceEditor({
         </section>
 
         {/* Notes */}
-        <section className="bg-white rounded-xl border border-ps-muted p-4">
+        <section className="bg-white rounded-xl border border-ps-border p-4">
           <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
             placeholder="Optional notes shown on the invoice (terms, PO reference…)"

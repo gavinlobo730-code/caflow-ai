@@ -207,7 +207,7 @@ export default function ClientRatioNotePage() {
 
           <GapList gaps={note.gaps} tone="attention" />
 
-          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <div className="px-4 py-3 border-b border-ps-border">
               <p className="text-xs font-semibold text-ps-body">
                 Ratios — {note.fy}

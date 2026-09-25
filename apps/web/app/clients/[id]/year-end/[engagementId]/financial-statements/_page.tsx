@@ -512,7 +512,7 @@ function BalanceSheetView({
   const hasPrevious = previousTotalEL !== undefined;
   if (!equityLiabilities.length && !assets.length) {
     return (
-      <div className="bg-white rounded-xl border border-ps-muted text-center py-12">
+      <div className="bg-white rounded-xl border border-ps-border text-center py-12">
         <p className="text-sm text-ps-label">No data available. Refresh from ledger.</p>
       </div>
     );
@@ -552,13 +552,13 @@ function StatementCard({
   previousHeader: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className="px-4 py-3 bg-ps-bg border-b border-ps-muted">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+      <div className="px-4 py-3 bg-ps-bg border-b border-ps-border">
         <p className="text-3xs font-bold text-ps-label uppercase tracking-wide">{title}</p>
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-ps-muted text-ps-hint text-3xs">
+          <tr className="border-b border-ps-border text-ps-hint text-3xs">
             <th className="px-4 py-2 text-left font-semibold">Particulars</th>
             <th className="px-4 py-2 text-right font-semibold">{amountHeader}</th>
             {hasPrevious && (
@@ -591,7 +591,7 @@ function GroupRows({ group, hasPrevious, money }:
   return (
     <>
       <tr
-        className="cursor-pointer hover:bg-ps-bg border-t border-ps-bg"
+        className="cursor-pointer hover:bg-ps-bg border-t border-ps-border"
         onClick={() => setOpen((o) => !o)}
       >
         <td className="px-4 py-2 font-semibold text-ps-body flex items-center gap-1">
@@ -630,22 +630,22 @@ function ProfitLossView({ lines, money, amountHeader, previousHeader }:
   const hasPrevious = lines.some((l) => l.previous_paise !== undefined);
   if (!lines.length) {
     return (
-      <div className="bg-white rounded-xl border border-ps-muted text-center py-12">
+      <div className="bg-white rounded-xl border border-ps-border text-center py-12">
         <p className="text-sm text-ps-label">No data available. Refresh from ledger.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className="px-5 py-3 bg-ps-bg border-b border-ps-muted">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+      <div className="px-5 py-3 bg-ps-bg border-b border-ps-border">
         <p className="text-3xs font-bold text-ps-label uppercase tracking-wide">
           Statement of Profit &amp; Loss
         </p>
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-ps-muted text-ps-hint text-3xs">
+          <tr className="border-b border-ps-border text-ps-hint text-3xs">
             <th className="px-5 py-2 text-left font-semibold">Particulars</th>
             <th className="px-4 py-2 text-right font-semibold">{amountHeader}</th>
             {hasPrevious && (

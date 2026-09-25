@@ -81,7 +81,7 @@ export function ConfirmDialogHost() {
         aria-describedby="confirm-dialog-message"
         className="bg-white rounded-2xl shadow-xl w-full max-w-md"
       >
-        <div className="px-6 py-5 border-b border-ps-muted flex items-center gap-2">
+        <div className="px-6 py-5 border-b border-ps-border flex items-center gap-2">
           {state.danger && <AlertTriangle size={18} className="text-amber-500 shrink-0" />}
           <h2 id="confirm-dialog-title" className="text-base font-semibold text-ps-ink">
             {state.title ?? (state.danger ? "Are you sure?" : "Confirm")}
@@ -92,7 +92,7 @@ export function ConfirmDialogHost() {
             {state.message}
           </p>
         </div>
-        <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
+        <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
           <button
             onClick={() => settle(false)}
             autoFocus={!state.danger}

@@ -165,7 +165,7 @@ export function StockCountSheetPanel({
             </p>
           ))}
 
-          <div className="overflow-x-auto border border-ps-muted rounded-lg">
+          <div className="overflow-x-auto border border-ps-border rounded-lg">
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-ps-bg text-ps-label">
@@ -177,7 +177,7 @@ export function StockCountSheetPanel({
                   <th className="px-3 py-2 text-left font-semibold">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {(sheet?.lines ?? []).map((l: StockCountLine) => (
                   <tr key={l.service_catalogue_id} className="align-top">
                     <td className="px-3 py-2">

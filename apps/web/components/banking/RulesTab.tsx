@@ -454,12 +454,12 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : rules.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted p-10 text-center">
+        <div className="bg-white rounded-xl border border-ps-border p-10 text-center">
           <p className="text-sm text-ps-hint">No rules yet.</p>
           <p className="text-2xs text-ps-hint mt-1">Rules save re-booking the same line every month — bank charges, salary, a recurring vendor. Book a few lines under a ledger in Entries and it will offer to make one.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden divide-y divide-ps-bg">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden divide-y divide-ps-border">
           {rules.map((r, i) => (
             <div key={r.id} className={`px-4 py-3 flex items-start gap-3 ${r.is_active ? "" : "bg-ps-surface"}`}>
               <span className="text-3xs text-ps-disabled font-mono mt-0.5 w-4 shrink-0">{i + 1}</span>

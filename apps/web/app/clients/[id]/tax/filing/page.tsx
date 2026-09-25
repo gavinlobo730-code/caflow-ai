@@ -509,7 +509,7 @@ export default function ITRFilingPage() {
           <button onClick={() => load()} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : filings.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-2">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-2">
           <FileText size={28} className="text-gray-200 mx-auto" />
           <p className="text-sm text-ps-label">No ITR filings yet</p>
           <p className="text-xs text-ps-hint">Click &quot;New Filing&quot; to start the ITR preparation workflow.</p>
@@ -521,7 +521,7 @@ export default function ITRFilingPage() {
               key={f.id}
               onClick={() => { setSelectedFiling(f); setSheet(null); setSheetError(null); }}
               className={`w-full bg-white rounded-xl border px-4 py-3 flex items-center gap-3 hover:bg-ps-bg text-left ${
-                selectedFiling?.id === f.id ? "border-blue-200 bg-blue-50/30" : "border-ps-muted"
+                selectedFiling?.id === f.id ? "border-blue-200 bg-blue-50/30" : "border-ps-border"
               }`}
             >
               <FileText size={16} className="text-blue-500 flex-shrink-0" />

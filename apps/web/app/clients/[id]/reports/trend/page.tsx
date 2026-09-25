@@ -264,7 +264,7 @@ export default function ClientTrendPage() {
           )}
 
           {trend.fys.length === 0 ? (
-            <div className="bg-white rounded-xl border border-ps-muted px-4 py-10 text-center">
+            <div className="bg-white rounded-xl border border-ps-border px-4 py-10 text-center">
               <p className="text-xs text-ps-label">
                 Nothing is recorded against any of the years asked for.
               </p>
@@ -301,7 +301,7 @@ function AmountTable({ title, note, fys, series }: {
   title: string; note: string; fys: string[]; series: TrendSeries[];
 }) {
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className="px-4 py-3 border-b border-ps-border">
         <p className="text-xs font-semibold text-ps-body">{title}</p>
         <p className="text-3xs text-ps-hint mt-0.5">{note}</p>
@@ -341,7 +341,7 @@ function AmountTable({ title, note, fys, series }: {
 
 function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[] }) {
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className="px-4 py-3 border-b border-ps-border">
         <p className="text-xs font-semibold text-ps-body">Ratios</p>
         <p className="text-3xs text-ps-hint mt-0.5">

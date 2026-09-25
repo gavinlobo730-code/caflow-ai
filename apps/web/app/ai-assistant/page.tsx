@@ -173,7 +173,7 @@ export default function AIAssistantPage() {
   return (
     <div className="flex flex-col h-screen max-h-screen bg-white">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-ps-muted shrink-0">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-ps-border shrink-0">
         <Link
           href="/"
           className="text-xs text-ps-hint hover:text-ps-label transition-colors mr-1"
@@ -222,7 +222,7 @@ export default function AIAssistantPage() {
           goes (the hub's outstanding-work figures) and, as importantly, what
           does not. */}
       {clientId && (
-        <div className="px-6 py-2 border-b border-ps-muted bg-ps-bg shrink-0">
+        <div className="px-6 py-2 border-b border-ps-border bg-ps-bg shrink-0">
           <p className="text-3xs text-ps-hint">
             Answers for this client are given the figures the hub computes —
             how much is outstanding in each module. No document, no ledger
@@ -281,7 +281,7 @@ export default function AIAssistantPage() {
               className={`max-w-[75%] text-sm rounded-xl px-4 py-3 whitespace-pre-wrap leading-relaxed ${
                 msg.role === "user"
                   ? "bg-brand text-white rounded-tr-sm"
-                  : "bg-ps-bg text-ps-ink border border-ps-muted rounded-tl-sm"
+                  : "bg-ps-bg text-ps-ink border border-ps-border rounded-tl-sm"
               }`}
             >
               {msg.content}
@@ -294,7 +294,7 @@ export default function AIAssistantPage() {
             <div className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-ps-muted border border-ps-border">
               <Bot size={13} className="text-ps-label" />
             </div>
-            <div className="bg-ps-bg border border-ps-muted rounded-xl rounded-tl-sm px-4 py-3">
+            <div className="bg-ps-bg border border-ps-border rounded-xl rounded-tl-sm px-4 py-3">
               <div className="flex gap-1 items-center h-4">
                 <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
                 <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
@@ -316,7 +316,7 @@ export default function AIAssistantPage() {
       </div>
 
       {/* ── Input bar ───────────────────────────────────────────────────────── */}
-      <div className="shrink-0 px-6 py-4 border-t border-ps-muted bg-white">
+      <div className="shrink-0 px-6 py-4 border-t border-ps-border bg-white">
         <div className="flex gap-2 items-end max-w-4xl mx-auto">
           <textarea
             ref={textareaRef}

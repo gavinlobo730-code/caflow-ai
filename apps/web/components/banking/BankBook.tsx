@@ -203,7 +203,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
 
   if (accounts.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-ps-muted p-10 text-center max-w-3xl mx-auto">
+      <div className="bg-white rounded-xl border border-ps-border p-10 text-center max-w-3xl mx-auto">
         <Landmark size={24} className="mx-auto text-ps-disabled" />
         <p className="text-sm text-ps-hint mt-2">No bank account yet.</p>
         <p className="text-2xs text-ps-hint mt-1">
@@ -217,7 +217,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4">
       {/* Account + filters */}
-      <div className="bg-white rounded-xl border border-ps-muted p-3 flex flex-wrap items-end gap-3">
+      <div className="bg-white rounded-xl border border-ps-border p-3 flex flex-wrap items-end gap-3">
         <label className="block">
           <span className="text-3xs font-medium text-ps-label">Account</span>
           <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}
@@ -330,7 +330,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
             { label: "Withdrawals", value: fmt(summary.withdrawals_paise), tone: "text-money-out" },
             { label: "Closing balance", value: fmt(summary.closing_balance_paise), tone: "text-ps-ink font-semibold" },
           ].map((c) => (
-            <div key={c.label} className="bg-white rounded-xl border border-ps-muted px-4 py-3">
+            <div key={c.label} className="bg-white rounded-xl border border-ps-border px-4 py-3">
               <p className="text-3xs text-ps-hint uppercase tracking-wide">{c.label}</p>
               <p className={`text-sm font-mono mt-0.5 ${c.tone}`}>{c.value}</p>
             </div>
@@ -344,7 +344,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : !data || data.lines.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted p-10 text-center">
+        <div className="bg-white rounded-xl border border-ps-border p-10 text-center">
           <p className="text-sm text-ps-hint">
             {filtersActive ? "Nothing matches these filters." : "No transactions on this account yet."}
           </p>
@@ -353,10 +353,10 @@ export function BankRegister({ clientId }: { clientId: string }) {
           )}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="bg-ps-bg text-ps-label border-b border-ps-muted">
+              <thead className="bg-ps-bg text-ps-label border-b border-ps-border">
                 <tr>
                   {sortHead("date", "Date")}
                   {sortHead("description", "Description")}
@@ -367,7 +367,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
                   {sortHead("balance", "Balance", "right")}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {/* The balance immediately before the first row shown. Without it
                     a filtered register does not visibly add up. */}
                 {page === 0 && (
@@ -423,7 +423,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
             </table>
           </div>
 
-          <div className="px-3 py-2 border-t border-ps-muted flex items-center justify-between text-2xs text-ps-label">
+          <div className="px-3 py-2 border-t border-ps-border flex items-center justify-between text-2xs text-ps-label">
             <span>
               {data.filtered_count === data.total_count
                 ? `${data.total_count} transaction${data.total_count === 1 ? "" : "s"}`

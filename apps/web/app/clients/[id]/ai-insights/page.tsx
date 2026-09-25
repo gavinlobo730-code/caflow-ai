@@ -132,7 +132,7 @@ export default function AiInsightsPage() {
           {loading ? (
             <div className="space-y-3" role="status" aria-label="Loading insights">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="rounded-lg border border-ps-muted px-4 py-3">
+                <div key={i} className="rounded-lg border border-ps-border px-4 py-3">
                   <SkeletonText lines={2} />
                 </div>
               ))}

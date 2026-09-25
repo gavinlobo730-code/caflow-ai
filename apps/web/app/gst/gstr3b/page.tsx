@@ -357,7 +357,7 @@ export default function GSTR3BPage() {
                 puts it. */}
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-ps-label uppercase border-b border-ps-muted">
+                <tr className="text-xs text-ps-label uppercase border-b border-ps-border">
                   <th className="text-left px-5 py-2.5 font-medium">Supply Type</th>
                   <th className="text-right px-5 py-2.5 font-medium">Taxable value</th>
                   <th className="text-right px-5 py-2.5 font-medium">IGST</th>
@@ -365,7 +365,7 @@ export default function GSTR3BPage() {
                   <th className="text-right px-5 py-2.5 font-medium">SGST</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 <tr className="hover:bg-ps-bg">
                   <td className="px-5 py-3 text-ps-body">
                     (a) Taxable supplies (B2B + B2C + B2CL)
@@ -523,14 +523,14 @@ export default function GSTR3BPage() {
                 </div>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-xs text-ps-label uppercase border-b border-ps-muted">
+                    <tr className="text-xs text-ps-label uppercase border-b border-ps-border">
                       <th className="text-left px-5 py-2.5 font-medium">Recipient</th>
                       <th className="text-left px-5 py-2.5 font-medium">Place of supply (state code)</th>
                       <th className="text-right px-5 py-2.5 font-medium">Taxable value</th>
                       <th className="text-right px-5 py-2.5 font-medium">IGST</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ps-bg">
+                  <tbody className="divide-y divide-ps-border">
                     {rows.map((row) => (
                       <tr key={`${row.kind}-${row.pos}`} className="hover:bg-ps-bg">
                         <td className="px-5 py-3 text-ps-body">{row.kind}</td>
@@ -556,14 +556,14 @@ export default function GSTR3BPage() {
             </div>
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-ps-label uppercase border-b border-ps-muted">
+                <tr className="text-xs text-ps-label uppercase border-b border-ps-border">
                   <th className="text-left px-5 py-2.5 font-medium">Row</th>
                   <th className="text-right px-5 py-2.5 font-medium">IGST</th>
                   <th className="text-right px-5 py-2.5 font-medium">CGST</th>
                   <th className="text-right px-5 py-2.5 font-medium">SGST</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 <tr className="hover:bg-ps-bg">
                   <td className="px-5 py-3 text-ps-body">
                     4(A) ITC available
@@ -600,7 +600,7 @@ export default function GSTR3BPage() {
               </tbody>
             </table>
             {w.itc_reversal.reasons.length > 0 && (
-              <div className="px-5 py-3 border-t border-ps-muted bg-[#FCFCFD]">
+              <div className="px-5 py-3 border-t border-ps-border bg-[#FCFCFD]">
                 <p className="text-xs font-medium text-ps-label mb-1.5">What is in 4(B)</p>
                 <ul className="space-y-1">
                   {w.itc_reversal.reasons.map((x, i) => (
@@ -677,14 +677,14 @@ export default function GSTR3BPage() {
 
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-ps-label uppercase border-b border-ps-muted">
+                  <tr className="text-xs text-ps-label uppercase border-b border-ps-border">
                     <th className="text-left px-5 py-2.5 font-medium">Measured</th>
                     <th className="text-right px-5 py-2.5 font-medium">IGST</th>
                     <th className="text-right px-5 py-2.5 font-medium">CGST</th>
                     <th className="text-right px-5 py-2.5 font-medium">SGST</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-bg">
+                <tbody className="divide-y divide-ps-border">
                   <tr className="hover:bg-ps-bg">
                     <td className="px-5 py-3 text-ps-body">
                       Per the purchase register
@@ -762,7 +762,7 @@ export default function GSTR3BPage() {
                       check.
                     </p>
                   </div>
-                  <ul className="divide-y divide-ps-muted">
+                  <ul className="divide-y divide-ps-border">
                     {w.rule_36_4.per_document.withheld.map((d, i) => (
                       <li key={d.document_id ?? `${d.label}-${i}`} className="px-5 py-3">
                         <div className="flex items-start justify-between gap-4">
@@ -837,7 +837,7 @@ export default function GSTR3BPage() {
                 EXCLUDING "tax payable by him on reverse charge basis". The row
                 below carries it, because "Total" here was being read as the
                 challan amount and was short by the whole of Table 3.1(d). */}
-            <div className="grid grid-cols-4 divide-x divide-ps-muted text-center">
+            <div className="grid grid-cols-4 divide-x divide-ps-border text-center">
               {[
                 { label: "IGST", value: w.net_payable.igst_paise, color: "text-blue-700" },
                 { label: "CGST", value: w.net_payable.cgst_paise, color: "text-blue-600" },
@@ -850,7 +850,7 @@ export default function GSTR3BPage() {
                 </div>
               ))}
             </div>
-            <div className="border-t border-ps-border divide-y divide-ps-muted">
+            <div className="border-t border-ps-border divide-y divide-ps-border">
               <div className="flex items-baseline justify-between px-5 py-3">
                 <div>
                   <p className="text-sm text-ps-body">Reverse charge, payable in cash</p>
@@ -873,7 +873,7 @@ export default function GSTR3BPage() {
             {/* A total of zero says nothing about whether credit was exhausted
                 or barely touched. Apex, April 2026: nil payable over
                 Rs 36,54,961.65 of unused credit. */}
-            <div className="px-5 py-3 border-t border-ps-muted bg-[#FCFDFE] grid grid-cols-3 gap-3 text-center">
+            <div className="px-5 py-3 border-t border-ps-border bg-[#FCFDFE] grid grid-cols-3 gap-3 text-center">
               {[
                 { label: "Credit available (4C)", value: w.itc_utilisation.available_paise },
                 { label: "Set off against tax", value: w.itc_utilisation.consumed_paise },
@@ -942,7 +942,7 @@ export default function GSTR3BPage() {
                         <tbody>
                           {rule37a.suppliers.map((s) => (
                             <tr key={`${s.vendor_id ?? s.vendor_name}`}
-                                className="border-t border-ps-muted">
+                                className="border-t border-ps-border">
                               <td className="py-1">{s.vendor_name}</td>
                               <td className="py-1 font-mono text-xs">
                                 {s.vendor_gstin ?? "—"}

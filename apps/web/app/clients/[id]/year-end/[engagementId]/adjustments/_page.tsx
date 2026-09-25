@@ -178,11 +178,11 @@ export default function AdjustmentsPage() {
 
       {/* Table */}
       {adjustments.length > 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint">
+                <tr className="border-b border-ps-border text-ps-hint">
                   <th className="px-4 py-3 text-left font-semibold">Type</th>
                   <th className="px-3 py-3 text-left font-semibold">Description</th>
                   <th className="px-3 py-3 text-left font-semibold">Debit</th>
@@ -193,7 +193,7 @@ export default function AdjustmentsPage() {
                   <th className="px-4 py-3 text-left font-semibold">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {adjustments.map((adj) => (
                   <tr key={adj.id} className="hover:bg-ps-bg">
                     <td className="px-4 py-2.5">
@@ -231,7 +231,7 @@ export default function AdjustmentsPage() {
           </div>
         </div>
       ) : !showForm ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-14">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-14">
           <p className="text-sm text-ps-label">No adjustments yet</p>
           <p className="text-xs text-ps-hint mt-1">Click &quot;+ New Adjustment&quot; to create one</p>
         </div>
@@ -239,7 +239,7 @@ export default function AdjustmentsPage() {
 
       {/* Register totals */}
       {adjustments.length > 0 && (
-        <div className="bg-white rounded-xl border border-ps-muted px-4 py-3">
+        <div className="bg-white rounded-xl border border-ps-border px-4 py-3">
           <p className="text-xs font-semibold text-ps-body mb-2">Adjustment Register — Totals</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <RegisterTotal label="Total" value={fmt(totalPaise)} />
@@ -348,7 +348,7 @@ function AdjustmentForm({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-ps-ink">New Year-End Adjustment</h3>
         <button onClick={onCancel} className="text-ps-hint hover:text-ps-label">

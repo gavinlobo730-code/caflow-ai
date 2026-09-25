@@ -5,16 +5,31 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // THE DEFECT
 // ─────────────────────────────────────────────────────────────────────────────
-// 129 card headers, table bodies and footers across 50 files drew their rule in
-// `border-gray-50` (#F9FAFB) or `border-gray-100` (#F3F4F6). On the two
-// surfaces this app actually has — `#FFFFFF` and `ps.bg` #F8FAFC — those are
-// **1.02:1** and **1.10:1**. The element is in the DOM, it costs a layout
-// pixel, and nobody can see it: a card header sat on top of its own body with
-// nothing separating them, and a twelve-row table read as one block of text.
+// 1,009 card headers, table bodies, footers and row separators across 197
+// files drew their rule in a colour indistinguishable from the surface behind
+// it. On the two surfaces this app actually has — `#FFFFFF` and `ps.bg`
+// #F8FAFC — the element is in the DOM, it costs a layout pixel, and nobody can
+// see it: a card header sat on top of its own body with nothing between them,
+// and a twelve-row table read as one block of text.
 //
-// The product's divider is `ps.border` #E2E8F0 at **1.23:1**, already used at
-// 1,627 sites. So this was never a missing decision — it was 129 places that
-// did not take the one that exists.
+// IT WAS WRITTEN IN TWO VOCABULARIES AND THE SECOND WAS THE LARGER.
+//
+//   136  `border-gray-50` 1.02:1 · `border-gray-100` / `border-slate-100` 1.10
+//   873  `border-ps-muted` 1.10:1 · `divide-ps-bg` 1.02:1
+//
+// The second is the one worth reading twice: those are the product's OWN
+// tokens — `ps.muted` is the table-header fill and `ps.bg` is the application
+// background — used as borders. They came from T3-a (#556), which migrated
+// 10,146 hex literals and was RIGHT to be a pure rename: `border-[#F1F5F9]`
+// became `border-ps-muted` and nothing moved on screen. What the rename could
+// not do is notice that the literal had been invisible all along. So the
+// product ended up drawing one element — a card header rule — at three
+// different weights depending on which file you opened, and two of the three
+// could not be seen.
+//
+// The product's divider is `ps.border` #E2E8F0 at **1.23:1**, already at 1,722
+// sites. So this was never a missing decision — it was 1,009 places that did
+// not take the one that exists.
 //
 // ⚠️ THIS IS NOT A WCAG FIX AND MUST NOT BE SOLD AS ONE. 1.4.11 asks 3:1 of a
 // component you need in order to understand or operate the interface, and
@@ -38,13 +53,22 @@
 // it covers every neutral family and every step without naming them, and if
 // somebody darkens `ps.border` the bar rises with it automatically.
 //
+// ── BOTH VOCABULARIES, OR THE RULE IS A SPELLING AGAIN ──────────────────────
+// The first version of this guard checked the Tailwind families only. It
+// passed on a clean tree while 873 `ps-muted` and `ps-bg` edges sat in it —
+// six times the population it had just swept — because a guard that knows one
+// vocabulary is silently wrong about the other. So `ps.*` is parsed out of the
+// token file and measured by the same arithmetic, which also means a token
+// added later is covered on the day it is added.
+//
 // ── THE CARVE-OUT, STATED RATHER THAN LEFT IMPLICIT ─────────────────────────
-// Only the NEUTRAL families are checked. A neutral divider is drawn on a
-// neutral surface by construction, so "contrast on white" is the right
+// Only the NEUTRAL Tailwind families are checked. A neutral divider is drawn
+// on a neutral surface by construction, so "contrast on white" is the right
 // measurement for it. `border-amber-100` inside an amber callout sits on
 // `bg-amber-50`, where the same arithmetic would report a false positive — a
 // tinted rule inside a tinted panel is a real thing and is the named-palette
-// module pass's business, not this one.
+// module pass's business, not this one. The `ps.*` scale needs no such
+// carve-out: every one of its values is a neutral.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -122,18 +146,38 @@ const NEUTRAL_STEPS: Record<string, Record<string, string>> = {
   stone:   { "50": "#FAFAF9", "100": "#F5F5F4", "200": "#E7E5E4" },
 };
 
-/** An edge: `border-b-gray-100`, `border-gray-50`, `divide-y` + `divide-…`. */
+/** Every `ps.*` token, parsed out of the config: `bg: "#F8FAFC"` and friends.
+ *
+ *  Parsed rather than listed for the reason the bar is: the product's own
+ *  scale is the one most likely to gain a value, and a guard that has to be
+ *  edited when it does is a guard that will not be. */
+const PS_TOKENS: Record<string, string> = Object.fromEntries(
+  [...(/\bps:\s*\{([\s\S]*?)\n\s{8}\}/.exec(CONFIG)?.[1] ?? "")
+    .matchAll(/"?([a-z-]+)"?:\s*"(#[0-9a-fA-F]{6})"/g)]
+    .map((m) => [m[1], m[2]]),
+);
+
+/** An edge in the Tailwind vocabulary: `border-b-gray-100`, `divide-y` + `…`. */
 const EDGE = new RegExp(
   String.raw`\b(?:border|divide)(?:-[tblrxy])?-(${Object.keys(NEUTRAL_STEPS).join("|")})-(\d{2,3})\b`,
   "g",
 );
+/** An edge in the product's own: `border-t-ps-muted`, `divide-y divide-ps-bg`. */
+const PS_EDGE = /\b(?:border|divide)(?:-[tblrxy])?-ps-([a-z-]+)\b/g;
 
 function offenders(): { file: string; cls: string; ratio: number }[] {
   const found: { file: string; cls: string; ratio: number }[] = [];
   for (const file of ROOTS.flatMap((r) => sources(r))) {
-    for (const m of code(file).matchAll(EDGE)) {
+    const body = code(file);
+    for (const m of body.matchAll(EDGE)) {
       const hex = NEUTRAL_STEPS[m[1]]?.[m[2]];
       if (!hex) continue; // 300+ — darker than the bar by construction
+      const ratio = onWhite(hex);
+      if (ratio < BAR) found.push({ file, cls: m[0], ratio });
+    }
+    for (const m of body.matchAll(PS_EDGE)) {
+      const hex = PS_TOKENS[m[1]];
+      if (!hex) continue; // not a colour token — `border-ps-border` resolves fine
       const ratio = onWhite(hex);
       if (ratio < BAR) found.push({ file, cls: m[0], ratio });
     }
@@ -163,15 +207,46 @@ test("the threshold ranks known values the way the prose says", () => {
   assert.ok(onWhite("#CBD5E1") > BAR, "ps.border-strong must clear it comfortably");
 });
 
-test("a planted offender is caught", () => {
+test("the product's own tokens were read out of the config", () => {
+  // Non-vacuity for the second vocabulary. An empty map would make the `ps.*`
+  // half of this guard inert while every other test still passed — which is
+  // exactly what the FIRST version of this file did, by not having the half
+  // at all, over a population six times the one it was sweeping.
+  assert.ok(
+    Object.keys(PS_TOKENS).length > 8,
+    `only ${Object.keys(PS_TOKENS).length} ps.* tokens parsed — the config ` +
+      "shape moved and the ps half of this guard is checking nothing",
+  );
+  assert.equal(PS_TOKENS.muted, "#F1F5F9", "ps.muted did not parse");
+  assert.equal(PS_TOKENS.border, "#E2E8F0", "ps.border did not parse");
+  assert.ok(onWhite(PS_TOKENS.muted) < BAR, "ps.muted must be under the bar");
+  assert.ok(onWhite(PS_TOKENS.bg) < BAR, "ps.bg must be under the bar");
+});
+
+test("a planted offender is caught in either vocabulary", () => {
   // The negative control for the SCAN. A pattern that quietly stops matching
   // is how four guards in this repository went inert; this one proves it can
-  // still see the thing it forbids.
-  const probe = `<div className="border-b border-slate-100" />`;
-  const hits = [...probe.matchAll(EDGE)].filter(
-    (m) => onWhite(NEUTRAL_STEPS[m[1]][m[2]]) < BAR,
+  // still see the thing it forbids — in both spellings, because the whole
+  // lesson of this file is that one of them is not the other.
+  const tailwind = `<div className="border-b border-slate-100" />`;
+  assert.equal(
+    [...tailwind.matchAll(EDGE)].filter((m) => onWhite(NEUTRAL_STEPS[m[1]][m[2]]) < BAR).length,
+    1,
+    "the scanner cannot see a planted invisible Tailwind divider",
   );
-  assert.equal(hits.length, 1, "the scanner cannot see a planted invisible divider");
+  const own = `<ul className="divide-y divide-ps-muted" />`;
+  assert.equal(
+    [...own.matchAll(PS_EDGE)].filter((m) => onWhite(PS_TOKENS[m[1]] ?? "#000") < BAR).length,
+    1,
+    "the scanner cannot see a planted invisible ps.* divider",
+  );
+  // And the one it must NOT flag, or the sweep has nowhere to go.
+  const ok = `<ul className="divide-y divide-ps-border" />`;
+  assert.equal(
+    [...ok.matchAll(PS_EDGE)].filter((m) => onWhite(PS_TOKENS[m[1]] ?? "#000") < BAR).length,
+    0,
+    "the scanner flags the very token it tells people to use",
+  );
 });
 
 test("no divider is fainter than the product's own divider token", () => {
