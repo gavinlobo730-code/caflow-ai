@@ -35,6 +35,7 @@ import { toast } from "@/components/ui/use-toast";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
+import { PartyBreakdown } from "@/components/accounting/PartyBreakdown";
 import { CostCentresTab } from "@/components/accounting/CostCentresTab";
 import { StatementAnalysisPanel } from "@/components/accounting/StatementAnalysisPanel";
 import { DrCr } from "@/components/ui/drcr";
@@ -1268,6 +1269,25 @@ function LedgerDrillDown({
           ) : (
             <TableSkeleton cols={6} rows={6} />
           )}
+
+          {/* WHO this balance is with (ACC-13's other half), beneath the
+              ledger that says WHICH DOCUMENT each row came from (ACC-22).
+              Same drawer deliberately: a CA reconciling Trade Receivables
+              needs both answers at once, and a separate screen is what made
+              the control account and the Customer Statement two places that
+              could disagree with nobody noticing. Keyed on the account so
+              switching account refetches. */}
+          {accountId ? (
+            <div className="mt-6 border-t border-ps-border pt-5">
+              <PartyBreakdown
+                key={accountId}
+                clientId={clientId}
+                accountId={accountId}
+                accountName={accountName}
+                asOf={endDate}
+              />
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

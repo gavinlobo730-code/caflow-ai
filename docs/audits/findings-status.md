@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **267** | re-read against the code. The defect is gone. |
-| partial | **5** | part of the finding is answered, part is not. Each says which. |
+| closed | **268** | re-read against the code. The defect is gone. |
+| partial | **4** | part of the finding is answered, part is not. Each says which. |
 | open | **2** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **0** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 7 items — 2 open and 5 partial — not 254.**
+**The work left is 6 items — 2 open and 4 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -41,7 +41,6 @@ is left as "unknown".
 |---|---|---|
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
-| medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
 
@@ -176,6 +175,7 @@ _none_
 | medium | **ACC-08** | The Trial Balance is always inception-to-date — choosing a financial year only moves the as-at d |
 | medium | **ACC-11** | POST /api/accounting/accounts cannot set account_subtype, so every account a CA creates lands in |
 | medium | **ACC-12** | A filed return locks EDITING a period but not POSTING into it — the two halves of the same rule  |
+| medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
 | medium | **ACC-14** | Opening balances cover only aggregate AR, aggregate AP and bank — every other account, and every |
 | medium | **ACC-15** | A discarded draft journal can be resurrected and posted, because post_draft never selects delete |
 | medium | **ACC-17** | Reporting endpoints aggregate across the WHOLE firm when client_id is omitted, for a caller who  |

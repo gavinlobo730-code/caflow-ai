@@ -3150,6 +3150,14 @@ export const api = {
         method: "PATCH", body: JSON.stringify(data),
       }),
     ledger: (params: Record<string, string>) => request(`/api/accounting/ledger?${new URLSearchParams(params)}`),
+    /** Who a control account is owed BY, or owed TO (ACC-13's other half).
+     *  The ledger names the DOCUMENT behind each row (ACC-22); this names the
+     *  PARTY behind the account. `client_id` is required — a breakdown
+     *  spanning several clients would sum parties across unrelated books. */
+    ledgerParties: (params: { client_id: string; account_id: string; as_of?: string }) =>
+      request<ApiResp<PartyBreakdownPayload>>(
+        `/api/accounting/ledger/parties?${new URLSearchParams(
+          Object.entries(params).filter(([, v]) => v) as [string, string][])}`),
     trialBalance: (params?: Record<string, string>) => request(`/api/accounting/trial-balance${params ? "?" + new URLSearchParams(params) : ""}`),
     // Bring an imported trial balance into a client's ledger as one balanced
     // opening journal. `preview: true` validates and returns totals without
@@ -6094,6 +6102,35 @@ export type BenchmarkPayload = {
   /** Served, never held here — the Schedule III caption lesson. */
   figure_meaning: Record<string, string>;
   money_figures: string[];
+  notes: string[];
+};
+
+/** One party, or one kind of entry that names no party. Never both — the
+ *  server sets exactly one of `party_id` and `unattributed_source`. */
+export type PartyBreakdownRow = {
+  party_id: string | null;
+  party_name: string;
+  party_kind: "customer" | "vendor" | null;
+  unattributed_source: string | null;
+  /** Why this kind of entry names no party. Five different sentences, because
+   *  what the CA does next differs — a manual journal and an opening balance
+   *  are not the same problem. */
+  unattributed_reason: string | null;
+  debit_paise: number;
+  credit_paise: number;
+  balance_paise: number;
+};
+
+export type PartyBreakdownPayload = {
+  as_of: string;
+  account_id: string;
+  rows: PartyBreakdownRow[];
+  attributed_paise: number;
+  /** ⚠️ PART OF THE ANSWER, not a gap in it. Together with the attributed
+   *  figure this equals the account's own balance, so it IS the difference
+   *  between this control account and the per-party statements. */
+  unattributed_paise: number;
+  total_paise: number;
   notes: string[];
 };
 
