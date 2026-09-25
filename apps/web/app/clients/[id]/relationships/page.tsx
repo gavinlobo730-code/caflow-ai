@@ -53,9 +53,17 @@ const ROLE_TYPES = [
 
 interface CrossClientMatch {
   id: string;
-  pan: string;
+  /** The column is `match_value`, and it is NOT always a PAN: migration 059
+   *  CHECKs `match_type` to ('pan','gstin','name','email') and the value is
+   *  whatever that type says it is. This interface said `pan`, so the cell was
+   *  permanently undefined under the old `select("*")` — and once the select
+   *  was narrowed to a column list it named a column that does not exist,
+   *  which PostgREST rejects for the WHOLE select, taking the screen's load()
+   *  with it. Nullable, because the column is. */
+  match_value: string | null;
   client_id_a: string;
   client_id_b: string;
+  /** One of 'pan' | 'gstin' | 'name' | 'email' (migration 059's CHECK). */
   match_type: string;
   /** The column is `reviewed`, not `is_reviewed` — this file's old interface
    *  said otherwise and read a field that is always undefined. */
@@ -123,7 +131,7 @@ export default function ClientRelatedPartiesPage() {
       const db = getSupabaseClient();
       const { data, error: matchesError } = await db
         .from("cross_client_matches")
-        .select("id, pan, client_id_a, client_id_b, match_type, reviewed, is_confirmed")
+        .select("id, match_value, client_id_a, client_id_b, match_type, reviewed, is_confirmed")
         .eq("reviewed", false)
         .or(`client_id_a.eq.${clientId},client_id_b.eq.${clientId}`)
         .order("created_at", { ascending: false });
@@ -399,7 +407,9 @@ export default function ClientRelatedPartiesPage() {
                 <thead>
                   <tr className="text-left text-3xs uppercase tracking-wide text-ps-hint border-b border-ps-border">
                     <th className="px-5 py-2.5 font-medium">Match</th>
-                    <th className="px-3 py-2.5 font-medium">PAN</th>
+                    {/* Not "PAN": the match may be on a GSTIN, a name or an
+                        email, and the Match column beside it says which. */}
+                    <th className="px-3 py-2.5 font-medium">Matched on</th>
                     <th className="px-3 py-2.5 font-medium">Other client</th>
                     <th className="px-3 py-2.5 font-medium">Status</th>
                   </tr>
@@ -412,7 +422,7 @@ export default function ClientRelatedPartiesPage() {
                           {m.match_type.toUpperCase()}
                         </Badge>
                       </td>
-                      <td className="px-3 py-3 text-gray-700 font-mono">{m.pan}</td>
+                      <td className="px-3 py-3 text-gray-700 font-mono">{m.match_value ?? "—"}</td>
                       <td className="px-3 py-3 text-gray-500">
                         {(m.client_id_a === clientId ? m.client_id_b : m.client_id_a).slice(0, 8)}…
                       </td>
