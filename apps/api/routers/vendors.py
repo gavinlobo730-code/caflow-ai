@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from domain.gst.gstin import problem_with as gstin_problem
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ValidationError
 from models.common import api_response
 from domain.party_duplicates import possible_duplicates
@@ -905,4 +905,43 @@ def vendor_statement(
         raise
     except Exception as e:
         _logger.error("vendor_statement: %s", e)
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
+
+
+@router.get("/{vendor_id}/statement/pdf")
+def vendor_statement_pdf(
+    vendor_id: str,
+    client_id: str = Query(..., description="CA client ID — required"),
+    start_date: str = Query(..., description="YYYY-MM-DD"),
+    end_date: str = Query(..., description="YYYY-MM-DD"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The same statement as a PDF — the supplier's account as the books have it.
+
+    The AP mirror of `GET /api/customer-statements/pdf`, which has had a screen,
+    a download and an email since Phase 4.1 while this side had none of them and
+    the JSON endpoint above had no caller at all.
+
+    It shares ONE builder with the customer statement rather than copying it;
+    `services/statement_pdf_service.VENDOR` holds the four things that differ,
+    of which only one is not cosmetic — a positive running balance here is a
+    CREDIT (the client owes the supplier), and printing it Dr would state the
+    debt against the wrong party on a document somebody reconciles from.
+
+    `_vendor` ties `vendor_id` to `client_id` server-side, so the client check
+    is sufficient. Read-only: it posts nothing and records no delivery.
+    """
+    assert_client_access(current_user, client_id)
+    try:
+        from core.supabase_client import get_supabase
+        from services.statement_pdf_service import get_vendor_statement_pdf
+        pdf_bytes, filename = get_vendor_statement_pdf(
+            get_supabase(), current_user.get("firm_id"), client_id,
+            vendor_id, start_date, end_date)
+        return Response(content=pdf_bytes, media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("vendor_statement_pdf: %s", e)
         return api_response(False, None, "Unable to complete vendor operation. Please try again.")

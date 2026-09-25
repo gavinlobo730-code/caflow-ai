@@ -144,7 +144,7 @@ BUDGET: dict[str, int] = {
     "/api/assignments": 2, "/api/customers": 2, "/api/form-26as": 2,
     "/api/identity": 2, "/api/insights": 2, "/api/notifications": 2,
     "/api/onboarding": 2, "/api/public": 2, "/api/sales-cycle": 2,
-    "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 2,
+    "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 1,
     "/api/approvals": 1, "/api/customer-statements": 1,
     "/api/document-intelligence-v2": 1, "/api/documents": 1,
     "/api/knowledge": 1,
@@ -233,7 +233,7 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # BUDGET, plus the three the tree had already shed since the last measurement;
 # then the AP allocate mirror, and the gateway webhook moving out of the
 # counted population entirely.
-TOTAL_BUDGET = 224
+TOTAL_BUDGET = 223
 
 
 # ---------------------------------------------------------------------------
