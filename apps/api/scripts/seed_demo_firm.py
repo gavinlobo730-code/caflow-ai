@@ -213,6 +213,39 @@ def _pay(api: Api, doc, bill: dict, client_id: str, vendor_id: str,
     return True
 
 
+def _post_the_document(api: Api, path: str, transition: str, doc_id: str,
+                       doc_date: str, last_month: str) -> bool:
+    """Issue an invoice, or receive a bill — and say whether it was.
+
+    ⚠️ EVERY DOCUMENT THIS SEEDER WROTE WAS A DRAFT, AND A DRAFT DOES NOTHING.
+    `POST /api/sales-invoices/` and `POST /api/purchase-bills/` both insert
+    with `status: "draft"`, and the journal is posted by the SEPARATE
+    transition — `/{id}/issue` and `/{id}/receive`. Until this existed the
+    demo had 315 invoices and 200 bills that posted no journal, so the trial
+    balance, the profit and loss and the balance sheet were empty of both; no
+    receivable or payable existed, so every ageing schedule was nil; no stock
+    moved, because `apply_purchase_to_inventory` and `apply_sale_to_inventory`
+    run at receive and issue; and NOTHING REACHED A RETURN, because only a
+    posted document does — so GSTR-1 and GSTR-3B were structurally empty on a
+    book of 515 documents. The counts looked right and every screen the demo
+    exists for showed nothing.
+
+    THE LAST MONTH IS LEFT IN DRAFT ON PURPOSE. A practice partway through the
+    month after the year end has exactly that: eleven months posted and the
+    twelfth still being entered. It is also the state the issue and receive
+    buttons exist for, and a book where every document is already posted
+    cannot show them.
+    """
+    if doc_date[:7] == last_month:
+        return False
+    # The transition is NAMED by the caller rather than sniffed out of the
+    # path. "sales in the url means issue" is a spelling of the rule, and the
+    # day a second sales-side document needs receiving it is a silent wrong
+    # call rather than a 404.
+    api.post(f"{path}/{doc_id}/{transition}", {})
+    return True
+
+
 def _banks(api: Api, c, client_id: str, fy_start: str, written: dict) -> list[str]:
     """The client's bank accounts, primary first.
 
@@ -460,8 +493,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
     written = {"hsn_library": 0, "clients": 0, "catalogue": 0,
                "customers": 0, "vendors": 0, "msmed_classifications": 0,
                "bank_accounts": 0,
-               "sales_invoices": 0, "receipts": 0,
-               "purchase_bills": 0, "payments": 0,
+               "sales_invoices": 0, "invoices_issued": 0, "receipts": 0,
+               "purchase_bills": 0, "bills_received": 0, "payments": 0,
                "fixed_assets": 0, "depreciation_months": 0,
                "employees": 0, "payroll_runs": 0, "payroll_finalized": 0,
                "payroll_disbursed": 0,
@@ -495,6 +528,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
     #: An invoice raised inside the last two months is not overdue, so a bank
     #: credit clearing one would be an odd thing to be demonstrating.
     cutoff = f"{start_year + 1}-02-01"
+    #: The month left in DRAFT — see `_post_the_document`.
+    last_month = f"{start_year + 1}-03"
 
     for c in firm.clients:
         print(f"  {c.name} — {c.demonstrates}")
@@ -536,6 +571,20 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 # Goods only: `unit` is the CBIC UQC and a service has none,
                 # which is the same split `domain/gst/goods_or_services` makes.
                 "unit": item.unit if item.kind == "good" else None,
+                # OPENING STOCK, so the first sale of the year relieves real
+                # stock instead of driving the position negative on document
+                # one. `routers/service_catalogue` seeds the costing ledger
+                # from these two and dates it to the client's own FY start;
+                # it gates on `kind == "good"`, so a service sending them is
+                # ignored rather than refused — which is why they are sent
+                # only for goods here and not left to that gate.
+                "opening_qty_units": item.opening_qty_units or None,
+                "opening_cost_paise": item.opening_cost_paise or None,
+                # None is a REAL third state and never zero (INV-09): zero
+                # means "tell me when it runs out", and reading an absence as
+                # zero records a decision nobody made.
+                "reorder_level_units": item.reorder_level_units,
+                "category": item.category,
             }))
             written["catalogue"] += 1
 
@@ -615,13 +664,21 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 } for ln in d.lines],
             })
             written["sales_invoices"] += 1
+            # ISSUED, so it posts, ages, moves stock and reaches the return.
+            # A settlement against a DRAFT would be a receipt against a
+            # receivable that does not exist, so the settle below is gated on
+            # it rather than left to the fixture's own "recent" rule agreeing
+            # by coincidence.
+            posted = _post_the_document(api, "/api/sales-invoices", "issue",
+                                        _id(invoice), d.doc_date, last_month)
+            written["invoices_issued"] += 1 if posted else 0
             # THE TOTAL COMES OFF THE RESPONSE, never out of a second copy of
             # the GST arithmetic here: the engine has just computed it, lines,
             # rounding and all, and `domain/gst` is the one authority for it.
-            if _settle(api, c, d, invoice, client_id,
+            if posted and _settle(api, c, d, invoice, client_id,
                        customer_ids[d.party % len(customer_ids)], bank_id):
                 written["receipts"] += 1
-            elif len(open_credits) < _OPEN_CREDITS_PER_CLIENT and n % 3 == 0:
+            elif posted and len(open_credits) < _OPEN_CREDITS_PER_CLIENT and n % 3 == 0:
                 credit = _credit_for_an_open_invoice(
                     d, invoice, c.customers[d.party % len(c.customers)].name,
                     invoice_no, cutoff, fy_end)
@@ -656,8 +713,14 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 } for ln in d.lines],
             })
             written["purchase_bills"] += 1
-            if _pay(api, d, bill, client_id,
-                    vendor_ids[d.party % len(vendor_ids)], bank_id):
+            # RECEIVED — which is what posts Dr Expense / Dr GST Input / Cr
+            # Trade Payables, withholds the TDS and brings the goods into
+            # stock at the line's taxable value plus its §17(5)-blocked tax.
+            received = _post_the_document(api, "/api/purchase-bills", "receive",
+                                          _id(bill), d.doc_date, last_month)
+            written["bills_received"] += 1 if received else 0
+            if received and _pay(api, d, bill, client_id,
+                                 vendor_ids[d.party % len(vendor_ids)], bank_id):
                 written["payments"] += 1
 
         _fixed_assets(api, c, client_id, bank_id, firm.financial_year, written)

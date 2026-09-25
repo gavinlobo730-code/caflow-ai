@@ -345,6 +345,20 @@ class DemoCatalogueItem:
     unit: str
     rate_paise: int
     gst_rate_percent: str
+    #: Stock on hand at the start of the year. `routers/service_catalogue`
+    #: seeds the costing ledger from it and dates it to the client's own FY
+    #: start, so a sale in April relieves real stock instead of driving the
+    #: position negative on the first document of the year.
+    opening_qty_units: float = 0.0
+    #: What that stock COST, not what it sells for. AS-2 paragraph 6 is cost,
+    #: and valuing opening stock at the selling price would put the whole
+    #: year's margin into the balance sheet on day one.
+    opening_cost_paise: int = 0
+    #: None means the CA has not set one — a real third state, never zero.
+    reorder_level_units: Optional[float] = None
+    #: `service_catalogue.category` has been free text since migration 180 and
+    #: nothing grouped by it until INV-09.
+    category: Optional[str] = None
 
     @property
     def kind(self) -> str:
@@ -410,22 +424,32 @@ class DemoFirm:
 # Notification 78/2020 requires six above ₹5 crore and four on B2B below it, so
 # six satisfies both and the demo never shows a shortfall it did not mean to.
 
+#: name, HSN/SAC, UQC, rate (paise), GST %, opening quantity, reorder level,
+#: item group. The last three are INVENTORY facts and reach only goods — a
+#: service has no stock, and `routers/service_catalogue` gates the opening
+#: balance on `kind == "good"` for that reason.
+#:
+#: ⚠️ A REORDER LEVEL OF `None` IS ITS OWN STATE AND IS NOT ZERO (INV-09).
+#: Zero is a real answer — "tell me when it runs out" — so reading an absent
+#: level as zero records a decision nobody made and parks the item in the
+#: "above" bucket for ever. Two items here deliberately have none, so the
+#: reorder report has something to NAME rather than a clean sweep.
 _GOODS = [
-    ("Cotton fabric, woven", "520811", "MTR", 24_000, "5"),
-    ("Readymade shirts", "620520", "PCS", 89_500, "12"),
-    ("Stainless steel utensils", "732393", "PCS", 45_000, "18"),
-    ("Packaged biscuits", "190531", "BOX", 12_500, "18"),
-    ("Corrugated cartons", "481910", "NOS", 3_400, "12"),
-    ("Portland cement", "252329", "TON", 3_85_000, "28"),
+    ("Cotton fabric, woven", "520811", "MTR", 24_000, "5", 1_200, 300, "Fabric"),
+    ("Readymade shirts", "620520", "PCS", 89_500, "12", 340, 80, "Garments"),
+    ("Stainless steel utensils", "732393", "PCS", 45_000, "18", 260, None, "Housewares"),
+    ("Packaged biscuits", "190531", "BOX", 12_500, "18", 900, 250, "Food"),
+    ("Corrugated cartons", "481910", "NOS", 3_400, "12", 2_400, 600, "Packaging"),
+    ("Portland cement", "252329", "TON", 3_85_000, "28", 45, None, "Building materials"),
 ]
 
 _SERVICES = [
-    ("Management consultancy", "998311", "OTH", 7_50_000, "18"),
-    ("Accounting and bookkeeping", "998222", "OTH", 2_50_000, "18"),
-    ("Goods transport by road", "996511", "OTH", 1_80_000, "5"),
-    ("Legal advisory", "998213", "OTH", 5_00_000, "18"),
-    ("Software development", "998314", "OTH", 9_00_000, "18"),
-    ("Site construction works", "995414", "OTH", 18_00_000, "18"),
+    ("Management consultancy", "998311", "OTH", 7_50_000, "18", 0, None, "Advisory"),
+    ("Accounting and bookkeeping", "998222", "OTH", 2_50_000, "18", 0, None, "Advisory"),
+    ("Goods transport by road", "996511", "OTH", 1_80_000, "5", 0, None, "Logistics"),
+    ("Legal advisory", "998213", "OTH", 5_00_000, "18", 0, None, "Advisory"),
+    ("Software development", "998314", "OTH", 9_00_000, "18", 0, None, "Technology"),
+    ("Site construction works", "995414", "OTH", 18_00_000, "18", 0, None, "Projects"),
 ]
 
 
@@ -435,8 +459,19 @@ def _catalogue(*lists) -> tuple[DemoCatalogueItem, ...]:
     sorted so the fixture stays deterministic — the seed is the whole point."""
     seen: dict[str, DemoCatalogueItem] = {}
     for items in lists:
-        for name, hsn, unit, rate, gst in items:
-            seen.setdefault(hsn, DemoCatalogueItem(name, hsn, unit, rate, gst))
+        for name, hsn, unit, rate, gst, qty, reorder, group in items:
+            good = not hsn.startswith("99")
+            seen.setdefault(hsn, DemoCatalogueItem(
+                name, hsn, unit, rate, gst,
+                opening_qty_units=float(qty) if good else 0.0,
+                # Cost at 70% of the selling rate, in whole rupees so the
+                # paise arithmetic stays exact. A margin, not a markup table:
+                # the figure only has to be a plausible COST rather than the
+                # price, which is AS-2 paragraph 6's whole point.
+                opening_cost_paise=(rate * 70 // 100 // 100 * 100) * int(qty) if good else 0,
+                reorder_level_units=float(reorder) if (good and reorder is not None) else None,
+                category=group,
+            ))
     return tuple(seen.values())
 
 
@@ -459,7 +494,9 @@ def _doc_date(rng: random.Random, month: date) -> str:
 def _lines(rng: random.Random, catalogue, count: int) -> tuple[DemoLine, ...]:
     out = []
     for _ in range(count):
-        desc, hsn, unit, rate, gst = rng.choice(catalogue)
+        # The draw is by INDEX, so widening the row below does not move it —
+        # which is what keeps every document in this fixture where it was.
+        desc, hsn, unit, rate, gst, _qty, _reorder, _group = rng.choice(catalogue)
         # A quantity with up to three decimals — every quantity column in this
         # schema is NUMERIC(10,3) and `domain/quantity` refuses a fourth.
         qty = f"{rng.randint(1, 40)}.000" if unit != "OTH" else "1.000"

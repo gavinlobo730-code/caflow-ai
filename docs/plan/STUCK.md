@@ -72,6 +72,59 @@ place to look. None of these is something I can settle:
 
 ---
 
+## 3 · What a client screen should render when the client id resolves to nothing
+
+**Track 4, gate 2.** `pnpm smoke` renders all 166 screens with **0 per-screen
+problems** and then **fails its own duplicate-body check**, exit 1. Six routes
+share one body:
+
+    /clients/_placeholder/overview
+    /clients/_placeholder/sales
+    /clients/_placeholder/purchases
+    /clients/_placeholder/inventory
+    /clients/_placeholder/relationships
+    /clients/_placeholder/accounting/journal/_placeholder/edit
+
+**What I did.** Read the guard rather than the number. `MAX_ROUTES_PER_DIGEST`
+is 5 and the script's own comment names this exact group as the headroom,
+sitting exactly on the limit, and says a sixth *should* trip it — *"six screens
+showing a CA nothing but navigation is the finding, not the false alarm."* The
+sixth is `relationships`, from the related-party work. So the guard is behaving
+as designed and **I did not raise the threshold**: softening a check because it
+fired is the move this repository keeps recording as the mistake.
+
+**Where I stopped.** The comment also says *"a seeded demo firm (T2) is what
+fixes that"*, and **that is not true** — I checked. The walk feeds every `:id`
+the literal string `_placeholder`, which resolves to no client whatever is
+seeded; `--real-client` swaps in a fixed UUID that no seeded firm will own
+either. So seeding the demo, which I have now built, does not close this gate.
+
+**What I would do, and it is a decision about what a CA sees.** Two defensible
+answers and they are not the same product:
+
+* **Give the screens a named not-found state.** A client route whose id
+  resolves to nothing currently shows navigation and nothing else — which is
+  also what a CA gets from a stale bookmark or a deleted client. Each section
+  saying *"Sales — no such client"* is better UX AND makes the six bodies
+  distinct, so the gate closes as a side effect rather than by exemption. It
+  is six screens' empty states, and the risk is conflating *still loading*
+  with *not found*.
+* **Exclude the placeholder group from the digest check.** State the rule —
+  a screen that cannot resolve its subject renders its shell, and that is not
+  the duplication this check is for — and keep the check live everywhere else.
+  Cheaper, and it removes those six screens from the guard's reach, which is
+  precisely what its author did not want.
+
+I lean to the first. It is the one that changes what a person sees rather than
+what a test counts.
+
+**What it costs to be wrong.** Picking the second and being wrong means six
+client screens can go blank again with nothing failing. Picking the first and
+being wrong means a screen briefly says "no such client" while it is still
+loading, which is a visible bug and would be caught immediately.
+
+---
+
 *This file is updated in the same commit as the work that hit the blocker,
 never afterwards from memory — the rule that keeps `findings-status.json`
 honest, applied to this.*

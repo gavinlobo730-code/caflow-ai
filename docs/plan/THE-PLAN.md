@@ -224,11 +224,12 @@ Seeded (D7). The live book was 7 clients and 2 bank accounts with most tables
 empty, so every screen rendered its empty state and nothing could be judged.
 
 **Sharma & Associates**, Mumbai, FY 2025-26 — 8 clients, 31 customers, 30
-vendors, **315 sales invoices** (227 settled, 33 of them in part, 88 still
-open), **200 purchase bills** and 139 vendor payments, **9 bank accounts** with
-**276 statement lines**, **21 fixed assets**, **12 employees** across **24
-payroll runs**, 42 inter-state supplies, 9 reverse-charge bills, 16
-unregistered parties.
+vendors, **315 sales invoices** (285 issued, 227 settled, 33 of them in part,
+88 still open), **200 purchase bills** (181 received) and 139 vendor payments,
+**9 bank accounts** with **276 statement lines**, **21 fixed assets**, **12
+employees** across **24 payroll runs**, 42 inter-state supplies, 9
+reverse-charge bills, 16 unregistered parties. One full run is **1,528 API
+calls**.
 
 | | |
 |---|---|
@@ -256,6 +257,25 @@ rent, power, courier, and the bank's own charges, which carry GST and are
 BANK-24's whole point — plus credits against invoices nobody paid, which is
 what gives the match queue a real candidate to offer.
 
+**AND EVERY DOCUMENT WAS A DRAFT, WHICH IS THE ONE THAT MATTERED MOST.**
+`POST /api/sales-invoices/` and `POST /api/purchase-bills/` both insert with
+`status: "draft"`; the journal is posted by the SEPARATE transition,
+`/{id}/issue` and `/{id}/receive`. So the demo had 315 invoices and 200 bills
+that posted no journal, raised no receivable or payable, moved no stock and
+**reached no return** — a GSTR-1 and a GSTR-3B structurally empty on a book of
+515 documents, with every count looking right. 285 invoices are issued now and
+181 bills received; **the last month is left in draft on purpose**, because a
+practice partway through the month after the year end has exactly that, and a
+book where everything is posted cannot show the issue and receive buttons.
+
+**Inventory opens with stock.** Each goods item carries an opening quantity and
+its COST — not its price, AS-2 paragraph 6 — so the first sale of the year
+relieves real stock instead of driving the position negative on document one,
+and the item group and reorder level make the reorder report and the item
+grouping non-empty. Two items deliberately have **no** reorder level, because
+zero is a real answer ("tell me when it runs out") and reading an absence as
+zero records a decision nobody made.
+
 **Two fields were being silently dropped**, and only the route-table guard
 could see it: `hra_paise` and `date_of_joining` on a payroll employee, where
 `EmployeeIn` declares `hra_percent` and `joining_date` — so every seeded
@@ -280,7 +300,7 @@ classified cannot show it.
 | # | gate | state on 25 Sep |
 |---|---|---|
 | 1 | Every track above closed or explicitly deferred by you | **Tracks 1–3 closed.** What is left inside Track 1 is §B's tax benchmarking (blocked, STUCK.md §1) and §C's partials — four on a document, two on you |
-| 2 | Backend and frontend suites green, smoke walk renders every route | **passing.** 17,460 backend · 1,571 real-Postgres · 1,655 frontend · **smoke walk 166 screens, 0 with a problem** |
+| 2 | Backend and frontend suites green, smoke walk renders every route | **suites green, SMOKE WALK RED.** 17,494 backend · 1,566 real-Postgres · frontend lint/typecheck/test/build green. The walk renders all 166 screens with 0 per-screen problems and then **fails its own duplicate-body check**: six `/clients/_placeholder/…` screens (overview, sales, purchases, inventory, relationships, the journal editor) render the workspace shell and nothing else, because the walk feeds every `:id` the literal `_placeholder` and no client resolves. `MAX_ROUTES_PER_DIGEST` is 5 and the script's own comment says a sixth *should* trip it — *"six screens showing a CA nothing but navigation is the finding, not the false alarm"* — so the threshold is NOT being raised. The comment also says a seeded demo firm fixes it, and **that is not true**: the walk uses `_placeholder`, which resolves to nothing whatever is seeded. See STUCK.md §3 — it is one design decision |
 | 3 | No screen renders a figure the server did not compute | **not re-measured since Phase 3.** The guards that hold it (`a-computed-figure-reaches-the-screen`, the browser-logic scans) pass, but the claim deserves a fresh sweep before the session |
 | 4 | The filing simulation says plainly what it is (D17) | **passing** — one posture, one wording, pinned from the Python side |
 | 5 | The demo firm has a full year of believable data | **passing** — Track 3, now including banking, fixed assets and payroll. It has not yet been SEEDED anywhere: `scripts/seed_demo_firm.py` is a dry run until `--confirm`, the target firm is yours to choose, and the deployment is not reachable from this container (the egress proxy answers 403 to CONNECT) |

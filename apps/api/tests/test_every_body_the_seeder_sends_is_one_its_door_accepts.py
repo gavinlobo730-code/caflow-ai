@@ -318,3 +318,75 @@ def test_the_guard_notices_the_payroll_payload_this_seeder_used_to_send():
     assert len(rec.invalid) == 1, rec.invalid
     assert "date_of_joining" in rec.invalid[0]
     assert "hra_paise" in rec.invalid[0]
+
+
+def test_every_document_is_issued_or_received_except_the_last_month(_run):
+    """A DRAFT DOES NOTHING, and the seeder used to write nothing else.
+
+    `POST /api/sales-invoices/` and `POST /api/purchase-bills/` both insert
+    with `status: "draft"`; the journal is posted by the separate transition.
+    So before this, 315 invoices and 200 bills posted no journal, raised no
+    receivable or payable, moved no stock and reached NO RETURN — a GSTR-1 and
+    a GSTR-3B structurally empty on a book of 515 documents, with every count
+    looking right.
+
+    Asserted on the RATIO rather than an exact number: one month of twelve is
+    left in draft deliberately, so the transitions must be most of the
+    documents and must not be all of them.
+    """
+    created = [p for m, p in _run.calls if m == "POST" and p == "/api/sales-invoices/"]
+    issued = [p for m, p in _run.calls if m == "POST" and p.endswith("/issue")]
+    bills = [p for m, p in _run.calls if m == "POST" and p == "/api/purchase-bills/"]
+    received = [p for m, p in _run.calls if m == "POST" and p.endswith("/receive")]
+
+    assert issued, "no invoice was issued — nothing posts, nothing reaches a return"
+    assert received, "no bill was received — no payable, no input credit, no stock"
+    assert len(issued) < len(created), "every invoice was issued; no draft is left to show"
+    assert len(received) < len(bills), "every bill was received; no draft is left to show"
+    # Eleven months of twelve, give or take the month's own document count.
+    assert len(issued) > len(created) * 0.7, (
+        f"only {len(issued)} of {len(created)} invoices were issued")
+    assert len(received) > len(bills) * 0.7, (
+        f"only {len(received)} of {len(bills)} bills were received")
+
+
+def test_the_goods_catalogue_opens_with_stock_and_the_services_do_not():
+    """Opening stock reaches only goods, and its COST is not its price.
+
+    `routers/service_catalogue` gates the opening balance on `kind == "good"`,
+    so a service carrying one is ignored rather than refused — which is
+    exactly the silence that hides a mistake. Asserted here instead.
+
+    AS-2 paragraph 6 values stock at COST. Opening it at the selling rate
+    would put the whole year's margin into the balance sheet on day one.
+    """
+    firm = fixture.build()
+    items = [i for c in firm.clients for i in c.catalogue]
+    goods = [i for i in items if i.kind == "good"]
+    services = [i for i in items if i.kind == "service"]
+    assert goods and services, "the fixture no longer has both kinds"
+
+    assert all(i.opening_qty_units > 0 for i in goods), (
+        "a stocked item opens at nil, so its first sale of the year drives "
+        "the position negative")
+    assert all(i.opening_cost_paise > 0 for i in goods)
+    assert all(i.opening_cost_paise < i.rate_paise * i.opening_qty_units
+               for i in goods), "opening stock is valued at or above its price"
+    assert not [i for i in services
+                if i.opening_qty_units or i.opening_cost_paise], (
+        "a SERVICE carries opening stock; the catalogue door ignores it "
+        "silently, so nothing downstream would say so")
+
+
+def test_a_reorder_level_of_none_is_a_real_state():
+    """INV-09: zero is a real answer — 'tell me when it runs out' — so an
+    absent level must stay absent. A fixture where every item has one cannot
+    show the reorder report NAMING the items nobody set a level for."""
+    firm = fixture.build()
+    goods = [i for c in firm.clients for i in c.catalogue if i.kind == "good"]
+    assert [i for i in goods if i.reorder_level_units is None], (
+        "every stocked item has a reorder level; the unset state is unshown")
+    assert [i for i in goods if i.reorder_level_units], "none has one at all"
+    assert not [i for i in goods if i.reorder_level_units == 0], (
+        "a reorder level of ZERO stands in for 'not set', which is the exact "
+        "conflation INV-09 exists to prevent")
