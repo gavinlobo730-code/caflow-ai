@@ -48,7 +48,6 @@ interface UndatedFlow {
   amount_paise: number;
   kind: string;
   reference: string;
-  party: string;
 }
 
 interface Forecast {
@@ -251,7 +250,6 @@ export default function CashFlowForecastPage() {
                   <li key={`${u.reference}-${i}`} className="flex justify-between gap-4">
                     <span className="text-ps-label">
                       {KIND_LABELS[u.kind] ?? u.kind} · {u.reference}
-                      {u.party ? ` · ${u.party}` : ""}
                     </span>
                     <span className="tabular-nums text-ps-ink">{rs(u.amount_paise)}</span>
                   </li>

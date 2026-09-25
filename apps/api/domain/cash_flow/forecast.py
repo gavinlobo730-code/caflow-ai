@@ -89,7 +89,15 @@ MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
 
 @dataclass(frozen=True)
 class ExpectedFlow:
-    """One document's money, on the day it is expected."""
+    """One document's money, on the day it is expected.
+
+    ⚠️ `party` IS FILLED FOR A LOAN AND EMPTY FOR AN INVOICE OR A BILL, and
+    that asymmetry is a fact about the tables rather than an omission:
+    `loans.lender_name` exists, while `client_sales_invoices` and
+    `purchase_bills` hold only `customer_id` and `vendor_id`. Naming the
+    counterparty on a document would mean a second read per party for a LABEL,
+    when the document's own number is what a CA uses to find it.
+    """
     due_on: date
     amount_paise: int
     kind: str
@@ -104,11 +112,14 @@ class ExpectedFlow:
 @dataclass(frozen=True)
 class UndatedFlow:
     """A document with money outstanding and no due date. NAMED, never guessed
-    into a month — see judgement 2 in the module docstring."""
+    into a month — see judgement 2 in the module docstring.
+
+    No `party`: only an invoice or a bill can be undated (a loan EMI is dated
+    by construction), and neither of those tables carries a party name.
+    """
     amount_paise: int
     kind: str
     reference: str
-    party: str = ""
 
 
 @dataclass(frozen=True)

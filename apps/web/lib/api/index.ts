@@ -201,7 +201,7 @@ export interface CashFlowForecastPayload {
   first_shortfall: string | null;
   overdue_in_paise: number;
   overdue_out_paise: number;
-  undated: { amount_paise: number; kind: string; reference: string; party: string }[];
+  undated: { amount_paise: number; kind: string; reference: string }[];
   unpriced: { leg: string; why: string }[];
   gaps: string[];
 }

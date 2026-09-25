@@ -97,7 +97,7 @@ def _receivables(db, firm_id: str, client_id: str):
     def page():
         return (db.table("client_sales_invoices")
                 .select("id, invoice_no, invoice_date, due_date, "
-                        "outstanding_paise, status, customer_name")
+                        "outstanding_paise, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .in_("status", list(_OPEN_SALES_STATUSES)))
     return fetch_all(page, key="id", label="cash_flow.receivables")
@@ -107,7 +107,7 @@ def _payables(db, firm_id: str, client_id: str):
     def page():
         return (db.table("purchase_bills")
                 .select("id, bill_no, our_reference, bill_date, due_date, "
-                        "outstanding_paise, status, vendor_name")
+                        "outstanding_paise, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .in_("status", list(_OPEN_BILL_STATUSES)))
     return fetch_all(page, key="id", label="cash_flow.payables")
@@ -123,9 +123,19 @@ def _loans(db, firm_id: str, client_id: str):
     return fetch_all(page, key="id", label="cash_flow.loans")
 
 
-def _collect(rows, *, kind: str, ref_keys: tuple[str, ...], party_key: str):
+def _collect(rows, *, kind: str, ref_keys: tuple[str, ...]):
     """Split a document set into dated flows and the undated ones, which are
-    NAMED rather than guessed into a month."""
+    NAMED rather than guessed into a month.
+
+    ⚠️ NO PARTY NAME, AND IT IS NOT AN OVERSIGHT. Neither
+    `client_sales_invoices` nor `purchase_bills` carries one — they hold
+    `customer_id` and `vendor_id` — so naming the counterparty means a second
+    read per party for a LABEL, when the document's own number is what a CA
+    uses to go and find it. The first draft of this selected `customer_name`
+    and `vendor_name`, which exist on neither table; the local suite skipped
+    the guard that would have said so, because
+    `test_backend_columns_exist_pg` needs a real Postgres, and CI caught it.
+    """
     dated: list[rule.ExpectedFlow] = []
     undated: list[rule.UndatedFlow] = []
     for row in rows:
@@ -134,16 +144,13 @@ def _collect(rows, *, kind: str, ref_keys: tuple[str, ...], party_key: str):
             continue
         reference = next(
             (str(row[k]) for k in ref_keys if row.get(k)), "—")
-        party = str(row.get(party_key) or "")
         due = _as_date(row.get("due_date"))
         if due is None:
             undated.append(rule.UndatedFlow(
-                amount_paise=amount, kind=kind,
-                reference=reference, party=party))
+                amount_paise=amount, kind=kind, reference=reference))
             continue
         dated.append(rule.ExpectedFlow(
-            due_on=due, amount_paise=amount, kind=kind,
-            reference=reference, party=party))
+            due_on=due, amount_paise=amount, kind=kind, reference=reference))
     return dated, undated
 
 
@@ -162,11 +169,10 @@ def forecast_for_client(svc, db, firm_id: str, client_id: str, *,
     if db is not None:
         sales, sales_undated = _collect(
             _receivables(db, firm_id, client_id),
-            kind="receivable", ref_keys=("invoice_no",), party_key="customer_name")
+            kind="receivable", ref_keys=("invoice_no",))
         bills, bills_undated = _collect(
             _payables(db, firm_id, client_id),
-            kind="payable", ref_keys=("bill_no", "our_reference"),
-            party_key="vendor_name")
+            kind="payable", ref_keys=("bill_no", "our_reference"))
         flows.extend(sales)
         flows.extend(bills)
         undated.extend(sales_undated)

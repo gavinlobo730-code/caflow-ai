@@ -70,7 +70,7 @@ def _serialise(f) -> dict:
         "overdue_out_paise": f.overdue_out_paise,
         "undated": [
             {"amount_paise": u.amount_paise, "kind": u.kind,
-             "reference": u.reference, "party": u.party}
+             "reference": u.reference}
             for u in f.undated
         ],
         "unpriced": f.unpriced,

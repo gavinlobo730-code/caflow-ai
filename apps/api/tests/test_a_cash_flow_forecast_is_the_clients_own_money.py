@@ -93,8 +93,8 @@ def test_an_undated_document_is_carried_through_and_lands_in_no_month():
 def test_the_service_names_an_undated_document_rather_than_deriving_one():
     dated, undated = svc._collect(
         [{"outstanding_paise": 5000, "invoice_no": "INV/1", "due_date": None,
-          "invoice_date": "2026-01-01", "customer_name": "Acme"}],
-        kind="receivable", ref_keys=("invoice_no",), party_key="customer_name")
+          "invoice_date": "2026-01-01"}],
+        kind="receivable", ref_keys=("invoice_no",))
     assert dated == []
     assert [u.reference for u in undated] == ["INV/1"]
 
@@ -322,6 +322,33 @@ def test_the_screen_does_not_ask_for_a_typed_opening_balance():
     src = io.open(_SCREEN, encoding="utf-8").read()
     assert "openingBalanceInput" not in src
     assert "paiseFromRupeeInput" not in src
+
+
+def test_no_document_read_names_a_column_that_is_not_there():
+    """⚠️ THE FIRST DRAFT SELECTED `customer_name` AND `vendor_name`, WHICH
+    EXIST ON NEITHER TABLE, and the local suite passed — the guard that reads
+    every `.select()` against the real schema,
+    `test_backend_columns_exist_pg`, needs a Postgres and SKIPS without one,
+    so CI caught it and the working copy did not. Those tables carry
+    `customer_id` and `vendor_id`; naming the party means a second read per
+    party for a label the document number already locates."""
+    import ast
+    tree = ast.parse(io.open(_API / "services" / "cash_flow_service.py",
+                             encoding="utf-8").read())
+    projections: list[str] = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "select"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)):
+            projections.append(node.args[0].value)
+    assert projections, "the AST walk found no .select() to judge"
+    joined = " ".join(projections)
+    for absent in ("customer_name", "vendor_name"):
+        assert absent not in joined, f"{absent} is not a column of either table"
+    assert "lender_name" in joined, "loans DOES carry one, and it is selected"
 
 
 def test_the_screen_narrows_the_payload_before_it_maps_over_it():
