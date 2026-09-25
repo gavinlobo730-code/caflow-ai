@@ -167,7 +167,8 @@ until somebody read the callers.
 | 3b-1 | Ledger anomaly detection over `account_period_balances` | not started |
 | 3b-4 | Firm-wide capacity risk | not started — premise measured: `/api/workload/capacity` is fully reached and `workload-insights` describes the current state, so this is a genuine build |
 | 3b-5 | Surface `workload-insights` | not started — small; drops `/api/intelligence` unreached from 3 → 2 |
-| 3c-1..5 | Effective tax rate trend · ITC leakage trend · concentration · GST/TDS/payroll trends · **cross-client benchmarking** | not started. 3c-5 is the one nobody else in this market can copy |
+| 3c-3 | **Fee concentration** — if the largest client leaves, what happens | **done 25 Sep** ✅ `domain/practice/concentration.py` + `GET /api/analytics/concentration`, rendered on `/practice/profitability`. The ICAI fee-dependence threat is NAMED and no threshold is drawn: icai.org is refused at this environment's proxy, and a percentage from memory on an independence question hands a firm a clean bill of health nobody issued |
+| 3c-1, 3c-2, 3c-4, and the tax half of 3c-5 | Effective tax rate trend · ITC leakage trend · GST/TDS/payroll trends · cross-client tax benchmarking | **blocked — STUCK.md §1.** Not a judgement call: each figure is derived from a client's whole ledger for a period, so computing it for every client to compare one against them is a read proportional to transaction volume × client count. Needs a `client_period_metrics` table on the `account_period_balances` shape, maintained by the nightly sweep. **Which columns it holds is the owner's**, because a column added later cannot be back-filled for a period whose books are locked |
 
 ### §C — the six partials (was Phase 1.6)
 

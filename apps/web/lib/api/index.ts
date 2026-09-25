@@ -2751,6 +2751,12 @@ export const api = {
     revenueVsEffort: (period: string) =>
       request<ApiResp<RealizationPayload>>(
         `/api/analytics/revenue-vs-effort?period=${encodeURIComponent(period)}`),
+    /* 3c-3. The question `/profitability`'s own list cannot answer: if the
+       largest client leaves, what happens. Same two reads, narrowed the same
+       way — the other half of one fetch, so the two cannot disagree. */
+    concentration: (period: string) =>
+      request<ApiResp<ConcentrationPayload>>(
+        `/api/analytics/concentration?period=${encodeURIComponent(period)}`),
   },
 
   hub: {
@@ -5925,6 +5931,39 @@ export type ReconciliationRun = {
  * place that can stay right about their names.
  */
 /** One week of `GET /api/workload/capacity-risk`. */
+/** One client's place in the firm's fee book. `share_bps` is BASIS POINTS —
+ *  a proportion of money is money arithmetic, and these are read against an
+ *  independence threshold, where a float hides which way it rounded. */
+export type ClientFeeShare = {
+  client_id: string;
+  client_name: string;
+  revenue_paise: number;
+  share_bps: number;
+  rank: number;
+  profit_paise: number;
+  /** Null, never 0, where there was no fee: a margin on nil revenue is
+   *  undefined, and 0 would rank an unbilled client below a loss-making one. */
+  margin_bps: number | null;
+};
+
+export type ConcentrationPayload = {
+  period: string;
+  shares: ClientFeeShare[];
+  total_revenue_paise: number;
+  clients_billed: number;
+  largest_share_bps: number;
+  top_3_share_bps: number;
+  top_5_share_bps: number;
+  median_revenue_paise: number | null;
+  median_margin_bps: number | null;
+  /** The ICAI fee-dependence threat, NAMED with no threshold stated — the
+   *  proportion could not be read from icai.org in this environment, and a
+   *  figure from memory on an independence question would give a firm a clean
+   *  bill of health nobody issued. */
+  icai_fee_dependence: string;
+  not_measured: string[];
+};
+
 export type CapacityWeek = {
   week_start: string;
   items_due: number;

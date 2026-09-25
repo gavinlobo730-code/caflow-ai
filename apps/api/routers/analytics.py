@@ -473,6 +473,84 @@ def profitability_analytics(
     return api_response(True, result)
 
 
+@router.get("/concentration")
+def fee_concentration(
+    period: str = "month",
+    current_user: dict = Depends(rbac("analytics", "read")),
+):
+    """How much of the practice rests on one client, and where each one sits.
+
+    `/profitability` above computes fee revenue, cost and margin per client and
+    renders the list. What no screen could say is the thing that keeps a sole
+    practitioner or a three-partner firm awake: **if this client leaves, what
+    happens.** A book where one client is 40% of fees is a different business
+    from one where the largest is 6%, and the two look identical on a list
+    sorted by revenue.
+
+    `domain/practice/concentration` is the rule and NAMES the ICAI
+    fee-dependence threat without stating a threshold — icai.org is refused at
+    this environment's proxy, and a percentage written from memory on an
+    INDEPENDENCE question would hand a firm a clean bill of health nobody
+    issued.
+
+    THE SAME TWO READS `/profitability` MAKES, and deliberately no more: this
+    is the other half of one fetch, so the two screens cannot disagree about
+    the same client. Assignment-scoped identically — an Executive sees the
+    concentration of their own book, which is the honest answer to a question
+    about the firm they can see."""
+    from core.authz import effective_client_ids
+    from domain.practice import concentration as rule
+
+    firm_id = current_user.get("firm_id")
+    date_from, date_to, label = _period_range(period)
+
+    all_clients = client_repo.find_all(firm_id=firm_id)
+    client_map = {c["id"]: c.get("client_name", "Unknown") for c in all_clients}
+    revenue_by_client = invoice_repo.get_revenue_by_client(firm_id, date_from, date_to)
+    cost_by_client = time_tracking_analytics_repo.get_cost_by_client(firm_id, date_from, date_to)
+
+    # Narrowed BEFORE the shares are computed, for `/profitability`'s recorded
+    # reason: leaving the total firm-wide would let an unassigned Executive
+    # read the firm's aggregate position by subtracting their own book. A
+    # firm-wide role (_eff is None) is unchanged.
+    _eff = effective_client_ids(current_user)
+    if _eff is not None:
+        revenue_by_client = {k: v for k, v in revenue_by_client.items() if str(k) in _eff}
+        cost_by_client = {k: v for k, v in cost_by_client.items() if str(k) in _eff}
+
+    answer = rule.concentration([
+        rule.ClientFees(
+            client_id=str(cid),
+            client_name=client_map.get(cid, "Unknown"),
+            revenue_paise=int(rev or 0),
+            cost_paise=int(cost_by_client.get(cid, 0) or 0),
+        )
+        for cid, rev in revenue_by_client.items()
+    ])
+
+    return api_response(True, {
+        "period": label,
+        "shares": [
+            {
+                "client_id": sh.client_id, "client_name": sh.client_name,
+                "revenue_paise": sh.revenue_paise, "share_bps": sh.share_bps,
+                "rank": sh.rank, "profit_paise": sh.profit_paise,
+                "margin_bps": sh.margin_bps,
+            }
+            for sh in answer.shares
+        ],
+        "total_revenue_paise": answer.total_revenue_paise,
+        "clients_billed": answer.clients_billed,
+        "largest_share_bps": answer.largest_share_bps,
+        "top_3_share_bps": answer.top_3_share_bps,
+        "top_5_share_bps": answer.top_5_share_bps,
+        "median_revenue_paise": answer.median_revenue_paise,
+        "median_margin_bps": answer.median_margin_bps,
+        "icai_fee_dependence": answer.icai_fee_dependence,
+        "not_measured": list(answer.not_measured),
+    })
+
+
 @router.get("/revenue-vs-effort")
 def revenue_vs_effort(
     period: str = "month",
