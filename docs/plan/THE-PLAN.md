@@ -205,6 +205,9 @@ unheld rate.
 |---|---|---|
 | PAY-27 | three more payroll report shapes, if wanted | no |
 | IT-11 | **Form 3CD** — PARTLY BUILT 25 Sep, no migration needed after all (see below) | no — the rest is derivation work |
+| SALES-23 | ~~whether the nightly sweep may EMAIL a client's customers~~ | **answered — D27, no.** Closed 25 Sep |
+| ACC-13 | **cost centres** — a dimension on `journal_lines` | **answered — D29, and CLOSED, both halves.** Migration 418: a `cost_centres` master, a nullable `journal_lines.cost_centre_id`, and an allocation report whose unallocated balance is its own row. Migration 419: the party-wise ledger, DERIVED from `source_type`/`source_id` with no column, whose unattributed rows are the difference between the control account and the Customer Statement |
+| TDS-22 | two numbers for the §194I(a)/§194J(a) limbs | **answered — closed 25 Sep**, see above |
 | FA-11 | shift working (NESD markings); revaluation and component accounting unstarted | not a document — an owner build-order call |
 | TDS-16 *(open)* | the FVU/RPU file writer — a confirmed s.393 payment-code SUBSET landed 25 Sep, the byte-level writer itself is untouched | not a document any more — a multi-week build |
 | GST-25 *(open)* | composition, TCS on GSTR-8, GSTR-9C — the SCHEMA blocker cleared 25 Sep (VBA extracted from all three offline utilities), the build itself has not started | not a document any more — three separate builds, each GST-10-scale |

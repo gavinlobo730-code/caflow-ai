@@ -100,8 +100,16 @@ directly and pasted it in: 2% for plant/machinery/equipment and technical
 services, 10% for the other limb of each. `domain/tds/section_rates.py`'s
 194I(A)/194J(A) now carry that rate with no `rate_gap`, closed 25 Sep).
 
-**So this file's remaining rows are four documents and one owner decision.**
-Nothing here is waiting on work I can do alone.
+**Both are now built, and ACC-13 is CLOSED** — D27 in the same commit as §3's
+gate, D29 as migration 418, and ACC-13's other half as migration 419: a
+party-wise ledger DERIVED from `journal_entries.source_type`/`source_id`, with
+no column added, whose unattributed rows are exactly the difference between a
+control account and the per-party statements.
+
+**So this file is now only §2. Three of its five rows have since been
+answered** (IT-11 and TDS-16 partly, GST-25's schema blocker cleared — see
+the table above), leaving PAY-27 (a document, owner decides which banks) and
+FA-11 (a build-order call, not a fetch) genuinely waiting.
 
 ---
 
