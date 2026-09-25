@@ -5123,6 +5123,8 @@ export const api = {
       request(`/api/reconciliation/findings/${finding_id}/resolve`, {
         method: "POST", body: JSON.stringify({ resolution_note }),
       }) as Promise<ApiResp<{ finding: ReconciliationFinding }>>,
+    checks: () =>
+      request(`/api/reconciliation/checks`) as Promise<ApiResp<ReconciliationCheckCatalogue>>,
   },
   // Firm Branding & Document Customization
   branding: {
@@ -5903,6 +5905,33 @@ export type ReconciliationRun = {
   findings_count: number;
   triggered_by?: string | null;
   error?: string | null;
+};
+
+/**
+ * One entry of the Verify Books check catalogue, served by
+ * `GET /api/reconciliation/checks`.
+ *
+ * SERVED, NOT SPELLED HERE. The accounting tab used to keep its own
+ * `CHECK_LABEL` map — six entries against the sixteen check names the engine
+ * emits — so a CA reading a real finding on a bank reconciliation, an orphan
+ * money journal or the fixed-asset register got the raw snake_case identifier.
+ * The Schedule III caption lesson: the module that owns the checks is the only
+ * place that can stay right about their names.
+ */
+export type ReconciliationCheck = {
+  check_name: string;
+  label: string;
+  looks_for: string;
+  /** Three of the sixteen say "go and look" rather than asserting an
+   *  invariant. A CA shown sixteen equal chips reads the judgement calls as
+   *  defects and then discounts the invariants too. */
+  is_heuristic: boolean;
+};
+
+export type ReconciliationCheckCatalogue = {
+  checks: ReconciliationCheck[];
+  /** What the scan cannot see, so a clean run is not read as clean books. */
+  not_checked: string[];
 };
 
 export type ReconciliationRunResult = {

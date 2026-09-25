@@ -61,6 +61,22 @@ COLUMNS = (
     "useful_life_years"
 )
 
+#: Every `kind` `register_findings` can produce. DECLARED here rather than
+#: rediscovered by each reader, because `services/reconciliation_service`
+#: builds a check name as `fixed_asset_register.{kind}` and the Verify Books
+#: screen needs a human label per NAME — so a kind added below with nothing
+#: naming it renders to a CA as its own identifier. Pinned against the module's
+#: own `"kind":` literals by
+#: `tests/test_every_check_this_engine_emits_is_named.py`, so the declaration
+#: cannot drift from the code it declares.
+ALL_KINDS: tuple[str, ...] = (
+    "depreciation_basis_departs_from_schedule_ii",
+    "wdv_asset_has_no_stopping_point",
+    "no_acquisition_journal",
+    "bill_capitalised_more_than_once",
+    "capitalised_from_a_bill_that_is_gone",
+)
+
 
 def schedule_ii_departure(asset: dict) -> Optional[dict]:
     """Whether this asset depreciates on a basis Schedule II does not prescribe.

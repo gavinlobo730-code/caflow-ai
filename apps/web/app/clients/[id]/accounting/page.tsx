@@ -13,7 +13,13 @@ import { AccountLookup } from "@/components/lookups/AccountLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
-import { api, type ReconciliationRun, type ReconciliationFinding } from "@/lib/api";
+import {
+  api,
+  type ReconciliationRun,
+  type ReconciliationFinding,
+  type ReconciliationCheck,
+  type ReconciliationCheckCatalogue,
+} from "@/lib/api";
 import { cachedReport, reportKey } from "@/lib/accounting/reportCache";
 import {
   plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER, BS_ASSET_ORDER, BS_LIAB_ORDER, BS_EQ_ORDER,
@@ -3150,17 +3156,31 @@ const SEVERITY_STYLE: Record<string, string> = {
   warning: "bg-sev-medium-surface text-sev-medium border-sev-medium-border",
 };
 
-const CHECK_LABEL: Record<string, string> = {
-  trial_balance: "Trial Balance",
-  missing_cogs_journal: "Missing COGS Journal",
-  missing_inventory_receipt_journal: "Missing Inventory Receipt Journal",
-  inventory_cache_drift: "Inventory Cache Drift",
-  ar_subledger_vs_gl: "AR Sub-ledger vs GL",
-  ap_subledger_vs_gl: "AP Sub-ledger vs GL",
-};
-
-function checkLabel(name: string): string {
-  return CHECK_LABEL[name] ?? (name.endsWith(".execution_error") ? `Check failed to run (${name.replace(".execution_error", "")})` : name);
+/**
+ * A check's heading, from the catalogue the SERVER serves.
+ *
+ * This used to be a hardcoded `CHECK_LABEL` map of six entries against the
+ * sixteen check names `services/reconciliation_service._CHECKS` can emit, so a
+ * CA reading a genuine finding on a bank reconciliation, an orphan money
+ * journal or any of the five fixed-asset register checks got the raw
+ * identifier — `fixed_asset_register.wdv_asset_has_no_stopping_point` — as its
+ * own chip. The engine owns the vocabulary and now serves it; a copy here
+ * could only drift again, and drifted silently for months.
+ *
+ * The `.execution_error` shape stays a RULE rather than a lookup: the runner
+ * wraps any check that itself raised as `<check>.execution_error`, so sixteen
+ * catalogue entries saying the same thing would be the copy this replaces.
+ * A name the catalogue does not carry falls through to itself, which is what
+ * a frontend running ahead of its backend should do — no worse than before,
+ * and never a wrong label.
+ */
+function checkLabel(name: string, catalogue: ReconciliationCheck[]): string {
+  const found = catalogue.find((c) => c.check_name === name);
+  if (found) return found.label;
+  if (name.endsWith(".execution_error")) {
+    return `Check failed to run (${name.replace(".execution_error", "")})`;
+  }
+  return name;
 }
 
 function VerifyBooks({ clientId }: { clientId: string }) {
@@ -3173,6 +3193,26 @@ function VerifyBooks({ clientId }: { clientId: string }) {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  // The check vocabulary, served rather than spelled here — see checkLabel.
+  const [catalogue, setCatalogue] = useState<ReconciliationCheckCatalogue | null>(null);
+  const [showChecks, setShowChecks] = useState(false);
+
+  // Fetched apart from the runs: the vocabulary is what the labels and the
+  // blurb are built from, and a slow or refused runs fetch must not leave the
+  // page unable to name the findings it does have.
+  useEffect(() => {
+    let live = true;
+    api.reconciliation.checks()
+      .then((res) => {
+        if (!live || !res?.success) return;
+        setCatalogue(objectWithLists<ReconciliationCheckCatalogue>(
+          res.data, "checks", "not_checked"));
+      })
+      .catch(() => { /* labels fall through to the check name, as before */ });
+    return () => { live = false; };
+  }, []);
+
+  const checks = catalogue?.checks ?? [];
 
   const loadRuns = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -3248,10 +3288,24 @@ function VerifyBooks({ clientId }: { clientId: string }) {
       <div className="bg-white rounded-xl border border-ps-muted p-5 flex items-center justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Verify Books</h3>
+          {/* The blurb was a SECOND copy of the vocabulary and had gone stale
+              the same way the label map did — it named five of the nine checks
+              and was written before four of them existed. It counts the
+              catalogue now, and the list itself is one disclosure open. */}
           <p className="text-xs text-ps-label mt-1">
-            Checks trial balance, missing COGS/inventory journals, inventory cache drift, and AR/AP vs the GL — the
-            same checks the nightly sweep runs, on demand.
+            {checks.length > 0
+              ? `${checks.length} checks, the same ones the nightly sweep runs, on demand.`
+              : "The same checks the nightly sweep runs, on demand."}
           </p>
+          {checks.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowChecks((v) => !v)}
+              className="text-xs text-brand-dark hover:underline mt-1.5"
+            >
+              {showChecks ? "Hide what is checked" : "What is checked?"}
+            </button>
+          )}
         </div>
         <button
           onClick={runVerification}
@@ -3263,6 +3317,43 @@ function VerifyBooks({ clientId }: { clientId: string }) {
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
+
+      {showChecks && catalogue && (
+        <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
+          <ul className="space-y-2">
+            {checks.map((c) => (
+              <li key={c.check_name} className="flex gap-2.5 text-xs">
+                <span className="text-ps-hint mt-0.5 shrink-0">•</span>
+                <span>
+                  <span className="font-medium text-ps-ink">{c.label}</span>
+                  {c.is_heuristic && (
+                    <span className="ml-1.5 text-3xs px-1.5 py-0.5 rounded-full border border-ps-border text-ps-label align-middle">
+                      judgement
+                    </span>
+                  )}
+                  <span className="text-ps-label"> — {c.looks_for}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {catalogue.not_checked.length > 0 && (
+            <div className="border-t border-ps-muted pt-3">
+              {/* A clean run must not be read as a clean set of books. */}
+              <p className="text-3xs uppercase tracking-wide text-ps-hint mb-1.5">
+                Not checked
+              </p>
+              <ul className="space-y-1">
+                {catalogue.not_checked.map((sentence) => (
+                  <li key={sentence} className="text-xs text-ps-label flex gap-2.5">
+                    <span className="text-ps-hint shrink-0">•</span>
+                    <span>{sentence}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {runs.length > 0 && (
         <div className="bg-white rounded-xl border border-ps-muted p-3 flex items-center gap-2 overflow-x-auto">
@@ -3306,7 +3397,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
                     <span className={`text-3xs px-1.5 py-0.5 rounded-full border font-medium ${SEVERITY_STYLE[f.severity] ?? SEVERITY_STYLE.warning}`}>
                       {f.severity === "critical" ? "Critical" : "Warning"}
                     </span>
-                    <span className="text-3xs text-ps-hint">{checkLabel(f.check_name)}</span>
+                    <span className="text-3xs text-ps-hint">{checkLabel(f.check_name, checks)}</span>
                   </div>
                   <p className="text-sm text-ps-body mt-1.5">{f.summary}</p>
                   {f.amount_paise != null && (
@@ -3342,7 +3433,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
                 {resolvedFindings.map((f) => (
                   <div key={f.id} className="text-xs text-ps-hint border-t border-ps-bg pt-2">
                     <span className={`px-1.5 py-0.5 rounded-full border mr-2 ${SEVERITY_STYLE[f.severity] ?? SEVERITY_STYLE.warning}`}>
-                      {checkLabel(f.check_name)}
+                      {checkLabel(f.check_name, checks)}
                     </span>
                     {f.summary}
                     {f.resolution_note && <div className="text-ps-label mt-0.5">Note: {f.resolution_note}</div>}
