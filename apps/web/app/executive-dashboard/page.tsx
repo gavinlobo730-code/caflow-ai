@@ -303,7 +303,7 @@ export default function ExecutiveDashboardPage() {
               <RiskBar label={`At Risk (${client_risk_insights.at_risk_clients})`} value={client_risk_insights.at_risk_clients} max={totalClients} color={ATTENTION} />
               <RiskBar label={`Critical (${client_risk_insights.critical_clients})`} value={client_risk_insights.critical_clients} max={totalClients} color={PROBLEM} />
             </div>
-            <div className="mt-4 pt-3 border-t border-ps-muted">
+            <div className="mt-4 pt-3 border-t border-ps-border">
               <p className="text-xs text-ps-label">
                 <span className="font-medium text-red-600">{client_risk_insights.compliance_failures}</span> compliance failures require immediate attention
               </p>

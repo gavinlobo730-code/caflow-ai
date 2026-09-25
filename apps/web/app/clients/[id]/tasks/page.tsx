@@ -124,7 +124,7 @@ export default function TasksPage() {
               {tasks.length === 0 && !loadError ? (
                 <p className="text-sm text-ps-hint text-center py-8">No tasks for this client</p>
               ) : (
-                <div className="divide-y divide-ps-bg">
+                <div className="divide-y divide-ps-border">
                   {tasks.map((t) => {
                     const next = NEXT_STATUS[t.status];
                     return (

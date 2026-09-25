@@ -239,7 +239,7 @@ export default function ApprovalsPage() {
 
                   {/* Response section for pending */}
                   {approval.status === "pending" && (
-                    <div className="mt-4 pt-4 border-t border-ps-muted">
+                    <div className="mt-4 pt-4 border-t border-ps-border">
                       <textarea
                         placeholder="Optional notes..."
                         value={notes[approval.id] || ""}
@@ -270,7 +270,7 @@ export default function ApprovalsPage() {
 
                   {/* Show response for completed */}
                   {approval.status !== "pending" && approval.response_notes && (
-                    <div className="mt-3 pt-3 border-t border-ps-muted text-xs text-ps-label">
+                    <div className="mt-3 pt-3 border-t border-ps-border text-xs text-ps-label">
                       <strong>Notes:</strong> {approval.response_notes}
                     </div>
                   )}

@@ -159,7 +159,7 @@ export default function MultiCurrencyPage() {
                 reading measure the paragraph above already uses. Without it the
                 switch sits a screen away from the label it governs — D11's own
                 second half, on the one page where the two shapes sit together. */}
-            <div className="bg-white rounded-xl border border-ps-muted px-5 py-4 flex items-center justify-between max-w-2xl">
+            <div className="bg-white rounded-xl border border-ps-border px-5 py-4 flex items-center justify-between max-w-2xl">
               <div>
                 <p className="text-sm font-medium text-ps-ink">This firm</p>
                 <p className="text-xs text-ps-hint mt-0.5">
@@ -174,8 +174,8 @@ export default function MultiCurrencyPage() {
             </div>
 
             {/* L3 — per client. */}
-            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-50">
+            <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+              <div className="px-5 py-3 border-b border-ps-border">
                 <p className="text-sm font-semibold text-ps-ink">Clients</p>
               </div>
               {rows.length === 0 ? (
@@ -183,14 +183,14 @@ export default function MultiCurrencyPage() {
               ) : (
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-ps-muted text-ps-hint">
+                    <tr className="border-b border-ps-border text-ps-hint">
                       <th className="px-5 py-2.5 text-left font-semibold">Client</th>
                       <th className="px-3 py-2.5 text-left font-semibold">Books kept in</th>
                       <th className="px-3 py-2.5 text-left font-semibold">Foreign currency</th>
                       <th className="px-3 py-2.5 text-left font-semibold">Effect</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ps-bg">
+                  <tbody className="divide-y divide-ps-border">
                     {rows.map(({ client, policy }) => {
                       const on = policy?.gates?.client?.on ?? false;
                       const supported = policy?.gates.functional_currency_supported ?? true;

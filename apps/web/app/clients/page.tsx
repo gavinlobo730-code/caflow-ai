@@ -527,7 +527,7 @@ export default function ClientsPage() {
       {/* Loading skeleton */}
       {loading && (
         <Card>
-          <CardContent className="p-0 divide-y divide-ps-muted">
+          <CardContent className="p-0 divide-y divide-ps-border">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="flex items-center gap-4 px-6 py-4">
                 <div className="w-10 h-10 rounded-full bg-ps-muted animate-pulse shrink-0" />
@@ -610,7 +610,7 @@ export default function ClientsPage() {
       {/* Client list */}
       {!loading && filtered.length > 0 && (
         <Card>
-          <CardContent className="p-0 divide-y divide-ps-muted">
+          <CardContent className="p-0 divide-y divide-ps-border">
             {filtered.map((c) => {
               const isArchived = c.status === "archived";
               return (
@@ -732,7 +732,7 @@ export default function ClientsPage() {
                           )}
                           {canDelete && (
                             <>
-                              {canArchive && <div className="my-1 border-t border-ps-muted" />}
+                              {canArchive && <div className="my-1 border-t border-ps-border" />}
                               <button
                                 onClick={() => {
                                   setMenuOpenId(null);

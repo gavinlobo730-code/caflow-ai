@@ -164,17 +164,17 @@ export default function ScheduleIIIMappingPage() {
   );
 
   const group = (heading: string, rows: CoaRow[], note?: string) => (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-ps-bg flex items-center justify-between">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-ps-border flex items-center justify-between">
         <span className="text-xs font-semibold text-ps-body">{heading}</span>
         <span className="text-3xs text-ps-hint">{rows.length} account{rows.length !== 1 ? "s" : ""}</span>
       </div>
-      {note && <div className="px-4 py-1.5 text-3xs text-ps-hint border-b border-ps-bg">{note}</div>}
+      {note && <div className="px-4 py-1.5 text-3xs text-ps-hint border-b border-ps-border">{note}</div>}
       {rows.length === 0 ? (
         <div className="px-4 py-2 text-3xs text-ps-hint italic">No accounts mapped</div>
       ) : (
         <table className="w-full text-xs">
-          <tbody className="divide-y divide-ps-bg">{rows.map(row)}</tbody>
+          <tbody className="divide-y divide-ps-border">{rows.map(row)}</tbody>
         </table>
       )}
     </div>

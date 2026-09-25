@@ -279,10 +279,10 @@ export function InvoiceViewDrawer({
           {/* ── Line items ──────────────────────────────────────────────── */}
           <section>
             <h4 className="text-xs font-semibold text-ps-body mb-2">Line items</h4>
-            <div className="overflow-x-auto border border-ps-muted rounded-lg">
+            <div className="overflow-x-auto border border-ps-border rounded-lg">
               <table className="w-full text-2xs">
                 <thead>
-                  <tr className="text-ps-hint border-b border-ps-muted">
+                  <tr className="text-ps-hint border-b border-ps-border">
                     <th className="px-2 py-1.5 text-left font-semibold">Description</th>
                     <th className="px-2 py-1.5 text-left font-semibold">HSN/SAC</th>
                     <th className="px-2 py-1.5 text-right font-semibold">Qty</th>
@@ -292,7 +292,7 @@ export function InvoiceViewDrawer({
                     <th className="px-2 py-1.5 text-right font-semibold">Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-bg">
+                <tbody className="divide-y divide-ps-border">
                   {inv.lines.map((l, i) => (
                     <tr key={l.id ?? i}>
                       <td className="px-2 py-1.5 text-ps-body">{l.description}</td>
@@ -323,7 +323,7 @@ export function InvoiceViewDrawer({
             <DetailRow label="Journal entry" value={inv.journal_entry_id ?? "—"} mono />
             <DetailRow label="Issued at" value={fmtDateTime(inv.issued_at)} />
             {showJournal && (
-              <div className="border border-ps-muted rounded-lg p-2 bg-ps-bg">
+              <div className="border border-ps-border rounded-lg p-2 bg-ps-bg">
                 {journalLoading ? (
                   <div className="flex items-center gap-2 text-2xs text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
                 ) : journal?.lines?.length ? (
@@ -331,7 +331,7 @@ export function InvoiceViewDrawer({
                     <thead><tr className="text-ps-hint"><th className="text-left font-semibold py-1">Account</th><th className="text-right font-semibold">Debit</th><th className="text-right font-semibold">Credit</th></tr></thead>
                     <tbody>
                       {journal.lines.map((jl, i) => (
-                        <tr key={i} className="border-t border-ps-muted">
+                        <tr key={i} className="border-t border-ps-border">
                           <td className="py-1 text-ps-body">{jl.account_name ?? jl.account_id ?? "—"}</td>
                           <td className="py-1 text-right font-mono">{jl.debit_paise ? fmt(jl.debit_paise) : ""}</td>
                           <td className="py-1 text-right font-mono">{jl.credit_paise ? fmt(jl.credit_paise) : ""}</td>

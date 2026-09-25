@@ -176,8 +176,8 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
       )}
 
       {/* ── Bank accounts ─────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-4 py-3 border-b border-ps-muted flex items-center justify-between">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">
           <p className="text-xs font-semibold text-ps-body flex items-center gap-1.5"><Landmark size={13} /> Bank Accounts</p>
           <button onClick={() => setAccountModal("new")} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
             <Plus size={12} /> Add Account
@@ -192,8 +192,8 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
           </div>
         ) : (
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-ps-muted text-ps-hint"><th className="px-4 py-2.5 text-left font-semibold">Bank</th><th className="px-3 py-2.5 text-left font-semibold">Account No.</th><th className="px-3 py-2.5 text-left font-semibold">Type</th><th className="px-3 py-2.5 text-left font-semibold">Ledger Account</th><th className="px-3 py-2.5 text-right font-semibold">Opening Bal.</th><th className="px-4 py-2.5 text-right font-semibold">Actions</th></tr></thead>
-            <tbody className="divide-y divide-ps-bg">
+            <thead><tr className="border-b border-ps-border text-ps-hint"><th className="px-4 py-2.5 text-left font-semibold">Bank</th><th className="px-3 py-2.5 text-left font-semibold">Account No.</th><th className="px-3 py-2.5 text-left font-semibold">Type</th><th className="px-3 py-2.5 text-left font-semibold">Ledger Account</th><th className="px-3 py-2.5 text-right font-semibold">Opening Bal.</th><th className="px-4 py-2.5 text-right font-semibold">Actions</th></tr></thead>
+            <tbody className="divide-y divide-ps-border">
               {accounts.map((a) => (
                 <tr key={a.id} className={`hover:bg-ps-bg ${a.is_active ? "" : "opacity-50"}`}>
                   <td className="px-4 py-2.5 font-medium text-ps-ink">
@@ -277,16 +277,16 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
          per-statement counts. The Entries tab already answers the same question
          for the client as a whole. */
       ) : statements.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-3">
           <FileText size={32} className="text-gray-200 mx-auto" />
           <p className="text-sm text-ps-label">No bank statements imported yet</p>
           <button onClick={() => setShowImport(true)} className="text-xs text-blue-600 hover:underline">Import your first statement</button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-ps-muted text-ps-hint"><th className="px-4 py-3 text-left font-semibold">Bank</th><th className="px-3 py-3 text-left font-semibold">Account No.</th><th className="px-3 py-3 text-left font-semibold">Period</th><th className="px-3 py-3 text-right font-semibold">Credits</th><th className="px-3 py-3 text-right font-semibold">Debits</th><th className="px-4 py-3 text-left font-semibold">Action</th></tr></thead>
-            <tbody className="divide-y divide-ps-bg">
+            <thead><tr className="border-b border-ps-border text-ps-hint"><th className="px-4 py-3 text-left font-semibold">Bank</th><th className="px-3 py-3 text-left font-semibold">Account No.</th><th className="px-3 py-3 text-left font-semibold">Period</th><th className="px-3 py-3 text-right font-semibold">Credits</th><th className="px-3 py-3 text-right font-semibold">Debits</th><th className="px-4 py-3 text-left font-semibold">Action</th></tr></thead>
+            <tbody className="divide-y divide-ps-border">
               {statements.map((s) => (
                 <tr key={s.id} className="hover:bg-ps-bg">
                   <td className="px-4 py-2.5 font-medium text-ps-ink">{s.bank_name}</td>
@@ -316,16 +316,16 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
 
       {/* Statement transactions inline view */}
       {selectedStmt && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">
             <p className="text-xs font-semibold text-ps-body">Transactions</p>
             {txnsLoading && <RefreshCw size={13} className="animate-spin text-ps-hint" />}
           </div>
           {!txnsLoading && stmtTxns.length > 0 && (
             <div className="overflow-x-auto max-h-72 overflow-y-auto">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-white"><tr className="border-b border-ps-muted text-ps-hint"><th className="px-4 py-2 text-left font-semibold">Date</th><th className="px-3 py-2 text-left font-semibold">Description</th><th className="px-3 py-2 text-right font-semibold">Debit</th><th className="px-3 py-2 text-right font-semibold">Credit</th><th className="px-3 py-2 text-left font-semibold">Status</th></tr></thead>
-                <tbody className="divide-y divide-ps-bg">
+                <thead className="sticky top-0 bg-white"><tr className="border-b border-ps-border text-ps-hint"><th className="px-4 py-2 text-left font-semibold">Date</th><th className="px-3 py-2 text-left font-semibold">Description</th><th className="px-3 py-2 text-right font-semibold">Debit</th><th className="px-3 py-2 text-right font-semibold">Credit</th><th className="px-3 py-2 text-left font-semibold">Status</th></tr></thead>
+                <tbody className="divide-y divide-ps-border">
                   {stmtTxns.map((t) => (
                     <tr key={t.id} className="hover:bg-ps-bg">
                       <td className="px-4 py-2 text-ps-label whitespace-nowrap">{t.transaction_date}</td>
@@ -1114,7 +1114,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         </thead>
                         <tbody>
                           {preview.rows.map((r, i) => (
-                            <tr key={i} className="border-t border-ps-muted">
+                            <tr key={i} className="border-t border-ps-border">
                               <td className="px-2 py-1.5 whitespace-nowrap">{r.transaction_date}</td>
                               <td className="px-2 py-1.5 max-w-[18rem] truncate" title={r.description}>{r.description}</td>
                               <td className="px-2 py-1.5 text-right">{r.debit_paise ? formatPaise(r.debit_paise) : ""}</td>

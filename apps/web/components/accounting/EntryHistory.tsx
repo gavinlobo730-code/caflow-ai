@@ -106,7 +106,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
   }, [open, loaded, loading, load]);
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-full px-5 py-3 flex items-center gap-2 text-left hover:bg-ps-bg transition-colors"
@@ -121,7 +121,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
       </button>
 
       {open && (
-        <div className="border-t border-gray-50">
+        <div className="border-t border-ps-border">
           {loading && entries.length === 0 && (
             <p className="px-5 py-6 text-xs text-ps-hint">Reading the log…</p>
           )}
@@ -136,7 +136,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
             </p>
           )}
           {entries.length > 0 && (
-            <ul className="divide-y divide-ps-bg">
+            <ul className="divide-y divide-ps-border">
               {entries.map((e) => {
                 const moved = changedFields(e);
                 return (
@@ -166,7 +166,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
             </ul>
           )}
           {cursor && (
-            <div className="px-5 py-3 border-t border-gray-50">
+            <div className="px-5 py-3 border-t border-ps-border">
               <button
                 onClick={() => { void load(cursor); }}
                 disabled={loading}

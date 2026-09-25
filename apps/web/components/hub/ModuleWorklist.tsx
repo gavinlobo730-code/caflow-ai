@@ -102,7 +102,7 @@ export function ModuleWorklist({ tile, heading }: { tile: string; heading: strin
       )}
 
       {!loading && (error || !data) && (
-        <div className="bg-white rounded-xl border border-ps-muted p-6">
+        <div className="bg-white rounded-xl border border-ps-border p-6">
           <p className="text-xs text-ps-label leading-relaxed">
             {error ??
               "This worklist could not be read. The figures on the hub are " +
@@ -112,7 +112,7 @@ export function ModuleWorklist({ tile, heading }: { tile: string; heading: strin
       )}
 
       {!loading && !error && data && rows.length === 0 && (
-        <div className="bg-white rounded-xl border border-ps-muted p-8 text-center space-y-2">
+        <div className="bg-white rounded-xl border border-ps-border p-8 text-center space-y-2">
           <p className="text-sm font-semibold text-ps-ink">
             {data.clients_examined > 0
               ? "Nothing outstanding"
@@ -129,10 +129,10 @@ export function ModuleWorklist({ tile, heading }: { tile: string; heading: strin
       )}
 
       {!loading && !error && data && rows.length > 0 && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-ps-muted bg-ps-bg">
+              <tr className="border-b border-ps-border bg-ps-bg">
                 <th className="text-left font-semibold text-ps-label px-4 py-2.5">
                   Client
                 </th>
@@ -146,7 +146,7 @@ export function ModuleWorklist({ tile, heading }: { tile: string; heading: strin
               {rows.map((r) => (
                 <tr
                   key={r.client_id}
-                  className="border-b border-ps-muted last:border-0 hover:bg-ps-bg"
+                  className="border-b border-ps-border last:border-0 hover:bg-ps-bg"
                 >
                   <td className="px-4 py-2.5">
                     <Link
@@ -191,7 +191,7 @@ export function ModuleWorklist({ tile, heading }: { tile: string; heading: strin
               ))}
             </tbody>
           </table>
-          <div className="flex items-center gap-1.5 px-4 py-2 border-t border-ps-muted bg-ps-bg">
+          <div className="flex items-center gap-1.5 px-4 py-2 border-t border-ps-border bg-ps-bg">
             <Users size={11} className="text-ps-hint" />
             <p className="text-3xs text-ps-hint">
               {rows.length} of {data.clients_examined}{" "}

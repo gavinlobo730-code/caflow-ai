@@ -454,12 +454,12 @@ export function DataTable<T>({
         isEmpty={page.total === 0}
         onRetry={onRetry}
         skeleton={<TableSkeleton rows={8} cols={Math.min(colSpan || 4, 6)} />}
-        empty={<div className="rounded-xl border border-ps-muted bg-white"><EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} /></div>}
+        empty={<div className="rounded-xl border border-ps-border bg-white"><EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} /></div>}
       >
-        <div className="overflow-x-auto rounded-xl border border-ps-muted bg-white">
+        <div className="overflow-x-auto rounded-xl border border-ps-border bg-white">
           <table className="w-full text-xs">
             <thead className={cn(stickyHeader && "sticky top-0 z-10", "bg-ps-bg")}>
-              <tr className="border-b border-ps-muted text-ps-hint">
+              <tr className="border-b border-ps-border text-ps-hint">
                 {hasBulk && (
                   <th className="w-8 px-3 py-3">
                     <input
@@ -507,7 +507,7 @@ export function DataTable<T>({
                 {rowActions && <th className="px-3 py-3 text-right font-semibold">Actions</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {page.rows.map((row) => {
                 const id = getRowId(row);
                 const sel = t.isSelected(row);

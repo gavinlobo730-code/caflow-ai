@@ -190,7 +190,7 @@ export default function AllocatePaymentModal({
           {loading ? <p className="text-xs text-ps-hint">Loading open bills…</p>
             : loadFailed ? (
               <div className="flex items-center gap-3">
-                <p className="text-xs text-red-600">
+                <p className="text-xs text-state-problem">
                   Couldn&apos;t load this vendor&apos;s bills — the request failed.
                 </p>
                 <button onClick={load}
@@ -218,7 +218,7 @@ export default function AllocatePaymentModal({
                   {bills.map((bill) => {
                     const problem = messageFor(bill.id);
                     return (
-                      <tr key={bill.id} className="border-b border-ps-muted">
+                      <tr key={bill.id} className="border-b border-ps-border">
                         <td className="py-1.5 pr-2 font-mono text-ps-ink">{billLabel(bill)}</td>
                         <td className="py-1.5 pr-2 text-ps-label">{bill.bill_date}</td>
                         <td className="py-1.5 pr-2 text-right font-mono">{fmt(bill.net_payable_paise)}</td>
@@ -231,7 +231,7 @@ export default function AllocatePaymentModal({
                               aria-label={`Amount to apply to ${billLabel(bill)}`}
                               onChange={(ev) => setAmounts((a) => ({ ...a, [bill.id]: ev.target.value }))}
                               className={`w-28 px-2 py-1 border rounded text-right text-2xs outline-none focus:border-brand ${
-                                problem ? "border-red-300" : "border-ps-border"}`} />
+                                problem ? "border-state-problem" : "border-ps-border"}`} />
                             <button type="button"
                               onClick={() => setAmounts((a) => ({
                                 ...a, [bill.id]: String(ceilingFor(bill) / 100) }))}
@@ -240,7 +240,7 @@ export default function AllocatePaymentModal({
                             </button>
                           </div>
                           {problem && (
-                            <p className="text-3xs text-red-600 mt-0.5">{problem}</p>
+                            <p className="text-3xs text-state-problem mt-0.5">{problem}</p>
                           )}
                         </td>
                       </tr>
@@ -271,7 +271,7 @@ export default function AllocatePaymentModal({
           </div>
 
           {overRun && (
-            <p className="text-2xs text-red-600">
+            <p className="text-2xs text-state-problem">
               That is more than the payment settles. Reduce a line, or record a
               second payment.
             </p>

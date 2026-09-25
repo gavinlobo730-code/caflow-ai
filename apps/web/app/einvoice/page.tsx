@@ -198,7 +198,7 @@ export default function EInvoicePage() {
       ) : (
         <div className="space-y-2">
           {records.map(r => (
-            <div key={r.id} className="bg-white border border-ps-muted rounded-xl px-4 py-3 flex items-center gap-3">
+            <div key={r.id} className="bg-white border border-ps-border rounded-xl px-4 py-3 flex items-center gap-3">
               <Zap size={16} className={r.status === "generated" ? "text-green-500" : r.status === "cancelled" ? "text-red-400" : "text-ps-hint"} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-ps-ink">{r.invoice_number} — {r.invoice_date}</p>

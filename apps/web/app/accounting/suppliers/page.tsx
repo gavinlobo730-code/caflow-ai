@@ -422,7 +422,7 @@ export default function SuppliersPage() {
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {vendors.map(v => (
                   <tr key={v.id} className="hover:bg-ps-bg">
                     <td className="px-4 py-3 font-medium text-ps-ink">{v.name}</td>

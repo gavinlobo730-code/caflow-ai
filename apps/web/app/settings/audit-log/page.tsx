@@ -327,7 +327,7 @@ function AuditLogContent() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white border border-ps-muted rounded-xl px-5 py-4 grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="bg-white border border-ps-border rounded-xl px-5 py-4 grid grid-cols-2 md:grid-cols-5 gap-3">
         <div>
           <label className="text-xs text-ps-label">From Date</label>
           <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
@@ -372,9 +372,9 @@ function AuditLogContent() {
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-ps-muted rounded-xl overflow-hidden">
+      <div className="bg-white border border-ps-border rounded-xl overflow-hidden">
         {/* Column headers */}
-        <div className="grid grid-cols-12 gap-2 px-5 py-2 text-xs font-semibold text-ps-hint border-b border-ps-muted bg-ps-bg">
+        <div className="grid grid-cols-12 gap-2 px-5 py-2 text-xs font-semibold text-ps-hint border-b border-ps-border bg-ps-bg">
           <span className="col-span-2">Timestamp</span>
           <span className="col-span-2">User</span>
           <span className="col-span-2">Action</span>
@@ -384,7 +384,7 @@ function AuditLogContent() {
         </div>
 
         {loading && (
-          <div className="divide-y divide-ps-bg">
+          <div className="divide-y divide-ps-border">
             {Array.from({ length: 6 }).map((_, r) => (
               <div key={r} className="grid grid-cols-12 gap-2 px-5 py-3 items-center">
                 {Array.from({ length: 6 }).map((_, c) => (
@@ -414,7 +414,7 @@ function AuditLogContent() {
           </div>
         )}
 
-        <div className="divide-y divide-ps-bg">
+        <div className="divide-y divide-ps-border">
           {filtered.map((row) => (
             <div key={row.id} className="grid grid-cols-12 gap-2 px-5 py-3 hover:bg-ps-bg transition-colors items-start text-xs">
               <span className="col-span-2 text-ps-label tabular-nums">
@@ -440,7 +440,7 @@ function AuditLogContent() {
         </div>
 
         {!loading && !error && filtered.length > 0 && (
-          <div className="px-5 py-3 border-t border-gray-50 flex items-center justify-between gap-3">
+          <div className="px-5 py-3 border-t border-ps-border flex items-center justify-between gap-3">
             <span className="text-xs text-ps-hint">
               Showing {filtered.length} event{filtered.length !== 1 ? "s" : ""}
               {filterUser && filtered.length !== rows.length

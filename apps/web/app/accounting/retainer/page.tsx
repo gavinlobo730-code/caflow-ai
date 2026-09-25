@@ -364,7 +364,7 @@ export default function RetainerPage() {
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
               <Users className="w-4 h-4 text-blue-600" />
@@ -374,7 +374,7 @@ export default function RetainerPage() {
           <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : active.length}</p>
           <p className="text-xs text-ps-hint mt-0.5">of {clients.length} clients</p>
         </div>
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
               <IndianRupee className="w-4 h-4 text-green-600" />
@@ -384,7 +384,7 @@ export default function RetainerPage() {
           <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : formatPaise(totalPerPeriod)}</p>
           <p className="text-xs text-ps-hint mt-0.5">Sum of active retainers, before GST</p>
         </div>
-        <div className="bg-white rounded-xl border border-ps-muted p-4">
+        <div className="bg-white rounded-xl border border-ps-border p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-state-attention-surface flex items-center justify-center">
               <FileText className="w-4 h-4 text-amber-600" />
@@ -397,8 +397,8 @@ export default function RetainerPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+        <div className="px-5 py-4 border-b border-ps-border">
           <h2 className="text-sm font-semibold text-ps-ink">Retainer clients</h2>
           <p className="text-xs text-ps-hint mt-0.5">
             Generating creates a DRAFT — review and issue it from Billing. Nothing is
@@ -414,7 +414,7 @@ export default function RetainerPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-50">
+                <tr className="border-b border-ps-border">
                   <th className="text-left text-xs font-medium text-ps-hint px-5 py-3">Client</th>
                   <th className="text-right text-xs font-medium text-ps-hint px-3 py-3">Fee</th>
                   <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Cycle</th>
@@ -423,7 +423,7 @@ export default function RetainerPage() {
                   <th className="text-left text-xs font-medium text-ps-hint px-5 py-3">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {clients.map(client => {
                   const sched = byClient.get(client.id);
                   const busy = sched ? busyId === sched.id : false;

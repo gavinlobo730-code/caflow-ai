@@ -73,7 +73,7 @@ export default function AtRiskClientsPage() {
                 <th className="px-3 py-3 text-left font-medium">Last Calculated</th>
                 <th className="px-3 py-3 text-left font-medium"></th>
               </tr></thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-ps-border">
                 {clients.map((c) => (
                   <tr key={c.id} className="hover:bg-brand-light/10">
                     <td className="px-5 py-3 text-gray-800 text-xs font-medium">{c.client_name ?? c.client_id.slice(0,12)}</td>

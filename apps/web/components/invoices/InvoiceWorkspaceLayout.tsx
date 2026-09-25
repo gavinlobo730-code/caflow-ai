@@ -70,7 +70,7 @@ export function InvoiceWorkspaceLayout({
 
       {/* Sticky toolbar (actions). On mobile it pins to the bottom of the viewport. */}
       {toolbar && (
-        <div className="sticky top-0 z-20 hidden lg:flex items-center justify-end gap-2 bg-ps-bg/90 backdrop-blur border-b border-ps-muted py-2 mb-4">
+        <div className="sticky top-0 z-20 hidden lg:flex items-center justify-end gap-2 bg-ps-bg/90 backdrop-blur border-b border-ps-border py-2 mb-4">
           {toolbar}
         </div>
       )}

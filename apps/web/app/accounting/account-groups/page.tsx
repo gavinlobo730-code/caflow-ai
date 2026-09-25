@@ -281,8 +281,8 @@ export default function AccountGroupsPage() {
           const subGroups = Object.keys(grouped[pg]).sort();
           const total = subGroups.reduce((n, sg) => n + grouped[pg][sg].length, 0);
           return (
-            <div key={pg} className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-              <div className="px-5 py-3 bg-ps-bg border-b border-ps-muted flex items-center justify-between">
+            <div key={pg} className="bg-white rounded-xl border border-ps-border overflow-hidden">
+              <div className="px-5 py-3 bg-ps-bg border-b border-ps-border flex items-center justify-between">
                 <span className="text-sm font-semibold text-ps-body">
                   {pg}
                   {derived.has(pg) && (
@@ -296,12 +296,12 @@ export default function AccountGroupsPage() {
               </div>
               {subGroups.map(sg => (
                 <div key={sg}>
-                  <div className="px-5 py-2 border-b border-ps-bg flex items-center justify-between bg-ps-bg">
+                  <div className="px-5 py-2 border-b border-ps-border flex items-center justify-between bg-ps-bg">
                     <span className="text-xs font-medium text-ps-label">{sg}</span>
                     <span className="text-3xs text-ps-hint">{grouped[pg][sg].length}</span>
                   </div>
                   <table className="w-full text-xs">
-                    <tbody className="divide-y divide-ps-bg">
+                    <tbody className="divide-y divide-ps-border">
                       {grouped[pg][sg].map(acc => (
                         <tr key={acc.id} className="hover:bg-ps-bg">
                           <td className="px-5 py-2 font-mono text-3xs text-ps-hint w-16">{acc.account_code}</td>

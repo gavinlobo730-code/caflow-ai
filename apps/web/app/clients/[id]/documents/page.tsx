@@ -238,7 +238,7 @@ export default function DocumentsPage() {
           <button disabled={actionInFlight} onClick={loadDocuments} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : documents.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center space-y-2">
+        <div className="bg-white rounded-xl border border-ps-border px-5 py-12 text-center space-y-2">
           <FolderOpen className="w-8 h-8 text-gray-200 mx-auto" />
           <p className="text-sm text-ps-hint">No documents uploaded yet</p>
           <p className="text-xs text-ps-disabled">Upload returns, notices, Form 16, and other files for this client</p>
@@ -248,7 +248,7 @@ export default function DocumentsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-ps-muted text-xs text-ps-hint">
+                <tr className="border-b border-ps-border text-xs text-ps-hint">
                   <th className="px-5 py-3 text-left font-semibold">Label</th>
                   <th className="px-3 py-3 text-left font-semibold">File Name</th>
                   <th className="px-3 py-3 text-left font-semibold">Size</th>
@@ -256,7 +256,7 @@ export default function DocumentsPage() {
                   <th className="px-5 py-3 text-left font-semibold">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {documents.map((doc) => {
                   const versionCount = documents.filter(
                     (d) => docLabel(d).toLowerCase() === docLabel(doc).toLowerCase()
@@ -416,7 +416,7 @@ export default function DocumentsPage() {
             </div>
             <div className="space-y-2">
               {versionHistory.map((v) => (
-                <div key={v.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                <div key={v.id} className="flex items-center justify-between py-2 border-b border-ps-border last:border-0">
                   <div>
                     <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-mono mr-2">v{v.version ?? 1}</span>
                     <span className="text-xs text-ps-label">{v.file_name}</span>

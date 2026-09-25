@@ -288,7 +288,7 @@ export default function ReceivablesAgingPage() {
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {rows.map(r => (
                   <tr key={r.invoice.id} className={ROW_COLOR[r.bucket]}>
                     <td className="px-4 py-3 font-mono text-xs font-medium text-ps-ink">{r.invoice.invoice_no}</td>
@@ -322,7 +322,7 @@ export default function ReceivablesAgingPage() {
       )}
 
       {!generated && !loading && (
-        <div className="bg-white rounded-xl border border-ps-muted p-12 text-center">
+        <div className="bg-white rounded-xl border border-ps-border p-12 text-center">
           <RefreshCw className="w-10 h-10 text-gray-200 mx-auto mb-3" />
           <p className="text-sm text-ps-hint">Select a client and click &quot;Generate Aging&quot; to see outstanding invoices</p>
         </div>

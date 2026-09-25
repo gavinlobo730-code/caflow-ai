@@ -187,7 +187,7 @@ export default function YearEndPage() {
           {error} <button onClick={load} className="ml-2 underline text-xs">Retry</button>
         </div>
       ) : engagements.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-2">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-2">
           <Calendar size={28} className="text-gray-200 mx-auto" />
           <p className="text-sm text-ps-label">No year-end engagements yet</p>
           <p className="text-xs text-ps-hint">Click &quot;New Engagement&quot; to start the year-end close process.</p>
@@ -198,7 +198,7 @@ export default function YearEndPage() {
             <button
               key={eng.id}
               onClick={() => router.push(`/clients/${clientId}/year-end/${eng.id}`)}
-              className="w-full bg-white rounded-xl border border-ps-muted px-4 py-3 flex items-center gap-3 hover:bg-ps-bg text-left"
+              className="w-full bg-white rounded-xl border border-ps-border px-4 py-3 flex items-center gap-3 hover:bg-ps-bg text-left"
             >
               <Calendar size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">

@@ -417,7 +417,7 @@ export default function RecurringPage() {
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm min-w-[860px]">
             <thead>
-              <tr className="text-xs text-ps-hint border-b border-ps-muted">
+              <tr className="text-xs text-ps-hint border-b border-ps-border">
                 <th className="px-5 py-2.5 text-left font-medium">Template</th>
                 <th className="px-3 py-2.5 text-left font-medium">Client</th>
                 <th className="px-3 py-2.5 text-left font-medium">Posting</th>
@@ -427,7 +427,7 @@ export default function RecurringPage() {
                 <th className="px-5 py-2.5 text-left font-medium">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {loading ? (
                 <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-ps-hint">Loading…</td></tr>
               ) : templates.length === 0 ? (
@@ -512,7 +512,7 @@ export default function RecurringPage() {
 
       {historyFor && (
         <Card>
-          <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div className="px-5 py-3 border-b border-ps-border flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ps-ink">
               History — {templates.find(t => t.id === historyFor)?.name}
             </h2>
@@ -527,7 +527,7 @@ export default function RecurringPage() {
                 occurrences look wrong is one to fix before it posts, not
                 after. An empty list is a real answer for a paused or ended
                 template, so it says so rather than rendering nothing. */}
-            <div className="px-5 py-3 border-b border-ps-muted">
+            <div className="px-5 py-3 border-b border-ps-border">
               <p className="text-xs text-ps-hint mb-1">Next occurrences</p>
               {upcoming.length === 0 ? (
                 <p className="text-xs text-ps-disabled">
@@ -549,13 +549,13 @@ export default function RecurringPage() {
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-ps-hint border-b border-ps-muted">
+                  <tr className="text-xs text-ps-hint border-b border-ps-border">
                     <th className="px-5 py-2 text-left font-medium">Occurrence</th>
                     <th className="px-3 py-2 text-left font-medium">Result</th>
                     <th className="px-5 py-2 text-left font-medium">Journal</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-bg">
+                <tbody className="divide-y divide-ps-border">
                   {runs.map(r => (
                     <tr key={r.id}>
                       <td className="px-5 py-2 text-xs text-ps-label">{r.occurrence_date}</td>

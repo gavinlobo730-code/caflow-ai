@@ -280,7 +280,7 @@ function CapacityRiskPanel() {
           </Callout>
         )}
 
-        <div className="flex items-center justify-between gap-3 flex-wrap text-xs text-ps-label border-t border-ps-muted pt-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap text-xs text-ps-label border-t border-ps-border pt-3">
           <span>
             {/* Recorded effort and the count with none, side by side. An
                 average over the second would make the first meaningless. */}
@@ -303,7 +303,7 @@ function CapacityRiskPanel() {
 
         {/* A flat profile must not be read as a quiet quarter. */}
         {showGaps && (
-          <ul className="space-y-1 border-t border-ps-muted pt-3">
+          <ul className="space-y-1 border-t border-ps-border pt-3">
             {risk.not_forecast.map((sentence) => (
               <li key={sentence} className="text-xs text-ps-label flex gap-2.5">
                 <span className="text-ps-hint shrink-0">•</span>

@@ -229,7 +229,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
-            <Ship size={15} className="text-blue-600" /> Bills of Entry
+            <Ship size={15} className="text-brand" /> Bills of Entry
           </h2>
           <p className="text-2xs text-ps-label mt-1 max-w-2xl">
             The customs assessment on an import of goods. The tax here is paid to
@@ -252,14 +252,14 @@ export function BillsOfEntryTab({ clientId, openDoc }:
 
       {msg && (
         <div className={`rounded-lg px-3 py-2 text-xs ${msg.type === "ok"
-          ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+          ? "bg-state-ready-surface border border-state-ready-border text-state-ready"
           : "bg-state-problem-surface border border-state-problem-border text-state-problem"}`}>
           {msg.text}
         </div>
       )}
 
       {loadFailed && (
-        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 text-xs text-amber-900 flex gap-2">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 text-xs text-state-attention flex gap-2">
           <AlertTriangle size={13} className="shrink-0 mt-0.5" />
           <span>The register could not be read, so this list is not the whole of it. Reload before recording anything.</span>
         </div>
@@ -293,7 +293,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-ps-muted text-ps-hint text-left">
+              <tr className="border-b border-ps-border text-ps-hint text-left">
                 <th className="py-2 font-semibold">Number</th>
                 <th className="py-2 font-semibold">Date</th>
                 <th className="py-2 font-semibold">Port</th>
@@ -304,14 +304,14 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                 <th className="py-2 font-semibold" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {rows.map((r) => (
                 // ACC-22 — a ledger drill-through rings the document it arrived
                 // at. A hand-rolled table rather than DataTable here, so the
                 // ring is spelled out; the rule is the same one
                 // `highlightRowId` states there.
                 <tr key={r.id} className={"align-top" +
-                     (openDoc && r.id === openDoc ? " bg-state-attention-surface ring-2 ring-inset ring-amber-300" : "")}>
+                     (openDoc && r.id === openDoc ? " bg-state-attention-surface ring-2 ring-inset ring-state-attention-border" : "")}>
                   <td className="py-2 font-mono text-ps-ink">
                     {r.be_number}
                     <span className="ml-1.5 text-3xs text-ps-hint uppercase">{r.gstr2b_section}</span>
@@ -325,7 +325,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                   <td className="py-2 text-right tabular-nums">{formatPaise(r.total_paise)}</td>
                   <td className="py-2">
                     <span className={`px-1.5 py-0.5 rounded text-3xs ${r.status === "posted"
-                      ? "bg-emerald-50 text-emerald-700" : "bg-ps-muted text-ps-label"}`}>
+                      ? "bg-state-ready-surface text-state-ready" : "bg-ps-muted text-ps-label"}`}>
                       {r.status === "posted" ? "Posted" : "Draft"}
                     </span>
                     {/* A refusal stops a posting; a caveat is true and stops
@@ -355,7 +355,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                         </button>
                         <button onClick={() => handleDelete(r)} disabled={busy}
                           aria-label={`Withdraw ${r.be_number}`}
-                          className="ml-1 px-1.5 py-1 text-ps-hint hover:text-red-600 disabled:opacity-40">
+                          className="ml-1 px-1.5 py-1 text-ps-hint hover:text-state-problem disabled:opacity-40">
                           <Trash2 size={12} />
                         </button>
                       </>
@@ -378,7 +378,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       {showForm && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
           <div className="w-full max-w-xl h-full bg-white shadow-xl flex flex-col">
-            <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
               <p className="text-sm font-semibold text-ps-ink">Record a Bill of Entry</p>
               <button onClick={() => setShowForm(false)} aria-label="Close"
                 className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
@@ -429,7 +429,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                 </span>
               </label>
 
-              <div className="border-t border-ps-muted pt-3">
+              <div className="border-t border-ps-border pt-3">
                 <p className="text-2xs font-semibold text-ps-body mb-2">
                   Input tax — reaches the return
                 </p>
@@ -447,7 +447,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                 </div>
               </div>
 
-              <div className="border-t border-ps-muted pt-3">
+              <div className="border-t border-ps-border pt-3">
                 <p className="text-2xs font-semibold text-ps-body mb-2">
                   Duty — cost, not credit
                 </p>
@@ -465,7 +465,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                 </div>
               </div>
 
-              <div className="border-t border-ps-muted pt-3 space-y-3">
+              <div className="border-t border-ps-border pt-3 space-y-3">
                 <div>
                   <label htmlFor="boe-payment-account" className="block text-xs font-medium text-ps-body mb-1">
                     Paid from
@@ -498,7 +498,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
               </label>
             </div>
 
-            <div className="px-5 py-3 border-t border-ps-muted flex justify-end gap-2">
+            <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
               <button onClick={() => setShowForm(false)}
                 className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                 Cancel

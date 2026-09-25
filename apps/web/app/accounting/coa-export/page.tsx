@@ -90,7 +90,7 @@ export default function CoaExportPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-ps-muted p-6 space-y-5">
+      <div className="bg-white rounded-xl border border-ps-border p-6 space-y-5">
         <div className="flex items-center gap-3 p-4 bg-ps-bg rounded-lg">
           <FileText size={20} className="text-blue-600" />
           <div>

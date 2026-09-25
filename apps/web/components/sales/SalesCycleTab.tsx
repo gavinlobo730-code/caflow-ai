@@ -198,12 +198,12 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   }
 
   if (loading) {
-    return <div className="p-6 text-sm text-gray-500">Loading…</div>;
+    return <div className="p-6 text-sm text-ps-hint">Loading…</div>;
   }
   if (loadFailed) {
     return (
       <div className="p-6">
-        <div className="rounded border border-state-problem-border bg-state-problem-surface p-4 text-sm text-red-800">
+        <div className="rounded border border-state-problem-border bg-state-problem-surface p-4 text-sm text-state-problem">
           The sales cycle could not be loaded.{" "}
           <button onClick={() => void load()} className="underline">Try again</button>
         </div>
@@ -215,14 +215,14 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
     <div className="space-y-6 p-1">
       {/* Nothing here is a tax invoice, and the server says so once. */}
       {vocab && (
-        <div className="flex items-start gap-2 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+        <div className="flex items-start gap-2 rounded border border-ps-border bg-ps-muted p-3 text-sm text-ps-body">
           <Info size={16} className="mt-0.5 shrink-0" />
           <span>{vocab.not_a_tax_invoice}</span>
         </div>
       )}
 
       {overdue.length > 0 && (
-        <div className="rounded border border-red-300 bg-state-problem-surface p-3 text-sm text-red-900">
+        <div className="rounded border border-state-problem bg-state-problem-surface p-3 text-sm text-state-problem">
           <div className="flex items-center gap-2 font-medium">
             <AlertTriangle size={16} />
             {overdue.length} challan{overdue.length === 1 ? "" : "s"} past the
@@ -240,7 +240,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
       )}
 
       {undecided.length > 0 && (
-        <div className="rounded border border-amber-300 bg-state-attention-surface p-3 text-sm text-amber-900">
+        <div className="rounded border border-state-attention-border bg-state-attention-surface p-3 text-sm text-state-attention">
           <div className="flex items-center gap-2 font-medium">
             <Clock size={16} />
             {undecided.length} challan{undecided.length === 1 ? "" : "s"} cannot
@@ -267,7 +267,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             key={id}
             onClick={() => { setTab(id); setShowForm(false); setDetail(null); }}
             className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
-              tab === id ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700"
+              tab === id ? "bg-brand text-white" : "bg-ps-muted text-ps-body"
             }`}
           >
             <Icon size={14} /> {label}
@@ -283,12 +283,12 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
 
       {msg && (
         <div className={`rounded p-2 text-sm ${
-          msg.type === "ok" ? "bg-green-50 text-green-800" : "bg-state-problem-surface text-red-800"
+          msg.type === "ok" ? "bg-state-ready-surface text-state-ready" : "bg-state-problem-surface text-state-problem"
         }`}>{msg.text}</div>
       )}
 
       {showForm && vocab && (
-        <div className="rounded border border-gray-200 bg-white p-4">
+        <div className="rounded border border-ps-border bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold">
               New {tab === "quotations" ? "quotation or proforma"
@@ -300,11 +300,11 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {tab === "quotations" && (
               <label className="text-sm">
-                <span className="mb-1 block text-gray-600">Document</span>
+                <span className="mb-1 block text-ps-label">Document</span>
                 <select
                   value={form.kind}
                   onChange={(e) => setForm({ ...form, kind: e.target.value })}
-                  className="w-full rounded border border-gray-300 px-2 py-1.5"
+                  className="w-full rounded border border-ps-border px-2 py-1.5"
                 >
                   {vocab.quote_kinds.map((k) => (
                     <option key={k.value} value={k.value}>{k.label}</option>
@@ -315,13 +315,13 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
 
             {tab === "challans" && (
               <label className="text-sm sm:col-span-2">
-                <span className="mb-1 block text-gray-600">
+                <span className="mb-1 block text-ps-label">
                   Why the goods are moving (CGST Rule 55)
                 </span>
                 <select
                   value={form.reason}
                   onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                  className="w-full rounded border border-gray-300 px-2 py-1.5"
+                  className="w-full rounded border border-ps-border px-2 py-1.5"
                 >
                   {vocab.challan_reasons.map((r) => (
                     <option key={r.value} value={r.value}>{r.label}</option>
@@ -332,13 +332,13 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
 
             {tab === "challans" && form.reason === "job_work" && (
               <label className="text-sm">
-                <span className="mb-1 block text-gray-600">
+                <span className="mb-1 block text-ps-label">
                   What is being sent (CGST s.143)
                 </span>
                 <select
                   value={form.goods_kind}
                   onChange={(e) => setForm({ ...form, goods_kind: e.target.value })}
-                  className="w-full rounded border border-gray-300 px-2 py-1.5"
+                  className="w-full rounded border border-ps-border px-2 py-1.5"
                 >
                   <option value="">Not recorded</option>
                   {vocab.goods_kinds.map((g) => (
@@ -349,13 +349,13 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             )}
 
             <label className="text-sm">
-              <span className="mb-1 block text-gray-600">
+              <span className="mb-1 block text-ps-label">
                 {tab === "challans" ? "Consignee (customer)" : "Customer"}
               </span>
               <select
                 value={form.customer_id}
                 onChange={(e) => setForm({ ...form, customer_id: e.target.value })}
-                className="w-full rounded border border-gray-300 px-2 py-1.5"
+                className="w-full rounded border border-ps-border px-2 py-1.5"
               >
                 <option value="">Select…</option>
                 {customers.map((c) => (
@@ -367,33 +367,33 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             </label>
 
             <label className="text-sm">
-              <span className="mb-1 block text-gray-600">Number</span>
+              <span className="mb-1 block text-ps-label">Number</span>
               <input
                 value={form.document_no}
                 onChange={(e) => setForm({ ...form, document_no: e.target.value })}
                 placeholder="QT/2026-27/0001"
-                className="w-full rounded border border-gray-300 px-2 py-1.5"
+                className="w-full rounded border border-ps-border px-2 py-1.5"
               />
             </label>
 
             <label className="text-sm">
-              <span className="mb-1 block text-gray-600">Date</span>
+              <span className="mb-1 block text-ps-label">Date</span>
               <input
                 type="date"
                 value={form.document_date}
                 onChange={(e) => setForm({ ...form, document_date: e.target.value })}
-                className="w-full rounded border border-gray-300 px-2 py-1.5"
+                className="w-full rounded border border-ps-border px-2 py-1.5"
               />
             </label>
 
             {tab === "quotations" && (
               <label className="text-sm">
-                <span className="mb-1 block text-gray-600">Valid until</span>
+                <span className="mb-1 block text-ps-label">Valid until</span>
                 <input
                   type="date"
                   value={form.valid_until}
                   onChange={(e) => setForm({ ...form, valid_until: e.target.value })}
-                  className="w-full rounded border border-gray-300 px-2 py-1.5"
+                  className="w-full rounded border border-ps-border px-2 py-1.5"
                 />
               </label>
             )}
@@ -401,22 +401,22 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             {tab === "orders" && (
               <>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">
+                  <span className="mb-1 block text-ps-label">
                     Customer&apos;s PO number
                   </span>
                   <input
                     value={form.customer_po_no}
                     onChange={(e) => setForm({ ...form, customer_po_no: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">Expected delivery</span>
+                  <span className="mb-1 block text-ps-label">Expected delivery</span>
                   <input
                     type="date"
                     value={form.expected_delivery_date}
                     onChange={(e) => setForm({ ...form, expected_delivery_date: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
               </>
@@ -425,45 +425,45 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             {tab === "challans" && (
               <>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">Consignee name</span>
+                  <span className="mb-1 block text-ps-label">Consignee name</span>
                   <input
                     value={form.consignee_name}
                     onChange={(e) => setForm({ ...form, consignee_name: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">
+                  <span className="mb-1 block text-ps-label">
                     Consignee GSTIN (if registered)
                   </span>
                   <input
                     value={form.consignee_gstin}
                     onChange={(e) => setForm({ ...form, consignee_gstin: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5 font-mono"
+                    className="w-full rounded border border-ps-border px-2 py-1.5 font-mono"
                   />
                 </label>
                 <label className="text-sm sm:col-span-2">
-                  <span className="mb-1 block text-gray-600">Consignee address</span>
+                  <span className="mb-1 block text-ps-label">Consignee address</span>
                   <input
                     value={form.consignee_address}
                     onChange={(e) => setForm({ ...form, consignee_address: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">Transporter</span>
+                  <span className="mb-1 block text-ps-label">Transporter</span>
                   <input
                     value={form.transporter_name}
                     onChange={(e) => setForm({ ...form, transporter_name: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">Vehicle number</span>
+                  <span className="mb-1 block text-ps-label">Vehicle number</span>
                   <input
                     value={form.vehicle_no}
                     onChange={(e) => setForm({ ...form, vehicle_no: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-2 py-1.5"
+                    className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
               </>
@@ -480,7 +480,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
           </div>
 
           <div className="mt-4">
-            <div className="mb-2 text-sm font-medium text-gray-700">Lines</div>
+            <div className="mb-2 text-sm font-medium text-ps-body">Lines</div>
             <div className="space-y-2">
               {lines.map((l, i) => (
                 <div key={i} className="grid gap-2 sm:grid-cols-6">
@@ -492,7 +492,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                       next[i] = { ...l, description: e.target.value };
                       setLines(next);
                     }}
-                    className="rounded border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2"
+                    className="rounded border border-ps-border px-2 py-1.5 text-sm sm:col-span-2"
                   />
                   <input
                     value={l.hsn_sac}
@@ -502,7 +502,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                       next[i] = { ...l, hsn_sac: e.target.value };
                       setLines(next);
                     }}
-                    className="rounded border border-gray-300 px-2 py-1.5 text-sm font-mono"
+                    className="rounded border border-ps-border px-2 py-1.5 text-sm font-mono"
                   />
                   <input
                     value={l.quantity}
@@ -512,7 +512,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                       next[i] = { ...l, quantity: e.target.value };
                       setLines(next);
                     }}
-                    className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="rounded border border-ps-border px-2 py-1.5 text-sm"
                   />
                   <input
                     value={l.rate}
@@ -522,7 +522,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                       next[i] = { ...l, rate: e.target.value };
                       setLines(next);
                     }}
-                    className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="rounded border border-ps-border px-2 py-1.5 text-sm"
                   />
                   <input
                     value={l.gst_rate_percent}
@@ -532,7 +532,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                       next[i] = { ...l, gst_rate_percent: e.target.value };
                       setLines(next);
                     }}
-                    className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="rounded border border-ps-border px-2 py-1.5 text-sm"
                   />
                 </div>
               ))}
@@ -548,7 +548,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
           {tab === "challans"
             && vocab.challan_reasons.find((r) => r.value === form.reason)
               ?.is_a_supply === false && (
-            <p className="mt-3 text-xs text-gray-600">
+            <p className="mt-3 text-xs text-ps-label">
               {vocab.no_tax_on_a_non_supply}
             </p>
           )}
@@ -563,7 +563,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             </button>
             <button
               onClick={() => setShowForm(false)}
-              className="rounded border border-gray-300 px-4 py-1.5 text-sm"
+              className="rounded border border-ps-border px-4 py-1.5 text-sm"
             >
               Cancel
             </button>
@@ -603,7 +603,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             }}
           />
           {position && (
-            <div className="rounded border border-gray-200 bg-white p-4">
+            <div className="rounded border border-ps-border bg-white p-4">
               <div className="mb-2 flex items-center justify-between">
                 <h4 className="text-sm font-semibold">What is still open</h4>
                 <button onClick={() => setPosition(null)}><X size={14} /></button>
@@ -617,7 +617,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                 empty="This order has no lines."
               />
               {position.gaps.map((g) => (
-                <p key={g} className="mt-2 text-xs text-amber-800">{g}</p>
+                <p key={g} className="mt-2 text-xs text-state-attention">{g}</p>
               ))}
             </div>
           )}
@@ -646,7 +646,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
           />
 
           {challans.some((c) => c.clock?.applies && !c.received_back_on) && (
-            <div className="rounded border border-gray-200 bg-white p-4">
+            <div className="rounded border border-ps-border bg-white p-4">
               <h4 className="mb-2 text-sm font-semibold">
                 Record goods coming back
               </h4>
@@ -660,7 +660,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                         onChange={(e) => {
                           if (e.target.value) void markBack(c, e.target.value);
                         }}
-                        className="rounded border border-gray-300 px-2 py-1"
+                        className="rounded border border-ps-border px-2 py-1"
                       />
                     </div>
                   ))}
@@ -669,7 +669,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
           )}
 
           {detail && (
-            <div className="rounded border border-gray-200 bg-white p-4">
+            <div className="rounded border border-ps-border bg-white p-4">
               <div className="mb-2 flex items-center justify-between">
                 <h4 className="text-sm font-semibold">
                   {detail.rule} — {detail.reason_label}
@@ -686,15 +686,15 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                 empty=""
               />
               {detail.missing.length > 0 && (
-                <div className="mt-3 rounded border border-amber-300 bg-state-attention-surface p-3 text-sm text-amber-900">
+                <div className="mt-3 rounded border border-state-attention-border bg-state-attention-surface p-3 text-sm text-state-attention">
                   <div className="font-medium">Still to be recorded</div>
                   <ul className="mt-1 list-disc pl-5">
                     {detail.missing.map((m) => <li key={m}>{m}</li>)}
                   </ul>
                 </div>
               )}
-              <div className="mt-3 text-xs text-gray-600">
-                <div className="font-medium text-gray-700">
+              <div className="mt-3 text-xs text-ps-label">
+                <div className="font-medium text-ps-body">
                   Three copies (Rule 55(2))
                 </div>
                 <ul className="mt-1">
@@ -702,13 +702,13 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                 </ul>
               </div>
               {detail.clock.applies && (
-                <p className="mt-3 text-xs text-gray-700">{detail.clock.consequence}</p>
+                <p className="mt-3 text-xs text-ps-body">{detail.clock.consequence}</p>
               )}
               {detail.rule_55_5.gaps.map((g) => (
-                <p key={g} className="mt-2 text-xs text-amber-800">{g}</p>
+                <p key={g} className="mt-2 text-xs text-state-attention">{g}</p>
               ))}
               {detail.clock.statute.includes("s.143") && (
-                <p className="mt-2 text-xs text-gray-600">
+                <p className="mt-2 text-xs text-ps-label">
                   {detail.itc_04.refusal}
                 </p>
               )}
@@ -727,12 +727,12 @@ function Table({ head, rows, empty, onRow }: {
   onRow?: (index: number) => void;
 }) {
   if (!rows.length) {
-    return <p className="p-4 text-sm text-gray-500">{empty}</p>;
+    return <p className="p-4 text-sm text-ps-hint">{empty}</p>;
   }
   return (
-    <div className="overflow-x-auto rounded border border-gray-200">
+    <div className="overflow-x-auto rounded border border-ps-border">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+        <thead className="bg-ps-muted text-left text-xs uppercase text-ps-hint">
           <tr>{head.map((h) => <th key={h} className="px-3 py-2">{h}</th>)}</tr>
         </thead>
         <tbody>
@@ -740,7 +740,7 @@ function Table({ head, rows, empty, onRow }: {
             <tr
               key={i}
               onClick={onRow ? () => onRow(i) : undefined}
-              className={`border-t border-gray-100 ${onRow ? "cursor-pointer hover:bg-gray-50" : ""}`}
+              className={`border-t border-ps-border ${onRow ? "cursor-pointer hover:bg-ps-hover" : ""}`}
             >
               {r.map((cell, j) => (
                 <td key={j} className="px-3 py-2 tabular-nums">{cell}</td>

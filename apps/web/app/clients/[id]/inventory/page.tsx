@@ -575,7 +575,7 @@ function StockLedgerDrillDown({
   return (
     <div className="fixed inset-0 bg-brand-dark/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between shrink-0">
+        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <div>
             <p className="text-sm font-semibold text-ps-ink">{item.name}</p>
             <p className="text-2xs text-ps-hint mt-0.5">Stock movement ledger</p>
@@ -593,7 +593,7 @@ function StockLedgerDrillDown({
           </div>
         </div>
 
-        <div className="px-5 py-3 border-b border-ps-muted flex items-end gap-3 flex-wrap shrink-0">
+        <div className="px-5 py-3 border-b border-ps-border flex items-end gap-3 flex-wrap shrink-0">
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">From</label>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
@@ -634,7 +634,7 @@ function StockLedgerDrillDown({
           ) : (
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint">
+                <tr className="border-b border-ps-border text-ps-hint">
                   <th className="px-3 py-2 text-left font-semibold">Date</th>
                   <th className="px-3 py-2 text-left font-semibold">Type</th>
                   <th className="px-3 py-2 text-left font-semibold">Reference</th>
@@ -644,7 +644,7 @@ function StockLedgerDrillDown({
                   <th className="px-3 py-2 text-right font-semibold">Balance Value</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {opening ? (
                   <tr className="bg-ps-bg">
                     <td className="px-3 py-2 text-ps-label whitespace-nowrap">{opening.as_at ?? "—"}</td>
@@ -777,7 +777,7 @@ function AdjustStockModal({
   return (
     <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
           <p className="text-sm font-semibold text-ps-ink">Adjust Stock — {item.name}</p>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
         </div>
@@ -906,7 +906,7 @@ function NrvWritedownModal({
   return (
     <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
           <p className="text-sm font-semibold text-ps-ink">Write Down to NRV — {item.name}</p>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
         </div>

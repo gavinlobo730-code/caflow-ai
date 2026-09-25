@@ -895,15 +895,15 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
 
               {/* Format notes */}
               <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-ps-label">
-                <div className="p-3 bg-ps-bg rounded-lg border border-ps-muted">
+                <div className="p-3 bg-ps-bg rounded-lg border border-ps-border">
                   <p className="font-medium text-ps-body mb-1">PF ECR (.txt)</p>
                   <p>Tilde-separated format for EPFO Unified Portal. Upload via &quot;ECR Upload&quot; on epfindia.gov.in. Due by 15th each month.</p>
                 </div>
-                <div className="p-3 bg-ps-bg rounded-lg border border-ps-muted">
+                <div className="p-3 bg-ps-bg rounded-lg border border-ps-border">
                   <p className="font-medium text-ps-body mb-1">ESI Statement (.csv)</p>
                   <p>Employee-wise ESI contribution data for ESIC portal. Half-yearly filing — Apr-Sep by Nov 11, Oct-Mar by May 11.</p>
                 </div>
-                <div className="p-3 bg-ps-bg rounded-lg border border-ps-muted">
+                <div className="p-3 bg-ps-bg rounded-lg border border-ps-border">
                   <p className="font-medium text-ps-body mb-1">TDS 24Q (.csv)</p>
                   <p>Quarterly TDS data per IT Act Section 192. Must be filed on the e-filing portal (incometax.gov.in) under the deductor’s TAN. CA review mandatory before submission.</p>
                 </div>

@@ -298,7 +298,7 @@ function ActionsMenu({ member, onEdit, onDeactivate }: ActionsMenuProps) {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-1 w-40 bg-white border border-ps-muted rounded-lg shadow-lg z-20 py-1">
+          <div className="absolute right-0 mt-1 w-40 bg-white border border-ps-border rounded-lg shadow-lg z-20 py-1">
             <button
               onClick={() => { setOpen(false); onEdit(); }}
               className="w-full text-left px-3 py-2 text-xs text-ps-body hover:bg-ps-bg flex items-center gap-2"
@@ -347,7 +347,7 @@ function RolePermissionsCard() {
   }, []);
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
       <div className="flex items-center gap-2">
         <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
           <Lock className="w-3.5 h-3.5 text-violet-600" />
@@ -369,7 +369,7 @@ function RolePermissionsCard() {
             const allowed = MODULES.filter(m => roleReaches(matrix, role, m.resource));
             const denied = MODULES.filter(m => !roleReaches(matrix, role, m.resource));
             return (
-              <div key={role} className="border border-ps-muted rounded-lg p-3 space-y-2">
+              <div key={role} className="border border-ps-border rounded-lg p-3 space-y-2">
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[role]}`}>
                   {role}
                 </span>
@@ -482,7 +482,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
 
   if (activeMembers.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-ps-muted p-10 text-center">
+      <div className="bg-white rounded-xl border border-ps-border p-10 text-center">
         <Users className="w-8 h-8 text-gray-200 mx-auto mb-2" />
         <p className="text-sm text-ps-hint">No active team members to configure</p>
       </div>
@@ -491,14 +491,14 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
 
   if (matrixError) {
     return (
-      <div className="bg-white rounded-xl border border-ps-muted p-6 text-center">
+      <div className="bg-white rounded-xl border border-ps-border p-6 text-center">
         <p className="text-sm text-state-problem">{matrixError}</p>
       </div>
     );
   }
   if (!matrix) {
     return (
-      <div className="bg-white rounded-xl border border-ps-muted p-6 text-center">
+      <div className="bg-white rounded-xl border border-ps-border p-6 text-center">
         <p className="text-sm text-ps-hint">Loading access matrix…</p>
       </div>
     );
@@ -507,8 +507,8 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
   return (
     <div className="space-y-4">
       {/* Matrix table */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+        <div className="px-5 py-4 border-b border-ps-border">
           <h2 className="text-sm font-semibold text-ps-ink">Module Access</h2>
           <p className="text-xs text-ps-hint mt-0.5">
             What each member can actually reach, read from the server. A role sets
@@ -521,7 +521,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-gray-50 bg-ps-bg/50">
+              <tr className="border-b border-ps-border bg-ps-bg/50">
                 <th className="text-left text-xs font-medium text-ps-label px-4 py-3 min-w-[180px] sticky left-0 bg-ps-bg/80 backdrop-blur-sm z-10">
                   Member
                 </th>
@@ -538,7 +538,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {activeMembers.map(member => {
                 const initials = member.full_name
                   .split(" ")
@@ -626,7 +626,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
         </div>
 
         {/* Legend */}
-        <div className="px-5 py-3 border-t border-gray-50 bg-ps-bg/30 flex items-center gap-4 flex-wrap">
+        <div className="px-5 py-3 border-t border-ps-border bg-ps-bg/30 flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-1.5 text-xs text-ps-label">
             <span className="w-4 h-4 rounded bg-brand inline-block" />
             Access granted (role default)
@@ -853,7 +853,7 @@ export default function TeamPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {SUMMARY_CARDS.map(card => (
-          <div key={card.label} className="bg-white rounded-xl border border-ps-muted p-4">
+          <div key={card.label} className="bg-white rounded-xl border border-ps-border p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className={`w-8 h-8 rounded-xl ${card.gradient} flex items-center justify-center shadow-sm`}>
                 <card.icon className="w-4 h-4 text-white" />
@@ -867,7 +867,7 @@ export default function TeamPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-ps-muted">
+      <div className="flex gap-1 border-b border-ps-border">
         <button
           onClick={() => setActiveTab("members")}
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
@@ -893,8 +893,8 @@ export default function TeamPage() {
 
       {/* Tab: Team Members */}
       {activeTab === "members" && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="px-5 py-4 border-b border-ps-border">
             <h2 className="text-sm font-semibold text-ps-ink">Team Members</h2>
             <p className="text-xs text-ps-hint mt-0.5">All staff registered under your firm</p>
           </div>
@@ -911,7 +911,7 @@ export default function TeamPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-50">
+                  <tr className="border-b border-ps-border">
                     <th className="text-left text-xs font-medium text-ps-hint px-5 py-3">Name</th>
                     <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Email</th>
                     <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Role</th>
@@ -920,7 +920,7 @@ export default function TeamPage() {
                     <th className="px-5 py-3 w-10"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-bg">
+                <tbody className="divide-y divide-ps-border">
                   {members.map(member => {
                     const isCurrentUser = member.auth_user_id === currentUserId;
                     const isActive = member.is_active !== false;
@@ -991,7 +991,7 @@ export default function TeamPage() {
       {/* Tab: Permissions */}
       {activeTab === "permissions" && (
         loading ? (
-          <div className="bg-white rounded-xl border border-ps-muted px-5 py-10 text-center text-sm text-ps-hint">
+          <div className="bg-white rounded-xl border border-ps-border px-5 py-10 text-center text-sm text-ps-hint">
             Loading…
           </div>
         ) : (

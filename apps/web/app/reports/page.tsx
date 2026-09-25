@@ -173,7 +173,7 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
           GSTR-1 — Outward Supplies
         </h3>
         <table className="w-full text-sm border border-ps-border rounded-lg overflow-hidden">
-          <tbody className="divide-y divide-ps-muted">
+          <tbody className="divide-y divide-ps-border">
             <tr className="bg-ps-bg">
               <td className="px-4 py-2.5 text-ps-label">Taxable Value</td>
               <td className="px-4 py-2.5 text-right font-medium text-ps-ink">
@@ -222,7 +222,7 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
               <th className="px-4 py-2 text-right">Net Payable</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ps-muted">
+          <tbody className="divide-y divide-ps-border">
             <tr>
               <td className="px-4 py-2.5 text-ps-label">CGST</td>
               <td className="px-4 py-2.5 text-right">{formatPaise(data.gstr3b.output_cgst)}</td>
@@ -317,7 +317,7 @@ function PLStatementReport({ data }: { data: PLData }) {
               <th className="px-4 py-2 text-right">Amount</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ps-muted">
+          <tbody className="divide-y divide-ps-border">
             {data.revenue.length === 0 ? (
               <tr>
                 <td colSpan={2} className="px-4 py-4 text-center text-ps-hint text-xs">
@@ -352,7 +352,7 @@ function PLStatementReport({ data }: { data: PLData }) {
               <th className="px-4 py-2 text-right">Amount</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ps-muted">
+          <tbody className="divide-y divide-ps-border">
             {data.expenses.length === 0 ? (
               <tr>
                 <td colSpan={2} className="px-4 py-4 text-center text-ps-hint text-xs">
@@ -434,7 +434,7 @@ function ComplianceStatusReport({ data }: { data: ComplianceRow[] }) {
               <th className="px-4 py-2 text-center">GSTR-9</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ps-muted">
+          <tbody className="divide-y divide-ps-border">
             {data.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-4 py-6 text-center text-ps-hint text-xs">
@@ -509,7 +509,7 @@ function OutstandingInvoicesReport({ data }: { data: OutstandingRow[] }) {
               <th className="px-4 py-2 text-right">Days O/S</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ps-muted">
+          <tbody className="divide-y divide-ps-border">
             {data.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-6 text-center text-ps-hint text-xs">
@@ -737,7 +737,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
   return (
     <div className="bg-white rounded-xl border border-ps-border shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-ps-muted bg-ps-bg print:hidden">
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-ps-border bg-ps-bg print:hidden">
         <Icon size={16} className="text-ps-label shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-ps-ink">{reportDef.name}</p>
@@ -753,7 +753,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
       </div>
 
       {/* Controls */}
-      <div className="px-5 py-4 border-b border-ps-muted print:hidden">
+      <div className="px-5 py-4 border-b border-ps-border print:hidden">
         <div className="flex flex-wrap gap-3 items-end">
           {/* Client selector */}
           {(reportId === "gst_summary" || reportId === "pl_statement") && (
@@ -900,7 +900,7 @@ export default function ReportsPage() {
           <div className="print:hidden">
             <Link
               href="/reports/cash-flow"
-              className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-ps-muted hover:border-blue-200 hover:shadow-sm transition-all text-left w-full"
+              className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-ps-border hover:border-blue-200 hover:shadow-sm transition-all text-left w-full"
             >
               <div className="p-2.5 bg-ps-bg rounded-lg group-hover:bg-blue-50 transition-colors shrink-0">
                 <TrendingUp size={18} className="text-ps-label group-hover:text-blue-600 transition-colors" />
@@ -930,7 +930,7 @@ export default function ReportsPage() {
                 <button
                   key={report.id}
                   onClick={() => setActiveReport(report.id)}
-                  className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-ps-muted hover:border-blue-200 hover:shadow-sm transition-all text-left"
+                  className="group flex items-start gap-4 p-5 bg-white rounded-xl border border-ps-border hover:border-blue-200 hover:shadow-sm transition-all text-left"
                 >
                   <div className="p-2.5 bg-ps-bg rounded-lg group-hover:bg-blue-50 transition-colors shrink-0">
                     <Icon size={18} className="text-ps-label group-hover:text-blue-600 transition-colors" />

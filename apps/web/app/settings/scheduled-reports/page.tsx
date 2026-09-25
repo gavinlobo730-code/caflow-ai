@@ -259,7 +259,7 @@ export default function ScheduledReportsPage() {
           <span className="text-sm">Loading schedules…</span>
         </div>
       ) : loadError ? (
-        <div className="bg-white rounded-xl border border-ps-muted px-5 py-14 text-center">
+        <div className="bg-white rounded-xl border border-ps-border px-5 py-14 text-center">
           <AlertCircle className="w-8 h-8 text-red-300 mx-auto mb-2" />
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
           <button
@@ -270,16 +270,16 @@ export default function ScheduledReportsPage() {
           </button>
         </div>
       ) : schedules.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted px-5 py-14 text-center">
+        <div className="bg-white rounded-xl border border-ps-border px-5 py-14 text-center">
           <Calendar className="w-8 h-8 text-gray-200 mx-auto mb-2" />
           <p className="text-sm text-ps-hint">No schedules yet</p>
           <p className="text-xs text-ps-disabled mt-1">Create your first scheduled report to get started</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-ps-muted text-xs text-ps-hint">
+              <tr className="border-b border-ps-border text-xs text-ps-hint">
                 <th className="px-5 py-3 text-left font-semibold">Report Type</th>
                 <th className="px-4 py-3 text-left font-semibold">Client</th>
                 <th className="px-4 py-3 text-left font-semibold">Frequency</th>
@@ -289,7 +289,7 @@ export default function ScheduledReportsPage() {
                 <th className="px-5 py-3 text-left font-semibold">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {schedules.map(s => (
                 <tr key={s.id} className="hover:bg-ps-bg">
                   <td className="px-5 py-3 font-medium text-ps-ink text-xs">

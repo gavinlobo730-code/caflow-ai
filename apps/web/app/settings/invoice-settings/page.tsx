@@ -174,8 +174,8 @@ export default function InvoiceSettingsPage() {
         )}
 
         {/* ── Invoice Numbering ────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
             <Hash size={15} className="text-ps-label" />
             <h2 className="text-sm font-semibold text-ps-ink">Invoice Numbering</h2>
           </div>
@@ -225,7 +225,7 @@ export default function InvoiceSettingsPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between py-2 border-t border-ps-muted">
+                <div className="flex items-center justify-between py-2 border-t border-ps-border">
                   <div>
                     <p className="text-sm text-ps-body">Include Financial Year</p>
                     <p className="text-xs text-ps-hint">Adds the Indian financial year (e.g. 2025) to the number</p>
@@ -242,7 +242,7 @@ export default function InvoiceSettingsPage() {
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between py-2 border-t border-ps-muted">
+                <div className="flex items-center justify-between py-2 border-t border-ps-border">
                   <div>
                     <p className="text-sm text-ps-body">Allow Manual Override</p>
                     <p className="text-xs text-ps-hint">Let managers manually set an invoice number on creation</p>
@@ -264,7 +264,7 @@ export default function InvoiceSettingsPage() {
                     stops a CA recording a supply that has already happened,
                     and a supply that cannot be recorded here gets recorded
                     somewhere this product cannot see. */}
-                <div className="flex items-center justify-between py-2 border-t border-ps-muted">
+                <div className="flex items-center justify-between py-2 border-t border-ps-border">
                   <div className="pr-4">
                     <p className="text-sm text-ps-body">Refuse an invoice over a customer&apos;s credit limit</p>
                     <p className="text-xs text-ps-hint">
@@ -293,8 +293,8 @@ export default function InvoiceSettingsPage() {
         </div>
 
         {/* ── Payment Details ──────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
             <CreditCard size={15} className="text-ps-label" />
             <h2 className="text-sm font-semibold text-ps-ink">Payment Details</h2>
           </div>

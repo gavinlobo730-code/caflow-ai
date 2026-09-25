@@ -291,7 +291,7 @@ export default function ClientRelatedPartiesPage() {
                     <th className="pb-2 font-medium text-right">Payable</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-ps-border">
                   {included.map((p) => <PartyRow key={p.entity_id + p.role} party={p} />)}
                 </tbody>
               </table>
@@ -357,7 +357,7 @@ export default function ClientRelatedPartiesPage() {
                     <th className="px-3 py-2.5 font-medium" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-ps-border">
                   {roles.map((r) => (
                     <tr key={r.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3 text-ps-ink font-medium">
@@ -414,7 +414,7 @@ export default function ClientRelatedPartiesPage() {
                     <th className="px-3 py-2.5 font-medium">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-ps-border">
                   {matches.map((m) => (
                     <tr key={m.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3">

@@ -252,8 +252,8 @@ export default function BrandingPage() {
           <div className="space-y-4">
 
             {/* Logo */}
-            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-              <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+            <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+              <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
                 <ImageIcon size={15} className="text-ps-label" />
                 <h2 className="text-sm font-semibold text-ps-ink">Logo</h2>
               </div>
@@ -304,8 +304,8 @@ export default function BrandingPage() {
             </div>
 
             {/* Colors */}
-            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-              <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+            <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+              <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
                 <Palette size={15} className="text-ps-label" />
                 <h2 className="text-sm font-semibold text-ps-ink">Brand Colors</h2>
               </div>
@@ -329,8 +329,8 @@ export default function BrandingPage() {
             </div>
 
             {/* Social Links */}
-            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-              <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+            <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+              <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
                 <Globe size={15} className="text-ps-label" />
                 <h2 className="text-sm font-semibold text-ps-ink">Social Links</h2>
               </div>

@@ -455,7 +455,7 @@ export default function DashboardContent() {
 
         {/* Column 1: Upcoming Deadlines */}
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-state-attention-surface flex items-center justify-center">
                 <Calendar size={14} className="text-amber-600" />
@@ -466,7 +466,7 @@ export default function DashboardContent() {
               View all <ChevronRight size={12} />
             </Link>
           </div>
-          <div className="divide-y divide-ps-muted">
+          <div className="divide-y divide-ps-border">
             {upcomingDeadlines.map((d) => (
               <Link key={d.name + d.date} href="/deadlines">
                 <div className="flex items-center justify-between px-5 py-3.5 hover:bg-ps-bg transition-colors">
@@ -494,7 +494,7 @@ export default function DashboardContent() {
 
         {/* Column 2: Recent Clients */}
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
                 <Users size={14} className="text-blue-600" />
@@ -505,7 +505,7 @@ export default function DashboardContent() {
               View all <ChevronRight size={12} />
             </Link>
           </div>
-          <div className="divide-y divide-ps-muted">
+          <div className="divide-y divide-ps-border">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-5 py-3.5">
@@ -547,7 +547,7 @@ export default function DashboardContent() {
 
         {/* Column 3: Pending Tasks */}
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-state-attention-surface flex items-center justify-center">
                 <Clock size={14} className="text-amber-600" />
@@ -558,7 +558,7 @@ export default function DashboardContent() {
               View all <ChevronRight size={12} />
             </Link>
           </div>
-          <div className="divide-y divide-ps-muted">
+          <div className="divide-y divide-ps-border">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-5 py-3.5">

@@ -132,7 +132,7 @@ export function StockAgeingPanel({ clientId, asOf }: { clientId: string; asOf: s
                       <th className="text-right py-2 pl-2 font-medium">Value</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ps-muted">
+                  <tbody className="divide-y divide-ps-border">
                     {data.items.map((it) => (
                       <tr key={it.service_catalogue_id} className="hover:bg-ps-bg">
                         <td className="py-2 pr-3 text-ps-ink">
@@ -193,7 +193,7 @@ export function StockAgeingPanel({ clientId, asOf }: { clientId: string; asOf: s
                   formula is, that the value is pro-rated and that no provision
                   is computed — each of which a reader would otherwise assume
                   the other way. */}
-              <div className="mt-4 pt-3 border-t border-ps-muted space-y-1.5">
+              <div className="mt-4 pt-3 border-t border-ps-border space-y-1.5">
                 {data.notes.map((n, i) => (
                   <p key={i} className="text-xs text-ps-label flex gap-2">
                     <Info size={12} className="mt-0.5 flex-shrink-0 text-ps-hint" />

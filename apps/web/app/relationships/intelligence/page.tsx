@@ -296,7 +296,7 @@ export default function RelationshipIntelligencePage() {
                       <th className="px-3 py-3 text-left font-medium">Flags</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-ps-border">
                     {loans.map((loan) => (
                       <tr
                         key={loan.id}

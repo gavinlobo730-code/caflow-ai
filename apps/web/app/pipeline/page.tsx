@@ -407,7 +407,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
           <h2 className="text-base font-semibold text-ps-ink">
             {initial ? "Edit Lead" : "Add Lead"}
           </h2>
@@ -1033,14 +1033,14 @@ export default function PipelinePage() {
 
       {/* Summary bar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="bg-white rounded-lg border border-ps-muted px-4 py-3">
+        <div className="bg-white rounded-lg border border-ps-border px-4 py-3">
           <p className="text-xs text-ps-label">Total Leads</p>
           <p className="text-xl font-bold text-ps-ink mt-0.5">
             <Users size={14} className="inline mr-1 text-blue-500" />
             {totalLeads}{leadsCapped ? "+" : ""}
           </p>
         </div>
-        <div className="bg-white rounded-lg border border-ps-muted px-4 py-3">
+        <div className="bg-white rounded-lg border border-ps-border px-4 py-3">
           <p className="text-xs text-ps-label">Est. MRR (if all convert)</p>
           <p className="text-xl font-bold text-green-700 mt-0.5">
             {formatRupees(estimatedMRRPaise)}
@@ -1051,7 +1051,7 @@ export default function PipelinePage() {
           return (
             <div
               key={stage}
-              className="bg-white rounded-lg border border-ps-muted px-4 py-3"
+              className="bg-white rounded-lg border border-ps-border px-4 py-3"
             >
               <p className="text-xs text-ps-label">{stage}</p>
               <p className="text-xl font-bold text-ps-ink mt-0.5">{count}</p>

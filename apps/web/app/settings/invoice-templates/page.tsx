@@ -90,7 +90,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-        <div className="px-6 py-4 border-b border-ps-muted">
+        <div className="px-6 py-4 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">New Invoice Template</h3>
         </div>
         <div className="px-6 py-4 space-y-4">
@@ -143,7 +143,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             <span className="text-sm text-ps-body">Set as default template</span>
           </label>
         </div>
-        <div className="px-6 py-4 border-t border-ps-muted flex gap-2 justify-end">
+        <div className="px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-1.5 border border-ps-border text-ps-label text-sm rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={handleCreate} disabled={saving} className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Creating…" : "Create Template"}
@@ -166,7 +166,7 @@ function TemplateCard({
 }) {
   const info = TEMPLATE_DESCRIPTIONS[template.template_type];
   return (
-    <div className={`bg-white rounded-xl border overflow-hidden ${template.is_default ? "border-brand ring-2 ring-brand-light" : "border-ps-muted"}`}>
+    <div className={`bg-white rounded-xl border overflow-hidden ${template.is_default ? "border-brand ring-2 ring-brand-light" : "border-ps-border"}`}>
       <div className="px-5 py-4 flex items-start justify-between">
         <div className="flex items-start gap-3">
           <div className={`mt-0.5 px-2 py-0.5 rounded text-xs font-medium ${info.accent}`}>{info.label}</div>
@@ -208,7 +208,7 @@ function TemplateCard({
         </div>
       )}
 
-      <div className="px-5 py-3 border-t border-ps-bg flex items-center gap-2">
+      <div className="px-5 py-3 border-t border-ps-border flex items-center gap-2">
         {!template.is_default && (
           <button onClick={onSetDefault} className="flex items-center gap-1.5 px-3 py-1 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
             <Star size={11} /> Set as Default

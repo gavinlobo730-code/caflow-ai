@@ -64,7 +64,7 @@ export default function TaxPage() {
             <button
               key={mod.id}
               onClick={() => router.push(`/clients/${clientId}/${mod.href}`)}
-              className="w-full bg-white rounded-xl border border-ps-muted px-5 py-4 flex items-center gap-4 hover:bg-ps-bg hover:border-ps-border text-left transition-colors group"
+              className="w-full bg-white rounded-xl border border-ps-border px-5 py-4 flex items-center gap-4 hover:bg-ps-bg hover:border-ps-border-strong text-left transition-colors group"
             >
               <div className="w-10 h-10 rounded-lg border border-blue-100 bg-blue-50 flex items-center justify-center flex-shrink-0">
                 <Icon size={18} className="text-blue-600" />
@@ -84,7 +84,7 @@ export default function TaxPage() {
         })}
       </div>
 
-      <div className="bg-ps-bg border border-ps-muted rounded-xl p-4 space-y-2">
+      <div className="bg-ps-bg border border-ps-border rounded-xl p-4 space-y-2">
         <p className="text-xs font-semibold text-ps-body">Tax Filing Rules</p>
         <ul className="text-2xs text-ps-label space-y-1">
           <li>• Advance tax: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)</li>

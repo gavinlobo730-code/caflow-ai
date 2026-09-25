@@ -176,10 +176,10 @@ export function LandedCostPanel({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
       <div className="w-full max-w-2xl h-full bg-white shadow-xl flex flex-col">
-        <div className="px-5 py-4 border-b border-ps-muted flex items-start justify-between">
+        <div className="px-5 py-4 border-b border-ps-border flex items-start justify-between">
           <div>
             <p className="text-sm font-semibold text-ps-ink flex items-center gap-2">
-              <Truck size={15} className="text-blue-600" />
+              <Truck size={15} className="text-brand" />
               Landed costs
             </p>
             <p className="text-2xs text-ps-hint mt-0.5">
@@ -250,13 +250,13 @@ export function LandedCostPanel({
                 ) : (
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-ps-muted text-ps-hint">
+                      <tr className="border-b border-ps-border text-ps-hint">
                         <th className="py-1.5 text-left font-semibold">Charge</th>
                         <th className="py-1.5 text-right font-semibold">Amount</th>
                         <th className="py-1.5 text-right font-semibold w-16"></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-ps-bg">
+                    <tbody className="divide-y divide-ps-border">
                       {data.charges.map((c) => (
                         <tr key={c.id}>
                           <td className="py-1.5 text-ps-ink">
@@ -278,7 +278,7 @@ export function LandedCostPanel({
                             ) : (
                               <button onClick={() => remove(c)} disabled={saving}
                                 aria-label={`Remove ${c.description}`}
-                                className="p-1 rounded hover:bg-state-problem-hover text-red-600 disabled:opacity-40">
+                                className="p-1 rounded hover:bg-state-problem-hover text-state-problem disabled:opacity-40">
                                 <Trash2 size={12} />
                               </button>
                             )}
@@ -328,7 +328,7 @@ export function LandedCostPanel({
                   </p>
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-ps-muted text-ps-hint">
+                      <tr className="border-b border-ps-border text-ps-hint">
                         <th className="py-1.5 text-left font-semibold">Item</th>
                         <th className="py-1.5 text-right font-semibold">Qty</th>
                         <th className="py-1.5 text-right font-semibold">Own cost</th>
@@ -336,12 +336,17 @@ export function LandedCostPanel({
                         <th className="py-1.5 text-right font-semibold">Cost of stock</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-ps-bg">
+                    <tbody className="divide-y divide-ps-border">
                       {data.lines.map((l) => (
                         <tr key={l.line_id}>
                           <td className="py-1.5 text-ps-ink">{l.item_name || "—"}</td>
                           <td className="py-1.5 text-right tabular-nums text-ps-label">{l.quantity}</td>
                           <td className="py-1.5 text-right tabular-nums">{fmt(l.own_cost_paise)}</td>
+                          {/* Raw, deliberately: this column is the DERIVED
+                              part of the cost, and the state set has no word
+                              for that — nobody has to act on it, so `working`
+                              would be wrong. Left the way the token file left
+                              `waiting_client` and `queued`. */}
                           <td className="py-1.5 text-right tabular-nums text-blue-700">
                             {fmt(l.landed_cost_paise)}
                           </td>
@@ -370,7 +375,7 @@ export function LandedCostPanel({
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-ps-muted flex justify-end">
+        <div className="px-5 py-3 border-t border-ps-border flex justify-end">
           <button onClick={onClose}
             className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">
             Close

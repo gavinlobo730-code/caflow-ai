@@ -164,7 +164,7 @@ export default function ApplyStructureModal({
           </div>
 
           <div className="rounded-xl border border-ps-border">
-            <div className="px-3 py-2 border-b border-ps-muted flex items-center justify-between">
+            <div className="px-3 py-2 border-b border-ps-border flex items-center justify-between">
               <p className="text-2xs font-semibold text-ps-ink">
                 Employees · {chosen} selected
               </p>
@@ -184,7 +184,7 @@ export default function ApplyStructureModal({
             ) : (
               <table className="w-full text-2xs">
                 <thead>
-                  <tr className="text-left text-ps-label border-b border-ps-muted">
+                  <tr className="text-left text-ps-label border-b border-ps-border">
                     <th className="px-3 py-1.5 w-8"></th>
                     <th className="px-3 py-1.5">Employee</th>
                     <th className="px-3 py-1.5 text-right">Current basic</th>
@@ -193,7 +193,7 @@ export default function ApplyStructureModal({
                 </thead>
                 <tbody>
                   {employees.map((e) => (
-                    <tr key={e.id} className="border-b border-ps-bg">
+                    <tr key={e.id} className="border-b border-ps-border">
                       <td className="px-3 py-1.5">
                         <input type="checkbox" checked={!!picked[e.id]}
                           onChange={(ev) => { setPicked((p) => ({ ...p, [e.id]: ev.target.checked })); setResult(null); }} />
@@ -254,7 +254,7 @@ export default function ApplyStructureModal({
                 </thead>
                 <tbody>
                   {result.employees.map((e) => (
-                    <tr key={e.employee_id} className="border-b border-ps-muted">
+                    <tr key={e.employee_id} className="border-b border-ps-border">
                       <td className="py-1.5 pr-2 text-ps-ink">{e.name ?? e.employee_id}</td>
                       <td className="py-1.5 pr-2 text-right">{fmt(e.monthly_gross_paise)}</td>
                       <td className="py-1.5 pr-2 text-right">{fmt(e.basic_paise as number)}</td>

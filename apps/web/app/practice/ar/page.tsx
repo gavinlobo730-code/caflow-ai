@@ -64,7 +64,7 @@ function ARDashboard() {
           </thead>
           <tbody>
             {ORDER.map(({ key, label }) => (
-              <tr key={key} className="border-b border-gray-100 last:border-0">
+              <tr key={key} className="border-b border-ps-border last:border-0">
                 <td className="px-4 py-2.5 text-brand">{label}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(buckets[key]?.paise ?? 0)}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums text-gray-500">{buckets[key]?.count ?? 0}</td>

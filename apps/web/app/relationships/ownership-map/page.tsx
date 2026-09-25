@@ -237,7 +237,7 @@ export default function OwnershipMapPage() {
                           {(detail.roles ?? []).map((r, i) => (
                             <div
                               key={i}
-                              className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-100"
+                              className="flex items-center justify-between p-2 rounded-lg bg-ps-muted border border-ps-border"
                             >
                               <span className="text-sm text-gray-700">
                                 {r.client_name ?? r.client_id}
@@ -265,7 +265,7 @@ export default function OwnershipMapPage() {
                             .map((r, i) => (
                               <div
                                 key={i}
-                                className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-100"
+                                className="flex items-center justify-between p-2 rounded-lg bg-ps-muted border border-ps-border"
                               >
                                 <Link
                                   href={`/relationships/${r.to_entity_id}`}
@@ -296,7 +296,7 @@ export default function OwnershipMapPage() {
                             .map((r, i) => (
                               <div
                                 key={i}
-                                className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-100"
+                                className="flex items-center justify-between p-2 rounded-lg bg-ps-muted border border-ps-border"
                               >
                                 <Link
                                   href={`/relationships/${r.from_entity_id}`}

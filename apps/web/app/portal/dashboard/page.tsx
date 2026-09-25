@@ -426,7 +426,7 @@ export default function PortalDashboardPage() {
               {invoices === null ? (sectionFailed["invoices"] ? <ErrorRetry onRetry={() => loadSection("invoices", activeClient!)} /> : <Loading />) : invoices.length === 0 ? <Empty label="No invoices yet." /> : (
                 <Table head={["Invoice", "Date", "Due", "Total", "Outstanding", "Status", ""]}>
                   {invoices.map((i) => (
-                    <tr key={i.id} className="border-t border-ps-muted">
+                    <tr key={i.id} className="border-t border-ps-border">
                       <td className="px-3 py-2 font-medium text-ps-ink">{i.invoice_no ?? "—"}</td>
                       <td className="px-3 py-2 text-ps-label">{i.invoice_date ? formatDate(i.invoice_date) : "—"}</td>
                       <td className="px-3 py-2 text-ps-label">{i.due_date ? formatDate(i.due_date) : "—"}</td>
@@ -483,7 +483,7 @@ export default function PortalDashboardPage() {
                   {statement.transactions.length === 0 ? <Empty label="No transactions in this period." /> : (
                     <Table head={["Date", "Particulars", "Debit", "Credit", "Balance"]}>
                       {statement.transactions.map((t, idx) => (
-                        <tr key={idx} className="border-t border-ps-muted">
+                        <tr key={idx} className="border-t border-ps-border">
                           <td className="px-3 py-2 text-ps-label">{formatDate(t.date)}</td>
                           <td className="px-3 py-2 text-ps-ink">{t.particulars}</td>
                           <td className="px-3 py-2 tabular-nums">{t.debit_paise ? formatPaise(t.debit_paise) : "—"}</td>
@@ -504,7 +504,7 @@ export default function PortalDashboardPage() {
               {reminders === null ? (sectionFailed["reminders"] ? <ErrorRetry onRetry={() => loadSection("reminders", activeClient!)} /> : <Loading />) : reminders.length === 0 ? <Empty label="No reminders have been sent." /> : (
                 <Table head={["Invoice", "Status", "Sent"]}>
                   {reminders.map((r, idx) => (
-                    <tr key={idx} className="border-t border-ps-muted">
+                    <tr key={idx} className="border-t border-ps-border">
                       <td className="px-3 py-2 font-medium text-ps-ink">{r.invoice_no ?? "—"}</td>
                       <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
                       <td className="px-3 py-2 text-ps-label">{r.sent_at ? formatDate(r.sent_at) : (r.created_at ? formatDate(r.created_at) : "—")}</td>
@@ -521,7 +521,7 @@ export default function PortalDashboardPage() {
               {compliance === null ? (sectionFailed["compliance"] ? <ErrorRetry onRetry={() => loadSection("compliance", activeClient!)} /> : <Loading />) : compliance.length === 0 ? <Empty label="No compliance items to show." /> : (
                 <Table head={["Type", "Obligation", "Period", "Due", "Status"]}>
                   {compliance.map((c, idx) => (
-                    <tr key={idx} className="border-t border-ps-muted">
+                    <tr key={idx} className="border-t border-ps-border">
                       <td className="px-3 py-2 font-medium text-ps-ink">{c.compliance_type ?? "—"}</td>
                       <td className="px-3 py-2 text-ps-label">{c.obligation_type ?? "—"}</td>
                       <td className="px-3 py-2 text-ps-label">{c.period_label ?? "—"}</td>
@@ -627,7 +627,7 @@ export default function PortalDashboardPage() {
                     </ol>
                   )}
                   <form
-                    className="flex items-end gap-2 border-t border-ps-muted pt-3"
+                    className="flex items-end gap-2 border-t border-ps-border pt-3"
                     onSubmit={(e) => { e.preventDefault(); sendMessage(); }}
                   >
                     <label className="flex-1">

@@ -256,7 +256,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
           <h2 className="text-base font-semibold text-ps-ink">New Engagement Letter</h2>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
             <X size={18} />
@@ -431,7 +431,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
           <h2 className="text-base font-semibold text-ps-ink">
             {initial ? "Edit Template" : "New Template"}
           </h2>
@@ -747,7 +747,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand/60 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
           <div>
             <p className="text-3xs font-mono text-ps-hint">{letter.engagement_number}</p>
             <h2 className="text-base font-semibold text-ps-ink">{letter.title}</h2>
@@ -1094,7 +1094,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
           {/* Delete / discard — available for any letter except a signed one.
               Returns the linked lead to the pipeline so it can be re-engaged. */}
           {letter.status !== "Signed" && (
-            <div className="border-t border-ps-muted pt-3">
+            <div className="border-t border-ps-border pt-3">
               <button
                 disabled={actionLoading}
                 onClick={doDelete}

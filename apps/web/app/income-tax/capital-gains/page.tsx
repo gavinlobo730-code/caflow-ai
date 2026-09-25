@@ -495,7 +495,7 @@ export default function CapitalGainsPage() {
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Input Form */}
-            <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
+            <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <Calculator className="w-4 h-4 text-brand" />
                 <h2 className="text-sm font-semibold text-ps-ink">Asset Details</h2>
@@ -615,7 +615,7 @@ export default function CapitalGainsPage() {
             <div className="space-y-4">
               {computeError && <Callout tone="problem">{computeError}</Callout>}
               {!result ? (
-                <div className="bg-white rounded-xl border border-ps-muted p-5 flex items-center justify-center h-full min-h-[200px]">
+                <div className="bg-white rounded-xl border border-ps-border p-5 flex items-center justify-center h-full min-h-[200px]">
                   <div className="text-center">
                     <Calculator className="w-8 h-8 text-ps-disabled mx-auto mb-2" />
                     <p className="text-sm text-ps-hint">
@@ -625,7 +625,7 @@ export default function CapitalGainsPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="bg-white rounded-xl border border-ps-muted p-4">
+                  <div className="bg-white rounded-xl border border-ps-border p-4">
                     <h3 className="text-xs font-semibold text-ps-label uppercase tracking-wide mb-3">Classification</h3>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -651,7 +651,7 @@ export default function CapitalGainsPage() {
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-xl border border-ps-muted p-4">
+                  <div className="bg-white rounded-xl border border-ps-border p-4">
                     <h3 className="text-xs font-semibold text-ps-label uppercase tracking-wide mb-3">Tax Computation</h3>
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
@@ -677,7 +677,7 @@ export default function CapitalGainsPage() {
                           <span className="font-medium">{formatPaise(improvementPaise ?? 0)}</span>
                         </div>
                       )}
-                      <div className="border-t border-ps-muted pt-2 flex justify-between text-sm font-semibold">
+                      <div className="border-t border-ps-border pt-2 flex justify-between text-sm font-semibold">
                         <span className="text-ps-ink">Capital Gain</span>
                         <span className={result.gain_paise >= 0 ? "text-state-ready" : "text-state-problem"}>
                           {formatPaise(result.gain_paise)}
@@ -685,7 +685,7 @@ export default function CapitalGainsPage() {
                       </div>
 
                       {showIndexation && (
-                        <div className="mt-3 border-t border-dashed border-ps-muted pt-3">
+                        <div className="mt-3 border-t border-dashed border-ps-border pt-3">
                           <p className="text-xs font-medium text-ps-label mb-2">With Indexation ({result.tax_with_indexation_percent}%)</p>
                           <div className="flex justify-between text-sm">
                             <span className="text-ps-label">Indexed Cost (CII {ciiByFy[purchaseFY] ?? "—"} → {ciiByFy[saleFY] ?? "—"})</span>
@@ -785,8 +785,8 @@ export default function CapitalGainsPage() {
           </div>
 
           {/* CII Table */}
-          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50">
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+            <div className="px-5 py-4 border-b border-ps-border">
               <h2 className="text-sm font-semibold text-ps-ink">Cost Inflation Index (CII) Table</h2>
               <p className="text-xs text-ps-hint mt-0.5">IT Act Section 48 — Base year FY 2001-02 = 100</p>
             </div>
@@ -795,7 +795,7 @@ export default function CapitalGainsPage() {
                 <tbody>
                   <tr>
                     {ciiYears.map(y => (
-                      <td key={y} className={`px-3 py-2 text-center border-r border-gray-50 ${purchaseFY === y || saleFY === y ? "bg-brand-surface" : ""}`}>
+                      <td key={y} className={`px-3 py-2 text-center border-r border-ps-border ${purchaseFY === y || saleFY === y ? "bg-brand-surface" : ""}`}>
                         <p className="text-3xs text-ps-hint">FY {y}</p>
                         <p className="text-xs font-semibold text-ps-ink">{ciiByFy[y]}</p>
                       </td>
@@ -872,7 +872,7 @@ export default function CapitalGainsPage() {
                       <th className="px-4 py-3"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ps-bg">
+                  <tbody className="divide-y divide-ps-border">
                     {records.map(r => {
                       const gain = r.sale_value_paise - r.purchase_cost_paise - r.improvement_cost_paise;
                       return (

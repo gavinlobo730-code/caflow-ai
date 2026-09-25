@@ -270,7 +270,7 @@ function DeclarationCard({ row, employeeName, onVerify }: {
         </div>
 
         {row.items.length > 0 && (
-          <div className="border-t border-ps-muted pt-3 space-y-1">
+          <div className="border-t border-ps-border pt-3 space-y-1">
             {row.items.map((i) => (
               <div key={i.id} className="flex items-center justify-between text-sm">
                 <span className="text-ps-label">
@@ -289,7 +289,7 @@ function DeclarationCard({ row, employeeName, onVerify }: {
         )}
 
         {row.problems.length > 0 && (
-          <div className="border-t border-ps-muted pt-3 space-y-2">
+          <div className="border-t border-ps-border pt-3 space-y-2">
             {row.problems.map((n, idx) => (
               <div key={idx} className="flex gap-2 text-xs text-[#991B1B]">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -300,7 +300,7 @@ function DeclarationCard({ row, employeeName, onVerify }: {
         )}
 
         {row.notices.length > 0 && (
-          <div className="border-t border-ps-muted pt-3 space-y-2">
+          <div className="border-t border-ps-border pt-3 space-y-2">
             {row.notices.map((n, idx) => (
               <div key={idx} className="flex gap-2 text-xs text-ps-label">
                 <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-ps-label" />
@@ -444,7 +444,7 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
           </div>
         ))}
 
-        <label className="flex items-start gap-2.5 text-sm border-t border-ps-muted pt-4">
+        <label className="flex items-start gap-2.5 text-sm border-t border-ps-border pt-4">
           <input type="checkbox" checked={markVerified}
                  onChange={(e) => setMarkVerified(e.target.checked)}
                  className="mt-0.5" />
@@ -511,7 +511,7 @@ function ProofDocuments({ existing, reference, pending, onChange }: {
   };
 
   return (
-    <div className="pl-1 border-l-2 border-ps-muted ml-1 space-y-1">
+    <div className="pl-1 border-l-2 border-ps-border ml-1 space-y-1">
       {reference && (
         <p className="text-2xs text-ps-hint">
           Employee&apos;s reference: {reference}

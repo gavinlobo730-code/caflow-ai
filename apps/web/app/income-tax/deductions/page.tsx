@@ -142,7 +142,7 @@ function PaiseInput({ label, valuePaise, onChange, note }: {
   // and the red field says which box disagrees with it.
   const [bad, setBad] = useState(false);
   return (
-    <div className="flex items-center justify-between gap-4 py-2 border-b border-ps-muted last:border-0">
+    <div className="flex items-center justify-between gap-4 py-2 border-b border-ps-border last:border-0">
       <div>
         <span className="text-sm text-ps-body">{label}</span>
         {note && <span className="block text-xs text-ps-hint">{note}</span>}

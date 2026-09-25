@@ -287,7 +287,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-ps-muted text-ps-hint text-left">
+              <tr className="border-b border-ps-border text-ps-hint text-left">
                 <th className="py-2 font-semibold">{numberLabel}</th>
                 <th className="py-2 font-semibold">{partyLabel}</th>
                 <th className="py-2 font-semibold">Date</th>
@@ -296,7 +296,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
                 <th className="py-2 font-semibold" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {listing.documents.map((d) => (
                 <tr key={d.id}>
                   <td className="py-2 font-mono text-ps-ink">{d.document_no}</td>
@@ -326,7 +326,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       {showForm && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
           <div className="w-full max-w-md h-full bg-white shadow-xl flex flex-col">
-            <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
               <p className="text-sm font-semibold text-ps-ink">
                 Add an opening {kind === "receivable" ? "invoice" : "bill"}
               </p>
@@ -385,7 +385,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
               </label>
             </div>
 
-            <div className="px-5 py-3 border-t border-ps-muted flex items-center justify-between">
+            <div className="px-5 py-3 border-t border-ps-border flex items-center justify-between">
               <p className="text-3xs text-ps-hint max-w-[14rem] leading-tight">
                 No journal is posted. The tax on this document was declared where
                 it was issued.

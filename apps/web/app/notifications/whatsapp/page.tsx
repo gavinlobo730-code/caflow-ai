@@ -499,7 +499,7 @@ export default function WhatsAppPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-ps-muted">
+      <div className="flex gap-1 border-b border-ps-border">
         {(["compose", "bulk", "history"] as Tab[]).map((tab) => (
           <button
             key={tab}
@@ -766,7 +766,7 @@ export default function WhatsAppPage() {
                     <label
                       key={client.id}
                       className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-ps-bg transition-colors ${
-                        idx > 0 ? "border-t border-ps-muted" : ""
+                        idx > 0 ? "border-t border-ps-border" : ""
                       }`}
                     >
                       <input
@@ -855,7 +855,7 @@ export default function WhatsAppPage() {
           </div>
 
           {history.length === 0 ? (
-            <div className="bg-white rounded-xl border border-ps-muted px-5 py-16 text-center space-y-3">
+            <div className="bg-white rounded-xl border border-ps-border px-5 py-16 text-center space-y-3">
               <History className="w-10 h-10 text-gray-200 mx-auto" />
               <p className="text-sm font-medium text-ps-label">
                 No messages sent yet
@@ -865,7 +865,7 @@ export default function WhatsAppPage() {
               </p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden divide-y divide-ps-bg">
+            <div className="bg-white rounded-xl border border-ps-border overflow-hidden divide-y divide-ps-border">
               {history.map((entry) => (
                 <div key={entry.id} className="px-5 py-4 space-y-2">
                   <div className="flex items-start justify-between gap-2">

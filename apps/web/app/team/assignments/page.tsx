@@ -108,7 +108,7 @@ export default function AssignmentsPage() {
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
           {/* Staff list */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-3 py-2 border-b border-gray-100 text-2xs font-semibold uppercase tracking-wide text-gray-400">
+            <div className="px-3 py-2 border-b border-ps-border text-2xs font-semibold uppercase tracking-wide text-gray-400">
               Staff
             </div>
             {members.length === 0 && <p className="px-3 py-4 text-xs text-gray-400">No staff members.</p>}
@@ -116,7 +116,7 @@ export default function AssignmentsPage() {
               <button
                 key={m.id}
                 onClick={() => loadAssignments(m.id)}
-                className={`w-full text-left px-3 py-2.5 border-b border-gray-50 transition-colors ${
+                className={`w-full text-left px-3 py-2.5 border-b border-ps-border transition-colors ${
                   selectedUser === m.id ? "bg-brand text-white" : "hover:bg-ps-bg"
                 }`}
               >
@@ -132,7 +132,7 @@ export default function AssignmentsPage() {
               <p className="px-4 py-10 text-center text-xs text-gray-400">Select a staff member to manage their clients.</p>
             ) : (
               <>
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-ps-border">
                   <Search size={14} className="text-gray-400" />
                   <input
                     value={filter}
@@ -150,7 +150,7 @@ export default function AssignmentsPage() {
                         key={c.id}
                         disabled={!canAssign || busy === c.id}
                         onClick={() => toggle(c.id)}
-                        className="w-full flex items-center justify-between px-4 py-2.5 border-b border-gray-50 hover:bg-ps-bg disabled:opacity-60"
+                        className="w-full flex items-center justify-between px-4 py-2.5 border-b border-ps-border hover:bg-ps-bg disabled:opacity-60"
                       >
                         <div className="text-left">
                           <p className="text-sm text-brand">{c.client_name}</p>

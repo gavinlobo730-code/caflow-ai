@@ -262,7 +262,7 @@ export default function PlatformAdminPage() {
     if (gate === "error") {
       return (
         <div className="flex h-screen items-center justify-center bg-ps-bg p-6">
-          <div className="bg-white rounded-2xl border border-ps-muted shadow-sm max-w-md w-full p-6 text-center space-y-4">
+          <div className="bg-white rounded-2xl border border-ps-border shadow-sm max-w-md w-full p-6 text-center space-y-4">
             <div className="w-10 h-10 rounded-full bg-state-attention-surface flex items-center justify-center mx-auto"><AlertCircle size={18} className="text-amber-600" /></div>
             <div>
               <h2 className="text-base font-semibold text-ps-ink">Couldn’t verify access</h2>
@@ -310,7 +310,7 @@ export default function PlatformAdminPage() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {KPIS.map((k) => (
-          <div key={k.label} className="bg-white rounded-xl border border-ps-muted p-4">
+          <div key={k.label} className="bg-white rounded-xl border border-ps-border p-4">
             <div className="w-8 h-8 rounded-lg bg-ps-bg flex items-center justify-center mb-2"><k.icon size={15} className="text-ps-label" /></div>
             <p className="text-2xl font-bold text-ps-ink">{k.value}</p>
             <p className="text-xs text-ps-label mt-0.5">{k.label}</p>
@@ -350,7 +350,7 @@ export default function PlatformAdminPage() {
       {detail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setDetail(null)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-ps-muted">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
               <h2 className="text-base font-semibold text-ps-ink">{detail.firm.name}</h2>
               <button onClick={() => setDetail(null)} className="text-ps-hint hover:text-ps-label"><X size={18} /></button>
             </div>
@@ -363,7 +363,7 @@ export default function PlatformAdminPage() {
               </div>
               <div>
                 <p className="text-xs font-semibold text-ps-label uppercase tracking-wide mb-2">Users (read-only)</p>
-                <div className="rounded-lg border border-ps-muted divide-y divide-ps-bg">
+                <div className="rounded-lg border border-ps-border divide-y divide-ps-border">
                   {detail.users.map((u, i) => (
                     <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
                       <div><p className="text-ps-ink">{u.name || u.email}</p><p className="text-xs text-ps-hint">{u.email}</p></div>
@@ -382,7 +382,7 @@ export default function PlatformAdminPage() {
       {purgeTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !purgeBusy && setPurgeTarget(null)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-ps-muted">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ps-border">
               <h2 className="text-base font-semibold text-state-problem flex items-center gap-2"><AlertTriangle size={16} /> Permanently delete firm</h2>
               <button onClick={() => !purgeBusy && setPurgeTarget(null)} className="text-ps-hint hover:text-ps-label"><X size={18} /></button>
             </div>
@@ -404,7 +404,7 @@ export default function PlatformAdminPage() {
               </div>
               {purgeErr && <Callout tone="problem">{purgeErr}</Callout>}
             </div>
-            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-ps-muted">
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-ps-border">
               <button onClick={() => setPurgeTarget(null)} disabled={purgeBusy} className="text-sm text-ps-label px-3 py-2 hover:underline disabled:opacity-50">Cancel</button>
               <button onClick={confirmPurge}
                 disabled={actionInFlight || purgeName.trim() !== purgeTarget.name || purgeCode.replace(/\s/g, "").length !== 6}

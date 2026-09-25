@@ -716,7 +716,7 @@ export function PurchaseBillEditor({
   }
 
   const busy = saving;
-  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-3xs text-red-600">{msg}</p> : null);
+  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-3xs text-state-problem">{msg}</p> : null);
 
   const toolbar = (
     <>
@@ -730,7 +730,7 @@ export function PurchaseBillEditor({
   );
 
   const summary = (
-    <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-2 text-xs">
+    <div className="bg-white rounded-xl border border-ps-border p-4 space-y-2 text-xs">
       <p className="font-semibold text-ps-body">Summary{isForeign ? ` (${currency})` : ""}</p>
       <Row label="Taxable value" value={fmtAmt(totals.taxable_paise)} />
       {isInterstate ? (
@@ -762,7 +762,7 @@ export function PurchaseBillEditor({
           reversal "absolute in nature and not reclaimable" (Notification
           14/2022 with Circular 170/02/2022-GST). It is NOT in 4(D). */}
       {blockedGstPaise > 0 && (
-        <div className="border-t border-ps-muted pt-2 mt-1">
+        <div className="border-t border-ps-border pt-2 mt-1">
           <Row label="ITC blocked (§17(5))" value={fmtAmt(blockedGstPaise)} />
           <p className="text-3xs text-ps-hint">
             Claimed in GSTR-3B Table 4(A) and reversed in 4(B)(1). It does not
@@ -776,7 +776,7 @@ export function PurchaseBillEditor({
       </div>
       {isForeign && rateNum > 0 && <Row label="≈ INR total" value={fmt(estBaseTotal)} muted />}
       {selectedVendor?.tds_applicable && (
-        <div className="border-t border-ps-muted pt-2 mt-1 space-y-1.5">
+        <div className="border-t border-ps-border pt-2 mt-1 space-y-1.5">
           {/* The SECTION and the RATE come back with the figure. Neither is the
               vendor's stored tds_rate_bps: the rate actually applied depends on
               the payee's PAN (s.206AA), on residency (s.195 carries surcharge
@@ -785,7 +785,7 @@ export function PurchaseBillEditor({
               that crosses it. */}
           {tds.loading && <Row label="TDS" value="…" muted />}
           {!tds.loading && tds.error && (
-            <p className="text-3xs text-red-600 bg-state-problem-surface rounded px-2 py-1.5">{tds.error}</p>
+            <p className="text-3xs text-state-problem bg-state-problem-surface rounded px-2 py-1.5">{tds.error}</p>
           )}
           {!tds.loading && !tds.error && tds.data && tdsPaise !== null && netPayable !== null && (
             <>
@@ -822,7 +822,7 @@ export function PurchaseBillEditor({
         is computed by the server now, by the same code that will withhold it.
       </p>
       {attempted && !validation.ok && (
-        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-state-problem-surface rounded px-2 py-1.5">
+        <div className="flex items-start gap-1.5 text-3xs text-state-problem bg-state-problem-surface rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.lines ?? validation.errors.exchangeRate}</span>
         </div>
@@ -839,7 +839,7 @@ export function PurchaseBillEditor({
       ]}
       title={isEdit ? `Edit ${billNo || "Purchase Bill"}` : "New Purchase Bill"}
       statusPill={<span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">{isEdit ? (existing?.status ?? "draft").replace("_", " ") : "Draft"}</span>}
-      dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Unsaved changes</span> : undefined}
+      dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-state-attention" /> Unsaved changes</span> : undefined}
       toolbar={toolbar}
       summary={summary}
     >
@@ -848,18 +848,18 @@ export function PurchaseBillEditor({
             would silently overwrite manually-corrected fields. */}
         {isEdit ? (
           documentUrl && (
-            <section className="bg-state-attention-surface border border-amber-100 rounded-lg p-3">
+            <section className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3">
               <p className="text-3xs text-state-attention">
                 📎 Original invoice attached — retained on this bill as supporting evidence (CGST Rule 36).
               </p>
             </section>
           )
         ) : (
-          <section className="bg-state-attention-surface border border-amber-100 rounded-lg p-3 space-y-2">
-            <p className="text-xs font-medium text-amber-800 flex items-center gap-1.5"><Upload size={12} /> Upload Invoice (AI Extract)</p>
+          <section className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3 space-y-2">
+            <p className="text-xs font-medium text-state-attention flex items-center gap-1.5"><Upload size={12} /> Upload Invoice (AI Extract)</p>
             <div className="flex items-center gap-2">
               <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
-              <button onClick={handleExtract} disabled={!uploadFile || extracting} className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
+              <button onClick={handleExtract} disabled={!uploadFile || extracting} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {extracting ? "Extracting…" : "Extract"}
               </button>
             </div>
@@ -915,7 +915,7 @@ export function PurchaseBillEditor({
                 {totals.grand_total_paise > 0
                   && Number(aiExtracted.total_paise ?? 0) > 0
                   && Math.abs(totals.grand_total_paise - Number(aiExtracted.total_paise ?? 0)) > 100 && (
-                  <p className="flex items-start gap-1 text-3xs text-amber-800 bg-state-attention-surface rounded px-1.5 py-1">
+                  <p className="flex items-start gap-1 text-3xs text-state-attention bg-state-attention-surface rounded px-1.5 py-1">
                     <AlertTriangle size={11} className="mt-px flex-shrink-0" />
                     <span>
                       The lines below come to {fmtAmt(totals.grand_total_paise)} against the{" "}
@@ -936,7 +936,7 @@ export function PurchaseBillEditor({
         )}
 
         {/* Party + metadata */}
-        <section className="bg-white rounded-xl border border-ps-muted p-4">
+        <section className="bg-white rounded-xl border border-ps-border p-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
@@ -984,7 +984,7 @@ export function PurchaseBillEditor({
           </div>
 
           {mcActive && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-ps-muted">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-ps-border">
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
                 <select value={currency} onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
@@ -1025,7 +1025,7 @@ export function PurchaseBillEditor({
             incometax.gov.in under the remitter's own login; this is where the
             acknowledgement goes afterwards. CLAUDE.md: never auto-submit. */}
         {tds.data?.tds_section === "195" && (
-          <section className="bg-white rounded-xl border border-ps-muted p-4">
+          <section className="bg-white rounded-xl border border-ps-border p-4">
             <h2 className="text-xs font-semibold text-ps-body">
               Foreign remittance — Form 15CA / 15CB (IT Act §195(6), Rule 37BB)
             </h2>
@@ -1075,7 +1075,7 @@ export function PurchaseBillEditor({
         )}
 
         {blockedCreditHits.length > 0 && (
-          <div className="flex items-start gap-2 bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2.5 text-xs text-amber-800">
+          <div className="flex items-start gap-2 bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2.5 text-xs text-state-attention">
             <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
             <div className="space-y-1">
               <p className="font-medium">Possible blocked ITC — review before saving (CGST Act §17(5))</p>
@@ -1091,7 +1091,7 @@ export function PurchaseBillEditor({
                         itc_eligible: false,
                         blocked_credit_reason: reasonForHintLabel(h.label) ?? "other",
                       })}
-                      className="text-3xs px-1.5 py-0.5 rounded-full bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 disabled:opacity-40">
+                      className="text-3xs px-1.5 py-0.5 rounded-full bg-white border border-state-attention-border text-state-attention hover:bg-state-attention-surface disabled:opacity-40">
                       Mark line {h.lineIndex + 1} blocked
                     </button>
                   )}
@@ -1103,7 +1103,7 @@ export function PurchaseBillEditor({
         )}
 
         {/* Line items */}
-        <section className="bg-white rounded-xl border border-ps-muted p-4">
+        <section className="bg-white rounded-xl border border-ps-border p-4">
           <div className="mb-2 flex items-center justify-between gap-3">
             <h2 className="text-xs font-semibold text-ps-body">Line items</h2>
             {!isLocked && (
@@ -1131,7 +1131,7 @@ export function PurchaseBillEditor({
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[860px]">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint">
+                <tr className="border-b border-ps-border text-ps-hint">
                   <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
                   <th className="pb-2 text-left font-semibold">Description</th>
                   <th className="pb-2 text-left font-semibold w-24">HSN/SAC</th>
@@ -1154,7 +1154,7 @@ export function PurchaseBillEditor({
                   <th className="pb-2 w-6" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {lines.map((line, idx) => {
                   const g = previewBillTotals([line], isInterstate);
                   const invalid = attempted && !isValidBillLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
@@ -1169,6 +1169,12 @@ export function PurchaseBillEditor({
                           <div className="mt-1 flex flex-wrap gap-1 items-center">
                             <span className="text-3xs text-ps-hint">HSN {line.hsn_sac} matches:</span>
                             {line.hsnMatches.map((m) => (
+                              /* Raw, deliberately: the base is blue-50, for
+                                 which there is no token, and mapping it to
+                                 `working-surface` (= blue-100) would make it
+                                 the same colour as its own hover — the
+                                 surface-on-surface defect the token file
+                                 records under `problem-hover`. */
                               <button key={m.id} type="button" onClick={() => onPickProduct(idx, m)}
                                 className="text-3xs px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
                                 {m.name}
@@ -1180,7 +1186,7 @@ export function PurchaseBillEditor({
                           <p className="mt-1 text-3xs text-ps-disabled">No catalogue match for HSN {line.hsn_sac}</p>
                         )}
                         {line.hsnMatches?.length === 1 && line.service_catalogue_id === line.hsnMatches[0].id && (
-                          <p className="mt-1 text-3xs text-emerald-600">✓ Auto-linked from catalogue</p>
+                          <p className="mt-1 text-3xs text-state-ready">✓ Auto-linked from catalogue</p>
                         )}
                       </td>
                       <td className="py-1.5 pr-2">
@@ -1209,7 +1215,7 @@ export function PurchaseBillEditor({
                               onChange={(e) => setLine(idx, { blocked_credit_reason: e.target.value })}
                               className={`mt-1 w-full px-1 py-1 border rounded focus:outline-none text-3xs ${
                                 (line.blocked_credit_reason ?? "").trim() === ""
-                                  ? "border-red-300" : "border-ps-border"}`}>
+                                  ? "border-state-problem" : "border-ps-border"}`}>
                               <option value="">— which clause? —</option>
                               {BLOCKED_CREDIT_REASONS.map((r) => (
                                 <option key={r.code} value={r.code}>{r.clause} · {r.label}</option>
@@ -1272,7 +1278,7 @@ export function PurchaseBillEditor({
                       <td className="py-1.5 px-2 text-right font-mono text-ps-body">{g.grand_total_paise > 0 ? fmtAmt(g.grand_total_paise) : "—"}</td>
                       <td className="py-1.5">
                         {lines.length > 1 && (
-                          <button onClick={() => removeLine(idx)} className="text-ps-disabled hover:text-red-600" aria-label="Remove line">
+                          <button onClick={() => removeLine(idx)} className="text-ps-disabled hover:text-state-problem" aria-label="Remove line">
                             <Trash2 size={13} />
                           </button>
                         )}
@@ -1292,14 +1298,14 @@ export function PurchaseBillEditor({
         </section>
 
         {!nearDupes && dupeAhead.length > 0 && (
-          <div className="text-xs bg-state-attention-surface border border-amber-300 rounded-lg px-3 py-2.5 space-y-1.5">
-            <p className="font-semibold text-amber-900">
+          <div className="text-xs bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2.5 space-y-1.5">
+            <p className="font-semibold text-state-attention">
               This vendor already has {dupeAhead.length === 1 ? "a bill" : "bills"} that may be the
               same invoice.
             </p>
             <ul className="space-y-1.5">
               {dupeAhead.map(d => (
-                <li key={d.bill_id} className="text-amber-900/90">
+                <li key={d.bill_id} className="text-state-attention/90">
                   <span className="font-medium">
                     {d.bill_no || "(no number)"}
                     {d.bill_date ? ` · ${d.bill_date}` : ""} · {formatPaise(d.total_paise)}
@@ -1309,18 +1315,18 @@ export function PurchaseBillEditor({
                 </li>
               ))}
             </ul>
-            <p className="text-amber-900/70">Nothing is blocked — save anyway if this is a separate bill.</p>
+            <p className="text-state-attention/70">Nothing is blocked — save anyway if this is a separate bill.</p>
           </div>
         )}
         {nearDupes && (
-          <div className="text-xs bg-state-attention-surface border border-amber-300 rounded-lg px-3 py-2.5 space-y-2">
-            <p className="font-semibold text-amber-900">
+          <div className="text-xs bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2.5 space-y-2">
+            <p className="font-semibold text-state-attention">
               Saved — but this vendor already has {nearDupes.length === 1 ? "a bill" : "bills"} that
               may be the same invoice.
             </p>
             <ul className="space-y-2">
               {nearDupes.map(d => (
-                <li key={d.bill_id} className="text-amber-900/90">
+                <li key={d.bill_id} className="text-state-attention/90">
                   <span className="font-medium">
                     {d.bill_no || "(no number)"}
                     {d.bill_date ? ` · ${d.bill_date}` : ""} · {formatPaise(d.total_paise)}
@@ -1330,14 +1336,14 @@ export function PurchaseBillEditor({
                 </li>
               ))}
             </ul>
-            <p className="text-amber-900/70">
+            <p className="text-state-attention/70">
               Two bills from one supplier on one day are perfectly ordinary, so nothing has been
               blocked. If this is the same invoice twice, cancel one of them.
             </p>
             <button
               type="button"
               onClick={() => onDone(`${billNo.trim() || "Purchase bill"} saved as draft`)}
-              className="rounded-md bg-amber-900 px-3 py-1.5 text-2xs font-semibold text-white">
+              className="rounded-md bg-state-attention px-3 py-1.5 text-2xs font-semibold text-white">
               I have checked — close
             </button>
           </div>

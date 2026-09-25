@@ -452,7 +452,7 @@ export default function AdvanceTaxPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-ps-muted text-xs text-ps-hint">
+                <tr className="border-b border-ps-border text-xs text-ps-hint">
                   <th className="px-5 py-3 text-left">Installment</th>
                   <th className="px-3 py-3 text-left">Due Date</th>
                   <th className="px-3 py-3 text-right">Required %</th>
@@ -464,7 +464,7 @@ export default function AdvanceTaxPage() {
                   <th className="px-5 py-3 text-left">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {(presumptive ? [4] : [1, 2, 3, 4]).map(n => {
                   const inst = result?.installments?.find(i => i.installment_number === n);
                   const dueDate = inst?.due_date ?? "";
@@ -587,7 +587,7 @@ export default function AdvanceTaxPage() {
                 <InterestBlock r={lateResult.section_234a} />
                 <InterestBlock r={lateResult.section_234b} />
               </div>
-              <div className="rounded-lg bg-ps-bg border border-ps-muted px-3 py-2 space-y-1">
+              <div className="rounded-lg bg-ps-bg border border-ps-border px-3 py-2 space-y-1">
                 <p className="text-2xs text-ps-label">
                   §139(1) due date <span className="font-medium tabular-nums">{lateResult.itr_due_date.due_date}</span>
                   {" — "}{lateResult.itr_due_date.basis}
@@ -746,7 +746,7 @@ export default function AdvanceTaxPage() {
                 </thead>
                 <tbody>
                   {saPosition.challans.map(c => (
-                    <tr key={c.id} className="border-t border-ps-muted">
+                    <tr key={c.id} className="border-t border-ps-border">
                       <td className="py-1.5 pr-3 font-mono">{c.bsr_code}</td>
                       <td className="py-1.5 pr-3 tabular-nums">{c.deposit_date}</td>
                       <td className="py-1.5 pr-3 font-mono">{c.challan_serial_no}</td>
@@ -801,7 +801,7 @@ function SaFigure({ label, value, red }: { label: string; value: string; red?: b
  *  which is what a CA checks against the portal's computation sheet. */
 function InterestBlock({ r }: { r: SectionInterestResult }) {
   return (
-    <div className="rounded-lg border border-ps-muted p-3 space-y-1.5">
+    <div className="rounded-lg border border-ps-border p-3 space-y-1.5">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-xs font-semibold text-ps-body">{r.section}</span>
         <span className={`text-base font-bold tabular-nums ${r.interest_paise > 0 ? "text-state-problem" : "text-ps-ink"}`}>

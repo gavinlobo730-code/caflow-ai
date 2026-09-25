@@ -148,7 +148,7 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
           </button>
         </div>
 
-        <div className="px-5 pt-3 flex gap-1.5 flex-wrap border-b border-ps-muted pb-3">
+        <div className="px-5 pt-3 flex gap-1.5 flex-wrap border-b border-ps-border pb-3">
           {SECTIONS.map((s) => (
             <button key={s.key} onClick={() => setSection(s.key)}
               className={`px-2.5 py-1 text-xs rounded-lg border ${
@@ -358,7 +358,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
             </thead>
             <tbody>
               {result.components.map((c, i) => (
-                <tr key={i} className="border-b border-ps-muted">
+                <tr key={i} className="border-b border-ps-border">
                   <td className="py-1.5 pr-2 text-ps-ink">{c.label}</td>
                   <td className="py-1.5 pr-2 text-ps-hint">
                     {c.statute}{c.exempt_section ? ` / ${c.exempt_section}` : ""}
@@ -369,7 +369,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
                 </tr>
               ))}
               {result.deductions.map((d, i) => (
-                <tr key={`d${i}`} className="border-b border-ps-muted text-state-attention">
+                <tr key={`d${i}`} className="border-b border-ps-border text-state-attention">
                   <td className="py-1.5 pr-2">{d.label}</td>
                   <td className="py-1.5 pr-2 text-ps-hint">{d.statute}</td>
                   <td className="py-1.5 pr-2 text-right">− {fmt(d.gross_paise)}</td>
@@ -559,7 +559,7 @@ function RevisionsSection({ employee, clientId, onSaved }: {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-ps-muted">
+                  <tr key={r.id} className="border-b border-ps-border">
                     <td className="py-1.5 pr-2 text-ps-ink">{r.effective_from}</td>
                     <td className="py-1.5 pr-2 text-right">{fmt(r.basic_paise)}</td>
                     <td className="py-1.5 pr-2 text-right">{r.hra_percent ?? 0}</td>
@@ -676,7 +676,7 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-ps-muted">
+                  <tr key={r.id} className="border-b border-ps-border">
                     <td className="py-1.5 pr-2 text-ps-ink">{r.purpose || "—"}</td>
                     <td className="py-1.5 pr-2 text-right">{fmt(r.principal_paise)}</td>
                     <td className="py-1.5 pr-2 text-right">{fmt(r.monthly_instalment_paise)}</td>
@@ -890,7 +890,7 @@ function PerquisitesSection({ employee, clientId }: {
               </thead>
               <tbody>
                 {result.items.map((i, n) => (
-                  <tr key={n} className="border-b border-ps-muted">
+                  <tr key={n} className="border-b border-ps-border">
                     <td className="py-1.5 pr-2 text-ps-ink">{i.label}
                       {i.note && <span className="block text-3xs text-ps-hint">{i.note}</span>}</td>
                     <td className="py-1.5 pr-2 text-ps-hint">{i.rule}</td>

@@ -18,7 +18,11 @@ import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 
 const CN_STATUS_BADGE: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
-  issued: "bg-blue-100 text-blue-700",
+  issued: "bg-state-working-surface text-state-working",
+  // Raw, deliberately: a cancelled note is a settled fact, not a failure.
+  // `problem` says "it failed, or it will" and `done` would drop the colour a
+  // CA reads at a glance, so neither fits and a sixth state is not worth one
+  // badge. Left raw the way the token file left `explained`.
   cancelled: "bg-red-100 text-red-600",
 };
 
@@ -40,7 +44,7 @@ function Action({ children, onClick, icon, primary, danger }: {
   children: React.ReactNode; onClick: () => void; icon: React.ReactNode; primary?: boolean; danger?: boolean;
 }) {
   const cls = primary ? "bg-brand text-white hover:bg-brand-dark border-brand"
-    : danger ? "border-ps-border text-red-600 hover:bg-state-problem-hover"
+    : danger ? "border-ps-border text-state-problem hover:bg-state-problem-hover"
     : "border-ps-border text-ps-label hover:bg-ps-bg";
   return (
     <button onClick={onClick} className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 ${cls}`}>
@@ -145,7 +149,7 @@ export function SalesCreditNoteViewDrawer({
               <Skeleton className="h-2.5 w-24" />
             </div>
           </div>
-          <TableSkeleton cols={6} rows={3} bare className="rounded-lg border border-ps-muted" />
+          <TableSkeleton cols={6} rows={3} bare className="rounded-lg border border-ps-border" />
           <TimelineSkeleton rows={3} />
         </div>
       ) : error || !cn ? (
@@ -188,7 +192,7 @@ export function SalesCreditNoteViewDrawer({
                 red: the note is a lawful commercial credit; what it cannot do
                 is reduce output tax. */}
             {cn.section_34_2_warning && (
-              <p className="mt-2 rounded-lg border border-state-attention-border bg-state-attention-surface px-2.5 py-2 text-2xs leading-relaxed text-amber-800">
+              <p className="mt-2 rounded-lg border border-state-attention-border bg-state-attention-surface px-2.5 py-2 text-2xs leading-relaxed text-state-attention">
                 {cn.section_34_2_warning}
               </p>
             )}
@@ -205,10 +209,10 @@ export function SalesCreditNoteViewDrawer({
           {/* ── Line items ──────────────────────────────────────────────── */}
           <section>
             <h4 className="text-xs font-semibold text-ps-body mb-2">Line items</h4>
-            <div className="overflow-x-auto border border-ps-muted rounded-lg">
+            <div className="overflow-x-auto border border-ps-border rounded-lg">
               <table className="w-full text-2xs">
                 <thead>
-                  <tr className="text-ps-hint border-b border-ps-muted">
+                  <tr className="text-ps-hint border-b border-ps-border">
                     <th className="px-2 py-1.5 text-left font-semibold">Description</th>
                     <th className="px-2 py-1.5 text-left font-semibold">HSN/SAC</th>
                     <th className="px-2 py-1.5 text-right font-semibold">Qty</th>
@@ -217,7 +221,7 @@ export function SalesCreditNoteViewDrawer({
                     <th className="px-2 py-1.5 text-right font-semibold">GST%</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-bg">
+                <tbody className="divide-y divide-ps-border">
                   {cn.lines.map((l, i) => (
                     <tr key={l.id ?? i}>
                       <td className="px-2 py-1.5 text-ps-body">{l.description}</td>
@@ -260,7 +264,7 @@ export function SalesCreditNoteViewDrawer({
             <DetailRow label="Posting status" value={posted ? "Posted" : "Not posted"} />
             <DetailRow label="Journal entry" value={cn.journal_entry_id ?? "—"} mono />
             {showJournal && (
-              <div className="border border-ps-muted rounded-lg p-2 bg-ps-bg">
+              <div className="border border-ps-border rounded-lg p-2 bg-ps-bg">
                 {journalLoading ? (
                   <div className="flex items-center gap-2 text-2xs text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
                 ) : journal?.lines?.length ? (
@@ -268,7 +272,7 @@ export function SalesCreditNoteViewDrawer({
                     <thead><tr className="text-ps-hint"><th className="text-left font-semibold py-1">Account</th><th className="text-right font-semibold">Debit</th><th className="text-right font-semibold">Credit</th></tr></thead>
                     <tbody>
                       {journal.lines.map((jl, i) => (
-                        <tr key={i} className="border-t border-ps-muted">
+                        <tr key={i} className="border-t border-ps-border">
                           <td className="py-1 text-ps-body">{jl.account_name ?? jl.account_id ?? "—"}</td>
                           <td className="py-1 text-right font-mono">{jl.debit_paise ? fmt(jl.debit_paise) : ""}</td>
                           <td className="py-1 text-right font-mono">{jl.credit_paise ? fmt(jl.credit_paise) : ""}</td>

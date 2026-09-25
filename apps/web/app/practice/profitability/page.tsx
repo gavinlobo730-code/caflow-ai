@@ -283,7 +283,7 @@ export default function ProfitabilityPage() {
             ))}
           </ol>
 
-          <p className="text-3xs text-ps-hint border-t border-ps-muted pt-3 leading-relaxed">
+          <p className="text-3xs text-ps-hint border-t border-ps-border pt-3 leading-relaxed">
             {concentration.icai_fee_dependence}
           </p>
           <ul className="space-y-1">

@@ -244,7 +244,7 @@ export function JournalEditor({
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
+      <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label htmlFor="je-date" className="block text-xs font-medium text-ps-label mb-1">Date *</label>
@@ -346,7 +346,7 @@ export function JournalEditor({
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-ps-muted text-ps-hint">
+              <tr className="border-b border-ps-border text-ps-hint">
                 <th className="pb-2 text-left font-semibold">Account</th>
                 <th className="pb-2 text-right font-semibold w-28">Debit (₹)</th>
                 <th className="pb-2 text-right font-semibold w-28">Credit (₹)</th>
@@ -354,7 +354,7 @@ export function JournalEditor({
                 <th className="pb-2 w-6" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {lines.map((line, idx) => {
                 const bad = (side: "debit" | "credit") => parsed[idx][side] === null;
                 const amountCls = (side: "debit" | "credit") =>
@@ -403,7 +403,7 @@ export function JournalEditor({
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t border-ps-muted text-xs font-semibold">
+              <tr className="border-t border-ps-border text-xs font-semibold">
                 <td className="pt-2 text-ps-label">Total</td>
                 <td className="pt-2 text-right text-ps-body px-2">
                   {totalDebit > 0 ? `₹${rupeeInputFromPaise(totalDebit)}` : "—"}

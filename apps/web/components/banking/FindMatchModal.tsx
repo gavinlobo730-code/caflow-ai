@@ -135,7 +135,7 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
   return (
     <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-ps-ink">Find other matches</h3>
             <p className="text-xs text-ps-label mt-0.5 truncate">
@@ -145,7 +145,7 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
           <button onClick={onClose} aria-label="Close" className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
 
-        <form onSubmit={submit} className="px-5 py-3 border-b border-ps-muted space-y-2">
+        <form onSubmit={submit} className="px-5 py-3 border-b border-ps-border space-y-2">
           <div className="flex gap-2">
             <input
               value={q} onChange={(e) => setQ(e.target.value)}
@@ -212,7 +212,7 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
           )}
           {shown.map((r) => (
             <div key={`${r.matched_entity_type}:${r.matched_entity_id}`}
-              className="flex items-center justify-between gap-3 border border-ps-muted rounded px-2.5 py-1.5">
+              className="flex items-center justify-between gap-3 border border-ps-border rounded px-2.5 py-1.5">
               <div className="min-w-0">
                 <p className="text-2xs text-ps-body truncate">{r.label}</p>
                 <p className="text-3xs text-ps-hint">
@@ -244,7 +244,7 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
           ))}
         </div>
 
-        <div className="flex items-center justify-between px-5 py-3 border-t border-ps-muted">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-ps-border">
           <p className="text-3xs text-ps-hint">
             {total === 0 ? "No documents" :
               `${page * PER_PAGE + 1}–${Math.min((page + 1) * PER_PAGE, total)} of ${total}`}

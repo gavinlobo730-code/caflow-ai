@@ -144,7 +144,7 @@ function YearEndWorkspaceInner() {
   return (
     <div className="flex h-full min-h-screen bg-ps-bg">
       {/* Left nav rail */}
-      <aside className="w-[72px] bg-white border-r border-slate-100 flex flex-col items-center py-4 gap-1 shrink-0">
+      <aside className="w-[72px] bg-white border-r border-ps-border flex flex-col items-center py-4 gap-1 shrink-0">
         {STAGES.map(({ id, label, icon: Icon }) => {
           const isActive = id === stage;
           return (
@@ -167,7 +167,7 @@ function YearEndWorkspaceInner() {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-12 bg-white border-b border-slate-100 flex items-center px-5 gap-3 shrink-0">
+        <header className="h-12 bg-white border-b border-ps-border flex items-center px-5 gap-3 shrink-0">
           {engagement ? (
             <>
               <span className="text-sm font-semibold text-slate-800 truncate max-w-[180px]">

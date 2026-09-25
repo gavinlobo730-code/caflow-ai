@@ -516,7 +516,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
       {loading ? (
         <TableSkeleton cols={8} rows={3} />
       ) : templates.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-16">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-16">
           <Clock size={32} className="text-gray-200 mx-auto mb-3" />
           <p className="text-sm text-ps-label">No recurring templates yet</p>
           <p className="text-xs text-ps-hint mt-1">Create one to auto-generate draft invoices on a schedule.</p>
@@ -545,11 +545,11 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
               </div>
             </div>
           )}
-          <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-ps-muted text-ps-hint">
+                  <tr className="border-b border-ps-border text-ps-hint">
                     <th className="px-4 py-3 text-left font-semibold w-8">
                       <input
                         type="checkbox"
@@ -569,7 +569,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
                     <th className="px-4 py-3 text-right font-semibold">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-bg">
+                <tbody className="divide-y divide-ps-border">
                   {templates.map((t) => (
                     <tr key={t.id} className="hover:bg-ps-bg">
                       <td className="px-4 py-2.5">
@@ -803,7 +803,7 @@ function RecurringEditor({
             </div>
             <div className="space-y-2">
               {lines.map((l, i) => (
-                <div key={i} className="border border-ps-muted rounded-lg p-2 space-y-1.5">
+                <div key={i} className="border border-ps-border rounded-lg p-2 space-y-1.5">
                   <ServiceCataloguePicker
                     clientId={clientId}
                     value={l.product}
@@ -948,7 +948,7 @@ function RecurringHistoryDrawer({
                   <p className="text-xs text-ps-hint">No upcoming runs.</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
-                    {upcoming.map((d) => <span key={d} className="px-2 py-0.5 rounded bg-ps-bg border border-ps-muted text-2xs text-ps-label">{d}</span>)}
+                    {upcoming.map((d) => <span key={d} className="px-2 py-0.5 rounded bg-ps-bg border border-ps-border text-2xs text-ps-label">{d}</span>)}
                   </div>
                 )}
               </div>
@@ -960,7 +960,7 @@ function RecurringHistoryDrawer({
               ) : (
                 <div className="space-y-2">
                   {runs.map((r) => (
-                    <div key={r.id} className="border border-ps-muted rounded-lg p-3 text-xs flex items-center justify-between">
+                    <div key={r.id} className="border border-ps-border rounded-lg p-3 text-xs flex items-center justify-between">
                       <div>
                         <div className="font-medium text-ps-body">{r.occurrence_date}</div>
                         <div className="text-3xs text-ps-hint">
@@ -980,7 +980,7 @@ function RecurringHistoryDrawer({
             </div>
           </div>
         )}
-        <div className="flex justify-end mt-5 pt-4 border-t border-ps-muted">
+        <div className="flex justify-end mt-5 pt-4 border-t border-ps-border">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Close</button>
         </div>
       </div>
@@ -1155,7 +1155,7 @@ function Statements({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4 max-w-ps-data mx-auto">
-      <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-3">
+      <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
             <label className="block text-xs font-medium text-ps-label mb-1">Customer</label>
@@ -1194,8 +1194,8 @@ function Statements({ clientId }: { clientId: string }) {
       </div>
 
       {stmt && (
-        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-ps-ink">{stmt.customer.name}</p>
               <p className="text-3xs text-ps-hint">{stmt.period.start_date} → {stmt.period.end_date}{stmt.customer.gstin ? ` · GSTIN ${stmt.customer.gstin}` : ""}</p>
@@ -1227,7 +1227,7 @@ function Statements({ clientId }: { clientId: string }) {
               <th className="px-3 py-2 text-right font-medium">Credit</th>
               <th className="px-3 py-2 text-right font-medium">Balance</th>
             </tr></thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               <tr className="bg-ps-bg font-medium text-ps-label">
                 <td className="px-3 py-2" colSpan={3}>Opening Balance</td>
                 <td className="px-3 py-2 text-right">—</td><td className="px-3 py-2 text-right">—</td>
@@ -2063,7 +2063,7 @@ function SalesInvoices({
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                     <Pencil size={13} /> Edit draft
                   </button>
-                  <div className="my-1 border-t border-ps-muted" />
+                  <div className="my-1 border-t border-ps-border" />
                   <button onClick={() => { setMenu(null); setDeleteTarget(inv); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     <Trash2 size={13} /> Delete draft
@@ -2300,7 +2300,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
           </div>
         )}
 
-        <div className="flex items-center justify-between rounded-lg bg-ps-bg border border-ps-muted px-3 py-2.5 mb-4">
+        <div className="flex items-center justify-between rounded-lg bg-ps-bg border border-ps-border px-3 py-2.5 mb-4">
           <div>
             <p className="text-3xs uppercase tracking-wide text-ps-hint">Outstanding</p>
             <p className="text-base font-semibold text-ps-ink font-mono">{hist ? fmt(hist.outstanding_paise) : "…"}</p>
@@ -2320,7 +2320,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         ) : (
           <div className="space-y-2 mb-4">
             {hist.links.map((l) => (
-              <div key={l.id} className="border border-ps-muted rounded-lg p-2.5 text-xs">
+              <div key={l.id} className="border border-ps-border rounded-lg p-2.5 text-xs">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-ps-body truncate">{l.short_url ?? "—"}</span>
                   <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${PAY_STATUS_BADGE[l.status] ?? "bg-ps-muted text-ps-label"}`}>{l.status}</span>
@@ -2344,7 +2344,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         ) : (
           <div className="space-y-2">
             {hist.payments.map((p) => (
-              <div key={p.id} className="flex items-center justify-between border border-ps-muted rounded-lg p-2.5 text-xs">
+              <div key={p.id} className="flex items-center justify-between border border-ps-border rounded-lg p-2.5 text-xs">
                 <div>
                   <div className="font-mono text-ps-body">{fmt(p.amount_paise)}</div>
                   <div className="text-3xs text-ps-hint">{p.provider}{p.receipt_id ? " · receipt posted" : ""}{p.created_at ? ` · ${fmtDateTime(p.created_at)}` : ""}</div>
@@ -2355,7 +2355,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
           </div>
         )}
 
-        <div className="flex justify-end mt-5 pt-4 border-t border-ps-muted">
+        <div className="flex justify-end mt-5 pt-4 border-t border-ps-border">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Close</button>
         </div>
       </div>
@@ -2485,7 +2485,7 @@ function RemindInvoiceModal({
           <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
         <div className="space-y-3 text-xs">
-          <div className="rounded-lg bg-ps-bg border border-ps-muted p-3 space-y-1">
+          <div className="rounded-lg bg-ps-bg border border-ps-border p-3 space-y-1">
             <div className="flex justify-between">
               <span className="text-ps-label">Invoice</span>
               <span className="font-mono font-medium text-ps-ink">{invoice.invoice_no}</span>
@@ -2579,7 +2579,7 @@ function DeliveryHistoryModal({
         ) : (
           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
             {deliveries.map((d) => (
-              <div key={d.id} className="border border-ps-muted rounded-lg p-3 text-xs">
+              <div key={d.id} className="border border-ps-border rounded-lg p-3 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-ps-body font-medium flex items-center gap-1.5">
                     {d.sent_to}
@@ -2608,7 +2608,7 @@ function DeliveryHistoryModal({
             ))}
           </div>
         )}
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-ps-muted">
+        <div className="flex items-center justify-between mt-4 pt-4 border-t border-ps-border">
           <button
             onClick={() => onResend(lastEmail)}
             className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
@@ -3055,7 +3055,7 @@ function Customers({
       {deactivateTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="px-6 py-5 border-b border-ps-muted">
+            <div className="px-6 py-5 border-b border-ps-border">
               <h2 className="text-base font-semibold text-ps-ink">Deactivate Customer?</h2>
             </div>
             <div className="px-6 py-5 space-y-2">
@@ -3068,7 +3068,7 @@ function Customers({
                 this customer later.
               </p>
             </div>
-            <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
               <button
                 onClick={() => setDeactivateTarget(null)}
                 disabled={deactivating}
@@ -3098,7 +3098,7 @@ function Customers({
               </div>
             ) : deleteDeps.can_delete ? (
               <>
-                <div className="px-6 py-5 border-b border-ps-muted">
+                <div className="px-6 py-5 border-b border-ps-border">
                   <h2 className="text-base font-semibold text-ps-ink">Delete Customer?</h2>
                 </div>
                 <div className="px-6 py-5 space-y-2">
@@ -3110,7 +3110,7 @@ function Customers({
                     This permanently removes the customer and cannot be undone.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
+                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     disabled={deleteBusy}
@@ -3129,7 +3129,7 @@ function Customers({
               </>
             ) : (
               <>
-                <div className="px-6 py-5 border-b border-ps-muted flex items-center gap-2">
+                <div className="px-6 py-5 border-b border-ps-border flex items-center gap-2">
                   <AlertTriangle size={18} className="text-amber-500" />
                   <h2 className="text-base font-semibold text-ps-ink">Can&apos;t delete this customer</h2>
                 </div>
@@ -3161,7 +3161,7 @@ function Customers({
                     invoices.
                   </p>
                 </div>
-                <div className="px-6 py-4 border-t border-ps-muted flex justify-end gap-2">
+                <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
                   <button
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg"
@@ -3206,7 +3206,7 @@ function Customers({
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <BookOpen size={13} /> View Ledger
               </button>
-              <div className="my-1 border-t border-ps-muted" />
+              <div className="my-1 border-t border-ps-border" />
               {c.is_active ? (
                 <button onClick={() => { setMenu(null); setDeactivateTarget(c); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
@@ -3820,7 +3820,7 @@ function ReceiptForm({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-ps-ink">Record Receipt</h3>
         <button onClick={onCancel} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
@@ -4408,7 +4408,7 @@ function CreditNotes({
               </button>
               {c.status === "draft" && (
                 <>
-                  <div className="my-1 border-t border-ps-muted" />
+                  <div className="my-1 border-t border-ps-border" />
                   <button onClick={() => { setMenu(null); deleteCreditNote(c); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
@@ -4838,7 +4838,7 @@ function SalesDebitNotes({
               </button>
               {d.status === "draft" && (
                 <>
-                  <div className="my-1 border-t border-ps-muted" />
+                  <div className="my-1 border-t border-ps-border" />
                   <button onClick={() => { setMenu(null); deleteSalesDebitNote(d); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
@@ -4970,7 +4970,7 @@ function SummaryCard({
     blue: "bg-blue-50 border-blue-100",
     green: "bg-green-50 border-green-100",
     red: "bg-state-problem-surface border-red-100",
-    gray: "bg-white border-ps-muted",
+    gray: "bg-white border-ps-border",
   };
   const text = {
     amber: "text-amber-800",

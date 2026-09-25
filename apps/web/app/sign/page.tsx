@@ -140,7 +140,7 @@ export default function SignPage() {
         {!loading && letter && (
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
             {/* Card header */}
-            <div className="border-b border-slate-100 px-6 py-4">
+            <div className="border-b border-ps-border px-6 py-4">
               <p className="font-mono text-2xs text-slate-400">{letter.engagement_number}</p>
               <h1 className="text-lg font-semibold text-slate-900">{letter.title}</h1>
               <p className="mt-0.5 text-sm text-slate-500">from {letter.firm_name}</p>
@@ -193,7 +193,7 @@ export default function SignPage() {
 
               {/* Acceptance form — only when still actionable and not expired */}
               {(letter.status === "Sent" || letter.status === "Viewed") && !letter.expired && (
-                <div className="space-y-4 border-t border-slate-100 pt-5">
+                <div className="space-y-4 border-t border-ps-border pt-5">
                   {!showDecline ? (
                     <>
                       <div>

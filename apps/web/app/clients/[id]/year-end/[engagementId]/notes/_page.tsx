@@ -130,7 +130,7 @@ export default function NotesPage() {
     return (
       <div className="p-6 space-y-2 max-w-3xl mx-auto">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-white rounded-xl border border-ps-muted px-4 py-3 flex items-center gap-3">
+          <div key={i} className="bg-white rounded-xl border border-ps-border px-4 py-3 flex items-center gap-3">
             <Skeleton className="h-3.5 w-3.5 rounded-sm shrink-0" />
             <Skeleton className="h-3 w-16 shrink-0" />
             <Skeleton className="h-4 w-20 rounded-full shrink-0" />
@@ -176,7 +176,7 @@ export default function NotesPage() {
       </div>
 
       {notes.length === 0 && (
-        <div className="bg-white rounded-xl border border-ps-muted text-center py-14">
+        <div className="bg-white rounded-xl border border-ps-border text-center py-14">
           <Sparkles size={28} className="text-gray-200 mx-auto mb-3" />
           <p className="text-sm text-ps-label">No notes yet</p>
           <p className="text-xs text-ps-hint mt-1">Click &quot;Auto-Generate All Notes&quot; to create standard notes.</p>
@@ -191,7 +191,7 @@ export default function NotesPage() {
           const contentValue = isEditing ? editContent[note.id] : (note.content ?? "");
 
           return (
-            <div key={note.id} className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+            <div key={note.id} className="bg-white rounded-xl border border-ps-border overflow-hidden">
               {/* Header row */}
               <div
                 className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-ps-bg"
@@ -216,7 +216,7 @@ export default function NotesPage() {
 
               {/* Expanded content */}
               {isExpanded && (
-                <div className="border-t border-ps-bg px-4 py-3 space-y-3">
+                <div className="border-t border-ps-border px-4 py-3 space-y-3">
                   {noteType(note) === "auto" ? (
                     // Auto-generated notes: display as formatted read-only view
                     <>
@@ -346,7 +346,7 @@ function FixedAssetMovement({ data }: { data?: NoteData | null }) {
               <th className="px-3 py-2 text-right font-semibold">Net block</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ps-muted">
+          <tbody className="divide-y divide-ps-border">
             {classes.map((c) => (
               <tr key={c.asset_class}>
                 <td className="px-3 py-1.5 text-ps-ink whitespace-nowrap">{c.asset_class}</td>
@@ -409,7 +409,7 @@ function AutoNoteContent({ content, locked }: { content: string | null; locked: 
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {parsed.rows.map((row, ri) => (
                   <tr key={ri} className="hover:bg-ps-bg">
                     {row.map((cell, ci) => (

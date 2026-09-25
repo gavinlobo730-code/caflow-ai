@@ -93,9 +93,27 @@ const PX_TEXT = /\btext-\[\d+(\.\d+)?px\]/g;
  * `black` and `white` are NOT here. They carry no numeric step, they are not
  * a palette ramp, and `text-white` on a navy button is the right class — a
  * token for it would name the absence of a hue.
+ *
+ * ⚠️ THE FAMILY LIST WAS ELEVEN OF TWENTY-TWO, AND THE ELEVEN IT OMITTED HELD
+ * 216 SITES NOBODY HAD EVER COUNTED. Measured 25-09-2026: purple 69, indigo
+ * 59, violet 56, cyan 16, sky 14, pink 2. The count everyone had been quoting
+ * — this budget, and every "named-palette" figure in THE-PLAN — was therefore
+ * 216 short of the truth, and could not have gone up when somebody wrote a
+ * purple chip.
+ *
+ * Indigo is the one that stings. The token file's own comment names it as the
+ * FOURTH PRIMARY in a product that already had three ("#4338CA in banking"),
+ * and G0 converted 92 indigo sites on that argument — while 59 more sat in
+ * families this regex could not see, so the pass could not have known whether
+ * it had finished. Found by converting a compliance screen whose three
+ * navigation cards were tinted green, blue and PURPLE: two of the three were
+ * counted and the third was not.
+ *
+ * The list is now Tailwind's own, in full. A family cannot be omitted by
+ * accident again, and the number below is the first honest one.
  */
 const NAMED_COLOUR =
-  /\b(text|bg|border|ring|fill|stroke|divide|from|to|via)-(amber|red|green|emerald|blue|gray|slate|rose|yellow|orange|teal)-[0-9]{2,3}\b/g;
+  /\b(text|bg|border|ring|fill|stroke|divide|from|to|via)-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}\b/g;
 
 /** Comments stripped first — the SAME treatment the interpolation test below
  *  already gives its own scan, and for the reason recorded there: "a guard that
@@ -182,7 +200,22 @@ const HEX_BUDGET = 44;
 // conversion cannot be quietly undone by the next screen somebody writes, and
 // that the plan's metric and this guard cannot drift apart. The end state is a
 // number small enough to argue about entry by entry, not necessarily zero.
-const NAMED_COLOUR_BUDGET = 4037;
+const NAMED_COLOUR_BUDGET = 3712;
+// ⚠️ 3,833 → 3,712 IS A FALL OF 121 AND TWO MOVEMENTS OF DIFFERENT KINDS. The
+// eleven families added above brought 216 previously-uncounted sites IN
+// (3,833 → 4,049 on the same tree), and two module conversions took 337 out.
+// Read as one number it looks like ordinary progress; it is not, and the
+// direction that matters is that the count can now MOVE when somebody writes
+// a purple chip. This is the first figure in this file's history measured
+// over the whole palette.
+// 4,043 → 3,972 across the tracks that landed on 25-09, then 3,972 → 3,833 on
+// the invisible-divider sweep: 129 `border-gray-50` / `border-gray-100` /
+// `divide-gray-*` edges in 50 files, 3 quiet row cards in the ownership map,
+// and 4 `border-slate-100` the sweep only found because
+// `a-divider-you-cannot-see-is-not-a-divider.test.ts` states the rule as a
+// CONTRAST rather than as a list of spellings. That guard owns the divider
+// half of this population now; this budget keeps counting it, which is the
+// point — two guards over one population must not disagree about its size.
 // 4,373 → 4,043 on 24-09-2026: the income-tax module converted by ROLE (202
 // sites, 8 files), `StatCard` converted and its dead `gradient` prop deleted,
 // and `text-red-500` swept app-wide (101 sites, 66 files) because it was one

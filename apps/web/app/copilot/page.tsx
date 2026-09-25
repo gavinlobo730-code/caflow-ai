@@ -337,7 +337,7 @@ export default function CopilotPage() {
 
         {/* Sidebar — conversation history */}
         <div className="w-64 bg-white border-r border-ps-border flex flex-col flex-shrink-0">
-          <div className="p-3 border-b border-ps-muted">
+          <div className="p-3 border-b border-ps-border">
             <button disabled={actionInFlight}
               onClick={newConversation}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg text-white transition-colors"
@@ -443,7 +443,7 @@ export default function CopilotPage() {
 
               {/* Suggested questions (contextual) */}
               {messages.length > 0 && suggestions.length > 0 && (
-                <div className="px-6 py-2 border-t border-ps-muted bg-white">
+                <div className="px-6 py-2 border-t border-ps-border bg-white">
                   <div className="flex gap-2 overflow-x-auto pb-1 max-w-3xl mx-auto">
                     {suggestions.slice(0,4).map((q: string, i: number) => (
                       <button disabled={actionInFlight}
@@ -540,7 +540,7 @@ export default function CopilotPage() {
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-ps-muted">
+                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-ps-border">
                           {rec.action_label && (
                             <button
                               onClick={() => actOnRecommendation(rec.id, "accept")}

@@ -122,7 +122,7 @@ export function PortalPanel({
 }) {
   return (
     <section className={cn("rounded-xl border border-ps-border bg-white", className)}>
-      <div className="flex items-center justify-between gap-3 border-b border-ps-muted px-4 py-2.5">
+      <div className="flex items-center justify-between gap-3 border-b border-ps-border px-4 py-2.5">
         <h2 className="text-sm font-semibold text-ps-ink">{title}</h2>
         {action}
       </div>
@@ -156,7 +156,7 @@ export function PortalTable({
 }
 
 export function PortalRow({ children }: { children: React.ReactNode }) {
-  return <tr className="border-t border-ps-muted">{children}</tr>;
+  return <tr className="border-t border-ps-border">{children}</tr>;
 }
 
 /** Nothing to show, said in the client's words rather than "No data". */

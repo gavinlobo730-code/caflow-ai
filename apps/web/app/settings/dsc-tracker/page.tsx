@@ -498,7 +498,7 @@ export default function DSCTrackerPage() {
           { icon: <AlertCircle className="w-4 h-4 text-amber-600" />,  bg: "bg-state-attention-surface",  label: "Expiring (30 days)", value: String(expiringIn30), sub: "Renew Now" },
           { icon: <CheckCircle className="w-4 h-4 text-green-600" />,  bg: "bg-green-50",  label: "Expiring (90 days)", value: String(expiringIn90), sub: "Renew Soon" },
         ].map(c => (
-          <div key={c.label} className="bg-white rounded-xl border border-ps-muted p-4">
+          <div key={c.label} className="bg-white rounded-xl border border-ps-border p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center`}>{c.icon}</div>
               <span className="text-xs text-ps-label">{c.label}</span>
@@ -510,8 +510,8 @@ export default function DSCTrackerPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+        <div className="px-5 py-4 border-b border-ps-border">
           <h2 className="text-sm font-semibold text-ps-ink">DSC Records</h2>
           <p className="text-xs text-ps-hint mt-0.5">Class 2/3 digital signatures for GST, MCA, Income Tax filings</p>
         </div>
@@ -519,13 +519,13 @@ export default function DSCTrackerPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-50">
+                <tr className="border-b border-ps-border">
                   {["Name", "PAN", "Type", "Purpose", "Issuing CA", "Issue Date", "Expiry Date", "Days Remaining", "Status", ""].map(h => (
                     <th key={h} className="text-left text-xs font-medium text-ps-hint px-4 py-3">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {dscs.sort((a, b) => getDaysRemaining(a.expiry_date) - getDaysRemaining(b.expiry_date)).map(d => {
                   const days = getDaysRemaining(d.expiry_date);
                   const status = getDSCStatus(d.expiry_date);

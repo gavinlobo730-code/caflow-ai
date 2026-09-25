@@ -156,7 +156,7 @@ function ComplianceDashboard() {
 
       {/* Queue */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-ps-border">
           <div className="flex items-center gap-2">
             <CalendarClock size={15} className="text-brand" />
             <h2 className="text-sm font-semibold text-brand">Compliance queue</h2>
@@ -185,7 +185,7 @@ function ComplianceDashboard() {
         ) : (
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-ps-hint border-b border-gray-100">
+              <tr className="text-ps-hint border-b border-ps-border">
                 <th className="px-4 py-2.5 text-left font-semibold">Obligation</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Type</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Due</th>
@@ -194,7 +194,7 @@ function ComplianceDashboard() {
                 <th className="px-4 py-2.5 text-right font-semibold">Advance</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-ps-border">
               {queue.map((o) => {
                 const overdue = o.status !== "Filed" && o.status !== "Completed" && o.due_date < today;
                 return (
@@ -239,14 +239,14 @@ function ComplianceDashboard() {
 function WorkloadCard({ title, rows, emptyLabel }: { title: string; rows: WorkloadRow[]; emptyLabel: string }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100">
+      <div className="px-4 py-3 border-b border-ps-border">
         <h2 className="text-sm font-semibold text-brand">{title}</h2>
       </div>
       {rows.length === 0 ? (
         <p className="text-xs text-gray-400 text-center py-8">{emptyLabel}</p>
       ) : (
         <table className="w-full text-xs">
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-ps-border">
             {rows.slice(0, 8).map((r) => (
               <tr key={r.key} className="hover:bg-ps-bg">
                 <td className="px-4 py-2.5 text-ps-body font-mono truncate max-w-[260px]">{r.key}</td>

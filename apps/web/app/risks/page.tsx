@@ -170,7 +170,7 @@ function CategoryCard({ title, rows }: { title: string; rows: RiskRow[] }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-ps-muted bg-ps-bg text-left">
+              <tr className="border-b border-ps-border bg-ps-bg text-left">
                 <th className="px-4 py-3 font-medium text-ps-label">Client</th>
                 {columns.map((c) => (
                   <th key={c} className="px-4 py-3 font-medium text-ps-label">{c}</th>
@@ -180,7 +180,7 @@ function CategoryCard({ title, rows }: { title: string; rows: RiskRow[] }) {
             </thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr key={`${r.client_id}-${r.risk_type}-${i}`} className="border-b border-ps-muted last:border-0">
+                <tr key={`${r.client_id}-${r.risk_type}-${i}`} className="border-b border-ps-border last:border-0">
                   <td className="px-4 py-3 font-medium text-ps-ink">{r.client_name}</td>
                   {columns.map((c) => (
                     <td key={c} className="px-4 py-3 text-ps-label">

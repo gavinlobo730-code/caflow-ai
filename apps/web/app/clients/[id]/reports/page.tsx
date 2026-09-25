@@ -172,8 +172,8 @@ export default function ClientReportsPage() {
       {GROUPS.map((group) => {
         const GroupIcon = group.icon;
         return (
-          <div key={group.id} className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-3">
+          <div key={group.id} className="bg-white rounded-xl border border-ps-border overflow-hidden">
+            <div className="px-5 py-4 border-b border-ps-border flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg border border-blue-100 bg-blue-50 flex items-center justify-center flex-shrink-0">
                 <GroupIcon size={15} className="text-blue-600" />
               </div>
@@ -182,7 +182,7 @@ export default function ClientReportsPage() {
                 <p className="text-3xs text-ps-hint mt-0.5">{group.desc}</p>
               </div>
             </div>
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-ps-border">
               {group.reports.map((r) => (
                 <button
                   key={r.id}
@@ -209,8 +209,8 @@ export default function ClientReportsPage() {
       })}
 
       {NOT_BUILT.length > 0 && (
-      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-3">
+      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+        <div className="px-5 py-4 border-b border-ps-border flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg border border-ps-border bg-ps-bg flex items-center justify-center flex-shrink-0">
             <Boxes size={15} className="text-ps-hint" />
           </div>
@@ -221,7 +221,7 @@ export default function ClientReportsPage() {
             </p>
           </div>
         </div>
-        <div className="divide-y divide-gray-50">
+        <div className="divide-y divide-ps-border">
           {NOT_BUILT.map((n) => (
             <div key={n.title} className="px-5 py-3">
               <p className="text-xs font-medium text-ps-label">{n.title}</p>

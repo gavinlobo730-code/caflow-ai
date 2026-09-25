@@ -381,7 +381,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
           <h3 className="text-base font-semibold text-ps-ink">Mark ROC Filings as Filed</h3>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-label transition-colors">
             <X className="w-5 h-5" />
@@ -451,7 +451,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
+        <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
@@ -798,7 +798,7 @@ export default function MCAPage() {
           { icon: <AlertTriangle className="w-4 h-4 text-red-600" />, bg: "bg-state-problem-surface",    label: "Overdue Filings",       value: loading ? "—" : String(overdueCount), sub: "Past due date" },
           { icon: <Users className="w-4 h-4 text-purple-600" />,      bg: "bg-purple-50", label: "Directors KYC Due",     value: String(kycDueSoon), sub: "Within 30 days" },
         ].map(c => (
-          <div key={c.label} className="bg-white rounded-xl border border-ps-muted p-4">
+          <div key={c.label} className="bg-white rounded-xl border border-ps-border p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className={`w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center`}>{c.icon}</div>
               <span className="text-xs text-ps-label">{c.label}</span>
@@ -810,7 +810,7 @@ export default function MCAPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-ps-muted">
+      <div className="flex gap-1 border-b border-ps-border">
         {TABS.map((tab, i) => (
           <button key={tab} onClick={() => setActiveTab(i)}
             className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === i ? "border-brand text-blue-700" : "border-transparent text-ps-label hover:text-ps-body"}`}>
@@ -910,7 +910,7 @@ export default function MCAPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {keyDeadlines().map(d => (
-              <div key={d.label} className="bg-white rounded-xl border border-ps-muted p-4">
+              <div key={d.label} className="bg-white rounded-xl border border-ps-border p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center"><Calendar className="w-4 h-4 text-blue-600" /></div>
                   <span className="text-sm font-semibold text-ps-ink">{d.label}</span>
@@ -937,7 +937,7 @@ export default function MCAPage() {
       {filedModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-muted">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
               <h3 className="text-base font-semibold text-ps-ink">Mark ROC Filing as Filed</h3>
               <button onClick={() => setFiledModal(null)} className="text-ps-hint hover:text-ps-label transition-colors">
                 <X className="w-5 h-5" />
@@ -988,7 +988,7 @@ export default function MCAPage() {
               {filedError && <Callout tone="problem">{filedError}</Callout>}
             </div>
 
-            <div className="px-6 py-4 border-t border-ps-muted flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
               <button
                 onClick={() => setFiledModal(null)}
                 className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"

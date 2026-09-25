@@ -91,10 +91,10 @@ export function RcmDocumentPanel({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
       <div className="w-full max-w-2xl h-full bg-white shadow-xl flex flex-col">
-        <div className="px-5 py-4 border-b border-ps-muted flex items-start justify-between">
+        <div className="px-5 py-4 border-b border-ps-border flex items-start justify-between">
           <div>
             <p className="text-sm font-semibold text-ps-ink flex items-center gap-2">
-              <FileText size={15} className="text-blue-600" />
+              <FileText size={15} className="text-brand" />
               {kind === "self_invoice" ? "Self-invoice" : "Payment voucher"}
             </p>
             {/* The SECTION comes off the wire, so the screen never asserts
@@ -114,7 +114,7 @@ export function RcmDocumentPanel({
           {busy && !preview && <p className="text-xs text-ps-hint">Loading…</p>}
 
           {issued && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-800 flex gap-2">
+            <div className="bg-state-ready-surface border border-state-ready-border rounded-lg px-3 py-2 text-xs text-state-ready flex gap-2">
               <Check size={13} className="shrink-0 mt-0.5" />
               <span>
                 Issued as <span className="font-mono">{issued.document_no}</span> on{" "}
@@ -172,13 +172,13 @@ export function RcmDocumentPanel({
               {p.lines.length > 0 && (
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-ps-muted text-ps-hint">
+                    <tr className="border-b border-ps-border text-ps-hint">
                       <th className="py-1.5 text-left font-semibold">Description</th>
                       <th className="py-1.5 text-left font-semibold">HSN/SAC</th>
                       <th className="py-1.5 text-right font-semibold">Taxable</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-ps-bg">
+                  <tbody className="divide-y divide-ps-border">
                     {p.lines.map((l, i) => (
                       <tr key={i}>
                         <td className="py-1.5 text-ps-ink">{l.description}</td>
@@ -233,7 +233,7 @@ export function RcmDocumentPanel({
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-ps-muted flex items-center justify-between">
+        <div className="px-5 py-3 border-t border-ps-border flex items-center justify-between">
           <p className="text-3xs text-ps-hint max-w-sm">
             Check the particulars before issuing. Nothing is sent to any portal.
           </p>

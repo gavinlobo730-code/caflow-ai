@@ -228,7 +228,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
               </thead>
               <tbody>
                 {data.employees.map((e) => (
-                  <tr key={e.employee_id} className="border-t border-ps-muted align-top">
+                  <tr key={e.employee_id} className="border-t border-ps-border align-top">
                     <td className="px-3 py-2">
                       <p className="text-ps-ink">{e.employee_name}</p>
                       {[...e.reasons, ...e.gaps].map((r, i) => (

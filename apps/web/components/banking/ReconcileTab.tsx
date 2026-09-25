@@ -387,7 +387,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
       {/* Session selector */}
-      <div className="bg-white rounded-xl border border-ps-muted p-4 flex items-end gap-3 flex-wrap">
+      <div className="bg-white rounded-xl border border-ps-border p-4 flex items-end gap-3 flex-wrap">
         <div className="flex-1 min-w-[240px]">
           <label className="block text-xs font-medium text-ps-label mb-1.5">Reconciliation session</label>
           {loading ? <div className="h-9 bg-ps-bg rounded animate-pulse" /> : (
@@ -406,7 +406,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
 
       {/* New session form */}
       {showNew && (
-        <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
           <p className="text-xs font-semibold text-ps-body">Open a reconciliation</p>
           <div className="grid grid-cols-2 gap-3">
             <label className="block col-span-2">
@@ -467,7 +467,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
       {selectedId && (loadingReport ? <StatementSkeleton sections={1} rowsPerSection={4} /> : report && (
         <>
           {/* Tie-out summary (cash-flow style reconciles flag) */}
-          <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-3">
+          <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold text-ps-body">Balance tie-out</p>
               <span className={`text-3xs px-2 py-0.5 rounded-full font-medium ${statusBadge(report.reconciliation.status)}`}>{report.reconciliation.status}</span>
@@ -580,7 +580,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                 </p>
               </div>
             )}
-            <div className="flex items-center gap-2 pt-1 border-t border-ps-bg">
+            <div className="flex items-center gap-2 pt-1 border-t border-ps-border">
               <button onClick={() => api.banking.reconciliations.exportCsv(selectedId)} className="text-xs px-3 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label flex items-center gap-1.5"><Download size={12} /> CSV</button>
               {/* The document a CA actually hands to a client or an auditor.
                   For a completed session it renders the FROZEN snapshot. */}
@@ -619,7 +619,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
           {reopening && (
             <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-                <div className="px-5 py-4 border-b border-ps-muted">
+                <div className="px-5 py-4 border-b border-ps-border">
                   <h3 className="text-sm font-semibold text-ps-ink">Reopen this reconciliation</h3>
                   <p className="text-xs text-ps-label mt-0.5">
                     {report.reconciliation.statement_start_date} → {report.reconciliation.statement_end_date}
@@ -641,7 +641,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                   </label>
                   {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
                 </div>
-                <div className="flex gap-2 justify-end px-5 py-4 border-t border-ps-muted">
+                <div className="flex gap-2 justify-end px-5 py-4 border-t border-ps-border">
                   <button onClick={() => { setReopening(false); setReopenReason(""); setError(null); }}
                     className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
                   <button onClick={doReopen} disabled={busy || reopenReason.trim().length < 10}
@@ -657,7 +657,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               reopened and completed again; only the newest snapshot lives on the
               session, the rest are preserved in reopen_history. */}
           {showHistory && (
-            <div className="bg-white rounded-xl border border-ps-muted p-4 space-y-2">
+            <div className="bg-white rounded-xl border border-ps-border p-4 space-y-2">
               <p className="text-xs font-semibold text-ps-body">Certification history</p>
               {!history ? (
                 <p className="text-2xs text-ps-hint">Loading…</p>
@@ -666,7 +666,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                   This reconciliation has never been completed, so there is nothing certified yet.
                 </p>
               ) : (
-                <div className="divide-y divide-ps-bg">
+                <div className="divide-y divide-ps-border">
                   {history.current && (
                     <div className="py-2 flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -791,13 +791,13 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
           )}
 
           {lines.length === 0 ? (
-            <div className="bg-white rounded-xl border border-ps-muted p-8 text-center text-xs text-ps-hint">
+            <div className="bg-white rounded-xl border border-ps-border p-8 text-center text-xs text-ps-hint">
               {view === "not_passed"
                 ? "Every statement line in this period is in the books."
                 : `No ${view} transactions.`}
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-ps-muted overflow-hidden divide-y divide-ps-bg">
+            <div className="bg-white rounded-xl border border-ps-border overflow-hidden divide-y divide-ps-border">
               {lines.map((t) => (
                 <label key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-ps-bg cursor-pointer">
                   {!completed && !isReadOnlyView(view) && (
@@ -857,7 +857,7 @@ function BrsBucketRows({ label, bucket }: { label: string; bucket: BrsBucket }) 
 
 function Row({ label, paise, strong }: { label: string; paise: number; strong?: boolean }) {
   return (
-    <div className={`flex items-center justify-between ${strong ? "text-ps-ink font-semibold border-t border-ps-bg pt-1" : "text-ps-label"}`}>
+    <div className={`flex items-center justify-between ${strong ? "text-ps-ink font-semibold border-t border-ps-border pt-1" : "text-ps-label"}`}>
       <span className="font-sans text-2xs">{label}</span>
       <span>{fmt(paise)}</span>
     </div>

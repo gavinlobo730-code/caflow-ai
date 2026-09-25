@@ -83,8 +83,8 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between gap-3">
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+      <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <TrendingUp size={15} className="text-blue-600" />
@@ -122,14 +122,14 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-ps-muted text-ps-hint">
+                <tr className="border-b border-ps-border text-ps-hint">
                   <th className="px-5 py-2 text-left font-semibold">Month</th>
                   <th className="px-5 py-2 text-right font-semibold">Gross</th>
                   <th className="px-5 py-2 text-right font-semibold">Tax deducted</th>
                   <th className="px-5 py-2 text-left font-semibold">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-bg">
+              <tbody className="divide-y divide-ps-border">
                 {data.months.map((m) => (
                   <tr key={m.month}>
                     <td className="px-5 py-2 text-ps-ink">{MONTH_LABEL(m.month)}</td>
@@ -158,7 +158,7 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
           {/* The caveats are the server's sentences, rendered where the figures
               are. A projection read without them is taken for a decision. */}
           {data.gaps.length > 0 && (
-            <div className="px-5 py-3 border-t border-ps-muted space-y-1.5">
+            <div className="px-5 py-3 border-t border-ps-border space-y-1.5">
               {data.gaps.map((g, i) => (
                 <p key={i} className="text-2xs text-ps-label flex gap-1.5">
                   <Info size={12} className="shrink-0 mt-0.5 text-ps-hint" />
@@ -168,7 +168,7 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
             </div>
           )}
 
-          <div className="px-5 py-3 border-t border-ps-muted bg-ps-bg">
+          <div className="px-5 py-3 border-t border-ps-border bg-ps-bg">
             <p className="text-2xs text-ps-hint">
               These figures come from the same calculation your payslip is made
               from. If something looks wrong, speak to your employer — a

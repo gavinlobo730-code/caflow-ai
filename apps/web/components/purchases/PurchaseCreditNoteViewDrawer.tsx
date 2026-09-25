@@ -17,7 +17,7 @@ import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 
 const PCN_STATUS_BADGE: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
-  issued: "bg-blue-100 text-blue-700",
+  issued: "bg-state-working-surface text-state-working",
 };
 
 interface JournalLine { account_name?: string; account_id?: string; debit_paise: number; credit_paise: number }
@@ -38,7 +38,7 @@ function Action({ children, onClick, icon, primary, danger }: {
   children: React.ReactNode; onClick: () => void; icon: React.ReactNode; primary?: boolean; danger?: boolean;
 }) {
   const cls = primary ? "bg-brand text-white hover:bg-brand-dark border-brand"
-    : danger ? "border-ps-border text-red-600 hover:bg-state-problem-hover"
+    : danger ? "border-ps-border text-state-problem hover:bg-state-problem-hover"
     : "border-ps-border text-ps-label hover:bg-ps-bg";
   return (
     <button onClick={onClick} className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 ${cls}`}>
@@ -156,7 +156,7 @@ export function PurchaseCreditNoteViewDrawer({
               <Skeleton className="h-2.5 w-24" />
             </div>
           </div>
-          <TableSkeleton cols={6} rows={3} bare className="rounded-lg border border-ps-muted" />
+          <TableSkeleton cols={6} rows={3} bare className="rounded-lg border border-ps-border" />
           <TimelineSkeleton rows={3} />
         </div>
       ) : error || !pcn ? (
@@ -221,10 +221,10 @@ export function PurchaseCreditNoteViewDrawer({
 
           <section>
             <h4 className="text-xs font-semibold text-ps-body mb-2">Line items</h4>
-            <div className="overflow-x-auto border border-ps-muted rounded-lg">
+            <div className="overflow-x-auto border border-ps-border rounded-lg">
               <table className="w-full text-2xs">
                 <thead>
-                  <tr className="text-ps-hint border-b border-ps-muted">
+                  <tr className="text-ps-hint border-b border-ps-border">
                     <th className="px-2 py-1.5 text-left font-semibold">Description</th>
                     <th className="px-2 py-1.5 text-left font-semibold">HSN/SAC</th>
                     <th className="px-2 py-1.5 text-right font-semibold">Qty</th>
@@ -233,7 +233,7 @@ export function PurchaseCreditNoteViewDrawer({
                     <th className="px-2 py-1.5 text-right font-semibold">GST%</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ps-bg">
+                <tbody className="divide-y divide-ps-border">
                   {pcn.lines.map((l, i) => (
                     <tr key={l.id ?? i}>
                       <td className="px-2 py-1.5 text-ps-body">{l.description}</td>
@@ -274,7 +274,7 @@ export function PurchaseCreditNoteViewDrawer({
             <DetailRow label="Posting status" value={posted ? "Posted" : "Not posted"} />
             <DetailRow label="Journal entry" value={pcn.journal_entry_id ?? "—"} mono />
             {showJournal && (
-              <div className="border border-ps-muted rounded-lg p-2 bg-ps-bg">
+              <div className="border border-ps-border rounded-lg p-2 bg-ps-bg">
                 {journalLoading ? (
                   <div className="flex items-center gap-2 text-2xs text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
                 ) : journal?.lines?.length ? (
@@ -282,7 +282,7 @@ export function PurchaseCreditNoteViewDrawer({
                     <thead><tr className="text-ps-hint"><th className="text-left font-semibold py-1">Account</th><th className="text-right font-semibold">Debit</th><th className="text-right font-semibold">Credit</th></tr></thead>
                     <tbody>
                       {journal.lines.map((jl, i) => (
-                        <tr key={i} className="border-t border-ps-muted">
+                        <tr key={i} className="border-t border-ps-border">
                           <td className="py-1 text-ps-body">{jl.account_name ?? jl.account_id ?? "—"}</td>
                           <td className="py-1 text-right font-mono">{jl.debit_paise ? fmt(jl.debit_paise) : ""}</td>
                           <td className="py-1 text-right font-mono">{jl.credit_paise ? fmt(jl.credit_paise) : ""}</td>

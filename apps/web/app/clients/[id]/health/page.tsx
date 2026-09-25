@@ -451,7 +451,7 @@ export default function ClientHealthPage() {
                     <th className="px-3 py-3 text-left font-medium">Grade</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-ps-border">
                   {history.slice(0, 10).map((h) => (
                     <tr key={h.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3 text-gray-500 text-xs">{formatDate(h.recorded_at)}</td>
@@ -498,7 +498,7 @@ export default function ClientHealthPage() {
                     <th className="px-3 py-3 text-right font-medium">&nbsp;</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-ps-border">
                   {overrides.map((o) => {
                     // The SERVER's answer. An absent key reads as in force, so
                     // a browser deployed ahead of its backend renders exactly

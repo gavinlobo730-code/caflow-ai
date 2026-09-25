@@ -247,7 +247,7 @@ function DashboardTab({ clientId }: { clientId: string }) {
         ) : (
           <div className="space-y-2">
             {runs.slice(0, 6).map(r => (
-              <div key={r.id} className="flex items-center justify-between py-2 border-b border-ps-muted last:border-0">
+              <div key={r.id} className="flex items-center justify-between py-2 border-b border-ps-border last:border-0">
                 <div>
                   <p className="text-sm font-medium text-ps-ink">{fmtMonth(r.month)}</p>
                   <p className="text-2xs text-ps-hint">{r.headcount} employees</p>
@@ -427,13 +427,13 @@ function EmployeesTab({ clientId }: { clientId: string }) {
       <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-ps-muted bg-ps-bg">
+            <tr className="border-b border-ps-border bg-ps-bg">
               {["Name", "Designation", "Department", "Basic", "PF", "ESI", "Status", ""].map(h => (
                 <th key={h} className="px-4 py-2.5 text-left text-3xs font-semibold uppercase tracking-wider text-ps-hint">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-ps-muted">
+          <tbody className="divide-y divide-ps-border">
             {employees.length === 0 ? (
               <tr><td colSpan={8} className="px-4 py-8 text-center text-ps-hint text-sm">No employees yet</td></tr>
             ) : employees.map(e => (
@@ -888,7 +888,7 @@ function RunsTab({ clientId, firmId, openDoc }:
             </div>
 
             {selectedRun === r.id && (
-              <div className="border-t border-ps-muted px-4 py-3">
+              <div className="border-t border-ps-border px-4 py-3">
                 {loadingSlips ? (
                   <TableSkeleton cols={7} rows={3} bare />
                 ) : slipsFailed ? (
@@ -899,13 +899,13 @@ function RunsTab({ clientId, firmId, openDoc }:
                 ) : (
                   <table className="w-full text-2xs">
                     <thead>
-                      <tr className="border-b border-ps-muted">
+                      <tr className="border-b border-ps-border">
                         {["Employee", "Gross", "PF (Emp)", "ESI (Emp)", "PT", "TDS", "Net"].map(h => (
                           <th key={h} className="py-1.5 px-2 text-left text-3xs font-semibold text-ps-hint">{h}</th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-ps-bg">
+                    <tbody className="divide-y divide-ps-border">
                       {slips.map(s => (
                         <tr key={s.id} className="hover:bg-ps-bg">
                           <td className="py-1.5 px-2 text-ps-ink font-medium">{s.payroll_employees?.name}</td>
@@ -1130,14 +1130,14 @@ function ReleaseTab({ clientId }: { clientId: string }) {
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-ps-bg border-b border-ps-muted text-3xs font-semibold text-ps-hint uppercase">
+              <tr className="bg-ps-bg border-b border-ps-border text-3xs font-semibold text-ps-hint uppercase">
                 <th className="px-3 py-2 text-left">Month</th>
                 <th className="px-3 py-2 text-left">State</th>
                 <th className="px-3 py-2 text-right">Net pay</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {runs.map((r) => {
                 const paid = r.status === "paid";
                 const finalized = r.status === "finalized";
@@ -1475,7 +1475,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.employee_id} className="border-b border-ps-muted">
+                    <tr key={r.employee_id} className="border-b border-ps-border">
                       <td className="py-1.5 pr-2 text-ps-ink">{r.name}</td>
                       <td className="py-1.5 pr-2 font-mono text-3xs">{r.pan || "—"}</td>
                       <td className="py-1.5 pr-2">{r.regime === "new" ? "115BAC" : "Old"}</td>
@@ -1677,7 +1677,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
 
       {saveError && <Callout tone="problem">{saveError}</Callout>}
 
-      <div className="bg-white rounded-xl border border-ps-border divide-y divide-ps-muted">
+      <div className="bg-white rounded-xl border border-ps-border divide-y divide-ps-border">
         {fields.map(f => (
           <IdentityRow
             key={f.name}
@@ -1704,13 +1704,13 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
         {pt.length > 0 && (
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-3xs text-ps-hint border-b border-ps-muted">
+              <tr className="text-left text-3xs text-ps-hint border-b border-ps-border">
                 <th className="py-1.5">State</th><th>PTRC</th><th>PTEC</th><th></th>
               </tr>
             </thead>
             <tbody>
               {pt.map(r => (
-                <tr key={r.state} className="border-b border-ps-bg">
+                <tr key={r.state} className="border-b border-ps-border">
                   <td className="py-1.5 font-medium text-ps-ink">{r.state}</td>
                   <td className="text-ps-body">{r.ptrc_number || <span className="text-ps-hint">—</span>}</td>
                   <td className="text-ps-body">{r.ptec_number || <span className="text-ps-hint">—</span>}</td>
@@ -2123,19 +2123,19 @@ function ReportsTab({ clientId }: { clientId: string }) {
       {downloadError && <p className="text-2xs text-red-600">{downloadError}</p>}
       {(data?.slips?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-          <div className="px-4 py-3 border-b border-ps-muted flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">
             <p className="text-xs font-semibold text-ps-ink">Salary Register — {fmtMonth(month)}</p>
             <span className="text-2xs text-ps-hint">{data!.slips.length} employees</span>
           </div>
           <table className="w-full text-2xs">
             <thead>
-              <tr className="bg-ps-bg border-b border-ps-muted">
+              <tr className="bg-ps-bg border-b border-ps-border">
                 {["Employee", "PAN", "Gross", "PF", "ESI", "PT", "TDS", "Net"].map(h => (
                   <th key={h} className="px-3 py-2 text-left text-3xs font-semibold text-ps-hint">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-ps-bg">
+            <tbody className="divide-y divide-ps-border">
               {data!.slips.map((s) => (
                 <tr key={s.id}>
                   <td className="px-3 py-2 text-ps-ink font-medium">{s.payroll_employees?.name}</td>
