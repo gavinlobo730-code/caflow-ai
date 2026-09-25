@@ -224,14 +224,64 @@ Seeded (D7). The live book was 7 clients and 2 bank accounts with most tables
 empty, so every screen rendered its empty state and nothing could be judged.
 
 **Sharma & Associates**, Mumbai, FY 2025-26 — 8 clients, 31 customers, 30
-vendors, **315 sales invoices**, **200 purchase bills**, 12 employees, 42
-inter-state supplies, 9 reverse-charge bills, 16 unregistered parties.
+vendors, **315 sales invoices** (285 issued, 227 settled, 33 of them in part,
+88 still open), **200 purchase bills** (181 received) and 139 vendor payments,
+**9 bank accounts** with **276 statement lines**, **21 fixed assets**, **12
+employees** across **24 payroll runs**, 42 inter-state supplies, 9
+reverse-charge bills, 16 unregistered parties. One full run is **1,528 API
+calls**.
 
 | | |
 |---|---|
 | `domain/demo/fixture.py` | the practice as DATA — no handle, no call, deterministic on one fixed seed, and nothing in it reads the clock (a demo pinned to "now" is a different set of books every month, and a LOCKED PERIOD cannot be demonstrated at all if every date is recent) |
 | `scripts/seed_demo_firm.py` | writes it **through the API, never the database** — every posting here goes through the one kernel, and a seeder writing rows directly would produce books this product's own Verify Books would refuse. **A DRY RUN until `--confirm`**, and it refuses a firm that already has clients |
-| `tests/test_the_demo_practice_...py` | 32 tests. Every GSTIN's check digit is COMPUTED, not typed — this repo has already had to correct three invalid fixture GSTINs used across 77 files |
+| `tests/test_the_seeder_actually_seeds.py` | RUNS `seed()` through the real routers. A seeder whose job is to WRITE needs a test that WRITES — the first real run died on the first invoice, because `service_catalogue_id` has been required since migration 206 and no amount of reading the fixture could have said so |
+| `tests/test_every_body_..._its_door_accepts.py` | runs the same `seed()` against **the app's own route table** and validates each body against the model FastAPI resolved for that path. No hand-written map, so a door added tomorrow is covered the day it is written |
+
+**Three modules were still empty and are not now.** Every receipt, vendor
+payment, asset purchase and salary disbursement names the client's own bank
+account, so the money lands in that client's ledger rather than
+`resolve_payment_account`'s generic `%Bank%` fallback — a real disclosure that
+a demo carrying it on every posting would teach the CA to ignore. The register
+holds a **Land** row nothing depreciates, a motor car whose §17(5)-blocked tax
+is capitalised, and assets acquired in earlier years so the movement note opens
+with a gross block. The payroll year is left in **all three states** — ten
+months paid, one finalised, one still a draft — because a book of twelve
+drafts has posted no journal and paid nobody.
+
+**What the bank statement deliberately does NOT carry** is a line for a receipt
+the ledger already holds. Passing a statement line CREATES a voucher, so such a
+line invites the CA to record the same rupees twice on the very screen the demo
+is meant to sell. What is on it is the operating outflows nobody has coded —
+rent, power, courier, and the bank's own charges, which carry GST and are
+BANK-24's whole point — plus credits against invoices nobody paid, which is
+what gives the match queue a real candidate to offer.
+
+**AND EVERY DOCUMENT WAS A DRAFT, WHICH IS THE ONE THAT MATTERED MOST.**
+`POST /api/sales-invoices/` and `POST /api/purchase-bills/` both insert with
+`status: "draft"`; the journal is posted by the SEPARATE transition,
+`/{id}/issue` and `/{id}/receive`. So the demo had 315 invoices and 200 bills
+that posted no journal, raised no receivable or payable, moved no stock and
+**reached no return** — a GSTR-1 and a GSTR-3B structurally empty on a book of
+515 documents, with every count looking right. 285 invoices are issued now and
+181 bills received; **the last month is left in draft on purpose**, because a
+practice partway through the month after the year end has exactly that, and a
+book where everything is posted cannot show the issue and receive buttons.
+
+**Inventory opens with stock.** Each goods item carries an opening quantity and
+its COST — not its price, AS-2 paragraph 6 — so the first sale of the year
+relieves real stock instead of driving the position negative on document one,
+and the item group and reorder level make the reorder report and the item
+grouping non-empty. Two items deliberately have **no** reorder level, because
+zero is a real answer ("tell me when it runs out") and reading an absence as
+zero records a decision nobody made.
+
+**Two fields were being silently dropped**, and only the route-table guard
+could see it: `hra_paise` and `date_of_joining` on a payroll employee, where
+`EmployeeIn` declares `hra_percent` and `joining_date` — so every seeded
+employee had no joining date and no house rent allowance in their §192 working
+— and `msme_status` on a vendor, which is not a field of `VendorIn` at all and
+is recorded through the Schedule III ageing screen's own door.
 
 **Each client exists for a different screen**, and the fixture says which:
 the ordinary monthly GST client for volume; QRMP; a proprietor for §44AD; a
@@ -250,10 +300,10 @@ classified cannot show it.
 | # | gate | state on 25 Sep |
 |---|---|---|
 | 1 | Every track above closed or explicitly deferred by you | **Tracks 1–3 closed.** What is left inside Track 1 is §B's tax benchmarking (blocked, STUCK.md §1) and §C's partials — four on a document, two on you |
-| 2 | Backend and frontend suites green, smoke walk renders every route | **passing.** 17,460 backend · 1,571 real-Postgres · 1,655 frontend · **smoke walk 166 screens, 0 with a problem** |
-| 3 | No screen renders a figure the server did not compute | **not re-measured since Phase 3.** The guards that hold it (`a-computed-figure-reaches-the-screen`, the browser-logic scans) pass, but the claim deserves a fresh sweep before the session |
+| 2 | Backend and frontend suites green, smoke walk renders every route | **suites green, SMOKE WALK RED.** 17,494 backend · 1,566 real-Postgres · frontend lint/typecheck/test/build green. The walk renders all 166 screens with 0 per-screen problems and then **fails its own duplicate-body check**: six `/clients/_placeholder/…` screens (overview, sales, purchases, inventory, relationships, the journal editor) render the workspace shell and nothing else, because the walk feeds every `:id` the literal `_placeholder` and no client resolves. `MAX_ROUTES_PER_DIGEST` is 5 and the script's own comment says a sixth *should* trip it — *"six screens showing a CA nothing but navigation is the finding, not the false alarm"* — so the threshold is NOT being raised. The comment also says a seeded demo firm fixes it, and **that is not true**: the walk uses `_placeholder`, which resolves to nothing whatever is seeded. See STUCK.md §3 — it is one design decision |
+| 3 | No screen renders a figure the server did not compute | **MEASURED 25 Sep, and it is not clean.** The guards that hold it (`a-computed-figure-reaches-the-screen`, `tds-is-computed-by-the-engine-not-the-browser`, `section-32-is-computed-on-the-server`, the browser-logic scans) all pass. But `apps/web` carries **264 sites of arithmetic on a `*_paise` value** outside tests. Most are presentation — summing a column, `a − b` for an outstanding figure — and the sharp end is **43 MULTIPLY or DIVIDE sites** once the paise→rupee `/100` conversions are excluded. Nine of those are the deliberately parity-pinned keystroke mirrors (`lib/money/gstLine.ts`, `lib/invoices/gst.ts`, `lib/money/decimalMath.ts`), which leaves **28 files to read**: `accounting/loans`, `trial-balance-import`, `billing`, `compliance/tds`, `fixed-assets`, `inventory`, `sales`, `tax/computation`, the year-end statements, the employee portal, `tds`, `time`, four purchase editors/modals, `drcr.tsx`, and eight `lib/` modules. A multiplication or a division is a RATE or a PROPORTION, which is the kind of figure a server owes; a sum is not. Triaging 28 files, and building an endpoint wherever one is owed, is a tranche of its own — not a loose end, and not something to claim either way from a grep |
 | 4 | The filing simulation says plainly what it is (D17) | **passing** — one posture, one wording, pinned from the Python side |
-| 5 | The demo firm has a full year of believable data | **passing** — Track 3, and it has not yet been SEEDED anywhere; `scripts/seed_demo_firm.py` is a dry run until `--confirm` and the target firm is yours to choose |
+| 5 | The demo firm has a full year of believable data | **passing** — Track 3, now including banking, fixed assets and payroll. It has not yet been SEEDED anywhere: `scripts/seed_demo_firm.py` is a dry run until `--confirm`, the target firm is yours to choose, and the deployment is not reachable from this container (the egress proxy answers 403 to CONNECT) |
 
 ---
 
