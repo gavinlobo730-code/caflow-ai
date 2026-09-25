@@ -182,7 +182,7 @@ const HEX_BUDGET = 44;
 // conversion cannot be quietly undone by the next screen somebody writes, and
 // that the plan's metric and this guard cannot drift apart. The end state is a
 // number small enough to argue about entry by entry, not necessarily zero.
-const NAMED_COLOUR_BUDGET = 4043;
+const NAMED_COLOUR_BUDGET = 4037;
 // 4,373 → 4,043 on 24-09-2026: the income-tax module converted by ROLE (202
 // sites, 8 files), `StatCard` converted and its dead `gradient` prop deleted,
 // and `text-red-500` swept app-wide (101 sites, 66 files) because it was one

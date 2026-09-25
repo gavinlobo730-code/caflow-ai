@@ -124,7 +124,16 @@ BUDGET: dict[str, int] = {
     # ratchet credits what that screen reaches.
     "/api/risks": 3,
     "/api/sales-invoices": 5, "/api/compliance": 4,
-    "/api/firm-hsn-rate-history": 4, "/api/gst": 4, "/api/health": 4,
+    # /api/health 4 -> 2 on 25-09-2026 (Phase 3a-4). `DELETE /overrides/{id}`
+    # had NO caller at all, so an override recorded without an end date could
+    # never be withdrawn; and both health screens read `health_overrides`
+    # straight over PostgREST, which is why `GET /overrides` was unreached —
+    # whether one is IN FORCE is a rule (IST expiry, an unknown dimension, a
+    # later one superseding it) and the score calculation applies the same
+    # one, so it is served now rather than re-derived in two browsers. The two
+    # left are `GET /dashboard` and `GET /scores/{id}/history`, both of which
+    # ARE the recorded read-over-PostgREST convention.
+    "/api/firm-hsn-rate-history": 4, "/api/gst": 4, "/api/health": 2,
     "/api/mca-workspace": 4, "/api/recurring-invoices": 4, "/api/xbrl": 4,
     "/api/ai-copilot": 3, "/api/invoices": 3, "/api/purchase-cycle": 3,
     # /api/accounting 2 -> 1 on 25-09-2026 (Phase 3a-3): the client
@@ -224,7 +233,7 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # BUDGET, plus the three the tree had already shed since the last measurement;
 # then the AP allocate mirror, and the gateway webhook moving out of the
 # counted population entirely.
-TOTAL_BUDGET = 228
+TOTAL_BUDGET = 226
 
 
 # ---------------------------------------------------------------------------
