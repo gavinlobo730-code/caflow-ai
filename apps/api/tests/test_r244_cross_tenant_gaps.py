@@ -151,7 +151,11 @@ def test_related_party_report_excludes_another_firms_data_for_the_same_client_id
     rel._MOCK_ENTITY_ROLES.append({"id": "r-b", "firm_id": FIRM_B, "client_id": "shared-client", "entity_id": "e-b", "role": "Director"})
 
     resp = rel.related_party_report(client_id="shared-client", current_user=USER_A)
-    assert resp["data"]["related_party_count"] == 1
+    # `included_count` was `related_party_count` before the AS 18 rewrite. The
+    # count is kept AND the identity is now asserted: a count of one can be
+    # satisfied by the WRONG one, which is exactly the leak this guards.
+    assert resp["data"]["included_count"] == 1
+    assert [p["entity_id"] for p in resp["data"]["parties"]] == ["e-a"]
 
 
 def test_create_relationship_rejects_entity_owned_by_another_firm():

@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { User, FileText, Calendar, Download, Loader2, Receipt, TrendingUp } from "lucide-react";
 import { TaxDeclarationTab } from "@/components/portal/TaxDeclarationTab";
 import { TdsProjectionTab } from "@/components/portal/TdsProjectionTab";
+import { PortalShell } from "@/components/portal/PortalShell";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
     return () => clearTimeout(t);
   }, [onClose]);
   return (
-    <div className="fixed bottom-4 right-4 z-50 bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-3">
+    <div className="fixed bottom-4 right-4 z-50 bg-ps-ink text-white text-sm px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-3">
       <span>{message}</span>
       <button onClick={onClose} className="text-ps-hint hover:text-white">×</button>
     </div>
@@ -261,15 +262,15 @@ export default function EmployeePortalPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-ps-bg flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl border border-ps-border p-8 max-w-md text-center space-y-3">
-          <div className="w-12 h-12 rounded-full bg-state-problem-surface flex items-center justify-center mx-auto">
-            <User className="w-6 h-6 text-red-600" />
+      <PortalShell title="Employee Portal">
+        <div className="mx-auto max-w-md space-y-3 rounded-xl border border-ps-border bg-white p-8 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-state-problem-surface">
+            <User className="h-6 w-6 text-state-problem" />
           </div>
           <p className="text-sm font-semibold text-ps-ink">Access Unavailable</p>
           <p className="text-xs text-ps-label">{error}</p>
         </div>
-      </div>
+      </PortalShell>
     );
   }
 
@@ -284,28 +285,20 @@ export default function EmployeePortalPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-ps-bg">
+    // 2.2 — the same `PortalShell` the client dashboard wears. This page had
+    // its own header, its own product wordmark in `text-brand-dark` and NO SIGN
+    // OUT at all, so an employee reading their payslip on a shared phone had
+    // no way to end the session. One chrome, one sign-out.
+    <PortalShell
+      title="Employee Portal"
+      subtitle={employee.designation
+        ? `${employee.designation}${employee.department ? ` · ${employee.department}` : ""}`
+        : undefined}
+      identity={employee.name}
+    >
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
-      {/* Header */}
-      <header className="bg-white border-b border-ps-muted px-6 py-4">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-bold text-blue-600 tracking-wide uppercase">PracticeSync</span>
-              <span className="text-xs text-ps-disabled">|</span>
-              <span className="text-xs text-ps-hint">Employee Portal</span>
-            </div>
-            <h1 className="text-base font-semibold text-ps-ink">Hello, {employee.name}</h1>
-            {employee.designation && (
-              <p className="text-xs text-ps-hint mt-0.5">{employee.designation}{employee.department ? ` · ${employee.department}` : ""}</p>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* Tabs */}
-      <div className="max-w-3xl mx-auto px-4 pt-6">
+      <div>
         <div className="flex gap-1 bg-white rounded-xl border border-ps-muted p-1 mb-6">
           {TABS.map(tab => (
             <button
@@ -313,7 +306,7 @@ export default function EmployeePortalPage() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${
                 activeTab === tab.id
-                  ? "bg-brand text-white shadow-sm"
+                  ? "bg-brand-dark text-white shadow-sm"
                   : "text-ps-label hover:text-ps-body hover:bg-ps-bg"
               }`}
             >
@@ -332,7 +325,7 @@ export default function EmployeePortalPage() {
               </div>
             ) : payslipsError ? (
               <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center space-y-3">
-                <p className="text-sm text-red-600 font-medium">Couldn&apos;t load your payslips — the request failed or timed out.</p>
+                <p className="text-sm text-state-problem font-medium">Couldn&apos;t load your payslips — the request failed or timed out.</p>
                 <button
                   onClick={() => loadPayslips()}
                   className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body"
@@ -342,7 +335,7 @@ export default function EmployeePortalPage() {
               </div>
             ) : payslips.length === 0 ? (
               <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center">
-                <FileText className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                <FileText className="w-8 h-8 text-ps-border mx-auto mb-2" />
                 <p className="text-sm text-ps-hint">No payslips found</p>
               </div>
             ) : (
@@ -365,14 +358,14 @@ export default function EmployeePortalPage() {
                         <td className="px-4 py-3 text-right text-ps-label font-mono text-xs">
                           {formatPaise(slip.gross_salary_paise)}
                         </td>
-                        <td className="px-4 py-3 text-right text-green-700 font-semibold font-mono text-xs">
+                        <td className="px-4 py-3 text-right text-state-ready font-semibold font-mono text-xs">
                           {formatPaise(slip.net_salary_paise)}
                         </td>
                         <td className="px-5 py-3">
                           <button
                             onClick={() => downloadPayslip(slip)}
                             disabled={downloadingSlipId === slip.id}
-                            className="flex items-center gap-1 text-xs text-blue-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
+                            className="flex items-center gap-1 text-xs text-brand-dark hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
                           >
                             {downloadingSlipId === slip.id ? (
                               <><Loader2 size={12} className="animate-spin" /> Downloading…</>
@@ -399,7 +392,7 @@ export default function EmployeePortalPage() {
               </div>
             ) : leaveError ? (
               <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center space-y-3">
-                <p className="text-sm text-red-600 font-medium">Couldn&apos;t load your leave balances — the request failed or timed out.</p>
+                <p className="text-sm text-state-problem font-medium">Couldn&apos;t load your leave balances — the request failed or timed out.</p>
                 <button
                   onClick={() => loadLeaveBalances()}
                   className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body"
@@ -409,7 +402,7 @@ export default function EmployeePortalPage() {
               </div>
             ) : leaveBalances.length === 0 ? (
               <div className="bg-white rounded-xl border border-ps-muted px-5 py-12 text-center">
-                <Calendar className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                <Calendar className="w-8 h-8 text-ps-border mx-auto mb-2" />
                 <p className="text-sm text-ps-hint">No leave records found for current year</p>
               </div>
             ) : (
@@ -431,7 +424,7 @@ export default function EmployeePortalPage() {
                         return (
                           <tr key={`${lb.id}-${key}`} className="hover:bg-ps-bg">
                             <td className="px-5 py-3 font-medium text-ps-ink">{label}</td>
-                            <td className={`px-4 py-3 text-right font-semibold ${days > 0 ? "text-green-700" : "text-red-600"}`}>
+                            <td className={`px-4 py-3 text-right font-semibold ${days > 0 ? "text-state-ready" : "text-state-problem"}`}>
                               {days}
                             </td>
                           </tr>
@@ -458,7 +451,7 @@ export default function EmployeePortalPage() {
         {/* Profile Tab */}
         {activeTab === "profile" && (
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50">
+            <div className="px-5 py-4 border-b border-ps-muted">
               <h2 className="text-sm font-semibold text-ps-ink">Employee Profile</h2>
               <p className="text-xs text-ps-hint mt-0.5">Read-only — contact HR to update your details</p>
             </div>
@@ -475,7 +468,7 @@ export default function EmployeePortalPage() {
                 },
                 { label: "IFSC Code", value: employee.bank_ifsc ?? "—" },
               ].map(field => (
-                <div key={field.label} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
+                <div key={field.label} className="flex items-center justify-between py-1 border-b border-ps-muted last:border-0">
                   <span className="text-xs text-ps-label">{field.label}</span>
                   <span className="text-sm font-medium text-ps-ink">{field.value}</span>
                 </div>
@@ -484,6 +477,6 @@ export default function EmployeePortalPage() {
           </div>
         )}
       </div>
-    </div>
+    </PortalShell>
   );
 }

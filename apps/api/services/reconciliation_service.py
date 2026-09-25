@@ -30,6 +30,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from domain.accounting import ledger_anomalies
 from domain.reporting.sources import SupabaseLedgerSource
 from core.db_paging import fetch_all
 
@@ -586,6 +587,195 @@ def check_fixed_asset_register(db, firm_id: str, client_id: str, entries) -> lis
     return out
 
 
+def check_ledger_anomalies(db, firm_id: str, client_id: str, entries) -> list[dict]:
+    """Which accounts LOOK wrong — a contra balance, a dormant balance, a month
+    far above the account's own usual month. `domain/accounting/
+    ledger_anomalies` is the rule and this function decides none of it.
+
+    EVERY ANSWER IS A HEURISTIC AND IS FILED AS A WARNING, NEVER CRITICAL.
+    The other eight checks in this engine assert an INVARIANT — debits equal
+    credits, a sales invoice with inventory lines has a COGS journal, the AR
+    sub-ledger foots to the GL — and a break is a defect. This one says "go and
+    look", and a benign reading travels with each finding, so filing one as
+    critical would put a judgement call beside a broken invariant and cost the
+    invariants their meaning.
+
+    NO EXTRA ROUND TRIP FOR THE MOVEMENTS. `entries` is the posted ledger the
+    runner already fetched, so the monthly buckets are folded out of it here.
+    Reading `account_period_balances` instead was the plan and is rejected in
+    the domain module's own header: it is a cache with a healing auditor, and a
+    check looking for things wrong with the ledger must not read something that
+    can itself be wrong.
+
+    THE CHART IS THE ONE FETCH, and it is bounded by the size of the chart
+    rather than the ledger — about 130 rows on a real client — which is the
+    reporting rule's "proportional to the ANSWER" applied to an input.
+    """
+    # Only the accounts this client actually posted to. A firm's chart carries
+    # every account the seed created; fetching and scanning all of them would
+    # be the forty-findings failure the domain module is written to avoid.
+    posted_to = {ln.account_id for e in entries.values() for ln in e.lines}
+    if not posted_to:
+        return []
+
+    rows: list[dict] = []
+    ids = sorted(posted_to)
+    for i in range(0, len(ids), 200):
+        got = (db.table("chart_of_accounts")
+               .select("id, account_code, account_name, account_type, "
+                       "account_subtype, system_account_key")
+               .eq("firm_id", firm_id).in_("id", ids[i:i + 200])
+               .execute().data) or []
+        rows.extend(got)
+
+    accounts = [
+        ledger_anomalies.LedgerAccount(
+            id=str(r["id"]), code=r.get("account_code") or "",
+            name=r.get("account_name") or "", type=r.get("account_type") or "",
+            subtype=r.get("account_subtype"), system_key=r.get("system_account_key"),
+        )
+        for r in rows
+    ]
+
+    # (account, month) -> net debit paise. The month key is the entry date's
+    # own first-of-month, ISO — the same shape account_period_balances.
+    # period_month uses, so a later caller that does read the buckets needs no
+    # translation.
+    nets: dict[tuple[str, str], int] = {}
+    for e in entries.values():
+        month = f"{str(e.entry_date)[:7]}-01"
+        for ln in e.lines:
+            key = (ln.account_id, month)
+            nets[key] = nets.get(key, 0) + ln.debit_paise - ln.credit_paise
+
+    by_account: dict[str, list[ledger_anomalies.MonthlyMovement]] = {}
+    for (account_id, month), net in sorted(nets.items()):
+        by_account.setdefault(account_id, []).append(
+            ledger_anomalies.MonthlyMovement(period_month=month, net_paise=net))
+
+    return [
+        _finding(
+            f"{a.kind}", "warning",
+            f"{a.summary} {a.also_could_be}",
+            amount_paise=a.amount_paise,
+            account_id=a.account_id, account_code=a.account_code,
+            account_name=a.account_name, period_month=a.period_month,
+            materiality_floor_paise=ledger_anomalies.DEFAULT_MATERIALITY_PAISE,
+        )
+        for a in ledger_anomalies.scan(accounts, by_account)
+    ]
+
+
+# ── What this engine checks, in the CA's words ───────────────────────────────
+#
+# THE BROWSER USED TO KEEP THIS AND HAD DRIFTED BOTH WAYS. `CHECK_LABEL` in
+# the client accounting page held SIX entries against the sixteen check names
+# `_CHECKS` can emit, so a CA looking at a real finding read the raw
+# `orphan_money_journals` or `fixed_asset_register.wdv_asset_has_no_stopping_
+# point` — and the tab's own blurb named five of the nine checks and was
+# written before four of them existed. The Schedule III caption lesson: the
+# module that OWNS a vocabulary is the only place that can stay right about
+# it, and a copy in `apps/web` asserts nothing.
+#
+# Keyed on the exact `check_name` a finding carries. `label` is the chip beside
+# a finding; `looks_for` is the one sentence the tab lists so a CA knows what
+# pressing the button covers. A check that emits several names has an entry per
+# NAME rather than per function, because the name is what reaches the row.
+#
+# `tests/test_every_check_this_engine_emits_is_named.py` derives the emitted
+# set from the modules and fails an entry that is missing or spare — so an
+# added kind cannot render as its own snake_case identifier again.
+CHECK_CATALOGUE: dict[str, dict[str, str]] = {
+    "trial_balance": {
+        "label": "Trial Balance",
+        "looks_for": "Total debits equal total credits across every posted entry.",
+    },
+    "missing_cogs_journal": {
+        "label": "Missing COGS Journal",
+        "looks_for": "Every posted sales invoice with stock lines has its cost-of-goods journal.",
+    },
+    "missing_inventory_receipt_journal": {
+        "label": "Missing Inventory Receipt Journal",
+        "looks_for": "Every received purchase bill with stock lines has its inventory receipt journal.",
+    },
+    "inventory_cache_drift": {
+        "label": "Inventory Cache Drift",
+        "looks_for": "The cached stock quantity on each item agrees with the stock ledger.",
+    },
+    "ar_subledger_vs_gl": {
+        "label": "Receivables vs the GL",
+        "looks_for": "Open sales invoices foot to the Trade Receivables control account.",
+    },
+    "ap_subledger_vs_gl": {
+        "label": "Payables vs the GL",
+        "looks_for": "Open purchase bills foot to the Trade Payables control account.",
+    },
+    "bank_reconciliation_discrepancy": {
+        "label": "Bank Reconciliation",
+        "looks_for": "Each completed bank reconciliation still ties to the ledger it certified.",
+    },
+    "orphan_money_journals": {
+        "label": "Orphan Money Journal",
+        "looks_for": "Every receipt and payment journal still has the document it was posted from.",
+    },
+    "fixed_asset_register.no_acquisition_journal": {
+        "label": "Asset With No Acquisition Journal",
+        "looks_for": "Every asset in the register was posted to the ledger when it was acquired.",
+    },
+    "fixed_asset_register.bill_capitalised_more_than_once": {
+        "label": "Bill Capitalised Twice",
+        "looks_for": "No purchase bill has been capitalised into two assets.",
+    },
+    "fixed_asset_register.capitalised_from_a_bill_that_is_gone": {
+        "label": "Asset From a Deleted Bill",
+        "looks_for": "Every capitalised asset's source bill still exists.",
+    },
+    "fixed_asset_register.depreciation_basis_departs_from_schedule_ii": {
+        "label": "Depreciation Off Schedule II",
+        "looks_for": "Each asset's recorded rate or life matches Companies Act Schedule II Part C.",
+    },
+    "fixed_asset_register.wdv_asset_has_no_stopping_point": {
+        "label": "Reducing Balance With No Floor",
+        "looks_for": "No written-down-value asset can be depreciated for ever.",
+    },
+    ledger_anomalies.CONTRA_BALANCE: {
+        "label": "Balance on the Unusual Side",
+        "looks_for": (
+            "An account closing on the side its type does not normally carry — "
+            "contra accounts, and a bank account in overdraft, are left alone."
+        ),
+    },
+    ledger_anomalies.DORMANT_BALANCE: {
+        "label": "Balance That Never Moves",
+        "looks_for": "An account carrying a balance with no movement at all in the period.",
+    },
+    ledger_anomalies.OUTLIER_MONTH: {
+        "label": "Month Far Above the Usual",
+        "looks_for": (
+            f"A month more than {ledger_anomalies.OUTLIER_MULTIPLE}x the account's own "
+            f"median month. Needs at least {ledger_anomalies.MIN_MONTHS_FOR_A_MEDIAN + 1} "
+            "months of movement, so it stays quiet on a new client."
+        ),
+    },
+}
+
+#: The last three are judgement calls, not invariants. Said out loud on the
+#: screen, because a CA reading sixteen chips of equal weight will treat the
+#: heuristic ones as defects and the invariants as noise.
+HEURISTIC_CHECKS: frozenset[str] = frozenset(ledger_anomalies.ALL_KINDS)
+
+
+def check_catalogue() -> dict:
+    """The vocabulary `GET /api/reconciliation/checks` serves."""
+    return {
+        "checks": [
+            {"check_name": name, "is_heuristic": name in HEURISTIC_CHECKS, **body}
+            for name, body in CHECK_CATALOGUE.items()
+        ],
+        "not_checked": list(ledger_anomalies.NOT_CHECKED),
+    }
+
+
 _CHECKS = [
     check_trial_balance,
     check_missing_cogs_journals,
@@ -596,6 +786,7 @@ _CHECKS = [
     check_bank_reconciliation_discrepancies,
     check_orphan_money_journals,
     check_fixed_asset_register,
+    check_ledger_anomalies,
 ]
 
 

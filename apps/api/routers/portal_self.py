@@ -55,17 +55,40 @@ def portal_me(portal: dict = Depends(get_current_portal_client)):
     })
 
 
-# Dashboard sections. documents/messages/requests are RLS-direct surfaces; the
-# fee-relationship + compliance surfaces (Phase 4.5.2) are served by the
-# client-facing /api/portal/self/* endpoints (portal_data router).
+# THE SECTIONS THIS PORTAL HAS, AND WHAT EACH ONE CANNOT DO.
+#
+# ⚠️ ALL SEVEN WERE `available: True` AND THE DASHBOARD RENDERED FOUR. The
+# browser kept its own `DATA_SECTIONS = new Set([...])` of the four it knew how
+# to load and filtered the other three out of its own tab row, so the API told
+# a client Documents, Document Requests and Messages existed and the screen
+# silently disagreed — on the one surface the outside world sees, with the API
+# making the claim. The three are served now (`portal_data`) and the browser
+# keeps no list: it renders what this sends, which is the Schedule III caption
+# rule applied to the portal.
+#
+# `note` is the THIRD STATE this list needed and did not have. A section can be
+# present and complete, absent, or present with something a client has to be
+# told — and the one that matters is Document Requests, where fulfilling means
+# writing into the firm's own document store and migration 005's storage
+# policies admit no portal principal. Saying so beats a button that 403s, and
+# beats hiding the section, which is what the browser used to do.
 _DASHBOARD_SECTIONS = [
-    {"key": "documents",  "label": "Documents",          "available": True},
-    {"key": "requests",   "label": "Document Requests",  "available": True},
-    {"key": "messages",   "label": "Messages",           "available": True},
-    {"key": "invoices",   "label": "Invoices",           "available": True},
-    {"key": "statements", "label": "Statements",         "available": True},
-    {"key": "reminders",  "label": "Payment Reminders",  "available": True},
-    {"key": "compliance", "label": "Compliance Status",  "available": True},
+    {"key": "documents",  "label": "Documents",          "available": True,
+     "note": None},
+    {"key": "requests",   "label": "Document Requests",  "available": True,
+     "note": ("You can see what your accountant has asked for. Uploading here "
+              "is not available yet — send the papers the way you usually do, "
+              "or reply under Messages.")},
+    {"key": "messages",   "label": "Messages",           "available": True,
+     "note": None},
+    {"key": "invoices",   "label": "Invoices",           "available": True,
+     "note": None},
+    {"key": "statements", "label": "Statements",         "available": True,
+     "note": None},
+    {"key": "reminders",  "label": "Payment Reminders",  "available": True,
+     "note": None},
+    {"key": "compliance", "label": "Compliance Status",  "available": True,
+     "note": None},
 ]
 
 

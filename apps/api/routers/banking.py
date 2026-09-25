@@ -2337,18 +2337,16 @@ def set_reconciliation_adjustment(
         actor_internal_id=current_user.get("id")))
 
 
-@router.get("/reconciliations/{recon_id}/items")
-def reconciliation_items(
-    recon_id: str,
-    current_user: dict = Depends(rbac("banking", "read")),
-):
-    """Reconciled / unreconciled / exception transactions + summary (B.4.2/B.4.4)."""
-    db = _db()
-    if not db:
-        return api_response(True, {"reconciled": [], "unreconciled": [], "exceptions": []})
-    _assert_recon_scope(db, current_user, recon_id)
-    return api_response(True, bank_reconciliation_service.report(
-        db, current_user["firm_id"], recon_id))
+# `GET /reconciliations/{recon_id}/items` WAS DELETED HERE (25-09-2026, D21's
+# shape). It was byte-identical to `/reconciliations/{recon_id}/report` below —
+# the same `_assert_recon_scope`, the same
+# `bank_reconciliation_service.report(db, firm_id, recon_id)`, the same payload
+# — and the Reconcile screen calls `/report`. Two read paths for one fact is
+# what this codebase refuses everywhere else, and the one nobody could reach is
+# the one with no users to break. Its mock branch differed (it answered three
+# empty lists where `/report` answers a reconciliation stub), which is the only
+# way the two could ever have disagreed, and is a reason to remove it rather
+# than a reason to keep it.
 
 
 @router.post("/reconciliations/{recon_id}/reconcile")

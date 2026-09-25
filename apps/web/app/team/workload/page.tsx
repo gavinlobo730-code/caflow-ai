@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle, TrendingDown, Activity, Users,
-  Loader2, RefreshCw, Pencil, X,
+  Loader2, RefreshCw, Pencil, X, UserPlus,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,9 @@ import { Button } from "@/components/ui/button";
 import { getTeamWorkload } from "@/lib/data/analytics";
 import type { TeamWorkload, WorkloadMember } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
+import Link from "next/link";
+import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
+import type { WorkloadInsight, CapacityRiskPayload } from "@/lib/api";
 
 function UtilisationBar({ pct }: { pct: number }) {
   const clamped = Math.min(100, Math.max(0, pct));
@@ -182,11 +185,154 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
   );
 }
 
+/**
+ * The next thirteen weeks, and which of them the practice is about to be short
+ * for.
+ *
+ * WHY THIS IS A SEPARATE PANEL FROM THE MEMBER CARDS BELOW. Those answer "who
+ * is loaded today"; this answers "which week is about to hurt", and an Indian
+ * practice's problem is almost always the second. A partner knows March is
+ * bad; what they cannot see from any other screen is that the week of 8
+ * December is four times an ordinary week because sixty clients' GSTR-3B and a
+ * quarterly TDS statement land in it together, and that it is four weeks away.
+ *
+ * EVERY FIGURE HERE IS SERVED. The bars are `items_due` against the served
+ * median, `is_peak` is the server's answer and not a threshold this file
+ * keeps, and the hours shown are the ones a workflow step recorded — nothing
+ * is averaged over the tasks that carry none, which is most of them, and the
+ * count of those is shown beside the figure rather than hidden behind it.
+ */
+function CapacityRiskPanel() {
+  const [risk, setRisk] = useState<CapacityRiskPayload | null>(null);
+  const [showGaps, setShowGaps] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    api.workload.capacityRisk()
+      .then((res) => {
+        if (!live || !res?.success) return;
+        setRisk(objectWithLists<CapacityRiskPayload>(
+          res.data, "weeks", "peak_weeks", "not_forecast"));
+      })
+      .catch(() => { /* the panel simply does not appear */ });
+    return () => { live = false; };
+  }, []);
+
+  if (!risk || risk.weeks.length === 0) return null;
+
+  const busiest = Math.max(1, ...risk.weeks.map((w) => w.items_due));
+  const totalHours = risk.weeks.reduce((n, w) => n + w.estimated_hours, 0);
+  const unestimated = risk.weeks.reduce((n, w) => n + w.items_without_an_estimate, 0);
+
+  return (
+    <Card>
+      <CardContent className="py-5 space-y-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-ps-ink">The next 13 weeks</h2>
+            <p className="text-xs text-ps-label mt-0.5">
+              Open tasks and unfiled obligations by the week they fall due.
+              {risk.median_week_items != null
+                ? ` An ordinary week here is ${risk.median_week_items}.`
+                : " Too few weeks carry work yet to call any of them unusual."}
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-xs text-ps-label">
+              {risk.people} {risk.people === 1 ? "person" : "people"} ·{" "}
+              {risk.configured_weekly_hours}h configured a week
+            </p>
+            {risk.overdue_items > 0 && (
+              <p className="text-xs text-state-problem mt-0.5">
+                {risk.overdue_items} already overdue, on top of all of it
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* One bar per week, every week — including the empty ones, so a
+            partner can see the quiet week they could move work into. */}
+        <div className="flex items-end gap-1.5 h-24">
+          {risk.weeks.map((w) => (
+            <div key={w.week_start} className="flex-1 flex flex-col justify-end items-center gap-1 group relative">
+              <span className="text-3xs text-ps-hint tabular-nums">
+                {w.items_due > 0 ? w.items_due : ""}
+              </span>
+              <div
+                className={`w-full rounded-t transition-colors ${
+                  w.is_peak ? "bg-state-attention" : "bg-ps-border group-hover:bg-ps-hint"
+                }`}
+                style={{ height: `${Math.round((w.items_due / busiest) * 100)}%`, minHeight: w.items_due > 0 ? 3 : 1 }}
+                title={`${w.week_start}: ${w.items_due} due (${w.tasks_due} tasks, ${w.compliance_due} filings)`}
+              />
+              <span className="text-3xs text-ps-hint whitespace-nowrap">
+                {w.week_start.slice(8, 10)}/{w.week_start.slice(5, 7)}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {risk.peak_weeks.length > 0 && (
+          <Callout tone="attention">
+            {risk.peak_weeks.length === 1 ? "One week carries" : `${risk.peak_weeks.length} weeks carry`}{" "}
+            more than {risk.peak_multiple}× an ordinary week:{" "}
+            {risk.peak_weeks.map((d) => d.slice(8, 10) + "/" + d.slice(5, 7)).join(", ")}.
+          </Callout>
+        )}
+
+        <div className="flex items-center justify-between gap-3 flex-wrap text-xs text-ps-label border-t border-ps-muted pt-3">
+          <span>
+            {/* Recorded effort and the count with none, side by side. An
+                average over the second would make the first meaningless. */}
+            {totalHours > 0
+              ? `${totalHours.toFixed(1)}h estimated across the quarter`
+              : "No effort estimates recorded"}
+            {unestimated > 0 && `, ${unestimated} items carry none`}
+            {risk.undated_items > 0 && ` · ${risk.undated_items} open with no due date`}
+            {risk.obligations_folded_into_tasks > 0 &&
+              ` · ${risk.obligations_folded_into_tasks} filings counted once as their task`}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowGaps((v) => !v)}
+            className="text-brand-dark hover:underline shrink-0"
+          >
+            {showGaps ? "Hide what this cannot see" : "What this cannot see"}
+          </button>
+        </div>
+
+        {/* A flat profile must not be read as a quiet quarter. */}
+        {showGaps && (
+          <ul className="space-y-1 border-t border-ps-muted pt-3">
+            {risk.not_forecast.map((sentence) => (
+              <li key={sentence} className="text-xs text-ps-label flex gap-2.5">
+                <span className="text-ps-hint shrink-0">•</span>
+                <span>{sentence}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function WorkloadPage() {
   const [workload, setWorkload] = useState<TeamWorkload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingMember, setEditingMember] = useState<WorkloadMember | null>(null);
+  // ⚠️ ONLY THE UNASSIGNED BACKLOG IS RENDERED, AND THAT IS DELIBERATE.
+  // `GET /api/intelligence/workload-insights` had no caller anywhere, and
+  // `compute_workload_insights` emits three kinds: `overload`, `idle` and
+  // `unassigned_backlog`. The first two restate what the member grouping
+  // below already says from the same underlying tasks and capacities, and
+  // rendering both would make the page a second authority on who is
+  // overloaded — the two would disagree the first time either test changed.
+  // The THIRD is the one no screen in this product can state: an open task
+  // with no assignee belongs to nobody, so it appears on no member's card and
+  // in no utilisation figure, and it is exactly the work that goes missing.
+  const [unassigned, setUnassigned] = useState<WorkloadInsight | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -202,6 +348,22 @@ export default function WorkloadPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Fetched apart from the workload itself: an insights endpoint that is slow,
+  // refused or down must not cost the page its member cards, which are the
+  // thing it exists for.
+  useEffect(() => {
+    let live = true;
+    api.intelligence.workloadInsights()
+      .then((res) => {
+        if (!live || !res?.success) return;
+        const found = arrayOrEmpty<WorkloadInsight>(res.data?.insights)
+          .find((i) => i.type === "unassigned_backlog");
+        setUnassigned(found ?? null);
+      })
+      .catch(() => { /* the strip simply does not appear */ });
+    return () => { live = false; };
+  }, []);
 
   const overloaded = workload?.members?.filter(m => m.is_overloaded) ?? [];
   const underutilised = workload?.members?.filter(m => m.is_underutilised) ?? [];
@@ -220,6 +382,24 @@ export default function WorkloadPage() {
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
+
+      {unassigned && (
+        <Link
+          href="/team/work-allocation"
+          className="flex items-center justify-between gap-3 rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3 hover:border-state-attention transition-colors"
+        >
+          <span className="flex items-center gap-2 text-sm text-state-attention">
+            <UserPlus size={14} className="shrink-0" />
+            {unassigned.detail}
+          </span>
+          <span className="text-xs font-medium text-state-attention shrink-0">Allocate →</span>
+        </Link>
+      )}
+
+      {/* Rendered unconditionally rather than inside the `workload` branch: the
+          forecast is its own fetch and a slow or refused workload read must not
+          take the one answer no other screen gives with it. */}
+      <CapacityRiskPanel />
 
       {loading && !workload ? (
         <div className="flex items-center justify-center py-20 text-ps-hint">

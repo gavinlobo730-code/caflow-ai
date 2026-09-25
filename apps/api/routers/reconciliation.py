@@ -60,6 +60,34 @@ def verify_books(
     return api_response(True, result)
 
 
+@router.get("/checks")
+def list_checks(
+    current_user: dict = Depends(rbac("accounting", "approve")),
+):
+    """What "Verify Books" actually checks, and what it deliberately does not.
+
+    SERVED RATHER THAN SPELLED IN THE BROWSER. The accounting tab used to keep
+    its own `CHECK_LABEL` map, and it had drifted in the expensive direction:
+    six entries against the sixteen check names the engine can emit, so a CA
+    looking at a real finding on a bank reconciliation, an orphan money journal
+    or the fixed-asset register read the raw snake_case identifier. The tab's
+    blurb had drifted too, naming five of nine checks. One vocabulary, in the
+    module that owns the checks — `services/reconciliation_service.
+    CHECK_CATALOGUE`, pinned by a test that derives the emitted set from the
+    code rather than from a list.
+
+    `is_heuristic` matters as much as the label: three of the sixteen say "go
+    and look" rather than asserting an invariant, and a CA shown sixteen equal
+    chips will read the judgement calls as defects.
+
+    Reads nothing, takes no client, and is behind the same guard as the rest of
+    this router so the vocabulary and the findings are visible to the same
+    people."""
+    from services.reconciliation_service import check_catalogue
+
+    return api_response(True, check_catalogue())
+
+
 @router.get("/runs")
 def list_runs(
     client_id: str = Query(...),

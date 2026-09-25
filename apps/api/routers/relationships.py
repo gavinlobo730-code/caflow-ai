@@ -1016,92 +1016,130 @@ def list_properties(
 # Companies Act Sec 188: related party transactions
 # AS 18 / Ind AS 24: related party disclosures
 
+@router.get("/roles")
+def list_client_roles(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """Every entity role recorded at one client, with the entity's own details.
+
+    ⚠️ THIS ENDPOINT DID NOT EXIST, AND THAT IS WHY THE SCREEN SHOWED NOTHING.
+    `/clients/{id}/relationships` declared `roles` state, rendered
+    "Associated Entities (0)" from it and NEVER FETCHED IT — its `loadAll`
+    read only `cross_client_matches`. So a CA who linked a director saw the
+    row until they refreshed, and then it was gone. There was no API to fetch
+    them from: `entity_roles` has no client-scoped list route, and the row
+    carries only an `entity_id`, so even a direct read would have rendered a
+    UUID where a name belongs.
+
+    The entity is joined SERVER-SIDE, in one `.in_()` rather than one query
+    per role, so the name reaches the note and the screen from the same place.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+
+    if not db:
+        return api_response(True, _mock_roles(firm_id, client_id))
+
+    from services.related_party_service import RelatedPartyService
+    return api_response(True, RelatedPartyService(db).roles_for_client(firm_id, client_id))
+
+
+def _mock_roles(firm_id: str, client_id: str) -> list[dict]:
+    """The same shape the service builds, off the in-memory stores."""
+    by_id = {e["id"]: e for e in _MOCK_ENTITIES if e.get("firm_id") == firm_id}
+    out = []
+    for r in _MOCK_ENTITY_ROLES:
+        if r.get("firm_id") != firm_id or r.get("client_id") != client_id:
+            continue
+        e = by_id.get(r.get("entity_id")) or {}
+        out.append({
+            **r,
+            "entity_name": e.get("full_name"),
+            "entity_type": e.get("entity_type"),
+            "pan": e.get("pan"),
+            "email": e.get("email"),
+        })
+    out.sort(key=lambda r: ((r.get("role") or ""), (r.get("entity_name") or "")))
+    return out
+
+
 @router.get("/related-party-report")
 def related_party_report(
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    """The AS 18 related-party note, for review.
+
+    ⚠️ THIS ENDPOINT HAD NO CALLER ANYWHERE IN `apps/web` — built, mounted and
+    reachable by nobody, the `capital_wip` shape. What it computed could not
+    have been rendered either: it returned raw `entity_roles` rows carrying an
+    `entity_id` and no name, so the note would have listed UUIDs.
+
+    AND IT DROPPED REAL RELATED PARTIES IN SILENCE. Its test was a literal set
+    of six role names against a screen that offers eleven, so a **Karta of an
+    HUF**, a **Proprietor** and a **Beneficiary** never appeared. A note that
+    omits a related party is a WRONG disclosure, which is worse than none.
+
+    `domain/related_party/disclosure.py` is the authority now — three answers
+    per role rather than in-or-out, a shareholder decided on their holding
+    rather than their label, and every party's transactions matched on PAN
+    against the customer and vendor masters. `services/related_party_service`
+    fetches. This decides nothing either of them decides.
+
+    Prepare-only. Nothing is filed, signed or posted.
     """
-    Auto-generate related party disclosure summary for a client.
-    CGST Act Sec 2(76) — related party definition.
-    Companies Act Sec 188 — related party transactions requiring board approval.
-    AS 18 / Ind AS 24 — related party disclosures in financial statements.
-    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    """
+    assert_client_access(current_user, client_id)
     db = _db()
     firm_id = current_user["firm_id"]
-    assert_client_access(current_user, client_id)
+
+    from domain.related_party.disclosure import Party, build, standing_for
+    from services.related_party_service import as_payload
 
     if not db:
-        # Collect all entity roles for this client
-        client_roles = [r for r in _MOCK_ENTITY_ROLES if r.get("client_id") == client_id and r.get("firm_id") == firm_id]
-        entity_ids = [r["entity_id"] for r in client_roles]
+        parties = []
+        for r in _mock_roles(firm_id, client_id):
+            rule = standing_for(r.get("role") or "", r.get("ownership_percent"))
+            parties.append(Party(
+                entity_id=r.get("entity_id") or "",
+                name=r.get("entity_name") or "(unnamed entity)",
+                pan=r.get("pan"),
+                role=r.get("role") or "",
+                ownership_percent=r.get("ownership_percent"),
+                standing=rule.standing,
+                reason=rule.reason,
+                effective_from=r.get("effective_from"),
+                effective_to=r.get("effective_to"),
+            ))
+        entity_ids = {p.entity_id for p in parties}
+        return api_response(True, as_payload(build(
+            client_id=client_id,
+            parties=parties,
+            section_185_loans=[
+                l for l in _MOCK_LOANS
+                if l.get("firm_id") == firm_id and l.get("client_id") == client_id
+                and l.get("section_185_flagged")
+            ],
+            transfer_pricing_flags=[
+                l for l in _MOCK_LOANS
+                if l.get("firm_id") == firm_id and l.get("client_id") == client_id
+                and l.get("loan_type") == "inter_company"
+                and (l.get("principal_paise") or 0) >= TRANSFER_PRICING_THRESHOLD_PAISE
+            ],
+            entity_relationships=[
+                r for r in _MOCK_ENTITY_TO_ENTITY_RELS
+                if r.get("firm_id") == firm_id
+                and (r.get("from_entity_id") in entity_ids
+                     or r.get("to_entity_id") in entity_ids)
+            ],
+            extra_gaps=[
+                "Transactions are not matched in this environment, so no "
+                "figures are shown against any party."
+            ],
+        )))
 
-        # Get related party role types — CGST Act Sec 2(76)
-        related_party_roles = {"Director", "Shareholder", "Partner", "Trustee", "Guarantor", "related_party"}
-        related_parties = [r for r in client_roles if r.get("role") in related_party_roles]
-
-        # Entity-to-entity relationships involving these entities
-        e2e_rels = [
-            r for r in _MOCK_ENTITY_TO_ENTITY_RELS
-            if (r.get("from_entity_id") in entity_ids or r.get("to_entity_id") in entity_ids)
-            and r.get("firm_id") == firm_id
-        ]
-
-        # Section 185 loans for this client
-        sec185_loans = [
-            l for l in _MOCK_LOANS
-            if l.get("client_id") == client_id and l.get("section_185_flagged") and l.get("firm_id") == firm_id
-        ]
-
-        # Transfer pricing: inter-company loans > ₹1 crore (Sec 92 IT Act)
-        # TRANSFER_PRICING_THRESHOLD_PAISE = 1_00_00_000_00 paise
-        transfer_pricing_flags = [
-            l for l in _MOCK_LOANS
-            if l.get("client_id") == client_id
-            and l.get("loan_type") == "inter_company"
-            and l.get("principal_paise", 0) >= TRANSFER_PRICING_THRESHOLD_PAISE
-            and l.get("firm_id") == firm_id
-        ]
-
-        return api_response(True, {
-            "client_id":              client_id,
-            "related_parties":        related_parties,
-            "related_party_count":    len(related_parties),
-            "entity_to_entity_rels":  e2e_rels,
-            "section_185_loans":      sec185_loans,
-            "transfer_pricing_flags": transfer_pricing_flags,
-            "transfer_pricing_count": len(transfer_pricing_flags),
-            # AS 18 / Ind AS 24 — disclosures required if any related parties exist
-            "disclosure_required":    len(related_parties) > 0,
-        })
-
-    # DB path
-    client_roles = db.table("entity_roles").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
-    entity_ids = [r["entity_id"] for r in client_roles]
-
-    related_party_roles = {"Director", "Shareholder", "Partner", "Trustee", "Guarantor", "related_party"}
-    related_parties = [r for r in client_roles if r.get("role") in related_party_roles]
-
-    e2e_rels: list[dict] = []
-    for eid in entity_ids:
-        rows = db.table("entity_to_entity_relationships").select("*").eq("firm_id", firm_id).or_(
-            f"from_entity_id.eq.{eid},to_entity_id.eq.{eid}"
-        ).execute().data or []
-        e2e_rels.extend(rows)
-
-    sec185_loans = db.table(LOANS_TABLE).select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("section_185_flagged", True).execute().data or []
-
-    # Transfer pricing threshold: Sec 92 IT Act — international related party > ₹1 crore
-    tp_rows = db.table(LOANS_TABLE).select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("loan_type", "inter_company").gte("principal_paise", TRANSFER_PRICING_THRESHOLD_PAISE).execute().data or []
-
-    return api_response(True, {
-        "client_id":              client_id,
-        "related_parties":        related_parties,
-        "related_party_count":    len(related_parties),
-        "entity_to_entity_rels":  e2e_rels,
-        "section_185_loans":      sec185_loans,
-        "transfer_pricing_flags": tp_rows,
-        "transfer_pricing_count": len(tp_rows),
-        "disclosure_required":    len(related_parties) > 0,
-    })
+    from services.related_party_service import RelatedPartyService
+    return api_response(True, as_payload(
+        RelatedPartyService(db).disclosure(firm_id, client_id)
+    ))

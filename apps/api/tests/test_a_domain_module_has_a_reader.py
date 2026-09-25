@@ -75,6 +75,16 @@ NO_READER_YET: dict[str, str] = {
         "module uses 'Rs.' (no space, for a table cell). They are two "
         "answers to two questions; unifying them would change a document a "
         "client receives.",
+    "domain/demo/fixture.py":
+        "NOT A STATUTORY RULE, which is what this guard is for. It is the "
+        "fictional practice a demo is seeded from — eight clients and a year "
+        "of documents, as data — and its only reader is "
+        "`scripts/seed_demo_firm.py`, which is outside the production tree by "
+        "design: the seeder is a hand-run tool and importing it from a router "
+        "would put a writer that creates 500-odd documents one call away from "
+        "a live request. `tests/test_the_demo_practice_is_a_real_set_of_books"
+        ".py` is what holds it honest instead, and it asserts the fixture "
+        "holds no database handle and reaches no network at all.",
 }
 
 

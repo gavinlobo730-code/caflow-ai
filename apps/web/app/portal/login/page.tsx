@@ -71,7 +71,7 @@ export default function PortalLoginPage() {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="block text-sm font-semibold text-ps-ink">Password</label>
-              <Link href="/login/forgot-password?portal=1" className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
+              <Link href="/login/forgot-password?portal=1" className="text-xs text-brand-dark hover:text-brand font-medium transition-colors">
                 Forgot password?
               </Link>
             </div>
@@ -87,7 +87,7 @@ export default function PortalLoginPage() {
               <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
                 <span className="text-state-problem text-3xs font-bold leading-none">!</span>
               </div>
-              <p className="text-sm text-red-600 leading-snug">{error}</p>
+              <p className="text-sm text-state-problem leading-snug">{error}</p>
             </div>
           )}
 

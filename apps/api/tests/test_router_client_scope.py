@@ -946,6 +946,13 @@ FOLLOW: dict[str, str] = {
     # wrapper just to satisfy the sweep would be a check that means nothing.
     "/api/mca-workspace": "routers.mca_workspace",
     "/api/knowledge": "services.knowledge_service",
+    # capacity_risk_forecast is the one endpoint on this prefix that does not
+    # fetch: the service does, and `filter_by_client` narrows all three of its
+    # reads there. Narrowing again in the router would mean the router fetching
+    # — the opposite of where that belongs — so the sweep follows the call.
+    # Every other /api/workload endpoint still narrows in its own body and
+    # passes without this.
+    "/api/workload": "services.capacity_risk_service",
     "/api/clients/{client_id}/instructions": "services.knowledge_service",
     "/api/clients/{client_id}/knowledge": "services.knowledge_service",
     # update_purchase_payment_allocations is the one route on this prefix
@@ -981,6 +988,22 @@ EXEMPT: dict[str, str] = {
     "/api/accounting/schedule-iii/captions":
         "a statutory vocabulary, not data: no table, no client_id, and the same "
         "captions for every firm. The PATCH that stores one is guarded.",
+    # ── /api/reconciliation: the check vocabulary, which holds no data ──────
+    # What "Verify Books" checks, and what it deliberately does not. It reads
+    # no table, takes no client_id, and returns the same sixteen entries for
+    # every firm, because they are properties of
+    # `services/reconciliation_service._CHECKS` rather than of anybody's
+    # ledger. A client guard here would have to invent a client to check.
+    #
+    # The captions shape a third time, and the same history: the accounting tab
+    # held its own `CHECK_LABEL` map of SIX against those sixteen, so a CA
+    # reading a real finding on a bank reconciliation, an orphan money journal
+    # or the fixed-asset register got the raw snake_case identifier. The paths
+    # that touch a client's own books — POST /verify and the two run reads —
+    # are client-guarded where they belong.
+    "/api/reconciliation/checks":
+        "the engine's own check vocabulary, not data: no table, no client_id, "
+        "and the same list for every firm. POST /verify is guarded.",
     # ── /api/itr: the list of ITR forms, which is the Department's not ours ──
     # The seven forms the product can prepare, derived from `itr_json.ITRForm`
     # and paired with the committed Department schema backing each. It reads no

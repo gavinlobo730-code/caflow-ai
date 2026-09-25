@@ -1,5 +1,16 @@
 """
-Customer statement PDF (Phase 4.1) — a read-only account statement.
+Statement of account PDF — customer OR vendor, one builder.
+
+The vendor half was added on 25-09: `GET /api/vendors/{id}/statement` had
+been built, tested and reachable by NOBODY, while the customer twin had a
+whole Statements tab with a PDF and an email. The AP mirror of a live AR
+feature, which is a shape this repository has found before.
+
+PARAMETERISED RATHER THAN COPIED. The two statements differ in exactly four
+places — whose account it is, what the party is called, which totals are
+printed, and WHICH SIGN MEANS WHAT — so a second builder would be one
+formatting change away from two documents that look like two products.
+`StatementKind` holds those four and nothing else.
 
 Reuses the invoice PDF stack (reportlab, _load_firm, _paise_to_rupee_str). This
 is NOT a tax document and carries NO accounting entries — it renders the opening
@@ -10,6 +21,7 @@ from __future__ import annotations
 
 import io
 import logging
+from dataclasses import dataclass
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -26,13 +38,60 @@ from services.pdf_page_furniture import numbered
 logger = logging.getLogger("caflow.services")
 
 
-def _bal(paise: int) -> str:
-    """Signed balance as 'x,xxx.xx Dr|Cr' (Dr = customer owes)."""
-    side = "Dr" if paise >= 0 else "Cr"
+def _bal(paise: int, positive_side: str = "Dr") -> str:
+    """Signed balance as 'x,xxx.xx Dr|Cr'.
+
+    ⚠️ THE SENSE IS NOT THE SAME ON BOTH STATEMENTS AND IT IS NOT COSMETIC. On a
+    CUSTOMER statement the running balance is debit-positive: a positive figure
+    is money the customer owes, so it prints Dr. On a VENDOR statement
+    `vendor_statement_service.build_statement` runs it CREDIT-positive (a bill
+    increases it), so the same positive figure is money the CLIENT owes, and
+    printing Dr there would state the debt against the wrong party on a
+    document somebody reconciles from.
+    """
+    side = positive_side if paise >= 0 else ("Cr" if positive_side == "Dr" else "Dr")
     return f"{_paise_to_rupee_str(abs(paise))} {side}"
 
 
-def build_statement_pdf(statement: dict, account_holder: dict, customer: dict) -> bytes:
+@dataclass(frozen=True)
+class StatementKind:
+    """The four things that differ between a customer and a vendor statement."""
+
+    #: The key the statement dict files the counterparty under.
+    party_key: str
+    #: What the counterparty is called, on the subtitle and the meta row.
+    party_label: str
+    #: Which side a POSITIVE running balance is. See `_bal`.
+    positive_side: str
+    #: The three totals printed under the table, as (label, key) pairs. Their
+    #: keys differ because the two services name them for their own direction.
+    totals: tuple[tuple[str, str], ...]
+    #: The closing row's label — what is OWED, and by whom, in one word.
+    closing_label: str
+
+
+CUSTOMER = StatementKind(
+    party_key="customer",
+    party_label="Customer",
+    positive_side="Dr",
+    totals=(("Invoiced", "invoiced_paise"), ("Received", "received_paise"),
+            ("Credits", "credited_paise")),
+    closing_label="Closing Outstanding",
+)
+
+VENDOR = StatementKind(
+    party_key="vendor",
+    party_label="Vendor",
+    # Credit-positive: a bill increases what the client owes.
+    positive_side="Cr",
+    totals=(("Billed", "billed_paise"), ("Paid", "paid_paise"),
+            ("Debit notes", "debited_paise")),
+    closing_label="Closing Payable",
+)
+
+
+def build_statement_pdf(statement: dict, account_holder: dict, party: dict,
+                        kind: StatementKind = CUSTOMER) -> bytes:
     """A statement of account, headed by WHOSE ACCOUNT IT IS.
 
     The second argument used to be the CA FIRM, and the letterhead read the
@@ -53,7 +112,7 @@ def build_statement_pdf(statement: dict, account_holder: dict, customer: dict) -
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=18 * mm, bottomMargin=18 * mm,
                             leftMargin=16 * mm, rightMargin=16 * mm,
-                            title="Customer Statement")
+                            title=f"{kind.party_label} Statement")
     styles = getSampleStyleSheet()
     h = ParagraphStyle("h", parent=styles["Title"], fontSize=16, spaceAfter=2)
     sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=9, textColor=pdf_style.C_HINT)
@@ -72,12 +131,12 @@ def build_statement_pdf(statement: dict, account_holder: dict, customer: dict) -
                    or "Statement of Account")
     period = statement["period"]
     elems.append(Paragraph(holder_name, h))
-    elems.append(Paragraph("Customer Statement of Account", sub))
+    elems.append(Paragraph(f"{kind.party_label} Statement of Account", sub))
     elems.append(Spacer(1, 8))
 
-    cust = statement["customer"]
+    cust = statement[kind.party_key]
     meta = [
-        [Paragraph(f"<b>Customer:</b> {cust.get('name') or ''}", small),
+        [Paragraph(f"<b>{kind.party_label}:</b> {cust.get('name') or ''}", small),
          Paragraph(f"<b>Period:</b> {period['start_date']} to {period['end_date']}", small)],
         [Paragraph(f"<b>GSTIN:</b> {cust.get('gstin') or '—'}", small),
          Paragraph(f"<b>Email:</b> {cust.get('email') or '—'}", small)],
@@ -88,15 +147,15 @@ def build_statement_pdf(statement: dict, account_holder: dict, customer: dict) -
     elems.append(Spacer(1, 10))
 
     rows = [["Date", "Particulars", "Ref", "Debit", "Credit", "Balance"]]
-    rows.append(["", "Opening Balance", "", "", "", _bal(statement["opening_balance_paise"])])
+    rows.append(["", "Opening Balance", "", "", "", _bal(statement["opening_balance_paise"], kind.positive_side)])
     for t in statement["transactions"]:
         rows.append([
             t["date"], t["particulars"], t.get("reference") or "",
             _paise_to_rupee_str(t["debit_paise"]) if t["debit_paise"] else "",
             _paise_to_rupee_str(t["credit_paise"]) if t["credit_paise"] else "",
-            _bal(t["running_balance_paise"]),
+            _bal(t["running_balance_paise"], kind.positive_side),
         ])
-    rows.append(["", "Closing Outstanding", "", "", "", _bal(statement["closing_balance_paise"])])
+    rows.append(["", kind.closing_label, "", "", "", _bal(statement["closing_balance_paise"], kind.positive_side)])
 
     table = Table(rows, colWidths=[20 * mm, 70 * mm, 24 * mm, 22 * mm, 22 * mm, 20 * mm], repeatRows=1)
     # The opening-balance row sits directly under the header and the closing
@@ -114,10 +173,9 @@ def build_statement_pdf(statement: dict, account_holder: dict, customer: dict) -
     elems.append(Spacer(1, 8))
 
     tot = statement["totals"]
-    elems.append(Paragraph(
-        f"Invoiced: Rs.{_paise_to_rupee_str(tot['invoiced_paise'])} &nbsp;|&nbsp; "
-        f"Received: Rs.{_paise_to_rupee_str(tot['received_paise'])} &nbsp;|&nbsp; "
-        f"Credits: Rs.{_paise_to_rupee_str(tot['credited_paise'])}", sub))
+    elems.append(Paragraph(" &nbsp;|&nbsp; ".join(
+        f"{label}: Rs.{_paise_to_rupee_str(tot.get(key) or 0)}"
+        for label, key in kind.totals), sub))
     elems.append(Spacer(1, 6))
     elems.append(Paragraph("This is a statement of account, not a tax invoice. Amounts in INR.", sub))
 
@@ -153,4 +211,24 @@ def get_customer_statement_pdf(db, firm_id, client_id, customer_id, start, end) 
                               statement["customer"])
     name = (statement["customer"].get("name") or "customer").replace(" ", "-").lower()
     filename = f"statement-{name}-{start}-{end}.pdf"
+    return pdf, filename
+
+
+def get_vendor_statement_pdf(db, firm_id, client_id, vendor_id, start, end) -> tuple[bytes, str]:
+    """The supplier's account, as the CLIENT's books have it.
+
+    `load_account_holder` is the same call and for the same reason: the account
+    holder is the CLIENT, not the practice. A vendor statement is a
+    RECONCILIATION document rather than a demand — the supplier sends theirs,
+    the CA compares — so nothing here chases anybody, and there is deliberately
+    no email path: `customer_statement_service` carries `record_delivery`
+    because that side pursues money, and adding a delivery log for this one
+    would be a table and a migration rather than the unwiring this fixes.
+    """
+    from services.vendor_statement_service import vendor_statement_service
+    statement = vendor_statement_service.generate(db, firm_id, client_id, vendor_id, start, end)
+    pdf = build_statement_pdf(statement, load_account_holder(db, firm_id, client_id),
+                              statement["vendor"], VENDOR)
+    name = (statement["vendor"].get("name") or "vendor").replace(" ", "-").lower()
+    filename = f"vendor-statement-{name}-{start}-{end}.pdf"
     return pdf, filename

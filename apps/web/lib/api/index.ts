@@ -69,6 +69,86 @@ export interface ClientSummary {
  *  `href` is null where this tile has no destination AT THIS SCOPE (five
  *  modules have no firm-level screen — question G3), so the card must not
  *  render as a link. */
+/** ── Related parties — AS 18 ─────────────────────────────────────────────
+ *  The disclosure `domain/related_party/disclosure.py` decides. Typed rather
+ *  than `unknown`, because a note is read by an auditor and a field the
+ *  endpoint does not serve must not be reachable from a screen. */
+export interface RelatedPartyDealings {
+  sales_paise: number;
+  purchases_paise: number;
+  receivable_paise: number;
+  payable_paise: number;
+}
+
+export interface RelatedParty {
+  entity_id: string;
+  name: string;
+  pan: string | null;
+  role: string;
+  ownership_percent: number | null;
+  /** "included" | "excluded" | "undetermined" — three answers, and the third
+   *  is the point. See the domain module. */
+  standing: string;
+  reason: string;
+  effective_from: string | null;
+  effective_to: string | null;
+  /** Always present, NULL where the party carries no PAN and so could not be
+   *  matched at all. Null is unknown, never nil. */
+  dealings: RelatedPartyDealings | null;
+}
+
+export interface RelatedPartyDisclosure {
+  client_id: string;
+  parties: RelatedParty[];
+  included_count: number;
+  undetermined_count: number;
+  disclosure_required: boolean;
+  section_185_loans: Record<string, unknown>[];
+  transfer_pricing_flags: Record<string, unknown>[];
+  transfer_pricing_count: number;
+  entity_relationships: Record<string, unknown>[];
+  gaps: string[];
+  notes: string[];
+}
+
+export interface ClientEntityRole {
+  id: string;
+  entity_id: string | null;
+  client_id: string;
+  role: string;
+  ownership_percent: number | null;
+  effective_from: string | null;
+  effective_to: string | null;
+  notes: string | null;
+  entity_name: string | null;
+  entity_type: string | null;
+  pan: string | null;
+  email: string | null;
+}
+
+export interface RelationshipEntity {
+  id: string;
+  full_name: string;
+  entity_type: string;
+  pan: string | null;
+  email: string | null;
+}
+
+/** `GET /api/intelligence/workload-insights` — `compute_workload_insights`. */
+export interface WorkloadInsight {
+  /** "overload" | "idle" | "unassigned_backlog" */
+  type: string;
+  user_id?: string;
+  user_name?: string;
+  detail: string;
+}
+
+export interface WorkloadInsightsPayload {
+  insights: WorkloadInsight[];
+  open_tasks: number;
+  team_size: number;
+}
+
 export interface HubTile {
   id: string;
   label: string;
@@ -2671,6 +2751,12 @@ export const api = {
     revenueVsEffort: (period: string) =>
       request<ApiResp<RealizationPayload>>(
         `/api/analytics/revenue-vs-effort?period=${encodeURIComponent(period)}`),
+    /* 3c-3. The question `/profitability`'s own list cannot answer: if the
+       largest client leaves, what happens. Same two reads, narrowed the same
+       way — the other half of one fetch, so the two cannot disagree. */
+    concentration: (period: string) =>
+      request<ApiResp<ConcentrationPayload>>(
+        `/api/analytics/concentration?period=${encodeURIComponent(period)}`),
   },
 
   hub: {
@@ -2686,6 +2772,34 @@ export const api = {
     worklist: (tile: string) =>
       request<ApiResp<HubWorklistPayload>>(
         `/api/hub/worklist?tile=${encodeURIComponent(tile)}`),
+  },
+
+  relatedParties: {
+    /** A client's recorded entity roles, with the entity joined server-side.
+     *  There was no endpoint for this at all, which is why the screen showed
+     *  "Associated Entities (0)" on every client for ever. */
+    roles: (clientId: string) =>
+      request<ApiResp<ClientEntityRole[]>>(
+        `/api/relationships/roles?client_id=${encodeURIComponent(clientId)}`),
+    /** The AS 18 note. Prepare-only — nothing is filed, signed or posted. */
+    disclosure: (clientId: string) =>
+      request<ApiResp<RelatedPartyDisclosure>>(
+        `/api/relationships/related-party-report?client_id=${encodeURIComponent(clientId)}`),
+    /** The firm's entity register, for the picker. The role form used to ask a
+     *  CA to paste a UUID copied from another screen. */
+    entities: (search?: string) =>
+      request<ApiResp<RelationshipEntity[]>>(
+        `/api/relationships/entities?limit=200${search ? `&search=${encodeURIComponent(search)}` : ""}`),
+    addRole: (entityId: string, body: unknown) =>
+      request<ApiResp<ClientEntityRole>>(
+        `/api/relationships/entities/${encodeURIComponent(entityId)}/roles`,
+        { method: "POST", body: JSON.stringify(body) }),
+    removeRole: (roleId: string) =>
+      request<ApiResp<unknown>>(
+        `/api/relationships/roles/${encodeURIComponent(roleId)}`, { method: "DELETE" }),
+    detectMatches: () =>
+      request<ApiResp<unknown>>("/api/relationships/cross-client-matches/detect",
+        { method: "POST", body: JSON.stringify({}) }),
   },
 
   clients: {
@@ -4347,6 +4461,12 @@ export const api = {
     capacityList: () => request("/api/workload/capacity"),
     setCapacity: (body: { user_id: string; weekly_capacity_hours: number; max_concurrent_tasks: number }) =>
       request("/api/workload/capacity", { method: "PUT", body: JSON.stringify(body) }),
+    /* 3b-4. The FORWARD-looking half: `/api/workload` and
+       `/api/intelligence/workload-insights` both describe today, and neither
+       can say that the week of 8 December is four times an ordinary week. */
+    capacityRisk: (weeksAhead = 13) =>
+      request<ApiResp<CapacityRiskPayload>>(
+        `/api/workload/capacity-risk?weeks_ahead=${weeksAhead}`),
   },
   /* 3b-2. Its own prefix rather than an /api/accounting/reports entry: that
      one serves the AS-3 cash flow STATEMENT (what happened), this is a
@@ -4365,7 +4485,11 @@ export const api = {
       request<ApiResp<RelationshipHealthPayload>>("/api/intelligence/relationship-health"),
     recommendations: () =>
       request<ApiResp<RecommendationsPayload>>("/api/intelligence/recommendations"),
-    workloadInsights: () => request("/api/intelligence/workload-insights"),
+    /** The capacity engine's own judgements. Typed rather than `unknown`
+     *  because one of them — the unassigned backlog — is the only thing on it
+     *  that no other screen can say. */
+    workloadInsights: () =>
+      request<ApiResp<WorkloadInsightsPayload>>("/api/intelligence/workload-insights"),
     journalSuggestions: (client_id?: string) =>
       request(`/api/intelligence/journal-suggestions${client_id ? `?client_id=${client_id}` : ""}`),
     approveJournalSuggestion: (body: unknown) =>
@@ -4542,6 +4666,31 @@ export const api = {
     payInvoice: (invoiceId: string, clientId?: string) =>
       request(`/api/portal/self/invoices/${invoiceId}/pay`,
         { method: "POST", ...(clientId ? { headers: { "X-Portal-Client-Id": clientId } } : {}) }),
+    /* 2.4 — the three sections `_DASHBOARD_SECTIONS` advertised and nothing
+       served, so the dashboard filtered them out of its own tab row with a
+       browser-side set. Served now; the browser keeps no list. */
+    documents: (clientId?: string) =>
+      request<ApiResp<{ documents: PortalDocument[] }>>("/api/portal/self/documents",
+        clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    /* Answers a SIGNED URL rather than the bytes: a 60-second link the browser
+       follows directly, instead of the whole file through Singapore. */
+    documentDownload: (documentId: string, clientId?: string) =>
+      request<ApiResp<{ url: string; file_name: string | null }>>(
+        `/api/portal/self/documents/${documentId}/download`,
+        clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    documentRequests: (clientId?: string) =>
+      request<ApiResp<{ requests: PortalDocumentRequest[] }>>(
+        "/api/portal/self/document-requests",
+        clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    messages: (clientId?: string) =>
+      request<ApiResp<{ messages: PortalMessage[] }>>("/api/portal/self/messages",
+        clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    postMessage: (body: string, clientId?: string) =>
+      request<ApiResp<{ message: PortalMessage }>>("/api/portal/self/messages", {
+        method: "POST",
+        body: JSON.stringify({ body }),
+        ...(clientId ? { headers: { "X-Portal-Client-Id": clientId } } : {}),
+      }),
   },
   // Phase 4.6 — Online Payments (staff, accounting-gated). The gateway never does
   // accounting; receipts are created by the existing engine on a verified capture.
@@ -5011,6 +5160,8 @@ export const api = {
       request(`/api/reconciliation/findings/${finding_id}/resolve`, {
         method: "POST", body: JSON.stringify({ resolution_note }),
       }) as Promise<ApiResp<{ finding: ReconciliationFinding }>>,
+    checks: () =>
+      request(`/api/reconciliation/checks`) as Promise<ApiResp<ReconciliationCheckCatalogue>>,
   },
   // Firm Branding & Document Customization
   branding: {
@@ -5791,6 +5942,133 @@ export type ReconciliationRun = {
   findings_count: number;
   triggered_by?: string | null;
   error?: string | null;
+};
+
+/**
+ * One entry of the Verify Books check catalogue, served by
+ * `GET /api/reconciliation/checks`.
+ *
+ * SERVED, NOT SPELLED HERE. The accounting tab used to keep its own
+ * `CHECK_LABEL` map — six entries against the sixteen check names the engine
+ * emits — so a CA reading a real finding on a bank reconciliation, an orphan
+ * money journal or the fixed-asset register got the raw snake_case identifier.
+ * The Schedule III caption lesson: the module that owns the checks is the only
+ * place that can stay right about their names.
+ */
+/** One week of `GET /api/workload/capacity-risk`. */
+/** One client's place in the firm's fee book. `share_bps` is BASIS POINTS —
+ *  a proportion of money is money arithmetic, and these are read against an
+ *  independence threshold, where a float hides which way it rounded. */
+/** A document the firm has filed against this client. No `uploaded_by` (a
+ *  staff user) and no storage path — the client-safe projection. */
+export type PortalDocument = {
+  id: string;
+  file_name: string;
+  description: string | null;
+  file_size: number | null;
+  mime_type: string | null;
+  created_at: string | null;
+};
+
+/** What the firm has asked this client for. Read-only: fulfilling means
+ *  writing into the firm's own document store, which migration 005's storage
+ *  policies admit no portal principal to — the section's `note` says so. */
+export type PortalDocumentRequest = {
+  id: string;
+  title: string;
+  description: string | null;
+  is_urgent: boolean | null;
+  status: string | null;
+  fulfilled_at: string | null;
+  created_at: string | null;
+};
+
+export type PortalMessage = {
+  id: string;
+  /** 'ca' or 'client'. Stamped by the server on a post and never sent — a
+   *  caller-supplied value would let a client post as their accountant. */
+  sender_type: string;
+  sender_name: string | null;
+  body: string;
+  created_at: string | null;
+};
+
+export type ClientFeeShare = {
+  client_id: string;
+  client_name: string;
+  revenue_paise: number;
+  share_bps: number;
+  rank: number;
+  profit_paise: number;
+  /** Null, never 0, where there was no fee: a margin on nil revenue is
+   *  undefined, and 0 would rank an unbilled client below a loss-making one. */
+  margin_bps: number | null;
+};
+
+export type ConcentrationPayload = {
+  period: string;
+  shares: ClientFeeShare[];
+  total_revenue_paise: number;
+  clients_billed: number;
+  largest_share_bps: number;
+  top_3_share_bps: number;
+  top_5_share_bps: number;
+  median_revenue_paise: number | null;
+  median_margin_bps: number | null;
+  /** The ICAI fee-dependence threat, NAMED with no threshold stated — the
+   *  proportion could not be read from icai.org in this environment, and a
+   *  figure from memory on an independence question would give a firm a clean
+   *  bill of health nobody issued. */
+  icai_fee_dependence: string;
+  not_measured: string[];
+};
+
+export type CapacityWeek = {
+  week_start: string;
+  items_due: number;
+  tasks_due: number;
+  compliance_due: number;
+  /** Recorded effort only — `workflow_steps.estimated_hours`. Never imputed
+   *  across the tasks below, which carry none. */
+  estimated_hours: number;
+  items_without_an_estimate: number;
+  /** Against the practice's own median week. Null where too few weeks carried
+   *  work for a median to mean anything. */
+  vs_median_pct: number | null;
+  is_peak: boolean;
+};
+
+export type CapacityRiskPayload = {
+  weeks: CapacityWeek[];
+  /** Already late. Not in any week — it is on top of all of them. */
+  overdue_items: number;
+  undated_items: number;
+  obligations_folded_into_tasks: number;
+  median_week_items: number | null;
+  peak_weeks: string[];
+  /** Headcount and configured hours, BESIDE the load and never multiplied into
+   *  it: `max_concurrent_tasks` is a limit on what may be open, not a weekly
+   *  throughput. */
+  people: number;
+  configured_weekly_hours: number;
+  peak_multiple: number;
+  not_forecast: string[];
+};
+
+export type ReconciliationCheck = {
+  check_name: string;
+  label: string;
+  looks_for: string;
+  /** Three of the sixteen say "go and look" rather than asserting an
+   *  invariant. A CA shown sixteen equal chips reads the judgement calls as
+   *  defects and then discounts the invariants too. */
+  is_heuristic: boolean;
+};
+
+export type ReconciliationCheckCatalogue = {
+  checks: ReconciliationCheck[];
+  /** What the scan cannot see, so a clean run is not read as clean books. */
+  not_checked: string[];
 };
 
 export type ReconciliationRunResult = {

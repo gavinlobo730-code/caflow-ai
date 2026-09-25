@@ -9,6 +9,7 @@ import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewD
 import { RcmDocumentPanel } from "@/components/purchases/RcmDocumentPanel";
 import { LandedCostPanel } from "@/components/purchases/LandedCostPanel";
 import { BillsOfEntryTab } from "@/components/purchases/BillsOfEntryTab";
+import { VendorStatementsTab } from "@/components/purchases/VendorStatementsTab";
 import PurchaseCycleTab from "@/components/purchases/PurchaseCycleTab";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { api } from "@/lib/api";
@@ -154,7 +155,7 @@ async function getAuthToken(): Promise<string> {
   return session?.access_token ?? "";
 }
 
-type PurchaseTab = "purchase-cycle" | "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes" | "bills-of-entry";
+type PurchaseTab = "purchase-cycle" | "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes" | "bills-of-entry" | "statements";
 const TABS: { id: PurchaseTab; label: string }[] = [
   // PUR-25 — the cycle BEFORE the bill. First, because that is the order the
   // documents are raised in, and because the goods receipt is what CGST
@@ -170,6 +171,9 @@ const TABS: { id: PurchaseTab; label: string }[] = [
   // carries no reverse-charge liability, no CGST or SGST and no accounts
   // payable, and the duty is owed to customs rather than to the supplier.
   { id: "bills-of-entry", label: "Bills of Entry" },
+  // The AP mirror of the Sales screen's Statements tab. `GET /api/vendors/
+  // {id}/statement` had been built and reached by nobody.
+  { id: "statements", label: "Statements" },
 ];
 
 // Shared money formatter (paise → ₹). Preserves the sign so a negative amount
@@ -290,6 +294,7 @@ export default function PurchasesPage() {
         {tab === "credit-notes" && <PurchaseCreditNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} openDoc={openDoc} />}
         {tab === "purchase-cycle" && <PurchaseCycleTab clientId={clientId} />}
         {tab === "bills-of-entry" && <BillsOfEntryTab clientId={clientId} openDoc={openDoc} />}
+        {tab === "statements" && <VendorStatementsTab clientId={clientId} />}
       </div>
     </div>
   );

@@ -86,7 +86,7 @@ MARKETING = _REPO / "apps" / "marketing"
 #: settings PUT, both halves of the bonus disqualification and the employee
 #: import template. Under the concatenation all five looked wired up.
 BUDGET: dict[str, int] = {
-    "/api/workflows": 10, "/api/year-end": 10, "/api/banking": 9,
+    "/api/workflows": 10, "/api/year-end": 10, "/api/banking": 8,
     "/api/task-recurring": 9, "/api/tasks": 9, "/api/copilot": 8,
     # /api/income-tax 6 -> 5 on 18-09-2026: POST /book-to-tax-bridge got its
     # first caller (FA-06). The engine and the endpoint had been complete for
@@ -104,13 +104,19 @@ BUDGET: dict[str, int] = {
     # `api.aiInsights.generate` carried the method with no caller, so the
     # screen showed an empty list for every client for ever AND told the
     # CA the insights arrive "automatically", which nothing does.
-    "/api/memory": 7, "/api/relationships": 7, "/api/ai-insights": 4,
+    "/api/memory": 7, "/api/relationships": 5, "/api/ai-insights": 4,
     # /api/intelligence 6 -> 3 on 25-09-2026 (Phase 3a-5): all six had
     # `lib/api` methods and no screen caller. `/insights` reaches the
     # three client-facing reads — compliance risk, relationship health
     # and recommendations. `workload-insights` and the two
     # journal-suggestion doors are the three still owed a screen.
-    "/api/compliance-records": 6, "/api/intelligence": 3, "/api/payroll": 6,
+    # 3 -> 2 on 25-09-2026 (Track 1 §B): `/team/workload` reads
+    # `workload-insights` and renders the UNASSIGNED BACKLOG only — the
+    # `overload` and `idle` kinds restate what that page's own member
+    # grouping already says from the same tasks and capacities, and a
+    # second authority on who is overloaded is how two figures come to
+    # disagree. The two journal-suggestion doors remain unreached.
+    "/api/compliance-records": 6, "/api/intelligence": 2, "/api/payroll": 6,
     # /api/analytics 5 -> 3 on 25-09-2026 (Phase 3a-2): `profitability` and
     # `revenue-vs-effort` were built, in integer paise, assignment-scoped
     # and tested, with no screen at all — the plan's own "you already own
@@ -144,7 +150,7 @@ BUDGET: dict[str, int] = {
     "/api/assignments": 2, "/api/customers": 2, "/api/form-26as": 2,
     "/api/identity": 2, "/api/insights": 2, "/api/notifications": 2,
     "/api/onboarding": 2, "/api/public": 2, "/api/sales-cycle": 2,
-    "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 2,
+    "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 1,
     "/api/approvals": 1, "/api/customer-statements": 1,
     "/api/document-intelligence-v2": 1, "/api/documents": 1,
     "/api/knowledge": 1,
@@ -233,7 +239,7 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # BUDGET, plus the three the tree had already shed since the last measurement;
 # then the AP allocate mirror, and the gateway webhook moving out of the
 # counted population entirely.
-TOTAL_BUDGET = 226
+TOTAL_BUDGET = 221
 
 
 # ---------------------------------------------------------------------------

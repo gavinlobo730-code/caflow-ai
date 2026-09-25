@@ -2407,10 +2407,9 @@
       "reread_on": "2026-09-17"
     },
     "PAY-28": {
-      "status": "deferred_to_the_redesign",
-      "verified_on": "2026-09-12",
-      "why": "payroll being a link inside the Accounting rail, with its screens across three top-level areas, is a NAVIGATION complaint. The module-hub redesign (docs/plan/2026-09-12-compliance-and-craft.md, Track 4) is where it is answered; fixing it separately now would be work thrown away",
-      "reread_on": "2026-09-17"
+      "status": "closed",
+      "verified_on": "2026-09-25",
+      "why": "Both halves are done and the second was done somewhere the finding did not propose. NAVIGATION: 2.5 made Payroll the thirteenth top-level workspace, its six screens live in PayrollPanel and nowhere else, and Attendance moved out of Team — asserted by scripts/a-screen-has-one-home.test.ts, which exists because of this finding. SETUP: the finding asked for /payroll/setup over the statutory-values endpoints; the screen is app/settings/statutory-values (460 lines, reads GET /api/payroll/statutory-values, writes PUT and DELETE .../pt), linked from SettingsPanel and the Settings landing page. The different route is defensible rather than accidental: the firm's reading of a state's professional-tax notification applies to EVERY client's payroll, so it is a firm setting and not a payroll-module screen. Re-read on 25-09 because the finding was parked on 'the redesign', and the redesign is finished."
     }
   },
   "_the_157_reread": "On 16-09-2026 all 157 findings that stood at closed_by_commit — the weakest state in this file, a merged commit and an in-code comment but never an independent read — were re-read against main 171ef0e3 by ten read-only agents, one per module, each given the finding's own text and required to cite file:line for what it found NOW rather than what a commit message claimed. 132 verified closed, 23 partial, 2 still open. closed_by_commit is now EMPTY and should stay that way: a status only ever written by the commit that claimed it is the stale problem this file exists to end.",
