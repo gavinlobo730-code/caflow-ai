@@ -109,6 +109,53 @@ export interface HubWorklistRow {
  *  forty clients is "nothing outstanding", zero rows over zero clients is
  *  "you are assigned to no clients". Same three-state discipline the hub's own
  *  tiles take. */
+/** `GET /api/analytics/profitability`. Revenue less cost, in integer paise —
+ *  cost being `effort_minutes * hourly_rate_paise / 60` off the time-tracking
+ *  register. `firm_metrics` narrows with the caller's book on this endpoint
+ *  (deliberately: the totals are summed from the very per-client rows being
+ *  filtered, so leaving them firm-wide would let an Executive recover the
+ *  practice's position by subtracting their own clients). */
+export interface ProfitabilityPayload {
+  period: string;
+  firm_metrics: {
+    total_revenue_paise: number;
+    total_cost_paise: number;
+    profit_paise: number;
+    profit_margin_pct: number;
+    num_clients_billed: number;
+    avg_profit_per_client_paise: number;
+  };
+  by_client?: {
+    client_id: string;
+    client_name: string;
+    revenue_paise: number;
+    cost_paise: number;
+    profit_paise: number;
+    profit_margin_pct: number;
+    status: string;
+  }[];
+}
+
+/** `GET /api/analytics/revenue-vs-effort`. What was billed against what it
+ *  cost to deliver — `realization_rate` is revenue ÷ (billable minutes at the
+ *  recorded hourly rate), so 1.0 means the engagement recovered exactly what
+ *  the time on it was worth. */
+export interface RealizationPayload {
+  period: string;
+  total_revenue_paise: number;
+  total_billable_minutes: number;
+  avg_revenue_per_hour_paise: number;
+  overall_realization_rate: number;
+  by_client: {
+    client_id: string;
+    client_name: string;
+    revenue_paise: number;
+    effort_minutes: number;
+    revenue_per_hour_paise: number;
+    realization_rate: number;
+  }[];
+}
+
 export interface HubWorklistPayload {
   tile: string;
   label: string;
@@ -2523,6 +2570,22 @@ export const api = {
     remove: (id: string) => request<ApiResp<{ deleted: string }>>(
       `/api/tds/treaty-rates/${id}`, { method: "DELETE" }),
   },
+  /** Firm-level analytics. `rbac("analytics", "read")` on every one, and each
+   *  narrows its per-client rows to the caller's assigned book — so these are
+   *  safe to render for any role that holds the permission, and a screen that
+   *  gated them on Partner would throw that narrowing away. */
+  analytics: {
+    profitability: (period: string, opts?: { byClient?: boolean }) => {
+      const q = new URLSearchParams({ period });
+      if (opts?.byClient === false) q.set("include_by_client", "false");
+      return request<ApiResp<ProfitabilityPayload>>(
+        `/api/analytics/profitability?${q}`);
+    },
+    revenueVsEffort: (period: string) =>
+      request<ApiResp<RealizationPayload>>(
+        `/api/analytics/revenue-vs-effort?period=${encodeURIComponent(period)}`),
+  },
+
   hub: {
     /** Every tile, with its figure, in ONE request — fifteen browser fetches
      *  would be fifteen Singapore-to-Mumbai round trips for fifteen numbers.

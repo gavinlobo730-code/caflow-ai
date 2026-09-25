@@ -7,7 +7,7 @@ from repositories.invoice_repository import invoice_repo
 from repositories.engagement_repository import engagement_repo
 from repositories.user_repository import user_repo
 from repositories.client_repository import client_repo
-from core.ist_clock import ist_today
+from core.ist_clock import fy_quarters, ist_fy_label, ist_today
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -23,10 +23,31 @@ def _period_range(period: str) -> tuple[str, str, str]:
         start = today - timedelta(days=today.weekday())
         label = f"Week of {start.strftime('%d %b %Y')}"
     elif period == "quarter":
+        # ⚠️ THE BUCKET WAS ALREADY THE INDIAN ONE AND THE LABEL WAS THE
+        # CALENDAR ONE. `((month - 1) // 3) * 3 + 1` gives January, April, July
+        # or October — which happen to be exactly the four quarters of an
+        # Indian financial year, so no window ever moved. But the label was
+        # `f"Q{(q_start_month - 1) // 3 + 1} {today.year}"`, so January to
+        # March read as "Q1 2026" where a CA in this market reads Q1 as
+        # April-June and calls that window Q4 of FY 2025-26. Five endpoints
+        # carry this label — /team, /clients, /firm, /profitability and
+        # /revenue-vs-effort — and Phase 3a is about to put it on a screen.
+        #
+        # `core.ist_clock.fy_quarters` is the one authority for which months a
+        # quarter is, and the LABEL is taken from it rather than recomputed:
+        # the START stays exactly as it was, because this window is
+        # quarter-TO-DATE and `fy_quarters`' own docstring refuses that
+        # variant. So this changes a string and no figure.
         month = today.month
         q_start_month = ((month - 1) // 3) * 3 + 1
         start = today.replace(month=q_start_month, day=1)
-        label = f"Q{(q_start_month - 1) // 3 + 1} {today.year}"
+        fy = ist_fy_label(today)
+        iso = today.isoformat()
+        label = next(
+            (f"{q} {fy}" for q, q_start, q_end in fy_quarters(fy)
+             if q_start <= iso <= q_end),
+            f"{fy}",
+        )
     else:  # month
         start = today.replace(day=1)
         label = today.strftime("%B %Y")
@@ -582,17 +603,23 @@ def revenue_vs_effort(
         })
 
     # Build by_client list
+    #
+    # ⚠️ `row_client_id`, NOT `client_id`. This block and the one below used to
+    # bind the loop variable to the PARAMETER's name, and the filter at the
+    # foot of this function reads `if client_id:` — so by the time it ran, the
+    # name held the LAST client iterated rather than what the caller asked for.
+    # See that filter's own note; the two rebindings are the whole defect.
     by_client_dict: dict[str, dict] = {}
     for eng_id, revenue_data in revenue_by_engagement.items():
         engagement = engagement_map.get(eng_id, {})
-        client_id = engagement.get("client_id")
-        if not client_id:
+        row_client_id = engagement.get("client_id")
+        if not row_client_id:
             continue
 
-        if client_id not in by_client_dict:
-            by_client_dict[client_id] = {
-                "client_id": client_id,
-                "client_name": client_map.get(client_id, {}).get("client_name", "Unknown"),
+        if row_client_id not in by_client_dict:
+            by_client_dict[row_client_id] = {
+                "client_id": row_client_id,
+                "client_name": client_map.get(row_client_id, {}).get("client_name", "Unknown"),
                 "revenue_paise": 0,
                 "effort_minutes": 0,
                 "hourly_rate_paise": 0,
@@ -600,14 +627,14 @@ def revenue_vs_effort(
             }
 
         effort_data = effort_by_engagement.get(eng_id, {})
-        by_client_dict[client_id]["revenue_paise"] += revenue_data["revenue_paise"]
-        by_client_dict[client_id]["effort_minutes"] += effort_data.get("billable_minutes", 0)
-        by_client_dict[client_id]["hourly_rate_paise"] += effort_data.get("avg_hourly_rate_paise", 0)
-        by_client_dict[client_id]["effort_count"] += 1
+        by_client_dict[row_client_id]["revenue_paise"] += revenue_data["revenue_paise"]
+        by_client_dict[row_client_id]["effort_minutes"] += effort_data.get("billable_minutes", 0)
+        by_client_dict[row_client_id]["hourly_rate_paise"] += effort_data.get("avg_hourly_rate_paise", 0)
+        by_client_dict[row_client_id]["effort_count"] += 1
 
     # Calculate per-client metrics
     by_client_list = []
-    for client_id, client_data in by_client_dict.items():
+    for row_client_id, client_data in by_client_dict.items():
         revenue_paise = client_data["revenue_paise"]
         effort_minutes = client_data["effort_minutes"]
         avg_hourly_rate = client_data["hourly_rate_paise"] // client_data["effort_count"] if client_data["effort_count"] > 0 else 0
@@ -616,7 +643,7 @@ def revenue_vs_effort(
         realization_rate = calc_realization_rate(revenue_paise, effort_minutes, avg_hourly_rate)
 
         by_client_list.append({
-            "client_id": client_id,
+            "client_id": row_client_id,
             "client_name": client_data["client_name"],
             "revenue_paise": revenue_paise,
             "effort_minutes": effort_minutes,
@@ -624,7 +651,23 @@ def revenue_vs_effort(
             "realization_rate": realization_rate,
         })
 
-    # Filter by client_id or engagement_id if requested
+    # Filter by client_id or engagement_id if requested.
+    #
+    # ⚠️ THIS FILTER FIRED FOR EVERY CALLER AND KEPT ONE ARBITRARY CLIENT.
+    # Both loops above bound their row's client to `client_id`, the PARAMETER's
+    # own name, so on reaching this line the name held the last key of
+    # `by_client_dict` — truthy whenever any client had revenue. So
+    # `by_client_list` came back with exactly ONE row, chosen by dict iteration
+    # order, and `by_engagement_list` with that client's engagements, whether
+    # or not anybody asked for a client. The endpoint has never once returned
+    # the firm's realization.
+    #
+    # The comment that used to sit here said the parameter "is dead ... and
+    # never filters anything", which is the opposite of what it did and is why
+    # this survived: a reader checking the claim would have found the
+    # parameter unused in the filter's own line and stopped. The loops are
+    # renamed rather than the parameter, so `client_id` means the caller's
+    # value everywhere in this function.
     if client_id:
         by_client_list = [c for c in by_client_list if c["client_id"] == client_id]
         by_engagement_list = [e for e in by_engagement_list if engagement_map.get(e["engagement_id"], {}).get("client_id") == client_id]

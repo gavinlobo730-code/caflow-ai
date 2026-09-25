@@ -100,7 +100,12 @@ BUDGET: dict[str, int] = {
     "/api/billing": 7, "/api/engagements": 1, "/api/income-tax": 5,
     "/api/memory": 7, "/api/relationships": 7, "/api/ai-insights": 6,
     "/api/compliance-records": 6, "/api/intelligence": 6, "/api/payroll": 6,
-    "/api/analytics": 5, "/api/automation": 5, "/api/gst-portal": 5,
+    # /api/analytics 5 -> 3 on 25-09-2026 (Phase 3a-2): `profitability` and
+    # `revenue-vs-effort` were built, in integer paise, assignment-scoped
+    # and tested, with no screen at all — the plan's own "you already own
+    # more analysis than the product shows". `/practice/profitability`
+    # reaches both.
+    "/api/analytics": 3, "/api/automation": 5, "/api/gst-portal": 5,
     "/api/itr": 5, "/api/lifecycle": 5, "/api/portal": 5,
     # /api/risks 5 -> 3 on 24-09-2026: `app/risks/page.tsx` derived its
     # whole register in the browser from six PostgREST reads and called no
