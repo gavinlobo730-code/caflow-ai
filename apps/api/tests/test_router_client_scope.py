@@ -1625,13 +1625,23 @@ EXEMPT: dict[str, str] = {
         "same table, resolves the rate version in force on a given date.",
     "/api/firm-hsn-rate-history/{rate_history_id}":
         "same table, addressed by id.",
-    # assistant.py — a pure Groq passthrough.
-    "/api/assistant":
-        "a stateless Groq passthrough over a static SYSTEM_PROMPT — it loads "
-        "no client data at all. Its request model carried a client_id field "
-        "that nothing read; that dead field was REMOVED in this phase, because "
-        "this router has no mount-level client guard and a dead client_id is a "
-        "trap for whoever wires it up later.",
+    # ⚠️ assistant.py WAS EXEMPT HERE AND IS NOT ANY MORE (Phase 3a-7).
+    # The exemption read: "a stateless Groq passthrough over a static
+    # SYSTEM_PROMPT — it loads no client data at all. Its request model carried
+    # a client_id field that nothing read; that dead field was REMOVED in this
+    # phase, because this router has no mount-level client guard and a dead
+    # client_id is a trap for whoever wires it up later."
+    #
+    # Every clause of that has changed. The field is back, it is read, the
+    # router IS mount-guarded (`_CLIENT_GUARD` in main.py, whose
+    # `require_client_access` inspects a JSON POST body), and the handler calls
+    # `assert_client_access` itself. So the route is guarded rather than
+    # exempt, and it stays in the AUDITED map above with that guard named —
+    # which is what `test_no_exemption_covers_a_resource_that_does_carry_a_client`
+    # noticed the moment the handler first mentioned client_id. That test is
+    # the reason this exemption could not quietly outlive its reason.
+    # `tests/test_the_copilot_only_sees_a_client_you_may_see.py` pins both
+    # checks, each with its own negative control.
     # audit.py / scheduler_status.py / automation.py / onboarding.py —
     # firm-level operations, none of which name a client.
     "/api/audit":

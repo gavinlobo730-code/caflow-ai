@@ -23,6 +23,15 @@ const SUGGESTED_PROMPTS = [
 const HISTORY_KEY = "ps-ai-assistant-history-v1";
 const HISTORY_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
 
+/**
+ * ⚠️ THE CLIENT IS CHOSEN PER CONVERSATION AND IS NOT REMEMBERED.
+ * Unlike the chat history above, the chosen client is NOT persisted: a CA who
+ * comes back tomorrow to ask a general question should not silently be sending
+ * yesterday's client's figures to Groq. It resets to "no client" on every load,
+ * which is the direction that cannot leak by omission.
+ */
+const NO_CLIENT = "";
+
 function isValidMessage(m: unknown): m is Message {
   if (!m || typeof m !== "object") return false;
   const role = (m as Message).role;
@@ -72,8 +81,27 @@ function saveHistory(messages: Message[]) {
 export default function AIAssistantPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [clients, setClients] = useState<{ id: string; client_name?: string }[]>([]);
+  const [clientId, setClientId] = useState<string>(NO_CLIENT);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api.clients
+      .list()
+      .then((res) => {
+        if (!live) return;
+        // `arrayOrEmpty`'s job done inline — the picker degrades to "no client",
+        // which is the safe state, so a failed list must not blank the screen.
+        const rows = (res as { data?: { clients?: unknown } } | null)?.data?.clients;
+        setClients(Array.isArray(rows) ? (rows as { id: string; client_name?: string }[]) : []);
+      })
+      .catch(() => live && setClients([]));
+    return () => {
+      live = false;
+    };
+  }, []);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -102,6 +130,10 @@ export default function AIAssistantPage() {
       const json = await api.assistant.ask({
         question: text.trim(),
         conversation_history: messages.map((m) => ({ role: m.role, content: m.content })),
+        // Omitted entirely when no client is chosen, rather than sent empty:
+        // the server branches on truthiness and an empty string would take the
+        // scoped path with nothing to scope.
+        ...(clientId ? { client_id: clientId } : {}),
       }) as { success: boolean; data: { answer?: string; reply?: string } | null; error: string | null };
 
       if (!json.success || !json.data) {
@@ -153,9 +185,24 @@ export default function AIAssistantPage() {
           <Sparkles size={15} className="text-blue-500" />
           <h1 className="text-sm font-semibold text-ps-ink">AI Assistant</h1>
         </div>
-        <span className="text-xs text-ps-hint hidden sm:block">
+        <span className="text-xs text-ps-hint hidden lg:block">
           Ask about GST, Income Tax, TDS, and practice management
         </span>
+        {clients.length > 0 && (
+          <label className="flex items-center gap-1.5 text-xs text-ps-hint shrink-0">
+            <span className="hidden sm:inline">About</span>
+            <select
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              className="text-xs border border-ps-border rounded-lg px-2 py-1 bg-white text-ps-body outline-none focus:border-brand max-w-[14rem]"
+            >
+              <option value={NO_CLIENT}>No client — general question</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.client_name ?? c.id}</option>
+              ))}
+            </select>
+          </label>
+        )}
         {messages.length > 0 && (
           <button
             onClick={startNewChat}
@@ -167,6 +214,22 @@ export default function AIAssistantPage() {
           </button>
         )}
       </div>
+
+      {/* ⚠️ THE CA IS TOLD WHAT LEAVES THE BUILDING. The note above about chat
+          history says it never reaches our servers; choosing a client changes
+          what is sent to the MODEL, which is a different fact and one the
+          person doing it is entitled to know before they do it. It says WHAT
+          goes (the hub's outstanding-work figures) and, as importantly, what
+          does not. */}
+      {clientId && (
+        <div className="px-6 py-2 border-b border-ps-muted bg-ps-bg shrink-0">
+          <p className="text-3xs text-ps-hint">
+            Answers for this client are given the figures the hub computes —
+            how much is outstanding in each module. No document, no ledger
+            line, no employee record and no GSTIN or PAN is sent.
+          </p>
+        </div>
+      )}
 
       {/* ── Message area ────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
