@@ -116,7 +116,11 @@ BUDGET: dict[str, int] = {
     "/api/firm-hsn-rate-history": 4, "/api/gst": 4, "/api/health": 4,
     "/api/mca-workspace": 4, "/api/recurring-invoices": 4, "/api/xbrl": 4,
     "/api/ai-copilot": 3, "/api/invoices": 3, "/api/purchase-cycle": 3,
-    "/api/reminders": 3, "/api/tds": 3, "/api/accounting": 2,
+    # /api/accounting 2 -> 1 on 25-09-2026 (Phase 3a-3): the client
+    # Reports tab renders `GET /statement-analysis`, whose method
+    # `lib/api.accounting.statementAnalysis` had carried with no caller
+    # since the reporting engine was built.
+    "/api/reminders": 3, "/api/tds": 3, "/api/accounting": 1,
     "/api/assignments": 2, "/api/customers": 2, "/api/form-26as": 2,
     "/api/identity": 2, "/api/insights": 2, "/api/notifications": 2,
     "/api/onboarding": 2, "/api/public": 2, "/api/sales-cycle": 2,

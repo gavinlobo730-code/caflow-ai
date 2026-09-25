@@ -29,6 +29,7 @@ import { toast } from "@/components/ui/use-toast";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
+import { StatementAnalysisPanel } from "@/components/accounting/StatementAnalysisPanel";
 import { DrCr } from "@/components/ui/drcr";
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
@@ -3588,6 +3589,17 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
 
   return (
     <div className="space-y-5 max-w-ps-data mx-auto">
+      {/* Phase 3a-3. The engine behind this has existed since the reporting
+          engine did and `lib/api.accounting.statementAnalysis` carried the
+          method with no caller; it sits HERE because the client and the
+          financial year are already chosen, which is the whole reason a
+          firm-level version would need a picker nobody wants. */}
+      <StatementAnalysisPanel
+        clientId={clientId}
+        financialYear={financialYear}
+        basis={basis}
+      />
+
       {/* ── Financial statements ── */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
