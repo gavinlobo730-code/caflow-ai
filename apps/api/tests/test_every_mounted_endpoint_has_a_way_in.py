@@ -98,7 +98,13 @@ BUDGET: dict[str, int] = {
     # is `compliance:write` and belongs on a compliance screen rather than on
     # the fee-billing one.
     "/api/billing": 7, "/api/engagements": 1, "/api/income-tax": 5,
-    "/api/memory": 7, "/api/relationships": 7, "/api/ai-insights": 6,
+    # /api/ai-insights 6 -> 4 on 25-09-2026 (Phase 3a-6): the client AI
+    # Insights screen read `ai_insights` over PostgREST and nothing could
+    # write it — `generate_insights_for_client` is written and tested and
+    # `api.aiInsights.generate` carried the method with no caller, so the
+    # screen showed an empty list for every client for ever AND told the
+    # CA the insights arrive "automatically", which nothing does.
+    "/api/memory": 7, "/api/relationships": 7, "/api/ai-insights": 4,
     "/api/compliance-records": 6, "/api/intelligence": 6, "/api/payroll": 6,
     # /api/analytics 5 -> 3 on 25-09-2026 (Phase 3a-2): `profitability` and
     # `revenue-vs-effort` were built, in integer paise, assignment-scoped
