@@ -288,7 +288,18 @@ _MFA_GUARD = [Depends(mfa_guard)]
 app.include_router(clients.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance.router, dependencies=_CLIENT_GUARD)
 app.include_router(documents.router, dependencies=_CLIENT_GUARD)
-app.include_router(assistant.router)
+# ⚠️ GUARDED FROM 25-09-2026, AND THE ORDER MATTERED. `routers/assistant`
+# was a pure Groq passthrough that loaded no client data, and its own
+# model recorded why it must not grow a `client_id` before this line
+# changed: "this router carries NO mount-level client guard, so a dead
+# client_id is a trap — the moment someone wires it up to real client
+# context, there is nothing enforcing assignment scope. If the assistant
+# ever becomes client-aware, add _CLIENT_GUARD to its include_router
+# FIRST." Phase 3a-7 made it client-aware; this is that FIRST.
+# `require_client_access` inspects a JSON POST body as well as the path
+# and query (the Module 9.0 hardening), which is where this endpoint's
+# client_id lives.
+app.include_router(assistant.router, dependencies=_CLIENT_GUARD)
 app.include_router(insights.router, dependencies=_CLIENT_GUARD)
 app.include_router(tasks.router, dependencies=_CLIENT_GUARD)
 # The legacy Phase-2 workflows router was DELETED in R2.7 (audit F11): its

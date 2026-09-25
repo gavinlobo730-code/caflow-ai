@@ -1,4 +1,6 @@
+import logging
 import os
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,6 +10,7 @@ from core.permissions import rbac
 from domain.money_text import whole_rupees
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
+logger = logging.getLogger("caflow.assistant")
 
 # Ported from the frontend's dead /app/api/ai-assistant route (removed in #220),
 # which carried a far richer domain brief than this endpoint had. Two things had
@@ -229,14 +232,58 @@ class Message(BaseModel):
 class AssistantRequest(BaseModel):
     question: str
     conversation_history: Optional[List[Message]] = []
-    # NOTE: a client_id field used to sit here and was read by nothing — this
-    # endpoint is a pure Groq passthrough over a static SYSTEM_PROMPT and loads
-    # no client data. Removed because this router carries NO mount-level client
-    # guard (main.py includes it with no dependencies), so a dead client_id is
-    # a trap: the moment someone wires it up to real client context, there is
-    # nothing enforcing assignment scope. If the assistant ever becomes
-    # client-aware, add _CLIENT_GUARD to its include_router FIRST. Pydantic
-    # ignores unknown fields by default, so callers still sending it are fine.
+    #: The client the question is about, or None for a general one.
+    #:
+    #: ⚠️ THIS FIELD WAS DELETED ONCE AND THE CONDITION FOR BRINGING IT BACK
+    #: WAS WRITTEN DOWN. It used to sit here read by nothing, and was removed
+    #: because "this router carries NO mount-level client guard ... so a dead
+    #: client_id is a trap: the moment someone wires it up to real client
+    #: context, there is nothing enforcing assignment scope. If the assistant
+    #: ever becomes client-aware, add _CLIENT_GUARD to its include_router
+    #: FIRST." That was done first (main.py), and `require_client_access`
+    #: inspects a JSON POST body as well as the path and query, so this field
+    #: is covered by it — the internal-practice-client check AND
+    #: `assert_client_access`.
+    #:
+    #: The handler asks `assert_client_access` AGAIN anyway. That is not
+    #: belt-and-braces for its own sake: the mount guard lives in a
+    #: `dependencies=[...]` list in another file, which a refactor can drop
+    #: without touching anything in here, and this is the one endpoint in the
+    #: product that forwards a client's figures to a third party.
+    client_id: Optional[str] = None
+
+
+def _client_brief(client_id: str, current_user: dict) -> Optional[str]:
+    """What this client's own figures say, as a block for the prompt.
+
+    Built from `services/hub_service.hub`, which already answers every tile's
+    question for one client in one scoped request — so a tile added later
+    reaches the copilot the day it is added, and there is no second list of
+    things-to-fetch to drift. `domain/ai/client_brief` is the rule for what
+    goes in and, more importantly, what does not.
+
+    ⚠️ A FAILURE HERE ANSWERS None RATHER THAN RAISING. The copilot still works
+    without context, and refusing to answer a general tax question because one
+    count could not be read would be the worse outcome. What it must never do
+    is answer as though it HAD the figures, which is why the brief says in its
+    own words that it is a summary of outstanding work and nothing else.
+    """
+    from domain.ai.client_brief import build_client_brief
+    from repositories.client_repository import client_repo
+    from services.hub_service import hub
+
+    firm_id = current_user.get("firm_id")
+    try:
+        client = client_repo.find_by_id(client_id, firm_id=firm_id) or {}
+        payload = hub(current_user, client_id=client_id)
+    except Exception:                                            # noqa: BLE001
+        logger.exception("assistant: the client brief could not be built")
+        return None
+    return build_client_brief(
+        client.get("legal_name") or client.get("client_name"),
+        client.get("entity_type"),
+        payload,
+    )
 
 
 @router.post("")
@@ -246,6 +293,22 @@ async def assistant(request: AssistantRequest, current_user: dict = Depends(rbac
         raise HTTPException(status_code=500, detail="AI assistant is not configured on the server")
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    if request.client_id:
+        # The SECOND check. See the field's own note: the first is the mount
+        # guard in main.py, which lives in another file and can be dropped by a
+        # refactor that never opens this one.
+        from core.authz import assert_client_access
+        assert_client_access(current_user, request.client_id)
+        brief = _client_brief(request.client_id, current_user)
+        if brief:
+            # A SEPARATE system message rather than appended to SYSTEM_PROMPT:
+            # the standing brief is about the LAW and does not change, this is
+            # about one client and changes every request, and concatenating
+            # them would make the statutory prompt look per-request to the next
+            # reader — and to any cache keyed on it.
+            messages.append({"role": "system", "content": brief})
+
     messages += [{"role": m.role, "content": m.content} for m in (request.conversation_history or [])]
     messages.append({"role": "user", "content": request.question})
 
