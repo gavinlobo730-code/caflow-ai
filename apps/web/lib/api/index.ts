@@ -4666,6 +4666,31 @@ export const api = {
     payInvoice: (invoiceId: string, clientId?: string) =>
       request(`/api/portal/self/invoices/${invoiceId}/pay`,
         { method: "POST", ...(clientId ? { headers: { "X-Portal-Client-Id": clientId } } : {}) }),
+    /* 2.4 — the three sections `_DASHBOARD_SECTIONS` advertised and nothing
+       served, so the dashboard filtered them out of its own tab row with a
+       browser-side set. Served now; the browser keeps no list. */
+    documents: (clientId?: string) =>
+      request<ApiResp<{ documents: PortalDocument[] }>>("/api/portal/self/documents",
+        clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    /* Answers a SIGNED URL rather than the bytes: a 60-second link the browser
+       follows directly, instead of the whole file through Singapore. */
+    documentDownload: (documentId: string, clientId?: string) =>
+      request<ApiResp<{ url: string; file_name: string | null }>>(
+        `/api/portal/self/documents/${documentId}/download`,
+        clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    documentRequests: (clientId?: string) =>
+      request<ApiResp<{ requests: PortalDocumentRequest[] }>>(
+        "/api/portal/self/document-requests",
+        clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    messages: (clientId?: string) =>
+      request<ApiResp<{ messages: PortalMessage[] }>>("/api/portal/self/messages",
+        clientId ? { headers: { "X-Portal-Client-Id": clientId } } : undefined),
+    postMessage: (body: string, clientId?: string) =>
+      request<ApiResp<{ message: PortalMessage }>>("/api/portal/self/messages", {
+        method: "POST",
+        body: JSON.stringify({ body }),
+        ...(clientId ? { headers: { "X-Portal-Client-Id": clientId } } : {}),
+      }),
   },
   // Phase 4.6 — Online Payments (staff, accounting-gated). The gateway never does
   // accounting; receipts are created by the existing engine on a verified capture.
@@ -5934,6 +5959,40 @@ export type ReconciliationRun = {
 /** One client's place in the firm's fee book. `share_bps` is BASIS POINTS —
  *  a proportion of money is money arithmetic, and these are read against an
  *  independence threshold, where a float hides which way it rounded. */
+/** A document the firm has filed against this client. No `uploaded_by` (a
+ *  staff user) and no storage path — the client-safe projection. */
+export type PortalDocument = {
+  id: string;
+  file_name: string;
+  description: string | null;
+  file_size: number | null;
+  mime_type: string | null;
+  created_at: string | null;
+};
+
+/** What the firm has asked this client for. Read-only: fulfilling means
+ *  writing into the firm's own document store, which migration 005's storage
+ *  policies admit no portal principal to — the section's `note` says so. */
+export type PortalDocumentRequest = {
+  id: string;
+  title: string;
+  description: string | null;
+  is_urgent: boolean | null;
+  status: string | null;
+  fulfilled_at: string | null;
+  created_at: string | null;
+};
+
+export type PortalMessage = {
+  id: string;
+  /** 'ca' or 'client'. Stamped by the server on a post and never sent — a
+   *  caller-supplied value would let a client post as their accountant. */
+  sender_type: string;
+  sender_name: string | null;
+  body: string;
+  created_at: string | null;
+};
+
 export type ClientFeeShare = {
   client_id: string;
   client_name: string;

@@ -20,6 +20,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.portal_auth import get_current_portal_client
@@ -146,3 +147,104 @@ def portal_compliance(portal: dict = Depends(get_current_portal_client)):
     assignees, risk, or escalation)."""
     rows = portal_data_service.compliance(portal["firm_id"], portal["client_id"])
     return api_response(True, {"compliance": rows})
+
+
+# ── Documents, requests and messages ──────────────────────────────────────────
+#
+# `portal_self._DASHBOARD_SECTIONS` has advertised these three as
+# `available: True` since it was written and NOTHING served them; the dashboard
+# filtered all three out of its own tab row with a browser-side
+# `DATA_SECTIONS` set, so the API told a client they existed and the screen
+# quietly disagreed. The `capital_wip` shape on the one surface the outside
+# world sees, and the worse half is that the API was the one making the claim.
+#
+# Served here rather than read over PostgREST although migration 109's policies
+# allow it — `portal_data_service`'s own header records why, and the short
+# version is that the DOWNLOAD cannot work from the browser at all: migration
+# 005's storage policies gate the bucket on `get_my_firm_id()`, which reads the
+# staff `users` table a portal contact has no row in.
+
+class PortalMessageBody(BaseModel):
+    body: str = Field(..., min_length=1, max_length=4000)
+
+
+@router.get("/documents")
+def portal_documents(portal: dict = Depends(get_current_portal_client)):
+    """Documents the firm has filed against THIS client."""
+    rows = portal_data_service.list_documents(portal["firm_id"], portal["client_id"])
+    return api_response(True, {"documents": rows})
+
+
+@router.get("/documents/{document_id}/download")
+def portal_document_download(document_id: str,
+                             portal: dict = Depends(get_current_portal_client)):
+    """Download one document. Ownership-gated FIRST, then a short-lived signed
+    URL minted with the service role — the same shape `/invoices/{id}/pdf`
+    takes for this principal, and for the same reason.
+
+    404 rather than 403 on a document belonging to another client: never reveal
+    that it exists.
+
+    A REDIRECT TO A SIGNED URL, NOT THE BYTES. Streaming the file through
+    Render in Singapore would put a Mumbai round trip and the whole file in
+    front of every download; a 60-second signed URL lets the browser fetch it
+    from storage directly. Sixty seconds because the link is followed
+    immediately and a longer one is a bearer token for the file — the same
+    argument `domain/attachments` records for never STORING a signed url."""
+    doc = portal_data_service.document_in_scope(
+        portal["firm_id"], portal["client_id"], document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    if _USE_MOCK:
+        raise HTTPException(status_code=501, detail="Download not available in mock mode")
+
+    from core.supabase_client import get_supabase
+    try:
+        signed = get_supabase().storage.from_("Documents").create_signed_url(
+            doc["file_path"], 60)
+    except Exception as e:
+        _logger.error("portal_document_download %s: %s", document_id, e)
+        raise HTTPException(status_code=500, detail="Could not prepare the download.")
+    url = (signed or {}).get("signedURL") or (signed or {}).get("signedUrl")
+    if not url:
+        raise HTTPException(status_code=500, detail="Could not prepare the download.")
+    return api_response(True, {"url": url, "file_name": doc.get("file_name")})
+
+
+@router.get("/document-requests")
+def portal_document_requests(portal: dict = Depends(get_current_portal_client)):
+    """What the firm has asked this client for. Open first, urgent before the
+    rest, oldest before newest — the reverse of every other list here, because
+    the request that has been waiting longest is the one holding work up.
+
+    READ-ONLY, AND THE UPLOAD IS DELIBERATELY NOT BUILT. Fulfilling a request
+    means writing a file into the firm's own document store, and migration
+    005's storage policies admit no portal principal; granting one is a
+    decision about quota, scanning and what lands in a CA's audit file rather
+    than a missing endpoint. Named on the screen so a client is told where to
+    send the papers instead of being shown a button that fails."""
+    rows = portal_data_service.list_document_requests(
+        portal["firm_id"], portal["client_id"])
+    return api_response(True, {"requests": rows})
+
+
+@router.get("/messages")
+def portal_messages(portal: dict = Depends(get_current_portal_client)):
+    """The thread between the firm and this client, oldest first."""
+    rows = portal_data_service.list_messages(portal["firm_id"], portal["client_id"])
+    return api_response(True, {"messages": rows})
+
+
+@router.post("/messages")
+def portal_post_message(body: PortalMessageBody,
+                        portal: dict = Depends(get_current_portal_client)):
+    """Send a message to the firm.
+
+    `sender_type` is stamped 'client' in the service and is never taken from
+    the request — migration 048 CHECKs it to ('ca', 'client'), so a
+    caller-supplied value would let a client post a message that reads as
+    their accountant's."""
+    row = portal_data_service.post_message(
+        portal["firm_id"], portal["client_id"],
+        body.body.strip(), portal.get("name"))
+    return api_response(True, {"message": row})

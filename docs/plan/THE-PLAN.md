@@ -196,10 +196,11 @@ sees the old one.
 
 | ID | item | DONE WHEN |
 |---|---|---|
-| 2.1 | Client portal on the design system | uses the shared primitives |
-| 2.2 | Employee portal on the design system | same |
+| 2.1 | Client portal on the design system | **done 25 Sep** ✅ `PortalShell` + the shared primitives; the local `Panel`/`Table`/`Empty` were those written twice in raw grey and are gone |
+| 2.2 | Employee portal on the design system | **done 25 Sep** ✅ Same shell — and it had **no sign-out at all**, so an employee reading a payslip on a shared phone could not end the session |
 | 2.3 | `apps/marketing` brand parity | **done 24 Sep** ✅ |
-| 2.4 | The portal dashboard drops 3 of 7 sections the API serves | all render, or are excluded and say why |
+| 2.4 | The portal dashboard drops 3 of 7 sections the API serves | **done 25 Sep** ✅ All seven render. The three were BUILDABLE — migration 109's RLS already grants the contact the tables — so Documents, Document Requests and Messages are real now, served (not read over PostgREST, because the DOWNLOAD cannot work there: migration 005's storage policies key on `get_my_firm_id()`, which a portal contact has no row for). `_DASHBOARD_SECTIONS` grew a `note` per section and the browser keeps no list |
+| — | Guard | `scripts/the-portal-wears-the-product.test.ts`: every page wears the shell, no raw palette colour, no browser-side section vocabulary |
 
 ---
 

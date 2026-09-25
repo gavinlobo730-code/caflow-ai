@@ -165,7 +165,7 @@ export default function PortalActivatePage() {
 
         {stage === "verifying" && (
           <div className="text-center py-8">
-            <span className="inline-block w-6 h-6 border-2 border-ps-border border-t-blue-600 rounded-full animate-spin" />
+            <span className="inline-block w-6 h-6 border-2 border-ps-border border-t-brand-dark rounded-full animate-spin" />
             <p className="text-sm text-ps-label mt-4">Verifying your invite…</p>
           </div>
         )}
@@ -181,7 +181,7 @@ export default function PortalActivatePage() {
             </p>
             <Link
               href="/portal/login"
-              className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium mt-6"
+              className="inline-flex items-center gap-1.5 text-sm text-brand-dark hover:text-brand font-medium mt-6"
             >
               Already have a password? Sign in <ArrowRight size={14} />
             </Link>
@@ -227,7 +227,7 @@ export default function PortalActivatePage() {
                   <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-state-problem text-3xs font-bold leading-none">!</span>
                   </div>
-                  <p className="text-sm text-red-600 leading-snug">{error}</p>
+                  <p className="text-sm text-state-problem leading-snug">{error}</p>
                 </div>
               )}
 
@@ -268,7 +268,7 @@ export default function PortalActivatePage() {
                   <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-state-problem text-3xs font-bold leading-none">!</span>
                   </div>
-                  <p className="text-sm text-red-600 leading-snug">{reauthError}</p>
+                  <p className="text-sm text-state-problem leading-snug">{reauthError}</p>
                 </div>
               )}
               <button

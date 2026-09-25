@@ -171,7 +171,7 @@ export default function EmployeeActivatePage() {
     return shell(
       <div>
         <div className="flex items-start gap-2 mb-3">
-          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-state-problem shrink-0 mt-0.5" />
           <div>
             <h1 className="text-base font-semibold text-ps-ink">
               This invitation cannot be used
@@ -186,7 +186,7 @@ export default function EmployeeActivatePage() {
             </p>
           </div>
         </div>
-        <Link href="/portal/login" className="text-sm text-blue-600 hover:underline">
+        <Link href="/portal/login" className="text-sm text-brand-dark hover:underline">
           Go to sign in
         </Link>
       </div>
@@ -197,7 +197,7 @@ export default function EmployeeActivatePage() {
     return shell(
       <div>
         <div className="flex items-start gap-2 mb-4">
-          <ShieldCheck className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+          <ShieldCheck className="w-5 h-5 text-state-ready shrink-0 mt-0.5" />
           <div>
             <h1 className="text-base font-semibold text-ps-ink">You&apos;re all set</h1>
             <p className="text-sm text-ps-label mt-1">
@@ -229,7 +229,7 @@ export default function EmployeeActivatePage() {
           className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm mb-3"
           autoComplete="one-time-code"
         />
-        {reauthError && <p className="text-sm text-red-600 mb-3">{reauthError}</p>}
+        {reauthError && <p className="text-sm text-state-problem mb-3">{reauthError}</p>}
         <button
           type="submit"
           disabled={saving || !reauthOtp.trim()}
@@ -277,7 +277,7 @@ export default function EmployeeActivatePage() {
         autoComplete="new-password"
       />
 
-      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+      {error && <p className="text-sm text-state-problem mb-3">{error}</p>}
 
       <button
         type="submit"

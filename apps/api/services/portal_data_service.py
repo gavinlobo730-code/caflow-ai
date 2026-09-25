@@ -22,6 +22,7 @@ from fastapi import HTTPException
 
 from services import collections_service
 from core.ist_clock import ist_today
+from core.db_paging import fetch_all
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.portal_data")
@@ -189,3 +190,109 @@ def compliance(firm_id: str, client_id: str, db=None) -> list[dict]:
     from domain.compliance_record_service import compliance_record_service
     recs = compliance_record_service.list_records(firm_id=firm_id, client_id=client_id)
     return [safe_compliance(r) for r in recs]
+
+
+# ── Documents, requests and messages — the three sections the shell advertised
+#    and nothing served (2.4) ──────────────────────────────────────────────────
+#
+# `portal_self._DASHBOARD_SECTIONS` has listed documents, requests and messages
+# with `available: True` since it was written, and its comment calls them
+# "RLS-direct surfaces" — meaning the client reads them straight over PostgREST
+# with their own JWT, which migration 109's policies do allow. But no portal
+# page ever did, so the API told a client three sections existed and the
+# dashboard silently filtered all three out of its own tab row. The
+# `capital_wip` shape on the one surface the outside world sees.
+#
+# THEY ARE SERVED HERE RATHER THAN READ FROM THE BROWSER, and the reason is
+# specific: the DOWNLOAD cannot work over PostgREST. Migration 005's storage
+# policies gate the `Documents` bucket on `get_my_firm_id()`, which reads the
+# STAFF `users` table — a portal contact has no row there, so the function
+# answers NULL and every `createSignedUrl` is refused. A browser-side documents
+# list would render rows and then fail every download.
+#
+# The alternative was a storage policy mirroring migration 109's table ones.
+# Rejected: it keys authorisation on the OBJECT PATH (`firm/client/uuid-name`),
+# so the grant is only as narrow as that convention stays, and a future
+# uploader writing a different shape widens it silently. The ownership gate
+# here is the same one `/invoices/{id}/pdf` already uses for this principal,
+# in Python, where the client context is resolved rather than parsed.
+
+#: Client-safe projections. A portal contact sees what a document IS, never who
+#: uploaded it (`uploaded_by` is a staff user) nor where it sits in storage.
+_DOCUMENT_COLUMNS = "id, file_name, description, file_size, mime_type, created_at"
+_REQUEST_COLUMNS = "id, title, description, is_urgent, status, fulfilled_at, created_at"
+_MESSAGE_COLUMNS = "id, sender_type, sender_name, body, created_at"
+
+
+def list_documents(firm_id: str, client_id: str, db=None) -> list[dict]:
+    """Documents the firm has filed against this client."""
+    db = db if db is not None else _db()
+    rows = fetch_all(
+        lambda: db.table("client_documents").select(_DOCUMENT_COLUMNS)
+        .eq("firm_id", firm_id).eq("client_id", client_id),
+        label="portal_data_service.documents")
+    rows.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    return rows
+
+
+def document_in_scope(firm_id: str, client_id: str, document_id: str, db=None) -> Optional[dict]:
+    """The row, with its storage path, IF it belongs to this portal client.
+
+    Returns None rather than raising so the caller answers 404 — never reveal
+    that a document exists under another client, which is the same posture
+    `invoice_in_scope` takes."""
+    db = db if db is not None else _db()
+    rows = (db.table("client_documents").select("id, file_name, file_path, mime_type")
+            .eq("id", document_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .limit(1).execute().data) or []
+    return rows[0] if rows else None
+
+
+def list_document_requests(firm_id: str, client_id: str, db=None) -> list[dict]:
+    """What the firm has asked this client for, open ones first.
+
+    Sorted open-then-fulfilled rather than by date alone: the whole point of
+    the panel for the client is what they still owe their accountant, and a
+    month of fulfilled requests above it buries that."""
+    db = db if db is not None else _db()
+    rows = fetch_all(
+        lambda: db.table("document_requests").select(_REQUEST_COLUMNS)
+        .eq("firm_id", firm_id).eq("client_id", client_id),
+        label="portal_data_service.document_requests")
+    rows.sort(key=lambda r: (
+        (r.get("status") or "") == "fulfilled",
+        # Urgent first WITHIN the open ones — `is_urgent` is the CA saying this
+        # is what is holding the work up.
+        not bool(r.get("is_urgent")),
+        # Oldest first: the request that has been waiting longest is the one to
+        # answer, which is the reverse of every other list in this product.
+        str(r.get("created_at") or ""),
+    ))
+    return rows
+
+
+def list_messages(firm_id: str, client_id: str, db=None) -> list[dict]:
+    """The thread between the firm and this client, oldest first — a
+    conversation reads downwards."""
+    db = db if db is not None else _db()
+    rows = fetch_all(
+        lambda: db.table("portal_messages").select(_MESSAGE_COLUMNS)
+        .eq("firm_id", firm_id).eq("client_id", client_id),
+        label="portal_data_service.messages")
+    rows.sort(key=lambda r: str(r.get("created_at") or ""))
+    return rows
+
+
+def post_message(firm_id: str, client_id: str, body: str, sender_name: Optional[str],
+                 db=None) -> dict:
+    """A message FROM the client. `sender_type` is stamped 'client' here and is
+    never taken from the request — migration 048 CHECKs it to ('ca', 'client'),
+    and a caller-supplied value would let a client post as their accountant."""
+    db = db if db is not None else _db()
+    row = {
+        "firm_id": firm_id, "client_id": client_id,
+        "sender_type": "client", "sender_name": sender_name,
+        "body": body,
+    }
+    out = db.table("portal_messages").insert(row).execute().data or []
+    return out[0] if out else row
