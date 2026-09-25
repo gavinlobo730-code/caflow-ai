@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle, TrendingDown, Activity, Users,
-  Loader2, RefreshCw, Pencil, X,
+  Loader2, RefreshCw, Pencil, X, UserPlus,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,9 @@ import { Button } from "@/components/ui/button";
 import { getTeamWorkload } from "@/lib/data/analytics";
 import type { TeamWorkload, WorkloadMember } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
+import Link from "next/link";
+import { arrayOrEmpty } from "@/lib/api/shape";
+import type { WorkloadInsight } from "@/lib/api";
 
 function UtilisationBar({ pct }: { pct: number }) {
   const clamped = Math.min(100, Math.max(0, pct));
@@ -187,6 +190,17 @@ export default function WorkloadPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingMember, setEditingMember] = useState<WorkloadMember | null>(null);
+  // ⚠️ ONLY THE UNASSIGNED BACKLOG IS RENDERED, AND THAT IS DELIBERATE.
+  // `GET /api/intelligence/workload-insights` had no caller anywhere, and
+  // `compute_workload_insights` emits three kinds: `overload`, `idle` and
+  // `unassigned_backlog`. The first two restate what the member grouping
+  // below already says from the same underlying tasks and capacities, and
+  // rendering both would make the page a second authority on who is
+  // overloaded — the two would disagree the first time either test changed.
+  // The THIRD is the one no screen in this product can state: an open task
+  // with no assignee belongs to nobody, so it appears on no member's card and
+  // in no utilisation figure, and it is exactly the work that goes missing.
+  const [unassigned, setUnassigned] = useState<WorkloadInsight | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -202,6 +216,22 @@ export default function WorkloadPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Fetched apart from the workload itself: an insights endpoint that is slow,
+  // refused or down must not cost the page its member cards, which are the
+  // thing it exists for.
+  useEffect(() => {
+    let live = true;
+    api.intelligence.workloadInsights()
+      .then((res) => {
+        if (!live || !res?.success) return;
+        const found = arrayOrEmpty<WorkloadInsight>(res.data?.insights)
+          .find((i) => i.type === "unassigned_backlog");
+        setUnassigned(found ?? null);
+      })
+      .catch(() => { /* the strip simply does not appear */ });
+    return () => { live = false; };
+  }, []);
 
   const overloaded = workload?.members?.filter(m => m.is_overloaded) ?? [];
   const underutilised = workload?.members?.filter(m => m.is_underutilised) ?? [];
@@ -220,6 +250,19 @@ export default function WorkloadPage() {
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
+
+      {unassigned && (
+        <Link
+          href="/team/work-allocation"
+          className="flex items-center justify-between gap-3 rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3 hover:border-state-attention transition-colors"
+        >
+          <span className="flex items-center gap-2 text-sm text-state-attention">
+            <UserPlus size={14} className="shrink-0" />
+            {unassigned.detail}
+          </span>
+          <span className="text-xs font-medium text-state-attention shrink-0">Allocate →</span>
+        </Link>
+      )}
 
       {loading && !workload ? (
         <div className="flex items-center justify-center py-20 text-ps-hint">

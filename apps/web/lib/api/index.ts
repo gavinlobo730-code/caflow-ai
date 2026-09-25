@@ -134,6 +134,21 @@ export interface RelationshipEntity {
   email: string | null;
 }
 
+/** `GET /api/intelligence/workload-insights` — `compute_workload_insights`. */
+export interface WorkloadInsight {
+  /** "overload" | "idle" | "unassigned_backlog" */
+  type: string;
+  user_id?: string;
+  user_name?: string;
+  detail: string;
+}
+
+export interface WorkloadInsightsPayload {
+  insights: WorkloadInsight[];
+  open_tasks: number;
+  team_size: number;
+}
+
 export interface HubTile {
   id: string;
   label: string;
@@ -4458,7 +4473,11 @@ export const api = {
       request<ApiResp<RelationshipHealthPayload>>("/api/intelligence/relationship-health"),
     recommendations: () =>
       request<ApiResp<RecommendationsPayload>>("/api/intelligence/recommendations"),
-    workloadInsights: () => request("/api/intelligence/workload-insights"),
+    /** The capacity engine's own judgements. Typed rather than `unknown`
+     *  because one of them — the unassigned backlog — is the only thing on it
+     *  that no other screen can say. */
+    workloadInsights: () =>
+      request<ApiResp<WorkloadInsightsPayload>>("/api/intelligence/workload-insights"),
     journalSuggestions: (client_id?: string) =>
       request(`/api/intelligence/journal-suggestions${client_id ? `?client_id=${client_id}` : ""}`),
     approveJournalSuggestion: (body: unknown) =>

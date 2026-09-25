@@ -110,7 +110,13 @@ BUDGET: dict[str, int] = {
     # three client-facing reads — compliance risk, relationship health
     # and recommendations. `workload-insights` and the two
     # journal-suggestion doors are the three still owed a screen.
-    "/api/compliance-records": 6, "/api/intelligence": 3, "/api/payroll": 6,
+    # 3 -> 2 on 25-09-2026 (Track 1 §B): `/team/workload` reads
+    # `workload-insights` and renders the UNASSIGNED BACKLOG only — the
+    # `overload` and `idle` kinds restate what that page's own member
+    # grouping already says from the same tasks and capacities, and a
+    # second authority on who is overloaded is how two figures come to
+    # disagree. The two journal-suggestion doors remain unreached.
+    "/api/compliance-records": 6, "/api/intelligence": 2, "/api/payroll": 6,
     # /api/analytics 5 -> 3 on 25-09-2026 (Phase 3a-2): `profitability` and
     # `revenue-vs-effort` were built, in integer paise, assignment-scoped
     # and tested, with no screen at all — the plan's own "you already own
@@ -233,7 +239,7 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # BUDGET, plus the three the tree had already shed since the last measurement;
 # then the AP allocate mirror, and the gateway webhook moving out of the
 # counted population entirely.
-TOTAL_BUDGET = 222
+TOTAL_BUDGET = 221
 
 
 # ---------------------------------------------------------------------------
