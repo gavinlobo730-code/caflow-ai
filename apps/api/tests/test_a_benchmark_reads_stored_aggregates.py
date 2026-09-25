@@ -272,3 +272,80 @@ def test_the_benchmark_endpoint_exists_and_is_read_scoped():
     assert "effective_client_ids" in seg, \
         "the benchmark is not assignment-scoped — an Executive would read the " \
         "turnover and profit of clients they are not on"
+
+
+# ── THE PROJECTIONS ARE LITERALS, AND A TEST KEEPS THEM HONEST ──────────────
+#
+# `tests/test_backend_columns_exist_pg` checks every `.select()` in apps/api
+# against the real schema AS A STRING, and `test_backend_inserts_supply_every_
+# required_column_pg` reads an insert payload as a DICT LITERAL. Either reached
+# through a NAME is invisible to its guard — and both guards' budgets are EXACT
+# with no headroom, which is how this change first failed CI: a
+# `", ".join(FIGURES)` and a `{**row, …}` cost two column references and one
+# payload, and CLAUDE.md records that raising the budget there would buy an
+# exemption where the coverage is recoverable.
+#
+# So the three sites are written out, and these assert each literal against the
+# ONE list that owns it — so the join cannot come back and the literal cannot
+# drift from `FIGURES` or from PAY-25's `EMPLOYER_COST_FIELDS`.
+
+
+def _select_literal(path: str, table: str) -> str:
+    """The `.select("…")` string this module passes for `table`, joined."""
+    src = (API / path).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "select"):
+            continue
+        inner = node.func.value
+        if not (isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Attribute)
+                and inner.func.attr == "table"
+                and inner.args and isinstance(inner.args[0], ast.Constant)
+                and inner.args[0].value == table):
+            continue
+        assert node.args and isinstance(node.args[0], ast.Constant), (
+            f"{path}: the projection for {table} is not a literal — "
+            "test_backend_columns_exist_pg cannot see it"
+        )
+        return node.args[0].value
+    raise AssertionError(f"{path}: no select on {table}")
+
+
+def test_the_stored_row_is_read_with_exactly_the_figures_the_module_names():
+    cols = [c.strip() for c in
+            _select_literal("routers/analytics.py", "client_period_metrics").split(",")]
+    assert set(cols) - {"id", "client_id", "financial_year", "gaps"} == set(rule.FIGURES)
+
+
+def test_the_payroll_projection_names_pay_25s_own_employer_fields():
+    from domain.payroll.department_cost import EMPLOYER_COST_FIELDS
+    cols = [c.strip() for c in
+            _select_literal("services/client_metrics_service.py", "payroll_slips").split(",")]
+    assert set(EMPLOYER_COST_FIELDS) <= set(cols), (
+        "the projection and PAY-25's employer-cost list have drifted — the "
+        "payroll figure would silently lose a contribution"
+    )
+    assert "gross_paise" in cols, "§17(1) gross is half the cost"
+    assert "net_paise" not in cols, "net pay is not cost"
+
+
+def test_the_upsert_names_every_column_rather_than_spreading_a_dict():
+    src = (API / "services" / "client_metrics_service.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    payloads = [
+        n.args[0] for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "upsert" and n.args
+    ]
+    assert len(payloads) == 1
+    assert isinstance(payloads[0], ast.Dict), (
+        "the upsert payload is not a dict literal — "
+        "test_backend_inserts_supply_every_required_column_pg cannot read it"
+    )
+    keys = {k.value for k in payloads[0].keys if isinstance(k, ast.Constant)}
+    assert set(rule.FIGURES) <= keys, "a figure is not written"
+    assert {"firm_id", "client_id", "financial_year", "gaps"} <= keys
+    assert not any(k is None for k in payloads[0].keys), "a `**spread` is still there"

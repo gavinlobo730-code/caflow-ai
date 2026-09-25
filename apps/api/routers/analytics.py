@@ -884,10 +884,20 @@ def _client_period_metrics(firm_id: str, fy: str) -> list[dict]:
     from core.db_paging import fetch_all
     from domain.practice import client_metrics as rule
 
-    cols = "id, client_id, financial_year, gaps, " + ", ".join(rule.FIGURES)
+    # ⚠️ A LITERAL, not `", ".join(rule.FIGURES)`, for the reason
+    # `client_metrics_service` records at its own projection: a `.select()`
+    # reached through a name is invisible to
+    # `tests/test_backend_columns_exist_pg`, which checks every projection
+    # against the real schema as a STRING. A test asserts these are exactly
+    # `FIGURES`, so the one list stays the authority and this stays checkable.
     db = get_supabase()
     return fetch_all(
-        lambda: db.table("client_period_metrics").select(cols)
+        lambda: db.table("client_period_metrics").select(
+            "id, client_id, financial_year, gaps, turnover_paise, "
+            "profit_before_tax_paise, tax_expense_paise, purchases_paise, "
+            "output_tax_paise, itc_availed_paise, itc_reversed_paise, "
+            "gst_cash_paid_paise, tds_deducted_paise, tds_deposited_paise, "
+            "payroll_cost_paise, employee_count")
         .eq("firm_id", firm_id).eq("financial_year", fy),
         label="analytics.client_period_metrics",
     )

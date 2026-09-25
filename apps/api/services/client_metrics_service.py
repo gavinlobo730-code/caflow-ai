@@ -303,9 +303,18 @@ def _payroll(db, client_id: str, fy: str, into: _Collector) -> None:
         into.cannot("employee_count", why)
         return
 
-    cols = "id, run_id, employee_id, gross_paise, " + ", ".join(EMPLOYER_COST_FIELDS)
+    # ⚠️ THE PROJECTION IS A LITERAL, not `", ".join(EMPLOYER_COST_FIELDS)`.
+    # `tests/test_backend_columns_exist_pg` checks every `.select()` against the
+    # real schema AS A STRING, and one reached through a name is invisible to
+    # it — so the join would buy a column list nothing verifies, on the table
+    # this module's whole payroll figure comes off. A test asserts the four
+    # employer fields named here ARE `EMPLOYER_COST_FIELDS`, so the two cannot
+    # drift and PAY-25 stays the authority for which they are.
     slips = fetch_all(
-        lambda: db.table("payroll_slips").select(cols).in_("run_id", released),
+        lambda: db.table("payroll_slips").select(
+            "id, run_id, employee_id, gross_paise, pf_employer_paise, "
+            "esi_employer_paise, edli_paise, pf_admin_paise"
+        ).in_("run_id", released),
         label="client_metrics.payroll_slips",
     )
     cost = 0
@@ -346,10 +355,31 @@ def store(db, row: dict) -> None:
     row — and so a figure that MOVED is overwritten rather than added to. The
     sweep re-derives; it never accumulates.
     """
-    db.table("client_period_metrics").upsert(
-        {**row, "computed_at": "now()", "updated_at": "now()"},
-        on_conflict="client_id,financial_year",
-    ).execute()
+    # ⚠️ EVERY COLUMN NAMED, rather than `{**row, ...}`.
+    # `tests/test_backend_inserts_supply_every_required_column_pg` reads the
+    # payload as a DICT LITERAL and cannot see one bound to a name, so a spread
+    # would take this write out of the check that proves it supplies every NOT
+    # NULL column — on the one table this feature exists to fill.
+    db.table("client_period_metrics").upsert({
+        "firm_id": row["firm_id"],
+        "client_id": row["client_id"],
+        "financial_year": row["financial_year"],
+        "turnover_paise": row["turnover_paise"],
+        "profit_before_tax_paise": row["profit_before_tax_paise"],
+        "tax_expense_paise": row["tax_expense_paise"],
+        "purchases_paise": row["purchases_paise"],
+        "output_tax_paise": row["output_tax_paise"],
+        "itc_availed_paise": row["itc_availed_paise"],
+        "itc_reversed_paise": row["itc_reversed_paise"],
+        "gst_cash_paid_paise": row["gst_cash_paid_paise"],
+        "tds_deducted_paise": row["tds_deducted_paise"],
+        "tds_deposited_paise": row["tds_deposited_paise"],
+        "payroll_cost_paise": row["payroll_cost_paise"],
+        "employee_count": row["employee_count"],
+        "gaps": row["gaps"],
+        "computed_at": "now()",
+        "updated_at": "now()",
+    }, on_conflict="client_id,financial_year").execute()
 
 
 def refresh_firm(db, firm_id: str, reporting=None, today=None) -> dict:
