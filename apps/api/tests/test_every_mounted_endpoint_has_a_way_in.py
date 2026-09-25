@@ -98,9 +98,20 @@ BUDGET: dict[str, int] = {
     # is `compliance:write` and belongs on a compliance screen rather than on
     # the fee-billing one.
     "/api/billing": 7, "/api/engagements": 1, "/api/income-tax": 5,
-    "/api/memory": 7, "/api/relationships": 7, "/api/ai-insights": 6,
+    # /api/ai-insights 6 -> 4 on 25-09-2026 (Phase 3a-6): the client AI
+    # Insights screen read `ai_insights` over PostgREST and nothing could
+    # write it — `generate_insights_for_client` is written and tested and
+    # `api.aiInsights.generate` carried the method with no caller, so the
+    # screen showed an empty list for every client for ever AND told the
+    # CA the insights arrive "automatically", which nothing does.
+    "/api/memory": 7, "/api/relationships": 7, "/api/ai-insights": 4,
     "/api/compliance-records": 6, "/api/intelligence": 6, "/api/payroll": 6,
-    "/api/analytics": 5, "/api/automation": 5, "/api/gst-portal": 5,
+    # /api/analytics 5 -> 3 on 25-09-2026 (Phase 3a-2): `profitability` and
+    # `revenue-vs-effort` were built, in integer paise, assignment-scoped
+    # and tested, with no screen at all — the plan's own "you already own
+    # more analysis than the product shows". `/practice/profitability`
+    # reaches both.
+    "/api/analytics": 3, "/api/automation": 5, "/api/gst-portal": 5,
     "/api/itr": 5, "/api/lifecycle": 5, "/api/portal": 5,
     # /api/risks 5 -> 3 on 24-09-2026: `app/risks/page.tsx` derived its
     # whole register in the browser from six PostgREST reads and called no
@@ -111,7 +122,11 @@ BUDGET: dict[str, int] = {
     "/api/firm-hsn-rate-history": 4, "/api/gst": 4, "/api/health": 4,
     "/api/mca-workspace": 4, "/api/recurring-invoices": 4, "/api/xbrl": 4,
     "/api/ai-copilot": 3, "/api/invoices": 3, "/api/purchase-cycle": 3,
-    "/api/reminders": 3, "/api/tds": 3, "/api/accounting": 2,
+    # /api/accounting 2 -> 1 on 25-09-2026 (Phase 3a-3): the client
+    # Reports tab renders `GET /statement-analysis`, whose method
+    # `lib/api.accounting.statementAnalysis` had carried with no caller
+    # since the reporting engine was built.
+    "/api/reminders": 3, "/api/tds": 3, "/api/accounting": 1,
     "/api/assignments": 2, "/api/customers": 2, "/api/form-26as": 2,
     "/api/identity": 2, "/api/insights": 2, "/api/notifications": 2,
     "/api/onboarding": 2, "/api/public": 2, "/api/sales-cycle": 2,

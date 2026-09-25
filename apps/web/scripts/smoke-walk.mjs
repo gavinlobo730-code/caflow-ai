@@ -427,14 +427,40 @@ const CLIENT_UUID = "00000000-0000-4000-8000-000000000001";
  * its own job and needs no refresh for this one.
  */
 const allRoutes = screenRoutes(path.join(__dirname, "..", "app"));
-const routes = allRoutes
-  .map((r) => (realClient ? r.replace("/clients/:id", `/clients/${CLIENT_UUID}`) : r))
-  .map((r) => r.replace(/:[^/]+/g, "_placeholder"))
-  .filter((r) => (only ? r.startsWith(only) : true));
+
+/**
+ * `--at <path>` walks exactly the paths given, verbatim, INCLUDING A QUERY
+ * STRING — and it exists because of a hole this walk has always had.
+ *
+ * ⚠️ THE WALK PHOTOGRAPHS ONE TAB PER ROUTE. A tabbed screen keeps its tab in
+ * `?tab=`, and the route list carries no query, so the client accounting page
+ * — twelve tabs — has only ever been looked at on `dashboard`. Eleven panels
+ * behind it, and the same on GST, sales, payroll and the rest, have never
+ * appeared in a single shot. That is exactly where a panel can render a header
+ * over nothing and no walk notice, which is the defect this run was written to
+ * catch on `/practice/profitability` and did.
+ *
+ * This is the SPOT CHECK, not the fix. Walking every tab means reading each
+ * page's own `TABS` const out of its source, which is a real piece of work and
+ * its own change; `--at` lets a person look at the one they just built. A run
+ * using it is deliberately NOT a clean-tree run: the floor below is skipped
+ * for the same reason `--only` skips it.
+ */
+const at = args.reduce(
+  (acc, a, i) => (a === "--at" && args[i + 1] ? [...acc, args[i + 1]] : acc),
+  [],
+);
+
+const routes = at.length
+  ? at
+  : allRoutes
+      .map((r) => (realClient ? r.replace("/clients/:id", `/clients/${CLIENT_UUID}`) : r))
+      .map((r) => r.replace(/:[^/]+/g, "_placeholder"))
+      .filter((r) => (only ? r.startsWith(only) : true));
 
 // A truncated tree makes every assertion below vacuous, the same floor the
 // snapshot guard keeps. 120 was its number on a tree of 159.
-if (!only && allRoutes.length < 120) {
+if (!only && !at.length && allRoutes.length < 120) {
   console.error(
     `smoke-walk: only ${allRoutes.length} routes found under app/ — the tree ` +
       `walk has probably broken. Refusing to report a clean run over nothing.`,
@@ -499,7 +525,17 @@ for (const route of routes) {
     if (m.type() === "error") errors.push(`console.error: ${m.text().slice(0, 200)}`);
   });
   await sealOff(page, escaped);
-  const url = `http://127.0.0.1:${PORT}${route.endsWith("/") ? route : route + "/"}`;
+  // ⚠️ THE TRAILING SLASH GOES ON THE PATH, NOT AFTER THE QUERY. The static
+  // export serves directory-style paths, so every route needs one — but
+  // `route + "/"` on `/x/accounting?tab=reports` yields `?tab=reports/`, and
+  // the value that reaches the screen is `reports/`, which matches no tab id
+  // and silently falls back to the default. The first `--at` run photographed
+  // the Dashboard tab believing it was Reports, which is exactly the kind of
+  // quiet wrong answer this walk exists to stop.
+  const [routePath, routeQuery = ""] = route.split("?");
+  const withSlash = routePath.endsWith("/") ? routePath : routePath + "/";
+  const url =
+    `http://127.0.0.1:${PORT}${withSlash}${routeQuery ? "?" + routeQuery : ""}`;
   try {
     await page.goto(url, { waitUntil: "networkidle", timeout: 30_000 });
     // Give effects that fetch-then-setState a beat to land.
@@ -534,7 +570,7 @@ for (const route of routes) {
       // dense table is 1-2MB, and 159 of them cannot be carried anywhere as a
       // set — which is the only thing a baseline is for. At q72 the same page
       // is ~150KB and every difference a design review cares about survives.
-      const name = (route === "/" ? "root" : route.slice(1).replace(/\//g, "_")) + ".jpg";
+      const name = (route === "/" ? "root" : route.slice(1).replace(/[/?=&]/g, "_")) + ".jpg";
       await page.screenshot({
         path: path.join(SHOT_DIR, name), fullPage: true, type: "jpeg", quality: 72,
       });

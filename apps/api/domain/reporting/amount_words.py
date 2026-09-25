@@ -21,6 +21,8 @@ THE CRORE GROUP RECURSES, AND THAT IS A FIX
 """
 from __future__ import annotations
 
+from domain.money_text import group_indian
+
 _ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
          "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
          "Seventeen", "Eighteen", "Nineteen"]
@@ -96,25 +98,17 @@ def indian_digits(rupees: int) -> str:
     `Intl.NumberFormat("en-IN")` and gets it right, so the screen and the PDF
     of one amount disagree.
 
-    That disagreement is tree-wide (roughly twenty sites across services/ and
-    domain/) and is NOT fixed by this function existing. What this is for is
-    that new code has somewhere correct to call, and the later sweep has one
-    place to point every site at.
+    ⚠️ AND THIS FUNCTION IS NOT THAT PLACE ANY MORE. Its docstring used to
+    nominate itself — "new code has somewhere correct to call, and the later
+    sweep has one place to point every site at" — which was true when it was
+    written and stopped being true when `domain/money_text` was made the
+    backend authority CLAUDE.md names. Two modules each claiming the role is
+    how a copy survives, and this one did: the pair-slicing loop that was here
+    was `group_indian`, character for character. It delegates now and stays
+    only because callers import it by this name, in RUPEES rather than paise.
     """
     n = int(rupees)
-    sign = "-" if n < 0 else ""
-    text = str(abs(n))
-    if len(text) <= 3:
-        return sign + text
-    # The last three digits, then pairs — 1,23,45,678.
-    head, tail = text[:-3], text[-3:]
-    groups = []
-    while len(head) > 2:
-        groups.insert(0, head[-2:])
-        head = head[:-2]
-    if head:
-        groups.insert(0, head)
-    return sign + ",".join(groups + [tail])
+    return ("-" if n < 0 else "") + group_indian(str(abs(n)))
 
 
 def indian_rupees(paise: int) -> str:

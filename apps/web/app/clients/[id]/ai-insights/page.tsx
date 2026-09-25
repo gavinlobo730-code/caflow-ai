@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sparkles, AlertTriangle } from "lucide-react";
+import { Sparkles, AlertTriangle, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SkeletonText } from "@/components/ui/skeleton";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { api } from "@/lib/api";
 
 interface AiInsight {
   id: string;
@@ -22,6 +24,50 @@ export default function AiInsightsPage() {
   // Distinguishes "fetch failed" from "no insights generated yet" — a masked
   // failure here reads as a client with nothing to flag, which it may not be.
   const [loadFailed, setLoadFailed] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  // `rbac("report", "write")` is what the endpoint asks for. `resolved` keeps
+  // the button out of the way while the permission map is still in flight,
+  // rather than flashing a control the server would refuse.
+  const { can, resolved } = usePermissions();
+  const mayGenerate = resolved && can("report", "write");
+
+  /**
+   * ⚠️ THE GENERATOR EXISTED AND NOTHING COULD PRESS IT.
+   * `domain/ai_insight_service.generate_insights_for_client` is written and
+   * tested, `POST /api/ai-insights/generate/{client_id}` mounts it, and
+   * `api.aiInsights.generate` has carried the method in `lib/api` with NO
+   * caller — so this screen read `ai_insights` over PostgREST and showed an
+   * empty list for every client, for ever, with a working writer one button
+   * away. The `capital_wip` shape again.
+   *
+   * ⚠️ AND THE EMPTY STATE SAID SOMETHING FALSE: "Insights are generated
+   * automatically as activity is recorded for this client." Nothing generates
+   * them automatically — no job, no trigger, no posting path — so that
+   * sentence told a CA to wait for something that was never going to happen,
+   * which is worse than an empty screen that admits it.
+   */
+  async function generate() {
+    if (!clientId || clientId === "_placeholder") return;
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const res = await api.aiInsights.generate(clientId) as
+        { success?: boolean; error?: string };
+      // The router answers a refusal as HTTP 200 with `success: false`, the
+      // same shape the GST workspace does — an unchecked call would show
+      // "done" for a request the server declined.
+      if (!res?.success) {
+        setGenerateError(res?.error || "The insights could not be generated.");
+        return;
+      }
+      await load();
+    } catch (e) {
+      setGenerateError(e instanceof Error ? e.message : "The insights could not be generated.");
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   async function load() {
     if (!clientId || clientId === "_placeholder") return;
@@ -60,10 +106,27 @@ export default function AiInsightsPage() {
     <div className="p-6 max-w-4xl mx-auto space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Sparkles size={15} className="text-gold" />
-            AI Insights
-          </CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Sparkles size={15} className="text-gold" />
+              AI Insights
+            </CardTitle>
+            {mayGenerate && (
+              <button
+                onClick={generate}
+                disabled={generating || loading}
+                className="shrink-0 flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label disabled:opacity-50"
+              >
+                {generating
+                  ? <RefreshCw size={12} className="animate-spin" />
+                  : <Sparkles size={12} />}
+                {generating ? "Generating…" : "Generate"}
+              </button>
+            )}
+          </div>
+          {generateError && (
+            <p className="text-xs text-state-problem mt-2">{generateError}</p>
+          )}
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -81,10 +144,12 @@ export default function AiInsightsPage() {
             </div>
           ) : insights.length === 0 ? (
             <div className="text-center py-12 space-y-2">
-              <Sparkles className="w-8 h-8 text-gray-200 mx-auto" />
+              <Sparkles className="w-8 h-8 text-ps-disabled mx-auto" />
               <p className="text-sm text-ps-hint">No AI insights yet</p>
-              <p className="text-xs text-ps-disabled">
-                Insights are generated automatically as activity is recorded for this client.
+              <p className="text-xs text-ps-disabled max-w-sm mx-auto">
+                {mayGenerate
+                  ? "Nothing generates these on its own — press Generate to read this client's books, compliance and activity and record what it finds."
+                  : "Nothing generates these on its own. Someone with report-write permission can generate them from this screen."}
               </p>
             </div>
           ) : (

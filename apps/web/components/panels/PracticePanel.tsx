@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2, LayoutDashboard, IndianRupee, Receipt, Wallet, ClipboardList,
-  StickyNote, ShieldCheck, Gauge,
+  StickyNote, ShieldCheck, Gauge, TrendingUp,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { label: "Overview",     href: "/practice",             icon: LayoutDashboard },
   { label: "Executive Dashboard", href: "/executive-dashboard", icon: Gauge },
   { label: "Revenue",      href: "/practice/revenue",     icon: IndianRupee },
+  { label: "Profitability", href: "/practice/profitability", icon: TrendingUp },
   { label: "Billing",      href: "/practice/billing",     icon: Receipt },
   { label: "Collections",  href: "/practice/collections", icon: Wallet },
   { label: "AR Aging",     href: "/practice/ar",          icon: ClipboardList },

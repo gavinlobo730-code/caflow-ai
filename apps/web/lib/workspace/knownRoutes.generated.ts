@@ -129,6 +129,7 @@ export const KNOWN_ROUTE_SHAPES: string[][] = [
   ["practice","collections"],
   ["practice","compliance"],
   ["practice","instructions"],
+  ["practice","profitability"],
   ["practice","revenue"],
   ["relationships"],
   ["relationships",":entity_id"],
