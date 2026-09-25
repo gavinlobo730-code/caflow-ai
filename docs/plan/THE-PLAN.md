@@ -224,14 +224,44 @@ Seeded (D7). The live book was 7 clients and 2 bank accounts with most tables
 empty, so every screen rendered its empty state and nothing could be judged.
 
 **Sharma & Associates**, Mumbai, FY 2025-26 — 8 clients, 31 customers, 30
-vendors, **315 sales invoices**, **200 purchase bills**, 12 employees, 42
-inter-state supplies, 9 reverse-charge bills, 16 unregistered parties.
+vendors, **315 sales invoices** (227 settled, 33 of them in part, 88 still
+open), **200 purchase bills** and 139 vendor payments, **9 bank accounts** with
+**276 statement lines**, **21 fixed assets**, **12 employees** across **24
+payroll runs**, 42 inter-state supplies, 9 reverse-charge bills, 16
+unregistered parties.
 
 | | |
 |---|---|
 | `domain/demo/fixture.py` | the practice as DATA — no handle, no call, deterministic on one fixed seed, and nothing in it reads the clock (a demo pinned to "now" is a different set of books every month, and a LOCKED PERIOD cannot be demonstrated at all if every date is recent) |
 | `scripts/seed_demo_firm.py` | writes it **through the API, never the database** — every posting here goes through the one kernel, and a seeder writing rows directly would produce books this product's own Verify Books would refuse. **A DRY RUN until `--confirm`**, and it refuses a firm that already has clients |
-| `tests/test_the_demo_practice_...py` | 32 tests. Every GSTIN's check digit is COMPUTED, not typed — this repo has already had to correct three invalid fixture GSTINs used across 77 files |
+| `tests/test_the_seeder_actually_seeds.py` | RUNS `seed()` through the real routers. A seeder whose job is to WRITE needs a test that WRITES — the first real run died on the first invoice, because `service_catalogue_id` has been required since migration 206 and no amount of reading the fixture could have said so |
+| `tests/test_every_body_..._its_door_accepts.py` | runs the same `seed()` against **the app's own route table** and validates each body against the model FastAPI resolved for that path. No hand-written map, so a door added tomorrow is covered the day it is written |
+
+**Three modules were still empty and are not now.** Every receipt, vendor
+payment, asset purchase and salary disbursement names the client's own bank
+account, so the money lands in that client's ledger rather than
+`resolve_payment_account`'s generic `%Bank%` fallback — a real disclosure that
+a demo carrying it on every posting would teach the CA to ignore. The register
+holds a **Land** row nothing depreciates, a motor car whose §17(5)-blocked tax
+is capitalised, and assets acquired in earlier years so the movement note opens
+with a gross block. The payroll year is left in **all three states** — ten
+months paid, one finalised, one still a draft — because a book of twelve
+drafts has posted no journal and paid nobody.
+
+**What the bank statement deliberately does NOT carry** is a line for a receipt
+the ledger already holds. Passing a statement line CREATES a voucher, so such a
+line invites the CA to record the same rupees twice on the very screen the demo
+is meant to sell. What is on it is the operating outflows nobody has coded —
+rent, power, courier, and the bank's own charges, which carry GST and are
+BANK-24's whole point — plus credits against invoices nobody paid, which is
+what gives the match queue a real candidate to offer.
+
+**Two fields were being silently dropped**, and only the route-table guard
+could see it: `hra_paise` and `date_of_joining` on a payroll employee, where
+`EmployeeIn` declares `hra_percent` and `joining_date` — so every seeded
+employee had no joining date and no house rent allowance in their §192 working
+— and `msme_status` on a vendor, which is not a field of `VendorIn` at all and
+is recorded through the Schedule III ageing screen's own door.
 
 **Each client exists for a different screen**, and the fixture says which:
 the ordinary monthly GST client for volume; QRMP; a proprietor for §44AD; a
@@ -253,7 +283,7 @@ classified cannot show it.
 | 2 | Backend and frontend suites green, smoke walk renders every route | **passing.** 17,460 backend · 1,571 real-Postgres · 1,655 frontend · **smoke walk 166 screens, 0 with a problem** |
 | 3 | No screen renders a figure the server did not compute | **not re-measured since Phase 3.** The guards that hold it (`a-computed-figure-reaches-the-screen`, the browser-logic scans) pass, but the claim deserves a fresh sweep before the session |
 | 4 | The filing simulation says plainly what it is (D17) | **passing** — one posture, one wording, pinned from the Python side |
-| 5 | The demo firm has a full year of believable data | **passing** — Track 3, and it has not yet been SEEDED anywhere; `scripts/seed_demo_firm.py` is a dry run until `--confirm` and the target firm is yours to choose |
+| 5 | The demo firm has a full year of believable data | **passing** — Track 3, now including banking, fixed assets and payroll. It has not yet been SEEDED anywhere: `scripts/seed_demo_firm.py` is a dry run until `--confirm`, the target firm is yours to choose, and the deployment is not reachable from this container (the egress proxy answers 403 to CONNECT) |
 
 ---
 

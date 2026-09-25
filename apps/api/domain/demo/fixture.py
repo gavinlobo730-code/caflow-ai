@@ -98,6 +98,11 @@ class DemoParty:
     #: Vendors only. None means the CA has not classified them, which is a real
     #: state the §43B(h) engine names rather than assumes.
     msme_status: Optional[str] = None
+    #: MSMED §15's proviso: a payment period agreed IN WRITING. NULL is the
+    #: statutory default of fifteen days from acceptance (§2(b)), not an
+    #: absence — forty-five is the number every article quotes and it is the
+    #: EXCEPTION, so most vendors here carry None and one per client does not.
+    msmed_agreement_days: Optional[int] = None
     tds_section: Optional[str] = None
 
 
@@ -167,14 +172,155 @@ class DemoDocument:
 
 @dataclass(frozen=True)
 class DemoEmployee:
+    """One person on a client's payroll.
+
+    ⚠️ `hra_percent`, NOT an HRA amount, and that was a real defect in the
+    first version of this fixture. `EmployeeIn` carries `hra_percent: float`
+    and has no `hra_paise` field at all, so the amount this used to send was
+    silently DROPPED by Pydantic and every seeded employee was stored with
+    `hra_percent = 0.0` — a §192 working with no house rent allowance in it,
+    on a screen built to show exactly that. `joining_date` went the same way,
+    sent as `date_of_joining`. Both are named here as the model names them, so
+    the seeder cannot rename one on the way out.
+
+    The BANK pair and the UAN are here because two statutory outputs refuse
+    without them: `domain/payroll/bank_advice.py` NAMES every employee it
+    leaves out of the salary file (no account, no IFSC, a malformed IFSC), and
+    `domain/payroll/ecr.py` refuses a member with no UAN at file build. A demo
+    whose every employee is named as a gap shows neither output working."""
     name: str
     designation: str
     department: str
     basic_paise: int
-    hra_paise: int
+    #: Of BASIC. 40% is the metro rate §10(13A) and Rule 2A turn on.
+    hra_percent: float
     special_paise: int
     pan: str
     doj: str
+    employee_code: str
+    uan: str
+    bank_account_no: str
+    bank_ifsc: str
+    bank_name: str
+
+
+@dataclass(frozen=True)
+class DemoAsset:
+    """One row of a client's fixed-asset register.
+
+    THE CATEGORY IS THE STATUTORY KEY, not a label. `routers/fixed_assets`
+    resolves the Companies Act 2013 Schedule II Part C useful LIFE from it and
+    DERIVES the WDV rate as `R = 1 − (residual/cost)^(1/n)`, so a category with
+    no Part C class is REFUSED rather than given a plausible rate. Every
+    category named here is one `domain/fixed_assets/schedule_ii.PART_C` holds.
+
+    Three of the assets below exist to make a branch visible rather than to
+    add volume:
+
+      · one is LAND, which `_NOT_DEPRECIABLE` excludes entirely — a register
+        where everything depreciates cannot show that it asked;
+      · one is a motor car whose input tax CGST §17(5) blocks, so the tax is
+        CAPITALISED into the cost and depreciates, which is the one case
+        `capitalised_cost_paise` exists for and the reason `itc_eligible`
+        cannot be defaulted;
+      · the methods are mixed, because SL divides by the life and WDV runs the
+        derived rate down to a floor, and a register of one method shows one.
+    """
+    name: str
+    category: str
+    purchase_date: str
+    cost_paise: int
+    method: str = "WDV"                       # "SL" | "WDV"
+    salvage_value_paise: int = 0
+    igst_paise: int = 0
+    cgst_paise: int = 0
+    sgst_paise: int = 0
+    #: None = the CA has not said. False = §17(5) blocked, so the tax is part
+    #: of the cost. Never defaulted — see the class docstring.
+    itc_eligible: Optional[bool] = None
+    itc_blocked_reason: Optional[str] = None
+    location: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class DemoBankAccount:
+    """A bank account of one client, and the ledger behind it.
+
+    `coa_account_id` is deliberately NOT here: `POST /api/banking/accounts`
+    creates a ledger for an unlinked account rather than defaulting to "not
+    linked", which is how two banks came to share code 1101 and render as one
+    line. Letting it do that is the demonstration.
+    """
+    bank_name: str
+    account_no: str
+    ifsc: str
+    account_type: str = "Current"
+    opening_balance_paise: int = 0
+    #: A statement is imported for this account. False on the credit card —
+    #: see DemoBankLine.
+    import_statement: bool = True
+
+
+@dataclass(frozen=True)
+class DemoBankLine:
+    """One line of a bank statement — and one the BOOKS DO NOT ALREADY HOLD.
+
+    ⚠️ THE STATEMENT CARRIES NO LINE FOR A RECEIPT OR A PAYMENT THIS FIXTURE
+    HAS ALREADY RECORDED, and that is a decision rather than an omission.
+    Passing a statement line CREATES a voucher — `domain/banking` turns a
+    credit into a Receipt and a debit into a Payment — so a line for money the
+    ledger already carries invites the CA to record the same rupees twice, on
+    the very screen the demo is meant to sell. Linking each one instead
+    (`POST /transactions/{id}/match` is linkage only and posts nothing) would
+    be one extra call per settled document for no screen that is not already
+    populated by the lines below.
+
+    So what IS here is exactly what an unworked statement holds: the ordinary
+    operating outflows nobody has coded — rent, electricity, internet, courier
+    and the bank's own charges, which carry GST and are BANK-24's whole point
+    — and a few customer credits against invoices the fixture left OPEN, which
+    is what gives the match queue a real candidate to offer. The
+    reconciliation then reports a difference, honestly, because that is the
+    state of every bank account somebody has not finished working.
+
+    ⚠️ AND NO STATEMENT IS IMPORTED FOR THE CREDIT CARD. A card states the
+    amount OWED the other way up, and `account_kind.mirror_imported_statement`
+    is applied on the UPLOAD path — `POST /statements/import` takes
+    already-parsed rows and does not mirror them, so a card statement sent
+    through this door would carry every sign inverted. The card ACCOUNT is
+    created (its ledger is a liability, and that is what Schedule III and the
+    register are being shown) and its statement is not.
+    """
+    line_date: str
+    description: str
+    amount_paise: int
+    is_credit: bool = False
+    #: Basis points of GST inside the amount, where the CA can tell. Only the
+    #: bank's own charges carry one — `bank_charge_gst` reads exactly this and
+    #: a RECORDED ZERO declares nothing, so every other line leaves it None.
+    gst_rate_bps: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class DemoPayrollMonth:
+    """One month of payroll, and how far it is taken.
+
+    THE THREE STATES ARE ALL PRESENT ON PURPOSE. A run left at `draft` has
+    posted no journal, registered no §192 TDS and paid nobody — it is the
+    state the recompute and delete paths exist for (PAY-04, PAY-21) and the
+    only state in which the attendance can still be corrected. `finalized` has
+    posted the accrual and is immutable. `paid` has also cleared Net Salary
+    Payable against the bank. A demo showing one state cannot show that any of
+    that is a sequence.
+    """
+    month: str                                      # YYYY-MM
+    #: (employee index, days of loss of pay). Empty means a full month for
+    #: everybody — which is a CLAIM, and the reason attendance is written
+    #: rather than left to `_compute_slip`'s 26-day default: a zero LOP because
+    #: somebody confirmed it and a zero LOP because nobody said anything are
+    #: the same number meaning opposite things.
+    lop: tuple[tuple[int, int], ...] = ()
+    leave_at: str = "paid"                          # draft | finalized | paid
 
 
 @dataclass(frozen=True)
@@ -227,6 +373,17 @@ class DemoClient:
     sales: tuple[DemoDocument, ...]
     purchases: tuple[DemoDocument, ...]
     employees: tuple[DemoEmployee, ...] = ()
+    #: The client's own bank accounts. The FIRST is the one every receipt,
+    #: vendor payment, asset purchase and salary disbursement names, so the
+    #: money lands in that client's own ledger rather than falling through
+    #: `resolve_payment_account`'s generic `%Bank%` branch — which is a real
+    #: fallback with a real disclosure (`posting_account_notice`), and a demo
+    #: in which EVERY posting carries it teaches that the notice is noise.
+    banks: tuple[DemoBankAccount, ...] = ()
+    #: Statement lines for the first bank account. See DemoBankLine.
+    bank_lines: tuple[DemoBankLine, ...] = ()
+    assets: tuple[DemoAsset, ...] = ()
+    payroll: tuple[DemoPayrollMonth, ...] = ()
     gst_filing_frequency: str = "monthly"
     #: Every item this client's own lines draw from, sales and purchases
     #: together. Deduped on the CODE, which is one-to-one with the item in both
@@ -433,12 +590,14 @@ def _parties(rng: random.Random, names: list[str], state: str, count: int,
             gstin=None if unregistered else gstin_for(state, p),
             state_code=state,
             msme_status=_MSME[i % len(_MSME)] if as_vendor else None,
+            msmed_agreement_days=(45 if (as_vendor and i == 1) else None),
             tds_section=_TDS[i % len(_TDS)] if as_vendor else None,
         ))
     return tuple(out)
 
 
-def _employees(rng: random.Random, count: int, doj: str) -> tuple[DemoEmployee, ...]:
+def _employees(rng: random.Random, count: int, doj: str,
+               *, code_prefix: str) -> tuple[DemoEmployee, ...]:
     people = [
         ("Rohan Kulkarni", "Production Supervisor", "Operations", 32_000_00),
         ("Sneha Patil", "Accounts Executive", "Finance", 28_000_00),
@@ -452,6 +611,11 @@ def _employees(rng: random.Random, count: int, doj: str) -> tuple[DemoEmployee, 
         ("Sunil Gaikwad", "Helper", "Operations", 12_000_00),
         ("Priya Nair", "Finance Controller", "Finance", 95_000_00),
     ]
+    #: Real-shaped IFSCs — four letters, a zero, six alphanumerics, which is
+    #: `domain/payroll/identity.IFSC_RE` and what the ECR and the bank advice
+    #: both refuse without.
+    ifscs = ["HDFC0001234", "ICIC0004421", "SBIN0007788", "UTIB0000915",
+             "KKBK0006630", "BARB0PUNEXX", "MAHB0001102", "PUNB0123400"]
     out = []
     for i in range(count):
         name, desig, dept, basic = people[i % len(people)]
@@ -462,13 +626,79 @@ def _employees(rng: random.Random, count: int, doj: str) -> tuple[DemoEmployee, 
             # HRA at 40% of basic (the metro rate §10(13A) and Rule 2A turn on)
             # and the balance as special allowance — the shape a real Indian
             # salary structure takes, and what makes the §192 working readable.
-            hra_paise=(basic * 40) // 100,
+            hra_percent=40.0,
             special_paise=(basic * 25) // 100,
             pan=pan(letters, f"{rng.randint(1000, 9999)}",
                     rng.choice("ABCDEFGHJKLMNPQRSTUVWXYZ")),
             doj=doj,
+            employee_code=f"{code_prefix}{i + 1:03d}",
+            # Twelve digits, which is all EPFO's own format is. Derived from
+            # the index rather than drawn, so the roster is stable whatever
+            # else is added to the fixture before it.
+            uan=f"1006{i + 11:04d}{i + 3:04d}",
+            bank_account_no=f"{50100000 + i * 137:08d}{i + 1:03d}",
+            bank_ifsc=ifscs[i % len(ifscs)],
+            bank_name="HDFC Bank" if i % 2 == 0 else "State Bank of India",
         ))
     return tuple(out)
+
+
+def _asset_date(months: list[date], month_index: int, day: int) -> str:
+    """A date inside the financial year, addressed by month rather than typed.
+
+    Nothing in this module reads the clock, so an asset cannot carry a literal
+    date and still move with `financial_year`. `month_index` 0 is April; a
+    NEGATIVE index is a year the asset was ALREADY held, which is what gives
+    the movement note an opening gross block rather than a register in which
+    every asset was bought this year."""
+    m = months[month_index % 12]
+    year = m.year + (month_index // 12)
+    return date(year, m.month, day).isoformat()
+
+
+def _bank_lines(months: list[date], spec) -> tuple[DemoBankLine, ...]:
+    """A year of the operating outflows nobody has coded yet.
+
+    `spec` is (description, day of month, amount in paise, GST bps or None).
+    Every month gets every line, because rent and electricity do — the
+    variation a demo needs is in the CODING, not in whether the landlord was
+    paid."""
+    out = []
+    for m in months:
+        for desc, day, amount, gst in spec:
+            out.append(DemoBankLine(
+                line_date=date(m.year, m.month, day).isoformat(),
+                description=desc, amount_paise=amount,
+                is_credit=False, gst_rate_bps=gst))
+    return tuple(sorted(out, key=lambda r: (r.line_date, r.description)))
+
+
+def _payroll_months(months: list[date], *, employees: int) -> tuple[DemoPayrollMonth, ...]:
+    """Twelve months, left in three different states — see DemoPayrollMonth.
+
+    The last month is a DRAFT, the one before it FINALIZED and every earlier
+    one PAID. Reading forward that is exactly where a practice stands partway
+    through the month after the year end: last month's accrual posted and not
+    yet disbursed, this month still being computed."""
+    out = []
+    for n, m in enumerate(months):
+        if n == len(months) - 1:
+            leave_at = "draft"
+        elif n == len(months) - 2:
+            leave_at = "finalized"
+        else:
+            leave_at = "paid"
+        # Two months with real loss of pay, so `month_on_month` has a movement to
+        # explain and the payslip is not the same document twelve times.
+        lop: tuple[tuple[int, int], ...] = ()
+        if n == 4 and employees > 2:
+            lop = ((2, 3),)
+        elif n == 8 and employees > 5:
+            lop = ((5, 2), (2, 1))
+        out.append(DemoPayrollMonth(month=m.isoformat()[:7], lop=lop,
+                                    leave_at=leave_at))
+    return tuple(out)
+
 
 
 def build(financial_year: str = "2025-26") -> DemoFirm:
@@ -489,7 +719,8 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                sales_catalogue=_GOODS, purchase_catalogue=_GOODS,
                sales_per_month=(2, 5), purchases_per_month=(1, 4),
                away_every=7, rcm_every=0, employees=0, sales_tds_bps=0,
-               frequency="monthly") -> DemoClient:
+               frequency="monthly", banks=(), operating_lines=(),
+               assets=()) -> DemoClient:
         return DemoClient(
             name=name, legal_name=legal, entity_type=entity, pan=pan_value,
             gstin=gstin_for(state, pan_value) if registered else None,
@@ -503,10 +734,62 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
             purchases=_documents(rng, months, vendors, purchase_catalogue,
                                  purchases_per_month,
                                  reverse_charge_every=rcm_every),
-            employees=_employees(rng, employees, f"{financial_year[:4]}-04-01"),
+            # ⚠️ CALLED HERE, AFTER `_documents`, AND THE POSITION IS LOAD-
+            # BEARING. `_employees` draws from the shared `rng`, and Python
+            # evaluates a call's arguments in order — so lifting it to a local
+            # above this constructor moved every later draw and silently
+            # reshuffled the whole practice: sales went 315 → 314 and purchase
+            # bills 200 → 209 on a change that added no document. Same trap
+            # `_documents` records for the settlement stream, one level up.
+            employees=_employees(rng, employees, f"{financial_year[:4]}-04-01",
+                                 code_prefix=f"{name[:3].upper()}-"),
+            banks=banks,
+            bank_lines=_bank_lines(months, operating_lines) if banks else (),
+            assets=assets,
+            # A month of payroll needs somebody to pay. The states the months
+            # are left in are the engine's own (see _payroll_months); nothing
+            # here chooses per client, because a demo in which one client's
+            # payroll is ahead of another's teaches nothing and hides the
+            # sequence that does.
+            payroll=_payroll_months(months, employees=employees) if employees else (),
             gst_filing_frequency=frequency,
             catalogue=_catalogue(sales_catalogue, purchase_catalogue),
         )
+
+    def asset(name, category, month_index, day, cost, method="WDV",
+              **kw) -> DemoAsset:
+        """One asset, dated by its MONTH OF THE FINANCIAL YEAR rather than by
+        a literal — 0 is April, 8 is December, and a NEGATIVE index is a year
+        the client already held it. Nothing in this module may read a clock and
+        `financial_year` is a parameter, so a typed date would pin the whole
+        register to one year."""
+        return DemoAsset(name=name, category=category,
+                         purchase_date=_asset_date(months, month_index, day),
+                         cost_paise=cost, method=method, **kw)
+
+    # ── The operating outflows that reach the BANK and not the books ────────
+    #
+    # These are the lines a CA actually works on the bank screen: rent, power,
+    # connectivity, courier, and the bank's own charges — the last carrying
+    # GST, which is the whole of BANK-24 (a credit the CA declares on a bank
+    # line reaches Table 4(A)(5), and used to reach nothing). Whole rupees, so
+    # the paise arithmetic downstream is exact.
+    _FACTORY_OUTFLOWS = (
+        ("Rent - Hinjewadi Facilities LLP", 5, 1_75_000_00, None),
+        ("MSEDCL electricity - factory", 9, 62_400_00, None),
+        ("Airtel broadband and leased line", 12, 4_130_00, None),
+        ("Blue Dart courier - consignments", 18, 2_360_00, None),
+        ("Bank charges - NEFT, collection and folio", 27, 1_180_00, 1_800),
+    )
+    _OFFICE_OUTFLOWS = (
+        ("Rent - office premises", 5, 85_000_00, None),
+        ("MSEDCL electricity - office", 9, 14_800_00, None),
+        ("Bank charges - NEFT and folio", 27, 826_00, 1_800),
+    )
+    _SMALL_OUTFLOWS = (
+        ("Rent - shop premises", 5, 28_000_00, None),
+        ("Bank charges - folio and cheque book", 27, 354_00, 1_800),
+    )
 
     clients = (
         client("Anand Textiles", "Anand Textiles Private Limited",
@@ -514,7 +797,43 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                demonstrates="the ordinary monthly GST client — the volume "
                             "every return screen, ageing schedule and "
                             "reconciliation is judged on",
-               customers=6, vendors=5, sales_per_month=(4, 8)),
+               customers=6, vendors=5, sales_per_month=(4, 8),
+               banks=(
+                   DemoBankAccount("HDFC Bank", "50200041178822", "HDFC0001234",
+                                   opening_balance_paise=8_50_000_00),
+                   # THE CARD, AND NO STATEMENT FOR IT — see DemoBankLine.
+                   # Its ledger is a LIABILITY, which is the whole of BANK-21
+                   # and what the register's sign convention and the Schedule
+                   # III caption are being shown.
+                   DemoBankAccount("HDFC Bank Business Regalia", "4854980011223344",
+                                   "HDFC0001234", account_type="Credit Card",
+                                   opening_balance_paise=1_42_600_00,
+                                   import_statement=False),
+               ),
+               operating_lines=_FACTORY_OUTFLOWS,
+               assets=(
+                   # Held since the year before, so the movement note opens
+                   # with a gross block rather than starting from nil.
+                   asset("Factory building - Bhiwandi", "Building", -18, 1,
+                         4_20_00_000_00, "SL"),
+                   asset("Sulzer rapier looms (6)", "Plant & Machinery", -6, 12,
+                         1_85_00_000_00),
+                   asset("Warping and sizing line", "Plant & Machinery", 1, 8,
+                         42_00_000_00),
+                   asset("Office computers and printers", "Computer & IT Equipment",
+                         3, 21, 2_40_000_00),
+                   # §17(5)(a) blocks the credit on a motor car for personal
+                   # carriage, so the ₹4,32,000 of tax is CAPITALISED and
+                   # depreciates. The one asset in the register whose cost is
+                   # not the figure on the invoice line.
+                   asset("Toyota Innova - director", "Vehicles", 5, 14,
+                         24_00_000_00,
+                         igst_paise=0, cgst_paise=2_16_000_00,
+                         sgst_paise=2_16_000_00, itc_eligible=False,
+                         itc_blocked_reason="CGST §17(5)(a) — motor vehicle for "
+                                            "the transport of persons, seating "
+                                            "capacity not more than thirteen"),
+               )),
         client("Kavya Consulting", "Kavya Consulting LLP", "LLP",
                pan("AAGFK", "3159", "R"),
                demonstrates="QRMP — Rule 61A quarterly returns with monthly "
@@ -529,32 +848,89 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                # and the only one where a ₹1,00,000 invoice is shown fully
                # settled by a ₹90,000 bank credit — the behaviour SALES-07
                # built and no screen exercised.
-               sales_tds_bps=1_000),
+               sales_tds_bps=1_000,
+               banks=(DemoBankAccount("ICICI Bank", "000705001234", "ICIC0000007",
+                                      opening_balance_paise=3_20_000_00),),
+               operating_lines=_OFFICE_OUTFLOWS,
+               assets=(
+                   asset("MacBook Pro fleet (4)", "Computer & IT Equipment",
+                         0, 18, 9_60_000_00),
+                   asset("Workstations and storage", "Furniture & Fixtures",
+                         2, 6, 3_40_000_00, "SL"),
+               )),
         client("Meher Enterprises", "Meher Enterprises", "Proprietorship",
                pan("AFXPM", "9026", "D"),
                demonstrates="a proprietor — the §44AD presumptive path and an "
                             "ITR-4, where the entity type is the whole "
                             "difference",
-               customers=4, vendors=3, sales_per_month=(2, 4)),
+               customers=4, vendors=3, sales_per_month=(2, 4),
+               banks=(DemoBankAccount("Bank of Maharashtra", "60123456789",
+                                      "MAHB0000456",
+                                      opening_balance_paise=1_40_000_00),),
+               operating_lines=_SMALL_OUTFLOWS,
+               assets=(
+                   asset("Delivery scooter", "Vehicles", 4, 9, 95_000_00),
+               )),
         client("Rathod Logistics", "Rathod Logistics Private Limited",
                "Private Limited", pan("AAECR", "5583", "N"),
                demonstrates="reverse charge — a goods transport agency, so "
                             "§9(3), Table 3.1(d), the self-invoice and the "
                             "payment voucher are not structurally nil",
                sales_catalogue=_SERVICES, purchase_catalogue=_SERVICES,
-               customers=5, vendors=4, rcm_every=3),
+               customers=5, vendors=4, rcm_every=3,
+               banks=(DemoBankAccount("Axis Bank", "918020033445566", "UTIB0000915",
+                                      opening_balance_paise=6_10_000_00),),
+               operating_lines=_OFFICE_OUTFLOWS,
+               assets=(
+                   # Schedule II Part C gives a lorry RUN ON HIRE six years
+                   # against eight for one that is not, and this client's
+                   # whole business is running them on hire — the category
+                   # decides the life, so it is not a label.
+                   asset("Tata LPT 1618 tipper", "Vehicles", -9, 3, 28_50_000_00),
+                   asset("Ashok Leyland Dost (2)", "Vehicles", 2, 17, 17_20_000_00),
+                   asset("Forklift - Pune depot", "Plant & Machinery", 6, 4,
+                         6_50_000_00),
+                   asset("Weighbridge and office equipment", "Office Equipment",
+                         7, 22, 1_20_000_00, "SL"),
+               )),
         client("Sunrise Foods", "Sunrise Foods Private Limited",
                "Private Limited", pan("AADCS", "6647", "P"),
                demonstrates="payroll and inventory — eight employees spanning "
                             "the ESI and Bonus Act ceilings, so both engines "
                             "have somebody they reach and somebody they do not",
-               customers=5, vendors=5, employees=8, sales_per_month=(3, 6)),
+               customers=5, vendors=5, employees=8, sales_per_month=(3, 6),
+               banks=(DemoBankAccount("State Bank of India", "38104455662",
+                                      "SBIN0007788",
+                                      opening_balance_paise=11_75_000_00),),
+               operating_lines=_FACTORY_OUTFLOWS,
+               assets=(
+                   asset("Cold storage - Ranjangaon", "Building", -24, 1,
+                         1_50_00_000_00, "SL"),
+                   # Part C gives a continuous process plant 25 years against
+                   # the general rate's 15 — the second class under one
+                   # category, which is why the table is a list per category
+                   # and not a number.
+                   asset("Packaging and sealing line", "Plant & Machinery",
+                         -3, 20, 3_40_00_000_00),
+                   asset("Blast freezer", "Plant & Machinery", 1, 11,
+                         28_00_000_00),
+                   asset("Plant computers and weighing scales",
+                         "Computer & IT Equipment", 4, 26, 3_10_000_00),
+               )),
         client("Deshmukh & Sons", "Deshmukh and Sons", "Partnership",
                pan("AAJFD", "2274", "L"),
                demonstrates="a firm — §184 partner remuneration, §194T on a "
                             "partner payment, and the firm rate the entity "
                             "registry holds",
-               customers=3, vendors=3, sales_per_month=(1, 3)),
+               customers=3, vendors=3, sales_per_month=(1, 3),
+               banks=(DemoBankAccount("Bank of Baroda", "04410200009876",
+                                      "BARB0PUNEXX",
+                                      opening_balance_paise=2_30_000_00),),
+               operating_lines=_SMALL_OUTFLOWS,
+               assets=(
+                   asset("Office furniture and fittings", "Furniture & Fixtures",
+                         0, 25, 2_20_000_00, "SL"),
+               )),
         client("Priya Sharma", "Priya Sharma", "Individual",
                pan("AKQPS", "1138", "F"),
                demonstrates="an individual below the registration threshold — "
@@ -562,14 +938,38 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                             "with no GSTIN at all",
                registered=False, customers=2, vendors=2,
                sales_per_month=(0, 1), purchases_per_month=(0, 1),
-               away_every=0),
+               away_every=0,
+               # A SAVINGS account, the only one here — the register's
+               # `balance_label` and the Schedule III caption both turn on the
+               # account type, and a demo of eight current accounts shows one
+               # branch of that.
+               banks=(DemoBankAccount("Kotak Mahindra Bank", "1712345678",
+                                      "KKBK0006630", account_type="Savings",
+                                      opening_balance_paise=4_60_000_00),)),
         client("Vaibhav Infra", "Vaibhav Infra Private Limited",
                "Private Limited", pan("AAGCV", "8890", "T"),
                demonstrates="construction — capital work in progress, its "
                             "Schedule III line and its ageing schedule, which "
                             "nothing else here produces",
                sales_catalogue=_SERVICES, purchase_catalogue=_SERVICES,
-               customers=3, vendors=5, employees=4),
+               customers=3, vendors=5, employees=4,
+               banks=(DemoBankAccount("Yes Bank", "004163900001122", "YESB0000041",
+                                      opening_balance_paise=9_40_000_00),),
+               operating_lines=_OFFICE_OUTFLOWS,
+               assets=(
+                   # LAND, which `_NOT_DEPRECIABLE` excludes — the one row in
+                   # the whole register that is never charged, and a register
+                   # in which everything depreciates cannot show that the
+                   # engine asked.
+                   asset("Land - Chakan plot", "Land", -30, 1, 5_50_00_000_00,
+                         "SL"),
+                   asset("Hitachi ZX210 excavator", "Plant & Machinery", -12, 9,
+                         4_20_00_000_00),
+                   asset("Site cabins and scaffolding", "Furniture & Fixtures",
+                         3, 15, 3_80_000_00, "SL"),
+                   asset("Total station and survey kit", "Office Equipment",
+                         6, 2, 4_90_000_00, "SL"),
+               )),
     )
 
     return DemoFirm(
@@ -602,6 +1002,20 @@ def summary(firm: DemoFirm) -> dict:
         "sales_invoices": sum(len(c.sales) for c in firm.clients),
         "purchase_bills": sum(len(c.purchases) for c in firm.clients),
         "employees": sum(len(c.employees) for c in firm.clients),
+        "bank_accounts": sum(len(c.banks) for c in firm.clients),
+        "bank_statement_lines": sum(len(c.bank_lines) for c in firm.clients),
+        "fixed_assets": sum(len(c.assets) for c in firm.clients),
+        # Land is in the register and is never charged — counted apart so the
+        # dry run says so rather than leaving the reader to wonder why the
+        # depreciation run reports fewer assets than the register holds.
+        "assets_never_depreciated": sum(
+            1 for c in firm.clients for a in c.assets if a.category == "Land"),
+        "assets_with_blocked_tax": sum(
+            1 for c in firm.clients for a in c.assets if a.itc_eligible is False),
+        "payroll_runs": sum(len(c.payroll) for c in firm.clients),
+        "payroll_runs_paid": sum(1 for c in firm.clients for m in c.payroll
+                                 if m.leave_at == "paid"),
+        "payslips": sum(len(c.payroll) * len(c.employees) for c in firm.clients),
         # What a CA opens Receivables to see. Counted here rather than left to
         # the seeder's own tally so the DRY RUN can state it before anything
         # is written — a plan that does not mention the money is not the plan.
@@ -628,6 +1042,11 @@ def summary(firm: DemoFirm) -> dict:
         "inter_state_sales": sum(
             1 for c in firm.clients for d in c.sales
             if d.place_of_supply != HOME_STATE),
+        "vendors_classified_under_msmed": sum(
+            1 for c in firm.clients for v in c.vendors if v.msme_status),
+        "vendors_with_a_written_payment_agreement": sum(
+            1 for c in firm.clients for v in c.vendors
+            if v.msmed_agreement_days),
         "unregistered_parties": sum(
             1 for c in firm.clients
             for p in (*c.customers, *c.vendors) if p.gstin is None),

@@ -65,6 +65,9 @@ class _TestClientApi:
     def post(self, path, body=None):
         return self._check("POST", path, self.client.post(path, json=body or {}))
 
+    def put(self, path, body=None):
+        return self._check("PUT", path, self.client.put(path, json=body or {}))
+
 
 @pytest.fixture
 def api():
@@ -73,23 +76,64 @@ def api():
     return _TestClientApi(TestClient(app))
 
 
+def a_firm_mock_mode_can_carry():
+    """The practice, with the PAYROLL leg removed — and the reason matters.
+
+    ⚠️ MOCK MODE STRUCTURALLY CANNOT WALK A PAYROLL YEAR.
+    `routers/payroll.create_employee` answers `{"id": "mock-id"}` with no
+    database, and `create_run` answers `{"id": "mock-run"}` — CONSTANTS, not a
+    store. So the second employee collides with the first (the attendance door
+    refuses a roster with one id sent twice, correctly), and twelve runs are
+    one run finalized twelve times. Stripping payroll here is not a smaller
+    claim about the seeder; it is the largest one this harness can make.
+
+    ⚠️ AND THE MSMED CLASSIFICATION IS THE SECOND ONE, for the opposite
+    reason. `POST /accounting/schedule-iii/ageing/classify` answers 503 — *no
+    database configured — a classification cannot be recorded* — rather than
+    pretending, which is the right refusal and means this harness cannot reach
+    it either. Its body is checked in the module named below, where nothing
+    executes a router.
+
+    The payroll leg is covered instead by
+    `test_every_body_the_seeder_sends_is_one_its_door_accepts.py`, which runs
+    the same `seed()` against the app's own route table and validates every
+    body — the class of defect that was actually live there (two fields sent
+    under names `EmployeeIn` does not declare, and silently dropped).
+    """
+    import dataclasses
+    from domain.demo import fixture
+
+    firm = fixture.build()
+    return dataclasses.replace(firm, clients=tuple(
+        dataclasses.replace(
+            c, employees=(), payroll=(),
+            vendors=tuple(dataclasses.replace(v, msme_status=None,
+                                              msmed_agreement_days=None)
+                          for v in c.vendors))
+        for c in firm.clients))
+
+
 def test_the_whole_practice_writes_through_the_doors(api):
     """The run the 32 fixture tests could not do. Every document goes through
     the router that would refuse it."""
     from domain.demo import fixture
     from scripts.seed_demo_firm import seed
 
-    firm = fixture.build()
+    firm = a_firm_mock_mode_can_carry()
     written = seed(api, firm, add_to_existing=True)
 
     s = fixture.summary(firm)
     assert written["clients"] == s["clients"]
     assert written["sales_invoices"] == s["sales_invoices"]
     assert written["purchase_bills"] == s["purchase_bills"]
-    assert written["employees"] == s["employees"]
     # The two steps the first run did not know about.
     assert written["hsn_library"] > 0, "no HSN library was written"
     assert written["catalogue"] == sum(len(c.catalogue) for c in firm.clients)
+    # And the three modules this tranche added, each of which was empty in the
+    # demo until now.
+    assert written["bank_accounts"] == s["bank_accounts"] > 0
+    assert written["fixed_assets"] == s["fixed_assets"] > 0
+    assert written["bank_lines"] > 0, "no statement line reached the queue"
 
 
 def test_the_catalogue_is_written_before_any_document_needs_it(api):
@@ -107,7 +151,7 @@ def test_the_catalogue_is_written_before_any_document_needs_it(api):
         return original(path, body)
 
     api.post = recording
-    seed(api, fixture.build(), add_to_existing=True)
+    seed(api, a_firm_mock_mode_can_carry(), add_to_existing=True)
 
     first_doc = next(i for i, p in enumerate(seen) if "sales-invoices" in p)
     first_cat = next(i for i, p in enumerate(seen) if "service-catalogue" in p)
@@ -119,6 +163,66 @@ def test_the_catalogue_is_written_before_any_document_needs_it(api):
     )
 
 
+def test_the_bank_account_exists_before_the_receipt_that_names_it(api):
+    """ORDER again, and for the same reason the catalogue chain is asserted as
+    an order. Every receipt, vendor payment and asset purchase carries
+    `bank_account_id`, so the money lands in the client's own ledger instead
+    of `resolve_payment_account`'s generic `%Bank%` fallback — and a seeder
+    that created the account afterwards would write a whole year of postings
+    each carrying the fallback disclosure, which is a real notice the CA is
+    meant to read."""
+    from scripts.seed_demo_firm import seed
+
+    seen: list[str] = []
+    original = api.post
+
+    def recording(path, body=None):
+        seen.append(path)
+        return original(path, body)
+
+    api.post = recording
+    seed(api, a_firm_mock_mode_can_carry(), add_to_existing=True)
+
+    first_bank = next(i for i, p in enumerate(seen) if p == "/api/banking/accounts")
+    first_receipt = next(i for i, p in enumerate(seen) if p == "/api/receipts/")
+    first_asset = next(i for i, p in enumerate(seen) if p == "/api/fixed-assets")
+    assert first_bank < first_receipt, f"bank@{first_bank} receipt@{first_receipt}"
+    assert first_bank < first_asset, f"bank@{first_bank} asset@{first_asset}"
+
+
+def test_the_statement_is_imported_after_every_invoice_is_known(api):
+    """The credits on it are open invoices' own totals, read off the create
+    responses — so the import cannot precede the last invoice of that client.
+    Asserted per client rather than globally: a check on the FIRST import
+    against the LAST invoice anywhere passes on a seeder that imports client
+    one's statement before client one's invoices are written."""
+    from scripts.seed_demo_firm import seed
+
+    seen: list[str] = []
+    original = api.post
+
+    def recording(path, body=None):
+        seen.append(path)
+        return original(path, body)
+
+    api.post = recording
+    seed(api, a_firm_mock_mode_can_carry(), add_to_existing=True)
+
+    # Walk in order: between two imports there must be no invoice that belongs
+    # to the client whose statement was just imported. The seeder writes one
+    # client at a time, so "an import is never followed by an invoice before
+    # the next client's bank account" is the same statement and needs no ids.
+    for i, path in enumerate(seen):
+        if path != "/api/banking/statements/import":
+            continue
+        rest = seen[i + 1:]
+        nxt = next((j for j, p in enumerate(rest) if p == "/api/banking/accounts"),
+                   len(rest))
+        assert "/api/sales-invoices/" not in rest[:nxt], (
+            "a statement was imported before that client's last invoice, so "
+            "its open-invoice credits cannot be the engine's own totals")
+
+
 def test_a_firm_with_clients_is_refused_without_the_flag(api):
     """The one refusal that protects a real book. Asserted because it is the
     difference between a demo and an unrecoverable merge: a posted journal
@@ -126,9 +230,9 @@ def test_a_firm_with_clients_is_refused_without_the_flag(api):
     from domain.demo import fixture
     from scripts.seed_demo_firm import seed
 
-    seed(api, fixture.build(), add_to_existing=True)   # now the firm has clients
+    seed(api, a_firm_mock_mode_can_carry(), add_to_existing=True)
     with pytest.raises(SystemExit) as caught:
-        seed(api, fixture.build(), add_to_existing=False)
+        seed(api, a_firm_mock_mode_can_carry(), add_to_existing=False)
     assert "already has" in str(caught.value)
 
 
@@ -139,7 +243,7 @@ def test_the_money_is_written_and_the_book_is_not_all_one_thing(api):
     from domain.demo import fixture
     from scripts.seed_demo_firm import seed
 
-    firm = fixture.build()
+    firm = a_firm_mock_mode_can_carry()
     written = seed(api, firm, add_to_existing=True)
     s = fixture.summary(firm)
 

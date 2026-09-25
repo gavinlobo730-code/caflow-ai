@@ -122,10 +122,15 @@ def test_every_rate_is_integer_paise():
 
 
 def test_every_salary_component_is_integer_paise():
+    """HRA is the exception and it is a PERCENTAGE, because `EmployeeIn`
+    declares `hra_percent: float` and has no paise field for it. Sending an
+    amount was the live defect: Pydantic dropped it and every seeded employee
+    went in with no house rent allowance at all."""
     for c in FIRM.clients:
         for e in c.employees:
-            for amount in (e.basic_paise, e.hra_paise, e.special_paise):
+            for amount in (e.basic_paise, e.special_paise):
                 assert isinstance(amount, int) and amount > 0
+            assert isinstance(e.hra_percent, float) and 0 < e.hra_percent <= 100
 
 
 def test_no_float_amount_appears_in_the_module():
@@ -239,7 +244,8 @@ def test_the_employees_straddle_the_statutory_ceilings():
     """ESI stops at ₹21,000 of gross and Bonus Act §2(13) at ₹21,000 of salary,
     so both engines need somebody they reach and somebody they do not."""
     employees = [e for c in FIRM.clients for e in c.employees]
-    gross = [e.basic_paise + e.hra_paise + e.special_paise for e in employees]
+    gross = [e.basic_paise + (e.basic_paise * int(e.hra_percent)) // 100
+             + e.special_paise for e in employees]
     assert any(g <= 21_000_00 for g in gross), "nobody is inside the ESI ceiling"
     assert any(g > 21_000_00 for g in gross), "nobody is outside it"
 
