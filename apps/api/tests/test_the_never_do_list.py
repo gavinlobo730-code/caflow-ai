@@ -197,6 +197,18 @@ OUTBOUND_MODULES: dict[str, str] = {
         "Groq via its own SDK, for the PDF/text invoice extraction path",
     "services/statement_vision.py":
         "Gemini via google.genai, for reading a scanned bank statement",
+    # ── a hand-run tool, pointed at THIS product's own API ───────────────────
+    "scripts/seed_demo_firm.py":
+        "PracticeSync's own API, at a URL the operator passes on the command "
+        "line — never a government portal, and it could not usefully be one: "
+        "every call is a POST of fictional data to /api/clients, /api/"
+        "customers, /api/vendors, /api/sales-invoices, /api/purchase-bills "
+        "and /api/payroll/employees with a Partner's own JWT. It exists so a "
+        "demo practice is written through the DOORS rather than into the "
+        "database, because every posting here goes through the one kernel and "
+        "a seeder writing rows directly would produce books this product's "
+        "own Verify Books would refuse. It is a DRY RUN until --confirm, and "
+        "it is not imported by anything that serves a request.",
     # ── the firm's own operations ────────────────────────────────────────────
     "services/email_service.py":
         "Resend (api.resend.com), for the mail this product sends on the "

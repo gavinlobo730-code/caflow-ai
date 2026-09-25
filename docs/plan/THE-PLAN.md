@@ -204,10 +204,28 @@ sees the old one.
 
 ---
 
-## Track 3 — The demo firm · 🔧 C · 2–3 days
+## Track 3 — The demo firm · 🔧 C · **done 25 Sep** ✅
 
-Seeded (D7). Nothing to show today: 7 clients, 2 bank accounts, most tables
-empty. The demo is what Track 4 judges and what justifies Track 5.
+Seeded (D7). The live book was 7 clients and 2 bank accounts with most tables
+empty, so every screen rendered its empty state and nothing could be judged.
+
+**Sharma & Associates**, Mumbai, FY 2025-26 — 8 clients, 31 customers, 30
+vendors, **315 sales invoices**, **200 purchase bills**, 12 employees, 42
+inter-state supplies, 9 reverse-charge bills, 16 unregistered parties.
+
+| | |
+|---|---|
+| `domain/demo/fixture.py` | the practice as DATA — no handle, no call, deterministic on one fixed seed, and nothing in it reads the clock (a demo pinned to "now" is a different set of books every month, and a LOCKED PERIOD cannot be demonstrated at all if every date is recent) |
+| `scripts/seed_demo_firm.py` | writes it **through the API, never the database** — every posting here goes through the one kernel, and a seeder writing rows directly would produce books this product's own Verify Books would refuse. **A DRY RUN until `--confirm`**, and it refuses a firm that already has clients |
+| `tests/test_the_demo_practice_...py` | 32 tests. Every GSTIN's check digit is COMPUTED, not typed — this repo has already had to correct three invalid fixture GSTINs used across 77 files |
+
+**Each client exists for a different screen**, and the fixture says which:
+the ordinary monthly GST client for volume; QRMP; a proprietor for §44AD; a
+GTA for reverse charge; payroll spanning the ESI and Bonus Act ceilings; a
+partnership for §194T; an individual with no GSTIN; construction for CWIP.
+Some vendors are deliberately **unclassified** under MSMED, because §43B(h)
+names that gap rather than assuming Others and a fixture where everything is
+classified cannot show it.
 
 ---
 
