@@ -349,7 +349,7 @@ export default function HealthPage() {
         <Card className="bg-state-problem-surface border-state-problem-border shadow-sm">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-red-600">{criticalCount}</p>
-            <p className="text-xs text-red-500 mt-1">Critical (0–34)</p>
+            <p className="text-xs text-state-problem mt-1">Critical (0–34)</p>
           </CardContent>
         </Card>
         <Card className="bg-state-attention-surface border-state-attention-border shadow-sm">

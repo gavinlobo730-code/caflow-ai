@@ -173,7 +173,7 @@ export default function PortalActivatePage() {
         {stage === "invalid" && (
           <div className="text-center">
             <div className="w-12 h-12 rounded-full bg-state-problem-surface flex items-center justify-center mx-auto mb-4">
-              <AlertCircle size={22} className="text-red-500" />
+              <AlertCircle size={22} className="text-state-problem" />
             </div>
             <h2 className="text-xl font-bold text-ps-ink tracking-tight">Invite invalid or expired</h2>
             <p className="text-sm text-ps-label mt-2 leading-relaxed">

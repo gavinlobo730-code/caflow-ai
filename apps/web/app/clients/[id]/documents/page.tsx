@@ -301,7 +301,7 @@ export default function DocumentsPage() {
                           <button
                             onClick={() => handleDeleteDocument(doc)}
                             disabled={deletingDocId === doc.id}
-                            className="flex items-center gap-1 text-xs text-red-500 hover:underline disabled:opacity-40"
+                            className="flex items-center gap-1 text-xs text-state-problem hover:underline disabled:opacity-40"
                           >
                             <Trash2 size={12} /> {deletingDocId === doc.id ? "Deleting…" : "Delete"}
                           </button>

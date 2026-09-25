@@ -653,7 +653,7 @@ function RecurringBillEditor({
                     {lines.length > 1 && (
                       <button type="button" aria-label={`Remove line ${i + 1}`}
                         onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}
-                        className="ml-auto text-red-500 hover:text-state-problem">
+                        className="ml-auto text-state-problem">
                         <Trash2 size={13} />
                       </button>
                     )}

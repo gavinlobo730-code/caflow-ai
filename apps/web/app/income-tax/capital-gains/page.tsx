@@ -478,13 +478,13 @@ export default function CapitalGainsPage() {
       <div className="flex border-b border-ps-border">
         <button
           onClick={() => setActiveTab("calculator")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "calculator" ? "border-brand text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"}`}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "calculator" ? "border-brand text-brand" : "border-transparent text-ps-label hover:text-ps-body"}`}
         >
           <Calculator className="w-4 h-4" /> Calculator
         </button>
         <button
           onClick={() => setActiveTab("register")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "register" ? "border-brand text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"}`}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "register" ? "border-brand text-brand" : "border-transparent text-ps-label hover:text-ps-body"}`}
         >
           <BookOpen className="w-4 h-4" /> Register
         </button>
@@ -497,7 +497,7 @@ export default function CapitalGainsPage() {
             {/* Input Form */}
             <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
               <div className="flex items-center gap-2 mb-2">
-                <Calculator className="w-4 h-4 text-blue-600" />
+                <Calculator className="w-4 h-4 text-brand" />
                 <h2 className="text-sm font-semibold text-ps-ink">Asset Details</h2>
               </div>
 
@@ -617,7 +617,7 @@ export default function CapitalGainsPage() {
               {!result ? (
                 <div className="bg-white rounded-xl border border-ps-muted p-5 flex items-center justify-center h-full min-h-[200px]">
                   <div className="text-center">
-                    <Calculator className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                    <Calculator className="w-8 h-8 text-ps-disabled mx-auto mb-2" />
                     <p className="text-sm text-ps-hint">
                       {computing ? "Computing…" : "Enter asset details to compute capital gains"}
                     </p>
@@ -634,13 +634,13 @@ export default function CapitalGainsPage() {
                       </div>
                       <div>
                         <p className="text-xs text-ps-hint">Classification</p>
-                        <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.is_long_term ? "bg-green-100 text-green-700" : "bg-state-attention-surface text-state-attention"}`}>
+                        <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${result.is_long_term ? "bg-state-ready-surface text-state-ready" : "bg-state-attention-surface text-state-attention"}`}>
                           {result.is_long_term ? "Long Term" : "Short Term"} Capital Gain
                         </span>
                       </div>
                       <div>
                         <p className="text-xs text-ps-hint">Capital Gain</p>
-                        <p className={`text-sm font-semibold ${result.gain_paise >= 0 ? "text-green-700" : "text-state-problem"}`}>
+                        <p className={`text-sm font-semibold ${result.gain_paise >= 0 ? "text-state-ready" : "text-state-problem"}`}>
                           {result.gain_paise >= 0 ? "+" : ""}{formatPaise(result.gain_paise)}
                         </p>
                       </div>
@@ -679,7 +679,7 @@ export default function CapitalGainsPage() {
                       )}
                       <div className="border-t border-ps-muted pt-2 flex justify-between text-sm font-semibold">
                         <span className="text-ps-ink">Capital Gain</span>
-                        <span className={result.gain_paise >= 0 ? "text-green-700" : "text-state-problem"}>
+                        <span className={result.gain_paise >= 0 ? "text-state-ready" : "text-state-problem"}>
                           {formatPaise(result.gain_paise)}
                         </span>
                       </div>
@@ -693,7 +693,7 @@ export default function CapitalGainsPage() {
                           </div>
                           <div className="flex justify-between text-sm font-semibold mt-1">
                             <span className="text-ps-ink">Gain (indexed)</span>
-                            <span className={result.gain_with_indexation_paise >= 0 ? "text-green-700" : "text-state-problem"}>
+                            <span className={result.gain_with_indexation_paise >= 0 ? "text-state-ready" : "text-state-problem"}>
                               {formatPaise(result.gain_with_indexation_paise)}
                             </span>
                           </div>
@@ -702,8 +702,8 @@ export default function CapitalGainsPage() {
                     </div>
                   </div>
 
-                  <div className="bg-blue-50 rounded-xl border border-blue-100 p-4">
-                    <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-3">Estimated Tax Liability</h3>
+                  <div className="bg-brand-surface rounded-xl border border-brand-light p-4">
+                    <h3 className="text-xs font-semibold text-brand uppercase tracking-wide mb-3">Estimated Tax Liability</h3>
                     {showIndexation ? (
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
@@ -714,15 +714,15 @@ export default function CapitalGainsPage() {
                           <span className="text-ps-label">Tax with indexation ({result.tax_with_indexation_percent}%)</span>
                           <span className="font-medium">{fmtRs(result.tax_with_indexation_paise ?? 0)}</span>
                         </div>
-                        <div className="border-t border-blue-200 pt-2 flex justify-between">
+                        <div className="border-t border-brand-light pt-2 flex justify-between">
                           <span className="text-sm font-semibold text-ps-ink">Recommended (lower)</span>
-                          <span className="text-lg font-bold text-blue-700">{fmtRs(result.tax_liability_paise)}</span>
+                          <span className="text-lg font-bold text-brand">{fmtRs(result.tax_liability_paise)}</span>
                         </div>
                       </div>
                     ) : (
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-ps-label">Tax @ {result.tax_rate_percent}%</span>
-                        <span className="text-2xl font-bold text-blue-700">{fmtRs(result.tax_liability_paise)}</span>
+                        <span className="text-2xl font-bold text-brand">{fmtRs(result.tax_liability_paise)}</span>
                       </div>
                     )}
                   </div>
@@ -734,13 +734,13 @@ export default function CapitalGainsPage() {
                       transfer. Collapsing them would turn "go and get this"
                       into "nothing to do here". */}
                   {(result.gaps?.length ?? 0) > 0 && (
-                    <div className="bg-orange-50 rounded-lg border border-orange-100 p-3 flex gap-2">
-                      <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
+                    <div className="bg-state-attention-surface rounded-lg border border-state-attention-border p-3 flex gap-2">
+                      <AlertTriangle className="w-4 h-4 text-state-attention shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-xs font-semibold text-orange-800">Not recorded — this changes the figure above</p>
+                        <p className="text-xs font-semibold text-state-attention">Not recorded — this changes the figure above</p>
                         <ul className="mt-1 space-y-1">
                           {result.gaps!.map((g, i) => (
-                            <li key={i} className="text-xs text-orange-700">{g}</li>
+                            <li key={i} className="text-xs text-state-attention">{g}</li>
                           ))}
                         </ul>
                       </div>
@@ -767,11 +767,11 @@ export default function CapitalGainsPage() {
                   )}
 
                   <div className="bg-state-attention-surface rounded-lg p-3 flex gap-2">
-                    <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <Info className="w-4 h-4 text-state-attention shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-xs text-amber-800 font-medium">{result.section_ref}</p>
+                      <p className="text-xs text-state-attention font-medium">{result.section_ref}</p>
                       <p className="text-xs text-state-attention mt-0.5">{result.note}</p>
-                      <p className="text-3xs text-amber-600 mt-1">
+                      <p className="text-3xs text-state-attention mt-1">
                         {result.is_slab_rate_estimate
                           ? "This rate is an ESTIMATE at the highest slab — your actual liability depends on your own income slab. "
                           : ""}
@@ -795,7 +795,7 @@ export default function CapitalGainsPage() {
                 <tbody>
                   <tr>
                     {ciiYears.map(y => (
-                      <td key={y} className={`px-3 py-2 text-center border-r border-gray-50 ${purchaseFY === y || saleFY === y ? "bg-blue-50" : ""}`}>
+                      <td key={y} className={`px-3 py-2 text-center border-r border-gray-50 ${purchaseFY === y || saleFY === y ? "bg-brand-surface" : ""}`}>
                         <p className="text-3xs text-ps-hint">FY {y}</p>
                         <p className="text-xs font-semibold text-ps-ink">{ciiByFy[y]}</p>
                       </td>
@@ -825,7 +825,7 @@ export default function CapitalGainsPage() {
                 />
               </div>
               {clientsError && (
-                <p className="text-2xs text-red-600 mt-1">
+                <p className="text-2xs text-state-problem mt-1">
                   {clientsError}{" "}
                   <button onClick={loadClients} className="underline hover:no-underline">Retry</button>
                 </p>
@@ -840,7 +840,7 @@ export default function CapitalGainsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-blue-600" />
+                <BookOpen className="w-4 h-4 text-brand" />
                 Capital Gains Register ({records.length})
               </CardTitle>
             </CardHeader>
@@ -885,21 +885,21 @@ export default function CapitalGainsPage() {
                           <td className="px-4 py-3 text-right text-ps-body">{fmtRs(r.sale_value_paise)}</td>
                           <td className="px-4 py-3 text-right text-ps-label text-xs">{r.indexed_cost_paise != null ? fmtRs(r.indexed_cost_paise) : "—"}</td>
                           <td className="px-4 py-3 text-center">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.gain_type === "LTCG" ? "bg-green-100 text-green-700" : "bg-state-attention-surface text-state-attention"}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.gain_type === "LTCG" ? "bg-state-ready-surface text-state-ready" : "bg-state-attention-surface text-state-attention"}`}>
                               {r.gain_type ?? "—"}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right text-ps-body">{r.tax_rate_percent != null ? `${r.tax_rate_percent}%` : "—"}</td>
                           <td className="px-4 py-3 text-center">
                             <button onClick={() => openExemption(r)}
-                                    className="text-xs px-2 py-1 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors whitespace-nowrap">
+                                    className="text-xs px-2 py-1 rounded-lg border border-state-ready-border text-state-ready hover:bg-state-ready-surface transition-colors whitespace-nowrap">
                               Exemption
                             </button>
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-col items-end gap-1">
-                              <span className={`text-xs font-semibold ${gain >= 0 ? "text-green-700" : "text-state-problem"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
-                              <button onClick={() => handleDeleteRecord(r.id)} className="text-ps-disabled hover:text-red-500 transition-colors">
+                              <span className={`text-xs font-semibold ${gain >= 0 ? "text-state-ready" : "text-state-problem"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
+                              <button onClick={() => handleDeleteRecord(r.id)} className="text-ps-disabled hover:text-state-problem transition-colors">
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             </div>
@@ -926,7 +926,7 @@ export default function CapitalGainsPage() {
               <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white">
                   <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <ShieldCheck className="w-4 h-4 text-state-ready" />
                     <h2 className="text-sm font-semibold text-ps-ink">
                       Reinvestment exemption — {exemptFor.asset_description}
                     </h2>
@@ -945,13 +945,13 @@ export default function CapitalGainsPage() {
                         <p className="text-2xs text-ps-label">Gain (s. 48)</p>
                         <p className="text-sm font-semibold text-ps-ink">{fmtRs(exemption.gain_paise)}</p>
                       </div>
-                      <div className="bg-emerald-50 rounded-lg px-3 py-2">
-                        <p className="text-2xs text-emerald-700">Exempt</p>
-                        <p className="text-sm font-semibold text-emerald-800">{fmtRs(exemption.total_exemption_paise)}</p>
+                      <div className="bg-state-ready-surface rounded-lg px-3 py-2">
+                        <p className="text-2xs text-state-ready">Exempt</p>
+                        <p className="text-sm font-semibold text-state-ready">{fmtRs(exemption.total_exemption_paise)}</p>
                       </div>
                       <div className="bg-state-attention-surface rounded-lg px-3 py-2">
-                        <p className="text-2xs text-amber-800">Still taxable</p>
-                        <p className="text-sm font-semibold text-amber-900">{fmtRs(exemption.taxable_gain_paise)}</p>
+                        <p className="text-2xs text-state-attention">Still taxable</p>
+                        <p className="text-sm font-semibold text-state-attention">{fmtRs(exemption.taxable_gain_paise)}</p>
                       </div>
                     </div>
                   )}
@@ -962,7 +962,7 @@ export default function CapitalGainsPage() {
 
                   {exemption?.claims?.map(c => (
                     <div key={c.id ?? c.section}
-                         className={`rounded-lg border px-3 py-2.5 space-y-1.5 ${c.allowed ? "border-emerald-200 bg-emerald-50/40" : "border-ps-border bg-ps-bg"}`}>
+                         className={`rounded-lg border px-3 py-2.5 space-y-1.5 ${c.allowed ? "border-state-ready-border bg-state-ready-surface/40" : "border-ps-border bg-ps-bg"}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-sm font-medium text-ps-ink">
@@ -971,7 +971,7 @@ export default function CapitalGainsPage() {
                           <p className="text-2xs text-ps-label">{c.heading}</p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className={`text-sm font-semibold ${c.allowed ? "text-emerald-700" : "text-ps-hint"}`}>
+                          <p className={`text-sm font-semibold ${c.allowed ? "text-state-ready" : "text-ps-hint"}`}>
                             {c.allowed ? fmtRs(c.exemption_paise) : "Not allowed"}
                           </p>
                           {c.deadline && (
@@ -985,7 +985,7 @@ export default function CapitalGainsPage() {
                         <p key={`w${i}`} className="text-2xs text-ps-label">{w}</p>
                       ))}
                       {c.gaps.map((g, i) => (
-                        <p key={`g${i}`} className="text-2xs text-amber-900 flex gap-1.5">
+                        <p key={`g${i}`} className="text-2xs text-state-attention flex gap-1.5">
                           <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />{g}
                         </p>
                       ))}
@@ -994,7 +994,7 @@ export default function CapitalGainsPage() {
                       ))}
                       {c.id && (
                         <button onClick={() => removeClaim(c.id as string)} disabled={exemptBusy}
-                                className="text-2xs text-ps-hint hover:text-red-500 transition-colors">
+                                className="text-2xs text-ps-hint hover:text-state-problem transition-colors">
                           Delete this claim
                         </button>
                       )}
@@ -1262,14 +1262,14 @@ export default function CapitalGainsPage() {
 
                   {/* Server-computed preview (STCG/LTCG, rate, indexed cost) */}
                   {regPreview && (
-                    <div className="bg-blue-50 rounded-lg px-4 py-3 space-y-1">
+                    <div className="bg-brand-surface rounded-lg px-4 py-3 space-y-1">
                       <div className="flex justify-between text-xs">
                         <span className="text-ps-label">Holding Period</span>
                         <span className="font-medium text-ps-ink">{regPreview.holding_months} months</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-ps-label">Classification</span>
-                        <span className={`font-semibold ${regPreview.gain_type === "LTCG" ? "text-green-700" : "text-state-attention"}`}>{regPreview.gain_type}</span>
+                        <span className={`font-semibold ${regPreview.gain_type === "LTCG" ? "text-state-ready" : "text-state-attention"}`}>{regPreview.gain_type}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-ps-label">Tax Rate</span>
@@ -1295,11 +1295,11 @@ export default function CapitalGainsPage() {
                       said before the CA presses Save — not afterwards on the
                       calculator tab. */}
                   {(regPreview?.gaps?.length ?? 0) > 0 && (
-                    <div className="bg-orange-50 rounded-lg border border-orange-100 px-4 py-3">
-                      <p className="text-xs font-semibold text-orange-800">Not recorded — this changes what is saved</p>
+                    <div className="bg-state-attention-surface rounded-lg border border-state-attention-border px-4 py-3">
+                      <p className="text-xs font-semibold text-state-attention">Not recorded — this changes what is saved</p>
                       <ul className="mt-1 space-y-1">
                         {regPreview!.gaps!.map((g, i) => (
-                          <li key={i} className="text-xs text-orange-700">{g}</li>
+                          <li key={i} className="text-xs text-state-attention">{g}</li>
                         ))}
                       </ul>
                     </div>

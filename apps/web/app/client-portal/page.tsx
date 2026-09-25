@@ -619,7 +619,7 @@ export default function ClientPortalPage() {
                               </Badge>
                               <button
                                 onClick={() => handleDeleteRequest(req.id)}
-                                className="p-1.5 text-ps-hint hover:text-red-500 hover:bg-state-problem-hover rounded transition-colors"
+                                className="p-1.5 text-ps-hint hover:text-state-problem hover:bg-state-problem-hover rounded transition-colors"
                                 title="Delete request"
                               >
                                 <Trash2 size={13} />
@@ -714,7 +714,7 @@ export default function ClientPortalPage() {
                               </button>
                               <button
                                 onClick={() => handleDeleteSharedDoc(doc)}
-                                className="p-1.5 text-ps-hint hover:text-red-500 hover:bg-state-problem-hover rounded transition-colors"
+                                className="p-1.5 text-ps-hint hover:text-state-problem hover:bg-state-problem-hover rounded transition-colors"
                                 title="Delete"
                               >
                                 <Trash2 size={13} />

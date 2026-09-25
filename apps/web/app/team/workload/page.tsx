@@ -270,7 +270,7 @@ export default function WorkloadPage() {
             <div className="space-y-2">
               {overloaded.length > 0 && (
                 <div className="flex items-start gap-2 bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3">
-                  <AlertTriangle size={14} className="text-red-500 mt-0.5 shrink-0" />
+                  <AlertTriangle size={14} className="text-state-problem mt-0.5 shrink-0" />
                   <p className="text-sm text-state-problem">
                     <strong>{overloaded.map(m => m.user_name).join(", ")}</strong>
                     {overloaded.length === 1 ? " is" : " are"} overloaded. Consider redistributing tasks.

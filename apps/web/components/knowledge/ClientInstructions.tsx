@@ -108,7 +108,7 @@ export function ClientInstructions({
               {!pinnedOnly && canWrite && (
                 <div className="flex items-center gap-2 shrink-0">
                   <button disabled={rowBusy} onClick={() => togglePin(i)} title="Pin/unpin" className="text-gray-400 hover:text-amber-500"><Pin size={13} /></button>
-                  <button disabled={rowBusy} onClick={() => archive(i)} title="Archive" className="text-gray-400 hover:text-red-500"><Archive size={13} /></button>
+                  <button disabled={rowBusy} onClick={() => archive(i)} title="Archive" className="text-gray-400 hover:text-state-problem"><Archive size={13} /></button>
                 </div>
               )}
             </div>

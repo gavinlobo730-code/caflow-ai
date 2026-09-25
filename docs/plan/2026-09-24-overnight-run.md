@@ -574,3 +574,131 @@ and the failure message invites raising it. The coverage was recoverable, so
 the projections are written out per tile instead: four near-identical lines,
 the same trade `domain/tally/party_identifiers` records. Of all the reads to
 leave unchecked, four feeding a queue a CA works from is a poor choice.
+
+---
+
+# Phase 2 — 2.7c: the structural half is done, and that is a measurement
+
+After 2.7a and 2.7b, **every check that can express "a screen is in the wrong
+place" passes.** 2.7's DONE WHEN is about guards breaking on a *move*, so that
+is the half it was written for:
+
+| what | held by |
+|---|---|
+| every named firm screen is in its **owning** panel | `a-module-shows-all-of-itself` |
+| no screen is in two panels | `a-screen-has-one-home` (new, 2.7a) |
+| every screen has a way in | `every-screen-has-a-way-in` |
+| every hub tile lands on a real page, not a tombstone | `test_a_hub_tile_shows_what_is_outstanding` |
+| every client sub-screen is linked from its section page | `a-module-shows-all-of-itself` |
+| ⌘K names 140 of 164 routes and accounts for the rest | `every-screen-has-a-name` |
+| no module exceeds its endpoint-reachability budget | `test_every_mounted_endpoint_has_a_way_in` |
+
+And one thing measured rather than asserted: **`pageOnly` is 0 for every
+module** — every screen a landing page links is also in its panel. That is
+2.5's disjointness gone in the direction that mattered, and the reverse
+(`panelOnly`, 10 modules) is the panel being the complete surface, which is the
+rule 2.5 settled.
+
+**Four landing pages link to none of their own sub-screens and are left
+alone**: `/practice`, `/team`, `/health`, `/relationships`. They are 259–1,021
+line working dashboards with the complete panel beside them. Adding index cards
+would be work with no reader.
+
+## So 2.7 is closed, and the design conversion belongs to 1.3
+
+⚠️ **A correction to this section's own first draft**, made before it could
+mislead: it said the remaining per-module work "is 2.7c". It is not — the named
+palette colours are T4-b's remainder and row **1.3** already owns them, in its
+own words: *"the rest of T4-b is still a judgement per site."* Filing them
+under 2.7 as well would give one body of work two homes. **2.7 is closed;** the
+conversion continues under 1.3, one module per PR with a before/after walk.
+
+## The ratchet that was missing
+
+4,373 named Tailwind palette colours (`app` 3,581 · `components` 780 ·
+`lib` 12), worst-first `app/clients` 1,045, `app/relationships` 285,
+`app/income-tax` 202, `app/health` 188, `app/accounting` 180.
+
+**That number was in THE-PLAN's metrics table and nothing enforced it.**
+`HEX_BUDGET` covers the arbitrary-value form (10,146 → 44 under G0/G1); the
+NAMED form is nine times larger and could grow on any commit, with only a
+hand-run `grep` to notice. It is pinned at 4,373 now and may only come down —
+counting **the same list the plan's own metric greps**, which is CLAUDE.md's
+lesson about a metric and its guard counting the same population, applied
+before it bites rather than after.
+
+It is deliberately **not a ban**: a chart series or an illustration may need a
+palette step no token names. What the ratchet buys is that a module's
+conversion cannot be undone by the next screen somebody writes.
+
+⚠️ **AND 4,373 IS A CEILING, NOT A BACKLOG.** 1.3d's own record puts three
+categories deliberately outside the conversion — links (`text-blue-*`, because
+a link in #182350 reads as body text), the `-50`/`-100` tint panels, and the
+opacity-modified column shades. A sample of `app/income-tax`'s 202 is roughly
+half exactly those: `bg-blue-50 border-blue-200` info boxes and `bg-green-50`
+chips. **A blind module sweep would reverse recorded decisions rather than
+continue them.** It is a judgement per site, which is what 1.3 has said from
+the start; the ratchet's job is to stop the number growing while that judgement
+is made, not to turn it into a queue. The income-tax sample did turn up one
+real item — a `bg-green-600` primary-action button in a module whose primary is
+the brand navy.
+
+## And the smoke walk was reading the wrong list
+
+`scripts/screens.snapshot.json` is a **record** of the screens the product had
+when somebody last looked — `the-redesign-cannot-lose-a-screen.test.ts` uses it
+to catch a DELETION, additions pass by design, and nothing regenerates it. The
+walk used it as its route list, so three pages built in 2.7b were rendered,
+linked and passing every test while the walk never visited one of them: the
+shots said the module was fine and the module had three screens nobody had
+looked at.
+
+The walk reads the **live `app/` tree** now, through `screenRoutes()` — the
+same function that writes the snapshot, so the two cannot disagree about what a
+route looks like — with a vacuity floor so a broken tree walk cannot report a
+clean run over nothing. The snapshot keeps its own job. The first run after the
+change walked **164** screens where the snapshot had 160.
+
+## A measurement that disproved my own diagnosis (24-09-2026)
+
+`migration apply — real Postgres 16` took **15:40** on the commit that landed
+migration 416. The previous main commit took **27 seconds**, so I read that as a
+regression and attributed it to `tests/test_hub_client_worklist_parity_pg.py`
+cloning the migrated template once per test — fourteen clones for one seed.
+
+**Both halves of that were wrong, and the second one matters more.**
+
+The fixture *is* worth making module-scoped — every test in the file is
+read-only, so there is no state to leak, and one clone is obviously right where
+fourteen were. But the saving is what it is:
+
+| fixture scope | wall clock, 14 tests, local Postgres |
+|---|---|
+| function (13 extra clones) | 28.18s |
+| module | 23.42s |
+
+**~5 seconds.** A template clone costs about 0.37s, not a minute.
+
+And there was no regression to explain. The job's duration across the last
+twelve main commits is *bimodal*, not rising:
+
+```
+e7b5e9ed  0:15:40     150b7ce8  0:00:35     00d9d74f  0:00:28
+a5dae462  0:00:27     5786f68f  0:00:30     48276df1  0:16:22
+932bad6c  0:15:53     14d5d045  0:00:41     5272536f  0:15:35
+```
+
+Every ~30-second run is the `scope` job short-circuiting a **frontend-only**
+commit. Every backend commit costs ~15–16 minutes and has for at least four
+merges before this one. That is simply what the full `test_*_pg.py` suite costs
+against a real Postgres 16.
+
+⚠️ **The lesson is about the comparison, not the number.** I compared against
+the immediately preceding main commit without checking whether that commit ran
+the same work. A conditional job's "previous run" is not a baseline unless the
+condition held both times — and here the condition is exactly the thing that
+decides whether the job does anything at all. One extra data point (the commit
+before *that*) would have shown the alternation immediately.
+
+If the 15 minutes is ever worth attacking, the target is the suite, not this
+file: measure which `_pg` modules dominate it first.

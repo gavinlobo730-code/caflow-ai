@@ -326,7 +326,7 @@ export default function WorkAllocationPage() {
                       {t.client_name && <p className="text-xs text-ps-hint truncate">{t.client_name}</p>}
                     </div>
                     <div className="shrink-0 flex items-center gap-1">
-                      <span className={`text-xs ${isOverdue ? "text-red-500" : "text-ps-hint"}`}>
+                      <span className={`text-xs ${isOverdue ? "text-state-problem" : "text-ps-hint"}`}>
                         {fmtDate(t.due_date)}
                       </span>
                       <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${PRIORITY_BADGE[t.priority] ?? "bg-ps-muted text-ps-label"}`}>

@@ -1008,7 +1008,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   {MAPPING_FIELDS.map((f) => (
                     <div key={f.key}>
                       <label className="block text-2xs font-medium text-ps-label">
-                        {f.label}{f.required && <span className="text-red-500"> *</span>}
+                        {f.label}{f.required && <span className="text-state-problem"> *</span>}
                         <span className="font-normal text-ps-hint"> — {f.hint}</span>
                       </label>
                       <select

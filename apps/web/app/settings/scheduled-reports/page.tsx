@@ -325,7 +325,7 @@ export default function ScheduledReportsPage() {
                   <td className="px-5 py-3">
                     <button disabled={actionInFlight}
                       onClick={() => handleDelete(s.id)}
-                      className="flex items-center gap-1 text-xs text-red-500 hover:underline"
+                      className="flex items-center gap-1 text-xs text-state-problem hover:underline"
                     >
                       <Trash2 size={12} /> Delete
                     </button>

@@ -161,7 +161,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
 
         <div>
           <label className="block text-2xs text-ps-label mb-0.5">
-            New expiry date <span className="text-red-500">*</span>
+            New expiry date <span className="text-state-problem">*</span>
           </label>
           <input type="date" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}
             className={field} />

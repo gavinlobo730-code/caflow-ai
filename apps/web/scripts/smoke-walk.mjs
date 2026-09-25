@@ -75,6 +75,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { screenRoutes } from "./refresh-screen-snapshot.js";
 
 
 /**
@@ -407,10 +408,39 @@ const anon = args.includes("--anon");
 const realClient = args.includes("--real-client");
 const CLIENT_UUID = "00000000-0000-4000-8000-000000000001";
 
-const routes = JSON.parse(fs.readFileSync(path.join(__dirname, "screens.snapshot.json"), "utf8"))
+/**
+ * ⚠️ THE ROUTE LIST IS THE LIVE `app/` TREE, AND IT USED TO BE
+ * `screens.snapshot.json`. Those answer different questions and the walk was
+ * asking the wrong one.
+ *
+ * The snapshot is a RECORD of the screens the product had when somebody last
+ * looked — `the-redesign-cannot-lose-a-screen.test.ts` uses it to catch a
+ * DELETION, and additions pass by design, because a redesign is expected to
+ * add screens. Nothing regenerates it. So on 24-09 three new pages were built,
+ * rendered, linked and passed every test in the repository while this walk
+ * silently never visited one of them — the shots said the module was fine and
+ * the module had three screens nobody had looked at.
+ *
+ * What a smoke walk is for is "render everything that exists NOW", which is
+ * exactly `screenRoutes(app/)` — the same function that WRITES the snapshot,
+ * so the two cannot disagree about what a route looks like. The snapshot keeps
+ * its own job and needs no refresh for this one.
+ */
+const allRoutes = screenRoutes(path.join(__dirname, "..", "app"));
+const routes = allRoutes
   .map((r) => (realClient ? r.replace("/clients/:id", `/clients/${CLIENT_UUID}`) : r))
   .map((r) => r.replace(/:[^/]+/g, "_placeholder"))
   .filter((r) => (only ? r.startsWith(only) : true));
+
+// A truncated tree makes every assertion below vacuous, the same floor the
+// snapshot guard keeps. 120 was its number on a tree of 159.
+if (!only && allRoutes.length < 120) {
+  console.error(
+    `smoke-walk: only ${allRoutes.length} routes found under app/ — the tree ` +
+      `walk has probably broken. Refusing to report a clean run over nothing.`,
+  );
+  process.exit(1);
+}
 
 /** Any /clients/<uuid>/ prefix, which the server rewrites to the one built
  *  _placeholder page exactly as Cloudflare does. */

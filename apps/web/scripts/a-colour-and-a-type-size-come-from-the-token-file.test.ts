@@ -74,6 +74,28 @@ const BODIES = FILES.map((f) => ({ file: f, body: readFileSync(f, "utf8") }));
 const HEX_CLASS = /[a-zA-Z][a-zA-Z-]*-\[#[0-9a-fA-F]{3,8}\]/g;
 /** An arbitrary font size: `text-[13px]`. */
 const PX_TEXT = /\btext-\[\d+(\.\d+)?px\]/g;
+/**
+ * A TAILWIND PALETTE COLOUR USED DIRECTLY — `text-amber-600`, `bg-slate-50`.
+ *
+ * ⚠️ THIS IS THE LARGEST COLOUR POPULATION IN THE PRODUCT AND IT HAD NO
+ * RATCHET. `HEX_BUDGET` covers the arbitrary-value form, which G0/G1 drove from
+ * 10,146 to 44; the NAMED form — nine times as many sites — was a number in
+ * THE-PLAN's metrics table and nothing else, so it could grow on any commit
+ * and only a hand-run `grep` would ever say so. It went 5,993 → 5,840 → 5,541
+ * → 4,373 across three passes, every step measured by hand.
+ *
+ * The utilities and the families are the SAME LIST THE PLAN'S OWN METRIC
+ * GREPS, deliberately: CLAUDE.md records that "a metric and the guard that
+ * enforces it must count the same population", after a coarse `grep` reported
+ * a 54-literal regression the guard could not see and an overnight run nearly
+ * spent an hour hunting literals nobody had added. One list, one number.
+ *
+ * `black` and `white` are NOT here. They carry no numeric step, they are not
+ * a palette ramp, and `text-white` on a navy button is the right class — a
+ * token for it would name the absence of a hue.
+ */
+const NAMED_COLOUR =
+  /\b(text|bg|border|ring|fill|stroke|divide|from|to|via)-(amber|red|green|emerald|blue|gray|slate|rose|yellow|orange|teal)-[0-9]{2,3}\b/g;
 
 /** Comments stripped first — the SAME treatment the interpolation test below
  *  already gives its own scan, and for the reason recorded there: "a guard that
@@ -148,6 +170,39 @@ function count(re: RegExp): { total: number; byFile: Map<string, number> } {
 // `brand-dark`, a white chip under the cursor to `ps-hover`, which is what
 // that token means — never by nearest value.
 const HEX_BUDGET = 44;
+// ── The named-palette budget ────────────────────────────────────────────────
+//
+// 4,373 on 24-09-2026, measured on `e7b5e9ed`. It was 5,993 before G0 and has
+// only ever come down; this pins it so it cannot go back up while nobody is
+// looking. LOWER IT as each module converts — never raise it.
+//
+// ⚠️ IT IS NOT A BAN AND MUST NOT BECOME ONE BY ACCIDENT. Unlike the hex form,
+// a named palette colour is sometimes exactly right: a chart series, an
+// illustration, a one-off diagram. What the ratchet buys is that a MODULE's
+// conversion cannot be quietly undone by the next screen somebody writes, and
+// that the plan's metric and this guard cannot drift apart. The end state is a
+// number small enough to argue about entry by entry, not necessarily zero.
+const NAMED_COLOUR_BUDGET = 4043;
+// 4,373 → 4,043 on 24-09-2026: the income-tax module converted by ROLE (202
+// sites, 8 files), `StatCard` converted and its dead `gradient` prop deleted,
+// and `text-red-500` swept app-wide (101 sites, 66 files) because it was one
+// role — problem — wearing a value that fails WCAG 1.4.3 at 3.76:1, on the
+// glyph that is the only indication a field is mandatory.
+//
+// ⚠️ SIX SITES WENT BACK, AND THE NUMBER IS 4,043 RATHER THAN 4,037 BECAUSE OF
+// THEM. A module sweep can REVERSE a recorded decision as easily as it
+// continues one, and this one did, twice: four inline links became brand navy
+// although 1.3d deliberately left `text-blue-*` links alone ("a link in
+// #182350 reads as body text" — measurably so beside `ps.ink` #0D1635, and the
+// app-wide convention is still `text-blue-600` at 64 sites), and the AIS
+// badge's `explained` branch became a brand chip although the palette says in
+// its own words that a status rendered in the brand has spent the product's
+// one loud colour on a state. `explained` needs a word the set does not have —
+// settled by a human explanation, as distinct from `ready` ("Agreed", the
+// figures match) and from `done`, whose surface and ink are within a shade of
+// the `ps-muted`/`ps-label` pair the "Not reviewed" branch uses, so *settled*
+// and *nobody looked* would render alike. Left raw, the way 1.3c left
+// `waiting_client` and `queued`.
 // 392 → 289 on 24-09-2026, the auth family converted (see above). Lowered to
 // what is actually there each time, because a budget with slack in it is a
 // budget that permits a regression.
@@ -315,6 +370,20 @@ test("a colour is not written as a raw hex class", () => {
       `token moved and 1,567 sites did not. Use a token from ` +
       `tailwind.config.ts, and if none fits, add one there.\n  worst: ` +
       worst.map(([f, n]) => `${f} (${n})`).join("\n         "),
+  );
+});
+
+test("a colour is not written as a named Tailwind palette step", () => {
+  const { total, byFile } = count(NAMED_COLOUR);
+  const worst = [...byFile.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+  assert.ok(
+    total <= NAMED_COLOUR_BUDGET,
+    `${total} named palette colours, budget ${NAMED_COLOUR_BUDGET}. This is a ` +
+      `RATCHET: it may only come down. If a module was converted, lower the ` +
+      `budget in the same commit; if a screen needs a palette step that no ` +
+      `token names, say which in the commit message and why the token set is ` +
+      `wrong.\nWorst files:\n  ` +
+      worst.map(([f, n]) => `${n}  ${f}`).join("\n  "),
   );
 });
 

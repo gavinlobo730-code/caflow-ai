@@ -660,7 +660,7 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
           </button>
           <button
             onClick={() => onDelete(lead.id)}
-            className="text-ps-disabled hover:text-red-500 transition-colors"
+            className="text-ps-disabled hover:text-state-problem transition-colors"
             aria-label="Delete lead"
           >
             <X size={14} />
@@ -1063,7 +1063,7 @@ export default function PipelinePage() {
       {/* Overdue follow-up banner */}
       {overdueLeads.length > 0 && (
         <div className="flex items-start gap-3 bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3">
-          <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+          <AlertCircle size={16} className="text-state-problem shrink-0 mt-0.5" />
           <div className="text-sm text-state-problem">
             <span className="font-semibold">
               {overdueLeads.length} follow-up

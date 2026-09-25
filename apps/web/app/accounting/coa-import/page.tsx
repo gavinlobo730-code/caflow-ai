@@ -219,7 +219,7 @@ export default function CoaImportPage() {
           {parseErrors.slice(0, 10).map((e, i) => (
             <p key={i} className="text-xs text-state-problem">Row {e.row}: {e.message}</p>
           ))}
-          {parseErrors.length > 10 && <p className="text-xs text-red-500">…and {parseErrors.length - 10} more</p>}
+          {parseErrors.length > 10 && <p className="text-xs text-state-problem">…and {parseErrors.length - 10} more</p>}
         </div>
       )}
 

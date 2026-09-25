@@ -358,7 +358,7 @@ export default function ClientDocumentsPage() {
                   <p className="text-xs text-ps-hint mt-0.5">{formatBytes(doc.file_size)}</p>
                 </div>
                 {(isExpiringSoon || isExpired) && (
-                  <AlertTriangle size={14} className={isExpired ? "text-red-500" : "text-amber-500"} />
+                  <AlertTriangle size={14} className={isExpired ? "text-state-problem" : "text-amber-500"} />
                 )}
               </div>
 

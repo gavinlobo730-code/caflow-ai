@@ -2087,7 +2087,7 @@ export default function TaxComputationPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-xs font-semibold text-red-600">{paise(d.amount_paise)}</p>
-                      <span className={`text-3xs ${d.status === "accepted" ? "text-green-600" : d.status === "rejected" ? "text-red-500" : "text-amber-600"}`}>
+                      <span className={`text-3xs ${d.status === "accepted" ? "text-green-600" : d.status === "rejected" ? "text-state-problem" : "text-amber-600"}`}>
                         {d.status}
                         {d.status !== "accepted" && <span className="text-ps-hint"> · not in the computation</span>}
                       </span>
@@ -2376,7 +2376,7 @@ export default function TaxComputationPage() {
                       <p className="text-xs font-semibold text-ps-ink">
                         {s.is_refund ? "+" : ""}{paise(Math.abs(s.net_payable_paise))}
                       </p>
-                      <p className={`text-3xs ${s.is_refund ? "text-green-600" : "text-red-500"}`}>
+                      <p className={`text-3xs ${s.is_refund ? "text-green-600" : "text-state-problem"}`}>
                         {s.is_refund ? "Refund" : "Payable"}
                       </p>
                     </div>

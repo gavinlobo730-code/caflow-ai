@@ -1460,7 +1460,7 @@ export default function PayrollReportsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-start gap-3">
-                <AlertCircle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />
+                <AlertCircle size={18} className="text-state-problem mt-0.5 flex-shrink-0" />
                 <div>
                   <p className="font-medium text-ps-ink">Could not load payroll data</p>
                   <p className="text-sm text-ps-label mt-1">{error}</p>

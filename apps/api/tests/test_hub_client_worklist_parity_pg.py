@@ -248,8 +248,20 @@ def _double(dsn: str) -> Double:
     return Double(tables)
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def db(pg_template):
+    """⚠️ MODULE-SCOPED, AND THAT IS A COST DECISION AS WELL AS A CORRECT ONE.
+
+    Every test here is READ-ONLY — it calls the function, reads the rows back
+    and compares — so there is no state for one to leak into the next, and a
+    per-test fixture would clone the migrated template FOURTEEN TIMES for one
+    seed. On a CI runner a clone of a 416-migration template is not free, and
+    the real-Postgres job is already the long pole of the backend workflow.
+    One clone, one seed, fourteen assertions.
+
+    If a test here ever WRITES, it takes its own function-scoped database
+    rather than quietly making this one dirty for the thirteen after it.
+    """
     admin = _ADMIN.strip()
     name = f"hubwl_{uuid.uuid4().hex[:12]}"
     admin_dsn = f"{admin} dbname=postgres"

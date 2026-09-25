@@ -481,7 +481,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                   tabIndex={-1}
                   aria-label="Clear"
                   onClick={clear}
-                  className="rounded p-0.5 text-ps-disabled hover:text-red-500"
+                  className="rounded p-0.5 text-ps-disabled hover:text-state-problem"
                 >
                   <X size={13} />
                 </span>

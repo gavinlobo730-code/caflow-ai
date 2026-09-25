@@ -523,7 +523,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                 </div>
                 <div className="rounded-xl border border-red-100 bg-state-problem-surface px-3 py-2.5 text-center">
                   <p className="text-lg font-semibold text-red-600 tabular-nums">{result.errors.length}</p>
-                  <p className="text-2xs text-red-500">Failed</p>
+                  <p className="text-2xs text-state-problem">Failed</p>
                 </div>
               </div>
 

@@ -827,7 +827,7 @@ export default function LoansAndFDPage() {
                             {fd.status !== "active" ? (
                               <span className="text-ps-hint">—</span>
                             ) : days < 0 ? (
-                              <span className="text-red-500">Matured</span>
+                              <span className="text-state-problem">Matured</span>
                             ) : (
                               <span className={isMaturingSoon ? "text-amber-600 font-medium" : "text-ps-label"}>
                                 {days}d
@@ -1097,7 +1097,7 @@ function FormField({
     <div>
       <label className="block text-xs font-medium text-ps-body mb-1.5">
         {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
+        {required && <span className="text-state-problem ml-0.5">*</span>}
         {optional && <span className="text-ps-hint font-normal ml-1">(optional)</span>}
       </label>
       {children}

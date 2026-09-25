@@ -345,7 +345,7 @@ export default function MigrationPage() {
               )}
               {preview.error_count > 0 && (
                 <div className="flex items-center gap-2 bg-state-problem-surface p-3 rounded-lg">
-                  <XCircle size={14} className="text-red-500" />
+                  <XCircle size={14} className="text-state-problem" />
                   <p className="text-xs text-state-problem">{preview.error_count} items have errors — fix before importing</p>
                 </div>
               )}
@@ -387,7 +387,7 @@ export default function MigrationPage() {
               </div>
               {!isDryRun && (
                 <div className="flex items-center gap-2 bg-state-problem-surface border border-state-problem-border p-3 rounded-lg">
-                  <AlertTriangle size={13} className="text-red-500" />
+                  <AlertTriangle size={13} className="text-state-problem" />
                   <p className="text-xs text-state-problem font-medium">Live import — data will be written. Ensure you have reviewed the preview.</p>
                 </div>
               )}

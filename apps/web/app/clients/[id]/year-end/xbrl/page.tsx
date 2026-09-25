@@ -184,7 +184,7 @@ export default function XBRLPage() {
       </div>
 
       <div className="flex items-center gap-2 bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">
-        <AlertTriangle size={13} className="text-red-500 flex-shrink-0" />
+        <AlertTriangle size={13} className="text-state-problem flex-shrink-0" />
         <p className="text-xs font-medium text-red-800">
           CA REVIEW REQUIRED — DO NOT AUTO-FILE XBRL to MCA portal. Partner review mandatory.
         </p>
@@ -253,7 +253,7 @@ export default function XBRLPage() {
               <p className="text-3xs font-semibold text-red-600">Validation Errors</p>
               {selected.validation_errors.map((e, i) => (
                 <div key={i} className="flex items-start gap-1.5">
-                  <XCircle size={10} className="text-red-500 mt-0.5 flex-shrink-0" />
+                  <XCircle size={10} className="text-state-problem mt-0.5 flex-shrink-0" />
                   <p className="text-3xs text-state-problem">{e}</p>
                 </div>
               ))}

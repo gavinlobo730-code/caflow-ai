@@ -301,7 +301,7 @@ export default function Section32Page() {
                         <p key={i} className="text-3xs text-state-attention mt-0.5">{g}</p>
                       ))}
                       {b.short_term_capital_gain_paise !== 0 && (
-                        <p className="text-3xs text-amber-800 mt-0.5">
+                        <p className="text-3xs text-state-attention mt-0.5">
                           §50: {b.short_term_capital_gain_paise > 0 ? "short-term capital gain" : "short-term capital loss"}{" "}
                           {formatPaise(Math.abs(b.short_term_capital_gain_paise))} — no depreciation this year.
                         </p>

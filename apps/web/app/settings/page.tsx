@@ -177,7 +177,7 @@ function Field({
     <div>
       <label className="text-xs font-medium text-ps-label block mb-1">
         {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
+        {required && <span className="text-state-problem ml-0.5">*</span>}
       </label>
       <input
         type={type}
@@ -193,7 +193,7 @@ function Field({
         <p className="text-xs text-ps-hint mt-1">{hint}</p>
       )}
       {errors[field] && (
-        <p className="text-xs text-red-500 mt-1">{errors[field]}</p>
+        <p className="text-xs text-state-problem mt-1">{errors[field]}</p>
       )}
     </div>
   );
@@ -420,7 +420,7 @@ export default function SettingsPage() {
         <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-medium text-ps-label block mb-1">
-              Full Name<span className="text-red-500 ml-0.5">*</span>
+              Full Name<span className="text-state-problem ml-0.5">*</span>
             </label>
             <input
               type="text"
@@ -783,7 +783,7 @@ export default function SettingsPage() {
       {/* ── Danger Zone ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-red-100 overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-red-50">
-          <AlertTriangle size={15} className="text-red-500" />
+          <AlertTriangle size={15} className="text-state-problem" />
           <h2 className="text-sm font-semibold text-state-problem">Danger Zone</h2>
         </div>
         <div className="px-5 py-4 flex items-center justify-between">

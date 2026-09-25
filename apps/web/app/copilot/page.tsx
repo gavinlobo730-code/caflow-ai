@@ -117,7 +117,7 @@ function MessageBubble({ msg, onRate }: { msg: Message; onRate: (id: string, rat
               </button>
               <button
                 onClick={() => onRate(msg.id, 1)}
-                className={`p-1 rounded hover:bg-state-problem-hover transition-colors ${msg.feedback_rating === 1 ? "text-red-500" : "text-ps-disabled hover:text-red-400"}`}
+                className={`p-1 rounded hover:bg-state-problem-hover transition-colors ${msg.feedback_rating === 1 ? "text-state-problem" : "text-ps-disabled hover:text-red-400"}`}
               >
                 <ThumbsDown size={11} />
               </button>

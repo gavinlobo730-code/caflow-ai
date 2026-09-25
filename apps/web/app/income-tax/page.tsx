@@ -286,7 +286,7 @@ function BulkMarkFiledModal({
         <div className="px-6 py-5 space-y-4">
           {/* Warning banner — CA Review */}
           <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
-            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+            <p className="text-xs font-semibold text-state-attention uppercase tracking-wide">
               CA Confirmation Required
             </p>
             <p className="text-xs text-state-attention mt-1">
@@ -299,7 +299,7 @@ function BulkMarkFiledModal({
           {/* Shared Filed Date — applied to every row below on submit */}
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1.5">
-              Date of Filing <span className="text-red-500">*</span>
+              Date of Filing <span className="text-state-problem">*</span>
               <span className="ml-1 text-ps-hint font-normal">
                 (applied to all rows below)
               </span>
@@ -316,7 +316,7 @@ function BulkMarkFiledModal({
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1.5">
               Acknowledgement Number (ARN) — one per filing{" "}
-              <span className="text-red-500">*</span>
+              <span className="text-state-problem">*</span>
             </label>
             <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-ps-muted">
               {pending.map((entry) => {
@@ -336,7 +336,7 @@ function BulkMarkFiledModal({
                       </p>
                     </div>
                     {isDone ? (
-                      <span className="flex items-center gap-1 text-xs font-medium text-green-700 shrink-0">
+                      <span className="flex items-center gap-1 text-xs font-medium text-state-ready shrink-0">
                         <CheckCircle2 className="w-3.5 h-3.5" /> Filed
                       </span>
                     ) : (
@@ -349,11 +349,11 @@ function BulkMarkFiledModal({
                             setArns((p) => ({ ...p, [entry.id]: e.target.value }))
                           }
                           className={`w-full border rounded-lg px-2.5 py-1.5 text-xs font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand ${
-                            rowError ? "border-red-400" : "border-ps-border"
+                            rowError ? "border-state-problem" : "border-ps-border"
                           }`}
                         />
                         {rowError && (
-                          <p className="text-3xs text-red-600 mt-1">{rowError}</p>
+                          <p className="text-3xs text-state-problem mt-1">{rowError}</p>
                         )}
                       </div>
                     )}
@@ -376,7 +376,7 @@ function BulkMarkFiledModal({
           <button
             onClick={handleSubmit}
             disabled={submitDisabled}
-            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
           >
             {loading ? "Saving…" : `Confirm Filing (${remaining.length})`}
           </button>
@@ -720,7 +720,7 @@ export default function IncomeTaxPage() {
       key: "itr_form", header: "ITR Form", sortable: true,
       accessor: (e) => e.compliance_type,
       render: (e) => (
-        <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+        <span className="text-xs font-semibold text-brand bg-brand-surface px-2 py-0.5 rounded">
           {e.compliance_type}
         </span>
       ),
@@ -822,7 +822,7 @@ export default function IncomeTaxPage() {
           </p>
           {/* Sub-navigation */}
           <div className="flex gap-2 mt-3">
-            <a href="/income-tax/capital-gains" className="text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-colors">
+            <a href="/income-tax/capital-gains" className="text-xs font-medium text-brand hover:text-brand-dark border border-brand-light bg-brand-surface px-2.5 py-1 rounded-lg hover:bg-brand-light transition-colors">
               Capital Gains Calculator
             </a>
             <a href="/income-tax/advance-tax" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
@@ -867,19 +867,16 @@ export default function IncomeTaxPage() {
           label="Total ITRs Due"
           value={String(totalDue)}
           icon={FileText}
-          gradient="bg-gradient-to-br from-blue-600 to-blue-500"
         />
         <StatCard
           label="Filed This Year"
           value={String(filed)}
           icon={CheckCircle2}
-          gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
         />
         <StatCard
           label="Pending / Overdue"
           value={String(pending + overdue)}
           icon={Clock}
-          gradient="bg-gradient-to-br from-amber-400 to-orange-500"
           alert={overdue > 0}
         />
         <StatCard
@@ -890,7 +887,6 @@ export default function IncomeTaxPage() {
               : "—"
           }
           icon={CalendarDays}
-          gradient="bg-gradient-to-br from-violet-500 to-purple-600"
         />
       </div>
 
@@ -902,7 +898,7 @@ export default function IncomeTaxPage() {
             onClick={() => setActiveTab(tab)}
             className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab
-                ? "border-brand text-blue-700"
+                ? "border-brand text-brand"
                 : "border-transparent text-ps-label hover:text-ps-body"
             }`}
           >
@@ -923,7 +919,7 @@ export default function IncomeTaxPage() {
                 ITR Status — FY {currentFY}
               </h2>
               {overdue > 0 && (
-                <span className="flex items-center gap-1 text-xs text-red-600 font-medium">
+                <span className="flex items-center gap-1 text-xs text-state-problem font-medium">
                   <AlertTriangle className="w-3.5 h-3.5" />
                   {overdue} overdue
                 </span>
@@ -953,7 +949,7 @@ export default function IncomeTaxPage() {
                 emptyAction={
                   <button
                     onClick={() => setShowAddModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors mt-1"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-surface text-brand text-xs font-medium rounded-lg hover:bg-brand-light transition-colors mt-1"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Add first ITR deadline
@@ -967,7 +963,7 @@ export default function IncomeTaxPage() {
                         setFiledForm({ arn: "", filed_date: today });
                         setFiledError(null);
                       }}
-                      className="text-xs px-2.5 py-1 bg-green-50 text-green-700 font-medium rounded hover:bg-green-100 transition-colors"
+                      className="text-xs px-2.5 py-1 bg-state-ready-surface text-state-ready font-medium rounded hover:bg-state-ready-hover transition-colors"
                     >
                       Mark Filed
                     </button>
@@ -1040,7 +1036,7 @@ export default function IncomeTaxPage() {
                     key={form}
                     className="flex items-start gap-3 p-3 bg-ps-bg rounded-lg"
                   >
-                    <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded shrink-0">
+                    <span className="text-xs font-bold text-brand bg-brand-surface px-2 py-0.5 rounded shrink-0">
                       {form}
                     </span>
                     <div>
@@ -1092,8 +1088,8 @@ export default function IncomeTaxPage() {
 
                   return (
                     <div key={dueDate} className="flex items-center gap-4 px-5 py-4">
-                      <div className="flex items-center justify-center w-10 h-10 bg-blue-50 rounded-full shrink-0">
-                        <IndianRupee className="w-5 h-5 text-blue-600" />
+                      <div className="flex items-center justify-center w-10 h-10 bg-brand-surface rounded-full shrink-0">
+                        <IndianRupee className="w-5 h-5 text-brand" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-ps-ink">
@@ -1114,7 +1110,7 @@ export default function IncomeTaxPage() {
                             ? "bg-ps-muted text-ps-label"
                             : isUpcoming
                             ? "bg-state-attention-surface text-state-attention"
-                            : "bg-blue-50 text-blue-600"
+                            : "bg-brand-surface text-brand"
                         }`}
                       >
                         {isPast ? "Due passed" : isUpcoming ? "Upcoming" : "Scheduled"}
@@ -1126,12 +1122,12 @@ export default function IncomeTaxPage() {
             </div>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4">
+          <div className="bg-brand-surface border border-brand-light rounded-xl px-5 py-4 flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide mb-1">
+              <p className="text-xs font-semibold text-brand-dark uppercase tracking-wide mb-1">
                 Advance Tax Calculator
               </p>
-              <p className="text-sm text-blue-700">
+              <p className="text-sm text-brand">
                 Calculate exact advance tax instalments, apply the slab rates
                 for the year, and compute Section 234A, 234B and 234C interest
                 on late filing and shortfalls — per client.
@@ -1151,12 +1147,12 @@ export default function IncomeTaxPage() {
       {/* Quick links to sub-tools                                           */}
       {/* ================================================================== */}
       <div className="grid sm:grid-cols-2 gap-3">
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4">
+        <div className="bg-brand-surface border border-brand-light rounded-xl px-5 py-4 flex items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide mb-1">
+            <p className="text-xs font-semibold text-brand-dark uppercase tracking-wide mb-1">
               AIS Ingestion Tool
             </p>
-            <p className="text-sm text-blue-700">
+            <p className="text-sm text-brand">
               Upload and review Annual Information Statement JSON — compare AIS with books before filing ITR.
             </p>
           </div>
@@ -1169,7 +1165,7 @@ export default function IncomeTaxPage() {
         </div>
         <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-5 py-4 flex items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1">
+            <p className="text-xs font-semibold text-state-attention uppercase tracking-wide mb-1">
               IT Notice Tracker
             </p>
             <p className="text-sm text-state-attention">
@@ -1178,7 +1174,7 @@ export default function IncomeTaxPage() {
           </div>
           <Link
             href="/income-tax/notices"
-            className="shrink-0 px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors"
+            className="shrink-0 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
           >
             Open Tracker →
           </Link>
@@ -1207,7 +1203,7 @@ export default function IncomeTaxPage() {
               {/* Client */}
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
-                  Client <span className="text-red-500">*</span>
+                  Client <span className="text-state-problem">*</span>
                 </label>
                 <select
                   value={addForm.client_id}
@@ -1357,7 +1353,7 @@ export default function IncomeTaxPage() {
             <div className="px-6 py-5 space-y-4">
               {/* Warning banner — CA Review */}
               <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
-                <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+                <p className="text-xs font-semibold text-state-attention uppercase tracking-wide">
                   CA Confirmation Required
                 </p>
                 <p className="text-xs text-state-attention mt-1">
@@ -1381,7 +1377,7 @@ export default function IncomeTaxPage() {
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Acknowledgement Number (ARN){" "}
-                  <span className="text-red-500">*</span>
+                  <span className="text-state-problem">*</span>
                 </label>
                 <input
                   type="text"
@@ -1397,7 +1393,7 @@ export default function IncomeTaxPage() {
               {/* Filing Date */}
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
-                  Date of Filing <span className="text-red-500">*</span>
+                  Date of Filing <span className="text-state-problem">*</span>
                 </label>
                 <input
                   type="date"
@@ -1422,7 +1418,7 @@ export default function IncomeTaxPage() {
               <button
                 onClick={handleMarkFiled}
                 disabled={actionInFlight}
-                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
               >
                 {filedLoading ? "Saving…" : "Confirm Filing"}
               </button>

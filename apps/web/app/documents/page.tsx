@@ -218,7 +218,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
           {/* Client */}
           <div>
             <label className="mb-1 block text-sm font-medium text-ps-body">
-              Client <span className="text-red-500">*</span>
+              Client <span className="text-state-problem">*</span>
             </label>
             <div className="w-full">
               <ClientLookup
@@ -235,7 +235,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
           {/* Document type */}
           <div>
             <label className="mb-1 block text-sm font-medium text-ps-body">
-              Document Type <span className="text-red-500">*</span>
+              Document Type <span className="text-state-problem">*</span>
             </label>
             <select
               value={docType}
@@ -263,7 +263,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
           {/* File picker */}
           <div>
             <label className="mb-1 block text-sm font-medium text-ps-body">
-              File <span className="text-red-500">*</span>
+              File <span className="text-state-problem">*</span>
             </label>
             <div
               onClick={() => !uploading && fileRef.current?.click()}

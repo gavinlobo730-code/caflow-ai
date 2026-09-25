@@ -154,7 +154,7 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
               <button
                 onClick={() => handleRemove(d.id)}
                 disabled={busy}
-                className="p-0.5 rounded text-ps-hint hover:text-red-500 shrink-0"
+                className="p-0.5 rounded text-ps-hint hover:text-state-problem shrink-0"
                 title="Remove dependency"
               >
                 <X size={12} />
@@ -697,7 +697,7 @@ export default function TasksPage() {
             </button>
             <button
               onClick={() => handleDelete(t.id)}
-              className="p-1 rounded text-ps-hint hover:text-red-500"
+              className="p-1 rounded text-ps-hint hover:text-state-problem"
               title="Delete"
             >
               <Trash2 size={13} />

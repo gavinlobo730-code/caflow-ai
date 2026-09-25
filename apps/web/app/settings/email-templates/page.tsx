@@ -177,7 +177,7 @@ function TemplateEditor({
       {error && <Callout tone="problem">{error}</Callout>}
 
       <div>
-        <label className="text-xs font-medium text-ps-label block mb-1">Subject <span className="text-red-500">*</span></label>
+        <label className="text-xs font-medium text-ps-label block mb-1">Subject <span className="text-state-problem">*</span></label>
         <input
           type="text"
           value={subject}
@@ -189,7 +189,7 @@ function TemplateEditor({
 
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="text-xs font-medium text-ps-label">Body <span className="text-red-500">*</span></label>
+          <label className="text-xs font-medium text-ps-label">Body <span className="text-state-problem">*</span></label>
           <button onClick={resetToDefault} className="text-xs text-ps-hint hover:text-ps-label transition-colors">
             Reset to default
           </button>

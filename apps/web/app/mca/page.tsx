@@ -403,7 +403,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
             <>
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
-                  Date of Filing <span className="text-red-500">*</span>
+                  Date of Filing <span className="text-state-problem">*</span>
                 </label>
                 <input
                   type="date"
@@ -425,7 +425,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-ps-body mb-1">
-                        SRN (Service Request Number) <span className="text-red-500">*</span>
+                        SRN (Service Request Number) <span className="text-state-problem">*</span>
                       </label>
                       <input
                         type="text"
@@ -962,7 +962,7 @@ export default function MCAPage() {
 
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
-                  SRN (Service Request Number) <span className="text-red-500">*</span>
+                  SRN (Service Request Number) <span className="text-state-problem">*</span>
                 </label>
                 <input
                   type="text"
@@ -975,7 +975,7 @@ export default function MCAPage() {
 
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
-                  Date of Filing <span className="text-red-500">*</span>
+                  Date of Filing <span className="text-state-problem">*</span>
                 </label>
                 <input
                   type="date"

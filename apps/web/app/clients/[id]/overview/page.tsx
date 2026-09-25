@@ -95,7 +95,7 @@ export default function OverviewPage() {
   }, [clientId, financialYear, reloadKey]);
 
   if (loading) return <OverviewSkeleton />;
-  if (error) return <div className="p-6 text-red-500 text-sm">{error}</div>;
+  if (error) return <div className="p-6 text-state-problem text-sm">{error}</div>;
   if (loadFailed) return (
     <div className="p-6">
       <div className="flex items-center justify-between gap-4 rounded-lg border border-state-problem-border bg-state-problem-surface px-5 py-4 text-sm text-state-problem">

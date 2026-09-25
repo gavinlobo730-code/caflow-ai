@@ -500,7 +500,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
 
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1.5">
-              Date of Filing <span className="text-red-500">*</span>
+              Date of Filing <span className="text-state-problem">*</span>
               <span className="text-ps-hint font-normal ml-1">(applied to all rows below)</span>
             </label>
             <input
@@ -520,7 +520,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
                 </div>
                 <div>
                   <label className="block text-3xs font-medium text-ps-body mb-1">
-                    Acknowledgement Number (ARN) <span className="text-red-500">*</span>
+                    Acknowledgement Number (ARN) <span className="text-state-problem">*</span>
                   </label>
                   <input
                     type="text"
@@ -1048,7 +1048,7 @@ export default function GSTPage() {
 
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
-                  Acknowledgement Number (ARN) <span className="text-red-500">*</span>
+                  Acknowledgement Number (ARN) <span className="text-state-problem">*</span>
                 </label>
                 <input
                   type="text"
@@ -1061,7 +1061,7 @@ export default function GSTPage() {
 
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
-                  Date of Filing <span className="text-red-500">*</span>
+                  Date of Filing <span className="text-state-problem">*</span>
                 </label>
                 <input
                   type="date"
