@@ -185,12 +185,15 @@ def portal_document_download(document_id: str,
     404 rather than 403 on a document belonging to another client: never reveal
     that it exists.
 
-    A REDIRECT TO A SIGNED URL, NOT THE BYTES. Streaming the file through
-    Render in Singapore would put a Mumbai round trip and the whole file in
-    front of every download; a 60-second signed URL lets the browser fetch it
-    from storage directly. Sixty seconds because the link is followed
-    immediately and a longer one is a bearer token for the file — the same
-    argument `domain/attachments` records for never STORING a signed url."""
+    A SIGNED URL IS RETURNED, NOT THE BYTES — and not a 302 either, because
+    every other endpoint here answers the `{success, data, error}` envelope and
+    one that redirects instead would need its own handling in the browser.
+    Streaming the file through Render in Singapore would put a Mumbai round
+    trip and the whole file in front of every download; a 60-second signed URL
+    lets the browser fetch it from storage directly. Sixty seconds because the
+    link is followed immediately and a longer one is a bearer token for the
+    file — the same argument `domain/attachments` records for never STORING a
+    signed url."""
     doc = portal_data_service.document_in_scope(
         portal["firm_id"], portal["client_id"], document_id)
     if not doc:

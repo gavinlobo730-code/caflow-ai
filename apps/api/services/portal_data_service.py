@@ -217,18 +217,28 @@ def compliance(firm_id: str, client_id: str, db=None) -> list[dict]:
 # here is the same one `/invoices/{id}/pdf` already uses for this principal,
 # in Python, where the client context is resolved rather than parsed.
 
-#: Client-safe projections. A portal contact sees what a document IS, never who
-#: uploaded it (`uploaded_by` is a staff user) nor where it sits in storage.
-_DOCUMENT_COLUMNS = "id, file_name, description, file_size, mime_type, created_at"
-_REQUEST_COLUMNS = "id, title, description, is_urgent, status, fulfilled_at, created_at"
-_MESSAGE_COLUMNS = "id, sender_type, sender_name, body, created_at"
+# ── EVERY PROJECTION BELOW IS SPELLED OUT AT ITS CALL SITE ────────────────────
+#
+# These three began as `_DOCUMENT_COLUMNS` / `_REQUEST_COLUMNS` /
+# `_MESSAGE_COLUMNS`, which reads better and is invisible to
+# `tests/test_backend_columns_exist_pg.py`: that guard checks every `.select()`
+# in apps/api against the real schema AS A STRING, so a projection reached
+# through a NAME is not checked at all — it is counted against a budget of
+# blind spots instead. Three constants and one `.insert(row)` took that count
+# three over, which is how this was found. `domain/firm/identity` records the
+# same decision for the same reason. Each is used exactly once, so there is
+# nothing to share and the only thing a name bought was the loss of the check.
+#
+# Client-safe, all three: a portal contact sees what a document IS, never who
+# uploaded it (`uploaded_by` is a staff user) nor where it sits in storage.
 
 
 def list_documents(firm_id: str, client_id: str, db=None) -> list[dict]:
     """Documents the firm has filed against this client."""
     db = db if db is not None else _db()
     rows = fetch_all(
-        lambda: db.table("client_documents").select(_DOCUMENT_COLUMNS)
+        lambda: db.table("client_documents")
+        .select("id, file_name, description, file_size, mime_type, created_at")
         .eq("firm_id", firm_id).eq("client_id", client_id),
         label="portal_data_service.documents")
     rows.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
@@ -256,7 +266,8 @@ def list_document_requests(firm_id: str, client_id: str, db=None) -> list[dict]:
     month of fulfilled requests above it buries that."""
     db = db if db is not None else _db()
     rows = fetch_all(
-        lambda: db.table("document_requests").select(_REQUEST_COLUMNS)
+        lambda: db.table("document_requests")
+        .select("id, title, description, is_urgent, status, fulfilled_at, created_at")
         .eq("firm_id", firm_id).eq("client_id", client_id),
         label="portal_data_service.document_requests")
     rows.sort(key=lambda r: (
@@ -276,7 +287,8 @@ def list_messages(firm_id: str, client_id: str, db=None) -> list[dict]:
     conversation reads downwards."""
     db = db if db is not None else _db()
     rows = fetch_all(
-        lambda: db.table("portal_messages").select(_MESSAGE_COLUMNS)
+        lambda: db.table("portal_messages")
+        .select("id, sender_type, sender_name, body, created_at")
         .eq("firm_id", firm_id).eq("client_id", client_id),
         label="portal_data_service.messages")
     rows.sort(key=lambda r: str(r.get("created_at") or ""))
@@ -289,10 +301,18 @@ def post_message(firm_id: str, client_id: str, body: str, sender_name: Optional[
     never taken from the request — migration 048 CHECKs it to ('ca', 'client'),
     and a caller-supplied value would let a client post as their accountant."""
     db = db if db is not None else _db()
-    row = {
+    # Spelled out in the call rather than built into a `row` variable, for the
+    # reason the projection note above gives: a payload bound to a name is
+    # unreadable to the column guard. The echo below repeats the five keys
+    # rather than sharing them, which is the same price `domain/tally/
+    # party_identifiers` pays and for the same reason — a name here buys
+    # tidiness and loses the check on the write that matters.
+    out = db.table("portal_messages").insert({
         "firm_id": firm_id, "client_id": client_id,
         "sender_type": "client", "sender_name": sender_name,
         "body": body,
+    }).execute().data or []
+    return out[0] if out else {
+        "firm_id": firm_id, "client_id": client_id,
+        "sender_type": "client", "sender_name": sender_name, "body": body,
     }
-    out = db.table("portal_messages").insert(row).execute().data or []
-    return out[0] if out else row
