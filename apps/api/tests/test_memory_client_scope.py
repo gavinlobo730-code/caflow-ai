@@ -68,7 +68,6 @@ class _Pipeline:
     def compute_client_profile(self, firm_id, client_id): return {}
     def detect_repeat_issues(self, *a): return []
     def detect_deadline_at_risk(self, *a): return []
-    def detect_cash_flow_warnings(self, *a): return []
     def detect_pattern_anomalies(self, *a): return []
     def detect_year_end_readiness(self, *a): return None
 

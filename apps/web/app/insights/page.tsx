@@ -28,16 +28,20 @@ import { cn } from "@/lib/utils";
  * had ZERO screen callers — `lib/api` carried the methods and nothing pressed
  * them. Every figure below is served.
  *
- * ⚠️ AND THE ONE THING CHECKED BEFORE SURFACING ANY OF IT: CLAUDE.md records
- * that "the modules named intelligence and memory analyse TASKS, not money"
- * and that `cash_flow_risk_months` is literally the two months with the most
- * tasks. That warning is about `memory_repository`, not this service, and it
+ * ⚠️ AND THE ONE THING CHECKED BEFORE SURFACING ANY OF IT: `docs/plan/THE-PLAN.md`
+ * records that "the modules named intelligence and memory analyse TASKS, not money",
+ * and `cash_flow_risk_months` was literally the two months with the most
+ * tasks. That warning was about the memory pipeline, not this service, and it
  * was checked rather than assumed. `risk_score` here is built from the
  * client's own compliance records — overdue count, due within seven days, any
  * history of filing late — and `outstanding_paise` is summed off invoices with
  * status Issued or Overdue. Real records and real money. A figure that looked
  * financial and was derived from task volume would not be rendered here
  * however well the endpoint worked.
+ *
+ * (The memory pipeline's own version of that defect is gone as of 25-09-2026 —
+ * see `apps/api/tests/test_no_money_figure_is_derived_from_a_task_count.py`.
+ * The rule this paragraph states is the reason it was looked for.)
  *
  * RECOMMENDATIONS COME FIRST because they are the only section that says what
  * to DO; the two score tables are the evidence under it.

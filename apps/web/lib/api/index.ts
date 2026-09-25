@@ -182,8 +182,8 @@ export interface ComplianceRiskPayload {
 
 /** `GET /api/intelligence/relationship-health`. `outstanding_paise` is REAL
  *  money — summed off invoices with status Issued or Overdue — not a figure
- *  derived from task counts, which is the trap CLAUDE.md records about the
- *  memory module's `cash_flow_risk_months`. */
+ *  derived from task counts, which is the trap CLAUDE.md records and which the
+ *  memory pipeline's `cash_flow_risk_months` actually was until 25-09-2026. */
 export interface RelationshipHealthPayload {
   clients: {
     client_id: string;

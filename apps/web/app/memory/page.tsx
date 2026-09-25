@@ -42,7 +42,11 @@ interface ClientProfile {
   doc_upload_reliability: number;
   recurring_issues: Array<{ type: string; count: number }>;
   missed_deadline_count: number;
-  cash_flow_risk_months: string[];
+  // `cash_flow_risk_months` is deliberately absent. The column survives
+  // (migrations 070/320) and the payload still carries an empty list, but
+  // nothing writes it: it used to be the two months in which the PRACTICE
+  // had created the most tasks, wearing a name about the client's money.
+  // Declaring it here would invite the next person to render it.
   last_computed_at: string;
 }
 
