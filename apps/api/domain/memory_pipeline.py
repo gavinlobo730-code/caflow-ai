@@ -6,7 +6,7 @@ import os
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from core.ist_clock import ist_now
+from core.ist_clock import IST, ist_now
 
 logger = logging.getLogger("caflow.memory")
 
@@ -115,28 +115,44 @@ class MemoryPipeline:
         except Exception as e:
             logger.warning("Compliance profile error for %s: %s", client_id, e)
 
-        # ── Financial patterns ────────────────────────────────────────────────
-        try:
-            # Derive from task activity patterns by month
-            all_tasks_raw = _get_task_repo().find_all(firm_id=firm_id, client_id=client_id) if hasattr(_get_task_repo(), 'find_all') else []
-            month_activity = {}
-            for t in all_tasks_raw:
-                if t.get("created_at"):
-                    try:
-                        month = datetime.fromisoformat(t["created_at"].replace("Z", "+00:00")).strftime("%B")
-                        month_activity[month] = month_activity.get(month, 0) + 1
-                    except Exception:
-                        pass
-
-            if month_activity:
-                peak_month = max(month_activity, key=month_activity.get)
-                # Cash flow risk: months with highest task load typically correlate with pressure
-                sorted_months = sorted(month_activity.items(), key=lambda x: x[1], reverse=True)
-                cash_risk_months = [m for m, _ in sorted_months[:2]]
-                profile_data["seasonal_revenue_peak"] = peak_month
-                profile_data["cash_flow_risk_months"] = cash_risk_months
-        except Exception as e:
-            logger.warning("Financial pattern error for %s: %s", client_id, e)
+        # ── Financial patterns: DELIBERATELY NOT DERIVED HERE ─────────────────
+        # A block under this heading used to set `seasonal_revenue_peak` to the
+        # month in which the most TASKS were created and `cash_flow_risk_months`
+        # to the two months with the highest task counts; its own comment read
+        # "Cash flow risk: months with highest task load typically correlate
+        # with pressure". A task count is a fact about the PRACTICE'S OWN
+        # workload, not about the client's money — a client whose GST work all
+        # lands in July has a July "revenue peak" whatever their revenue did,
+        # and a client the firm happens to chase twice in January is "at cash
+        # flow risk" in January.
+        #
+        # IT WAS NOT MERELY A FIELD. `detect_cash_flow_warnings` read
+        # `cash_flow_risk_months` back and raised a trigger headed "Cash Flow
+        # Pressure Period: <month>" at 72% confidence, asserting "elevated tax
+        # obligations and operational costs" — a claim about the client's
+        # finances that nothing had measured. That detector is gone too; see the
+        # note where it stood.
+        #
+        # MEASURED BEFORE REMOVING (25-09-2026). Production held 232
+        # `client_profiles` rows — 6 current, 5 of them with data_points_used
+        # above zero, so this pipeline genuinely runs — and NOT ONE carried
+        # either field, and `ai_memory_triggers` had never held a
+        # `cash_flow_warning` row. The reason is that `public.tasks` is empty:
+        # the block is reachable and structurally nil, and it fires on the first
+        # client task anybody creates, which is the whole point of the Tasks
+        # module. Latent, not live — and latent on the demo path.
+        #
+        # WHERE THE TRUE FIGURES WOULD COME FROM, so nobody re-derives this from
+        # whatever is nearest. Revenue by month is already pre-aggregated in
+        # `account_period_balances`, and `domain.reporting.service.
+        # ReportingService.period_net_by_account` answers N monthly windows off
+        # ONE bucket read, so a real revenue peak is cheap. It is deliberately
+        # not built HERE: seasonality is an input to a cash-flow FORECAST rather
+        # than a memory-profile field, and that forecast is its own piece of
+        # work — half of it hung off this table would be in the wrong place and
+        # would then have to move. A cash-flow RISK month cannot be derived at
+        # all today; it needs projected outflows against projected receipts,
+        # which is that same forecast.
 
         # ── Year-end patterns ─────────────────────────────────────────────────
         try:
@@ -148,9 +164,17 @@ class MemoryPipeline:
                               for kw in ye_keywords)]
 
             if ye_tasks:
-                # Estimate average year-end duration from first to last year-end task
-                common_requests = list({t.get("title", "")[:50] for t in ye_tasks if t.get("title")})[:5]
-                profile_data["avg_year_end_duration_days"] = 30  # default estimate
+                # `sorted`, not `list({...})`: a set's iteration order varies
+                # between processes under hash randomisation, so the STORED list
+                # changed from one nightly sweep to the next for no reason.
+                common_requests = sorted(
+                    {t.get("title", "")[:50] for t in ye_tasks if t.get("title")})[:5]
+                # `avg_year_end_duration_days` is NOT written, and that is the
+                # same rule as the financial patterns above in its purest form:
+                # it used to be the literal 30 commented "default estimate", on
+                # a column whose name says it was measured. Nothing here
+                # observes how long a year end actually took, so the column
+                # stays NULL until something does.
                 profile_data["common_auditor_requests"] = common_requests
         except Exception as e:
             logger.warning("Year-end pattern error for %s: %s", client_id, e)
@@ -203,18 +227,39 @@ class MemoryPipeline:
             templates = wf_repo.list_templates(firm_id)
             active_automations = len([t for t in templates if t.get("is_active")])
 
-            # Capacity: derive from task load
+            # Capacity: derive from task load. THESE TWO FIELDS ARE THE SAME
+            # ARITHMETIC THE CLIENT PROFILE'S "financial patterns" USED TO DO,
+            # under names that are true of it — a task count IS workload and IS
+            # capacity, and it is not revenue and not cash flow. Keeping this
+            # while deleting that is the whole point: nothing was lost, a wrong
+            # label was.
             all_tasks = _get_task_repo().find_all(firm_id=firm_id) if hasattr(_get_task_repo(), 'find_all') else []
             month_counts = {}
             for t in all_tasks:
                 if t.get("created_at"):
                     try:
-                        month = datetime.fromisoformat(t["created_at"].replace("Z", "+00:00")).strftime("%B")
+                        # The INDIAN month. `created_at` is a timestamptz and
+                        # comes back in UTC, so between 18:30 and 24:00 UTC it
+                        # is already tomorrow in India — and on the last day of
+                        # a month that puts the task in the wrong month
+                        # entirely. Convert the stamp, never the question: a
+                        # firm's month is the Indian one.
+                        stamped = datetime.fromisoformat(t["created_at"].replace("Z", "+00:00"))
+                        if stamped.tzinfo:
+                            stamped = stamped.astimezone(IST)
+                        month = stamped.strftime("%B")
                         month_counts[month] = month_counts.get(month, 0) + 1
                     except Exception:
                         pass
 
             if month_counts:
+                # ⚠️ The buckets are month NAMES, so several years pool into
+                # twelve. That is the right shape for a SEASONAL claim ("March
+                # is busy every year") and it is skewed by a part year: with
+                # eighteen months on file, April to September carry two years
+                # of tasks and the rest carry one. Left as it is rather than
+                # half-rebuilt — weighting it properly belongs with the
+                # firm-wide capacity work, not here.
                 sorted_months = sorted(month_counts.items(), key=lambda x: x[1], reverse=True)
                 peak_months = [m for m, _ in sorted_months[:3]]
                 profile_data["peak_workload_months"] = peak_months
@@ -231,6 +276,12 @@ class MemoryPipeline:
             for c in compliance_items:
                 if c.get("due_date"):
                     try:
+                        # NO IST conversion here, unlike the task stamps above,
+                        # and that is deliberate: `compliance_records.due_date`
+                        # is a DATE (migration 003), a calendar day with no
+                        # instant behind it. Reading "2026-03-31" as midnight
+                        # UTC and shifting it to India would move a 1st into the
+                        # previous month. Convert an INSTANT, never a date.
                         month = datetime.fromisoformat(c["due_date"].replace("Z", "+00:00")).strftime("%B")
                         deadline_counts[month] = deadline_counts.get(month, 0) + 1
                     except Exception:
@@ -364,44 +415,31 @@ class MemoryPipeline:
 
         return triggers
 
-    def detect_cash_flow_warnings(self, firm_id: str, client_id: str) -> list[dict]:
-        """Detect cash flow risk periods based on seasonal patterns."""
-        triggers = []
-        profile = _get_memory_repo().get_current_profile(firm_id, client_id)
-        if not profile:
-            return triggers
-
-        risk_months = profile.get("cash_flow_risk_months", [])
-        current_month = ist_now().strftime("%B")
-
-        if current_month in risk_months:
-            # Dedup
-            recent = _get_memory_repo().get_recent_triggers(
-                firm_id, client_id, "cash_flow_warning", days=25)
-            if recent:
-                return triggers
-
-            evidence = [
-                f"Historically high activity month: {current_month}",
-                f"Cash flow risk months identified: {', '.join(risk_months)}",
-                f"Seasonal peak month: {profile.get('seasonal_revenue_peak', 'N/A')}",
-            ]
-
-            trigger = _get_memory_repo().create_trigger(
-                firm_id=firm_id,
-                client_id=client_id,
-                trigger_type="cash_flow_warning",
-                title=f"Cash Flow Pressure Period: {current_month}",
-                what_detected=f"Historical patterns show {current_month} is a high-pressure period for this client with elevated tax obligations and operational costs.",
-                evidence=evidence,
-                why_it_matters="Clients under cash flow pressure may delay fee payments and require additional support. Proactive planning reduces defaults.",
-                recommended_action="Review outstanding invoices. Consider payment plan options. Prepare advance tax calculation if applicable.",
-                confidence=72.0,
-                severity="medium",
-            )
-            triggers.append(trigger)
-
-        return triggers
+    # `detect_cash_flow_warnings` STOOD HERE AND IS GONE (25-09-2026).
+    #
+    # It read `cash_flow_risk_months` off the client profile, compared today's
+    # month against it, and raised a trigger titled "Cash Flow Pressure Period:
+    # <month>" at 72% confidence whose `what_detected` read "Historical patterns
+    # show <month> is a high-pressure period for this client with elevated tax
+    # obligations and operational costs". Every word of that is a claim about
+    # the client's money, and the input was the number of TASKS the practice had
+    # created in that month — see the note where `compute_client_profile`'s
+    # financial-pattern block used to be.
+    #
+    # WHY DELETED RATHER THAN LEFT TO GO QUIET. Nothing writes
+    # `cash_flow_risk_months` any more, so the detector would have returned []
+    # for ever — and a detector that always answers "nothing found" is not
+    # neutral: it reads to the next person as a check that ran and passed. The
+    # `capital_wip` shape this codebase keeps re-finding. The trigger TYPE stays
+    # in `ai_memory_triggers` (a bare TEXT column, no CHECK) and the browser
+    # keeps its `cash_flow_warning` label, so a row an older deployment already
+    # wrote still renders under its own name instead of "undefined".
+    #
+    # WHAT WOULD BRING IT BACK is a real cash-flow forecast — projected outflows
+    # from bill due dates, statutory deposits and the advance-tax schedule,
+    # against projected receipts from invoice ageing and bank history. That is a
+    # piece of work in its own right, and when it exists the warning it raises
+    # will have a figure behind it rather than a task count.
 
     def detect_year_end_readiness(self, firm_id: str, client_id: str) -> Optional[dict]:
         """
@@ -573,7 +611,6 @@ class MemoryPipeline:
             for detector in [
                 self.detect_repeat_issues,
                 self.detect_deadline_at_risk,
-                self.detect_cash_flow_warnings,
                 self.detect_pattern_anomalies,
             ]:
                 try:

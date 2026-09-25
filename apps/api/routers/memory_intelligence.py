@@ -195,10 +195,14 @@ def detect_client_triggers(
     assert_client_access(current_user, client_id)
     firm_id = current_user["firm_id"]
     pipeline = _get_pipeline()
+    # No `cash_flow_warnings` key. The detector that filled it was deleted — it
+    # read a "cash flow risk month" derived from how many TASKS the practice had
+    # created in that month; `domain/memory_pipeline.py` carries the whole note
+    # where it stood. Serving the key as a permanent empty list would have said
+    # "we looked and found nothing", which is a different and worse claim.
     results = {
         "repeat_issues": pipeline.detect_repeat_issues(firm_id, client_id),
         "deadline_risks": pipeline.detect_deadline_at_risk(firm_id, client_id),
-        "cash_flow_warnings": pipeline.detect_cash_flow_warnings(firm_id, client_id),
         "anomalies": pipeline.detect_pattern_anomalies(firm_id, client_id),
     }
     ye = pipeline.detect_year_end_readiness(firm_id, client_id)
