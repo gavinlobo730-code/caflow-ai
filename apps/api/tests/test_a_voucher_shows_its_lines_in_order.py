@@ -306,7 +306,15 @@ def _ancestor(head: str) -> str:
     """
     best = None
     for path in sorted(_MIG.glob("[0-9][0-9][0-9]_*.sql")):
-        if path.name.startswith("384_") or "rollback" in path.name:
+        # STRICTLY BEFORE 384, which is what "the migration that last defined
+        # this before 384" means and what the first version of this line did
+        # not say. It skipped 384 alone, so it answered the highest-numbered
+        # definer ANYWHERE — correct only while 384 was the newest, and wrong
+        # the day migration 418 replaced both of these functions for cost
+        # centres: the guard would then have compared 384 against its own
+        # SUCCESSOR and failed on a change that did not break its rule. The
+        # ancestor of 384 is a historical fact and cannot move.
+        if path.name[:3] >= "384" or "rollback" in path.name:
             continue
         if head in path.read_text(encoding="utf-8"):
             best = path.name

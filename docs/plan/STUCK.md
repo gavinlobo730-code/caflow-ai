@@ -96,6 +96,14 @@ send*, now **D27**) and **ACC-13** (cost centres on `journal_lines` — *build
 it*, now **D29**). Neither was ever a research question; both were the owner's
 to take, which is why they sat here rather than in a phase.
 
+**Both are now built** — D27 in the same commit as §3's gate, D29 as migration
+418. ACC-13 nonetheless stays `partial` rather than `closed`, and that is the
+record being honest rather than a loose end: the COST-CENTRE half is done and
+the PARTY-LEDGER half is not. Drilling into Trade Receivables still shows one
+pooled control account. That half needs no document and no decision — the party
+is already derivable from `journal_entries.source_type`/`source_id` on all nine
+document kinds — so it is the one item touching this file that is simply work.
+
 ---
 
 ## 3 · What a client screen renders when the client id resolves to nothing — **ANSWERED, built 25 Sep (D28)**

@@ -2352,6 +2352,14 @@ class Phase2JournalService:
                 "rate_source":   l.get("rate_source", eff_rate_source),
                 "rate_type":     l.get("rate_type", eff_rate_type),
                 "rate_date":     l.get("rate_date", eff_rate_date),
+                # ACC-13, migration 418. A LABEL, carried through untouched:
+                # the kernel does not resolve it, refuse it or default it — the
+                # door that built the line did that, and the database refuses a
+                # centre belonging to another client whatever reaches here.
+                # Absent on every one of the twenty-six posting paths but the
+                # manual journal, which is correct: a bank leg and a tax leg
+                # belong to no department.
+                "cost_centre_id": l.get("cost_centre_id"),
             }
             for l in lines
         ]
