@@ -60,6 +60,10 @@ ACC_FIRM_LEVEL = "a3600000-0000-0000-0000-000000000003"   # firm, client_id NULL
 ACC_SIBLING = "a3600000-0000-0000-0000-000000000004"  # firm + SIBLING
 ACC_FOREIGN = "a3600000-0000-0000-0000-000000000005"  # OTHER_FIRM
 
+CC_OWN = "cc360000-0000-0000-0000-000000000001"       # firm + CLIENT
+CC_SIBLING = "cc360000-0000-0000-0000-000000000002"   # firm + SIBLING
+CC_FOREIGN = "cc360000-0000-0000-0000-000000000003"   # OTHER_FIRM
+
 SEED = f"""
 INSERT INTO firms (id,name,email) VALUES
   ('{FIRM}','F','f360@t.in'), ('{OTHER_FIRM}','G','g360@t.in');
@@ -75,6 +79,13 @@ INSERT INTO chart_of_accounts (id,firm_id,client_id,account_code,account_name,ac
   -- not per client, so the sibling's revenue account can share neither.
   ('{ACC_SIBLING}','{FIRM}','{SIBLING}','4001','Sibling Sales Revenue','Revenue'),
   ('{ACC_FOREIGN}','{OTHER_FIRM}','{FOREIGN_CLIENT}','4000','Sales Revenue','Revenue');
+-- ACC-13, migration 418. The dimension has the SAME hole as account_id had —
+-- `journal_lines.cost_centre_id` carries only a GLOBAL FK — so the trigger
+-- grew a second anti-join and these are what prove it.
+INSERT INTO cost_centres (id,firm_id,client_id,code,name) VALUES
+  ('{CC_OWN}','{FIRM}','{CLIENT}','FACTORY','Factory'),
+  ('{CC_SIBLING}','{FIRM}','{SIBLING}','FACTORY','Sibling factory'),
+  ('{CC_FOREIGN}','{OTHER_FIRM}','{FOREIGN_CLIENT}','FACTORY','Their factory');
 """
 
 
@@ -267,3 +278,114 @@ def test_the_trigger_names_the_account_it_refused(dsn):
     eid = _entry_row(dsn, "MSG-1")
     r = _insert_lines(dsn, eid, [(ACC_FOREIGN, 500000, 0)])
     assert "do not belong to this entry" in r.stderr, r.stderr
+
+
+# ══ ACC-13, migration 418 — the dimension has the same hole and the same guard ══
+#
+# `journal_lines.cost_centre_id` carries only a GLOBAL FK to `cost_centres(id)`,
+# exactly as `account_id` does to `chart_of_accounts(id)`, so without the second
+# anti-join migration 418 added, one firm's voucher could be tagged with another
+# firm's department. These four cases mirror the account ones above, and the
+# FIRST is the one that would break every posting if the carve-out were wrong.
+
+
+def _insert_line_with_centre(dsn_: str, entry_id: str, acct: str, centre) -> subprocess.CompletedProcess:
+    value = "NULL" if centre is None else f"'{centre}'"
+    return _psql(dsn_, "INSERT INTO journal_lines "
+                       "(journal_entry_id, account_id, debit_paise, credit_paise, cost_centre_id) "
+                       f"VALUES ('{entry_id}','{acct}',500000,0,{value});")
+
+
+def test_a_line_with_no_cost_centre_posts(dsn):
+    """NULL is the NORM, not an omission: a bank leg and a tax leg belong to no
+    department, and a client who does not use the dimension has NULL on every
+    line. A trigger that refused one would refuse every posting in the product.
+    """
+    eid = _entry_row(dsn, "CC-NULL")
+    r = _insert_line_with_centre(dsn, eid, ACC_OWN_DR, None)
+    assert r.returncode == 0, r.stderr
+    assert _count_lines(dsn, eid) == 1
+
+
+def test_this_clients_own_cost_centre_posts(dsn):
+    eid = _entry_row(dsn, "CC-OK")
+    r = _insert_line_with_centre(dsn, eid, ACC_OWN_DR, CC_OWN)
+    assert r.returncode == 0, r.stderr
+    assert _count_lines(dsn, eid) == 1
+
+
+def test_a_sibling_clients_cost_centre_is_refused(dsn):
+    """Both clients belong to the caller's firm, so nothing about the FIRM is
+    wrong — the department would simply be somebody else's, and a departmental
+    P&L would report one client's spending under another's branch."""
+    eid = _entry_row(dsn, "CC-SIB")
+    r = _insert_line_with_centre(dsn, eid, ACC_OWN_DR, CC_SIBLING)
+    assert r.returncode != 0
+    assert CC_SIBLING in r.stderr
+    assert _count_lines(dsn, eid) == 0
+
+
+def test_another_firms_cost_centre_is_refused(dsn):
+    eid = _entry_row(dsn, "CC-FOR")
+    r = _insert_line_with_centre(dsn, eid, ACC_OWN_DR, CC_FOREIGN)
+    assert r.returncode != 0
+    assert CC_FOREIGN in r.stderr
+    assert _count_lines(dsn, eid) == 0
+
+
+def test_the_trigger_names_the_cost_centre_it_refused(dsn):
+    eid = _entry_row(dsn, "CC-MSG")
+    r = _insert_line_with_centre(dsn, eid, ACC_OWN_DR, CC_FOREIGN)
+    assert "cost centre(s)" in r.stderr, r.stderr
+
+
+def test_post_journal_atomic_carries_the_cost_centre_through(dsn):
+    """The RPC path, which is what every posting in production uses. The
+    dimension must arrive on the row — a key the function does not read is a
+    value silently dropped, which is the defect migration 384 fixed for
+    line_order and this migration could have repeated."""
+    r = _psql(dsn, f"""
+        SELECT public.post_journal_atomic(
+          '{{"firm_id":"{FIRM}","client_id":"{CLIENT}","entry_date":"2026-08-20",
+             "reference_no":"CC-RPC","narration":"n","entry_type":"Journal",
+             "is_posted":true,"status":"posted"}}'::jsonb,
+          '[{{"account_id":"{ACC_OWN_DR}","debit_paise":500000,"credit_paise":0,
+              "cost_centre_id":"{CC_OWN}"}},
+            {{"account_id":"{ACC_OWN_CR}","debit_paise":0,"credit_paise":500000}}]'::jsonb);
+    """)
+    assert r.returncode == 0, r.stderr
+    got = _psql(dsn, f"""
+        SELECT coalesce(l.cost_centre_id::text,'-')
+          FROM journal_lines l JOIN journal_entries e ON e.id = l.journal_entry_id
+         WHERE e.reference_no = 'CC-RPC' ORDER BY l.line_order;
+    """, tuples=True)
+    assert got.stdout.split() == [CC_OWN, "-"], got.stdout
+
+
+def test_post_journal_atomic_refuses_a_foreign_cost_centre(dsn):
+    r = _psql(dsn, f"""
+        SELECT public.post_journal_atomic(
+          '{{"firm_id":"{FIRM}","client_id":"{CLIENT}","entry_date":"2026-08-20",
+             "reference_no":"CC-RPC-BAD","narration":"n","entry_type":"Journal",
+             "is_posted":true,"status":"posted"}}'::jsonb,
+          '[{{"account_id":"{ACC_OWN_DR}","debit_paise":500000,"credit_paise":0,
+              "cost_centre_id":"{CC_FOREIGN}"}},
+            {{"account_id":"{ACC_OWN_CR}","debit_paise":0,"credit_paise":500000}}]'::jsonb);
+    """)
+    assert r.returncode != 0
+    assert CC_FOREIGN in r.stderr
+    left = _psql(dsn, "SELECT count(*) FROM journal_entries WHERE reference_no='CC-RPC-BAD'",
+                 tuples=True)
+    assert left.stdout.strip() == "0", "a refused line left a headerless entry behind"
+
+
+def test_a_cost_centre_with_lines_against_it_cannot_be_deleted(dsn):
+    """ON DELETE RESTRICT. CASCADE would delete POSTED JOURNAL LINES when
+    somebody tidied a master — the general ledger destroyed by a housekeeping
+    click — and SET NULL would silently un-allocate history a management report
+    was built on. `is_active` is what makes deleting unnecessary."""
+    eid = _entry_row(dsn, "CC-DEL")
+    assert _insert_line_with_centre(dsn, eid, ACC_OWN_DR, CC_OWN).returncode == 0
+    r = _psql(dsn, f"DELETE FROM cost_centres WHERE id='{CC_OWN}';")
+    assert r.returncode != 0, "the master was deleted out from under a posted line"
+    assert _count_lines(dsn, eid) == 1

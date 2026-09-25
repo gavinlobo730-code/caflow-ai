@@ -35,6 +35,7 @@ import { toast } from "@/components/ui/use-toast";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
+import { CostCentresTab } from "@/components/accounting/CostCentresTab";
 import { StatementAnalysisPanel } from "@/components/accounting/StatementAnalysisPanel";
 import { DrCr } from "@/components/ui/drcr";
 import { Callout } from "@/components/ui/callout";
@@ -54,7 +55,8 @@ type AccountingTab =
   | "verify-books"
   | "reports"
   | "opening-balances"
-  | "day-book";
+  | "day-book"
+  | "cost-centres";
 
 const TABS: { id: AccountingTab; label: string }[] = [
   { id: "dashboard",     label: "Dashboard" },
@@ -69,6 +71,10 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "verify-books",  label: "Verify Books" },
   { id: "reports",       label: "Reports" },
   { id: "opening-balances", label: "Opening Balances" },
+  // ACC-13. A TAB rather than a route, which costs zero of D10's
+  // redirect budget — and it belongs here because a cost centre is a
+  // dimension of the LEDGER, not a report of its own.
+  { id: "cost-centres", label: "Cost Centres" },
 ];
 
 // ── Shared types ───────────────────────────────────────────────────────────
@@ -342,6 +348,9 @@ export default function AccountingPage() {
         )}
         {tab === "opening-balances" && (
           <OpeningBalancesTab clientId={clientId} />
+        )}
+        {tab === "cost-centres" && (
+          <CostCentresTab clientId={clientId} financialYear={financialYear} />
         )}
         {tab === "reports" && (
           <FinancialReports clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} mcActive={mcActive} />

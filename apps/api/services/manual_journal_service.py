@@ -69,6 +69,24 @@ ALLOWED_ENTRY_TYPES = {
 }
 
 
+def _cost_centre(db, firm_id: str, client_id: str, centre_id):
+    """The client's own cost centre, or None — never somebody else's.
+
+    ONE resolver for both write paths (ACC-13). `cost_centre_service.resolve`
+    is the rule; this turns its refusal into the 422 the CA reads, because a
+    value naming another client's department is the exact failure the check
+    exists to prevent and it is invisible until somebody reads a report. The
+    database refuses it again — migration 418 extended migration 360's
+    statement-level trigger, since the column carries only a GLOBAL FK — and
+    this is the sentence rather than the SQLSTATE.
+    """
+    from services import cost_centre_service
+    try:
+        return cost_centre_service.resolve(db, firm_id, client_id, centre_id)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 class ManualJournalService:
     """Create manual journal entries via the single posting kernel."""
 
@@ -140,6 +158,14 @@ class ManualJournalService:
             "debit_paise": int(l.get("debit_paise") or 0),
             "credit_paise": int(l.get("credit_paise") or 0),
             "narration": l.get("narration") or "",
+            # ACC-13. Resolved HERE rather than in the kernel: the kernel is
+            # the one posting path for twenty-six document types and does not
+            # know which of them a client tags, and refusing a centre inside it
+            # would turn a typo on one screen into a 500 on every posting. The
+            # DATABASE still refuses it (migration 418's trigger), so the
+            # kernel needs no branch to be safe.
+            "cost_centre_id": _cost_centre(db, firm_id, client_id,
+                                           l.get("cost_centre_id")),
         } for l in lines]
 
         entry_id = phase2_journal_service._create_journal(
@@ -338,11 +364,20 @@ class ManualJournalService:
                     "p_firm": firm_id,
                     "p_client": entry["client_id"],
                     "p_entry_id": entry_id,
+                    # ⚠️ FIVE KEYS, NOT FOUR. `edit_posted_journal` REPLACES
+                    # every line — "replace rather than reconcile" — so a key
+                    # missing here is a value ERASED on the first correction,
+                    # silently. Migration 384 recorded four and said an
+                    # override branch would be dead code; migration 418's
+                    # cost_centre_id is the fifth, and the departmental P&L
+                    # would simply have shown less.
                     "p_lines": [{
                         "account_id": l["account_id"],
                         "debit_paise": int(l.get("debit_paise") or 0),
                         "credit_paise": int(l.get("credit_paise") or 0),
                         "narration": l.get("narration") or "",
+                        "cost_centre_id": _cost_centre(
+                            db, firm_id, entry["client_id"], l.get("cost_centre_id")),
                     } for l in lines],
                     "p_narration": data.get("narration"),
                     "p_reference_no": data.get("reference_no"),
@@ -388,6 +423,12 @@ class ManualJournalService:
                     "credit_paise": int(l.get("credit_paise") or 0),
                     "narration": l.get("narration") or "",
                     "line_order": i,
+                    # Same reason as line_order above: this path does its own
+                    # INSERT and does not reach the RPC, so a draft edited here
+                    # would lose its allocation while the posted one beside it
+                    # kept the one the CA chose (ACC-13, migration 418).
+                    "cost_centre_id": _cost_centre(
+                        db, firm_id, entry["client_id"], l.get("cost_centre_id")),
                 } for i, l in enumerate(lines)]).execute()
 
         return self.get(db, firm_id, entry_id)

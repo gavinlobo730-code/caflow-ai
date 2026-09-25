@@ -218,6 +218,14 @@ class JournalLineIn(BaseModel):
     debit_paise: int = 0
     credit_paise: int = 0
     narration: Optional[str] = None
+    #: ACC-13, migration 418. Which part of the client's business this line
+    #: belongs to. OPTIONAL AND USUALLY ABSENT, which is the norm rather than
+    #: an omission: a bank leg and a tax leg belong to no department, and only
+    #: the expense and revenue legs of a voucher carry one. The service refuses
+    #: a centre that is not this client's (and the database refuses it again,
+    #: because the column carries only a global FK — migration 418 extended
+    #: 360's statement-level trigger).
+    cost_centre_id: Optional[str] = None
 
     @model_validator(mode="after")
     def exactly_one_side(self) -> "JournalLineIn":

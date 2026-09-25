@@ -3116,6 +3116,26 @@ export const api = {
     scheduleIiiCaptions: () => request("/api/accounting/schedule-iii/captions"),
     journal: (params?: Record<string, string>) => request(`/api/accounting/journal${params ? "?" + new URLSearchParams(params) : ""}`),
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
+    /* ACC-13, migration 418. Cost centres are a DIMENSION on a journal line —
+       they change no figure, no total and no statutory output — so they live
+       under their own prefix rather than on /api/accounting, which is the
+       ledger. A line's `cost_centre_id` travels on the ordinary journal
+       payload; these are the master and the departmental result. */
+    costCentres: (clientId: string, includeRetired = false) =>
+      request<ApiResp<CostCentreListPayload>>(
+        `/api/cost-centres?client_id=${encodeURIComponent(clientId)}` +
+        (includeRetired ? "&include_retired=true" : "")),
+    createCostCentre: (data: unknown) =>
+      request<ApiResp<CostCentre>>("/api/cost-centres",
+        { method: "POST", body: JSON.stringify(data) }),
+    updateCostCentre: (centreId: string, clientId: string, data: unknown) =>
+      request<ApiResp<CostCentre>>(
+        `/api/cost-centres/${encodeURIComponent(centreId)}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(data) }),
+    costCentreAllocation: (clientId: string, financialYear: string) =>
+      request<ApiResp<CostCentreAllocationPayload>>(
+        `/api/cost-centres/allocation?client_id=${encodeURIComponent(clientId)}` +
+        `&financial_year=${encodeURIComponent(financialYear)}`),
     // One entry with its lines, plus whether it may still be edited. `editable`
     // and `lock_reason` are resolved by the same database function the write
     // path enforces with (journal_period_lock_reason, migration 266), so the
@@ -6074,6 +6094,54 @@ export type BenchmarkPayload = {
   /** Served, never held here — the Schedule III caption lesson. */
   figure_meaning: Record<string, string>;
   money_figures: string[];
+  notes: string[];
+};
+
+export type CostCentre = {
+  id: string;
+  client_id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  /** RETIRED, never deleted: posted lines point at it and migration 251 makes
+   *  a posted line immutable. A retired centre stops being offered. */
+  is_active: boolean;
+};
+
+export type CostCentreListPayload = {
+  cost_centres: CostCentre[];
+  a_dimension_not_a_ledger: string;
+};
+
+export type CostCentreAccount = {
+  account_id: string;
+  account_name: string;
+  account_kind: string;
+  /** Credit-positive for income, debit-positive for expense — each read the
+   *  way its own side of the P&L is read, so both are positive when the
+   *  business is doing the ordinary thing. */
+  amount_paise: number;
+};
+
+export type CostCentreResult = {
+  cost_centre_id: string | null;
+  name: string;
+  income_paise: number;
+  expense_paise: number;
+  /** Income less expenditure. NOT profit: it is before everything that is not
+   *  divided by department, so the centres do not sum to the P&L. */
+  result_paise: number;
+  accounts: CostCentreAccount[];
+};
+
+export type CostCentreAllocationPayload = {
+  financial_year: string;
+  centres: CostCentreResult[];
+  /** ⚠️ PART OF THE ANSWER, not a gap. Most lines carry no cost centre by
+   *  design — a bank leg and a tax leg belong to no department — so this is
+   *  expected to be large. Never merge it into a centre and never drop it. */
+  unallocated: CostCentreResult | null;
+  centres_with_no_activity: string[];
   notes: string[];
 };
 
