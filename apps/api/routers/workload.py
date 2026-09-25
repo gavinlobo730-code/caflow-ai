@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 from models.common import api_response
@@ -65,6 +65,37 @@ def _minutes_logged_this_week(db, firm_id: str) -> dict[str, int]:
         return minutes
     except Exception:
         return {}
+
+
+@router.get("/capacity-risk")
+def capacity_risk_forecast(
+    weeks_ahead: int = Query(13, ge=4, le=26),
+    current_user: dict = Depends(rbac("workload", "read")),
+):
+    """Which of the next weeks the practice is about to be short-staffed for.
+
+    THE FORWARD-LOOKING HALF OF THIS ROUTER. `GET /api/workload` and
+    `compute_workload_insights` both describe TODAY — who has too many tasks
+    open right now. Neither can tell a partner that the week of 8 December is
+    four times an ordinary week because sixty clients' GSTR-3B and a quarterly
+    TDS statement land in it together, which is the only version of this
+    question they can still act on.
+
+    `domain/practice/capacity_risk` is the rule and refuses two temptations it
+    would be easy to give in to: it never averages an effort estimate over the
+    tasks that carry none, and it never treats `max_concurrent_tasks` as a
+    weekly throughput. Load is measured against the practice's own median week.
+
+    Assignment-scoped through `filter_by_client`, like every other firm-wide
+    read here, so a Manager sees the risk in their own book."""
+    from core.supabase_client import get_supabase
+    from services import capacity_risk_service
+
+    try:
+        return api_response(True, capacity_risk_service.capacity_risk(
+            get_supabase(), current_user, weeks_ahead=weeks_ahead))
+    except Exception as e:
+        return api_response(False, None, str(e))
 
 
 @router.get("")

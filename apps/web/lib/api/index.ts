@@ -4455,6 +4455,12 @@ export const api = {
     capacityList: () => request("/api/workload/capacity"),
     setCapacity: (body: { user_id: string; weekly_capacity_hours: number; max_concurrent_tasks: number }) =>
       request("/api/workload/capacity", { method: "PUT", body: JSON.stringify(body) }),
+    /* 3b-4. The FORWARD-looking half: `/api/workload` and
+       `/api/intelligence/workload-insights` both describe today, and neither
+       can say that the week of 8 December is four times an ordinary week. */
+    capacityRisk: (weeksAhead = 13) =>
+      request<ApiResp<CapacityRiskPayload>>(
+        `/api/workload/capacity-risk?weeks_ahead=${weeksAhead}`),
   },
   /* 3b-2. Its own prefix rather than an /api/accounting/reports entry: that
      one serves the AS-3 cash flow STATEMENT (what happened), this is a
@@ -5918,6 +5924,39 @@ export type ReconciliationRun = {
  * The Schedule III caption lesson: the module that owns the checks is the only
  * place that can stay right about their names.
  */
+/** One week of `GET /api/workload/capacity-risk`. */
+export type CapacityWeek = {
+  week_start: string;
+  items_due: number;
+  tasks_due: number;
+  compliance_due: number;
+  /** Recorded effort only — `workflow_steps.estimated_hours`. Never imputed
+   *  across the tasks below, which carry none. */
+  estimated_hours: number;
+  items_without_an_estimate: number;
+  /** Against the practice's own median week. Null where too few weeks carried
+   *  work for a median to mean anything. */
+  vs_median_pct: number | null;
+  is_peak: boolean;
+};
+
+export type CapacityRiskPayload = {
+  weeks: CapacityWeek[];
+  /** Already late. Not in any week — it is on top of all of them. */
+  overdue_items: number;
+  undated_items: number;
+  obligations_folded_into_tasks: number;
+  median_week_items: number | null;
+  peak_weeks: string[];
+  /** Headcount and configured hours, BESIDE the load and never multiplied into
+   *  it: `max_concurrent_tasks` is a limit on what may be open, not a weekly
+   *  throughput. */
+  people: number;
+  configured_weekly_hours: number;
+  peak_multiple: number;
+  not_forecast: string[];
+};
+
 export type ReconciliationCheck = {
   check_name: string;
   label: string;

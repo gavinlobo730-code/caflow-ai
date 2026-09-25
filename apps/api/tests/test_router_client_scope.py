@@ -946,6 +946,13 @@ FOLLOW: dict[str, str] = {
     # wrapper just to satisfy the sweep would be a check that means nothing.
     "/api/mca-workspace": "routers.mca_workspace",
     "/api/knowledge": "services.knowledge_service",
+    # capacity_risk_forecast is the one endpoint on this prefix that does not
+    # fetch: the service does, and `filter_by_client` narrows all three of its
+    # reads there. Narrowing again in the router would mean the router fetching
+    # — the opposite of where that belongs — so the sweep follows the call.
+    # Every other /api/workload endpoint still narrows in its own body and
+    # passes without this.
+    "/api/workload": "services.capacity_risk_service",
     "/api/clients/{client_id}/instructions": "services.knowledge_service",
     "/api/clients/{client_id}/knowledge": "services.knowledge_service",
     # update_purchase_payment_allocations is the one route on this prefix
