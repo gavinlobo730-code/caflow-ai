@@ -122,8 +122,28 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
             "Pass --add-to-existing if that is genuinely what you want."
         )
 
-    written = {"clients": 0, "customers": 0, "vendors": 0,
+    written = {"hsn_library": 0, "clients": 0, "catalogue": 0,
+               "customers": 0, "vendors": 0,
                "sales_invoices": 0, "purchase_bills": 0, "employees": 0}
+
+    # ── THE FIRM'S HSN LIBRARY COMES FIRST, AND IT IS A GATE ─────────────────
+    #
+    # `routers/service_catalogue._hsn_in_library` refuses a catalogue item
+    # whose HSN is not an ACTIVE row in this firm's own library (Decision C:
+    # a code is SELECTED from the firm's list, never typed per item). So the
+    # order is library → catalogue → document, and each step is a precondition
+    # of the next. Written once for the firm because the library is firm-wide;
+    # the catalogue below is per client, because a catalogue is.
+    for item in {i.hsn_sac_code: i
+                 for c in firm.clients for i in c.catalogue}.values():
+        api.post("/api/firm-hsn-library/", {
+            "hsn_code": item.hsn_sac_code,
+            "description": item.name,
+            "hsn_type": item.hsn_type,
+            "gst_rate_pct": float(item.gst_rate_percent),
+            "uqc": item.unit,
+        })
+        written["hsn_library"] += 1
 
     for c in firm.clients:
         print(f"  {c.name} — {c.demonstrates}")
@@ -145,6 +165,28 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
             "notes": f"Demo practice fixture — {c.demonstrates}",
         }))
         written["clients"] += 1
+
+        # ── THE CATALOGUE, AND WHY EVERY LINE MUST NAME ONE ──────────────
+        #
+        # Migration 206 made `service_catalogue_id` required on an invoice and
+        # a bill line, and the door says why in its own refusal: a line
+        # carrying only a description and an HSN is not a line this product
+        # will save. The map is keyed on the CODE because the fixture dedupes
+        # on the code, so there is one key and no second thing to keep in step.
+        catalogue: dict[str, str] = {}
+        for item in c.catalogue:
+            catalogue[item.hsn_sac_code] = _id(api.post("/api/service-catalogue/", {
+                "client_id": client_id,
+                "name": item.name,
+                "kind": item.kind,
+                "hsn_sac": item.hsn_sac_code,
+                "gst_rate_bps": int(float(item.gst_rate_percent) * 100),
+                "default_rate_paise": item.rate_paise,
+                # Goods only: `unit` is the CBIC UQC and a service has none,
+                # which is the same split `domain/gst/goods_or_services` makes.
+                "unit": item.unit if item.kind == "good" else None,
+            }))
+            written["catalogue"] += 1
 
         customer_ids = []
         for p in c.customers:
@@ -183,6 +225,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 "supply_state_code": d.place_of_supply,
                 "is_inter_state": d.place_of_supply != c.state_code,
                 "lines": [{
+                    "service_catalogue_id": catalogue[ln.hsn_sac_code],
                     "description": ln.description,
                     "hsn_sac": ln.hsn_sac_code,
                     "quantity": float(ln.quantity),
@@ -206,6 +249,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 "place_of_supply": d.place_of_supply,
                 "is_reverse_charge": d.is_reverse_charge,
                 "lines": [{
+                    "service_catalogue_id": catalogue[ln.hsn_sac_code],
                     "description": ln.description,
                     "hsn_sac": ln.hsn_sac_code,
                     "quantity": float(ln.quantity),

@@ -136,6 +136,39 @@ class DemoEmployee:
 
 
 @dataclass(frozen=True)
+class DemoCatalogueItem:
+    """One row of a client's product/service catalogue.
+
+    ⚠️ THE CATALOGUE IS NOT DECORATION — IT IS A PRECONDITION, AND ONLY RUNNING
+    THE SEEDER FOUND THAT. `client_sales_invoice_lines` and
+    `purchase_bill_lines` have required a `service_catalogue_id` since
+    migration 206, so an invoice line that names only a description and an HSN
+    is refused at the door with *"Product/Service is required on every line
+    item … a new client has an empty catalogue until somebody adds to it."*
+    The first `POST /api/sales-invoices/` of the first client returned 422 and
+    the run stopped there, exactly as it is designed to.
+
+    `kind` is DERIVED from the code rather than tagged, because the product
+    already owns that rule: a Service Accounting Code is Chapter 99 of the
+    tariff and goods run Chapters 1-98 (`domain/gst/goods_or_services`). A
+    second authority here would be one more place to disagree with it."""
+    name: str
+    hsn_sac_code: str
+    unit: str
+    rate_paise: int
+    gst_rate_percent: str
+
+    @property
+    def kind(self) -> str:
+        return "service" if self.hsn_sac_code.startswith("99") else "good"
+
+    @property
+    def hsn_type(self) -> str:
+        """`firm_hsn_library` spells the same fact its own way."""
+        return "services" if self.kind == "service" else "goods"
+
+
+@dataclass(frozen=True)
 class DemoClient:
     name: str
     legal_name: str
@@ -153,6 +186,11 @@ class DemoClient:
     purchases: tuple[DemoDocument, ...]
     employees: tuple[DemoEmployee, ...] = ()
     gst_filing_frequency: str = "monthly"
+    #: Every item this client's own lines draw from, sales and purchases
+    #: together. Deduped on the CODE, which is one-to-one with the item in both
+    #: catalogues — so a line resolves its `service_catalogue_id` by HSN with
+    #: no second key to keep in step.
+    catalogue: tuple[DemoCatalogueItem, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -190,6 +228,17 @@ _SERVICES = [
     ("Software development", "998314", "OTH", 9_00_000, "18"),
     ("Site construction works", "995414", "OTH", 18_00_000, "18"),
 ]
+
+
+def _catalogue(*lists) -> tuple[DemoCatalogueItem, ...]:
+    """The union of the catalogues a client's documents are drawn from, in
+    first-seen order and deduped on the code. Order is fixed rather than
+    sorted so the fixture stays deterministic — the seed is the whole point."""
+    seen: dict[str, DemoCatalogueItem] = {}
+    for items in lists:
+        for name, hsn, unit, rate, gst in items:
+            seen.setdefault(hsn, DemoCatalogueItem(name, hsn, unit, rate, gst))
+    return tuple(seen.values())
 
 
 def _fy_months(financial_year: str) -> list[date]:
@@ -364,6 +413,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                                  reverse_charge_every=rcm_every),
             employees=_employees(rng, employees, f"{financial_year[:4]}-04-01"),
             gst_filing_frequency=frequency,
+            catalogue=_catalogue(sales_catalogue, purchase_catalogue),
         )
 
     clients = (
