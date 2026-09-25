@@ -79,7 +79,13 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "portal",        label: "Portal",         href: (id) => `/clients/${id}/portal/` },
   { id: "ai-insights",  label: "AI Insights",    href: (id) => `/clients/${id}/ai-insights/` },
   { id: "lifecycle",    label: "Lifecycle",      href: (id) => `/clients/${id}/lifecycle/` },
-  { id: "relationships",label: "Relationships",  href: (id) => `/clients/${id}/relationships/` },
+  // "Related Parties", not "Relationships", and the ROUTE deliberately does not
+  // move. The section is the input side of the AS 18 disclosure, Companies Act
+  // s.185 and s.188 — a compliance note a statutory audit cannot omit — and the
+  // old name read as CRM, which is most of why it looked like dead weight.
+  // Renaming the SEGMENT would cost 2 of D10's 2 remaining redirect rules and
+  // buy nothing: the label is what a CA reads.
+  { id: "relationships",label: "Related Parties", href: (id) => `/clients/${id}/relationships/` },
   { id: "health",       label: "Health",         href: (id) => `/clients/${id}/health/` },
   { id: "knowledge",    label: "Knowledge",      href: (id) => `/clients/${id}/knowledge/` },
   { id: "instructions", label: "Instructions",   href: (id) => `/clients/${id}/instructions/` },

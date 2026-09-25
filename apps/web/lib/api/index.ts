@@ -69,6 +69,71 @@ export interface ClientSummary {
  *  `href` is null where this tile has no destination AT THIS SCOPE (five
  *  modules have no firm-level screen — question G3), so the card must not
  *  render as a link. */
+/** ── Related parties — AS 18 ─────────────────────────────────────────────
+ *  The disclosure `domain/related_party/disclosure.py` decides. Typed rather
+ *  than `unknown`, because a note is read by an auditor and a field the
+ *  endpoint does not serve must not be reachable from a screen. */
+export interface RelatedPartyDealings {
+  sales_paise: number;
+  purchases_paise: number;
+  receivable_paise: number;
+  payable_paise: number;
+}
+
+export interface RelatedParty {
+  entity_id: string;
+  name: string;
+  pan: string | null;
+  role: string;
+  ownership_percent: number | null;
+  /** "included" | "excluded" | "undetermined" — three answers, and the third
+   *  is the point. See the domain module. */
+  standing: string;
+  reason: string;
+  effective_from: string | null;
+  effective_to: string | null;
+  /** Always present, NULL where the party carries no PAN and so could not be
+   *  matched at all. Null is unknown, never nil. */
+  dealings: RelatedPartyDealings | null;
+}
+
+export interface RelatedPartyDisclosure {
+  client_id: string;
+  parties: RelatedParty[];
+  included_count: number;
+  undetermined_count: number;
+  disclosure_required: boolean;
+  section_185_loans: Record<string, unknown>[];
+  transfer_pricing_flags: Record<string, unknown>[];
+  transfer_pricing_count: number;
+  entity_relationships: Record<string, unknown>[];
+  gaps: string[];
+  notes: string[];
+}
+
+export interface ClientEntityRole {
+  id: string;
+  entity_id: string | null;
+  client_id: string;
+  role: string;
+  ownership_percent: number | null;
+  effective_from: string | null;
+  effective_to: string | null;
+  notes: string | null;
+  entity_name: string | null;
+  entity_type: string | null;
+  pan: string | null;
+  email: string | null;
+}
+
+export interface RelationshipEntity {
+  id: string;
+  full_name: string;
+  entity_type: string;
+  pan: string | null;
+  email: string | null;
+}
+
 export interface HubTile {
   id: string;
   label: string;
@@ -2686,6 +2751,34 @@ export const api = {
     worklist: (tile: string) =>
       request<ApiResp<HubWorklistPayload>>(
         `/api/hub/worklist?tile=${encodeURIComponent(tile)}`),
+  },
+
+  relatedParties: {
+    /** A client's recorded entity roles, with the entity joined server-side.
+     *  There was no endpoint for this at all, which is why the screen showed
+     *  "Associated Entities (0)" on every client for ever. */
+    roles: (clientId: string) =>
+      request<ApiResp<ClientEntityRole[]>>(
+        `/api/relationships/roles?client_id=${encodeURIComponent(clientId)}`),
+    /** The AS 18 note. Prepare-only — nothing is filed, signed or posted. */
+    disclosure: (clientId: string) =>
+      request<ApiResp<RelatedPartyDisclosure>>(
+        `/api/relationships/related-party-report?client_id=${encodeURIComponent(clientId)}`),
+    /** The firm's entity register, for the picker. The role form used to ask a
+     *  CA to paste a UUID copied from another screen. */
+    entities: (search?: string) =>
+      request<ApiResp<RelationshipEntity[]>>(
+        `/api/relationships/entities?limit=200${search ? `&search=${encodeURIComponent(search)}` : ""}`),
+    addRole: (entityId: string, body: unknown) =>
+      request<ApiResp<ClientEntityRole>>(
+        `/api/relationships/entities/${encodeURIComponent(entityId)}/roles`,
+        { method: "POST", body: JSON.stringify(body) }),
+    removeRole: (roleId: string) =>
+      request<ApiResp<unknown>>(
+        `/api/relationships/roles/${encodeURIComponent(roleId)}`, { method: "DELETE" }),
+    detectMatches: () =>
+      request<ApiResp<unknown>>("/api/relationships/cross-client-matches/detect",
+        { method: "POST", body: JSON.stringify({}) }),
   },
 
   clients: {

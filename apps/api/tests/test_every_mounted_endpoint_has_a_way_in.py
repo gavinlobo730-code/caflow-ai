@@ -104,7 +104,7 @@ BUDGET: dict[str, int] = {
     # `api.aiInsights.generate` carried the method with no caller, so the
     # screen showed an empty list for every client for ever AND told the
     # CA the insights arrive "automatically", which nothing does.
-    "/api/memory": 7, "/api/relationships": 7, "/api/ai-insights": 4,
+    "/api/memory": 7, "/api/relationships": 5, "/api/ai-insights": 4,
     # /api/intelligence 6 -> 3 on 25-09-2026 (Phase 3a-5): all six had
     # `lib/api` methods and no screen caller. `/insights` reaches the
     # three client-facing reads — compliance risk, relationship health
@@ -233,7 +233,7 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # BUDGET, plus the three the tree had already shed since the last measurement;
 # then the AP allocate mirror, and the gateway webhook moving out of the
 # counted population entirely.
-TOTAL_BUDGET = 226
+TOTAL_BUDGET = 224
 
 
 # ---------------------------------------------------------------------------

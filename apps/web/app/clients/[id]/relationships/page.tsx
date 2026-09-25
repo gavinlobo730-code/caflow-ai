@@ -1,109 +1,129 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Plus, X, Network } from "lucide-react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, X, Network, Trash2, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Callout, StatutoryNotes } from "@/components/ui/callout";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
-import { TableSkeleton } from "@/components/ui/skeleton";
-import { Callout } from "@/components/ui/callout";
+import { formatPaise, NO_FIGURE } from "@/lib/money/format";
+import { api } from "@/lib/api";
+import type {
+  ClientEntityRole,
+  RelatedParty,
+  RelatedPartyDisclosure,
+  RelationshipEntity,
+} from "@/lib/api";
+import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-async function apiFetch(path: string, opts?: RequestInit) {
-  const { data: { session } } = await getSupabaseClient().auth.getSession();
-  const token = session?.access_token ?? "";
-  const res = await fetch(`${API}${path}`, {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(opts?.headers ?? {}),
-    },
-  });
-  return res.json();
-}
-
-interface EntityRole {
-  id: string;
-  entity_id: string;
-  entity_name?: string;
-  role_type: string;
-  ownership_percent?: number;
-  effective_from?: string;
-  effective_to?: string;
-}
+/**
+ * Related parties — the AS 18 note, and the roles it is built from.
+ *
+ * WHAT WAS WRONG, AND IT WAS FOUR THINGS.
+ *
+ *  1. `roles` was declared, rendered as "Associated Entities (0)" and NEVER
+ *     FETCHED — `loadAll` read only `cross_client_matches`. A CA who linked a
+ *     director saw the row until they refreshed, and then it was gone. There
+ *     was no endpoint to fetch from either; `GET /api/relationships/roles`
+ *     is new.
+ *  2. The role form asked for a UUID: *"Enter the Entity ID from the Entity
+ *     Registry."* It is a picker now, served from the firm's own register.
+ *  3. A newly added role rendered blank — the API returns the database row,
+ *     which carries `role`, and this file read `role_type`.
+ *  4. `GET /related-party-report` — the AS 18 disclosure, Companies Act s.188
+ *     transactions, s.185 loans to directors and the s.92 transfer-pricing
+ *     flags — had NO CALLER anywhere in this app. It is the one output that
+ *     makes this screen worth opening, and nothing rendered it.
+ *
+ * THE SCREEN DECIDES NOTHING. Who is a related party, what the note must say
+ * and what cannot be derived are all
+ * `apps/api/domain/related_party/disclosure.py`. This renders what it is
+ * given, including its gaps — a note that quietly omits a related party is a
+ * WRONG disclosure, which is worse than none, so the sentences travel with
+ * the figures rather than being summarised here.
+ */
+const ROLE_TYPES = [
+  "Director", "Shareholder", "Partner", "Trustee", "Proprietor",
+  "Guarantor", "Authorized Signatory", "Karta (HUF)", "Beneficiary",
+  "Manager", "Other",
+];
 
 interface CrossClientMatch {
   id: string;
   pan: string;
-  entity_id: string;
   client_id_a: string;
   client_id_b: string;
   match_type: string;
-  is_reviewed: boolean;
+  /** The column is `reviewed`, not `is_reviewed` — this file's old interface
+   *  said otherwise and read a field that is always undefined. */
+  reviewed: boolean;
   is_confirmed?: boolean;
 }
 
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  error: string | null;
-}
-
-const ROLE_TYPE_COLORS: Record<string, string> = {
-  Director:               "bg-blue-100 text-blue-700",
-  Shareholder:            "bg-purple-100 text-purple-700",
-  Partner:                "bg-violet-100 text-violet-700",
-  Trustee:                "bg-teal-100 text-teal-700",
-  Proprietor:             "bg-cyan-100 text-cyan-700",
-  Guarantor:              "bg-orange-100 text-orange-700",
-  "Authorized Signatory": "bg-emerald-100 text-emerald-700",
-};
-
 function formatDate(d?: string | null) {
   if (!d) return "—";
-  try { return formatDateShared(d); }
-  catch { return d; }
+  try { return formatDateShared(d); } catch { return d; }
 }
 
-export default function ClientRelationshipsPage() {
+const STANDING_STYLE: Record<string, string> = {
+  included: "bg-state-ready-surface text-state-ready",
+  excluded: "bg-gray-100 text-gray-600",
+  undetermined: "bg-state-attention-surface text-state-attention",
+};
+
+export default function ClientRelatedPartiesPage() {
   const { clientId } = useClientNav();
-  const [roles, setRoles] = useState<EntityRole[]>([]);
+  const [roles, setRoles] = useState<ClientEntityRole[]>([]);
+  const [note, setNote] = useState<RelatedPartyDisclosure | null>(null);
   const [matches, setMatches] = useState<CrossClientMatch[]>([]);
+  const [entities, setEntities] = useState<RelationshipEntity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addRoleModal, setAddRoleModal] = useState(false);
   const [roleForm, setRoleForm] = useState({ entity_id: "", role_type: "Director", ownership_percent: "" });
   const [savingRole, setSavingRole] = useState(false);
   const [detectLoading, setDetectLoading] = useState(false);
-  // One action at a time: every button that starts work waits for whichever
-  // is already running. Guarding each on its own flag alone let two fire at
-  // once, and the second could act on what the first was still changing.
-  const actionInFlight = detectLoading || savingRole;
+  // The row being removed, or null. Per-ROW rather than one boolean: a shared
+  // flag would disable every trash icon while one is in flight, which reads as
+  // the screen having frozen.
+  const [removingRoleId, setRemovingRoleId] = useState<string | null>(null);
+  // One action at a time: every button that starts work waits for whichever is
+  // already running, or the second can act on what the first is still changing.
+  const actionInFlight = detectLoading || savingRole || removingRoleId !== null;
 
   const loadAll = useCallback(async () => {
-    if (!clientId) return;
+    if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     setError(null);
     try {
-      // Direct Supabase read (not api/relationships/cross-client-matches) — a
-      // plain read with no server-side computation, so routing it through the
-      // FastAPI backend only adds a cold-start hit. Mirrors
-      // routers/relationships.py's list_cross_client_matches (reviewed=false,
-      // newest first), but scoped server-side to THIS client instead of
-      // fetching every unreviewed match for the whole firm and filtering
-      // client-side: a cross_client_matches row references two different
-      // clients (client_id_a / client_id_b), so "scoped to this client" means
-      // either side references it — same condition the old code applied
-      // in-browser after the firm-wide fetch.
+      const [rolesRes, noteRes] = await Promise.all([
+        api.relatedParties.roles(clientId),
+        api.relatedParties.disclosure(clientId),
+      ]);
+      // The envelope before the payload, and the payload before it is treated
+      // as a list — several routers answer a refusal as HTTP 200.
+      if (!rolesRes?.success) throw new Error(rolesRes?.error || "Could not load the roles.");
+      setRoles(arrayOrEmpty<ClientEntityRole>(rolesRes.data));
+      setNote(
+        noteRes?.success
+          ? objectWithLists<RelatedPartyDisclosure>(
+              noteRes.data,
+              "parties", "section_185_loans", "transfer_pricing_flags",
+              "entity_relationships", "gaps", "notes",
+            )
+          : null
+      );
+
+      // Cross-client matches stay a direct read: a plain filtered select with
+      // no server-side computation, scoped to THIS client on either end —
+      // `cross_client_matches` names two clients and either may be this one.
       const db = getSupabaseClient();
       const { data, error: matchesError } = await db
         .from("cross_client_matches")
-        .select("*")
+        .select("id, pan, client_id_a, client_id_b, match_type, reviewed, is_confirmed")
         .eq("reviewed", false)
         .or(`client_id_a.eq.${clientId},client_id_b.eq.${clientId}`)
         .order("created_at", { ascending: false });
@@ -116,47 +136,77 @@ export default function ClientRelationshipsPage() {
     }
   }, [clientId]);
 
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  // The register is fetched when the picker opens, not on every page load: a
+  // firm's entity list has nothing to do with rendering this client's note.
   useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+    if (!addRoleModal || entities.length) return;
+    api.relatedParties.entities()
+      .then((r) => { if (r?.success) setEntities(arrayOrEmpty<RelationshipEntity>(r.data)); })
+      .catch(() => { /* the picker falls back to its empty state */ });
+  }, [addRoleModal, entities.length]);
 
   async function handleDetectMatches() {
+    if (actionInFlight) return;
     setDetectLoading(true);
     try {
-      await apiFetch("/api/relationships/cross-client-matches/detect", {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
+      await api.relatedParties.detectMatches();
       await loadAll();
-    } catch { /* non-fatal */ }
+    } catch { /* non-fatal — the list simply does not change */ }
     finally { setDetectLoading(false); }
   }
 
   async function handleAddRole() {
-    if (!roleForm.entity_id || !roleForm.role_type) return;
+    if (actionInFlight || !roleForm.entity_id || !roleForm.role_type) return;
     setSavingRole(true);
     try {
-      const json: ApiResponse<EntityRole> = await apiFetch(
-        `/api/relationships/entities/${roleForm.entity_id}/roles`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            client_id: clientId,
-            role_type: roleForm.role_type,
-            ownership_percent: roleForm.ownership_percent ? parseInt(roleForm.ownership_percent, 10) : null,
-          }),
-        }
-      );
-      if (!json.success) throw new Error(json.error ?? "Failed to add role");
-      setRoles((prev) => [json.data, ...prev]);
+      const res = await api.relatedParties.addRole(roleForm.entity_id, {
+        client_id: clientId,
+        role_type: roleForm.role_type,
+        ownership_percent: roleForm.ownership_percent
+          ? Number(roleForm.ownership_percent)
+          : null,
+      });
+      if (!res?.success) throw new Error(res?.error ?? "Failed to add role");
       setAddRoleModal(false);
       setRoleForm({ entity_id: "", role_type: "Director", ownership_percent: "" });
+      // Reload rather than prepending the response: adding a director CHANGES
+      // THE NOTE, and a screen showing a new row beside a stale disclosure is
+      // the more confusing of the two states.
+      await loadAll();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add role");
     } finally {
       setSavingRole(false);
     }
   }
+
+  async function handleRemoveRole(roleId: string) {
+    // A second click on the same trash icon deletes a role that is already gone
+    // and then reloads over the answer to the first — so the button is out of
+    // action from the moment it is pressed, not from when the request returns.
+    if (actionInFlight) return;
+    setRemovingRoleId(roleId);
+    try {
+      const res = await api.relatedParties.removeRole(roleId);
+      if (!res?.success) throw new Error(res?.error ?? "Failed to remove role");
+      await loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove role");
+    } finally {
+      setRemovingRoleId(null);
+    }
+  }
+
+  const included = useMemo(
+    () => (note?.parties ?? []).filter((p) => p.standing === "included"),
+    [note]
+  );
+  const undetermined = useMemo(
+    () => (note?.parties ?? []).filter((p) => p.standing === "undetermined"),
+    [note]
+  );
 
   if (loading) {
     return (
@@ -169,12 +219,14 @@ export default function ClientRelationshipsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-base font-semibold text-brand">Relationships</h1>
-          <p className="text-xs text-gray-500 mt-0.5">Directors, shareholders, and related parties</p>
+          <h1 className="text-base font-semibold text-brand">Related Parties</h1>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Directors, shareholders and related parties, and the AS 18 note built from them
+          </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <button
             onClick={handleDetectMatches}
             disabled={actionInFlight}
@@ -186,57 +238,145 @@ export default function ClientRelationshipsPage() {
             onClick={() => setAddRoleModal(true)}
             className="flex items-center gap-1 text-xs bg-brand text-white px-3 py-1.5 rounded-md hover:bg-brand-dark"
           >
-            <Plus size={12} /> Add Role
+            <Plus size={12} /> Link Entity
           </button>
         </div>
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
 
-      {/* Entity Roles */}
+      {/* ── The disclosure ─────────────────────────────────────────────── */}
+      <Card>
+        <CardContent className="p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-brand">
+              <FileText size={13} /> AS 18 related party disclosure
+            </h2>
+            {note && (
+              <Badge className={note.disclosure_required
+                ? "bg-state-attention-surface text-state-attention text-3xs"
+                : "bg-gray-100 text-gray-600 text-3xs"}>
+                {note.disclosure_required ? "Disclosure required" : "No related party identified"}
+              </Badge>
+            )}
+          </div>
+
+          {!note ? (
+            <p className="text-xs text-ps-hint">
+              The disclosure could not be loaded. The roles below are still current.
+            </p>
+          ) : included.length === 0 ? (
+            <p className="text-xs text-ps-hint">
+              No related party has been identified for this client yet. Link the
+              directors, partners or shareholders above and the note builds itself.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-3xs uppercase tracking-wide text-ps-hint border-b border-ps-border">
+                    <th className="pb-2 pr-3 font-medium">Party</th>
+                    <th className="pb-2 pr-3 font-medium">Relationship</th>
+                    <th className="pb-2 pr-3 font-medium text-right">Sales</th>
+                    <th className="pb-2 pr-3 font-medium text-right">Purchases</th>
+                    <th className="pb-2 pr-3 font-medium text-right">Receivable</th>
+                    <th className="pb-2 font-medium text-right">Payable</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {included.map((p) => <PartyRow key={p.entity_id + p.role} party={p} />)}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {undetermined.length > 0 && (
+            <div className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3">
+              <p className="text-3xs font-semibold uppercase tracking-wide text-state-attention mb-1.5">
+                Not decided — held out of the note above
+              </p>
+              <ul className="space-y-1">
+                {undetermined.map((p) => (
+                  <li key={p.entity_id + p.role} className="text-2xs text-ps-label">
+                    <span className="font-medium text-ps-ink">{p.name}</span>
+                    {" · "}{p.role}{" — "}{p.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {note && (note.section_185_loans.length > 0 || note.transfer_pricing_flags.length > 0) && (
+            <div className="flex flex-wrap gap-2">
+              {note.section_185_loans.length > 0 && (
+                <Badge className="bg-state-problem-surface text-state-problem text-3xs">
+                  {note.section_185_loans.length} loan(s) flagged under Companies Act s.185
+                </Badge>
+              )}
+              {note.transfer_pricing_flags.length > 0 && (
+                <Badge className="bg-state-attention-surface text-state-attention text-3xs">
+                  {note.transfer_pricing_count} inter-company loan(s) above the s.92 threshold
+                </Badge>
+              )}
+            </div>
+          )}
+
+          {note && <StatutoryNotes gaps={note.gaps} caveats={note.notes} />}
+        </CardContent>
+      </Card>
+
+      {/* ── The roles the note is built from ───────────────────────────── */}
       <div>
         <h2 className="text-sm font-semibold text-brand mb-3">
-          Associated Entities
+          Associated entities
           <span className="ml-2 text-xs text-gray-500 font-normal">({roles.length})</span>
         </h2>
-        <Card className="bg-white border border-gray-200">
+        <Card>
           <CardContent className="p-0">
             {roles.length === 0 ? (
-              <div className="py-10 text-center">
-                <p className="text-sm text-gray-500">No entities linked to this client</p>
-                <Link href="/relationships" className="mt-2 block text-xs text-brand hover:text-ps-ink">
-                  Go to Entity Registry →
-                </Link>
-              </div>
+              <p className="p-5 text-xs text-ps-hint">
+                No entity is linked to this client yet.
+              </p>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-xs text-gray-500 border-b border-gray-200">
-                    <th className="px-5 py-3 text-left font-medium">Entity</th>
-                    <th className="px-3 py-3 text-left font-medium">Role</th>
-                    <th className="px-3 py-3 text-left font-medium">Ownership %</th>
-                    <th className="px-3 py-3 text-left font-medium">From</th>
-                    <th className="px-3 py-3 text-left font-medium">To</th>
+                  <tr className="text-left text-3xs uppercase tracking-wide text-ps-hint border-b border-ps-border">
+                    <th className="px-5 py-2.5 font-medium">Entity</th>
+                    <th className="px-3 py-2.5 font-medium">PAN</th>
+                    <th className="px-3 py-2.5 font-medium">Role</th>
+                    <th className="px-3 py-2.5 font-medium text-right">Holding</th>
+                    <th className="px-3 py-2.5 font-medium">From</th>
+                    <th className="px-3 py-2.5 font-medium" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {roles.map((r) => (
                     <tr key={r.id} className="hover:bg-gray-50">
-                      <td className="px-5 py-3">
-                        <Link href={`/relationships/${r.entity_id}`} className="text-xs text-blue-600 hover:underline">
-                          {r.entity_name ?? r.entity_id.slice(0, 8) + "…"}
-                        </Link>
+                      <td className="px-5 py-3 text-ps-ink font-medium">
+                        {r.entity_name ?? "(unnamed entity)"}
+                        {r.entity_type && (
+                          <span className="ml-2 text-3xs text-gray-500">{r.entity_type}</span>
+                        )}
                       </td>
+                      <td className="px-3 py-3 font-mono text-gray-600">{r.pan ?? "—"}</td>
                       <td className="px-3 py-3">
-                        <Badge className={`text-3xs ${ROLE_TYPE_COLORS[r.role_type] ?? "bg-gray-100 text-gray-600"}`}>
-                          {r.role_type}
-                        </Badge>
+                        <Badge className="bg-gray-100 text-gray-700 text-3xs">{r.role}</Badge>
                       </td>
-                      <td className="px-3 py-3 text-gray-500 text-xs">
-                        {r.ownership_percent != null ? `${r.ownership_percent}%` : "—"}
+                      <td className="px-3 py-3 text-right tabular-nums text-gray-700">
+                        {r.ownership_percent === null ? "—" : `${r.ownership_percent}%`}
                       </td>
-                      <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(r.effective_from)}</td>
-                      <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(r.effective_to)}</td>
+                      <td className="px-3 py-3 text-gray-500">{formatDate(r.effective_from)}</td>
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          onClick={() => handleRemoveRole(r.id)}
+                          disabled={actionInFlight}
+                          title="Remove this role"
+                          aria-label={`Remove ${r.entity_name ?? "entity"} as ${r.role}`}
+                          className="text-ps-hint hover:text-state-problem transition-colors disabled:opacity-40"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -246,36 +386,39 @@ export default function ClientRelationshipsPage() {
         </Card>
       </div>
 
-      {/* Cross-client matches */}
+      {/* ── Cross-client matches ───────────────────────────────────────── */}
       {matches.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-state-attention mb-3">
-            ⚠ Cross-Client Matches ({matches.length})
+          <h2 className="text-sm font-semibold text-brand mb-3">
+            Shared with other clients
+            <span className="ml-2 text-xs text-gray-500 font-normal">({matches.length})</span>
           </h2>
-          <Card className="bg-white border border-state-attention-border">
+          <Card>
             <CardContent className="p-0">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-xs text-gray-500 border-b border-gray-200">
-                    <th className="px-5 py-3 text-left font-medium">Match Type</th>
-                    <th className="px-3 py-3 text-left font-medium">PAN</th>
-                    <th className="px-3 py-3 text-left font-medium">Other Client</th>
-                    <th className="px-3 py-3 text-left font-medium">Status</th>
+                  <tr className="text-left text-3xs uppercase tracking-wide text-ps-hint border-b border-ps-border">
+                    <th className="px-5 py-2.5 font-medium">Match</th>
+                    <th className="px-3 py-2.5 font-medium">PAN</th>
+                    <th className="px-3 py-2.5 font-medium">Other client</th>
+                    <th className="px-3 py-2.5 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {matches.map((m) => (
                     <tr key={m.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3">
-                        <Badge className="bg-state-attention-surface text-state-attention text-3xs">{m.match_type.toUpperCase()}</Badge>
+                        <Badge className="bg-state-attention-surface text-state-attention text-3xs">
+                          {m.match_type.toUpperCase()}
+                        </Badge>
                       </td>
-                      <td className="px-3 py-3 text-gray-700 text-xs font-mono">{m.pan}</td>
-                      <td className="px-3 py-3 text-gray-500 text-xs">
-                        {m.client_id_a === clientId ? m.client_id_b.slice(0, 8) : m.client_id_a.slice(0, 8)}…
+                      <td className="px-3 py-3 text-gray-700 font-mono">{m.pan}</td>
+                      <td className="px-3 py-3 text-gray-500">
+                        {(m.client_id_a === clientId ? m.client_id_b : m.client_id_a).slice(0, 8)}…
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={m.is_confirmed ? "bg-state-problem-surface text-state-problem text-3xs" : "bg-state-attention-surface text-state-attention text-3xs"}>
-                          {m.is_reviewed ? (m.is_confirmed ? "Confirmed" : "Dismissed") : "Pending"}
+                        <Badge className="bg-state-attention-surface text-state-attention text-3xs">
+                          {m.reviewed ? (m.is_confirmed ? "Confirmed" : "Dismissed") : "Pending"}
                         </Badge>
                       </td>
                     </tr>
@@ -287,65 +430,121 @@ export default function ClientRelationshipsPage() {
         </div>
       )}
 
-      {/* Add Role Modal */}
+      {/* ── Link an entity ─────────────────────────────────────────────── */}
       {addRoleModal && (
         <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 px-4">
           <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-brand">Link Entity to Client</h2>
-              <button onClick={() => setAddRoleModal(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
+              <h2 className="text-sm font-semibold text-brand">Link an entity to this client</h2>
+              <button onClick={() => setAddRoleModal(false)} className="text-gray-400 hover:text-gray-700">
+                <X size={16} />
+              </button>
             </div>
-            <p className="text-xs text-gray-600 mb-4">
-              Enter the Entity ID from the{" "}
-              <Link href="/relationships" className="text-brand hover:underline">Entity Registry</Link>.
-            </p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-600">Entity ID *</label>
-                <input
+                <label htmlFor="rp-entity" className="text-xs text-gray-600">Entity *</label>
+                <select
+                  id="rp-entity"
                   value={roleForm.entity_id}
-                  onChange={(e) => setRoleForm({ ...roleForm, entity_id: e.target.value.trim() })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 font-mono focus:outline-none focus:ring-2 focus:ring-brand"
-                  placeholder="UUID from entity registry"
-                />
+                  onChange={(e) => setRoleForm({ ...roleForm, entity_id: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
+                >
+                  <option value="">
+                    {entities.length ? "Choose an entity…" : "Loading the entity register…"}
+                  </option>
+                  {entities.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.full_name}{e.pan ? ` · ${e.pan}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {entities.length === 0 && (
+                  <p className="mt-1 text-3xs text-ps-hint">
+                    No entity is registered yet — add one in the firm&apos;s Entity Registry first.
+                  </p>
+                )}
               </div>
               <div>
-                <label className="text-xs text-gray-600">Role Type *</label>
+                <label htmlFor="rp-role" className="text-xs text-gray-600">Role *</label>
                 <select
+                  id="rp-role"
                   value={roleForm.role_type}
                   onChange={(e) => setRoleForm({ ...roleForm, role_type: e.target.value })}
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 >
-                  {["Director", "Shareholder", "Partner", "Trustee", "Proprietor", "Guarantor", "Authorized Signatory", "Karta (HUF)", "Beneficiary", "Manager", "Other"].map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
+                  {ROLE_TYPES.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs text-gray-600">Ownership % (optional)</label>
+                <label htmlFor="rp-holding" className="text-xs text-gray-600">
+                  Holding % (optional)
+                </label>
                 <input
-                  type="number"
-                  min="0" max="100"
+                  id="rp-holding"
+                  type="number" min="0" max="100"
                   value={roleForm.ownership_percent}
                   onChange={(e) => setRoleForm({ ...roleForm, ownership_percent: e.target.value })}
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                   placeholder="e.g. 51"
                 />
+                {/* AS 18 reaches a shareholder whose interest gives control or
+                    significant influence, not everybody on the register — so
+                    for a shareholder this box is what decides the note. */}
+                {roleForm.role_type === "Shareholder" && (
+                  <p className="mt-1 text-3xs text-ps-hint">
+                    A shareholder is only a related party where their holding
+                    gives control or significant influence, so without this
+                    figure the note cannot decide.
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex gap-2 mt-5">
-              <button onClick={() => setAddRoleModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={() => setAddRoleModal(false)}
+                className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
               <button
                 onClick={handleAddRole}
                 disabled={actionInFlight || !roleForm.entity_id}
                 className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
-                {savingRole ? "Linking…" : "Link Entity"}
+                {savingRole ? "Linking…" : "Link entity"}
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function PartyRow({ party }: { party: RelatedParty }) {
+  const d = party.dealings;
+  // NULL dealings means the party carries no PAN, so nothing could be matched
+  // — that is UNKNOWN, not nil, and a zero here would read as "no dealings".
+  const cell = (v: number | undefined) =>
+    d ? formatPaise(v ?? 0) : NO_FIGURE;
+  return (
+    <tr className="hover:bg-gray-50">
+      <td className="py-2.5 pr-3">
+        <span className="font-medium text-ps-ink">{party.name}</span>
+        {party.pan && <span className="ml-2 font-mono text-3xs text-gray-500">{party.pan}</span>}
+      </td>
+      <td className="py-2.5 pr-3">
+        <Badge className={`${STANDING_STYLE[party.standing] ?? "bg-gray-100 text-gray-600"} text-3xs`}>
+          {party.role}
+        </Badge>
+        {party.ownership_percent !== null && (
+          <span className="ml-2 text-3xs text-gray-500">{party.ownership_percent}%</span>
+        )}
+      </td>
+      <td className="py-2.5 pr-3 text-right tabular-nums text-gray-700">{cell(d?.sales_paise)}</td>
+      <td className="py-2.5 pr-3 text-right tabular-nums text-gray-700">{cell(d?.purchases_paise)}</td>
+      <td className="py-2.5 pr-3 text-right tabular-nums text-gray-700">{cell(d?.receivable_paise)}</td>
+      <td className="py-2.5 text-right tabular-nums text-gray-700">{cell(d?.payable_paise)}</td>
+    </tr>
   );
 }
