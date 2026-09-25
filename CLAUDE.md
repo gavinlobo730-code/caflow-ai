@@ -300,6 +300,49 @@ change. The code is the authority; keep this file in step with it.
   return back). **A filing that pins NOTHING is allowed through**: the column is
   nullable and a CA who computed outside the product has no snapshot to pin, so
   refusing would make the pin mandatory by accident.
+- **FORM 3CD IS 44 CLAUSES, AND EIGHT OF THEM REUSE ENGINES THIS PRODUCT ALREADY
+  HAD** (IT-11, 25-09-2026). The Tax Audit tracker recorded whether an audit
+  happened and never assembled the report's own particulars, although most of
+  what a real 3CD needs is already computed somewhere else in this product —
+  `domain/income_tax/form_3cd.py` is the clause vocabulary, transcribed
+  clause-for-clause from the Income-tax Rules 1962 form itself, and
+  `services/form_3cd_service.py` is what fetches each derivable clause by
+  CALLING the module that already owns the rule, never re-deriving it: clause
+  18 (depreciation) reads `section_32_service`, clause 22 (MSMED §16 interest)
+  and the MSME limb of clause 26 (§43B) both read `msme_43bh_service.
+  for_financial_year` — one call answers both, because §16's clock is the
+  same appointed day §43B(h) already computes — clause 32(a) reads
+  `computation_workspace.list_bf_losses`, clause 34 groups `tds_deductions` by
+  section, clause 44 splits `purchase_bills` by `vendors.
+  gst_registration_status` (excluding opening/carried-over bills, the
+  `opening_documents.without_carried_over` discipline), clause 14 reads
+  `clients.inventory_costing_method`, and clause 8 resolves §44AB(a)/(b) from
+  the Tax Audit tracker's own turnover once the CA states the activity
+  (business or profession is never inferred from the amount, the same rule
+  `/tax-audit/applicability` already holds). **`derived` and a CA's own
+  recorded answer are two SEPARATE channels into the register, and conflating
+  them is the one bug that would have shipped**: a manual note saved against a
+  clause must never come back marked as a computed figure, or a screen would
+  render a CA's own textarea entry as read-only the next time the register
+  opens — `build_register` takes `manual` apart from `derived` for exactly
+  this reason. **No migration.** `public.tax_audit_checklists` (migration
+  014) has held `(firm_id, client_id, financial_year, clauses_json, status)`
+  since the very first schema sweep with NO reader or writer anywhere in this
+  codebase until now — the same shape a manual-clause store needs, so this is
+  the first caller rather than a new table. The other 36 clauses are named
+  with the form's own text and why this product does not reach them (§40A(2)
+  (b) related-party payments, §269SS/269T cash loans, ICDS adjustments, Form
+  61/61A/61B, CbCR, cost/excise audits, and the rest) — reachable at
+  `/income-tax/tax-audit/form-3cd`, linked from the Tax Audit tracker.
+  **Three derivable-looking clauses were deliberately left manual rather than
+  rushed**: clause 33 (Chapter VI-A) is the CA's own claims on the ITR
+  computation workspace, not a fact the books hold, so deriving it needs a
+  join to a computation snapshot rather than a lookup; clause 35 (stock
+  quantitative detail) and clause 40 (turnover/GP/NP ratios for the current
+  AND preceding year) both have the raw figures available (`stock_position_
+  as_at`, the Profit & Loss) but assembling them into the form's own row
+  shape is unfinished work, not a missing capability, and is named as such
+  rather than answered halfway.
 - **§140A IS PAID BEFORE THE RETURN IS FURNISHED, AND A SHORT CHALLAN LANDS
   FEE FIRST** (IT-13, migration 407). §140A(1) makes the tax, interest and fee
   on a return payable *before* it is furnished and requires the return to be

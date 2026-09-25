@@ -84,9 +84,9 @@ document; one is a build-order call, not a fetch:
 
 | item | what it needs |
 |---|---|
-| **IT-11** Form 3CD clause workspace | a document — the ICAI/CBDT 3CD form (`docs/audits/what-to-fetch-for-me.md` §4b) |
-| **TDS-16** the FVU/RPU file writer | a document — the TDS file layouts (§3) |
-| **GST-25** composition, GSTR-8 TCS, GSTR-9C | a document — three return schemas (§5) |
+| **IT-11** Form 3CD clause workspace | **ANSWERED, partly built 25 Sep.** The document arrived (the Income-tax Rules 1962 form itself); eight of 44 clauses are now live, reusing existing modules, no migration needed (`public.tax_audit_checklists` already existed). See THE-PLAN.md's 25 Sep entry. What remains is derivation work on the other 36, not a fetch. |
+| **TDS-16** the FVU/RPU file writer | **PARTLY ANSWERED 25 Sep.** The document arrived (Protean's file-format spreadsheets) and turned out to also carry the s.393 payment-code table this codebase had refused outright — fourteen sections now resolve, two stay named gaps. The byte-level FVU/RPU writer itself is untouched: it needs schema this product does not hold (deductor GSTN, a structured responsible-person block) and is a multi-week build, deliberately not rushed tonight. |
+| **GST-25** composition, GSTR-8 TCS, GSTR-9C | **THE DOCUMENT ARRIVED 25 Sep** (all three offline utilities) and the VBA inside each was extracted — the schema blocker is cleared. Not built: each of the three is its own data model and statutory engine on GST-10's own scale, and attempting even one correctly tonight alongside TDS-16 and IT-11 risked a rushed migration nobody could review before it auto-applies to production. This is now a build-order call like FA-11, not a fetch. |
 | **PAY-27** the per-bank salary file | a document, but the OWNER decides first — which banks the clients actually use (§6) |
 | **FA-11** componentisation, revaluation, impairment | **not a document.** An owner build-order call: which of the remaining fixed-assets pieces to do next |
 

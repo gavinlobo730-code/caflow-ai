@@ -207,6 +207,11 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "read":    _ALL_STAFF,
         "compute": _AT_LEAST_EXECUTIVE,
         "approve": _AT_LEAST_MANAGER,
+        # Recording a Form 3CD clause the engine cannot derive (IT-11) is a
+        # workpaper entry behind a tax-audit report, not a computation — the
+        # same tier as "compute" rather than "approve", because this is the
+        # CA doing the audit fieldwork, not signing it off.
+        "write":   _AT_LEAST_EXECUTIVE,
     },
     # ── Notifications (every authenticated staff member can read/mark own) ───
     "notification": {

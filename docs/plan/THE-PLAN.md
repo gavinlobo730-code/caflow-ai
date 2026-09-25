@@ -204,10 +204,45 @@ unheld rate.
 | finding | what remains | blocked? |
 |---|---|---|
 | PAY-27 | three more payroll report shapes, if wanted | no |
-| IT-11 | **Form 3CD** — a clause workspace, needs a migration | document #4 |
+| IT-11 | **Form 3CD** — PARTLY BUILT 25 Sep, no migration needed after all (see below) | no — the rest is derivation work |
 | FA-11 | shift working (NESD markings); revaluation and component accounting unstarted | not a document — an owner build-order call |
-| TDS-16 *(open)* | the FVU/RPU file writer | document #3 |
-| GST-25 *(open)* | composition, TCS on GSTR-8, GSTR-9C | document #5 |
+| TDS-16 *(open)* | the FVU/RPU file writer — a confirmed s.393 payment-code SUBSET landed 25 Sep, the byte-level writer itself is untouched | not a document any more — a multi-week build |
+| GST-25 *(open)* | composition, TCS on GSTR-8, GSTR-9C — the SCHEMA blocker cleared 25 Sep (VBA extracted from all three offline utilities), the build itself has not started | not a document any more — three separate builds, each GST-10-scale |
+
+**25 September, overnight run.** The owner fetched documents #3 (TDS file
+layouts), #4 (Form 3CD) and #5 (GST offline utilities) and asked for them to
+be built while unavailable to answer questions, with an honest report of what
+remained. Three things landed, none needing a migration:
+
+- **TDS-16, partly.** `domain/tds/vocabulary.py`'s s.393 payment-code table
+  was a blanket refusal; the owner's own Protean file-format spreadsheets
+  turned out to carry it in their own Annexure 2. Fourteen sections are now
+  answered exactly, cited to the row that states them; two (s.194A, s.194J's
+  professional-fee limb) split further under the new table on facts the
+  registry cannot see and stay named gaps rather than guesses. **The full
+  byte-level FVU/RPU text-file writer was deliberately NOT attempted** — it
+  needs schema fields this product does not hold (deductor GSTN, a structured
+  responsible-person block) and is multi-week-scale work a single session
+  should not rush against a real government filing format.
+- **IT-11, partly.** Form 3CD's 44 clauses are now a register
+  (`domain/income_tax/form_3cd.py`, transcribed from the Income-tax Rules
+  1962 form itself), reachable at `/income-tax/tax-audit/form-3cd`. Eight
+  clauses are answered live by REUSING existing modules — §32 block
+  depreciation, §43B(h)/MSMED §16 interest, brought-forward losses, TDS
+  compliance summarised by section, the client's stock valuation policy, and
+  the GST-registered/unregistered expenditure split — never re-derived. The
+  other 36 are named with the form's own text and a reason, and the CA
+  records them on the same screen. No migration: `public.tax_audit_checklists`
+  (migration 014) had held the exact shape needed since the first schema
+  sweep, with zero readers until tonight.
+- **GST-25, not built, but no longer document-blocked.** The three return
+  types (composition/CMP-08+GSTR-4, GSTR-8 TCS, GSTR-9C) each need their own
+  data model and statutory engine on the scale of GSTR-9's own build (GST-10)
+  — attempting even one correctly, end to end, alongside the other two
+  tonight risked a rushed migration nobody could review before it auto-applies
+  to production. The VBA macros behind all three offline utilities were
+  extracted (JSON field names, validation rules) and are the primary source a
+  future build should start from.
 
 ---
 

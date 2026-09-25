@@ -77,6 +77,7 @@ const FILING_WORKSPACE_ITEMS: Array<{
       { href: "/income-tax/section-32", label: "Depreciation (§32)", icon: Percent },
       { href: "/income-tax/deductions", label: "Chapter VI-A", icon: PiggyBank },
       { href: "/income-tax/tax-audit", label: "Tax Audit (§44AB)", icon: ClipboardCheck },
+      { href: "/income-tax/tax-audit/form-3cd", label: "Form 3CD", icon: FileText },
       { href: "/income-tax/ais", label: "AIS", icon: FileText },
       { href: "/income-tax/notices", label: "Notices", icon: Mail },
     ],
