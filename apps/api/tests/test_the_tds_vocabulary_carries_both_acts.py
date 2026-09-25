@@ -185,12 +185,14 @@ def test_an_unknown_section_is_refused_rather_than_passed_through():
 
 
 def test_the_payment_code_table_is_named_as_a_gap_not_invented():
-    """Sixty-seven guessed codes would be sixty-seven wrong labels — and a wrong
-    payment code is ACCEPTED and then wrong, which is worse than a rejection."""
+    """A guessed code would be a wrong label — and a wrong payment code is
+    ACCEPTED and then wrong, which is worse than a rejection. A confirmed
+    subset is held now (see test_the_s393_payment_code_table_is_partly_held.py)
+    and this blanket, return-level gap still names the rest as unconfirmed."""
     gap = v.payment_code_gap()
     assert gap.field == "tds_payment_code"
     assert "1001-1067" in gap.note
-    assert "does not hold" in gap.note
+    assert "confirmed subset" in gap.note
 
 
 def test_only_a_2025_act_period_carries_the_payment_code_gap():
