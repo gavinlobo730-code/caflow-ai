@@ -41,14 +41,21 @@ export function isClientWorkspacePath(pathname: string): boolean {
  * D10 exists to protect — routing to the slashed form spends none of them.
  */
 export function switchClientPath(pathname: string, newClientId: string): string {
+  const frontDoor = `/clients/${newClientId}/`;
   const overview = `/clients/${newClientId}/overview/`;
   if (!isClientWorkspacePath(pathname)) return overview;
   // ["", "clients", "<id>", "<section>", …]
   const section = pathname.split("/")[3] ?? "";
+  // NO SECTION MEANS THE FRONT DOOR, WHICH IS NOW A PAGE. `/clients/{id}` used
+  // to be a spinner redirecting to Overview, so "the same section" of another
+  // client could only mean Overview; it renders the module grid now, and a CA
+  // switching client from the grid is asking for the other client's grid. The
+  // rule is unchanged — exactly one segment travels, and here there is none.
+  if (!section) return frontDoor;
   // A section is a word. Anything uuid-shaped here would mean the path is not
   // the shape this function is reading, so fall back rather than build a URL
   // out of half of somebody else's document id.
-  if (!section || !/^[a-z0-9-]+$/i.test(section) || UUID_ONLY_RE.test(section)) return overview;
+  if (!/^[a-z0-9-]+$/i.test(section) || UUID_ONLY_RE.test(section)) return overview;
   return `/clients/${newClientId}/${section}/`;
 }
 

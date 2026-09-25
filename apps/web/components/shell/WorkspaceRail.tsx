@@ -1,15 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Search, Settings, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth, usePermissions } from "@/lib/auth/AuthContext";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace/workspaceConfig";
 import { canAccessWorkspace } from "@/lib/auth/permissions";
 import { useNavShellCollapse } from "@/components/shell/NavShell";
+import { UtilityCluster } from "@/components/shell/UtilityCluster";
 
 /**
  * The product's spine: the workspaces, search, Settings and the account menu.
@@ -17,7 +15,16 @@ import { useNavShellCollapse } from "@/components/shell/NavShell";
  * It was `components/ActivityRail.tsx` and rendered at FIRM LEVEL ONLY, which
  * is the defect `NavShell`'s header records — inside a client workspace there
  * was no way to sign out, no way to reach Settings and nothing saying ⌘K
- * existed. It is now on every screen a signed-in CA sees.
+ * existed. 2.6 made it constant to close that.
+ *
+ * ⚠️ IT IS FIRM-LEVEL AGAIN, AND THE FIX IT CARRIED IS NOT (owner decision,
+ * 25-09: inside a client a CA should see only the client's own things, with
+ * one control out). What 2.6 actually fixed was the ABSENCE of search,
+ * Settings and sign-out, not the presence of the rail — so those three moved
+ * into `UtilityCluster`, which this rail renders vertically and
+ * `ClientTopBar` renders horizontally. Neither shell can exist without it:
+ * `AppShell` returns exactly one of the two and never neither, which is what
+ * a guard asserts.
  *
  * ⚠️ IT IS 64px WIDE AND WAS 52px, AND THAT IS A MEASUREMENT. At 52px with
  * this label size, "Relationships" (~60px) and "Engagements" (~51px) did not
@@ -32,18 +39,11 @@ import { useNavShellCollapse } from "@/components/shell/NavShell";
  */
 export function WorkspaceRail({ onOpenSearch }: { onOpenSearch: () => void }) {
   const { activeWorkspace, setWorkspace } = useWorkspace();
-  const { user, userRole, signOut, fullName } = useAuth();
+  const { userRole } = useAuth();
   const { can, resolved } = usePermissions();
-  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
-  const pathname = usePathname();
-  const isSettingsRoute = pathname.startsWith("/settings");
   // Null inside the mobile drawer, which renders the rail outside the shell's
   // desktop branch: there is nothing to collapse there, so no control is shown.
   const collapse = useNavShellCollapse();
-
-  const initials = fullName
-    ? fullName.trim().split(" ").filter(Boolean).slice(0, 2).map((n) => n[0].toUpperCase()).join("")
-    : user?.email?.slice(0, 2).toUpperCase() ?? "CA";
 
   // Two gates, and they answer different questions. `canAccessWorkspace` is the
   // product's own role rule (Practice exposes fee economics; Deadlines and Work
@@ -140,71 +140,7 @@ export function WorkspaceRail({ onOpenSearch }: { onOpenSearch: () => void }) {
         })}
       </nav>
 
-      {/* Bottom utilities. These are the three that did not exist inside a
-          client workspace before this rail became constant. */}
-      <div className="flex flex-col items-center gap-2 pb-3 shrink-0 border-t border-white/10 pt-3">
-        <button
-          onClick={onOpenSearch}
-          title="Search (⌘K)"
-          className="flex items-center justify-center w-9 h-9 rounded-[9px] text-slate-500 hover:text-white hover:bg-white/10 transition-all duration-100"
-        >
-          <Search size={15} />
-        </button>
-        <Link
-          href="/settings"
-          title="Settings"
-          className={cn(
-            "relative flex items-center justify-center w-9 h-9 rounded-[9px] transition-all duration-100",
-            isSettingsRoute
-              ? "bg-brand text-white"
-              : "text-slate-500 hover:text-white hover:bg-white/10"
-          )}
-        >
-          {isSettingsRoute && (
-            <span className="absolute left-[-1px] h-5 w-[3px] rounded-r-[2px] bg-brand" />
-          )}
-          <Settings size={15} />
-        </Link>
-
-        {/* Avatar with sign-out popover */}
-        <div className="relative">
-          <button
-            onClick={() => setAvatarMenuOpen((v) => !v)}
-            title={user?.email ?? "Account"}
-            className="w-7 h-7 rounded-full bg-brand flex items-center justify-center text-3xs font-bold text-white hover:opacity-80 transition-opacity shrink-0"
-          >
-            {initials}
-          </button>
-          {avatarMenuOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-20"
-                onClick={() => setAvatarMenuOpen(false)}
-              />
-              <div className="absolute left-full bottom-0 ml-2 z-30 w-48 bg-[#1e2d5e] border border-white/10 rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] p-1.5">
-                <div className="px-3 py-2 border-b border-white/10 mb-1">
-                  <p className="text-xs font-semibold text-white truncate">
-                    {user?.email ?? "user@firm.com"}
-                  </p>
-                  <p className="text-3xs text-slate-500 truncate mt-0.5">
-                    {userRole ?? "Partner"}
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setAvatarMenuOpen(false);
-                    signOut();
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-400 hover:text-red-400 hover:bg-white/10 transition-colors"
-                >
-                  <LogOut size={13} />
-                  Sign out
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      <UtilityCluster orientation="rail" onOpenSearch={onOpenSearch} />
     </aside>
   );
 }

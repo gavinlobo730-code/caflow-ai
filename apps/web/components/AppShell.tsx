@@ -6,7 +6,7 @@ import { WorkspaceProvider } from "@/lib/workspace/WorkspaceContext";
 import { ClientNavProvider } from "@/lib/workspace/ClientNavContext";
 import { NavShell } from "@/components/shell/NavShell";
 import { WorkspaceRail } from "@/components/shell/WorkspaceRail";
-import { ClientSections } from "@/components/shell/ClientSections";
+import { ClientShell } from "@/components/shell/ClientShell";
 import { ContextPanel } from "@/components/ContextPanel";
 import { SearchModal } from "@/components/SearchModal";
 import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
@@ -18,10 +18,21 @@ import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
 // comment for the same failure mode). Reading it directly here is exactly
 // the bug clientPath.ts's own doc comment warns about.
 //
-// ⚠️ IT NO LONGER DECIDES WHETHER CHROME RENDERS, only WHICH PANEL. Until
-// 2.6 a wrong answer here drew the firm rails ALONGSIDE the client's own —
-// the "two sidebars" bug — because there were two shells. There is one now,
-// so the worst a wrong answer can do is show the wrong list.
+// ⚠️ IT DECIDES WHICH SHELL, AND THAT IS A STRONGER JOB THAN IT HAD. Until
+// 2.6 a wrong answer drew the firm rails ALONGSIDE the client's own — the "two
+// sidebars" bug — because there were two shells; 2.6 left it choosing only
+// which PANEL, so the worst it could do was show the wrong list. It now
+// chooses between `NavShell` (rail + panel, firm level) and `ClientShell` (one
+// bar, full width), because the owner's decision of 25-09 is that inside a
+// client a CA sees only the client's own things.
+//
+// So a wrong answer is expensive again, and the mitigation is structural
+// rather than careful: the branch returns a shell EITHER WAY and never bare
+// children, both shells render `UtilityCluster` (search, Settings, sign-out —
+// the three 2.6 exists for), and the client one always carries "All clients".
+// There is no path through this function that leaves a signed-in CA with no
+// navigation. `scripts/a-client-workspace-still-has-a-way-out.test.ts` holds
+// that as the rule.
 function getRealPathname(): string {
   if (typeof window === "undefined") return "";
   return window.location.pathname;
@@ -90,22 +101,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   // ClientNavProvider is HOISTED here, above the client layout that used to own
-  // it, so the one shell can render the client's section list. It derives the
+  // it, so the shell itself can read the client id — `ClientTopBar` needs it
+  // for the name, the switcher, the health badge and the grid. It derives the
   // id from window.location and answers "" off a client route, so it is inert
-  // everywhere else — which is what makes hoisting it safe rather than a
+  // everywhere else, which is what makes hoisting it safe rather than a
   // widening of its scope.
   return (
     <ClientNavProvider>
       <WorkspaceProvider>
         <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
-        <NavShell
-          rail={<WorkspaceRail onOpenSearch={() => setSearchOpen(true)} />}
-          panel={isClientWorkspace ? <ClientSections /> : <ContextPanel onOpenSearch={() => setSearchOpen(true)} />}
-          panelLabel={isClientWorkspace ? "Client workspace" : "Navigation"}
-          childOwnsScroll={isClientWorkspace}
-        >
-          {children}
-        </NavShell>
+        {isClientWorkspace ? (
+          <ClientShell onOpenSearch={() => setSearchOpen(true)}>{children}</ClientShell>
+        ) : (
+          <NavShell
+            rail={<WorkspaceRail onOpenSearch={() => setSearchOpen(true)} />}
+            panel={<ContextPanel onOpenSearch={() => setSearchOpen(true)} />}
+            panelLabel="Navigation"
+          >
+            {children}
+          </NavShell>
+        )}
       </WorkspaceProvider>
     </ClientNavProvider>
   );

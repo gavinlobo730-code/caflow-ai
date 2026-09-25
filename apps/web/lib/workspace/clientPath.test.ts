@@ -44,11 +44,21 @@ test("switching client carries the SECTION and never the document", () => {
   );
 });
 
-test("switching from somewhere with no section lands on overview", () => {
+test("switching from the front door lands on the other client's front door", () => {
+  // `/clients/{id}` was a spinner redirecting to Overview, so this used to
+  // answer Overview — there was no page to land on. It renders the module grid
+  // now, and a CA switching client from the grid is asking for the other
+  // client's grid. Exactly one segment still travels; here there is none.
   const OTHER = "11111111-2222-3333-4444-555555555555";
-  assert.equal(switchClientPath(`/clients/${UUID}`, OTHER), `/clients/${OTHER}/overview/`);
-  assert.equal(switchClientPath(`/clients/${UUID}/`, OTHER), `/clients/${OTHER}/overview/`);
+  assert.equal(switchClientPath(`/clients/${UUID}`, OTHER), `/clients/${OTHER}/`);
+  assert.equal(switchClientPath(`/clients/${UUID}/`, OTHER), `/clients/${OTHER}/`);
+});
+
+test("switching from outside a client workspace lands on overview", () => {
   // Not a client workspace at all — the firm-level list, or the placeholder.
+  // These keep Overview: there is no grid to have been standing on, and
+  // Overview is the destination a CA who was nowhere near a client expects.
+  const OTHER = "11111111-2222-3333-4444-555555555555";
   assert.equal(switchClientPath("/clients", OTHER), `/clients/${OTHER}/overview/`);
   assert.equal(switchClientPath("/clients/_placeholder/sales", OTHER), `/clients/${OTHER}/overview/`);
   assert.equal(switchClientPath("/accounting/journal", OTHER), `/clients/${OTHER}/overview/`);
