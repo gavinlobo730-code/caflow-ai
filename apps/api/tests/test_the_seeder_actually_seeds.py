@@ -132,6 +132,68 @@ def test_a_firm_with_clients_is_refused_without_the_flag(api):
     assert "already has" in str(caught.value)
 
 
+def test_the_money_is_written_and_the_book_is_not_all_one_thing(api):
+    """A book where nothing is paid teaches a CA nothing, and one where
+    everything is teaches them less. The assertion is on the SPREAD, because
+    either extreme passes a count."""
+    from domain.demo import fixture
+    from scripts.seed_demo_firm import seed
+
+    firm = fixture.build()
+    written = seed(api, firm, add_to_existing=True)
+    s = fixture.summary(firm)
+
+    assert written["receipts"] == s["receipts"] > 0
+    assert written["payments"] == s["vendor_payments"] > 0
+    # Both ends of the ageing have to exist or the screens a CA judges this on
+    # say one thing: all current, or all collected.
+    assert s["invoices_still_open"] > 0, "every invoice is settled — no ageing"
+    assert s["receipts"] > s["invoices_still_open"], (
+        "more invoices outstanding than collected reads as an insolvent client, "
+        "not as a practice worth demonstrating"
+    )
+    # The case the matcher's own band and the settlement modal exist for.
+    assert s["part_settled_invoices"] > 0, (
+        "nothing is PART paid, so `outstanding_paise` equals the face value on "
+        "every row and FindMatchModal's '· ₹X open' never renders"
+    )
+    assert s["receipts_with_tds_withheld"] > 0, (
+        "no receipt carries withheld TDS, so TDS Receivable is structurally "
+        "nil and SALES-07's settlement = amount + tds is never exercised"
+    )
+
+
+def test_the_settlement_never_exceeds_what_the_document_is_for(api):
+    """`fraction_bps` is basis points of the document's own total, so a
+    fraction over par would over-allocate — which the server refuses, and
+    which would stop the run. Asserted on the DATA as well, because a fixture
+    that can only be caught by a 422 is a fixture nobody can reason about."""
+    from domain.demo import fixture
+
+    for c in fixture.build().clients:
+        for d in (*c.sales, *c.purchases):
+            st = d.settlement
+            if st is None:
+                continue
+            assert 0 < st.fraction_bps <= 10_000, f"{c.name} {d.doc_date}"
+            assert 0 <= st.tds_bps < 10_000, f"{c.name} {d.doc_date}"
+            if st.paid_after_days is not None:
+                assert st.paid_after_days > 0
+
+
+def test_adding_the_money_did_not_reshuffle_the_documents(api):
+    """The settlement draws come from their OWN random stream, so that adding
+    payments could not change which documents exist. It did on the first
+    attempt — purchase bills went 200 to 236 — and every count in the tests
+    and the plan silently became wrong for a change meant to be additive."""
+    from domain.demo import fixture
+
+    s = fixture.summary(fixture.build())
+    assert s["sales_invoices"] == 315
+    assert s["purchase_bills"] == 200
+    assert s["customers"] == 31 and s["vendors"] == 30
+
+
 def test_every_catalogue_item_says_goods_or_services(api):
     """`kind` is DERIVED from the code (Chapter 99 is a SAC), so this is really
     a check that the fixture's two lists have not been mixed up — which would

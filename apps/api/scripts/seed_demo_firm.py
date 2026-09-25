@@ -112,6 +112,80 @@ def _id(resp: dict) -> str:
     raise SystemExit(f"could not find an id in the response: {json.dumps(resp)[:300]}")
 
 
+def _total_paise(resp: dict) -> int:
+    """The document's own total, as the ENGINE computed it. Raises rather than
+    defaulting to zero: a settlement of nil is indistinguishable from an unpaid
+    document on every screen, so a silent zero here would quietly undo the one
+    thing these receipts exist to demonstrate."""
+    data = resp.get("data") if isinstance(resp, dict) else None
+    if isinstance(data, dict) and isinstance(data.get("total_paise"), int):
+        return data["total_paise"]
+    raise SystemExit(
+        f"no total_paise in the response — cannot settle it: {json.dumps(resp)[:300]}")
+
+
+def _paid_on(doc_date: str, days: int) -> str:
+    from datetime import date, timedelta
+    y, m, d = (int(x) for x in doc_date.split("-"))
+    return (date(y, m, d) + timedelta(days=days)).isoformat()
+
+
+def _settle(api: Api, client, doc, invoice: dict,
+            client_id: str, customer_id: str) -> bool:
+    """A customer receipt against one invoice, or nothing.
+
+    `tds_paise` is the tax the CUSTOMER withheld, and the settlement is
+    `amount + tds` — §198 deems the deducted tax to be income received and
+    §199 gives the deductee credit for it, so a ₹1,00,000 invoice paid
+    ₹90,000 net of ₹10,000 under §194J is discharged in full. The receipt is
+    split the same way here, which is why the amount banked is the total LESS
+    the withholding rather than the whole."""
+    st = doc.settlement
+    if st is None or st.paid_after_days is None:
+        return False
+    total = _total_paise(invoice)
+    settled = total * st.fraction_bps // 10_000
+    tds = settled * st.tds_bps // 10_000
+    if settled <= 0:
+        return False
+    api.post("/api/receipts/", {
+        "client_id": client_id,
+        "customer_id": customer_id,
+        "receipt_date": _paid_on(doc.doc_date, st.paid_after_days),
+        "amount_paise": settled - tds,
+        "tds_paise": tds,
+        "payment_mode": "neft",
+        "allocations": [{"sales_invoice_id": _id(invoice),
+                         "allocated_paise": settled}],
+    })
+    return True
+
+
+def _pay(api: Api, doc, bill: dict, client_id: str, vendor_id: str) -> bool:
+    """A vendor payment against one bill.
+
+    NO `tds_paise` HERE and that is not an omission: on a purchase the client
+    is the DEDUCTOR and the tax comes off at the bill, so the payment is
+    already net — `PurchasePaymentIn` has no such field for exactly that
+    reason. The bills left unpaid are what gives §43B(h) something to report:
+    a screen that flags every purchase flags nothing."""
+    st = doc.settlement
+    if st is None or st.paid_after_days is None:
+        return False
+    settled = _total_paise(bill) * st.fraction_bps // 10_000
+    if settled <= 0:
+        return False
+    api.post("/api/purchase-payments", {
+        "client_id": client_id,
+        "vendor_id": vendor_id,
+        "payment_date": _paid_on(doc.doc_date, st.paid_after_days),
+        "amount_paise": settled,
+        "purchase_bill_id": _id(bill),
+        "payment_mode": "neft",
+    })
+    return True
+
+
 def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
     existing = api.get("/api/clients").get("data") or []
     rows = existing.get("clients") if isinstance(existing, dict) else existing
@@ -124,7 +198,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
 
     written = {"hsn_library": 0, "clients": 0, "catalogue": 0,
                "customers": 0, "vendors": 0,
-               "sales_invoices": 0, "purchase_bills": 0, "employees": 0}
+               "sales_invoices": 0, "receipts": 0,
+               "purchase_bills": 0, "payments": 0, "employees": 0}
 
     # ── THE FIRM'S HSN LIBRARY COMES FIRST, AND IT IS A GATE ─────────────────
     #
@@ -212,7 +287,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
             written["vendors"] += 1
 
         for n, d in enumerate(c.sales, start=1):
-            api.post("/api/sales-invoices/", {
+            invoice = api.post("/api/sales-invoices/", {
                 "client_id": client_id,
                 "customer_id": customer_ids[d.party % len(customer_ids)],
                 # The series a real practice runs: a prefix, the FY, a padded
@@ -235,9 +310,15 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 } for ln in d.lines],
             })
             written["sales_invoices"] += 1
+            # THE TOTAL COMES OFF THE RESPONSE, never out of a second copy of
+            # the GST arithmetic here: the engine has just computed it, lines,
+            # rounding and all, and `domain/gst` is the one authority for it.
+            if _settle(api, c, d, invoice, client_id,
+                       customer_ids[d.party % len(customer_ids)]):
+                written["receipts"] += 1
 
         for n, d in enumerate(c.purchases, start=1):
-            api.post("/api/purchase-bills/", {
+            bill = api.post("/api/purchase-bills/", {
                 "client_id": client_id,
                 "vendor_id": vendor_ids[d.party % len(vendor_ids)],
                 # The VENDOR'S own number, not ours — `bill_no` is a fact about
@@ -259,6 +340,9 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 } for ln in d.lines],
             })
             written["purchase_bills"] += 1
+            if _pay(api, d, bill, client_id,
+                    vendor_ids[d.party % len(vendor_ids)]):
+                written["payments"] += 1
 
         for e in c.employees:
             api.post("/api/payroll/employees", {

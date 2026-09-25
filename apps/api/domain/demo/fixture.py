@@ -41,7 +41,7 @@ month and a screen showing a locked period cannot be demonstrated at all.
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace, field
 from datetime import date, timedelta
 from typing import Iterable, Optional
 
@@ -112,6 +112,46 @@ class DemoLine:
 
 
 @dataclass(frozen=True)
+class DemoSettlement:
+    """How and when a document was paid — or that it was not.
+
+    ⚠️ A BOOK WHERE NOTHING IS PAID TEACHES A CA NOTHING, and that is what
+    this fixture produced before: 315 invoices and 200 bills, every one of
+    them outstanding in full. Receivables was a wall of "current", the
+    collections queue had no age to sort by, `outstanding_paise` equalled
+    `total_paise` on every row so `FindMatchModal`'s "· ₹X open" never
+    rendered, the bank had nothing to match against, and §43B(h) reported
+    EVERY purchase as unpaid — a screen that flags everything flags nothing.
+
+    So the pattern is deliberately MIXED, and each branch exists to make one
+    screen say something a CA can read:
+
+      · most settled in full, 25-55 days out   → the ordinary book
+      · some settled in PART                   → an open balance that is not
+                                                 the face value, which is the
+                                                 one case the matcher's own
+                                                 `outstanding_paise` band and
+                                                 the settlement modal exist for
+      · an OLD tail left unpaid                → the 90+ ageing bucket, which
+                                                 is what a CA actually opens
+                                                 Receivables to find
+      · the last two months unpaid             → "current", the normal state
+                                                 of a recent invoice
+
+    `fraction_bps` is basis points of the document's OWN total, which the
+    seeder reads off the create response rather than recomputing — the GST is
+    the engine's answer and a second copy of that arithmetic here is the
+    mistake this repository keeps recording."""
+    #: Days after the document date. None means it was never paid.
+    paid_after_days: Optional[int]
+    fraction_bps: int = 10_000
+    #: TDS the CUSTOMER withheld (§194C/§194J). Sales only — on a purchase the
+    #: client is the deductor and the tax comes off at the BILL, not the
+    #: payment, which is why `PurchasePaymentIn` has no such field.
+    tds_bps: int = 0
+
+
+@dataclass(frozen=True)
 class DemoDocument:
     """One invoice or bill. `party` indexes into the client's own list."""
     doc_date: str
@@ -121,6 +161,8 @@ class DemoDocument:
     place_of_supply: str = HOME_STATE
     #: A purchase bill the CA marked as reverse charge (a GTA, an advocate).
     is_reverse_charge: bool = False
+    #: None on a document nobody has paid. See DemoSettlement.
+    settlement: Optional[DemoSettlement] = None
 
 
 @dataclass(frozen=True)
@@ -276,7 +318,7 @@ def _lines(rng: random.Random, catalogue, count: int) -> tuple[DemoLine, ...]:
 
 def _documents(rng: random.Random, months: list[date], parties: int,
                catalogue, per_month: tuple[int, int],
-               *, away_every: int = 0,
+               *, away_every: int = 0, tds_bps: int = 0,
                reverse_charge_every: int = 0) -> tuple[DemoDocument, ...]:
     """A year of documents, a few each month.
 
@@ -299,7 +341,56 @@ def _documents(rng: random.Random, months: list[date], parties: int,
                 is_reverse_charge=bool(
                     reverse_charge_every and n % reverse_charge_every == 0),
             ))
-    return tuple(sorted(out, key=lambda d: d.doc_date))
+    docs = sorted(out, key=lambda d: d.doc_date)
+
+    # ── SETTLED IN A SECOND PASS, ON ITS OWN RANDOM, AND THAT IS THE POINT ──
+    #
+    # Drawing the settlement inside the loop above would consume from `rng`
+    # between the draws that pick the date, the party and the lines — so
+    # adding payments would have silently RESHUFFLED every document in the
+    # fixture. It did, on the first attempt: purchase bills went 200 → 236
+    # and every existing count in the tests and the plan became wrong for a
+    # change that was supposed to be purely additive.
+    #
+    # The second stream is seeded from facts about the document set that are
+    # already fixed — its length and its first date — so it is deterministic,
+    # differs per client, and consumes nothing from `rng`.
+    #: The last two months are left OUTSTANDING whatever the dice say: an
+    #: invoice raised in February is not overdue in March, and a book where
+    #: even the newest document is settled reads as fabricated.
+    recent = {m.isoformat()[:7] for m in months[-2:]}
+    srng = random.Random(SEED + len(docs) * 7919
+                         + sum(ord(ch) for ch in (docs[0].doc_date if docs else "")))
+    return tuple(
+        replace(d, settlement=_settlement(srng, d.doc_date[:7] in recent,
+                                          tds_bps=tds_bps))
+        for d in docs
+    )
+
+
+def _settlement(rng: random.Random, is_recent: bool, *,
+                tds_bps: int = 0) -> Optional[DemoSettlement]:
+    """One document's payment story. See DemoSettlement for why it is mixed.
+
+    The proportions are chosen to leave every ageing bucket populated and
+    none of them dominant: roughly three quarters of the older documents
+    settled, one in eight settled in part, one in eight never — which on a
+    year of invoices puts a readable number in 90+ without making the client
+    look insolvent."""
+    if is_recent:
+        return None                                  # current, not yet due
+    roll = rng.random()
+    if roll < 0.75:
+        return DemoSettlement(paid_after_days=rng.randint(25, 55),
+                              tds_bps=tds_bps)
+    if roll < 0.875:
+        # Part-paid: the case where `outstanding_paise` is neither the face
+        # value nor nil, which is the only one the matcher's band and the
+        # settlement modal's "· ₹X open" are built for.
+        return DemoSettlement(paid_after_days=rng.randint(30, 70),
+                              fraction_bps=rng.randrange(3_500, 7_500, 500),
+                              tds_bps=tds_bps)
+    return None                                      # the 90+ tail
 
 
 # ── The practice ─────────────────────────────────────────────────────────────
@@ -397,7 +488,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                state=HOME_STATE, registered=True, customers=4, vendors=4,
                sales_catalogue=_GOODS, purchase_catalogue=_GOODS,
                sales_per_month=(2, 5), purchases_per_month=(1, 4),
-               away_every=7, rcm_every=0, employees=0,
+               away_every=7, rcm_every=0, employees=0, sales_tds_bps=0,
                frequency="monthly") -> DemoClient:
         return DemoClient(
             name=name, legal_name=legal, entity_type=entity, pan=pan_value,
@@ -407,7 +498,8 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
             customers=_parties(rng, _CUSTOMER_NAMES, state, customers, as_vendor=False),
             vendors=_parties(rng, _VENDOR_NAMES, state, vendors, as_vendor=True),
             sales=_documents(rng, months, customers, sales_catalogue,
-                             sales_per_month, away_every=away_every),
+                             sales_per_month, away_every=away_every,
+                             tds_bps=sales_tds_bps),
             purchases=_documents(rng, months, vendors, purchase_catalogue,
                                  purchases_per_month,
                                  reverse_charge_every=rcm_every),
@@ -429,7 +521,15 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                             "payment, which the return builder handles "
                             "differently and no other client here exercises",
                sales_catalogue=_SERVICES, purchase_catalogue=_SERVICES,
-               customers=3, vendors=3, frequency="quarterly"),
+               customers=3, vendors=3, frequency="quarterly",
+               # ITS CUSTOMERS WITHHOLD §194J, and nothing else here does.
+               # A receipt carrying `tds_paise` settles amount + TDS (§198
+               # deems the tax received, §199 gives the credit), so this is
+               # the only client whose TDS Receivable is not structurally nil
+               # and the only one where a ₹1,00,000 invoice is shown fully
+               # settled by a ₹90,000 bank credit — the behaviour SALES-07
+               # built and no screen exercised.
+               sales_tds_bps=1_000),
         client("Meher Enterprises", "Meher Enterprises", "Proprietorship",
                pan("AFXPM", "9026", "D"),
                demonstrates="a proprietor — the §44AD presumptive path and an "
@@ -502,6 +602,27 @@ def summary(firm: DemoFirm) -> dict:
         "sales_invoices": sum(len(c.sales) for c in firm.clients),
         "purchase_bills": sum(len(c.purchases) for c in firm.clients),
         "employees": sum(len(c.employees) for c in firm.clients),
+        # What a CA opens Receivables to see. Counted here rather than left to
+        # the seeder's own tally so the DRY RUN can state it before anything
+        # is written — a plan that does not mention the money is not the plan.
+        "receipts": sum(1 for c in firm.clients for d in c.sales
+                        if d.settlement and d.settlement.paid_after_days is not None),
+        "part_settled_invoices": sum(
+            1 for c in firm.clients for d in c.sales
+            if d.settlement and d.settlement.paid_after_days is not None
+            and d.settlement.fraction_bps < 10_000),
+        "invoices_still_open": sum(
+            1 for c in firm.clients for d in c.sales
+            if not d.settlement or d.settlement.paid_after_days is None),
+        "vendor_payments": sum(1 for c in firm.clients for d in c.purchases
+                               if d.settlement and d.settlement.paid_after_days is not None),
+        "bills_still_open": sum(
+            1 for c in firm.clients for d in c.purchases
+            if not d.settlement or d.settlement.paid_after_days is None),
+        "receipts_with_tds_withheld": sum(
+            1 for c in firm.clients for d in c.sales
+            if d.settlement and d.settlement.paid_after_days is not None
+            and d.settlement.tds_bps),
         "reverse_charge_bills": sum(
             1 for c in firm.clients for d in c.purchases if d.is_reverse_charge),
         "inter_state_sales": sum(
