@@ -167,6 +167,9 @@ export const SCREENS: Screen[] = [
   // "realization" as well as "realisation" — the endpoint behind this
   // screen spells it the American way (`realization_rate`) and a CA
   // searching ⌘K will type whichever they habitually write.
+  firm("/insights", "Insights", "Home",
+       ["what needs attention", "compliance risk", "recommendations",
+        "clients at risk"]),
   firm("/practice/profitability", "Profitability", "Practice",
        ["margin", "realization", "realisation", "cost to serve",
         "which clients make money"]),

@@ -105,7 +105,12 @@ BUDGET: dict[str, int] = {
     # screen showed an empty list for every client for ever AND told the
     # CA the insights arrive "automatically", which nothing does.
     "/api/memory": 7, "/api/relationships": 7, "/api/ai-insights": 4,
-    "/api/compliance-records": 6, "/api/intelligence": 6, "/api/payroll": 6,
+    # /api/intelligence 6 -> 3 on 25-09-2026 (Phase 3a-5): all six had
+    # `lib/api` methods and no screen caller. `/insights` reaches the
+    # three client-facing reads — compliance risk, relationship health
+    # and recommendations. `workload-insights` and the two
+    # journal-suggestion doors are the three still owed a screen.
+    "/api/compliance-records": 6, "/api/intelligence": 3, "/api/payroll": 6,
     # /api/analytics 5 -> 3 on 25-09-2026 (Phase 3a-2): `profitability` and
     # `revenue-vs-effort` were built, in integer paise, assignment-scoped
     # and tested, with no screen at all — the plan's own "you already own

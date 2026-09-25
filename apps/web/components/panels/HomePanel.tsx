@@ -7,6 +7,7 @@ import {
   Calendar,
   CalendarDays,
   Bell,
+  Lightbulb,
   MessageSquare,
   CheckSquare,
 } from "lucide-react";
@@ -31,6 +32,7 @@ const HOME_ITEMS = [
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/work", label: "Work Queue", icon: CheckSquare },
+  { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/notifications/whatsapp", label: "WhatsApp", icon: MessageSquare },
 ];
 
