@@ -508,7 +508,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
     <div className="space-y-4">
       {/* Matrix table */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
+        <div className="px-5 py-4 border-b border-ps-border">
           <h2 className="text-sm font-semibold text-ps-ink">Module Access</h2>
           <p className="text-xs text-ps-hint mt-0.5">
             What each member can actually reach, read from the server. A role sets
@@ -521,7 +521,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-gray-50 bg-ps-bg/50">
+              <tr className="border-b border-ps-border bg-ps-bg/50">
                 <th className="text-left text-xs font-medium text-ps-label px-4 py-3 min-w-[180px] sticky left-0 bg-ps-bg/80 backdrop-blur-sm z-10">
                   Member
                 </th>
@@ -626,7 +626,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
         </div>
 
         {/* Legend */}
-        <div className="px-5 py-3 border-t border-gray-50 bg-ps-bg/30 flex items-center gap-4 flex-wrap">
+        <div className="px-5 py-3 border-t border-ps-border bg-ps-bg/30 flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-1.5 text-xs text-ps-label">
             <span className="w-4 h-4 rounded bg-brand inline-block" />
             Access granted (role default)
@@ -894,7 +894,7 @@ export default function TeamPage() {
       {/* Tab: Team Members */}
       {activeTab === "members" && (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50">
+          <div className="px-5 py-4 border-b border-ps-border">
             <h2 className="text-sm font-semibold text-ps-ink">Team Members</h2>
             <p className="text-xs text-ps-hint mt-0.5">All staff registered under your firm</p>
           </div>
@@ -911,7 +911,7 @@ export default function TeamPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-50">
+                  <tr className="border-b border-ps-border">
                     <th className="text-left text-xs font-medium text-ps-hint px-5 py-3">Name</th>
                     <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Email</th>
                     <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Role</th>

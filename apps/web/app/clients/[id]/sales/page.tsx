@@ -1195,7 +1195,7 @@ function Statements({ clientId }: { clientId: string }) {
 
       {stmt && (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-ps-ink">{stmt.customer.name}</p>
               <p className="text-3xs text-ps-hint">{stmt.period.start_date} → {stmt.period.end_date}{stmt.customer.gstin ? ` · GSTIN ${stmt.customer.gstin}` : ""}</p>

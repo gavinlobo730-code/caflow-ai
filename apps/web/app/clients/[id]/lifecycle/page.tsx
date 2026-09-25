@@ -359,7 +359,7 @@ export default function ClientLifecyclePage() {
                     <th className="px-3 py-3 text-left font-medium">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-ps-border">
                   {renewals.map((r) => (
                     <tr key={r.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3 text-gray-800 text-xs font-medium">{r.service_type ?? "—"}</td>

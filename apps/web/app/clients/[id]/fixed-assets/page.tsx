@@ -2012,7 +2012,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
 
       {/* The Schedule III movement */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-50">
+        <div className="px-5 py-3 border-b border-ps-border">
           <p className="text-xs font-semibold text-ps-body">
             Movement in Fixed Assets — FY {movement?.financial_year ?? financialYear}
           </p>

@@ -104,7 +104,7 @@ export default function LoginHistoryPage() {
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           {events.map((e) => (
-            <div key={e.id} className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50 text-xs">
+            <div key={e.id} className="flex items-center justify-between px-4 py-2.5 border-b border-ps-border text-xs">
               <div className="min-w-0">
                 <span className="text-brand font-medium">{e.email || e.user_id || "—"}</span>
                 {e.ip ? <span className="text-gray-400"> · {e.ip}</span> : null}

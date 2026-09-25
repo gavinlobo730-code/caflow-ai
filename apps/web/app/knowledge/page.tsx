@@ -138,7 +138,7 @@ function KnowledgeInner() {
                 <History size={14} className="text-gray-400" />
               </button>
               {expanded === a.id && (
-                <div className="border-t border-gray-100 px-4 py-3">
+                <div className="border-t border-ps-border px-4 py-3">
                   <p className="text-sm text-gray-700 whitespace-pre-wrap mb-3">{content || <span className="text-gray-400">No content.</span>}</p>
                   <p className="text-2xs font-medium text-gray-500 uppercase mb-1">Version history</p>
                   <ul className="space-y-1">

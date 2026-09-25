@@ -121,7 +121,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
       </button>
 
       {open && (
-        <div className="border-t border-gray-50">
+        <div className="border-t border-ps-border">
           {loading && entries.length === 0 && (
             <p className="px-5 py-6 text-xs text-ps-hint">Reading the log…</p>
           )}
@@ -166,7 +166,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
             </ul>
           )}
           {cursor && (
-            <div className="px-5 py-3 border-t border-gray-50">
+            <div className="px-5 py-3 border-t border-ps-border">
               <button
                 onClick={() => { void load(cursor); }}
                 disabled={loading}

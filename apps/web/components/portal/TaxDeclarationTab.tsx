@@ -287,7 +287,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
+        <div className="px-5 py-4 border-b border-ps-border">
           <h2 className="text-sm font-semibold text-ps-ink">
             Tax declaration — {fy}
           </h2>

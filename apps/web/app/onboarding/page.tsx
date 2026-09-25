@@ -718,7 +718,7 @@ export default function OnboardingPage() {
               )}
             </div>
 
-            <div className="flex items-center justify-end mt-8 pt-5 border-t border-gray-50">
+            <div className="flex items-center justify-end mt-8 pt-5 border-t border-ps-border">
               <button
                 onClick={savePassword}
                 disabled={saving || !pw || !pw2 || needsReauth}
@@ -822,7 +822,7 @@ export default function OnboardingPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-50">
+            <div className="flex items-center justify-between mt-8 pt-5 border-t border-ps-border">
               <button
                 onClick={goBack}
                 className="flex items-center gap-1 text-sm text-ps-label hover:text-ps-body transition-colors"
@@ -893,7 +893,7 @@ export default function OnboardingPage() {
               <ExternalLink size={12} /> Get the official HSN/SAC list from the GST portal
             </a>
 
-            <div className="flex items-center justify-between mt-8 pt-5 border-t border-gray-50">
+            <div className="flex items-center justify-between mt-8 pt-5 border-t border-ps-border">
               <button
                 onClick={() => setStep(2)}
                 className="flex items-center gap-1 text-sm text-ps-label hover:text-ps-body transition-colors"

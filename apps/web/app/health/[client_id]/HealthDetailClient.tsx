@@ -292,7 +292,7 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
 
         {/* Factors drawer */}
         {expanded && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="mt-3 pt-3 border-t border-ps-border">
             {loadingFactors ? (
               <p className="text-xs text-gray-400 animate-pulse">Loading factors…</p>
             ) : factorsFailed ? (
@@ -666,7 +666,7 @@ export default function ClientHealthDetailPage() {
                     <th className="px-3 py-3 text-left font-medium">Band</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-ps-border">
                   {history.slice(0, 10).map((record) => (
                     <tr key={record.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3 text-gray-500 text-xs">{formatDate(record.recorded_at)}</td>
@@ -759,7 +759,7 @@ export default function ClientHealthDetailPage() {
                     <th className="px-3 py-3 text-right font-medium">&nbsp;</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-ps-border">
                   {overrides.map((override) => {
                     // `in_force` is the SERVER's answer, never re-derived here
                     // — the calculation applies the same rule, and a screen

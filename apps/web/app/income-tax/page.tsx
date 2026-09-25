@@ -914,7 +914,7 @@ export default function IncomeTaxPage() {
         <div className="space-y-4">
           {/* ITR Status Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
               <h2 className="text-sm font-semibold text-ps-ink">
                 ITR Status — FY {currentFY}
               </h2>
@@ -994,7 +994,7 @@ export default function IncomeTaxPage() {
               )}
             </button>
             {showGuide && (
-              <div className="px-5 pb-5 grid sm:grid-cols-2 gap-3 border-t border-gray-50 pt-4">
+              <div className="px-5 pb-5 grid sm:grid-cols-2 gap-3 border-t border-ps-border pt-4">
                 {[
                   {
                     form: "ITR-1",
@@ -1057,7 +1057,7 @@ export default function IncomeTaxPage() {
       {activeTab === "Advance Tax" && (
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50">
+            <div className="px-5 py-4 border-b border-ps-border">
               <h2 className="text-sm font-semibold text-ps-ink">
                 Advance Tax Installments{advanceTaxFy ? ` — FY ${advanceTaxFy}` : ""}
               </h2>

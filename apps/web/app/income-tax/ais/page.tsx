@@ -373,7 +373,7 @@ export default function AISPage() {
 
       {/* Upload */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
+        <div className="px-5 py-4 border-b border-ps-border">
           <h2 className="text-sm font-semibold text-ps-ink">Step 1 — Upload the AIS JSON</h2>
           <p className="text-xs text-ps-hint mt-0.5">
             Download from <span className="font-mono">incometax.gov.in</span> → AIS → Download JSON
@@ -456,7 +456,7 @@ export default function AISPage() {
       {/* The lines */}
       {lines.length > 0 && (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+          <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-ps-ink">Step 2 — What the books carry</h2>
               <p className="text-xs text-ps-hint mt-0.5">
@@ -575,7 +575,7 @@ export default function AISPage() {
           </div>
 
           {/* A line the file does not carry */}
-          <div className="px-5 py-4 border-t border-gray-50">
+          <div className="px-5 py-4 border-t border-ps-border">
             <button
               onClick={() => setShowManual((v) => !v)}
               className="inline-flex items-center gap-1.5 text-xs text-brand hover:text-brand-dark font-medium transition-colors"
@@ -639,7 +639,7 @@ export default function AISPage() {
       {/* What is open */}
       {summary && lines.length > 0 && (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50">
+          <div className="px-5 py-4 border-b border-ps-border">
             <h2 className="text-sm font-semibold text-ps-ink">Step 3 — What is still open</h2>
           </div>
           <div className="px-5 py-5 grid grid-cols-2 md:grid-cols-4 gap-4">

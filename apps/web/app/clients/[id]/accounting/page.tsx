@@ -530,7 +530,7 @@ function AccountingDashboard({
       {/* Recent journal entries */}
       {recentEntries.length > 0 && (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">
             <p className="text-xs font-semibold text-ps-body">Recent Entries</p>
             <button onClick={() => onNavigate("journal")} className="text-xs text-blue-600 hover:underline">View all</button>
           </div>
@@ -2571,7 +2571,7 @@ function CFSectionBlock({ title, section }: { title: string; section: CFSection 
   const pos = section.total_paise >= 0;
   return (
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className={`px-5 py-3 border-b border-gray-50 flex items-center justify-between ${pos ? "bg-green-50/50" : "bg-state-problem-surface/50"}`}>
+      <div className={`px-5 py-3 border-b border-ps-border flex items-center justify-between ${pos ? "bg-green-50/50" : "bg-state-problem-surface/50"}`}>
         <h3 className="text-xs font-semibold text-ps-body">{title}</h3>
         <span className={`text-sm font-bold ${pos ? "text-green-700" : "text-state-problem"}`}>{fmtSigned(section.total_paise)}</span>
       </div>
@@ -2984,7 +2984,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
               {/* Operating reconciliation (indirect method) */}
               {r && (
                 <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-                  <div className="px-5 py-3 border-b border-gray-50 bg-ps-bg">
+                  <div className="px-5 py-3 border-b border-ps-border bg-ps-bg">
                     <h3 className="text-xs font-semibold text-ps-body">Operating Reconciliation — Indirect Method</h3>
                   </div>
                   <table className="w-full text-xs">
@@ -3693,7 +3693,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
 
       {/* ── Financial statements ── */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
+        <div className="px-5 py-4 border-b border-ps-border">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold text-ps-body">Financial Statements</p>
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} ariaLabel="Statements financial year" />
@@ -3748,7 +3748,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
           gated a whole top-level tab; now it gates one card. */}
       {mcActive && (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50">
+          <div className="px-5 py-4 border-b border-ps-border">
             <p className="text-xs font-semibold text-ps-body">Foreign Currency</p>
             <p className="text-3xs text-ps-hint mt-0.5">Exposure, realized and unrealized gain/loss, open items, and the rate audit trail.</p>
           </div>
@@ -3798,7 +3798,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
 
       {/* Shared reports history */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
+        <div className="px-5 py-4 border-b border-ps-border">
           <p className="text-xs font-semibold text-ps-body">Shared Reports</p>
           <p className="text-3xs text-ps-hint mt-0.5">Reports previously shared with this client via portal.</p>
         </div>

@@ -413,7 +413,7 @@ export default function SettingsPage() {
 
       {/* ── Personal Profile — all users ──────────────────────────────── */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
           <User size={15} className="text-ps-label" />
           <h2 className="text-sm font-semibold text-ps-ink">Personal Profile</h2>
         </div>
@@ -441,7 +441,7 @@ export default function SettingsPage() {
             <p className="text-xs text-ps-hint mt-1">Email cannot be changed here</p>
           </div>
         </div>
-        <div className="px-5 py-3 border-t border-gray-50 flex justify-end">
+        <div className="px-5 py-3 border-t border-ps-border flex justify-end">
           <button
             onClick={savePersonalProfile}
             disabled={actionInFlight}
@@ -456,7 +456,7 @@ export default function SettingsPage() {
       <RoleGuard allowed={["Partner"]} redirect={false}>
       {/* ── Firm Profile ─────────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
           <Building2 size={15} className="text-ps-label" />
           <h2 className="text-sm font-semibold text-ps-ink">Firm Profile</h2>
         </div>
@@ -548,7 +548,7 @@ export default function SettingsPage() {
           </div>
         )}
 
-        <div className="px-5 py-3 border-t border-gray-50 flex justify-end">
+        <div className="px-5 py-3 border-t border-ps-border flex justify-end">
           <button
             onClick={handleSave}
             disabled={actionInFlight || loading}
@@ -563,7 +563,7 @@ export default function SettingsPage() {
 
       {/* ── Financial Year (display only) ────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
           <Calendar size={15} className="text-ps-label" />
           <h2 className="text-sm font-semibold text-ps-ink">Financial Year</h2>
         </div>
@@ -580,7 +580,7 @@ export default function SettingsPage() {
 
       {/* ── Security / MFA — all users ───────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
           <ShieldCheck size={15} className="text-blue-600" />
           <h2 className="text-sm font-semibold text-ps-ink">Security</h2>
         </div>
@@ -601,7 +601,7 @@ export default function SettingsPage() {
       {/* ── Audit Log — Partner only ─────────────────────────────────────── */}
       <RoleGuard allowed={["Partner"]} redirect={false}>
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
             <ShieldCheck size={15} className="text-blue-600" />
             <h2 className="text-sm font-semibold text-ps-ink">Audit Log</h2>
           </div>
@@ -622,7 +622,7 @@ export default function SettingsPage() {
 
       {/* ── Scheduled Reports ───────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
           <Calendar size={15} className="text-blue-600" />
           <h2 className="text-sm font-semibold text-ps-ink">Scheduled Reports</h2>
         </div>
@@ -643,7 +643,7 @@ export default function SettingsPage() {
       {/* ── Firm Branding & Document Customization — Partner only ────────── */}
       <RoleGuard allowed={["Partner"]} redirect={false}>
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
             <Palette size={15} className="text-violet-600" />
             <h2 className="text-sm font-semibold text-ps-ink">Branding &amp; Document Customization</h2>
           </div>

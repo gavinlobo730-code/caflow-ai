@@ -347,7 +347,7 @@ function BudgetTable({
 
   return (
     <Card>
-      <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+      <div className="px-5 py-3 border-b border-ps-border flex items-center gap-2">
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${accentClass}`}>{title}</span>
         <span className="text-xs text-ps-hint">{rows.length} accounts</span>
         <span className="ml-2 text-xs text-ps-hint">— Click the budget cell to edit; clear it to remove the budget</span>

@@ -175,7 +175,7 @@ export default function InvoiceSettingsPage() {
 
         {/* ── Invoice Numbering ────────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
             <Hash size={15} className="text-ps-label" />
             <h2 className="text-sm font-semibold text-ps-ink">Invoice Numbering</h2>
           </div>
@@ -294,7 +294,7 @@ export default function InvoiceSettingsPage() {
 
         {/* ── Payment Details ──────────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
+          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
             <CreditCard size={15} className="text-ps-label" />
             <h2 className="text-sm font-semibold text-ps-ink">Payment Details</h2>
           </div>

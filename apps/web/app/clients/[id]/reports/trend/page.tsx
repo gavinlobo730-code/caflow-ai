@@ -302,14 +302,14 @@ function AmountTable({ title, note, fys, series }: {
 }) {
   return (
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-50">
+      <div className="px-4 py-3 border-b border-ps-border">
         <p className="text-xs font-semibold text-ps-body">{title}</p>
         <p className="text-3xs text-ps-hint mt-0.5">{note}</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px]">
-          <thead className="bg-ps-bg border-b border-gray-50"><ColumnHeads fys={fys} /></thead>
-          <tbody className="divide-y divide-gray-50">
+          <thead className="bg-ps-bg border-b border-ps-border"><ColumnHeads fys={fys} /></thead>
+          <tbody className="divide-y divide-ps-border">
             {series.map((s) => (
               <tr key={s.key}>
                 <td className="px-4 py-2 text-2xs text-ps-body">{s.label}</td>
@@ -342,7 +342,7 @@ function AmountTable({ title, note, fys, series }: {
 function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[] }) {
   return (
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-50">
+      <div className="px-4 py-3 border-b border-ps-border">
         <p className="text-xs font-semibold text-ps-body">Ratios</p>
         <p className="text-3xs text-ps-hint mt-0.5">
           The same eleven ratios as the clause (Q) note, so a figure here cannot mean
@@ -352,8 +352,8 @@ function RatioTable({ fys, series }: { fys: string[]; series: TrendRatioSeries[]
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px]">
-          <thead className="bg-ps-bg border-b border-gray-50"><ColumnHeads fys={fys} /></thead>
-          <tbody className="divide-y divide-gray-50">
+          <thead className="bg-ps-bg border-b border-ps-border"><ColumnHeads fys={fys} /></thead>
+          <tbody className="divide-y divide-ps-border">
             {series.map((s) => (
               <tr key={s.key}>
                 <td className="px-4 py-2">

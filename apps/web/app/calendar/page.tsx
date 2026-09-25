@@ -527,7 +527,7 @@ export default function CalendarPage() {
           <div className="grid grid-cols-7">
             {gridCells.map((cell, idx) => {
               if (cell.day === null) {
-                return <div key={`empty-${idx}`} className="min-h-[90px] border-b border-r border-gray-50 bg-ps-bg/30" />;
+                return <div key={`empty-${idx}`} className="min-h-[90px] border-b border-r border-ps-border bg-ps-bg/30" />;
               }
 
               const cellDate = new Date(viewYear, viewMonth, cell.day);
@@ -575,7 +575,7 @@ export default function CalendarPage() {
           {/* Selected day panel */}
           {selectedDay && (
             <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
+              <div className="px-4 py-3 border-b border-ps-border flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-blue-600" />
                 <h2 className="text-sm font-semibold text-ps-ink">
                   {selectedDay.getDate()} {MONTH_NAMES[selectedDay.getMonth()]} {selectedDay.getFullYear()}
@@ -628,7 +628,7 @@ export default function CalendarPage() {
 
           {/* Upcoming deadlines */}
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-50">
+            <div className="px-4 py-3 border-b border-ps-border">
               <h2 className="text-sm font-semibold text-ps-ink">Upcoming Deadlines</h2>
               <p className="text-xs text-ps-hint mt-0.5">Next 10 pending</p>
             </div>

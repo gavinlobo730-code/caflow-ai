@@ -170,7 +170,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
       )}
 
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
+        <div className="px-5 py-3 border-b border-ps-border flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <HardHat size={15} className="text-amber-600" /> Projects under construction
           </h3>
@@ -263,7 +263,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
 
       {ag && (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-50">
+          <div className="px-5 py-3 border-b border-ps-border">
             <h3 className="text-sm font-semibold text-ps-ink">CWIP ageing schedule</h3>
             <p className="text-2xs text-ps-hint mt-0.5">Schedule III, as at {ag.as_of}</p>
           </div>
@@ -321,7 +321,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
 
       {cs && (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-50">
+          <div className="px-5 py-3 border-b border-ps-border">
             <h3 className="text-sm font-semibold text-ps-ink">
               Completion schedule — overdue or over budget
             </h3>

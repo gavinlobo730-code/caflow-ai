@@ -153,7 +153,7 @@ function Billing() {
               <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">No billing schedules yet.</td></tr>
             )}
             {schedules.map((s) => (
-              <tr key={s.id} className="border-b border-gray-100 last:border-0">
+              <tr key={s.id} className="border-b border-ps-border last:border-0">
                 <td className="px-4 py-2.5 text-brand">{clientName(s.client_id)}</td>
                 <td className="px-4 py-2.5 text-gray-600 capitalize">{s.cadence}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(s.amount_paise)}</td>

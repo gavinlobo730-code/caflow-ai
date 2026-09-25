@@ -511,7 +511,7 @@ export default function DSCTrackerPage() {
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50">
+        <div className="px-5 py-4 border-b border-ps-border">
           <h2 className="text-sm font-semibold text-ps-ink">DSC Records</h2>
           <p className="text-xs text-ps-hint mt-0.5">Class 2/3 digital signatures for GST, MCA, Income Tax filings</p>
         </div>
@@ -519,7 +519,7 @@ export default function DSCTrackerPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-50">
+                <tr className="border-b border-ps-border">
                   {["Name", "PAN", "Type", "Purpose", "Issuing CA", "Issue Date", "Expiry Date", "Days Remaining", "Status", ""].map(h => (
                     <th key={h} className="text-left text-xs font-medium text-ps-hint px-4 py-3">{h}</th>
                   ))}

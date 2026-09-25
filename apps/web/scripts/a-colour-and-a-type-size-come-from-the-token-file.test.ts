@@ -182,7 +182,15 @@ const HEX_BUDGET = 44;
 // conversion cannot be quietly undone by the next screen somebody writes, and
 // that the plan's metric and this guard cannot drift apart. The end state is a
 // number small enough to argue about entry by entry, not necessarily zero.
-const NAMED_COLOUR_BUDGET = 4037;
+const NAMED_COLOUR_BUDGET = 3833;
+// 4,043 → 3,972 across the tracks that landed on 25-09, then 3,972 → 3,833 on
+// the invisible-divider sweep: 129 `border-gray-50` / `border-gray-100` /
+// `divide-gray-*` edges in 50 files, 3 quiet row cards in the ownership map,
+// and 4 `border-slate-100` the sweep only found because
+// `a-divider-you-cannot-see-is-not-a-divider.test.ts` states the rule as a
+// CONTRAST rather than as a list of spellings. That guard owns the divider
+// half of this population now; this budget keeps counting it, which is the
+// point — two guards over one population must not disagree about its size.
 // 4,373 → 4,043 on 24-09-2026: the income-tax module converted by ROLE (202
 // sites, 8 files), `StatCard` converted and its dead `gradient` prop deleted,
 // and `text-red-500` swept app-wide (101 sites, 66 files) because it was one

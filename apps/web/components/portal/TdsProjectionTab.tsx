@@ -84,7 +84,7 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
 
   return (
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between gap-3">
+      <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <TrendingUp size={15} className="text-blue-600" />

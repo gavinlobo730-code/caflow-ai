@@ -566,7 +566,7 @@ export default function LoansAndFDPage() {
 
           {/* Loans table */}
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50">
+            <div className="px-5 py-4 border-b border-ps-border">
               <h2 className="text-sm font-semibold text-ps-ink">Loan Register</h2>
             </div>
             {loading ? (
@@ -765,7 +765,7 @@ export default function LoansAndFDPage() {
 
           {/* FD table */}
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50">
+            <div className="px-5 py-4 border-b border-ps-border">
               <h2 className="text-sm font-semibold text-ps-ink">FD Register</h2>
               <p className="text-xs text-ps-hint mt-0.5">
                 {/* TDS on FD interest per IT Act Section 194A — threshold ₹40,000 p.a. (₹50,000 for senior citizens) */}

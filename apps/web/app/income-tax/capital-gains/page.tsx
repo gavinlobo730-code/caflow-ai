@@ -786,7 +786,7 @@ export default function CapitalGainsPage() {
 
           {/* CII Table */}
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50">
+            <div className="px-5 py-4 border-b border-ps-border">
               <h2 className="text-sm font-semibold text-ps-ink">Cost Inflation Index (CII) Table</h2>
               <p className="text-xs text-ps-hint mt-0.5">IT Act Section 48 — Base year FY 2001-02 = 100</p>
             </div>
@@ -795,7 +795,7 @@ export default function CapitalGainsPage() {
                 <tbody>
                   <tr>
                     {ciiYears.map(y => (
-                      <td key={y} className={`px-3 py-2 text-center border-r border-gray-50 ${purchaseFY === y || saleFY === y ? "bg-brand-surface" : ""}`}>
+                      <td key={y} className={`px-3 py-2 text-center border-r border-ps-border ${purchaseFY === y || saleFY === y ? "bg-brand-surface" : ""}`}>
                         <p className="text-3xs text-ps-hint">FY {y}</p>
                         <p className="text-xs font-semibold text-ps-ink">{ciiByFy[y]}</p>
                       </td>

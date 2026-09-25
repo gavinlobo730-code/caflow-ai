@@ -440,7 +440,7 @@ function AuditLogContent() {
         </div>
 
         {!loading && !error && filtered.length > 0 && (
-          <div className="px-5 py-3 border-t border-gray-50 flex items-center justify-between gap-3">
+          <div className="px-5 py-3 border-t border-ps-border flex items-center justify-between gap-3">
             <span className="text-xs text-ps-hint">
               Showing {filtered.length} event{filtered.length !== 1 ? "s" : ""}
               {filterUser && filtered.length !== rows.length

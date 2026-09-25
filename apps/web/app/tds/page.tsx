@@ -493,7 +493,7 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
 
   return (
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between gap-3 flex-wrap">
+      <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">Due for deposit</h2>
           <p className="text-xs text-ps-hint mt-0.5">
@@ -521,7 +521,7 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
 
       {state.phase === "ok" && (
         <>
-          <div className="px-5 py-3 border-b border-gray-50 flex flex-wrap gap-x-6 gap-y-1 text-xs text-ps-label">
+          <div className="px-5 py-3 border-b border-ps-border flex flex-wrap gap-x-6 gap-y-1 text-xs text-ps-label">
             <span>Due <span className="font-medium text-ps-ink">{state.sheet.due_date}</span></span>
             <span>Computed as at {state.sheet.as_at}</span>
           </div>
@@ -533,7 +533,7 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-50">
+                  <tr className="border-b border-ps-border">
                     {["Section", "Deductees", "Tax deducted", "Deposited", "Still to deposit", "s.201(1A) interest", "Payable now"].map(h => (
                       <th key={h} className="text-left text-xs font-medium text-ps-hint px-4 py-3">{h}</th>
                     ))}
@@ -1064,7 +1064,7 @@ export default function TDSPage() {
         <div className="space-y-4">
         <DepositDuePanel clientId={selectedClientId} />
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+          <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-ps-ink">Challan 281 Tracker</h2>
               <p className="text-xs text-ps-hint mt-0.5">IT Act Section 200(1) — TDS deposit challans</p>
@@ -1080,7 +1080,7 @@ export default function TDSPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-50">
+                  <tr className="border-b border-ps-border">
                     {["BSR Code", "Payment Date", "Challan No.", "Amount", "Period", "FY", "Section", "Status"].map(h => (
                       <th key={h} className="text-left text-xs font-medium text-ps-hint px-4 py-3">{h}</th>
                     ))}
@@ -1123,7 +1123,7 @@ export default function TDSPage() {
             <p className="text-sm text-state-attention">File 24Q/26Q returns manually on the Income Tax e-filing portal (incometax.gov.in), under the deductor&apos;s TAN login. TRACES is post-filing only (Form 16/16A, defaults, corrections). PracticeSync does not auto-submit to any government portal.</p>
           </div>
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-ps-ink">TDS Returns (24Q / 26Q / 27Q)</h2>
                 <p className="text-xs text-ps-hint mt-0.5">IT Act Section 200(3) — quarterly TDS return filing status</p>
@@ -1158,14 +1158,14 @@ export default function TDSPage() {
       {/* Tab: Certificates */}
       {activeTab === 3 && (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50">
+          <div className="px-5 py-4 border-b border-ps-border">
             <h2 className="text-sm font-semibold text-ps-ink">Form 16A Certificates</h2>
             <p className="text-xs text-ps-hint mt-0.5">TDS certificates issued to deductees — IT Act Section 203</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-50">
+                <tr className="border-b border-ps-border">
                   {["Form", "Deductee Name", "PAN", "Period", "TDS Amount", "Issue Date", "Status"].map(h => (
                     <th key={h} className="text-left text-xs font-medium text-ps-hint px-4 py-3">{h}</th>
                   ))}

@@ -208,7 +208,7 @@ export default function ClientRatioNotePage() {
           <GapList gaps={note.gaps} tone="attention" />
 
           <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-50">
+            <div className="px-4 py-3 border-b border-ps-border">
               <p className="text-xs font-semibold text-ps-body">
                 Ratios — {note.fy}
                 {note.preceding_fy && (
@@ -220,7 +220,7 @@ export default function ClientRatioNotePage() {
                 requires them to be explained — they are part of the disclosure.
               </p>
             </div>
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-ps-border">
               {note.ratios.map((r) => (
                 <RatioRow
                   key={r.key}

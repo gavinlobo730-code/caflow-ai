@@ -268,7 +268,7 @@ function LockYearContent() {
 
       {/* FY list */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-50 bg-ps-bg">
+        <div className="px-5 py-3 border-b border-ps-border bg-ps-bg">
           <p className="text-xs font-semibold text-ps-label uppercase tracking-wide">Financial Years</p>
         </div>
         {loading ? (

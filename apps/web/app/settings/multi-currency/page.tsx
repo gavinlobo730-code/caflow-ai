@@ -175,7 +175,7 @@ export default function MultiCurrencyPage() {
 
             {/* L3 — per client. */}
             <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-50">
+              <div className="px-5 py-3 border-b border-ps-border">
                 <p className="text-sm font-semibold text-ps-ink">Clients</p>
               </div>
               {rows.length === 0 ? (

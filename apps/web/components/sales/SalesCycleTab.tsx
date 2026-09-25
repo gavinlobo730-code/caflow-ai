@@ -740,7 +740,7 @@ function Table({ head, rows, empty, onRow }: {
             <tr
               key={i}
               onClick={onRow ? () => onRow(i) : undefined}
-              className={`border-t border-gray-100 ${onRow ? "cursor-pointer hover:bg-gray-50" : ""}`}
+              className={`border-t border-ps-border ${onRow ? "cursor-pointer hover:bg-gray-50" : ""}`}
             >
               {r.map((cell, j) => (
                 <td key={j} className="px-3 py-2 tabular-nums">{cell}</td>

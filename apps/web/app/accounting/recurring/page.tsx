@@ -512,7 +512,7 @@ export default function RecurringPage() {
 
       {historyFor && (
         <Card>
-          <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div className="px-5 py-3 border-b border-ps-border flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ps-ink">
               History — {templates.find(t => t.id === historyFor)?.name}
             </h2>

@@ -125,7 +125,7 @@ function ScheduleTable({ table }: { table: AgeingTable }) {
             <th className="text-right font-semibold text-ps-body px-4 py-2.5">Total</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-50">
+        <tbody className="divide-y divide-ps-border">
           {table.rows.map((r) => (
             <tr key={r.key} className="hover:bg-ps-bg">
               <td className="px-4 py-2.5 text-ps-body">{r.label}</td>
@@ -400,7 +400,7 @@ export default function ClientAgeingSchedulePage() {
           {tab === "note" && (
             <div className="space-y-5">
               <section className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-50">
+                <div className="px-4 py-3 border-b border-ps-border">
                   <p className="text-xs font-semibold text-ps-body">
                     {schedule.receivables.title}
                   </p>
@@ -427,7 +427,7 @@ export default function ClientAgeingSchedulePage() {
                       Others (MSMED s.22, s.2(n)).
                     </p>
                   </div>
-                  <div className="divide-y divide-gray-50">
+                  <div className="divide-y divide-ps-border">
                     {unclassified.map((v) => (
                       <div key={v.vendor_id ?? v.vendor_name}
                            className="px-4 py-2.5 flex items-center gap-4">
@@ -453,7 +453,7 @@ export default function ClientAgeingSchedulePage() {
               )}
 
               <section className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-50">
+                <div className="px-4 py-3 border-b border-ps-border">
                   <p className="text-xs font-semibold text-ps-body">
                     {schedule.payables.title}
                   </p>
@@ -522,7 +522,7 @@ function UnbilledLine({ table, reviewedOn, onReview }: {
 }) {
   const paise = table.unbilled_dues_paise;
   return (
-    <div className="px-4 py-2.5 border-t border-gray-50">
+    <div className="px-4 py-2.5 border-t border-ps-border">
       <div className="flex items-center gap-2">
         <p className="text-3xs text-ps-label flex-1">
           Unbilled dues <span className="text-ps-hint">(disclosed separately)</span>
@@ -624,7 +624,7 @@ function AdvancesPanel({ kind, section }: {
 
   return (
     <section className="bg-white rounded-xl border border-ps-muted overflow-hidden mb-5">
-      <div className="px-4 py-3 border-b border-gray-50">
+      <div className="px-4 py-3 border-b border-ps-border">
         <p className="text-xs font-semibold text-ps-body">
           {isAr ? "Advances received" : "Advances paid"} — on account
         </p>
@@ -661,7 +661,7 @@ function AdvancesPanel({ kind, section }: {
                 <th className="font-medium px-4 py-2">Bucket</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-ps-border">
               {section.advances.map((a) => (
                 <tr key={a.document_id} className="hover:bg-ps-bg">
                   <td className="px-4 py-2 text-ps-body">
@@ -735,7 +735,7 @@ function DocumentList({ kind, rows, saving, onClassify, clientId }: {
   }
   return (
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-50">
+      <div className="px-4 py-3 border-b border-ps-border">
         <p className="text-xs font-semibold text-ps-body">
           {isAr ? "Open invoices" : "Open bills"}
         </p>
@@ -758,7 +758,7 @@ function DocumentList({ kind, rows, saving, onClassify, clientId }: {
               {isAr && <th className="font-medium px-4 py-2">Doubtful</th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-ps-border">
             {rows.map((d) => {
               const id = (isAr ? d.invoice_id : d.bill_id) ?? "";
               const key = `${isAr ? "invoice" : "bill"}:${id}`;
@@ -906,7 +906,7 @@ function UnbilledPanel({
       </section>
 
       <section className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-50">
+        <div className="px-4 py-3 border-b border-ps-border">
           <p className="text-xs font-semibold text-ps-body">
             Which accounts hold unbilled dues
           </p>
@@ -922,7 +922,7 @@ function UnbilledPanel({
             This client has no active asset or liability accounts.
           </p>
         ) : (
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-ps-border">
             {accounts.map((a) => (
               <div key={a.id} className="px-4 py-2 flex items-center gap-3">
                 <span className="text-3xs text-ps-hint tabular-nums w-14 flex-shrink-0">

@@ -146,7 +146,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
 
       {/* ── godowns ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
+        <div className="px-5 py-3 border-b border-ps-border flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <Warehouse size={15} className="text-blue-600" /> Godowns
           </h3>
@@ -218,7 +218,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
 
       {/* ── the position, per godown per batch ───────────────────────── */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-50">
+        <div className="px-5 py-3 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">Stock by godown and lot</h3>
           <p className="text-2xs text-ps-hint mt-0.5">As at {asOf}</p>
         </div>
@@ -258,7 +258,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
 
       {/* ── lots ─────────────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
+        <div className="px-5 py-3 border-b border-ps-border flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <Boxes size={15} className="text-blue-600" /> Lots
           </h3>
@@ -307,7 +307,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
       {/* ── expiry ───────────────────────────────────────────────────── */}
       {expiry && (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-50">
+          <div className="px-5 py-3 border-b border-ps-border">
             <h3 className="text-sm font-semibold text-ps-ink">Expiry</h3>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-ps-muted">
@@ -448,7 +448,7 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
 
   return (
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-50">
+      <div className="px-5 py-3 border-b border-ps-border">
         <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
           <ArrowRightLeft size={15} className="text-blue-600" /> Move stock between godowns
         </h3>

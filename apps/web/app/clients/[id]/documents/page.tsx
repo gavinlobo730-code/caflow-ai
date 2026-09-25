@@ -416,7 +416,7 @@ export default function DocumentsPage() {
             </div>
             <div className="space-y-2">
               {versionHistory.map((v) => (
-                <div key={v.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                <div key={v.id} className="flex items-center justify-between py-2 border-b border-ps-border last:border-0">
                   <div>
                     <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-mono mr-2">v{v.version ?? 1}</span>
                     <span className="text-xs text-ps-label">{v.file_name}</span>

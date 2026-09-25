@@ -317,7 +317,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
       {/* Statement transactions inline view */}
       {selectedStmt && (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">
             <p className="text-xs font-semibold text-ps-body">Transactions</p>
             {txnsLoading && <RefreshCw size={13} className="animate-spin text-ps-hint" />}
           </div>
