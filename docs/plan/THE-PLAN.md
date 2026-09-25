@@ -195,7 +195,7 @@ until somebody read the callers.
 | PAY-27 | three more payroll report shapes, if wanted | no |
 | IT-11 | **Form 3CD** — a clause workspace, needs a migration | document #4 |
 | SALES-23 | ~~whether the nightly sweep may EMAIL a client's customers~~ | **answered — D27, no.** Closed 25 Sep |
-| ACC-13 | **cost centres** — a dimension on `journal_lines` | **answered — D29, and BUILT.** Migration 418: a `cost_centres` master, a nullable `journal_lines.cost_centre_id`, and an allocation report whose unallocated balance is its own row. ACC-13's OTHER half — a party-wise ledger in the GL — is still open and is next |
+| ACC-13 | **cost centres** — a dimension on `journal_lines` | **answered — D29, and CLOSED, both halves.** Migration 418: a `cost_centres` master, a nullable `journal_lines.cost_centre_id`, and an allocation report whose unallocated balance is its own row. Migration 419: the party-wise ledger, DERIVED from `source_type`/`source_id` with no column, whose unattributed rows are the difference between the control account and the Customer Statement |
 | TDS-22 | two numbers for the §194I(a)/§194J(a) limbs | document #4 |
 | FA-11 | shift working (NESD markings); revaluation and component accounting unstarted | document #9 |
 | TDS-16 *(open)* | the FVU/RPU file writer | document #3 |

@@ -1077,6 +1077,37 @@ def get_trial_balance(
     return api_response(True, tb)
 
 
+@router.get("/ledger/parties")
+def get_ledger_parties(
+    account_id: str = Query(...),
+    client_id: str = Query(...),
+    as_of: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Who this control account is owed BY, or owed TO (ACC-13's other half).
+
+    The ledger names the document behind each row (ACC-22); this names the
+    PARTY behind the account. Trade Receivables showed one pooled figure and
+    the per-customer view lived only on the separate Customer Statement
+    screen, so when the two disagreed nothing said which entries were the
+    difference.
+
+    `client_id` is REQUIRED here, unlike /ledger, which confines an omitted
+    one to the caller's own clients. A control account belongs to one client
+    and a breakdown spanning several would sum parties across unrelated books
+    — a figure that is not a balance of anything. It is checked against the
+    caller's scope either way.
+
+    The unattributed rows are part of the answer, not a gap in it: together
+    with the party rows they equal the account's own balance, so they ARE the
+    difference between this control account and the per-party statements.
+    """
+    assert_client_access(current_user, client_id)
+    from services import party_ledger_service
+    return api_response(True, party_ledger_service.breakdown(
+        _prod_db(), current_user["firm_id"], client_id, account_id, as_of))
+
+
 @router.get("/ledger-span")
 def get_ledger_span(
     client_id: Optional[str] = Query(None),
