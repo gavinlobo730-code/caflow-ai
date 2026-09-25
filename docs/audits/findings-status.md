@@ -7,11 +7,11 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **265** | re-read against the code. The defect is gone. |
+| closed | **266** | re-read against the code. The defect is gone. |
 | partial | **6** | part of the finding is answered, part is not. Each says which. |
 | open | **2** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
-| deferred to the redesign | **1** | a navigation complaint the module hub answers. |
+| deferred to the redesign | **0** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
 **The work left is 8 items — 2 open and 6 partial — not 254.**
@@ -59,9 +59,7 @@ is left as "unknown".
 
 ## Deferred to the redesign
 
-| severity | finding | what it is |
-|---|---|---|
-| low | **PAY-28** | Payroll is a link inside the Accounting rail and its screens are split across three top-level ar |
+_none_
 
 
 ## Closed by a code read
@@ -317,6 +315,7 @@ is left as "unknown".
 | low | **IT-30** | Snapshots stay 'draft' forever — the review endpoint exists but no screen calls it, and the work |
 | low | **IT-33** | The advance-tax hub card hardcodes the FY 2025-26 instalment calendar, so it shows last year's d |
 | low | **IT-34** | The deductions planner fires two RBAC-gated compute calls on every debounced state change, inclu |
+| low | **PAY-28** | Payroll is a link inside the Accounting rail and its screens are split across three top-level ar |
 | low | **PAY-30** | UAN, ESIC number and IFSC are format-checked on bulk import but accepted unvalidated on the sing |
 | low | **PUR-17** | POST /purchase-bills/from-document bypasses the whole compute engine and cannot succeed for a ve |
 | low | **PUR-29** | Reverse charge and §17(5) eligibility have no test coverage on the purchase-bill compute path at |

@@ -86,7 +86,7 @@ MARKETING = _REPO / "apps" / "marketing"
 #: settings PUT, both halves of the bonus disqualification and the employee
 #: import template. Under the concatenation all five looked wired up.
 BUDGET: dict[str, int] = {
-    "/api/workflows": 10, "/api/year-end": 10, "/api/banking": 9,
+    "/api/workflows": 10, "/api/year-end": 10, "/api/banking": 8,
     "/api/task-recurring": 9, "/api/tasks": 9, "/api/copilot": 8,
     # /api/income-tax 6 -> 5 on 18-09-2026: POST /book-to-tax-bridge got its
     # first caller (FA-06). The engine and the endpoint had been complete for
@@ -233,7 +233,7 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # BUDGET, plus the three the tree had already shed since the last measurement;
 # then the AP allocate mirror, and the gateway webhook moving out of the
 # counted population entirely.
-TOTAL_BUDGET = 223
+TOTAL_BUDGET = 222
 
 
 # ---------------------------------------------------------------------------
