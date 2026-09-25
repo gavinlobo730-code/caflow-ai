@@ -37,7 +37,25 @@ const WEB = path.join(__dirname, "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(WEB, ...p), "utf8");
 
 const CONTEXT = ["lib", "workspace", "ClientNavContext.tsx"];
-const HEADER = ["components", "ClientHeader.tsx"];
+/** The shell — everything rendered ABOVE the page, at either scope. A rule
+ *  about the chrome must be stated against the chrome, not against whichever
+ *  file happens to hold it today: this test named `components/ClientHeader.tsx`
+ *  and broke the day that header became `ClientTopBar`, on a change that did
+ *  not touch financial years at all. */
+const CHROME_DIR = ["components", "shell"];
+const CHROME_EXTRA = [["components", "AppShell.tsx"], ["components", "ContextPanel.tsx"]];
+
+function chromeFiles(): string[] {
+  const dir = path.join(WEB, ...CHROME_DIR);
+  const out = fs.readdirSync(dir)
+    .filter((n) => /\.tsx?$/.test(n))
+    .map((n) => path.join(dir, n));
+  for (const rel of CHROME_EXTRA) {
+    const full = path.join(WEB, ...rel);
+    if (fs.existsSync(full)) out.push(full);
+  }
+  return out;
+}
 
 /** Files under app/ and components/, so a new page is covered without listing it. */
 function sourceFiles(): string[] {
@@ -102,12 +120,23 @@ test("no page destructures a financial year out of the shared context", () => {
     + "or PeriodPicker where the user needs to change it.");
 });
 
-test("the client header holds no financial-year control", () => {
-  const src = read(...HEADER);
-  assert.equal(/financialYear|FinancialYearPicker|PeriodPicker|FY \{/.test(src), false,
-    "a financial-year control is back in the client header. It sits above every "
-    + "client page, including the ones a year does not apply to, and on the ones "
-    + "it does it competes with the page's own filter.");
+test("the shell holds no financial-year control, at either scope", () => {
+  const files = chromeFiles();
+  // Non-vacuity: this used to read one named file, so an empty scan would have
+  // been impossible. A directory walk can find nothing, and then the rule is
+  // asserting about no code at all.
+  assert.ok(files.length >= 4, `only ${files.length} chrome files walked — the shell has moved`);
+  assert.ok(
+    files.some((f) => /ClientTopBar|ClientShell/.test(f)),
+    "neither client-shell component was walked — restate this guard, do not delete it",
+  );
+  const offenders = files
+    .filter((f) => /financialYear|FinancialYearPicker|PeriodPicker|FY \{/.test(fs.readFileSync(f, "utf8")))
+    .map((f) => path.relative(WEB, f));
+  assert.deepEqual(offenders, [],
+    "a financial-year control is back in the shell. It sits above every page, "
+    + "including the ones a year does not apply to, and on the ones it does it "
+    + "competes with the page's own filter.");
 });
 
 test("the year is not persisted globally either", () => {

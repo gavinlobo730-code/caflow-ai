@@ -112,6 +112,36 @@ body {
 @keyframes fade-in  { from { opacity: 0; }                       to { opacity: 1; transform: none; } }
 .animate-in  { animation: fade-in  0.15s ease; }
 
+/* The client workspace's module grid.
+   ONE animation, on the OVERLAY only. The grid is also the front door at
+   /clients/{id}, and a front door must be readable in its first still frame —
+   a staggered entrance there delays the one thing the page exists to show. The
+   overlay is different in kind: a CA just pressed the module button, so the
+   grid arriving is the answer to something they did, and it flies from the
+   button rather than appearing. */
+@keyframes module-grid-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+.module-grid-overlay {
+  animation: module-grid-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top center;
+}
+/* The lift is on a transform so it composites, and it is 1px: a card that
+   jumps is a card that moves the row under the pointer. */
+.module-card {
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.module-card:hover  { transform: translateY(-1px); box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06); }
+.module-card:active { transform: translateY(0);    box-shadow: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .module-grid-overlay { animation: none; }
+  .module-card,
+  .module-card:hover,
+  .module-card:active { transition: none; transform: none; }
+}
+
 /* Brand-mark loader: the logo's accent arc spins while something is loading,
    so loading states carry the PracticeSync mark instead of a generic spinner.
    Continuous (indeterminate) rotation — it keeps turning for as long as the

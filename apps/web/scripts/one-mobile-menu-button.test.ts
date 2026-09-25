@@ -25,6 +25,16 @@
 // lesson: they named a SPELLING of the rule (`!isClientWorkspace` gates in one
 // named file) rather than the rule.
 //
+// ⚠️ AND 25-09 REVERSED IT AGAIN, HALFWAY. The rail is firm-level once more —
+// inside a client `AppShell` returns `ClientShell`, a top bar and nothing
+// else — so NOTHING in AppShell's mobile chrome renders there, which is the
+// ORIGINAL rule restored by a different route. What is not restored is the
+// reason 2.6 gave for reversing it: sign-out, Settings and ⌘K moved into
+// `UtilityCluster`, which both shells render, so they survive the rail's
+// absence. Twice now this guard has had to be restated because it named a
+// spelling; the assertions below are written against the CONSEQUENCE a CA
+// experiences, which is the only form that has survived either change.
+//
 // THE RULE, STATED SO IT SURVIVES THE NEXT RESTRUCTURING: however many shells,
 // layouts or panels exist, a phone shows exactly ONE navigation trigger and
 // opens exactly ONE drawer. That is strictly stronger than the gate check —
@@ -116,36 +126,57 @@ test("exactly one mobile drawer and one backdrop", () => {
   );
 });
 
-test("the client header still reserves room for exactly one trigger", () => {
-  // `pl-12` is what stops the fixed trigger sitting on top of the client's
-  // name. It is sized for one button; it was never the reason two fitted.
-  const header = FILES.find((f) => f.rel === "components/ClientHeader.tsx");
-  assert.ok(header, "components/ClientHeader.tsx not found");
-  assert.ok(
-    /pl-12[^"]*md:px-4/.test(header!.src),
-    "ClientHeader no longer reserves mobile space for the nav trigger " +
-      "(`pl-12 ... md:px-4`) — the trigger will overlap the client name",
-  );
+test("the client shell declares no mobile trigger of its own", () => {
+  // THE `pl-12` ASSERTION THAT USED TO BE HERE WAS A SPELLING, AND THE
+  // REDESIGN SHOWED IT. It required `ClientHeader` to reserve 48px on the left
+  // for `NavShell`'s fixed trigger to sit in. That trigger no longer renders
+  // inside a client at all — `AppShell` returns `ClientShell`, whose whole
+  // navigation is a bar that is already on screen, so there is nothing to open
+  // and nothing to reserve room for. The rule underneath it survives: the
+  // client's own chrome and a fixed trigger must never occupy the same corner.
+  // Asserted as the absence of the trigger rather than as the padding that
+  // dodged it.
+  const bar = FILES.find((f) => f.rel === "components/shell/ClientTopBar.tsx");
+  const shell = FILES.find((f) => f.rel === "components/shell/ClientShell.tsx");
+  assert.ok(bar, "components/shell/ClientTopBar.tsx not found");
+  assert.ok(shell, "components/shell/ClientShell.tsx not found");
+  for (const f of [bar!, shell!]) {
+    assert.ok(
+      !/md:hidden[^"]*fixed/.test(f.src),
+      `${f.rel} declares fixed mobile chrome — the client shell's navigation ` +
+        "is its always-visible bar, so a second trigger there is the 2.8 " +
+        "collision in a new place",
+    );
+  }
 });
 
 test("the client workspace still carries a way back to the client list", () => {
-  // The other half. Before 2.6 this lived in ClientContextPanel's own drawer
-  // header; it is in the section list now, which the one shell renders as its
-  // panel inside a client.
-  const sections = FILES.find((f) => f.rel === "components/shell/ClientSections.tsx");
-  assert.ok(sections, "components/shell/ClientSections.tsx not found");
+  // The other half, and the one control the owner asked for by name when the
+  // rail came out: "we will give the exit the client workspace button". Before
+  // 2.6 it lived in ClientContextPanel's drawer header, then in the section
+  // list; it is on the top bar now. `a-client-workspace-still-has-a-way-out`
+  // holds the stronger form — that the shell AppShell picks always has one.
+  const bar = FILES.find((f) => f.rel === "components/shell/ClientTopBar.tsx");
+  assert.ok(bar, "components/shell/ClientTopBar.tsx not found");
   assert.ok(
-    sections!.src.includes('href="/clients"'),
-    "the client panel no longer carries a way back to the client list",
+    bar!.src.includes('href="/clients"'),
+    "the client top bar no longer carries a way back to the client list",
   );
 });
 
-test("the three retired shell components are gone, not merely unused", () => {
-  // `ActivityRail` and `ClientContextPanel` were the two rails; leaving either
-  // on disk invites a future layout to render one again, which is exactly the
-  // collision above. `ClientWorkspaceShell` survives — it is the client HEADER
-  // now, which is content rather than chrome.
-  for (const gone of ["components/ActivityRail.tsx", "components/ClientContextPanel.tsx"]) {
+test("the retired shell components are gone, not merely unused", () => {
+  // Leaving any of these on disk invites a future layout to render one again,
+  // which is exactly the collision this file exists for. The first two were
+  // the two rails 2.6 collapsed. The last three are 25-09's: the client
+  // workspace's second shell, its header and its 21-item section list, all
+  // absorbed into `ClientTopBar` + `ClientModuleGrid`.
+  for (const gone of [
+    "components/ActivityRail.tsx",
+    "components/ClientContextPanel.tsx",
+    "components/ClientWorkspaceShell.tsx",
+    "components/ClientHeader.tsx",
+    "components/shell/ClientSections.tsx",
+  ]) {
     assert.ok(!fs.existsSync(path.join(WEB, gone)), `${gone} is back`);
   }
 });
