@@ -2543,7 +2543,9 @@ def create_run(
 #: which runs COUNT (for the FY TDS aggregate and the ESI period test), this one
 #: says which have not yet paid anybody or posted anything — and writing either
 #: as `not the other` would make a fifth status silently join both.
-_PAYROLL_UNRELEASED = ("draft", "review")
+from domain.payroll.run_status import (  # noqa: E402
+    PAYROLL_UNRELEASED as _PAYROLL_UNRELEASED,
+)
 
 
 def _assert_run_is_unreleased(db, run_id: str, firm_id: str, verb: str) -> dict:
@@ -3843,10 +3845,14 @@ def delete_pt_slabs(
 # whether or not the CA had looked at them. See domain/payroll/attendance.py
 # for what that erased and what the identity is.
 
-#: The released statuses. tds_return_service names the same pair
-#: _PAYROLL_POSTED; the ECR, the ESIC return, Form 16 and the 24Q all
-#: refuse anything outside it, and migration 323 made RLS agree.
-_PAYROLL_RELEASED = ("finalized", "paid")
+#: Both tuples MOVED to `domain/payroll/run_status.py` and are re-exported
+#: here, so every existing importer is untouched. The move was forced by
+#: `services/client_metrics_service.py`, which needs PAY-04's rule and must not
+#: import a router to get it — the wrong direction, and one refactor from a
+#: cycle. See that module for why the two are not each other's inverse.
+from domain.payroll.run_status import (  # noqa: E402
+    PAYROLL_RELEASED as _PAYROLL_RELEASED,
+)
 
 _MOCK_ATTENDANCE: dict[tuple, dict] = {}
 _MOCK_ONE_TIME: dict[tuple, dict] = {}

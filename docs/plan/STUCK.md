@@ -16,42 +16,64 @@ it costs to be wrong.
 
 ---
 
-## 1 · Cross-client TAX benchmarking needs stored per-client aggregates
+## 1 · Cross-client TAX benchmarking — **ANSWERED, built 25 Sep (D30)**
 
-**Plan rows 3c-1, 3c-2, 3c-4, and the tax half of 3c-5.** Effective tax rate
-trend, ITC leakage trend, the GST/TDS/payroll ratio trends, and benchmarking a
-client's tax position against the firm's other clients.
+**Plan rows 3c-1, 3c-2, 3c-4, and the tax half of 3c-5.**
 
-**What I did.** Built the commercial half — `domain/practice/concentration.py`
-and `GET /api/analytics/concentration` — because fee revenue and cost per
-client are already aggregated by `invoice_repo.get_revenue_by_client` and
-`time_tracking_analytics_repo.get_cost_by_client`, one read each. That answers
-fee dependence and where a client sits in the firm's own distribution.
-
-**Where I stopped, and it is not a judgement call.** A client's effective tax
+**What was blocked, and it was not a judgement call.** A client's effective tax
 rate, ITC as a proportion of purchases, or GST-to-turnover ratio is derived
 from that client's whole ledger for the period. Computing it for ONE client is
 already a read proportional to transaction volume; computing it for every
 client so the one can be compared against them multiplies that by the client
-count. That is the rule in CLAUDE.md — *"No report may fetch rows proportional
-to transaction volume"* — broken twice over, on a firm with fifty clients, on
-an endpoint a partner would leave open. The measured comparison is the
-cash-flow case: 12,836 entries took 54.34s unaggregated against 2.15s off
-`account_period_balances`.
+count — CLAUDE.md's reporting rule broken twice over, on an endpoint a Partner
+would leave open. The measured comparison is the cash-flow case: 12,836 entries
+took 54.34s unaggregated against 2.15s off `account_period_balances`.
 
-**What I would do.** A `client_period_metrics` table on the
-`account_period_balances` shape — one row per (client, financial year) holding
-the handful of figures a benchmark needs, maintained by the nightly sweep that
-already runs `run_reconciliation_for_firm` and `audit_and_heal_firm` per
-client. Then the benchmark is one read of ~50 rows and the trends are free,
-because a year of rows IS the trend. That is a migration and a scheduled-job
-change, and **which figures it should hold is the part I want you on**: each
-column is a claim about what a CA compares clients on, and a column added later
-cannot be back-filled for a period whose books have since been locked.
+**The one thing I could not decide** was WHICH FIGURES the table holds, because
+a column added later cannot be back-filled for a period whose books have since
+been locked. The owner chose twelve (**D30**): turnover, profit before tax, tax
+expense, output tax, ITC availed, ITC reversed, GST cash paid, purchases, TDS
+deducted, TDS deposited, payroll cost, employee count.
 
-**What it costs to be wrong.** Nothing yet — the feature does not exist either
-way. Getting the column list wrong costs a second migration and a year of
-history the first one did not capture.
+**What was built.**
+
+* **Migration 417**, `client_period_metrics`, one row per (client, financial
+  year), on the `account_period_balances` shape. Firm-isolated AND
+  assignment-scoped at creation — the row carries a client's turnover, profit
+  and tax, so migration 084's RESTRICTIVE policy is applied here rather than
+  left for a sweep that has not run since 2024.
+* **The 06:00 IST sweep fills it**, beside `balance_cache_audit` and
+  `reconciliation_audit`, which already pay the per-client read. It RE-DERIVES
+  and replaces rather than accumulating — a back-dated journal or a revised
+  return moves a figure already written — and covers two financial years,
+  because a year's books keep moving until the return is filed.
+* **`domain/practice/client_metrics.py`** is the authority for what each figure
+  MEANS and which source may answer it. Two could plausibly be derived twice —
+  output tax off the GST Output account as well as off the return, ITC off the
+  purchase register as well — and the RETURN wins, because a benchmark of tax
+  positions compares what was FILED.
+* **`GET /api/analytics/benchmark`** and **`/practice/benchmark`**, beside
+  Profitability: the fee and tax halves of "where does this client sit".
+
+**The load-bearing decision is that every figure is NULLABLE with no default.**
+`DEFAULT 0` would make "this client had no output tax" and "nobody could derive
+this client's output tax" the same row. In a DISTRIBUTION that is not cosmetic:
+a nil meaning "not derived" drags every median and mean it is counted in
+towards zero, AND makes the client it belongs to read as the firm's best
+performer on a ratio it has no figures for. `None` is excluded, `n` says how
+many clients answered, and the answer NAMES the rest.
+
+**What it refuses.** No threshold, no band, no verdict — an effective tax rate
+above the firm's median is a fact and "high" is an opinion about a client's
+affairs. No year-on-year growth column (a year of rows is the trend). No
+industry comparison: nothing here records what business a client is in, so the
+distribution is the firm's own and says so.
+
+**One thing moved to make it possible.** `_PAYROLL_RELEASED` and
+`_PAYROLL_UNRELEASED` were in `routers/payroll.py`, so a service needing
+PAY-04's rule could only reach them by importing a router — the wrong
+direction. They are `domain/payroll/run_status.py` now and the router
+re-exports both, so every existing importer is untouched.
 
 ---
 

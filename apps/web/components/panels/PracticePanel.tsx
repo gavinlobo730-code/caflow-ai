@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2, LayoutDashboard, IndianRupee, Receipt, Wallet, ClipboardList,
-  StickyNote, ShieldCheck, Gauge, TrendingUp,
+  StickyNote, ShieldCheck, Gauge, TrendingUp, BarChart3,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
 
@@ -14,6 +14,11 @@ const NAV_ITEMS = [
   { label: "Executive Dashboard", href: "/executive-dashboard", icon: Gauge },
   { label: "Revenue",      href: "/practice/revenue",     icon: IndianRupee },
   { label: "Profitability", href: "/practice/profitability", icon: TrendingUp },
+  // The TAX half of the same question — where a client sits in the firm's own
+  // distribution of effective tax rate, ITC-to-purchases and the rest. Beside
+  // Profitability deliberately: the two are the fee and tax halves of "where
+  // does this client sit", and a reader who has opened one wants the other.
+  { label: "Client benchmark", href: "/practice/benchmark", icon: BarChart3 },
   { label: "Billing",      href: "/practice/billing",     icon: Receipt },
   { label: "Collections",  href: "/practice/collections", icon: Wallet },
   { label: "AR Aging",     href: "/practice/ar",          icon: ClipboardList },

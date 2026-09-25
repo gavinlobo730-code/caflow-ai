@@ -126,6 +126,7 @@ export const KNOWN_ROUTE_SHAPES: string[][] = [
   ["portal","login"],
   ["practice"],
   ["practice","ar"],
+  ["practice","benchmark"],
   ["practice","billing"],
   ["practice","collections"],
   ["practice","compliance"],
