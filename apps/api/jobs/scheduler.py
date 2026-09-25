@@ -399,6 +399,30 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["reconciliation_audit"] = {"skipped": "already ran today"}
 
+        # 9b. Per-client period metrics (migration 417, D30) — the aggregates a
+        #     cross-client tax benchmark reads. It runs HERE, beside the two
+        #     steps above, because those already pay the per-client read and
+        #     this is what makes `GET /api/analytics/benchmark` a few dozen
+        #     rows instead of every client's whole ledger. Re-DERIVES rather
+        #     than accumulating, the same self-healing discipline as the
+        #     balance-cache audit: a back-dated journal or a revised return
+        #     moves a figure that was already written. Two financial years,
+        #     bounded by `client_metrics_service.YEARS_SWEPT`. Writes nothing
+        #     a CA sees directly and posts nothing.
+        if force or not _already_ran_today("client_period_metrics", fid):
+            t0 = _now_iso()
+            try:
+                from services.client_metrics_service import refresh_firm
+                outcome = refresh_firm(_get_db(), fid)
+                firm_result["client_period_metrics"] = outcome
+                _log_run("client_period_metrics", fid, "success", outcome, started_at=t0)
+            except Exception as e:
+                logger.error(f"Client period metrics failed for firm {fid}: {e}", exc_info=True)
+                firm_result["client_period_metrics"] = {"error": str(e)}
+                _log_run("client_period_metrics", fid, "failed", {"error": str(e)}, started_at=t0)
+        else:
+            firm_result["client_period_metrics"] = {"skipped": "already ran today"}
+
         # 10b. Bank trusted-rule sweep (migration 322, 09-bank-entries.md) —
         #     pass every ready draft a TRUSTED rule wrote and nobody clicked
         #     for: a statement uploaded and the tab closed, a rule promoted

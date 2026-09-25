@@ -186,7 +186,7 @@ until somebody read the callers.
 | 3b-4 | Firm-wide capacity risk | **done 25 Sep** ✅ `domain/practice/capacity_risk.py` + `GET /api/workload/capacity-risk`, 13 weeks ahead. It refuses two numbers it would be easy to invent: hours are reported only where a workflow step recorded one, and load is measured against the practice's **own median week**, never `max_concurrent_tasks`, which is a limit on what may be OPEN |
 | 3b-5 | Surface `workload-insights` | **done 25 Sep** ✅ — by rendering the **unassigned backlog only**. `overload` and `idle` restate what `/team/workload`'s own member grouping already says from the same tasks, and two authorities on who is overloaded disagree the first time either threshold moves |
 | 3c-3 | **Fee concentration** — if the largest client leaves, what happens | **done 25 Sep** ✅ `domain/practice/concentration.py` + `GET /api/analytics/concentration`, rendered on `/practice/profitability`. The ICAI fee-dependence threat is NAMED and no threshold is drawn: icai.org is refused at this environment's proxy, and a percentage from memory on an independence question hands a firm a clean bill of health nobody issued |
-| 3c-1, 3c-2, 3c-4, and the tax half of 3c-5 | Effective tax rate trend · ITC leakage trend · GST/TDS/payroll trends · cross-client tax benchmarking | **blocked — STUCK.md §1.** Not a judgement call: each figure is derived from a client's whole ledger for a period, so computing it for every client to compare one against them is a read proportional to transaction volume × client count. Needs a `client_period_metrics` table on the `account_period_balances` shape, maintained by the nightly sweep. **Which columns it holds is the owner's**, because a column added later cannot be back-filled for a period whose books are locked |
+| 3c-1, 3c-2, 3c-4, and the tax half of 3c-5 | Effective tax rate trend · ITC leakage trend · GST/TDS/payroll trends · cross-client tax benchmarking | **done 25 Sep** ✅ **Migration 417** `client_period_metrics`, D30's twelve figures, one row per (client, financial year), re-derived nightly by the 06:00 IST sweep beside the two steps that already pay the per-client read. `domain/practice/client_metrics.py` is the authority, `GET /api/analytics/benchmark` serves it and `/practice/benchmark` renders it beside Profitability — the fee and tax halves of one question. The trends are free, because a year of rows IS the trend. **Every figure is NULLABLE with no default and NULL is excluded from the distribution**: in a benchmark a nil that means *not derived* moves every median it is counted in and makes the client it belongs to read as the firm's best performer on a ratio nobody computed for them. It ranks and never judges — no band, no threshold, no verdict |
 
 ### §C — the six partials (was Phase 1.6)
 
@@ -194,8 +194,8 @@ until somebody read the callers.
 |---|---|---|
 | PAY-27 | three more payroll report shapes, if wanted | no |
 | IT-11 | **Form 3CD** — a clause workspace, needs a migration | document #4 |
-| SALES-23 | whether the nightly sweep may EMAIL a client's customers | **owner (A)** |
-| ACC-13 | **cost centres** — a dimension on `journal_lines` | **owner (C)** |
+| SALES-23 | ~~whether the nightly sweep may EMAIL a client's customers~~ | **answered — D27, no.** Closed 25 Sep |
+| ACC-13 | **cost centres** — a dimension on `journal_lines` | **answered — D29, build it.** Migration 418, in flight |
 | TDS-22 | two numbers for the §194I(a)/§194J(a) limbs | document #4 |
 | FA-11 | shift working (NESD markings); revaluation and component accounting unstarted | document #9 |
 | TDS-16 *(open)* | the FVU/RPU file writer | document #3 |

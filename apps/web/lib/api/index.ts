@@ -2757,6 +2757,21 @@ export const api = {
     concentration: (period: string) =>
       request<ApiResp<ConcentrationPayload>>(
         `/api/analytics/concentration?period=${encodeURIComponent(period)}`),
+    /* 3c-1/2/4/5, the TAX half of the same question — where a client sits in
+       the firm's own distribution of effective tax rate, ITC-to-purchases and
+       the rest. It reads `client_period_metrics` (migration 417), which the
+       nightly sweep fills, rather than every client's ledger: computing these
+       live for one client so it can be compared against fifty is CLAUDE.md's
+       reporting rule broken twice over. `client_id` asks where ONE client
+       sits; omitting it returns the distribution alone. */
+    benchmark: (financialYear?: string, clientId?: string) => {
+      const q = new URLSearchParams();
+      if (financialYear) q.set("financial_year", financialYear);
+      if (clientId) q.set("client_id", clientId);
+      const qs = q.toString();
+      return request<ApiResp<BenchmarkPayload>>(
+        `/api/analytics/benchmark${qs ? `?${qs}` : ""}`);
+    },
   },
 
   hub: {
@@ -6021,6 +6036,45 @@ export type ConcentrationPayload = {
    *  bill of health nobody issued. */
   icai_fee_dependence: string;
   not_measured: string[];
+};
+
+/** One figure or ratio across the firm's clients for one financial year.
+ *
+ *  ⚠️ `median`, `lowest` and `highest` are null when NOBODY answered, and a
+ *  client that answered nothing for this key is in `not_measured` rather than
+ *  counted as nil. The backend excludes it; see `domain/practice/
+ *  client_metrics` for why an absent figure read as zero moves every median it
+ *  is in. Do not fill these in with 0. */
+export type BenchmarkDistribution = {
+  key: string;
+  /** How many clients actually answered this key — NOT the client count. */
+  n: number;
+  median: number | null;
+  lowest: number | null;
+  highest: number | null;
+  not_measured: string[];
+};
+
+/** Where one client sits. `rank` 1 is the LOWEST, which on an effective tax
+ *  rate is not obviously the best — the module ranks and never judges. */
+export type BenchmarkPosition = {
+  key: string;
+  value: number | null;
+  rank: number | null;
+  of: number;
+};
+
+export type BenchmarkPayload = {
+  financial_year: string;
+  clients: number;
+  figures: BenchmarkDistribution[];
+  ratios: BenchmarkDistribution[];
+  subject_client_id: string | null;
+  subject_positions: BenchmarkPosition[];
+  /** Served, never held here — the Schedule III caption lesson. */
+  figure_meaning: Record<string, string>;
+  money_figures: string[];
+  notes: string[];
 };
 
 export type CapacityWeek = {

@@ -1,5 +1,8 @@
-from fastapi import APIRouter, Depends
+from typing import Annotated, Optional
+
+from fastapi import APIRouter, Depends, Query
 from models.common import api_response
+from models.fy import OptionalFYLabel
 from core.permissions import rbac
 from datetime import date, timedelta
 from repositories.time_tracking_analytics_repository import time_tracking_analytics_repo
@@ -771,3 +774,120 @@ def revenue_vs_effort(
         "by_client": by_client_list,
         "by_engagement": by_engagement_list,
     })
+
+
+@router.get("/benchmark")
+def tax_benchmark(
+    financial_year: Annotated[OptionalFYLabel, Query()] = None,
+    client_id: Optional[str] = None,
+    current_user: dict = Depends(rbac("analytics", "read")),
+):
+    """Where each client sits in the firm's own tax and cost distribution.
+
+    `/concentration` above answers the FEE question — if this client leaves,
+    what happens — because fee revenue and cost are already aggregated one read
+    each. This is the other half, and it could not be built the same way: a
+    client's effective tax rate or ITC-to-purchases ratio is derived from that
+    client's whole ledger, so computing it for every client to compare one
+    against them is CLAUDE.md's reporting rule broken twice over, on an
+    endpoint a Partner would leave open.
+
+    So it reads STORED aggregates — `client_period_metrics`, migration 417,
+    re-derived nightly by the 06:00 IST sweep. A few dozen rows, and the trends
+    are free because a year of rows IS the trend.
+
+    ⚠️ A CLIENT WITH NO FIGURE IS LEFT OUT OF THE STATISTIC, NEVER COUNTED AS
+    NIL, and the answer names them. `domain/practice/client_metrics` has the
+    argument: in a distribution an absent figure read as zero moves every
+    median it is in and makes the client it belongs to read as the firm's best
+    performer on a ratio nobody computed for them.
+
+    ASSIGNMENT-SCOPED like every report here — an Executive sees the
+    distribution of their own book, which is the honest answer to a question
+    about the firm they can see. It is also NOT the only control: migration
+    417's RESTRICTIVE assignment-scope policy says the same thing in SQL, for
+    the rows the browser could otherwise reach over PostgREST.
+    """
+    from core.authz import effective_client_ids
+    from domain.practice import client_metrics as rule
+
+    firm_id = current_user.get("firm_id")
+    fy = financial_year or ist_fy_label()
+
+    rows = _benchmark_rows(firm_id, fy, effective_client_ids(current_user))
+    answer = rule.benchmark(rows, fy, subject_client_id=client_id)
+
+    def dist(d) -> dict:
+        return {
+            "key": d.key, "n": d.n, "median": d.median,
+            "lowest": d.lowest, "highest": d.highest,
+            "not_measured": list(d.not_measured),
+        }
+
+    return api_response(True, {
+        "financial_year": answer.financial_year,
+        "clients": answer.clients,
+        "figures": [dist(d) for d in answer.figures],
+        "ratios": [dist(d) for d in answer.ratios],
+        "subject_client_id": answer.subject_client_id,
+        "subject_positions": [
+            {"key": p.key, "value": p.value, "rank": p.rank, "of": p.of}
+            for p in answer.subject_positions
+        ],
+        # The vocabulary travels with the answer so the screen holds no copy of
+        # it — the Schedule III caption lesson. `figure_meaning` is what a CA
+        # reads under each heading; `money_figures` is which ones format as
+        # rupees, because `employee_count` shown as ₹12.00 is twelve people.
+        "figure_meaning": dict(rule.FIGURE_MEANING),
+        "money_figures": list(rule.MONEY_FIGURES),
+        "notes": list(answer.notes),
+    })
+
+
+def _benchmark_rows(firm_id: str, fy: str, allowed) -> list:
+    """The stored rows for one firm-year, narrowed to the caller's own book."""
+    from domain.practice import client_metrics as rule
+
+    all_clients = client_repo.find_all(firm_id=firm_id)
+    names = {str(c["id"]): c.get("client_name", "Unknown") for c in all_clients}
+
+    stored = _client_period_metrics(firm_id, fy)
+    out = []
+    for r in stored:
+        cid = str(r.get("client_id"))
+        if allowed is not None and cid not in allowed:
+            continue
+        out.append(rule.ClientPeriod(
+            client_id=cid,
+            client_name=names.get(cid, "Unknown"),
+            financial_year=fy,
+            figures={f: r.get(f) for f in rule.FIGURES},
+            gaps=tuple(
+                rule.MetricGap(figure=g.get("figure", ""), why=g.get("why", ""))
+                for g in (r.get("gaps") or [])
+            ),
+        ))
+    return out
+
+
+def _client_period_metrics(firm_id: str, fy: str) -> list[dict]:
+    """One firm-year of stored rows, or [] in mock mode.
+
+    Mock mode has no sweep and so no rows: the benchmark answers an empty
+    distribution rather than inventing one, which is the same posture every
+    other report takes there.
+    """
+    import os
+    if not os.environ.get("SUPABASE_URL"):
+        return []
+    from core.supabase_client import get_supabase
+    from core.db_paging import fetch_all
+    from domain.practice import client_metrics as rule
+
+    cols = "id, client_id, financial_year, gaps, " + ", ".join(rule.FIGURES)
+    db = get_supabase()
+    return fetch_all(
+        lambda: db.table("client_period_metrics").select(cols)
+        .eq("firm_id", firm_id).eq("financial_year", fy),
+        label="analytics.client_period_metrics",
+    )
