@@ -147,13 +147,22 @@ TILES: tuple[Tile, ...] = (
     Tile(
         id="insights",
         label="Insights",
-        firm_href="/health",
+        # ⚠️ WAS `/health`, WHICH IS ONE OF THE THREE THINGS THIS TILE NAMES.
+        # `/health` is a client HEALTH monitor; the tile asks about health,
+        # risk AND profitability, so two thirds of its own question had
+        # nowhere to land. `/insights` (Phase 3a-5) renders the
+        # recommendations, the compliance risk and the relationship health;
+        # profitability is a question about the PRACTICE rather than a client
+        # and sits with the rest of its commercial position at
+        # `/practice/profitability`, which the Insights page links to rather
+        # than duplicating.
+        firm_href="/insights",
         client_section=None,
         question="Health, risk and profitability",
         unit=Unit.COUNT,
         no_signal_because=(
             "Insights is a destination, not a queue — there is nothing "
-            "outstanding on an analysis. Its own contents are Phase 3a."
+            "outstanding on an analysis."
         ),
         client_scoped=False,
     ),

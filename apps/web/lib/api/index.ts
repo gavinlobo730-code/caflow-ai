@@ -156,6 +156,67 @@ export interface RealizationPayload {
   }[];
 }
 
+/** `GET /api/intelligence/compliance-risk`. Per-client risk of missing a
+ *  filing, scored on the CLIENT'S OWN compliance records — overdue count,
+ *  due-within-seven-days count, and any history of filing late. Not a money
+ *  figure and not derived from task volume. */
+export interface ComplianceRiskPayload {
+  clients: {
+    client_id: string;
+    client_name: string;
+    risk_score: number;
+    risk_level: string;
+    overdue_count: number;
+    due_soon_count: number;
+    late_filing_history: number;
+    predicted_misses: {
+      record_id?: string | null;
+      compliance_type?: string | null;
+      due_date?: string | null;
+      reason?: string | null;
+    }[];
+  }[];
+  high_risk_count: number;
+  computed_at?: string | null;
+}
+
+/** `GET /api/intelligence/relationship-health`. `outstanding_paise` is REAL
+ *  money — summed off invoices with status Issued or Overdue — not a figure
+ *  derived from task counts, which is the trap CLAUDE.md records about the
+ *  memory module's `cash_flow_risk_months`. */
+export interface RelationshipHealthPayload {
+  clients: {
+    client_id: string;
+    client_name: string;
+    health_score: number;
+    health_level: string;
+    open_tasks: number;
+    overdue_tasks: number;
+    overdue_invoices: number;
+    outstanding_paise: number;
+    recent_activity?: number;
+  }[];
+  at_risk_count: number;
+  computed_at?: string | null;
+}
+
+/** `GET /api/intelligence/recommendations`. What to do, ranked. */
+export interface RecommendationsPayload {
+  recommendations: {
+    category?: string | null;
+    priority: string;
+    title: string;
+    detail?: string | null;
+    action?: string | null;
+    client_id?: string | null;
+  }[];
+  total?: number;
+  critical?: number;
+  high?: number;
+  medium?: number;
+  low?: number;
+}
+
 export interface HubWorklistPayload {
   tile: string;
   label: string;
@@ -4262,9 +4323,15 @@ export const api = {
       request("/api/workload/capacity", { method: "PUT", body: JSON.stringify(body) }),
   },
   intelligence: {
-    complianceRisk: () => request("/api/intelligence/compliance-risk"),
-    relationshipHealth: () => request("/api/intelligence/relationship-health"),
-    recommendations: () => request("/api/intelligence/recommendations"),
+    /* Typed for the Insights screen (Phase 3a-5). The three client-facing
+       reads narrow their rows to the caller's assigned book inside the router,
+       each with its own comment saying why — every row NAMES its client. */
+    complianceRisk: () =>
+      request<ApiResp<ComplianceRiskPayload>>("/api/intelligence/compliance-risk"),
+    relationshipHealth: () =>
+      request<ApiResp<RelationshipHealthPayload>>("/api/intelligence/relationship-health"),
+    recommendations: () =>
+      request<ApiResp<RecommendationsPayload>>("/api/intelligence/recommendations"),
     workloadInsights: () => request("/api/intelligence/workload-insights"),
     journalSuggestions: (client_id?: string) =>
       request(`/api/intelligence/journal-suggestions${client_id ? `?client_id=${client_id}` : ""}`),

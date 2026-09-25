@@ -122,7 +122,7 @@ export default function ProfitabilityPage() {
   );
 
   return (
-    <div className="p-6 max-w-5xl space-y-5">
+    <div className="p-6 max-w-ps-data space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-ps-ink">Profitability</h1>

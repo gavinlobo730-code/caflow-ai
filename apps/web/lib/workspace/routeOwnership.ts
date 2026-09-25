@@ -43,7 +43,12 @@ export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | n
   if (
     pathname === "/" ||
     pathname.startsWith("/calendar") ||
-    pathname.startsWith("/notifications")
+    pathname.startsWith("/notifications") ||
+    // D1's `insights` hub tile lands here (Phase 3a-5). It belongs to Home
+    // rather than to Health: the tile asks about health, RISK and
+    // profitability across every client, which is the morning question the
+    // Home workspace is for, while `/health` is one module's monitor.
+    pathname.startsWith("/insights")
   )
     return "home";
 
