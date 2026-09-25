@@ -125,6 +125,8 @@ WHAT THIS MODULE REFUSES TO DECIDE
 """
 from __future__ import annotations
 
+from domain.money_text import whole_rupees
+
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -521,16 +523,12 @@ def _exempted_classes_sentence() -> str:
 
 def _rupees(paise: int) -> str:
     """₹ with Indian digit grouping, for a sentence a CA reads. Whole rupees —
-    a threshold is a crore figure and the paise are noise at that scale."""
-    whole = abs(int(paise)) // 100
-    s = str(whole)
-    if len(s) > 3:
-        head, tail = s[:-3], s[-3:]
-        parts = []
-        while len(head) > 2:
-            parts.insert(0, head[-2:])
-            head = head[:-2]
-        if head:
-            parts.insert(0, head)
-        s = ",".join(parts + [tail])
-    return "₹" + s
+    a threshold is a crore figure and the paise are noise at that scale.
+
+    ⚠️ The pair-slicing loop that used to live here was a copy of
+    `domain/money_text.group_indian`, which CLAUDE.md names as the one backend
+    authority for this. It also dropped the SIGN — `abs()` before grouping —
+    so a negative would have come back positive; harmless on a threshold,
+    which is always positive, and the reason nothing caught it.
+    `tests/test_one_module_groups_a_rupee_figure.py` is the rule now."""
+    return "₹" + whole_rupees(paise)

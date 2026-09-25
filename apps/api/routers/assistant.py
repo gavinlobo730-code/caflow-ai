@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from models.common import api_response
 from core.permissions import rbac
+from domain.money_text import whole_rupees
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 
@@ -29,23 +30,32 @@ router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 def _rupees(paise: int) -> str:
     """Integer paise -> a rupee figure grouped the Indian way (Rs 1,00,000).
 
-    str.format's "," gives Western grouping (Rs 100,000), which a CA reads as
-    a different number at a glance. Integer arithmetic only — this never sees
-    a float.
+    ⚠️ THIS USED TO GROUP THE DIGITS ITSELF, AND IT WAS A THIRD IMPLEMENTATION
+    OF A RULE CLAUDE.md SAYS HAS ONE PER LANGUAGE. `domain/money_text` is the
+    backend authority; this file carried its own pair-slicing loop, and the two
+    disagreed on every NEGATIVE figure:
+
+        paise    old _rupees     whole_rupees
+         -150    "Rs -2"         "-1"
+      -10,050    "Rs -101"       "-100"
+
+    because `paise // 100` FLOORS and `abs()` was then applied to the
+    already-floored value, so a magnitude was rounded AWAY from zero and the
+    sign re-attached. That is the `f"{p // 100:,}.{p % 100:02d}"` trap CLAUDE.md
+    records, in a different spelling.
+
+    Nothing is visibly wrong today — the only caller feeds it TDS thresholds,
+    which are positive — and that is the point: it is latent until the copilot
+    is given a client's own figures (Phase 3a-7), which is a change one step
+    away and would have shipped a wrong minus sign inside an answer a CA reads
+    as the software's own.
+
+    The "Rs " prefix stays rather than becoming ₹, deliberately: this string
+    goes into a PROMPT, and the reply is parsed on a `Source:` trailer by code
+    that has a test pinning it — changing the currency mark in the brief is a
+    change to what the model is shown, which is not this fix.
     """
-    n = paise // 100
-    s = str(abs(n))
-    if len(s) > 3:
-        # last three digits, then pairs
-        head, tail = s[:-3], s[-3:]
-        parts = []
-        while len(head) > 2:
-            parts.insert(0, head[-2:])
-            head = head[:-2]
-        if head:
-            parts.insert(0, head)
-        s = ",".join(parts + [tail])
-    return f"Rs {'-' if n < 0 else ''}{s}"
+    return f"Rs {whole_rupees(paise)}"
 
 
 def _tds_lines() -> str:
