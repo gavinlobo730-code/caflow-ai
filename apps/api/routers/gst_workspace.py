@@ -1125,6 +1125,51 @@ def compute_cmp08(
         raise HTTPException(status_code=422, detail=str(e))
 
 
+@router.get("/gstr8/compute")
+def compute_gstr8(
+    client_id: str = Query(...),
+    period: str = Query(..., pattern=r"^\d{6}$", description="MMYYYY"),
+    gstin: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """FORM GSTR-8 for one month — a s.52 e-commerce operator's TCS statement
+    (GST-25), built from the seller-supply rows recorded under
+    `/api/ecommerce-operator/supplies`, never from this client's own books.
+
+    `gstin` selects the registration (GST-20); omitting it means the primary.
+    A registration that is not a TCS_COLLECTOR, or a GSTIN the client does not
+    hold, is refused with a 422 naming which.
+
+    This CHECKS the CA-entered IGST/CGST/SGST split against the statutory
+    rate band rather than deriving it — see `domain/gst/gstr8.py` for why.
+    Rates are `[S]`-graded — `gstr8_rates_verified` on the response says so —
+    and reads and writes nothing but this request.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "period": period, "period_window": None, "gstin": gstin,
+            "registration_type": None, "financial_year": None,
+            "pos_required": False, "rate_band_bps": [50, 100],
+            "total_net_liable_paise": 0, "total_igst_paise": 0,
+            "total_cgst_paise": 0, "total_sgst_paise": 0,
+            "total_unregistered_net_paise": 0, "supplier_count": 0,
+            "unregistered_supplier_count": 0, "findings": [],
+            "supplies": [], "unregistered_supplies": [],
+            "gstr8_rates_verified": False,
+        })
+    from core.supabase_client import get_supabase
+    from services import gst_return_service
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    try:
+        return api_response(True, gst_return_service.gstr8_statement(
+            db, firm_id, client_id, period, gstin))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.get("/gstr9/compute")
 def compute_gstr9(
     client_id: str = Query(...),

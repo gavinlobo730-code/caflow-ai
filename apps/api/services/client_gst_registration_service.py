@@ -98,6 +98,9 @@ def listing(db, firm_id: str, client_id: str) -> list[dict]:
             # never has to hardcode the word "composition" to decide whether
             # to offer the CMP-08 panel.
             "files_cmp08": r.files_cmp08,
+            # Same shape again — whether this registration owes GSTR-8, never
+            # a "tcs_collector" string comparison in the browser (GST-25).
+            "files_gstr8": r.files_gstr8,
             # The refusal is DATA, so a screen can grey the return out and say
             # which form this registration actually owes.
             "other_return_form": reg.OTHER_RETURN_FORMS.get(r.registration_type),

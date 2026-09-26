@@ -66,6 +66,15 @@ test("which registration owes CMP-08 is a boolean off the wire, GST-25", () => {
   assert.doesNotMatch(src, /"composition"/);
 });
 
+test("which registration owes GSTR-8 is a boolean off the wire, GST-25", () => {
+  /* files_gstr8 is the same shape as files_cmp08 and files_gstr1_and_3b — a
+     screen must not hardcode the word "tcs_collector" to decide whether to
+     offer the GSTR-8 panel. */
+  const src = code(TAB);
+  assert.match(src, /files_gstr8/);
+  assert.doesNotMatch(src, /"tcs_collector"/);
+});
+
 test("the primary is shown and never editable here", () => {
   /* It is `clients.gstin`, written on the client record. Offering a Remove
      button on it would either fail or delete the wrong thing. */
@@ -103,6 +112,15 @@ test("CMP-08 is offered on the row that owes it, GST-25", () => {
   assert.match(src, /<Cmp08Panel clientId=\{clientId\} gstin=\{r\.gstin\} \/>/);
 });
 
+test("GSTR-8 is offered on the row that owes it, GST-25", () => {
+  /* A s.52 e-commerce operator files GSTR-8, never GSTR-1/3B — same shape as
+     CMP-08 above. */
+  const src = code(TAB);
+  assert.match(src, /import \{ Gstr8Panel \} from "@\/components\/gst\/Gstr8Panel"/);
+  assert.match(src, /r\.files_gstr8 && !r\.effective_to/);
+  assert.match(src, /<Gstr8Panel clientId=\{clientId\} gstin=\{r\.gstin\} \/>/);
+});
+
 test("the api layer carries shapes and no statute", () => {
   const src = code(API);
   const start = src.indexOf("clientGstRegistrations: {");
@@ -121,4 +139,21 @@ test("cmp08 is its own namespace and never GSTR-1/3B's", () => {
   assert.ok(start > 0, "the cmp08 namespace exists");
   const ns = src.slice(start, start + 500);
   assert.match(ns, /\/api\/gst-workspace\/cmp08\/compute/);
+});
+
+test("gstr8 is its own namespace and never GSTR-1/3B's", () => {
+  const src = code(API);
+  const start = src.indexOf("gstr8: {");
+  assert.ok(start > 0, "the gstr8 namespace exists");
+  const ns = src.slice(start, start + 500);
+  assert.match(ns, /\/api\/gst-workspace\/gstr8\/compute/);
+});
+
+test("ecommerceOperator is its own namespace, the rows GSTR-8 is built from", () => {
+  const src = code(API);
+  const start = src.indexOf("ecommerceOperator: {");
+  assert.ok(start > 0, "the ecommerceOperator namespace exists");
+  const ns = src.slice(start, start + 2000);
+  assert.match(ns, /\/api\/ecommerce-operator\/supplies/);
+  assert.match(ns, /\/api\/ecommerce-operator\/unregistered-supplies/);
 });
