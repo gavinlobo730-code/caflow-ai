@@ -1,0 +1,272 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Option Explicit
+
+Public Const START_ROW = 7
+Public Const FIXED_END_ROW_TO_CLEAR = 4000
+'Public Const GSTIN_REGEX = "^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[Z1-9A-J]{1}[0-9A-Z]{1}$"
+Public Const GSTIN_REGEX = "^[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}[1-9A-Z9a-z]{1}[Z1-9A-Jz1-9a-j]{1}[0-9A-Z9a-z]{1}$"
+Public Const INV_DATE_REGEX_NO_RANGE = "[0-3]{1}[0-9]{1}[-]{1}[0-1]{1}[0-9]{1}[-]{1}[2]{1}[0-9]{3}$"
+'amend q1
+Public Const INV_DATE_REGEX_Q0 = "[0-3]{1}[0-9]{1}[-]{1}[0]{1}[1-9]{1}|([1]{1}[0-2]{1})[-]{1}[2]{1}[0]{1}[1]{1}[7-8]{1}$"
+'amend q2
+Public Const INV_DATE_REGEX_Q5 = "[0-3]{1}[0-9]{1}[-]{1}[0]{1}[1-9]{1}|([1]{1}[0-2]{1})[-]{1}[2]{1}[0]{1}[1]{1}[7-8]{1}$"
+
+Public Const INV_DATE_REGEX_Q21 = "[0-3]{1}[0-9]{1}[-]{1}[0]{1}[7-9]{1}[-]{1}[2]{1}[0]{1}[1]{1}[7]{1}$"
+
+Public Const INV_DATE_REGEX_Q1 = "[0-3]{1}[0-9]{1}[-]{1}[0]{1}[1-9]{1}|([1]{1}[0-2]{1})[-]{1}[2]{1}[0]{1}[1]{1}[7-9]{1}$"
+'Below date only for 01 July 2017 to 30th Sept 2017
+Public Const INV_DATE_REGEX_Q2 = "[0-3]{1}[0-9]{1}[-]{1}[0]{1}[1-9]{1}|([1]{1}[0-2]{1})[-]{1}[2]{1}[0]{1}[1]{1}[7-9]{1}$"
+'Below date only for 01 July 2017 to 31th December 2017
+Public Const INV_DATE_REGEX_Q3 = "[0-3]{1}[0-9]{1}[-]{1}(([0]{1}[1-9]{1})|([1]{1}[0-2]{1}))[-]{1}[2]{1}[0]{1}[1]{1}[7-9]{1}$"
+'Below date only for 01 July 2017 to 31th MARCH 2018
+Public Const INV_DATE_REGEX_Q4 = "[0-3]{1}[0-9]{1}[-]{1}((([0]{1}[7-9]{1})|([1]{1}[0-2]{1}))[-]{1}[2]{1}[0]{1}[1]{1}[7]{1})|([0]{1}[1-3]{1}[-]{1}[2]{1}[0]{1}(18|19|20))$"
+Public Const AMT_REGEX = "^[-+]?\d{1,13}\.?\d{0,15}$"
+Public Const POSCOD_REGEX = "^[0-9]{2}$"
+Public Const INV_NO_REGEX = "^[a-zA-Z0-9-/]{1,16}$"
+'Public Const PW_PROTECT = "infy@123"
+Public Const GST_LIVE_DATE = "01-07-2017"
+Public Const PAN_REGEX = "^([a-zA-Z]){5}([0-9]){4}([a-zA-Z]){1}?$"
+
+
+
+Public Sub importFromJSON()
+ On Error GoTo ERR_HANDLER
+  
+    Dim jsonData As Object, filePath As Variant, filePaths As New VBA.Collection, fileProcessed As Integer: fileProcessed = 0
+    
+    Application.Cursor = xlWait 'show processing
+    
+    If Not HomeMod.validateGSTINData Then
+        MsgBox ("Please enter GSTIN and Financial year before opening downloaded file(s)."), vbCritical
+    Else
+        Set filePaths = FileUtil.openFile(False)
+         
+                If filePaths.count = 1 Then
+                   ' MsgBox ("Into clear data...")
+                   ' Call B2BMod.clearCMPData
+                    'MsgBox ("Exiting clear data...1")
+                    Call B2BMod.clearB2BData
+                    Call B2BRCMod.clearB2BRCData
+                    Call URPMod.clearURPSheet
+                    Call CMP08Mod.clearCMPData
+                    Call TDSTCSMod.clearTDSTCSData
+                    Call IMPS.clearIMPSSheet
+                    Call InoutsupMod.clearINOUTSUPData
+
+                    
+                Else
+                    GoTo DONE
+                End If
+        
+        For Each filePath In filePaths
+            If Trim(filePath & vbNullString) <> vbNullString Then
+                Set jsonData = CommonUtil.openJSON(CStr(filePath))
+                    If jsonData.Exists("error_report") Then
+                      MsgBox ("Please import valid JSON file."), vbCritical
+                    Else
+                     Call HomeMod.loadGSTINData(jsonData)
+                    'MsgBox ("Into load data...")
+                   '  MsgBox "B2B"
+                    
+                    Call B2BMod.loadB2BData(jsonData)
+                    Call B2BRCMod.loadB2BRCData(jsonData)
+                    Call URPMod.loadURPData(jsonData)
+                    Call CMP08Mod.loadCMPData(jsonData)
+                    Call TDSTCSMod.loadTDSTCSData(jsonData)
+                    Call IMPS.loadIMPSData(jsonData)
+                    Call InoutsupMod.loadOutwardData(jsonData)
+                    Call InoutsupMod.loadInwardData(jsonData)
+                                        
+                    fileProcessed = fileProcessed + 1
+                    End If
+                   
+            End If
+        Next
+        If fileProcessed > 0 Then
+            MsgBox ("JSON File loaded successfully..."), vbMsgBoxSetForeground
+        End If
+    End If
+DONE:
+    Application.Cursor = xlNormal 'show processing complete
+    Exit Sub
+ERR_HANDLER:
+    MsgBox ("Please import valid JSON file."), vbCritical
+    GoTo DONE
+End Sub
+
+
+Public Sub exportToJSON()
+ Dim allSheetsValid As Boolean: allSheetsValid = True
+   If Not HomeMod.validateGSTINData Then
+        MsgBox ("Please enter GSTIN and Financial Year before generating JSON file(s)."), vbCritical
+     ElseIf MainMod.checkEmpty Then
+        allSheetsValid = False
+        MsgBox "All worksheets are empty. JSON file cannot be generated."
+        Exit Sub
+    Else
+   ' MsgBox ("Processing may take some time. Please wait..."), vbMsgBoxSetForeground
+   Dim actionCode As Integer: actionCode = MsgBox("Processing may take some time. Please wait...", 1, "Choose options")
+  ' MsgBox actionCode
+   
+   If CStr(actionCode) <> 2 Then
+    Application.Cursor = xlWait 'show processing
+    Dim jsonExtracted As New Scripting.Dictionary, jsonString As String, fileName As String
+    Dim errorSheets As New VBA.Collection
+   
+    
+    If Not HomeMod.validateGSTINData Then
+        allSheetsValid = False
+        errorSheets.Add "Home"
+    End If
+    If Not B2BMod.validateB2B Then
+        allSheetsValid = False
+        errorSheets.Add "4A. B2B"
+    End If
+    If Not B2BRCMod.validateB2BRC Then
+        allSheetsValid = False
+        errorSheets.Add "4B. B2BRC"
+    End If
+    If Not URPMod.validateURP Then
+        allSheetsValid = False
+        errorSheets.Add "4C. URP"
+    End If
+    If Not IMPS.validateIMPS Then
+        allSheetsValid = False
+        errorSheets.Add "4D.IMPS"
+    End If
+    If Not InoutsupMod.validateInoutsup Then
+        allSheetsValid = False
+        errorSheets.Add "6. Inward Outward Supplies"
+    End If
+    
+    
+    Dim fpx As String
+    
+    If allSheetsValid Then
+            jsonExtracted.Add "gstin", Trim(Sheets("Home").Cells(7, 2).Value & vbNullString)
+
+            fpx = (Left(Application.VLookup(Sheets("Home").Cells(7, 3).Value, Sheets("master").Range("fin_map"), 2, False), 4) + 1)
+            fpx = "03" + fpx
+            jsonExtracted.Add "fp", fpx
+            jsonExtracted.Add "version", "4.2"
+           ' jsonExtracted.Add "hash", "GSTR4_HASH_VALUE_V1.0"
+            jsonExtracted.Add "b2bor", B2BMod.createB2BJson()("b2bor")
+            jsonExtracted.Add "b2br", B2BRCMod.createB2BRCJson()("b2br")
+            jsonExtracted.Add "b2bur", URPMod.createURPJson()("b2bur")
+             jsonExtracted.Add "imps", IMPS.createIMPSJson()("imps")
+             jsonExtracted.Add "outsupply", InoutsupMod.createOutwardDataJson()
+             'jsonExtracted.Add "insupply", InoutsupMod.createInwardDataJson()
+              
+            jsonString = JsonConverter.ConvertToJson(jsonExtracted)
+            
+            MsgBox "The data in the sheets are successfully captured in the JSON file. Please save this file and upload in the online portal to initiate filing.", vbMsgBoxSetForeground
+            
+            fileName = Sheets("Home").Cells(7, 2) & "_" & Trim(Sheets("Home").Cells(7, 3) & vbNullString) & _
+                "_R4_Output.json"
+                
+            FileUtil.writeToFile fileName, jsonString, "JSON File (*.json), *.json"
+        Else
+            MsgBox "There are errors in the sheet(s) : " _
+                & vbNewLine & vbNewLine & Join(CommonUtil.collectionToArray(errorSheets), vbNewLine) _
+                & vbNewLine & vbNewLine & "There are validation errors in the other sheets. Please correct it first before generating JSON file.", vbCritical
+    End If
+    End If
+   End If
+    
+    Application.Cursor = xlNormal 'show processing complete
+End Sub
+
+Public Sub importErrorReport()
+ On Error GoTo ERR_HANDLER
+    Dim jsonData As Object, filePath As Variant, filePaths As New VBA.Collection, fileProcessed As Integer: fileProcessed = 0
+    Dim errorSheets As New VBA.Collection
+    
+    Application.Cursor = xlWait 'show processing
+    
+    If Not HomeMod.validateGSTINData Then
+        MsgBox ("Please enter GSTIN and Financial Year before opening error report file(s)."), vbCritical
+    Else
+        Set filePaths = FileUtil.openFile(True)
+        
+        If filePaths.count = 1 Then
+            Call B2BMod.clearB2BData
+            Call B2BRCMod.clearB2BRCData
+            Call IMPS.clearIMPSSheet
+            Call URPMod.clearURPSheet
+            Call InoutsupMod.clearINOUTSUPData
+            
+                         
+        Else
+            MsgBox ("You have not selected any  error files from the unzipped error report folder.Please try again."), vbCritical
+            GoTo DONE
+        End If
+        
+        For Each filePath In filePaths
+            If Trim(filePath & vbNullString) <> vbNullString Then
+                Set jsonData = CommonUtil.openJSON(CStr(filePath))
+                If jsonData.Exists("error_report") Then
+                    Call HomeMod.loadGSTINData(jsonData)
+                    Set errorSheets = B2BMod.loadB2BErrorData(jsonData, errorSheets)
+                    Set errorSheets = B2BRCMod.loadB2BRCErrorData(jsonData, errorSheets)
+                    Set errorSheets = IMPS.loadIMPSErrorData(jsonData, errorSheets)
+                    Set errorSheets = URPMod.loadURPErrorData(jsonData, errorSheets)
+                    Set errorSheets = InoutsupMod.loadOutwardErrorData(jsonData, errorSheets)
+                    
+                    
+                    
+                    fileProcessed = fileProcessed + 1
+                
+                Else
+
+                    
+                    MsgBox ("Please import valid JSON file."), vbCritical
+                   ' fileProcessed = fileProcessed + 1
+                End If
+            End If
+        Next
+        If fileProcessed > 0 Then
+            MsgBox ("Error report successfully imported."), vbMsgBoxSetForeground
+            MsgBox "There are errors in the sheet(s) : " _
+                & vbNewLine & vbNewLine & Join(CommonUtil.collectionToArray(errorSheets), vbNewLine) _
+                & vbNewLine & vbNewLine & "Please correct the GST Portal validation errors first and generate JSON File to upload", vbCritical
+        End If
+    End If
+DONE:
+    Application.Cursor = xlNormal 'show processing complete
+    Exit Sub
+ERR_HANDLER:
+    MsgBox ("Please import valid JSON file."), vbCritical
+    GoTo DONE
+End Sub
+
+
+
+'To check if 4A and 4B sheet is empty
+Public Function checkEmpty() As Boolean
+    Dim b2bor As Integer: b2bor = B2BMod.getLastRowB2B
+    Dim b2br As Integer: b2br = B2BRCMod.getLastRowB2BRC
+    Dim b2bur As Integer: b2bur = URPMod.getLastRowURP
+    Dim impsrow As Integer: impsrow = IMPS.getLastRowIMPS
+    
+    
+    checkEmpty = False
+    If b2bor <> 7 Then
+    checkEmpty = False
+    'MsgBox "b2bor"
+    ElseIf b2br <> 7 Then
+    checkEmpty = False
+    ElseIf b2bur <> 7 Then
+    checkEmpty = False
+    
+   ' MsgBox "B2br"
+    ElseIf impsrow <> 7 Then
+    checkEmpty = False
+    Else
+    checkEmpty = True
+   ' MsgBox "Empty"
+    End If
+End Function
+
+
+
+-------------------------------------------------------------------------------

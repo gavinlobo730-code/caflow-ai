@@ -1,0 +1,359 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Public Const GSTIN_REGEX_HOME = "^[0-9]{2}[A-Z]{4}[0-9A-Z]{1}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[Z1-9A-J]{1}[0-9A-Z]{1}$"
+Public Const char_REGEX = "^.{1,1000}$"
+Public Const NAME_REGEX = "^[A-Za-z0-9\s\.]{1,99}$"
+Public Const HNAME_REGEX = "^.{1,100}$"
+Public Const ANAME_REGEX = "^.{1,30}$"
+Public Const ACTNAME_REGEX = "^.{1,100}$"
+Public Const ADDRESS_REGEX = "^.{1,60}$"
+Public Const QUAL_REGEX = "^.{1,1000}$"
+Public Const DATE_REGEX = "^(0?[1-9]|[12][0-9]|3[01])[./-](0?[1-9]|1[012])[./-](19|20)?\d\d$"
+Public Const MEM_REGEX = "^[0-9]{1,8}$"
+Public Const PIN_REGEX = "^[0-9]{6}$"
+Public Const AMT_REGEX = "^\d{1,13}\.?\d{0,2}$"
+Public Const DEC_REGEX = "^\-?\d+\.{1}\d{3,}$"
+Public Const PAN_REGEX = "^[A-Z]{5}[0-9]{4}[A-Z]{1}$"
+Public Const HASH_REGEX = "^[a-zA-Z0-9(),'.+-_&/ ]*$"
+Public Const EM1 = "Length exceeds 1000 character limit or line break present. "
+Public Const EM2 = "Mandatory field cannot be left blank. "
+Public Const EM3 = "Invalid GSTIN. "
+Public Const EM4 = "Please enter date in DD/MM/YYYY format. "
+Public Const EM5 = "Name should be alphanumeric and within 99 character limit. "
+Public Const EM6 = "Length exceeds 60 character limit. "
+Public Const EM7 = "Membership number can be numeric only, with maximum length of 8 characters. "
+Public Const EM8 = "There are Validation Error(s) in other sheets. Please correct it before generating JSON file. "
+Public Const EM9 = "Please enter First row before entering values in the subsequent rows. "
+Public Const EM10 = "Please Enter a Valid Pin Code. "
+Public Const EM11 = "Length exceeds 1000 character limit or line break present. "
+Public Const EM12 = "Please select a valid value from the dropdown. "
+Public Const EM13 = "Taxable value cannot be left empty when tax columns are present. "
+Public Const EM14 = "Value cannot be left empty when Amount of Total ITC or Amount of eligible ITC availed are present. "
+Public Const EM15 = "Length exceeds 100 characters. "
+Public Const EM16 = "Please enter a valid PAN number. "
+Public Const EM17 = "There are Validation Error(s) in other sheets. Please correct it before generating PDF file. "
+Public Const EM18 = "Length exceeds 30 characters. "
+Public Const EM19 = "Length exceeds 100 characters. "
+Public Const PARTB_RESTRICTED_FY = "|2020-21|2021-22|2022-23|2023-24|2024-25|"
+Public typ As String
+Public read_me As String
+Public home_sheet As String
+Public pdf_sheet As String:
+Public sheet1_name As String
+Public sheet2_name As String
+Public sheet3_name As String
+Public sheet4_name As String
+Public sheet5_name As String
+Public sheet6_name As String
+Public sheet7_name As String
+Public sheet8_name As String
+Public sheet9_name As String
+Public sheet10_name As String
+Public sheet11_name As String
+Public sheet12_name As String
+Public sheet13_name As String
+Public sheet14_name As String
+Public sheet15_name As String
+
+Public start_row_pdf_sheet As Integer
+Public end_row_pdf_sheet As Integer
+
+
+
+Public start_row_home As Integer
+Public end_row_home As Integer
+Public fixed_col_home As String
+Public sv_col_home As String
+Public por_err_col_home As String
+
+
+Public start_row_two_five As Integer
+Public end_row_two_five As Integer
+Public fixed_col_two_five As String
+Public sv_col_two_five As String
+Public por_err_col_two_five As String
+
+Public start_row_two_six As Integer
+Public end_row_two_six As Integer
+Public fixed_col_two_six As String
+Public sv_col_two_six As String
+Public por_err_col_two_six As String
+
+Public start_row_two_seven As Integer
+Public end_row_two_seven As Integer
+Public fixed_col_two_seven As String
+Public sv_col_two_seven As String
+Public por_err_col_two_seven As String
+
+Public start_row_two_eight As Integer
+Public end_row_two_eight As Integer
+Public fixed_col_two_eight As String
+Public sv_col_two_eight As String
+Public por_err_col_two_eight As String
+
+Public start_row_three_nine As Integer
+Public end_row_three_nine As Integer
+Public taxv_col_three_nine As String
+Public ctax_col_three_nine As String
+Public stax_col_three_nine As String
+Public itax_col_three_nine As String
+Public cetax_col_three_nine As String
+Public sv_col_three_nine As String
+Public por_err_col_three_nine As String
+
+Public start_row_three_ten As Integer
+Public end_row_three_ten As Integer
+Public fixed_col_three_ten As String
+Public sv_col_three_ten As String
+Public por_err_col_three_ten As String
+
+Public start_row_three_eleven As Integer
+Public end_row_three_eleven As Integer
+Public taxv_col_three_eleven As String
+Public ctax_col_three_eleven As String
+Public stax_col_three_eleven As String
+Public itax_col_three_eleven As String
+Public cetax_col_three_eleven As String
+Public sv_col_three_eleven As String
+Public por_err_col_three_eleven As String
+
+Public start_row_four_twelve As Integer
+Public end_row_four_twelve As Integer
+Public fixed_col_four_twelve As String
+Public sv_col_four_twelve As String
+Public por_err_col_four_twelve As String
+
+Public start_row_four_thirt As Integer
+Public end_row_four_thirt As Integer
+Public fixed_col_four_thirt As String
+Public sv_col_four_thirt As String
+Public por_err_col_four_thirt As String
+
+Public start_row_four_fourt As Integer
+Public end_row_four_fourt As Integer
+Public value_col_four_fourt As String
+Public amt_col_four_fourt As String
+Public amte_col_four_fourt As String
+Public sv_col_four_fourt As String
+Public por_err_col_four_fourt As String
+Public start_row_four_fourt_exp As Integer
+Public end_row_four_fourt_exp As Integer
+
+Public start_row_four_fift As Integer
+Public end_row_four_fift As Integer
+Public fixed_col_four_fift As String
+Public sv_col_four_fift As String
+Public por_err_col_four_fift As String
+
+Public start_row_four_sixt As Integer
+Public end_row_four_sixt As Integer
+Public fixed_col_four_sixt As String
+Public sv_col_four_sixt As String
+Public por_err_col_four_sixt As String
+
+Public start_row_five As Integer
+Public end_row_five As Integer
+Public taxv_col_five As String
+Public ctax_col_five As String
+Public stax_col_five As String
+Public itax_col_five As String
+Public cetax_col_five As String
+Public word_start_row_five As Integer
+Public word_end_row_five As Integer
+Public word_col_five As String
+Public sv_col_five As String
+Public por_err_col_five As String
+
+Public pb1_sv_col As String
+Public pb1_por_err_col As String
+Public pb2_sv_col As String
+Public pb2_por_err_col As String
+
+Public qual_col_pb1 As String
+Public start_row_pb1_qual As Integer
+Public end_row_pb1_qual As Integer
+Public qual_col_pb2 As String
+Public start_row_pb2_qual As Integer
+Public end_row_pb2_qual As Integer
+Public start_row_pb1 As Integer
+Public end_row_pb1 As Integer
+Public start_row_pb2 As Integer
+Public end_row_pb2 As Integer
+Public col_pb1 As String
+Public col_pb2 As String
+Public validate As Boolean
+'Boolean for fy= >24
+Public yr As String
+Public isFY2024OrLater As Boolean
+
+Public Sub initiali()
+    home_sheet = "Home"
+    read_me = "Read Me"
+    start_row_home = 9
+    fixed_col_home = "D"
+    pdf_sheet = "Table 1"
+    sheet1_name = "PT II (5)"
+    sheet2_name = "PT II (6)"
+    sheet3_name = "PT II (7)"
+    sheet4_name = "PT II (8)"
+    sheet5_name = "PT III (9)"
+    sheet6_name = "PT III (10)"
+    sheet7_name = "PT III (11)"
+    sheet8_name = "PT IV (12)"
+    sheet9_name = "PT IV(13)"
+    sheet10_name = "PT IV (14)"
+    sheet11_name = "PT IV (15)"
+    sheet12_name = "PT IV (16)"
+    sheet13_name = "PT V"
+    sheet14_name = "Part B (i)"
+    sheet15_name = "Part B (ii)"
+    end_row_home = 14
+    
+    yr = Left(Worksheets(home_sheet).Range("D10").value, 4)
+    isFY2024OrLater = (val(yr) >= 2024 Or Trim(yr) = "")
+    
+    sv_col_home = "J"
+    por_err_col_home = "K"
+    sv_col_two_five = "J"
+    por_err_col_two_five = "K"
+    sv_col_two_six = "J"
+    por_err_col_two_six = "K"
+    sv_col_two_seven = "I"
+    por_err_col_two_seven = "J"
+    sv_col_two_eight = "J"
+    por_err_col_two_eight = "K"
+    sv_col_three_nine = "J"
+    por_err_col_three_nine = "K"
+    sv_col_three_ten = "J"
+    por_err_col_three_ten = "K"
+    sv_col_three_eleven = "J"
+    por_err_col_three_eleven = "K"
+    sv_col_four_twelve = "J"
+    por_err_col_four_twelve = "K"
+    sv_col_four_thirt = "J"
+    por_err_col_four_thirt = "K"
+    sv_col_four_fourt = "J"
+    por_err_col_four_fourt = "K"
+    sv_col_four_fift = "J"
+    por_err_col_four_fift = "K"
+    sv_col_four_sixt = "H"
+    por_err_col_four_sixt = "I"
+    sv_col_five = "K"
+    por_err_col_five = "L"
+    pb1_sv_col = "K"
+    pb1_por_err_col = "L"
+    pb2_sv_col = "K"
+    pb2_por_err_col = "L"
+    
+    start_row_pdf_sheet = 4
+    'end_row_pdf_sheet=
+    start_row_two_five = 6
+    end_row_two_five = 23
+    fixed_col_two_five = "H"
+    
+    
+    start_row_two_six = 5
+    end_row_two_six = 5
+    fixed_col_two_six = "C"
+    
+    start_row_two_seven = 6
+    end_row_two_seven = IIf(isFY2024OrLater, 13, 12)
+    fixed_col_two_seven = "G"
+    
+    start_row_two_eight = 5
+    end_row_two_eight = 5
+    fixed_col_two_eight = "C"
+    
+    start_row_three_nine = 7
+    end_row_three_nine = IIf(isFY2024OrLater, 29, 28)
+    taxv_col_three_nine = "C"
+    ctax_col_three_nine = "E"
+    stax_col_three_nine = "F"
+    itax_col_three_nine = "G"
+    cetax_col_three_nine = "I"
+    others_taxrate_row_three_nine = 19
+    
+    start_row_three_ten = 5
+    end_row_three_ten = 5
+    fixed_col_three_ten = "C"
+    
+    start_row_three_eleven = 7
+    end_row_three_eleven = IIf(isFY2024OrLater, 21, 20)
+    taxv_col_three_eleven = "C"
+    ctax_col_three_eleven = "E"
+    stax_col_three_eleven = "F"
+    itax_col_three_eleven = "G"
+    cetax_col_three_eleven = "I"
+    others_taxrate_row_three_eleven = 15
+    
+    start_row_four_twelve = 6
+    end_row_four_twelve = 11
+    fixed_col_four_twelve = "H"
+    
+    start_row_four_thirt = 5
+    end_row_four_thirt = 5
+    fixed_col_four_thirt = "C"
+    
+    typ = ""
+    
+    start_row_four_fourt = 6
+    end_row_four_fourt = 25
+    value_col_four_fourt = "D"
+    amt_col_four_fourt = "F"
+    amte_col_four_fourt = "H"
+    start_row_four_fourt_exp = 22
+    end_row_four_fourt_exp = 22
+    
+    start_row_four_fift = 5
+    end_row_four_fift = 5
+    fixed_col_four_fift = "C"
+    
+    start_row_four_sixt = 6
+    end_row_four_sixt = 11
+    fixed_col_four_sixt = "C"
+    
+    start_row_five = 6
+    end_row_five = IIf(isFY2024OrLater, 24, 23)
+    taxv_col_five = "D"
+    ctax_col_five = "F"
+    stax_col_five = "G"
+    itax_col_five = "H"
+    cetax_col_five = "J"
+    word_start_row_five = 27
+    word_end_row_five = 34
+    word_col_five = "E"
+    others_taxrate_row_five = 14
+    
+    
+    start_row_pb1 = 5
+    qual_col_pb1 = "C"
+    start_row_pb1_qual = 66
+    end_row_pb1_qual = 66
+    end_row_pb1 = 77
+    
+    start_row_pb2 = 5
+    qual_col_pb2 = "C"
+    start_row_pb2_qual = 54
+    end_row_pb2_qual = 54
+    end_row_pb2 = 65
+    
+    col_pb1 = "E"
+    col_pb2 = "D"
+    
+    validate = True
+    
+End Sub
+
+Public Sub Unprotect_all_sheet()
+'Loop through all sheets in the workbook
+
+      For i = 1 To Sheets.count
+        t = Sheets(i).Name
+        If Not (t = "Table 1" Or t = "Table 2" Or t = "Table 3" Or t = "Table 4" Or t = "Master" Or t = "State dropdown") Then
+            Sheets(i).Unprotect Password:="pass"
+            'Sheets(i).Protect Password:="pass", UserInterFaceOnly:=True
+         
+        End If
+      Next i
+End Sub
+ 
+-------------------------------------------------------------------------------

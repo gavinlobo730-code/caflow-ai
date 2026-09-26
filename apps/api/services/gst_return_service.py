@@ -1359,6 +1359,114 @@ def outward_turnover(db, firm_id: str, client_id: str, period: str,
     }
 
 
+def _cmp_line_dict(line) -> dict:
+    return {
+        "taxable_value_paise": line.taxable_value_paise,
+        "igst_paise": line.igst_paise,
+        "cgst_paise": line.cgst_paise,
+        "sgst_paise": line.sgst_paise,
+        "cess_paise": line.cess_paise,
+        "tax_paise": line.tax_paise,
+    }
+
+
+def cmp08_statement(db, firm_id: str, client_id: str, period: str,
+                    gstin: Optional[str] = None, *,
+                    interest_paise: int = 0) -> dict:
+    """FORM GST CMP-08 for one quarter (GST-25).
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+
+    `domain/gst/composition.py` computes what the form asks for; this fetches
+    the two inputs it cannot see for itself, reusing the SAME documents an
+    ordinary registration's GSTR-3B is built from rather than a second
+    pipeline:
+
+    * Row 1 (outward supplies, "including exempt supplies") is
+      `outward_turnover`'s own `total_paise` — the identical figure Rule 42/43
+      already read off `_outward_transactions` for the ordinary return, and
+      CMP-08's row 1 asks for exactly that: the whole of turnover, not a
+      taxable slice of it.
+    * Row 2 (inward RCM supplies) reads the same posted bills 3.1(d) reads,
+      filtered to `is_reverse_charge` — s.10(4) bars a composition dealer from
+      CLAIMING credit, not from being CHARGED under s.9(3)/(4) in the first
+      place.
+
+    `compute_gstr3b` is deliberately NOT called here: it carries the ITC and
+    §49(5) set-off engine an ordinary registration needs and a composition
+    dealer never reaches (s.10(4)), so reusing it whole would be over-built and
+    reusing only pieces of it would be a second, parallel outward/RCM
+    computation for the two figures above to drift against.
+
+    ALWAYS RESOLVED QUARTERLY (Rule 62), regardless of what
+    `Registration.filing_frequency` says — that field answers the QRMP
+    question (CGST Rule 61A, an ordinary GSTR-1/3B filer's choice), which a
+    composition registration never reaches at all.
+
+    `gstin=None` means the client's PRIMARY registration — the common case for
+    a small composition dealer holding one GSTIN (migration 420 let the
+    primary itself be composition; before it, only an ADDITIONAL registration
+    could be). A `gstin` the client does not hold, or one that is not
+    COMPOSITION, is refused rather than silently answered as GSTR-3B would be.
+    """
+    from services.client_gst_registration_service import resolve as _resolve_registration
+    from domain.gst.registrations import QUARTERLY, COMPOSITION
+    from domain.gst import composition as cmp
+
+    registration = _resolve_registration(db, firm_id, client_id, gstin)
+    if registration.registration_type != COMPOSITION:
+        raise ValueError(
+            f"{registration.gstin} is a {registration.registration_type} "
+            f"registration. CMP-08 is for a COMPOSITION registration (CGST "
+            f"s.10) only — this one files GSTR-1 and GSTR-3B instead.")
+
+    window = return_period.resolve(period, QUARTERLY)
+    # window.label is e.g. "Q1 Apr-Jun 2026 (quarter)" — the bare quarter is
+    # its first word. return_period.resolve is always asked QUARTERLY above,
+    # so this is never the bare-month label the MONTHLY branch would produce.
+    quarter = window.label.split()[0]
+    financial_year = ist_fy_label(window.start)
+
+    outward = outward_turnover(db, firm_id, client_id, window.key, QUARTERLY)
+
+    rcm_bills = [b for b in _posted_bills(db, firm_id, client_id, window.start, window.end)
+                if bool(b.get("is_reverse_charge"))]
+    rcm_taxable = sum(int(b.get("taxable_amount_paise") or 0) for b in rcm_bills)
+    rcm_igst = sum(int(b.get("igst_paise") or 0) for b in rcm_bills)
+    rcm_cgst = sum(int(b.get("cgst_paise") or 0) for b in rcm_bills)
+    rcm_sgst = sum(int(b.get("sgst_paise") or 0) for b in rcm_bills)
+    rcm_cess = sum(int(b.get("cess_paise") or 0) for b in rcm_bills)
+
+    stmt = cmp.compute_cmp08(
+        financial_year=financial_year, quarter=quarter,
+        category=registration.composition_category,
+        outward_taxable_paise=outward["total_paise"],
+        inward_rcm_taxable_paise=rcm_taxable,
+        inward_rcm_igst_paise=rcm_igst,
+        inward_rcm_cgst_paise=rcm_cgst,
+        inward_rcm_sgst_paise=rcm_sgst,
+        inward_rcm_cess_paise=rcm_cess,
+        interest_paise=interest_paise,
+    )
+
+    return {
+        "period": window.key,
+        "period_window": window.as_dict(),
+        "gstin": registration.gstin,
+        "registration_type": registration.registration_type,
+        "financial_year": stmt.financial_year,
+        "quarter": stmt.quarter,
+        "category": stmt.category,
+        "rate_bps": stmt.rate_bps,
+        "outward_supplies": _cmp_line_dict(stmt.outward_supplies),
+        "inward_rcm_supplies": _cmp_line_dict(stmt.inward_rcm_supplies),
+        "tax_paid": _cmp_line_dict(stmt.tax_paid),
+        "interest_paise": stmt.interest_paise,
+        "gaps": stmt.gaps + outward["caveats"],
+        "composition_rates_verified": cmp.VERIFIED,
+    }
+
+
 def _table_4a_gaps() -> list[dict]:
     """The 4(A) rows this product cannot derive, each with the reason.
 

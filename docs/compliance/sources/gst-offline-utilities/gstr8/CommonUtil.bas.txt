@@ -1,0 +1,258 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Public hover As Boolean
+
+Sub PasteSpecial()
+Attribute PasteSpecial.VB_ProcData.VB_Invoke_Func = "v\n14"
+    selection.PasteSpecial xlPasteFormulas
+End Sub
+
+'Opens and checks if the selected JSON is a valid one
+Public Function openJSON(sFilePath As String) As Object
+On Error GoTo ERR_HANDLER
+    Dim fileText As String, r As Integer
+    Open sFilePath For Input As #1
+    Do Until EOF(1)
+        Line Input #1, strLine
+        fileText = fileText & strLine
+        r = r + 1
+    Loop
+    Close #1
+    Set openJSON = JsonConverter.ParseJson(fileText)
+CLEAN_UP:
+    Exit Function
+ERR_HANDLER:
+    MsgBox ("Error loading JSON file. Invalid JSON file/format."), vbCritical
+    GoTo CLEAN_UP
+End Function
+
+'Checks if the given value iterm, passes the given regex iRegex
+Public Function matchRegex(iterm As String, iRegex As String) As Boolean
+    
+    Set OBJ_RE = CreateObject("VBScript.RegExp")
+    OBJ_RE.Global = True
+    OBJ_RE.IgnoreCase = False
+    OBJ_RE.Pattern = iRegex
+    If Not OBJ_RE.test(iterm) Then
+        matchRegex = False
+    Else
+        matchRegex = True
+    End If
+End Function
+'Assignes dropdown of GSTIN in TCS and TCSA from Suppliers Master-RD
+Public Sub Assign_dropdown_submitted(sheetName As String)
+    Sheets(sheetName).Unprotect "pass"
+    If sheetName = "3 TCS" Then
+        
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("B6:B15006").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Suppliers Master-RD'!$C$5:$C$" & CStr(ExtraMod.getLastRowMaster - 1)
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = False
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    ElseIf sheetName = "4 Amend" Then
+       
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("D7:D15007").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Suppliers Master-RD'!$C$5:$C$" & CStr(ExtraMod.getLastRowMaster - 1)
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = False
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("F7:F15007").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Suppliers Master-RD'!$C$5:$C$" & CStr(ExtraMod.getLastRowMaster - 1)
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = False
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    End If
+    
+    
+    
+    Sheets("Suppliers Master-RD").Select
+    
+End Sub
+'Deletes the dropdown of GSTIN in TCS and TCSA
+Public Sub Delete_dropdown(sheetName As String)
+    Sheets(sheetName).Unprotect "pass"
+    If sheetName = "3 TCS" Then
+        
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("B6:B15006").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    ElseIf sheetName = "4 Amend" Then
+       
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("D7:D15007").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("F7:F15007").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    End If
+    
+    
+    Sheets("Suppliers Master-RD").Select
+    
+End Sub
+
+'Assignes dropdown of EID in UNRD and UNRDA from Suppliers Master-UNRD
+
+Public Sub Assign_dropdown_submittedEID(sheetName As String)
+    Sheets(sheetName).Unprotect "pass"
+  
+    If sheetName = "3.1 UNRD" Then
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("B6:B1048576").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Suppliers Master-UNRD'!$C$5:$C$" & CStr(ExtraMod.getLastRowMasterEID - 1)
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = False
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    ElseIf sheetName = "4.1 Amend-UNRD" Then
+       
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("D7:D1048576").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Suppliers Master-UNRD'!$C$5:$C$" & CStr(ExtraMod.getLastRowMasterEID - 1)
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = False
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("F7:F1048576").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Suppliers Master-UNRD'!$C$5:$C$" & CStr(ExtraMod.getLastRowMasterEID - 1)
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = False
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    End If
+    
+    Sheets("Suppliers Master-UNRD").Select
+
+End Sub
+
+'Deletes the dropdown of EID in UNRD and UNRDA
+Public Sub Delete_dropdownEID(sheetName As String)
+    Sheets(sheetName).Unprotect "pass"
+    If sheetName = "3.1 UNRD" Then
+        
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("B6:B1048576").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    ElseIf sheetName = "4.1 Amend-UNRD" Then
+       
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("D7:D1048576").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Select
+        Sheets(sheetName).Range("F7:F1048576").Select
+        With selection.Validation
+        .Delete
+        Sheets(sheetName).Cells(1, 1).Select
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    End If
+    
+    
+    Sheets("Suppliers Master-UNRD").Select
+
+End Sub
+-------------------------------------------------------------------------------

@@ -26,6 +26,45 @@ class GSTFilingFrequency(str, Enum):
     QUARTERLY = "quarterly"
 
 
+# GST-25, migration 420: what the client's PRIMARY registration (clients.gstin)
+# IS under s.25 — a composition dealer files CMP-08/GSTR-4, never GSTR-1/3B.
+# domain/gst/registrations.py is the authority for the vocabulary and for what
+# each type means; this mirrors its REGISTRATION_TYPES rather than declaring a
+# second one, because a client model with its own list is exactly the kind of
+# second vocabulary this codebase keeps having to retire.
+def _registration_types() -> tuple[str, ...]:
+    from domain.gst.registrations import REGISTRATION_TYPES
+    return REGISTRATION_TYPES
+
+
+def _composition_categories() -> tuple[str, ...]:
+    from domain.gst.composition import COMPOSITION_CATEGORIES
+    return COMPOSITION_CATEGORIES
+
+
+def validate_gst_registration_type(v: Optional[str]) -> Optional[str]:
+    if v is None:
+        return v
+    value = v.strip().lower()
+    types = _registration_types()
+    if value not in types:
+        raise ValueError(
+            f"{v!r} is not a GST registration type. One of: {', '.join(types)}.")
+    return value
+
+
+def validate_composition_category(v: Optional[str]) -> Optional[str]:
+    if v is None:
+        return v
+    value = v.strip().lower()
+    categories = _composition_categories()
+    if value not in categories:
+        raise ValueError(
+            f"{v!r} is not a composition category. One of: "
+            f"{', '.join(categories)}.")
+    return value
+
+
 # PAN: 5 uppercase letters + 4 digits + 1 uppercase letter (IT Act)
 PAN_REGEX = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
 
@@ -59,6 +98,16 @@ class ClientCreate(BaseModel):
     pincode: Optional[str] = None
     state_code: Optional[str] = None
     gst_filing_frequency: Optional[GSTFilingFrequency] = GSTFilingFrequency.MONTHLY
+    # What the PRIMARY registration (the gstin above) IS under s.25 — see
+    # domain/gst/registrations.py. None means unrecorded, not "regular" — the
+    # domain layer's own primary_of() supplies that default, so a bare column
+    # left NULL here still resolves the way every client did before this field
+    # existed.
+    gst_registration_type: Optional[str] = None
+    # Which s.10 rate a COMPOSITION primary pays — meaningless otherwise, and
+    # None means unrecorded rather than any particular rate (domain/gst/
+    # composition.py refuses rather than guessing one).
+    composition_category: Optional[str] = None
     status: ClientStatus = ClientStatus.ACTIVE
     is_test: bool = False
     notes: Optional[str] = None
@@ -74,6 +123,16 @@ class ClientCreate(BaseModel):
         if v:
             return validate_gstin(v.upper())
         return v
+
+    @field_validator("gst_registration_type")
+    @classmethod
+    def registration_type_must_be_valid(cls, v: Optional[str]) -> Optional[str]:
+        return validate_gst_registration_type(v)
+
+    @field_validator("composition_category")
+    @classmethod
+    def composition_category_must_be_valid(cls, v: Optional[str]) -> Optional[str]:
+        return validate_composition_category(v)
 
 
 class PracticeIdentityUpdate(BaseModel):
@@ -107,6 +166,9 @@ class ClientUpdate(BaseModel):
     state: Optional[str] = None
     pincode: Optional[str] = None
     gst_filing_frequency: Optional[GSTFilingFrequency] = None
+    # See ClientCreate — same field, same meaning, same domain authority.
+    gst_registration_type: Optional[str] = None
+    composition_category: Optional[str] = None
     # Whether this client's ADVANCES bear tax — GSTR-1 Tables 11A and 11B.
     #
     # CGST s.13(2) charges an advance for SERVICES when it is received;

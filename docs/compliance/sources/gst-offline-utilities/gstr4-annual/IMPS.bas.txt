@@ -1,0 +1,490 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Public Sub loadIMPSData(jsonData As Object)
+    Dim invoice As Dictionary, Item As Dictionary
+    Dim i As Integer: i = START_ROW
+'    Do Until Trim(Sheets("4D. IMPS").Cells(i, 2).Value & vbNullString) = vbNullString
+'        i = i + 1
+'    Loop
+    If jsonData.Exists("imps") Then
+        For Each invoice In jsonData("imps")
+            For Each Item In invoice("itms")
+'                Sheets("4D. IMPS").Cells(i, 2).Value = invoice("inum")
+'                Sheets("4D. IMPS").Cells(i, 3).Value = invoice("idt")
+'                Sheets("4D. IMPS").Cells(i, 4).Value = invoice("val")
+                If Trim(invoice("pos") & vbNullString) <> vbNullString Then
+                  
+                    If CommonUtil.IsPosInArray(invoice("pos")) Then
+                      Sheets("4D. IMPS").Cells(i, 2).Value = Application.VLookup(invoice("pos") & "C", Worksheets("master").Range("pos_map"), 2, False)
+                    Else
+                      Sheets("4D. IMPS").Cells(i, 2).Value = vbNullString
+                    End If
+                   
+                End If
+                Sheets("4D. IMPS").Cells(i, 4).Value = Item("rt")
+                Sheets("4D. IMPS").Cells(i, 3).Value = Item("txval")
+                Sheets("4D. IMPS").Cells(i, 5).Value = Item("iamt")
+                Sheets("4D. IMPS").Cells(i, 6).Value = Item("csamt")
+                If (CStr(invoice("flag")) = "D") Then
+           ' MsgBox CStr(ctin("flag"))
+            Sheets("4D. IMPS").Cells(i, 7).Value = "Delete"
+            Else
+            Sheets("4D. IMPS").Cells(i, 7).Value = "Add"
+            End If
+          
+                i = i + 1
+            Next
+        Next
+    End If
+End Sub
+
+Public Function loadIMPSErrorData(jsonData As Object, errorSheets As Collection) As Variant
+    Dim invoice As Dictionary, Item As Dictionary
+    Dim i As Integer: i = START_ROW
+    Do Until Trim(Sheets("4D. IMPS").Cells(i, 2).Value & vbNullString) = vbNullString
+        i = i + 1
+    Loop
+    If jsonData("error_report").Exists("imps") Then
+        errorSheets.Add "4D. IMPS"
+        For Each invoice In jsonData("error_report")("imps")
+            For Each Item In invoice("itms")
+'
+                If Trim(invoice("pos") & vbNullString) <> vbNullString Then
+                     If CommonUtil.IsPosInArray(invoice("pos")) Then
+                      Sheets("4D. IMPS").Cells(i, 2).Value = Application.VLookup(invoice("pos") & "C", Worksheets("master").Range("pos_map"), 2, False)
+                     Else
+                      Sheets("4D. IMPS").Cells(i, 2).Value = vbNullString
+                     End If
+                    'MsgBox "Hi"
+                End If
+                Sheets("4D. IMPS").Cells(i, 4).Value = Item("rt")
+                Sheets("4D. IMPS").Cells(i, 3).Value = Item("txval")
+                Sheets("4D. IMPS").Cells(i, 5).Value = Item("iamt")
+                Sheets("4D. IMPS").Cells(i, 6).Value = Item("csamt")
+                If (CStr(invoice("flag")) = "D") Then
+           ' MsgBox CStr(ctin("flag"))
+            Sheets("4D. IMPS").Cells(i, 7).Value = "Delete"
+            Else
+            Sheets("4D. IMPS").Cells(i, 7).Value = "Add"
+            End If
+                Sheets("4D. IMPS").Cells(i, 9).Value = invoice("error_msg")
+
+                i = i + 1
+            Next
+            
+        Next
+    End If
+    Set loadIMPSErrorData = errorSheets
+End Function
+
+Public Sub clearIMPSSheet()
+    Application.ScreenUpdating = False
+    Sheets("4D. IMPS").Unprotect "Gstr4@321"
+    With Sheets("4D. IMPS")
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 4)).ClearContents
+        .Range(.Cells(START_ROW, 5), .Cells(FIXED_END_ROW_TO_CLEAR, 9)).ClearContents
+        
+    Application.ScreenUpdating = False
+    Sheets("4D. IMPS").Unprotect "Gstr4@321"
+    
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 4)).Interior.ColorIndex = 2
+        .Range(.Cells(START_ROW, 5), .Cells(FIXED_END_ROW_TO_CLEAR, 9)).Interior.ColorIndex = 2
+
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 4)).ClearComments
+        .Range(.Cells(START_ROW, 5), .Cells(FIXED_END_ROW_TO_CLEAR, 9)).ClearComments
+    End With
+    Application.ScreenUpdating = False
+     Sheets("4D. IMPS").Protect "Gstr4@321"
+End Sub
+
+Public Function createIMPSJson() As Variant
+    Dim impsDetails As New Scripting.Dictionary
+    Dim rateItems As Scripting.Dictionary, invoiceItems As Scripting.Dictionary, invWrapper As New Scripting.Dictionary
+    
+    Dim itmsCollection As Collection, itmObject As Object
+    
+    Dim count As Integer, k1 As Variant, k2 As Variant
+    
+    Set rateItems = createSimpleJson("4D. IMPS", 7, 3, 6, 2, 4, 7)
+    Set posItems = createSimpleJson("4D. IMPS", 7, 2, 2, 2, 7)
+       
+   
+        For Each k2 In posItems.Keys
+        
+            Set itmsCollection = New Collection
+               
+              For Each k1 In rateItems.Keys
+                      Set itmObject = rateItems.Item(k1)
+              
+                      itmsCollection.Add itmObject
+                      Set itmObject = Nothing
+                 
+              Next
+        
+            posItems(k2).Add "itms", itmsCollection
+             If CStr(Split(k2, "_")(1)) = "Delete" Then
+                  posItems(k2).Add "flag", "D"
+             End If
+            Set itmsCollection = Nothing
+         Next
+
+  
+   If posItems.count > 0 Then
+        Set itmsCollection = New Collection
+        For Each k1 In posItems.Keys
+            
+            Set itmObject = posItems.Item(k1)
+            itmsCollection.Add itmObject
+            Set itmObject = Nothing
+        Next
+        impsDetails.Add "imps", itmsCollection
+        Set itmsCollection = Nothing
+    End If
+   
+   
+ 'Debug.Print JsonConverter.ConvertToJson(posItems, Whitespace:=2)
+        
+    Set createIMPSJson = impsDetails
+   ' Debug.Print JsonConverter.ConvertToJson(impsDetails, Whitespace:=2)
+End Function
+Public Function validateIMPS() As Boolean
+    Dim icol As Integer, iRow As Integer: iRow = START_ROW
+    Sheets("4D. IMPS").Unprotect Password:="Gstr4@321"
+   ' Dim dateRegex As String: dateRegex = INV_DATE_REGEX_Q2
+    Dim isValidated As Boolean: isValidated = True
+    Dim tempInvoice As String, tempAction As String
+    Dim uniqueMap As New Scripting.Dictionary, actionDetails As Scripting.Dictionary, uniqueRateDetails As Scripting.Dictionary
+    Dim uniqueActionDetails As Scripting.Dictionary, actionMap As New Scripting.Dictionary
+   'Dim uniqueMap As New Scripting.Dictionary, uniqueRateDetails As Scripting.Dictionary
+    Dim k1 As Variant, k4 As Variant
+     
+    If Not HomeMod.validateGSTINData Then
+        MsgBox "Please enter the details in 'Home' Sheet."
+        Sheets("Home").Activate
+        End
+    End If
+      
+    Range(Sheets("4D. IMPS").Cells(iRow, 2), Sheets("4D. IMPS").Cells(FIXED_END_ROW_TO_CLEAR, 6)).Interior.ColorIndex = 2
+    Range(Sheets("4D. IMPS").Cells(iRow, 7), Sheets("4D. IMPS").Cells(FIXED_END_ROW_TO_CLEAR, 7)).Interior.ColorIndex = 2
+    Range(Sheets("4D. IMPS").Cells(iRow, 7), Sheets("4D. IMPS").Cells(FIXED_END_ROW_TO_CLEAR, 7)).ClearComments
+    Range(Sheets("4D. IMPS").Cells(iRow, 2), Sheets("4D. IMPS").Cells(FIXED_END_ROW_TO_CLEAR, 6)).ClearComments
+    Range(Sheets("4D. IMPS").Cells(iRow, 8), Sheets("4D. IMPS").Cells(FIXED_END_ROW_TO_CLEAR, 9)).ClearContents
+    
+    Do Until IsEmpty(Sheets("4D. IMPS").Cells(iRow, 2).Value) And IsEmpty(Sheets("4D. IMPS").Cells(iRow, 3).Value) And IsEmpty(Sheets("4D. IMPS").Cells(iRow, 4).Value) And IsEmpty(Sheets("4D. IMPS").Cells(iRow, 7).Value)
+
+        'flag check
+        
+        
+        If Trim(Sheets("4D. IMPS").Cells(iRow, 7).Value & vbNullString) = vbNullString Then
+                Application.ScreenUpdating = False
+                Sheets("4D. IMPS").Unprotect "Gstr4@321"
+                Sheets("4D. IMPS").Cells(iRow, 7).Interior.ColorIndex = 3
+                Sheets("4D. IMPS").Cells(iRow, 7).ClearComments
+                Sheets("4D. IMPS").Cells(iRow, 7).AddComment "Please provide details in mandatory fields."
+                Sheets("4D. IMPS").Cells(iRow, 8).Value = "Error found in row."
+                isValidated = isValidated And False
+                
+          
+          ElseIf Not CommonUtil.IsInActionType(Trim(Sheets("4D. IMPS").Cells(iRow, 7).Value & vbNullString)) Then
+                Application.ScreenUpdating = False
+                Sheets("4D. IMPS").Unprotect "Gstr4@321"
+                       
+                       Sheets("4D. IMPS").Cells(iRow, 7).Interior.ColorIndex = 3
+                       Sheets("4D. IMPS").Cells(iRow, 7).ClearComments
+                       Sheets("4D. IMPS").Cells(iRow, 7).AddComment "Please select correct option for action from the dropdown i.e. either add or delete."
+                       Sheets("4D. IMPS").Cells(iRow, 8).Value = "Error found in row."
+                       isValidated = isValidated And False
+                       
+                  End If
+                  
+            
+                
+                
+        'Mandatory field check
+        For icol = 2 To 4
+            If Trim(Sheets("4D. IMPS").Cells(iRow, icol).Value & vbNullString) = vbNullString Then
+            Application.ScreenUpdating = False
+            Sheets("4D. IMPS").Unprotect "Gstr4@321"
+                Sheets("4D. IMPS").Cells(iRow, icol).Interior.ColorIndex = 3
+                Sheets("4D. IMPS").Cells(iRow, icol).ClearComments
+                Sheets("4D. IMPS").Cells(iRow, icol).AddComment "Please provide details in mandatory fields."
+                Sheets("4D. IMPS").Cells(iRow, 8).Value = "Error found in row."
+                isValidated = isValidated And False
+            'End If
+            
+            ElseIf icol = 4 Then
+
+              Dim rateValue As String: rateValue = Trim(Sheets("4D. IMPS").Cells(iRow, icol).Value & vbNullString)
+              If Not CommonUtil.IsInArray(rateValue) Then
+              Application.ScreenUpdating = False
+               Sheets("4D. IMPS").Unprotect "Gstr4@321"
+              
+                         Sheets("4D. IMPS").Cells(iRow, icol).Interior.ColorIndex = 3
+                         Sheets("4D. IMPS").Cells(iRow, icol).ClearComments
+                         Sheets("4D. IMPS").Cells(iRow, icol).AddComment "Select applicable rate of tax from dropdown."
+                         Sheets("4D. IMPS").Cells(iRow, 8).Value = "Error found in row."
+                         isValidated = isValidated And False
+               
+              End If
+              End If
+              
+                Dim txamount As String: txamount = Trim(Sheets("4D. IMPS").Cells(iRow, 3).Value & vbNullString)
+               If txamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4D. IMPS").Cells(iRow, 3).Value), AMT_REGEX) Then
+                        Application.ScreenUpdating = False
+                        Sheets("4D. IMPS").Unprotect "Gstr4@321"
+                         Sheets("4D. IMPS").Cells(iRow, 3).Interior.ColorIndex = 3
+                         Sheets("4D. IMPS").Cells(iRow, 3).ClearComments
+                         Sheets("4D. IMPS").Cells(iRow, 3).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4D. IMPS").Cells(iRow, 8).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+               
+                Dim iamount As String: iamount = Trim(Sheets("4D. IMPS").Cells(iRow, 5).Value & vbNullString)
+               If iamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4D. IMPS").Cells(iRow, 5).Value), AMT_REGEX) Then
+                        Application.ScreenUpdating = False
+                        Sheets("4D. IMPS").Unprotect "Gstr4@321"
+                         Sheets("4D. IMPS").Cells(iRow, 5).Interior.ColorIndex = 3
+                         Sheets("4D. IMPS").Cells(iRow, 5).ClearComments
+                         Sheets("4D. IMPS").Cells(iRow, 5).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4D. IMPS").Cells(iRow, 8).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+           
+            Dim csamount As String: csamount = Trim(Sheets("4D. IMPS").Cells(iRow, 6).Value & vbNullString)
+               If csamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4D. IMPS").Cells(iRow, 6).Value), AMT_REGEX) Then
+                        Application.ScreenUpdating = False
+                        Sheets("4D. IMPS").Unprotect "Gstr4@321"
+                         Sheets("4D. IMPS").Cells(iRow, 6).Interior.ColorIndex = 3
+                         Sheets("4D. IMPS").Cells(iRow, 6).ClearComments
+                         Sheets("4D. IMPS").Cells(iRow, 6).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4D. IMPS").Cells(iRow, 8).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+            
+            
+              
+            
+          Next
+        iRow = iRow + 1
+    Loop
+                
+            
+' Check duplicate  POS and rate.
+ Set uniqueRateDetails = createSimpleJson("4D. IMPS", 7, 2, 5, 4)
+' Debug.Print JsonConverter.ConvertToJson(uniqueRateDetails, Whitespace:=2)
+' Debug.Print JsonConverter.ConvertToJson(uniqueRateDetails, Whitespace:=2)
+            Dim iRows1 As Integer
+            Dim temps As Variant
+            Dim rCells As Range
+            iRows1 = 7
+            Dim uniqueCount As Integer
+            uniqueCount = 0
+             For Each k1 In uniqueRateDetails.Keys
+            
+                Do Until IsEmpty(Sheets("4D. IMPS").Cells(iRows1, 2).Value)
+                    temps = Sheets("4D. IMPS").Cells(iRows1, 4).Value
+'                     MsgBox k1
+'                      MsgBox temps
+                    If CStr(k1) = CStr(temps) Then
+                   
+                         
+                       '   MsgBox k1
+                       If uniqueMap.Exists(k1) Then
+                     '   MsgBox "already"
+                        uniqueCount = uniqueMap(k1)
+                        uniqueMap.Remove k1
+                        uniqueMap.Add k1, uniqueCount + 1
+                        Else
+                        uniqueMap.Add k1, 1
+                      '  MsgBox "Hello"
+                        End If
+                      
+                    End If
+                 
+                    iRows1 = iRows1 + 1
+                   
+                 Loop
+                 
+                 
+                 temps = ""
+                 iRows1 = 7
+                 uniqueCount = 0
+              Next
+              
+       ' Debug.Print JsonConverter.ConvertToJson(uniqueMap, Whitespace:=2)
+
+
+            Dim iRows2 As Integer
+            Dim temp2 As Variant
+            Dim rCell2 As Range
+            iRows2 = 7
+            For Each k1 In uniqueMap.Keys
+           If uniqueMap.Item(k1) > 1 Then
+
+                Do Until IsEmpty(Sheets("4D. IMPS").Cells(iRows2, 2).Value)
+                    temp2 = Sheets("4D. IMPS").Cells(iRows2, 4).Value
+                    If CStr(temp2) = CStr(k1) Then
+                    Application.ScreenUpdating = False
+                        Sheets("4D. IMPS").Unprotect "Gstr4@321"
+                        Range(Sheets("4D. IMPS").Cells(iRows2, 4), Sheets("4D. IMPS").Cells(iRows2, 4)).Interior.ColorIndex = 3
+                        Sheets("4D. IMPS").Activate
+                        ActiveSheet.Range(Cells(iRows2, 4), Cells(iRows2, 4)).Select
+                        For Each rCell2 In Selection
+                            With rCell2
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="Duplicate record found, update the same."
+                            End With
+                        Next
+                        Sheets("4D. IMPS").Cells(iRows2, 8).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                    iRows2 = iRows2 + 1
+                Loop
+           End If
+            temp2 = ""
+            iRows2 = 7
+        
+
+      Next
+      
+      
+      
+      
+      
+  ' Check Action type for same  POS
+ Set uniqueActionDetails = createSimpleJson("4D. IMPS", 7, 2, 5, 7)
+' Debug.Print JsonConverter.ConvertToJson(uniqueRateDetails, Whitespace:=2)
+ 'Debug.Print JsonConverter.ConvertToJson(uniqueActionDetails, Whitespace:=2)
+            Dim iRows5 As Integer
+            Dim temp5 As Variant
+            Dim rCells5 As Range
+            iRows5 = 7
+           
+            Dim actionCoun1t As Integer
+            actionCount1 = 0
+             For Each k1 In uniqueActionDetails.Keys
+             
+             
+              actionCount1 = actionCount1 + 1
+               
+              If (actionCount1 > 1) Then
+             Do Until IsEmpty(Sheets("4D. IMPS").Cells(iRows5, 2).Value)
+                    temp5 = Sheets("4D. IMPS").Cells(iRows5, 2).Value
+                   ' If CStr(temp5) = CStr(k1) Then
+                    
+                     If Trim(Sheets("4D. IMPS").Cells(iRows5, 7).Value & vbNullString) = vbNullString Then
+                     Application.ScreenUpdating = False
+                    Sheets("4D. IMPS").Unprotect "Gstr4@321"
+                       Sheets("4D. IMPS").Cells(iRows5, 7).Interior.ColorIndex = 3
+                       Sheets("4D. IMPS").Cells(iRows5, 7).ClearComments
+                       Sheets("4D. IMPS").Cells(iRows5, 7).AddComment "Please provide details in mandatory fields."
+                       Sheets("4D. IMPS").Cells(iRows5, 8).Value = "Error found in row."
+                       isValidated = isValidated And False
+                       
+                       ElseIf Not CommonUtil.IsInActionType(Trim(Sheets("4D. IMPS").Cells(iRows1, 7).Value & vbNullString)) Then
+                       Application.ScreenUpdating = False
+                     Sheets("4D. IMPS").Unprotect "Gstr4@321"
+                       Sheets("4D. IMPS").Cells(iRows1, 7).Interior.ColorIndex = 3
+                       Sheets("4D. IMPS").Cells(iRows1, 7).ClearComments
+                       Sheets("4D. IMPS").Cells(iRows1, 7).AddComment "Please select correct option for action from the dropdown i.e. either Add or Delete."
+                       Sheets("4D. IMPS").Cells(iRows1, 8).Value = "Error found in row."
+                       isValidated = isValidated And False
+                    
+                    Else
+                    Application.ScreenUpdating = False
+                    Sheets("4D. IMPS").Unprotect "Gstr4@321"
+                      Range(Sheets("4D. IMPS").Cells(iRows5, 7), Sheets("4D. IMPS").Cells(iRows5, 7)).Interior.ColorIndex = 3
+                        Sheets("4D. IMPS").Activate
+                        ActiveSheet.Range(Cells(iRows5, 7), Cells(iRows5, 7)).Select
+                        For Each rCell5 In Selection
+                            With rCell5
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="All such records on same POS,shall have the same action i.e. add or delete"
+                            End With
+                        Next
+                        Sheets("4D. IMPS").Cells(iRows5, 8).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                   ' End If
+                   iRows5 = iRows5 + 1
+               Loop
+             
+              ' MsgBox "Hi"
+              End If
+              Next
+              
+        
+      
+' Check HOME sheet POS and 4D sheet pos value check
+
+            Dim iRows3 As Integer
+            Dim temp3 As Variant
+            Dim rCell3 As Range
+            iRows3 = 7
+       Dim homePOS As String: homePOS = CStr(Left(Sheets("Home").Cells(7, 2).Value, 2))
+       
+             If (homePOS <> vbNullString) Then
+            
+                Do Until IsEmpty(Sheets("4D. IMPS").Cells(iRows3, 2).Value) And IsEmpty(Sheets("4D. IMPS").Cells(iRows3, 3).Value) And IsEmpty(Sheets("4D. IMPS").Cells(iRows3, 4).Value)
+                    temp3 = CStr(Left(Sheets("4D. IMPS").Cells(iRows3, 2).Value, 2))
+                    If temp3 <> homePOS And temp3 <> vbNullString Then
+                     Application.ScreenUpdating = False
+                    Sheets("4D. IMPS").Unprotect "Gstr4@321"
+                        Range(Sheets("4D. IMPS").Cells(iRows3, 2), Sheets("4D. IMPS").Cells(iRows3, 2)).Interior.ColorIndex = 3
+                        Sheets("4D. IMPS").Activate
+                        ActiveSheet.Range(Cells(iRows3, 2), Cells(iRows3, 2)).Select
+                        For Each rCell3 In Selection
+                            With rCell3
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="POS should be same as the State code of GSTIN provided in home sheet."
+                            End With
+                        Next
+                        Sheets("4D. IMPS").Cells(iRows3, 8).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                    iRows3 = iRows3 + 1
+                Loop
+            End If
+            temp3 = ""
+            iRows3 = 7
+
+   validateIMPS = isValidated
+  Sheets("4D. IMPS").Protect Password:="Gstr4@321"
+ ' validateIMPS = isValidated
+    
+End Function
+
+
+
+Public Sub validateIMPSSheet()
+    If Not validateIMPS Then
+        MsgBox "There are errors in the sheet(highlighted by Red colored cells).You can also filter erroneous items based on the Error(if any) column at the end of the sheet.", vbCritical
+
+    Else
+        MsgBox "Sheet successfully validated. No error(s) found.", vbOKOnly
+    End If
+End Sub
+
+
+'To find the last row in 4D Sheet
+Public Function getLastRowIMPS() As Long
+    Dim rowNo As Long: rowNo = 7
+     getLastRowIMPS = rowNo
+    
+    Do Until IsEmpty(Sheets("4D. IMPS").Cells(rowNo, 2).Value) And IsEmpty(Sheets("4D. IMPS").Cells(rowNo, 3).Value) And IsEmpty(Sheets("4D. IMPS").Cells(rowNo, 4).Value) And IsEmpty(Sheets("4D. IMPS").Cells(rowNo, 7).Value)
+        rowNo = rowNo + 1
+        getLastRowIMPS = rowNo
+        If rowNo = 15008 Then
+            Exit Do
+        End If
+    Loop
+
+End Function
+
+
+
+
+
+-------------------------------------------------------------------------------

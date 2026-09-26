@@ -1,0 +1,966 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Option Explicit
+
+
+Public Sub loadB2BData(jsonData As Object)
+    Application.ScreenUpdating = False
+    Sheets("4A. B2B").Unprotect "Gstr4@321"
+    Dim ctin As Dictionary, Item As Dictionary
+
+    Dim i As Integer: i = START_ROW
+
+    If jsonData.Exists("b2bor") Then
+   
+        For Each ctin In jsonData("b2bor")
+          Sheets("4A. B2B").Cells(i, 2).Value = ctin("ctin")
+          If Trim(ctin("pos") & vbNullString) <> vbNullString Then
+          
+              If CommonUtil.IsPosInArray(ctin("pos")) Then
+               Sheets("4A. B2B").Cells(i, 3).Value = Application.VLookup(ctin("pos") & "C", Worksheets("master").Range("pos_map"), 2, False)
+              
+                  
+'                  If Mid(ctin("ctin"), 1, 2) = ctin("pos") Then
+'                  'Sheets("4A. B2B").Cells(i, 4).Value = Application.VLookup("INTRA", Worksheets("master").Range("sply_ty"), 2, False)
+'                   Sheets("4A. B2B").Cells(i, 4).Value = "Intra-State"
+'                  Else
+'                 'Sheets("4A. B2B").Cells(i, 4).Value = Application.VLookup("INTER", Worksheets("master").Range("sply_ty"), 2, False)
+'                  Sheets("4A. B2B").Cells(i, 4).Value = "Inter-State"
+'                  End If
+                
+              Else
+                       Sheets("4A. B2B").Cells(i, 3).Value = vbNullString
+              End If
+          
+             
+          End If
+        
+          If (CStr(ctin("flag")) = "D") Then
+         
+             Sheets("4A. B2B").Cells(i, 11).Value = "Delete"
+          Else
+            Sheets("4A. B2B").Cells(i, 11).Value = "Add"
+          End If
+          
+                   
+        '  Debug.Print JsonConverter.ConvertToJson(ctin, Whitespace:=2) ' remove all debugger before sending to proad
+         
+         
+
+   
+' No need of item count for load B2B data
+        Dim itemcount As Integer: itemcount = 0
+          For Each Item In ctin("itms")
+            If (itemcount > 0) Then
+              Sheets("4A. B2B").Cells(i, 2).Value = ctin("ctin")
+              If Trim(ctin("pos") & vbNullString) <> vbNullString Then
+                 If CommonUtil.IsPosInArray(ctin("pos")) Then
+                 Sheets("4A. B2B").Cells(i, 3).Value = Application.VLookup(ctin("pos") & "C", Worksheets("master").Range("pos_map"), 2, False)
+
+'                    If ctin("pos") <> vbNullString Then
+'                        If Mid(ctin("ctin"), 1, 2) = ctin("pos") Then
+'                          Sheets("4A. B2B").Cells(i, 4).Value = "Intra-State"
+'                        Else
+'                          Sheets("4A. B2B").Cells(i, 4).Value = "Inter-State"
+'                        End If
+'                    End If
+
+                Else
+                   Sheets("4A. B2B").Cells(i, 3).Value = vbNullString
+                End If
+
+
+             End If
+        
+
+
+            If (CStr(ctin("flag")) = "D") Then
+            ' MsgBox CStr(ctin("flag"))
+             Sheets("4A. B2B").Cells(i, 11).Value = "Delete"
+             Else
+             Sheets("4A. B2B").Cells(i, 11).Value = "Add"
+             End If
+             End If
+            
+            Sheets("4A. B2B").Cells(i, 5).Value = Item("txval")
+            
+            Sheets("4A. B2B").Cells(i, 6).Value = Item("rt")
+            Sheets("4A. B2B").Cells(i, 7).Value = Item("iamt")
+            Sheets("4A. B2B").Cells(i, 8).Value = Item("camt")
+            Sheets("4A. B2B").Cells(i, 9).Value = Item("samt")
+            Sheets("4A. B2B").Cells(i, 10).Value = Item("csamt")
+            
+           If ((Item("camt") <> vbNullString And Item("camt") <> 0) And (Item("samt") <> vbNullString And Item("samt") <> 0)) Then
+             Sheets("4A. B2B").Cells(i, 4).Value = "Intra-State"
+            End If
+            
+            If (Item("iamt") <> vbNullString And Item("iamt") <> 0) Then
+              Sheets("4A. B2B").Cells(i, 4).Value = "Inter-State"
+            End If
+            
+            If ((Item("camt") = 0 And Item("samt") = 0) And Item("iamt") = 0) Then
+             If ctin("pos") <> vbNullString Then
+                        If Mid(ctin("ctin"), 1, 2) = ctin("pos") Then
+                          Sheets("4A. B2B").Cells(i, 4).Value = "Intra-State"
+                        Else
+                          Sheets("4A. B2B").Cells(i, 4).Value = "Inter-State"
+                        End If
+                    End If
+            End If
+                                     
+            itemcount = itemcount + 1
+            i = i + 1
+          Next
+          itemcount = 0
+        Next
+    End If
+    Application.ScreenUpdating = False
+    Sheets("4A. B2B").Protect "Gstr4@321"
+
+End Sub
+
+' Same comment as load B2B data ... need to follow
+
+Public Function loadB2BErrorData(jsonData As Object, errorSheets As Collection)
+    Application.ScreenUpdating = False
+    Sheets("4A. B2B").Unprotect "Gstr4@321"
+    Dim ctin As Dictionary, Item As Dictionary
+
+    Dim i As Integer: i = START_ROW
+    Do Until Trim(Sheets("4A. B2B").Cells(i, 2).Value & vbNullString) = vbNullString
+        i = i + 1
+    Loop
+       If jsonData("error_report").Exists("b2bor") Then
+        errorSheets.Add "4A. B2B"
+        For Each ctin In jsonData("error_report")("b2bor")
+          Sheets("4A. B2B").Cells(i, 2).Value = ctin("ctin")
+          If Trim(ctin("pos") & vbNullString) <> vbNullString Then
+              If CommonUtil.IsPosInArray(ctin("pos")) Then
+                Sheets("4A. B2B").Cells(i, 3).Value = Application.VLookup(ctin("pos") & "C", Worksheets("master").Range("pos_map"), 2, False)
+              Else
+                Sheets("4A. B2B").Cells(i, 3).Value = vbNullString
+              End If
+          End If
+          'Sheets("4A. B2B").Cells(i, 3).Value = ctin("pos")
+          
+'          If ctin("pos") <> vbNullString Then
+'              If Mid(ctin("ctin"), 1, 2) = ctin("pos") Then
+'              'Sheets("4A. B2B").Cells(i, 4).Value = Application.VLookup("INTRA", Worksheets("master").Range("sply_ty"), 2, False)
+'              Sheets("4A. B2B").Cells(i, 4).Value = "Intra-State"
+'             Else
+'              'Sheets("4A. B2B").Cells(i, 4).Value = Application.VLookup("INTER", Worksheets("master").Range("sply_ty"), 2, False)
+'              Sheets("4A. B2B").Cells(i, 4).Value = "Inter-State"
+'             End If
+'          End If
+         
+
+          'Debug.Print JsonConverter.ConvertToJson(ctin, Whitespace:=2)
+         
+         
+            If (CStr(ctin("flag")) = "D") Then
+           ' MsgBox CStr(ctin("flag"))
+            Sheets("4A. B2B").Cells(i, 11).Value = "Delete"
+            Else
+            Sheets("4A. B2B").Cells(i, 11).Value = "Add"
+            End If
+
+             If (CStr(ctin("error_msg")) <> vbNullString) Then
+             Sheets("4A. B2B").Cells(i, 13).Value = ctin("error_msg")
+             End If
+        Dim itemcount As Integer: itemcount = 0
+          For Each Item In ctin("itms")
+            If (itemcount > 0) Then
+             Sheets("4A. B2B").Cells(i, 2).Value = ctin("ctin")
+               If Trim(ctin("pos") & vbNullString) <> vbNullString Then
+                 If CommonUtil.IsPosInArray(ctin("pos")) Then
+                  Sheets("4A. B2B").Cells(i, 3).Value = Application.VLookup(ctin("pos") & "C", Worksheets("master").Range("pos_map"), 2, False)
+                 Else
+                  Sheets("4A. B2B").Cells(i, 3).Value = vbNullString
+                End If
+               End If
+               'Sheets("4A. B2B").Cells(i, 3).Value = ctin("pos")
+               If ctin("pos") <> vbNullString Then
+'                 If Mid(ctin("ctin"), 1, 2) = ctin("pos") Then
+'                'Sheets("4A. B2B").Cells(i, 4).Value = Application.VLookup("INTRA", Worksheets("master").Range("sply_ty"), 2, False)
+'               '  Sheets("4A. B2B").Cells(i, 4).Value = "Intra-State"
+'                 Else
+'                'Sheets("4A. B2B").Cells(i, 4).Value = Application.VLookup("INTER", Worksheets("master").Range("sply_ty"), 2, False)
+'                ' Sheets("4A. B2B").Cells(i, 4).Value = "Inter-State"
+'               End If
+               
+               If (CStr(ctin("error_msg")) <> vbNullString) Then
+               Sheets("4A. B2B").Cells(i, 13).Value = ctin("error_msg")
+               End If
+               
+            End If
+          
+           If (CStr(ctin("flag")) = "D") Then
+           ' MsgBox CStr(ctin("flag"))
+            Sheets("4A. B2B").Cells(i, 11).Value = "Delete"
+            Else
+            Sheets("4A. B2B").Cells(i, 11).Value = "Add"
+            End If
+            End If
+            
+            Sheets("4A. B2B").Cells(i, 5).Value = Item("txval")
+            
+            Sheets("4A. B2B").Cells(i, 6).Value = Item("rt")
+            Sheets("4A. B2B").Cells(i, 7).Value = Item("iamt")
+            Sheets("4A. B2B").Cells(i, 8).Value = Item("camt")
+            Sheets("4A. B2B").Cells(i, 9).Value = Item("samt")
+            Sheets("4A. B2B").Cells(i, 10).Value = Item("csamt")
+            
+            If ((Item("camt") <> vbNullString And Item("camt") <> 0) And (Item("samt") <> vbNullString And Item("samt") <> 0)) Then
+             Sheets("4A. B2B").Cells(i, 4).Value = "Intra-State"
+            End If
+            
+            If (Item("iamt") <> vbNullString And Item("iamt") <> 0) Then
+              Sheets("4A. B2B").Cells(i, 4).Value = "Inter-State"
+            End If
+            
+            If ((Item("camt") = 0 And Item("samt") = 0) And Item("iamt") = 0) Then
+             If ctin("pos") <> vbNullString Then
+                        If Mid(ctin("ctin"), 1, 2) = ctin("pos") Then
+                          Sheets("4A. B2B").Cells(i, 4).Value = "Intra-State"
+                        Else
+                          Sheets("4A. B2B").Cells(i, 4).Value = "Inter-State"
+                        End If
+                    End If
+            End If
+                         
+            itemcount = itemcount + 1
+            i = i + 1
+          Next
+          itemcount = 0
+        Next
+    End If
+    Application.ScreenUpdating = False
+    Sheets("4A. B2B").Protect "Gstr4@321"
+Set loadB2BErrorData = errorSheets
+End Function
+Public Sub clearB2BData()
+    Application.ScreenUpdating = False
+    Sheets("4A. B2B").Unprotect "Gstr4@321"
+    With Sheets("4A. B2B")
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 14)).ClearContents
+        .Range(.Cells(START_ROW, 14), .Cells(FIXED_END_ROW_TO_CLEAR, 18)).ClearContents
+       Application.ScreenUpdating = False
+    Sheets("4A. B2B").Unprotect "Gstr4@321"
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 14)).Interior.ColorIndex = 2
+        .Range(.Cells(START_ROW, 14), .Cells(FIXED_END_ROW_TO_CLEAR, 18)).Interior.ColorIndex = 2
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 14)).ClearComments
+        .Range(.Cells(START_ROW, 14), .Cells(FIXED_END_ROW_TO_CLEAR, 18)).ClearComments
+    End With
+    Application.ScreenUpdating = True
+    Sheets("4A. B2B").Protect "Gstr4@321"
+End Sub
+
+
+' This method is for create/generate JSON Payload for 4A sheet
+
+Public Function createB2BJson() As Variant
+    Dim b2bDetails As New Scripting.Dictionary
+    Dim rateItems As Scripting.Dictionary, actionDetails As Scripting.Dictionary, ctinDetails As Scripting.Dictionary, itemsDetails As Scripting.Dictionary, invoiceItems As Scripting.Dictionary, ctinItems As Scripting.Dictionary, posItems As Scripting.Dictionary, atItems As Scripting.Dictionary
+    
+    Dim itmsCollection As Collection, itmObject As Object
+    Dim posCollection As Collection
+    
+    Dim count As Integer, k1 As Variant, k2 As Variant
+    
+    Set itemsDetails = createSimpleJson("4A. B2B", 7, 5, 10, 2, 3, 6)
+    Set ctinDetails = createSimpleJson("4A. B2B", 7, 2, 3, 2, 3, 11)
+    Set actionDetails = createSimpleJson("4A. B2B", 7, 2, 3, 2, 3)
+    
+  '  Debug.Print JsonConverter.ConvertToJson(itemsDetails, Whitespace:=2)
+    
+    
+   ' Debug.Print JsonConverter.ConvertToJson(ctinDetails, Whitespace:=2)
+    Dim delcount As Integer
+    delcount = 15
+    For Each k1 In ctinDetails.Keys
+        Set itmsCollection = New Collection
+         
+        For Each k2 In itemsDetails.Keys
+
+            If CStr(Split(k2, "_")(0) & "_" & Split(k2, "_")(1)) = CStr(Split(k1, "_")(0) & "_" & Split(k1, "_")(1)) Then
+                Set itmObject = itemsDetails.Item(k2)
+        
+                itmsCollection.Add itmObject
+                Set itmObject = Nothing
+            End If
+        Next
+        ctinDetails(k1).Add "itms", itmsCollection
+    
+        Set itmsCollection = Nothing
+    Next
+
+    If ctinDetails.count > 0 Then
+        Set itmsCollection = New Collection
+        For Each k1 In ctinDetails.Keys
+             If CStr(Split(k1, "_")(2)) = "Delete" Then
+                  ctinDetails(k1).Add "flag", "D"
+             End If
+                 
+            Set itmObject = ctinDetails.Item(k1)
+            itmsCollection.Add itmObject
+            Set itmObject = Nothing
+        Next
+        b2bDetails.Add "b2bor", itmsCollection
+        Set itmsCollection = Nothing
+    End If
+    
+     '  Debug.Print JsonConverter.ConvertToJson(b2bDetails, Whitespace:=2)
+    Set createB2BJson = b2bDetails
+End Function
+
+
+' This method is for validate 4A sheet
+Public Function validateB2B() As Boolean
+    Application.ScreenUpdating = False
+    Sheets("4A. B2B").Unprotect "Gstr4@321"
+    Dim iRow As Integer: iRow = START_ROW
+    Dim icol As Integer, isValidated As Boolean: isValidated = True
+    Dim gstin As String: gstin = Trim(Sheets("Home").Cells(7, 2) & vbNullString)
+    Dim tempInvoice As String, tempAction As String
+    Dim dateRegex As String: dateRegex = INV_DATE_REGEX_Q2
+    Dim actionMap As New Scripting.Dictionary, supTypMap As New Scripting.Dictionary, uniqueMap As New Scripting.Dictionary, actionDetails As Scripting.Dictionary, supTypDetails As Scripting.Dictionary, uniqueRateDetails As Scripting.Dictionary, ctinDetails As Scripting.Dictionary
+    Dim k1 As Variant, k2 As Variant
+  
+    
+    
+    If Not HomeMod.validateGSTINData Then
+      If (CStr(Sheets("Home").Cells(iRow, 2).Value & vbNullString) <> vbNullString And CStr(Sheets("Home").Cells(iRow, 4).Value & vbNullString) <> vbNullString) Then
+       MsgBox ("Please enter GSTIN, Financial Year in 'Home' Sheet."), vbCritical
+       Sheets("Home").Activate
+       End
+      Else
+        MsgBox "Please enter the details in 'Home' Sheet."
+        Sheets("Home").Activate
+        End
+      End If
+       
+    End If
+
+    
+    Range(Sheets("4A. B2B").Cells(iRow, 2), Sheets("4A. B2B").Cells(FIXED_END_ROW_TO_CLEAR, 10)).Interior.ColorIndex = 2
+    Range(Sheets("4A. B2B").Cells(iRow, 11), Sheets("4A. B2B").Cells(FIXED_END_ROW_TO_CLEAR, 14)).Interior.ColorIndex = 2
+    Range(Sheets("4A. B2B").Cells(iRow, 2), Sheets("4A. B2B").Cells(FIXED_END_ROW_TO_CLEAR, 10)).ClearComments
+    Range(Sheets("4A. B2B").Cells(iRow, 11), Sheets("4A. B2B").Cells(FIXED_END_ROW_TO_CLEAR, 14)).ClearComments
+    Range(Sheets("4A. B2B").Cells(iRow, 12), Sheets("4A. B2B").Cells(FIXED_END_ROW_TO_CLEAR, 14)).ClearContents
+    Do Until IsEmpty(Sheets("4A. B2B").Cells(iRow, 2).Value) And IsEmpty(Sheets("4A. B2B").Cells(iRow, 3).Value) And IsEmpty(Sheets("4A. B2B").Cells(iRow, 4).Value) And IsEmpty(Sheets("4A. B2B").Cells(iRow, 5).Value) And IsEmpty(Sheets("4A. B2B").Cells(iRow, 6).Value) And IsEmpty(Sheets("4A. B2B").Cells(iRow, 11).Value)
+    
+    'Mandatory field check
+     Application.ScreenUpdating = False
+     Sheets("4A. B2B").Unprotect "Gstr4@321"
+        
+       
+                'flag check
+                 If Trim(Sheets("4A. B2B").Cells(iRow, 5).Value & vbNullString) = vbNullString Then
+                    Sheets("4A. B2B").Cells(iRow, 5).Interior.ColorIndex = 3
+                    Sheets("4A. B2B").Cells(iRow, 5).ClearComments
+                    Sheets("4A. B2B").Cells(iRow, 5).AddComment "Please provide details in mandatory fields."
+                    Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                    isValidated = isValidated And False
+                End If
+                
+                If Trim(Sheets("4A. B2B").Cells(iRow, 11).Value & vbNullString) = vbNullString Then
+                     Sheets("4A. B2B").Cells(iRow, 11).ClearComments
+                     Application.ScreenUpdating = False
+                     Sheets("4A. B2B").Unprotect "Gstr4@321"
+                    Sheets("4A. B2B").Cells(iRow, 11).Interior.ColorIndex = 3
+                    Sheets("4A. B2B").Cells(iRow, 11).AddComment "Please provide details in mandatory fields."
+                    Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                    isValidated = isValidated And False
+                    
+                Else
+                 If Not CommonUtil.IsInActionType(Trim(Sheets("4A. B2B").Cells(iRow, 11).Value & vbNullString)) Then
+                       
+                     Application.ScreenUpdating = False
+                     Sheets("4A. B2B").Unprotect "Gstr4@321"
+                     
+                       Sheets("4A. B2B").Cells(iRow, 11).Interior.ColorIndex = 3
+                       Sheets("4A. B2B").Cells(iRow, 11).ClearComments
+                       Sheets("4A. B2B").Cells(iRow, 11).AddComment "Please select correct option for action from the dropdown i.e. either add or delete."
+                       Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                       isValidated = isValidated And False
+                   End If
+                   
+'                    Application.ScreenUpdating = False
+'                    Sheets("4A. B2B").Protect "Gstr4@321"
+ 
+                End If
+                
+                
+                If Trim(Sheets("4A. B2B").Cells(iRow, 4).Value & vbNullString) <> vbNullString Then
+                     
+                 Dim supplyType As String: supplyType = Trim(Sheets("4A. B2B").Cells(iRow, 4).Value & vbNullString)
+                 Application.ScreenUpdating = False
+                     Sheets("4A. B2B").Unprotect "Gstr4@321"
+                     
+                    If CommonUtil.IsInSupplyType(supplyType) Then
+                     Application.ScreenUpdating = False
+                     Sheets("4A. B2B").Unprotect "Gstr4@321"
+                    If (supplyType = "Inter-State") Then
+                    
+                     
+                     
+                     ' MsgBox cgstTax
+                     If (Trim(Sheets("4A. B2B").Cells(iRow, 8).Value) <> vbNullString And CommonUtil.matchRegex(Trim(Sheets("4A. B2B").Cells(iRow, 8).Value), AMT_REGEX)) Then
+                       Dim cgstTax As Double: cgstTax = Sheets("4A. B2B").Cells(iRow, 8).Value
+                       If (CStr(cgstTax) <> vbNullString And CStr(cgstTax) <> 0) Then
+                        Application.ScreenUpdating = False
+                        Sheets("4A. B2B").Unprotect "Gstr4@321"
+                         Sheets("4A. B2B").Cells(iRow, 8).Interior.ColorIndex = 3
+                         Sheets("4A. B2B").Cells(iRow, 8).ClearComments
+                         Sheets("4A. B2B").Cells(iRow, 8).AddComment "Please provide details in Integrated tax columns."
+                         Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                         isValidated = isValidated And False
+                        End If
+                     End If
+                     
+                      If (Trim(Sheets("4A. B2B").Cells(iRow, 9).Value) <> vbNullString And CommonUtil.matchRegex(Trim(Sheets("4A. B2B").Cells(iRow, 9).Value), AMT_REGEX)) Then
+                       Dim sgstTax As Double: sgstTax = Sheets("4A. B2B").Cells(iRow, 9).Value
+                      If (CStr(sgstTax) <> vbNullString And CStr(sgstTax) <> 0) Then
+                       Application.ScreenUpdating = False
+                        Sheets("4A. B2B").Unprotect "Gstr4@321"
+                          Sheets("4A. B2B").Cells(iRow, 9).Interior.ColorIndex = 3
+                          Sheets("4A. B2B").Cells(iRow, 9).ClearComments
+                          Sheets("4A. B2B").Cells(iRow, 9).AddComment "Please provide details in Integrated tax columns."
+                          Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                          isValidated = isValidated And False
+                      End If
+                      End If
+                    Else
+                    If (Trim(Sheets("4A. B2B").Cells(iRow, 7).Value) <> vbNullString And CommonUtil.matchRegex(Trim(Sheets("4A. B2B").Cells(iRow, 7).Value), AMT_REGEX)) Then
+                      Dim igstTax As Double: igstTax = Sheets("4A. B2B").Cells(iRow, 7).Value
+                       If (CStr(igstTax) <> vbNullString And CStr(igstTax) <> 0) Then
+                       Application.ScreenUpdating = False
+                        Sheets("4A. B2B").Unprotect "Gstr4@321"
+                         Sheets("4A. B2B").Cells(iRow, 7).Interior.ColorIndex = 3
+                         Sheets("4A. B2B").Cells(iRow, 7).ClearComments
+                         Sheets("4A. B2B").Cells(iRow, 7).AddComment "Please provide details in Central tax and State/UT tax columns."
+                         Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                         isValidated = isValidated And False
+                        End If
+                      End If
+                    End If
+                   End If
+                   
+                   
+                   
+                End If
+          
+
+        ' Check center tax and state tax equal
+            If Trim(Sheets("4A. B2B").Cells(iRow, 4).Value & vbNullString) <> vbNullString Then
+                 Dim supplyType1 As String: supplyType1 = Trim(Sheets("4A. B2B").Cells(iRow, 4).Value & vbNullString)
+                     Application.ScreenUpdating = False
+                     Sheets("4A. B2B").Unprotect "Gstr4@321"
+                    If (supplyType1 = "Intra-State") Then
+                      Dim cgstTax1 As String: cgstTax1 = Trim(Sheets("4A. B2B").Cells(iRow, 8).Value & vbNullString)
+                      Dim sgstTax1 As String: sgstTax1 = Trim(Sheets("4A. B2B").Cells(iRow, 9).Value & vbNullString)
+                     ' MsgBox cgstTax1
+                      
+                      If (cgstTax1 <> sgstTax1) Then
+                         Application.ScreenUpdating = False
+                         Sheets("4A. B2B").Unprotect "Gstr4@321"
+                         Sheets("4A. B2B").Cells(iRow, 8).Interior.ColorIndex = 3
+                         Sheets("4A. B2B").Cells(iRow, 8).ClearComments
+                         Sheets("4A. B2B").Cells(iRow, 8).AddComment "Central and State/UT tax should be equal."
+                         Sheets("4A. B2B").Cells(iRow, 9).Interior.ColorIndex = 3
+                         Sheets("4A. B2B").Cells(iRow, 9).ClearComments
+                         Sheets("4A. B2B").Cells(iRow, 9).AddComment "Central and State/UT tax should be equal."
+                         Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                         isValidated = isValidated And False
+                      End If
+                                    
+                     
+                    End If
+                   
+          End If
+          
+          
+                
+        For icol = 2 To 6
+        
+        Application.ScreenUpdating = False
+        Sheets("4A. B2B").Unprotect "Gstr4@321"
+            
+             
+            If Trim(Sheets("4A. B2B").Cells(iRow, icol).Value & vbNullString) = vbNullString Then
+                Sheets("4A. B2B").Cells(iRow, icol).Interior.ColorIndex = 3
+                Sheets("4A. B2B").Cells(iRow, icol).ClearComments
+                Sheets("4A. B2B").Cells(iRow, icol).AddComment "Please provide details in mandatory fields."
+                Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                isValidated = isValidated And False
+            ElseIf icol = 2 Then
+                If gstin <> vbNullString Then
+               '  MsgBox CStr(Left(Sheets("4A. B2B").Cells(iRow, 2).Value, 2))
+                    If Not CommonUtil.matchRegex(Trim(Sheets("4A. B2B").Cells(iRow, 2).Value), GSTIN_REGEX) Then 'GSTIN/CTIN format check
+                        Sheets("4A. B2B").Cells(iRow, 2).Interior.ColorIndex = 3
+                        Sheets("4A. B2B").Cells(iRow, 2).ClearComments
+                        Sheets("4A. B2B").Cells(iRow, 2).AddComment "Please enter a valid GSTIN."
+                        Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                        isValidated = isValidated And False
+                     ElseIf UCase(gstin) = UCase(Trim(Sheets("4A. B2B").Cells(iRow, 2).Value)) Then 'Supplier and receiver GSTIN/CTIN check
+                        Sheets("4A. B2B").Cells(iRow, 2).Interior.ColorIndex = 3
+                        Sheets("4A. B2B").Cells(iRow, 2).ClearComments
+                        Sheets("4A. B2B").Cells(iRow, 2).AddComment "GSTIN of supplier should be different from the GSTIN provided in home sheet."
+                        Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                        isValidated = isValidated And False
+
+                      ElseIf 99 = CStr(Left(Sheets("4A. B2B").Cells(iRow, 2).Value, 2)) Then  'check GSTIN/CTIN state code
+                        Sheets("4A. B2B").Cells(iRow, 2).Interior.ColorIndex = 3
+                        Sheets("4A. B2B").Cells(iRow, 2).ClearComments
+                        Sheets("4A. B2B").Cells(iRow, 2).AddComment "Please enter a valid GSTIN."
+                        Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                    
+                Else
+                    Sheets("4A. B2B").Cells(iRow, 2).Interior.ColorIndex = 3
+                    Sheets("4A. B2B").Cells(iRow, 2).ClearComments
+                    Sheets("4A. B2B").Cells(iRow, 2).AddComment "Please enter Taxpayer GSTIN first (go to Home Sheet)."
+                    Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                    isValidated = isValidated And False
+                End If
+          
+          
+              ElseIf icol = 4 Then
+
+              Dim suplyTypeVal As String: suplyTypeVal = Trim(Sheets("4A. B2B").Cells(iRow, 4).Value & vbNullString)
+              
+              If suplyTypeVal <> vbNullString Then
+              If Not CommonUtil.IsInSupplyType(suplyTypeVal) Then
+                         Sheets("4A. B2B").Cells(iRow, 4).Interior.ColorIndex = 3
+                         Sheets("4A. B2B").Cells(iRow, 4).ClearComments
+                         Sheets("4A. B2B").Cells(iRow, 4).AddComment "Please select correct supply type from the dropdown i.e. either Intra-State or Inter-State."
+                         Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                         isValidated = isValidated And False
+              End If
+              End If
+              ElseIf icol = 6 Then
+
+              Dim rateValue As String: rateValue = Trim(Sheets("4A. B2B").Cells(iRow, 6).Value & vbNullString)
+              If CommonUtil.IsInArray(rateValue) Then
+               
+              Else
+                         Sheets("4A. B2B").Cells(iRow, 6).Interior.ColorIndex = 3
+                         Sheets("4A. B2B").Cells(iRow, 6).ClearComments
+                         Sheets("4A. B2B").Cells(iRow, 6).AddComment "Please select correct option for rate from the dropdown"
+                         Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                         isValidated = isValidated And False
+              End If
+              
+                    
+              ElseIf icol = 5 Then
+
+               Dim taxamount As String: taxamount = Trim(Sheets("4A. B2B").Cells(iRow, 5).Value & vbNullString)
+               If taxamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4A. B2B").Cells(iRow, 5).Value), AMT_REGEX) Then
+                         Sheets("4A. B2B").Cells(iRow, 5).Interior.ColorIndex = 3
+                         Sheets("4A. B2B").Cells(iRow, 5).ClearComments
+                         Sheets("4A. B2B").Cells(iRow, 5).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+               
+              
+
+               Dim igamount As String: igamount = Trim(Sheets("4A. B2B").Cells(iRow, 7).Value & vbNullString)
+               If igamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4A. B2B").Cells(iRow, 7).Value), AMT_REGEX) Then
+                      Application.ScreenUpdating = False
+                        Sheets("4A. B2B").Unprotect "Gstr4@321"
+                         Sheets("4A. B2B").Cells(iRow, 7).Interior.ColorIndex = 3
+                         Sheets("4A. B2B").Cells(iRow, 7).ClearComments
+                         Sheets("4A. B2B").Cells(iRow, 7).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+               Dim cgamount As String: cgamount = Trim(Sheets("4A. B2B").Cells(iRow, 8).Value & vbNullString)
+               If cgamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4A. B2B").Cells(iRow, 8).Value), AMT_REGEX) Then
+                        Application.ScreenUpdating = False
+                        Sheets("4A. B2B").Unprotect "Gstr4@321"
+                         Sheets("4A. B2B").Cells(iRow, 8).Interior.ColorIndex = 3
+                         Sheets("4A. B2B").Cells(iRow, 8).ClearComments
+                         Sheets("4A. B2B").Cells(iRow, 8).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+               Dim sgamount As String: sgamount = Trim(Sheets("4A. B2B").Cells(iRow, 9).Value & vbNullString)
+               If sgamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4A. B2B").Cells(iRow, 9).Value), AMT_REGEX) Then
+                        Application.ScreenUpdating = False
+                        Sheets("4A. B2B").Unprotect "Gstr4@321"
+                         Sheets("4A. B2B").Cells(iRow, 9).Interior.ColorIndex = 3
+                         Sheets("4A. B2B").Cells(iRow, 9).ClearComments
+                         Sheets("4A. B2B").Cells(iRow, 9).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+               Dim csamount As String: csamount = Trim(Sheets("4A. B2B").Cells(iRow, 10).Value & vbNullString)
+               If csamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4A. B2B").Cells(iRow, 10).Value), AMT_REGEX) Then
+                        Application.ScreenUpdating = False
+                        Sheets("4A. B2B").Unprotect "Gstr4@321"
+                         Sheets("4A. B2B").Cells(iRow, 10).Interior.ColorIndex = 3
+                         Sheets("4A. B2B").Cells(iRow, 10).ClearComments
+                         Sheets("4A. B2B").Cells(iRow, 10).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4A. B2B").Cells(iRow, 12).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+            End If
+        Next
+        
+       iRow = iRow + 1
+       Application.ScreenUpdating = True
+     Sheets("4A. B2B").Protect "Gstr4@321"
+    Loop
+    
+     
+    
+    
+
+    
+    ' Check Action type for same GSTN and POS
+    Set ctinDetails = createSimpleJson("4A. B2B", 7, 2, 3, 2, 3, 11)
+    Set actionDetails = createSimpleJson("4A. B2B", 7, 2, 3, 2, 3)
+      Dim actionCount As Integer
+    For Each k1 In actionDetails.Keys
+        actionCount = 0
+        For Each k2 In ctinDetails.Keys
+            
+            If CStr(k1) = CStr(Split(k2, "_")(0) & "_" & Split(k2, "_")(1)) Then
+             
+               
+               If actionMap.Exists(k1) Then
+               actionCount = actionMap(k1)
+               actionMap.Remove k1
+               actionMap.Add k1, actionCount + 1
+               
+               Else
+               actionMap.Add k1, 1
+               End If
+              
+            End If
+            
+        Next
+    Next
+    
+'Debug.Print JsonConverter.ConvertToJson(actionMap, Whitespace:=2)
+    
+            Dim iRows As Integer
+            Dim temp As Variant
+            Dim rCell As Range
+            iRows = 7
+           
+            For Each k1 In actionMap.Keys
+            If actionMap.Item(k1) > 1 Then
+                
+                Do Until IsEmpty(Sheets("4A. B2B").Cells(iRows, 2).Value)
+                
+                Application.ScreenUpdating = False
+                 Sheets("4A. B2B").Unprotect "Gstr4@321"
+                 
+                 
+                    temp = Sheets("4A. B2B").Cells(iRows, 2).Value & "_" & Sheets("4A. B2B").Cells(iRows, 3).Value
+                    If UCase(temp) = UCase(k1) Then
+                       If Trim(Sheets("4A. B2B").Cells(iRows, 11).Value & vbNullString) = vbNullString Then
+                       Sheets("4A. B2B").Cells(iRows, 11).Interior.ColorIndex = 3
+                       Sheets("4A. B2B").Cells(iRows, 11).ClearComments
+                       Sheets("4A. B2B").Cells(iRows, 11).AddComment "Please provide details in mandatory fields."
+                       Sheets("4A. B2B").Cells(iRows, 12).Value = "Error found in row."
+                       isValidated = isValidated And False
+                       
+                       ElseIf Not CommonUtil.IsInActionType(Trim(Sheets("4A. B2B").Cells(iRows, 11).Value & vbNullString)) Then
+                       
+                       Sheets("4A. B2B").Cells(iRows, 11).Interior.ColorIndex = 3
+                       Sheets("4A. B2B").Cells(iRows, 11).ClearComments
+                       Sheets("4A. B2B").Cells(iRows, 11).AddComment "Please select correct option for action from the dropdown i.e. either add or delete."
+                       Sheets("4A. B2B").Cells(iRows, 12).Value = "Error found in row."
+                       isValidated = isValidated And False
+                       Else
+                       
+                        Range(Sheets("4A. B2B").Cells(iRows, 11), Sheets("4A. B2B").Cells(iRows, 11)).Interior.ColorIndex = 3
+                        Sheets("4A. B2B").Activate
+                        ActiveSheet.Range(Cells(iRows, 11), Cells(iRows, 11)).Select
+                        For Each rCell In Selection
+                            With rCell
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="All such records on the same GSTIN, shall have the same action i.e. add or delete."
+                            End With
+                        Next
+                        Sheets("4A. B2B").Cells(iRows, 12).Value = "Error found in row."
+                        isValidated = isValidated And False
+                       End If
+                     End If
+                    iRows = iRows + 1
+                Loop
+            End If
+            temp = ""
+        Next
+
+' Check Supply Type for same GSTN and POS
+
+    Set supTypDetails = createSimpleJson("4A. B2B", 7, 2, 3, 2, 3, 4)
+    Set actionDetails = createSimpleJson("4A. B2B", 7, 2, 3, 2, 3)
+    Dim actionCount5 As Integer
+    For Each k1 In actionDetails.Keys
+        actionCount5 = 0
+        For Each k2 In supTypDetails.Keys
+            
+            If CStr(k1) = CStr(Split(k2, "_")(0) & "_" & Split(k2, "_")(1)) Then
+             
+               
+               If supTypMap.Exists(k1) Then
+               actionCount5 = actionMap(k1)
+               supTypMap.Remove k1
+               supTypMap.Add k1, actionCount5 + 1
+               
+               Else
+               supTypMap.Add k1, 1
+               End If
+              
+            End If
+            
+        Next
+    Next
+    
+'Debug.Print JsonConverter.ConvertToJson(actionMap, Whitespace:=2)
+    
+            Dim iRows5 As Integer
+            Dim temp5 As Variant
+            Dim rCell5 As Range
+            iRows5 = 7
+           
+            For Each k1 In supTypMap.Keys
+            If supTypMap.Item(k1) > 1 Then
+                
+                Do Until IsEmpty(Sheets("4A. B2B").Cells(iRows5, 2).Value)
+                
+                Application.ScreenUpdating = False
+                 Sheets("4A. B2B").Unprotect "Gstr4@321"
+                 
+                 
+                    temp5 = Sheets("4A. B2B").Cells(iRows5, 2).Value & "_" & Sheets("4A. B2B").Cells(iRows5, 3).Value
+                    If UCase(temp5) = UCase(k1) Then
+                       If Trim(Sheets("4A. B2B").Cells(iRows5, 4).Value & vbNullString) = vbNullString Then
+                       Sheets("4A. B2B").Cells(iRows5, 4).Interior.ColorIndex = 3
+                       Sheets("4A. B2B").Cells(iRows5, 4).ClearComments
+                       Sheets("4A. B2B").Cells(iRows5, 4).AddComment "Please provide details in mandatory fields."
+                       Sheets("4A. B2B").Cells(iRows5, 12).Value = "Error found in row."
+                       isValidated = isValidated And False
+                       ElseIf Not CommonUtil.IsInSupplyType(Trim(Sheets("4A. B2B").Cells(iRows5, 4).Value & vbNullString)) Then
+                       
+                       Sheets("4A. B2B").Cells(iRows5, 4).Interior.ColorIndex = 3
+                       Sheets("4A. B2B").Cells(iRows5, 4).ClearComments
+                       Sheets("4A. B2B").Cells(iRows5, 4).AddComment "Please select correct supply type from the dropdown i.e. either Intra-State or Inter-State."
+                       Sheets("4A. B2B").Cells(iRows5, 12).Value = "Error found in row."
+                       isValidated = isValidated And False
+                       
+                       Else
+                        Range(Sheets("4A. B2B").Cells(iRows5, 4), Sheets("4A. B2B").Cells(iRows5, 4)).Interior.ColorIndex = 3
+                        Sheets("4A. B2B").Activate
+                        ActiveSheet.Range(Cells(iRows5, 4), Cells(iRows5, 4)).Select
+                        For Each rCell5 In Selection
+                            With rCell5
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="For same GSTIN, supply type should be same i.e. either Intra-State or Inter-State."
+                            End With
+                        Next
+                        Sheets("4A. B2B").Cells(iRows5, 12).Value = "Error found in row."
+                        isValidated = isValidated And False
+                       End If
+                    
+                       
+                        
+                        
+                    End If
+                    iRows5 = iRows5 + 1
+                Loop
+            End If
+            temp = ""
+        Next
+
+
+
+
+' Check Unique GSTN, POS and rate.
+ Set uniqueRateDetails = createSimpleJson("4A. B2B", 7, 2, 3, 2, 3, 6)
+
+' Debug.Print JsonConverter.ConvertToJson(uniqueRateDetails, Whitespace:=2)
+
+            Dim iRows1 As Integer
+            Dim temps As Variant
+            Dim rCells As Range
+            iRows1 = 7
+            Dim uniqueCount As Integer
+            uniqueCount = 0
+            
+            For Each k1 In uniqueRateDetails.Keys
+                Do Until IsEmpty(Sheets("4A. B2B").Cells(iRows1, 2).Value)
+                
+                Application.ScreenUpdating = False
+                 Sheets("4A. B2B").Unprotect "Gstr4@321"
+                 
+                    temps = Sheets("4A. B2B").Cells(iRows1, 2).Value & "_" & Sheets("4A. B2B").Cells(iRows1, 3).Value & "_" & Sheets("4A. B2B").Cells(iRows1, 6).Value
+                '   MsgBox temps
+                    If UCase(k1) = UCase(temps) Then
+                       If uniqueMap.Exists(k1) Then
+                        uniqueCount = uniqueMap(k1)
+                        uniqueMap.Remove k1
+                        uniqueMap.Add k1, uniqueCount + 1
+               
+                        Else
+                        uniqueMap.Add k1, 1
+                        End If
+                      
+                    End If
+                 
+                    iRows1 = iRows1 + 1
+                 
+                 Loop
+             
+                 temps = ""
+                 iRows1 = 7
+                 uniqueCount = 0
+              Next
+ 'Debug.Print JsonConverter.ConvertToJson(uniqueMap, Whitespace:=2)
+
+
+            Dim iRows2 As Integer
+            Dim temp2 As Variant
+            Dim rCell2 As Range
+            iRows2 = 7
+           
+            For Each k1 In uniqueMap.Keys
+            If uniqueMap.Item(k1) > 1 Then
+               
+               Dim rt As String
+               rt = Split(k1, "_")(2)
+               If (CStr(rt) <> vbNullString) Then
+               
+                Do Until IsEmpty(Sheets("4A. B2B").Cells(iRows2, 2).Value)
+                
+                Application.ScreenUpdating = False
+                 Sheets("4A. B2B").Unprotect "Gstr4@321"
+                 
+                    temp2 = Sheets("4A. B2B").Cells(iRows2, 2).Value & "_" & Sheets("4A. B2B").Cells(iRows2, 3).Value & "_" & Sheets("4A. B2B").Cells(iRows2, 6).Value
+                    
+                    If UCase(temp2) = UCase(k1) Then
+                        Range(Sheets("4A. B2B").Cells(iRows2, 6), Sheets("4A. B2B").Cells(iRows2, 6)).Interior.ColorIndex = 3
+                        Sheets("4A. B2B").Activate
+                        ActiveSheet.Range(Cells(iRows2, 6), Cells(iRows2, 6)).Select
+                        For Each rCell2 In Selection
+                            With rCell2
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="Duplicate record found, update the same."
+                            End With
+                        Next
+                        Sheets("4A. B2B").Cells(iRows2, 12).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                    
+                    
+                    iRows2 = iRows2 + 1
+                Loop
+            End If
+            End If
+            temp2 = ""
+            iRows2 = 7
+            
+        Next
+        
+        
+        
+
+' Check HOME sheet POS and 4A sheet pos value equal
+
+            Dim iRows3 As Integer
+            Dim temp3 As Variant
+            Dim rCell3 As Range
+            iRows3 = 7
+            Dim homePOS As String: homePOS = CStr(Left(Sheets("Home").Cells(7, 2).Value, 2))
+       
+             If (homePOS <> vbNullString) Then
+            
+                Do Until IsEmpty(Sheets("4A. B2B").Cells(iRows3, 2).Value) And IsEmpty(Sheets("4A. B2B").Cells(iRows3, 3).Value) And IsEmpty(Sheets("4A. B2B").Cells(iRows3, 5).Value) And IsEmpty(Sheets("4A. B2B").Cells(iRows3, 6).Value)
+                    
+                Application.ScreenUpdating = False
+                 Sheets("4A. B2B").Unprotect "Gstr4@321"
+                 
+                    temp3 = CStr(Left(Sheets("4A. B2B").Cells(iRows3, 3).Value, 2))
+                    If temp3 <> vbNullString And temp3 <> homePOS Then
+                        Range(Sheets("4A. B2B").Cells(iRows3, 3), Sheets("4A. B2B").Cells(iRows3, 3)).Interior.ColorIndex = 3
+                        Sheets("4A. B2B").Activate
+                        ActiveSheet.Range(Cells(iRows3, 3), Cells(iRows3, 3)).Select
+                        For Each rCell3 In Selection
+                            With rCell3
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="POS should be same as the State code of GSTIN provided in home sheet."
+                            End With
+                        Next
+                        Sheets("4A. B2B").Cells(iRows3, 12).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                    iRows3 = iRows3 + 1
+                Loop
+            End If
+            temp3 = ""
+            iRows3 = 7
+            
+      ' Remove Supply Type from sheet if GSTN is not available
+
+'            Dim iRows4 As Integer
+'            Dim temp4 As Variant
+'            Dim rCell4 As Range
+'            iRows4 = 7
+'
+'             If (homePOS <> vbNullString) Then
+'
+'                Do Until IsEmpty(Sheets("4A. B2B").Cells(iRows4, 4).Value)
+'                    temp4 = Sheets("4A. B2B").Cells(iRows4, 2).Value
+'                    If temp4 = vbNullString Then
+'                    Sheets("4A. B2B").Cells(iRows4, 4).Value = vbNullString
+'
+'                    End If
+'                    iRows4 = iRows4 + 1
+'                Loop
+'            End If
+'            temp4 = ""
+'            iRows4 = 7
+
+    
+    'Sheets("4A. B2B").Protect Password:=PW_PROTECT ' Protect sheet
+    validateB2B = isValidated
+    Application.ScreenUpdating = True
+    Sheets("4A. B2B").Protect "Gstr4@321"
+End Function
+
+Public Sub validateB2BSheet()
+    If Not validateB2B Then
+        MsgBox "There are errors in the sheet(highlighted by Red colored cells).You can also filter erroneous items based on the Error(if any) column at the end of the sheet.", vbCritical
+     Else
+        MsgBox "Sheet successfully validated. No error(s) found.", vbOKOnly
+    End If
+End Sub
+
+'To find the last row in 4A Sheet
+Public Function getLastRowB2B() As Long
+    Dim rowNo As Long: rowNo = 7
+     getLastRowB2B = rowNo
+    
+    Do Until IsEmpty(Sheets("4A. B2B").Cells(rowNo, 2).Value) And IsEmpty(Sheets("4A. B2B").Cells(rowNo, 3).Value) And IsEmpty(Sheets("4A. B2B").Cells(rowNo, 4).Value) And IsEmpty(Sheets("4A. B2B").Cells(rowNo, 5).Value) And IsEmpty(Sheets("4A. B2B").Cells(rowNo, 6).Value) And IsEmpty(Sheets("4A. B2B").Cells(rowNo, 11).Value)
+                 
+        rowNo = rowNo + 1
+        getLastRowB2B = rowNo
+        If rowNo = 15007 Then
+            Exit Do
+        End If
+    Loop
+
+End Function
+
+
+
+-------------------------------------------------------------------------------

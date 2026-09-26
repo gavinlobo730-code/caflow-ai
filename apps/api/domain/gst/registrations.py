@@ -111,10 +111,23 @@ class Registration:
     #: returns for the periods it was live, so it is never hidden — only
     #: reported as closed.
     effective_to: Optional[str] = None
+    #: Which s.10 rate a COMPOSITION registration pays (GST-25, migration 420).
+    #: Meaningless unless `registration_type == COMPOSITION`, and NULL there
+    #: means unrecorded rather than any particular rate — see
+    #: `domain/gst/composition.py`, which is the one place that reads this.
+    composition_category: Optional[str] = None
 
     @property
     def files_gstr1_and_3b(self) -> bool:
         return self.registration_type in FILES_GSTR1_AND_3B
+
+    @property
+    def files_cmp08(self) -> bool:
+        """Whether this registration owes FORM GST CMP-08 (GST-25) — the same
+        boolean-not-a-string-comparison shape as `files_gstr1_and_3b`, so the
+        browser never has to hardcode the word "composition" to decide whether
+        to offer the panel."""
+        return self.registration_type == COMPOSITION
 
     @property
     def label(self) -> str:
@@ -149,13 +162,15 @@ def primary_of(client: dict[str, Any]) -> Optional[Registration]:
     return Registration(
         gstin=gstin,
         state_code=(client.get("state_code") or "").strip() or state_code_of(gstin),
-        registration_type=REGULAR,
+        registration_type=((client.get("gst_registration_type") or "").strip().lower()
+                           or REGULAR),
         filing_frequency=((client.get("gst_filing_frequency") or "").strip().lower()
                           or MONTHLY),
         is_primary=True,
         trade_name=(client.get("legal_name") or client.get("client_name") or None),
         effective_from=(str(client.get("gst_registration_date"))
                         if client.get("gst_registration_date") else None),
+        composition_category=(client.get("composition_category") or None),
     )
 
 
@@ -172,6 +187,7 @@ def registration_of(row: dict[str, Any]) -> Registration:
         trade_name=row.get("trade_name"),
         effective_from=(str(row["effective_from"]) if row.get("effective_from") else None),
         effective_to=(str(row["effective_to"]) if row.get("effective_to") else None),
+        composition_category=(row.get("composition_category") or None),
     )
 
 
@@ -244,13 +260,15 @@ class Refusal:
 def problem_with_new(client: dict[str, Any], existing: list[dict[str, Any]],
                      *, gstin: str, state_code: Optional[str] = None,
                      registration_type: str = REGULAR,
-                     filing_frequency: str = MONTHLY) -> Refusal:
+                     filing_frequency: str = MONTHLY,
+                     composition_category: Optional[str] = None) -> Refusal:
     """Whether this registration can be added to this client.
 
     Shape and check digit are `domain/gst/gstin.problem_with`'s — there is one
     implementation of that and this is not a second.
     """
     from domain.gst.gstin import problem_with
+    from domain.gst.composition import COMPOSITION_CATEGORIES
 
     reasons: list[str] = []
     value = (gstin or "").strip().upper()
@@ -270,6 +288,15 @@ def problem_with_new(client: dict[str, Any], existing: list[dict[str, Any]],
         reasons.append(
             f"{filing_frequency!r} is not a filing frequency — "
             f"{' or '.join(FILING_FREQUENCIES)}.")
+    # Unrecorded is allowed — domain/gst/composition.py treats a missing
+    # category as a named gap on the statement, not a reason to refuse the
+    # registration itself. An UNRECOGNISED one is still refused, the same as
+    # every other enum here.
+    if (composition_category is not None
+            and composition_category not in COMPOSITION_CATEGORIES):
+        reasons.append(
+            f"{composition_category!r} is not a composition category. One "
+            f"of: {', '.join(COMPOSITION_CATEGORIES)}.")
 
     # THE STATE IS THE GSTIN'S OWN. A registration is state-wise (s.25(1)), so
     # a state code that disagrees with the number's first two characters is one

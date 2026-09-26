@@ -174,6 +174,63 @@ def test_a_composition_dealer_does_not_file_gstr1_and_3b():
     assert "CMP-08" in reg.OTHER_RETURN_FORMS[reg.COMPOSITION]
 
 
+def test_files_cmp08_is_the_boolean_shape_files_gstr1_and_3b_already_is():
+    """GST-25. A screen that decides whether to offer the CMP-08 panel must
+    read a boolean off the wire, never compare `registration_type` to the
+    literal string "composition" — the exact second-vocabulary trap this
+    codebase keeps retiring elsewhere."""
+    composition = reg.Registration(gstin="27AAAAA0000A1Z5", state_code="27",
+                                   registration_type=reg.COMPOSITION)
+    regular = reg.Registration(gstin="27AAAAA0000A1Z5", state_code="27",
+                               registration_type=reg.REGULAR)
+    isd = reg.Registration(gstin="27AAAAA0000A1Z5", state_code="27",
+                           registration_type=reg.ISD)
+    assert composition.files_cmp08
+    assert not regular.files_cmp08
+    assert not isd.files_cmp08
+
+
+# ── GST-25: the PRIMARY can be composition too, migration 420 ───────────────
+#
+# Before 420, `primary_of()` hardcoded `registration_type=REGULAR`, so a
+# client whose ONLY GSTIN — the common case for a small composition dealer —
+# was its primary could never be recorded as anything but a regular filer.
+# `clients.gst_registration_type` and `clients.composition_category` close
+# that; the tests below are the negative control that would have failed on
+# the old code.
+
+def test_the_primarys_own_registration_type_is_read_not_hardcoded():
+    client = _client(gst_registration_type=reg.COMPOSITION,
+                     composition_category="manufacturer_trader")
+    primary = reg.primary_of(client)
+    assert primary.registration_type == reg.COMPOSITION
+    assert primary.composition_category == "manufacturer_trader"
+    assert not primary.files_gstr1_and_3b
+
+
+def test_an_unset_primary_registration_type_still_defaults_to_regular():
+    """Every client recorded before migration 420 has no such column read —
+    `.get()` on an absent key — and must keep behaving exactly as it did."""
+    primary = reg.primary_of(_client())
+    assert primary.registration_type == reg.REGULAR
+    assert primary.composition_category is None
+    assert primary.files_gstr1_and_3b
+
+
+def test_an_additional_registrations_own_composition_category_is_read():
+    row = _row(registration_type=reg.COMPOSITION,
+              composition_category="restaurant")
+    regs = reg.all_registrations(_client(), [row])
+    additional = regs[1]
+    assert additional.registration_type == reg.COMPOSITION
+    assert additional.composition_category == "restaurant"
+
+
+def test_an_additional_registrations_composition_category_defaults_to_none():
+    regs = reg.all_registrations(_client(), [_row()])
+    assert regs[1].composition_category is None
+
+
 @pytest.mark.parametrize("kind,form", [
     (reg.ISD, "GSTR-6"), (reg.TDS_DEDUCTOR, "GSTR-7"),
     (reg.TCS_COLLECTOR, "GSTR-8"),

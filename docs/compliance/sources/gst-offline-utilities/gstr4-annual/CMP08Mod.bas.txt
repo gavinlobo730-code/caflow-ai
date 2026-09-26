@@ -1,0 +1,73 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Public Sub loadCMPData(jsonData As Object)
+    Application.ScreenUpdating = False
+    Sheets("5. CMP-08").Unprotect "Gstr4@321"
+    Dim ctin As Dictionary, Item As Dictionary
+    Dim i As Integer: i = START_ROW
+    If jsonData.Exists("cmpsmry") Then
+    
+'    Do Until Trim(Sheets("5. CMP-08").Cells(i, 2).Value & vbNullString) = vbNullString
+'        i = i + 1
+'
+'    Loop
+    If jsonData("cmpsmry").Exists("out_sup") Then
+                    Sheets("5. CMP-08").Cells(i, 2).Value = ("1")
+                    Sheets("5. CMP-08").Cells(i, 3).Value = ("Outward supplies (including exempt supplies)")
+                    Sheets("5. CMP-08").Cells(i, 4).Value = jsonData("cmpsmry")("out_sup")("tax_val")
+                    Sheets("5. CMP-08").Cells(i, 5).Value = jsonData("cmpsmry")("out_sup")("iamt")
+                    Sheets("5. CMP-08").Cells(i, 6).Value = jsonData("cmpsmry")("out_sup")("camt")
+                    Sheets("5. CMP-08").Cells(i, 7).Value = jsonData("cmpsmry")("out_sup")("samt")
+                    Sheets("5. CMP-08").Cells(i, 8).Value = jsonData("cmpsmry")("out_sup")("csamt")
+                    i = i + 1
+    End If
+    If jsonData("cmpsmry").Exists("in_sup") Then
+                    Sheets("5. CMP-08").Cells(i, 2).Value = ("2")
+                    Sheets("5. CMP-08").Cells(i, 3).Value = ("Inward supplies attracting reverse charge including import of services")
+                    Sheets("5. CMP-08").Cells(i, 4).Value = jsonData("cmpsmry")("in_sup")("tax_val")
+                    Sheets("5. CMP-08").Cells(i, 5).Value = jsonData("cmpsmry")("in_sup")("iamt")
+                    Sheets("5. CMP-08").Cells(i, 6).Value = jsonData("cmpsmry")("in_sup")("camt")
+                    Sheets("5. CMP-08").Cells(i, 7).Value = jsonData("cmpsmry")("in_sup")("samt")
+                    Sheets("5. CMP-08").Cells(i, 8).Value = jsonData("cmpsmry")("in_sup")("csamt")
+                    i = i + 1
+    End If
+    If jsonData("cmpsmry").Exists("tax_pay") Then
+                    Sheets("5. CMP-08").Cells(i, 2).Value = ("3")
+                    Sheets("5. CMP-08").Cells(i, 3).Value = ("Tax paid (1+2)")
+                    Sheets("5. CMP-08").Cells(i, 4).Value = jsonData("cmpsmry")("tax_pay")("tax_val")
+                    Sheets("5. CMP-08").Cells(i, 5).Value = jsonData("cmpsmry")("tax_pay")("iamt")
+                    Sheets("5. CMP-08").Cells(i, 6).Value = jsonData("cmpsmry")("tax_pay")("camt")
+                    Sheets("5. CMP-08").Cells(i, 7).Value = jsonData("cmpsmry")("tax_pay")("samt")
+                    Sheets("5. CMP-08").Cells(i, 8).Value = jsonData("cmpsmry")("tax_pay")("csamt")
+                    i = i + 1
+    End If
+    If jsonData("cmpsmry").Exists("intr_pay") Then
+                    Sheets("5. CMP-08").Cells(i, 2).Value = ("4")
+                    Sheets("5. CMP-08").Cells(i, 3).Value = ("Interest paid,if any")
+                    Sheets("5. CMP-08").Cells(i, 4).Value = jsonData("cmpsmry")("intr_pay")("tax_val")
+                    Sheets("5. CMP-08").Cells(i, 5).Value = jsonData("cmpsmry")("intr_pay")("iamt")
+                    Sheets("5. CMP-08").Cells(i, 6).Value = jsonData("cmpsmry")("intr_pay")("camt")
+                    Sheets("5. CMP-08").Cells(i, 7).Value = jsonData("cmpsmry")("intr_pay")("samt")
+                    Sheets("5. CMP-08").Cells(i, 8).Value = jsonData("cmpsmry")("intr_pay")("csamt")
+                    i = i + 1
+    End If
+  End If
+    Application.ScreenUpdating = False
+    Sheets("5. CMP-08").Protect "Gstr4@321"
+
+End Sub
+
+Public Sub clearCMPData()
+    Application.ScreenUpdating = False
+    Sheets("5. CMP-08").Unprotect "Gstr4@321"
+    With Sheets("5. CMP-08")
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 10)).ClearContents
+        .Range(.Cells(START_ROW, 14), .Cells(FIXED_END_ROW_TO_CLEAR, 18)).ClearContents
+        .Range(.Cells(START_ROW, 4), .Cells(10, 8)).Interior.ColorIndex = 15
+        .Range(.Cells(START_ROW, 4), .Cells(10, 8)).Interior.ColorIndex = 15
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 10)).ClearComments
+        .Range(.Cells(START_ROW, 14), .Cells(FIXED_END_ROW_TO_CLEAR, 18)).ClearComments
+    End With
+    Application.ScreenUpdating = True
+    Sheets("5. CMP-08").Protect "Gstr4@321"
+End Sub
+-------------------------------------------------------------------------------

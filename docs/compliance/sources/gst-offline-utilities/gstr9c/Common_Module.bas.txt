@@ -1,0 +1,635 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+Public Function Positive_Amt(rowNo As Integer, col As String, sheetName As String)
+        Positive_Amt = True
+        Dim value As Double
+        On Error GoTo deci
+        value = CDec(Sheets(sheetName).Cells(rowNo, col).value)
+        
+        On Error GoTo Flow
+        If IsNumeric(value) Then
+            'length check
+            If (Len(Split(value, ".", 2)(0)) > 13) Then
+                Common_Module.display_error sheetName, rowNo, col, "Amount should not have more than 13 digits"
+                Positive_Amt = False
+                Exit Function
+            End If
+            If (Len(Split(value, ".", 2)(1)) > 2) Then
+                Common_Module.display_error sheetName, rowNo, col, "Amount should not have more than 2 decimal places"
+                Positive_Amt = False
+                Exit Function
+            End If
+Flow:
+            'Amount check for original
+            If Not Common_Module.matchRegex(Trim(value), AMT_REGEX) Then
+                'Negative check
+                If Trim(Sheets(sheetName).Cells(rowNo, col).value < 0) Then
+                    Common_Module.display_error sheetName, rowNo, col, "Amount should not be negative"
+                    Positive_Amt = False
+                    Exit Function
+                Else
+                    Common_Module.display_error sheetName, rowNo, col, "Invalid Amount"
+                    Positive_Amt = False
+                    Exit Function
+                End If
+            
+            End If
+        Else
+deci:
+          Common_Module.display_error sheetName, rowNo, col, "Invalid Amount"
+          Positive_Amt = False
+        End If
+    
+
+End Function
+
+Public Function Negative_Amt(rowNo As Integer, col As String, sheetName As String)
+        Negative_Amt = True
+        Dim value As Double
+
+        value = CDec(Sheets(sheetName).Cells(rowNo, col).value)
+        
+        If IsNumeric(value) Then
+            'length check
+            If (Len(Split(value, ".", 2)(0)) > 13) Then
+                If (value > 0) Then
+                    Common_Module.display_error sheetName, rowNo, col, "Amount should not have more than 13 digits"
+                    Negative_Amt = False
+                    Exit Function
+                End If
+            End If
+            
+            If (Len(Split(value, ".", 2)(0)) > 14) Then
+                If (value < 0) Then
+                    Common_Module.display_error sheetName, rowNo, col, "Amount should not have more than 13 digits"
+                    Negative_Amt = False
+                    Exit Function
+                End If
+            End If
+            
+            If Common_Module.matchRegex(Trim(value), DEC_REGEX) Then
+                Common_Module.display_error sheetName, rowNo, col, "Amount should not have more than 2 decimal places"
+                Negative_Amt = False
+                Exit Function
+            End If
+            
+        Else
+          Common_Module.display_error sheetName, rowNo, col, "Invalid Amount"
+          Negative_Amt = False
+        End If
+    
+
+End Function
+Public Sub partb()
+    If Not ValidateMod.Validate_Home Then
+        MsgBox "Please enter mandatory field(s) before proceeding to Part B."
+        Exit Sub
+    End If
+    If Trim(Sheets(home_sheet).Cells(start_row_home + 5, fixed_col_home).value) = "Yes" Then
+        Worksheets(sheet14_name).Select
+    ElseIf Trim(Sheets(home_sheet).Cells(start_row_home + 5, fixed_col_home).value) = "No" Then
+        Worksheets(sheet15_name).Select
+    Else
+        Exit Sub
+    End If
+End Sub
+Public Sub parta()
+    If Not ValidateMod.Validate_Home Then
+        MsgBox "Please enter mandatory field(s) before proceeding to Part A."
+        Exit Sub
+    End If
+    Worksheets(sheet1_name).Select
+End Sub
+'Sub PasteSpecial()
+'    If Not HasValidation(Range("Data")) Then
+'        Exit Sub
+'    Else
+'        Application.Undo
+'        MsgBox "Error: You cannot paste data into these cells." & _
+'        "Please use the drop-down to enter data instead.", vbCritical
+'    End If
+'End Sub
+
+Private Function HasValidation(r) As Boolean
+    'Returns True if every cell in Range r uses Data Validation
+    On Error Resume Next
+    x = r.Validation.Type
+    If Err.Number = 0 Then HasValidation = True Else HasValidation = False
+End Function
+
+Public Sub Nextsheet()
+     Variable_Initialize.initiali
+    If ActiveSheet.Index = 16 Then
+    If Trim(Sheets(home_sheet).Cells(start_row_home + 5, fixed_col_home).value) = "Yes" Then
+
+    Worksheets(ActiveSheet.Index + 1).Select
+
+Else
+
+Worksheets(ActiveSheet.Index + 1).Select
+
+End If
+Else
+Worksheets(ActiveSheet.Index + 1).Select
+End If
+
+End Sub
+
+Public Sub Previousheet()
+If ActiveSheet.Index = 18 Then
+    If Trim(Sheets(home_sheet).Cells(start_row_home + 5, fixed_col_home).value) = "No" Then
+
+    Worksheets(ActiveSheet.Index - 2).Select
+
+    Else
+
+Worksheets(ActiveSheet.Index - 1).Select
+
+End If
+Else
+Worksheets(ActiveSheet.Index - 1).Select
+End If
+End Sub
+
+Public Sub Home()
+
+    Worksheets("Home").Select
+
+End Sub
+
+Public Sub Help()
+    Variable_Initialize.initiali
+    Dim selected_fy As String
+    selected_fy = Worksheets(home_sheet).Range("D10").value
+    
+    If selected_fy = "" Then
+        Worksheets("Read Me FY 20-21").Select
+    'ElseIf selected_fy = PARTB_RESTRICTED_FY Then'
+    ElseIf (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) And Not isFY2024OrLater Then
+        Worksheets("Read Me FY 20-21 to 21-22").Select
+    ElseIf (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) And isFY2024OrLater Then
+        Worksheets("Read Me FY 24-25 onwards").Select
+    Else
+        Worksheets("Read Me FY 17-18 to 19-20").Select
+    End If
+
+End Sub
+Public Sub add_expense()
+    Application.EnableEvents = False
+    col = value_col_four_fourt
+    start_row = start_row_four_fourt_exp
+    end_row = end_row_four_fourt_exp
+    sheet_name = sheet10_name
+    
+    If end_row - start_row < 8 Then
+        Sheets(sheet_name).Range(col & CStr(end_row + 1)).EntireRow.Insert
+        Sheets(sheet_name).Range("B" & CStr(end_row + 1) & ":C" & CStr(end_row + 1)).Merge
+        Sheets(sheet_name).Range("D" & CStr(end_row + 1) & ":E" & CStr(end_row + 1)).Merge
+        Sheets(sheet_name).Range("F" & CStr(end_row + 1) & ":G" & CStr(end_row + 1)).Merge
+        Sheets(sheet_name).Range("H" & CStr(end_row + 1) & ":I" & CStr(end_row + 1)).Merge
+        Call Increment_Last_row(sheet_name)
+        end_row_four_fourt_exp = end_row_four_fourt_exp + 1
+        end_row = end_row + 1
+        Call Arrange_Expense(sheet_name, start_row, end_row, col)
+    Else
+        MsgBox "Maximum of 10 expenses are only allowed"
+        Application.EnableEvents = True
+        Exit Sub
+    End If
+    Application.EnableEvents = True
+End Sub
+Public Sub add_qual()
+    sheet_name = ActiveSheet.Name
+    'MsgBox sheet_name
+    If sheet_name = sheet14_name Then
+        col = qual_col_pb1
+        start_row = start_row_pb1_qual
+        end_row = end_row_pb1_qual
+        sheet_name = sheet14_name
+    ElseIf sheet_name = sheet15_name Then
+        col = qual_col_pb2
+        start_row = start_row_pb2_qual
+        end_row = end_row_pb2_qual
+        sheet_name = sheet15_name
+    End If
+    If end_row - start_row < 14 Then
+        Sheets(sheet_name).Range(col & CStr(end_row + 1)).EntireRow.Insert
+        Sheets(sheet_name).Range("C" & CStr(end_row + 1) & ":F" & CStr(end_row + 1)).Merge
+        Call Increment_Last_row(sheet_name)
+        If sheet_name = sheet14_name Then
+            end_row_pb1_qual = end_row_pb1_qual + 1
+        ElseIf sheet_name = sheet15_name Then
+            end_row_pb2_qual = end_row_pb2_qual + 1
+        End If
+        end_row = end_row + 1
+        Call Arrange_qual(sheet_name, start_row, end_row, col)
+    Else
+        MsgBox "Maximum of 15 qualifications are only allowed"
+        Exit Sub
+    End If
+End Sub
+
+Public Function Count_Reasons_sheet(sheet_name, start_row, fixed_col) As Integer
+
+    Dim rowNo As Integer: rowNo = start_row
+    
+    Count_Reasons_sheet = rowNo
+    col = fixed_col
+    
+    Do While Sheets(sheet_name).Cells(rowNo, col).value <> vbNullString
+            rowNo = rowNo + 1
+    Loop
+    
+    Count_Reasons_sheet = rowNo - start_row
+    
+End Function
+
+Public Function Count_qual(sheet_name, start_row, end_row, fixed_col) As Integer
+
+    Dim rowNo As Integer: rowNo = start_row
+    
+    Count_qual = rowNo
+    col = fixed_col
+    
+    Do While Sheets(sheet_name).Cells(rowNo, col).value <> vbNullString
+            rowNo = rowNo + 1
+    Loop
+    
+    Count_qual = rowNo - start_row
+    
+End Function
+
+Public Sub Add_reasons_sheet()
+    'Variable_Initialize.initiali
+    
+    sheet_name = ActiveSheet.Name
+    'MsgBox sheet_name
+    If sheet_name = sheet2_name Then
+        col = fixed_col_two_six
+        start_row = start_row_two_six
+        end_row = end_row_two_six
+        sheet_name = sheet2_name
+    ElseIf sheet_name = sheet4_name Then
+        col = fixed_col_two_eight
+        start_row = start_row_two_eight
+        end_row = end_row_two_eight
+        sheet_name = sheet4_name
+    ElseIf sheet_name = sheet6_name Then
+        col = fixed_col_three_ten
+        start_row = start_row_three_ten
+        end_row = end_row_three_ten
+        sheet_name = sheet6_name
+    ElseIf sheet_name = sheet9_name Then
+        col = fixed_col_four_thirt
+        start_row = start_row_four_thirt
+        end_row = end_row_four_thirt
+        sheet_name = sheet9_name
+    ElseIf sheet_name = sheet11_name Then
+        col = fixed_col_four_fift
+        start_row = start_row_four_fift
+        end_row = end_row_four_fift
+        sheet_name = sheet11_name
+    End If
+    
+    Call Add_Reasons(sheet_name, start_row, end_row, col)
+    
+End Sub
+
+
+Public Function Add_Reasons(sheet_name, start_row, end_row, fixed_col)
+'    MsgBox sheet_name
+'    MsgBox start_row
+'    MsgBox end_row
+'    MsgBox fixed_col
+    If end_row - start_row < 9 Then
+        Sheets(sheet_name).Range(fixed_col & CStr(end_row + 1)).EntireRow.Insert
+        Sheets(sheet_name).Range(fixed_col & CStr(end_row + 1) & ":I" & CStr(end_row + 1)).Merge
+        Call Increment_Last_row(sheet_name)
+        end_row = end_row + 1
+        Call Arrange_Reasons(sheet_name, start_row, end_row, fixed_col)
+    Else
+        MsgBox "Maximum of 10 reasons are only allowed"
+        Exit Function
+    End If
+    
+    
+End Function
+
+Public Function Arrange_Reasons(sheet_name, start_row, end_row, fixed_col)
+    start_char = "A"
+    start_i = 1
+    i = 0
+    For s = start_row To end_row
+        Sheets(sheet_name).Cells(s, Chr(Asc(fixed_col) - 2)) = Chr(Asc(start_char) + i)
+        Sheets(sheet_name).Cells(s, Chr(Asc(fixed_col) - 1)) = "Reason Number " & CStr(start_i + i)
+        Sheets(sheet_name).Range(fixed_col & CStr(s) & ":" & Chr(Asc(fixed_col) + 6) & CStr(s)).Merge
+        i = i + 1
+    Next
+    Sheets(sheet_name).Range(Chr(Asc(fixed_col) - 2) & CStr(end_row) & ":" & Chr(Asc(fixed_col) + 8) & CStr(end_row)).Borders.LineStyle = xlContinuous
+    
+
+End Function
+Public Function Arrange_Expense(sheet_name, start_row, end_row, fixed_col)
+    'start_char = "A"
+    start_i = 2
+    i = 0
+    For s = start_row To end_row
+        If i <> 0 Then
+            Sheets(sheet_name).Cells(s, Chr(Asc(fixed_col) - 3)) = "Q" & CStr(i)
+        End If
+        Sheets(sheet_name).Cells(s, Chr(Asc(fixed_col) - 2)) = "Any other expense " & CStr(start_i + i)
+        i = i + 1
+    Next
+    Sheets(sheet_name).Range(Chr(Asc(fixed_col) - 2) & CStr(end_row) & ":" & Chr(Asc(fixed_col) + 7) & CStr(end_row)).Borders.LineStyle = xlContinuous
+    
+
+End Function
+Public Function Arrange_qual(sheet_name, start_row, end_row, fixed_col)
+    'start_char = "A"
+    start_i = 1
+    i = 0
+    For s = start_row To end_row
+        'Sheets(sheet_name).Cells(S, Chr(Asc(fixed_col) - 2)) = Chr(Asc(start_char) + i)
+        Sheets(sheet_name).Cells(s, Chr(Asc(fixed_col) - 1)) = start_i + i
+        i = i + 1
+    Next
+    Sheets(sheet_name).Range(Chr(Asc(fixed_col) - 1) & CStr(end_row) & ":" & Chr(Asc(fixed_col) + 4) & CStr(end_row)).Borders.LineStyle = xlContinuous
+    
+
+End Function
+Public Function Increment_Last_row(sheet_name)
+
+    If sheet_name = sheet2_name Then
+        end_row_two_six = end_row_two_six + 1
+    ElseIf sheet_name = sheet4_name Then
+        end_row_two_eight = end_row_two_eight + 1
+    ElseIf sheet_name = sheet6_name Then
+        end_row_three_ten = end_row_three_ten + 1
+    ElseIf sheet_name = sheet9_name Then
+        end_row_four_thirt = end_row_four_thirt + 1
+    ElseIf sheet_name = sheet10_name Then
+        end_row_four_fourt = end_row_four_fourt + 1
+    ElseIf sheet_name = sheet11_name Then
+        end_row_four_fift = end_row_four_fift + 1
+    ElseIf sheet_name = sheet14_name Then
+        end_row_pb1 = end_row_pb1 + 1
+    ElseIf sheet_name = sheet15_name Then
+        end_row_pb2 = end_row_pb2 + 1
+    End If
+    
+End Function
+
+Public Function Decrement_Last_row(sheet_name)
+
+    If sheet_name = sheet2_name Then
+        end_row_two_six = end_row_two_six - 1
+    ElseIf sheet_name = sheet4_name Then
+        end_row_two_eight = end_row_two_eight - 1
+    ElseIf sheet_name = sheet6_name Then
+        end_row_three_ten = end_row_three_ten - 1
+    ElseIf sheet_name = sheet9_name Then
+        end_row_four_thirt = end_row_four_thirt - 1
+    ElseIf sheet_name = sheet10_name Then
+        end_row_four_fourt = end_row_four_fourt - 1
+    ElseIf sheet_name = sheet11_name Then
+        end_row_four_fift = end_row_four_fift - 1
+    ElseIf sheet_name = sheet14_name Then
+        end_row_pb1 = end_row_pb1 - 1
+    ElseIf sheet_name = sheet15_name Then
+        end_row_pb2 = end_row_pb2 - 1
+    End If
+    
+End Function
+
+'Checks if the given value iterm, passes the given regex iRegex
+Public Function matchRegex(iterm As String, iRegex As String) As Boolean
+    
+    Set OBJ_RE = CreateObject("VBScript.RegExp")
+    OBJ_RE.Global = True
+    OBJ_RE.IgnoreCase = False
+    OBJ_RE.Pattern = iRegex
+    If Not OBJ_RE.test(Trim(iterm)) Then
+        matchRegex = False
+    Else
+        matchRegex = True
+    End If
+End Function
+'To convert Date to the format "dd/mm/yyyy"
+Function ConvertDate(Dt As String) As String
+
+Dim SplitStringArray
+
+Dim DayString As String
+
+Dim MonthString As String
+
+Dim YearString As String
+
+Dim i As Integer
+
+
+
+    SplitStringArray = Split(Dt, "/")
+
+     
+
+    If Len(SplitStringArray(2)) = 3 Then
+
+        SplitStringArray(2) = "0" & SplitStringArray(2)
+
+    End If
+
+    
+
+    If Len(SplitStringArray(0)) = 1 Then
+
+        DayString = "0" & SplitStringArray(0)
+
+    Else
+
+        DayString = SplitStringArray(0)
+
+    End If
+
+    
+
+    If Len(SplitStringArray(1)) = 1 Then
+
+        MonthString = "0" & SplitStringArray(1)
+
+    Else
+
+        MonthString = SplitStringArray(1)
+
+    End If
+
+    
+ If Len(SplitStringArray(2)) = 2 Then
+'     YearString = SplitStringArray(2)
+
+    If CInt(SplitStringArray(2)) > 30 Then
+
+        YearString = 1900 + SplitStringArray(2)
+
+    Else
+
+        YearString = 2000 + SplitStringArray(2)
+
+    End If
+ElseIf Len(SplitStringArray(2)) = 4 Then
+YearString = SplitStringArray(2)
+End If
+
+ConvertDate = DayString & "/" & MonthString & "/" & YearString
+
+End Function
+Public Function display_error(sheet_name, rowNo, col, Error_Message)
+
+    If sheet_name = home_sheet Then
+        sv_col = sv_col_home
+    ElseIf sheet_name = sheet1_name Then
+        sv_col = sv_col_two_five
+    ElseIf sheet_name = sheet2_name Then
+        sv_col = sv_col_two_six
+    ElseIf sheet_name = sheet3_name Then
+        sv_col = sv_col_two_seven
+    ElseIf sheet_name = sheet4_name Then
+        sv_col = sv_col_two_eight
+    ElseIf sheet_name = sheet5_name Then
+        sv_col = sv_col_three_nine
+    ElseIf sheet_name = sheet6_name Then
+        sv_col = sv_col_three_ten
+    ElseIf sheet_name = sheet7_name Then
+        sv_col = sv_col_three_eleven
+    ElseIf sheet_name = sheet8_name Then
+        sv_col = sv_col_four_twelve
+    ElseIf sheet_name = sheet9_name Then
+       sv_col = sv_col_four_thirt
+    ElseIf sheet_name = sheet10_name Then
+        sv_col = sv_col_four_fourt
+    ElseIf sheet_name = sheet11_name Then
+        sv_col = sv_col_four_fift
+    ElseIf sheet_name = sheet12_name Then
+        sv_col = sv_col_four_sixt
+    ElseIf sheet_name = sheet13_name Then
+        sv_col = sv_col_five
+    ElseIf sheet_name = sheet14_name Then
+        sv_col = pb1_sv_col
+    ElseIf sheet_name = sheet15_name Then
+        sv_col = pb2_sv_col
+    End If
+    
+    Sheets(sheet_name).Cells(rowNo, col).Interior.ColorIndex = 3
+    Sheets(sheet_name).Cells(rowNo, sv_col).value = Sheets(sheet_name).Cells(rowNo, sv_col).value & Error_Message
+    validate = False
+    
+End Function
+
+Public Sub new_view()
+    Variable_Initialize.initiali
+               ThisWorkbook.Unprotect Password:="pass"
+               Worksheets(sheet14_name).Visible = xlSheetVeryHidden
+               Worksheets(sheet15_name).Visible = xlSheetVeryHidden
+            ThisWorkbook.Protect Password:="pass", Structure:=True
+
+
+
+    ' Worksheets(sheet14_name).Visible = xlSheetVeryHidden
+    ' Worksheets(sheet15_name).Visible = xlSheetVeryHidden
+    
+    Worksheets(home_sheet).Rows(14).Hidden = True
+    'Worksheets(home_sheet).Range("D14").ClearContents
+    
+    Worksheets(sheet5_name).Rows("19").Hidden = False
+    Worksheets(sheet7_name).Rows("15").Hidden = False
+    Worksheets(sheet13_name).Rows("14").Hidden = False
+    
+    'Worksheets(sheet5_name).Range("c19:i19").ClearContents
+    'Worksheets(sheet7_name).Range("c15:i15").ClearContents
+    'Worksheets(sheet13_name).Range("d14:j14").ClearContents
+    
+    Worksheets(sheet13_name).Rows("24:37").Hidden = True
+    
+    'Worksheets(sheet13_name).Range("e26:f26").ClearContents
+    'Worksheets(sheet13_name).Range("e27:f27").ClearContents
+    'Worksheets(sheet13_name).Range("e28:f28").ClearContents
+    'Worksheets(sheet13_name).Range("e29") = "DD/MM/YYYY"
+    'Worksheets(sheet13_name).Range("e30").ClearContents
+    'Worksheets(sheet13_name).Range("e32").ClearContents
+    'Worksheets(sheet13_name).Range("e33").ClearContents
+    'Worksheets(sheet13_name).Range("e35:f35").ClearContents
+    'Worksheets(sheet13_name).Range("g31").ClearContents
+    'Worksheets(sheet13_name).Range("g32").ClearContents
+    'Worksheets(sheet13_name).Range("g33").ClearContents
+    
+    Worksheets(sheet13_name).Range("d3").value = "Pt. V.  Additional Liability due to non-reconciliation" & Chr(10) & Chr(10) & "Please Note : Fields marked with * (red asterisk) are mandatory fields and need to be filled up"
+    Worksheets(sheet13_name).Range("d3").Characters(71, 81).Font.Bold = False
+    Worksheets(sheet13_name).Range("d3").Characters(57, 95).Font.Italic = True
+    Worksheets(sheet13_name).Range("d3").Characters(57, 95).Font.Underline = False
+    Worksheets(sheet13_name).Range("d3").Characters(90, 1).Font.Color = RGB(255, 0, 0)
+
+    Worksheets(home_sheet).Shapes("FormB").Visible = False
+    Worksheets(sheet13_name).Shapes("PTV").Visible = False
+    
+    Worksheets(sheet1_name).Range("h12:i12").Interior.Color = RGB(191, 191, 191)
+    Worksheets(sheet1_name).Range("h12:i12").Locked = True
+    Worksheets(sheet1_name).Range("h12:i12").ClearContents
+    
+    Worksheets(home_sheet).Shapes("FormA").TextFrame.Characters.Text = "Proceed to fill details"
+
+    
+End Sub
+
+Public Sub old_view()
+    Variable_Initialize.initiali
+    selected_form = Worksheets(home_sheet).Range("D14").value
+    
+    If selected_form = "Yes" Then
+     Worksheets(sheet14_name).Visible = xlSheetVisible
+     
+    ElseIf selected_form = "No" Then
+        Worksheets(sheet15_name).Visible = xlSheetVisible
+    Else
+    
+      ThisWorkbook.Unprotect Password:="pass"
+        Worksheets(sheet14_name).Visible = xlSheetVisible
+        Worksheets(sheet15_name).Visible = xlSheetVisible
+        ThisWorkbook.Protect Password:="pass", Structure:=True
+
+
+        Worksheets(sheet14_name).Visible = xlSheetVisible
+        Worksheets(sheet15_name).Visible = xlSheetVisible
+        
+    End If
+    
+    Worksheets(home_sheet).Rows(14).Hidden = False
+    'Worksheets(home_sheet).Range("D14").ClearContents
+    
+    'Worksheets(sheet5_name).Range("c19:i19").ClearContents
+    'Worksheets(sheet7_name).Range("c15:i15").ClearContents
+    'Worksheets(sheet13_name).Range("d14:j14").ClearContents
+    
+    Worksheets(sheet5_name).Rows("19").Hidden = True
+    Worksheets(sheet7_name).Rows("15").Hidden = True
+    Worksheets(sheet13_name).Rows("14").Hidden = True
+    
+    Worksheets(sheet13_name).Range("d3").value = "Pt. V.  Auditor's recommendation on additional Liability due to non-reconciliation" & Chr(10) & Chr(10) & "Please Note : Fields marked with * (red asterisk) are mandatory fields and need to be filled up"
+    Worksheets(sheet13_name).Range("d3").Characters(98, 95).Font.Bold = False
+    Worksheets(sheet13_name).Range("d3").Characters(83, 116).Font.Italic = True
+    Worksheets(sheet13_name).Range("d3").Characters(83, 116).Font.Underline = False
+    Worksheets(sheet13_name).Range("d3").Characters(118, 1).Font.Color = RGB(255, 0, 0)
+    
+    Worksheets(sheet13_name).Rows("24:37").Hidden = False
+    
+    Worksheets(home_sheet).Shapes("FormB").Visible = True
+    Worksheets(sheet13_name).Shapes("PTV").Visible = True
+    
+    Worksheets(sheet1_name).Range("h12:i12").Interior.Color = RGB(255, 255, 255)
+    Worksheets(sheet1_name).Range("h12:i12").Locked = False
+    Worksheets(sheet1_name).Range("h12:i12").ClearContents
+    
+    Worksheets(home_sheet).Shapes("FormA").TextFrame.Characters.Text = "Proceed to fill PART -A"
+End Sub
+
+
+-------------------------------------------------------------------------------

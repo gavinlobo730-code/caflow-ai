@@ -21,7 +21,7 @@
  * `domain/gst/registrations.py`'s answers, served by
  * /api/client-gst-registrations.
  */
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { Plus, AlertTriangle, X, Info } from "lucide-react";
 import { api, type ClientGstRegistration, type GstRegistrationKinds,
@@ -30,6 +30,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
+import { Cmp08Panel } from "@/components/gst/Cmp08Panel";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -39,6 +40,7 @@ const BLANK = {
   filing_frequency: "monthly",
   trade_name: "",
   effective_from: "",
+  composition_category: "",
 };
 
 /** Underscores out, first letter up — the same derivation the day book uses on
@@ -135,7 +137,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
   useEffect(() => {
     let alive = true;
     api.clientGstRegistrations.kinds()
-      .then((r) => { if (alive && r.success && r.data) setKinds(objectWithLists<GstRegistrationKinds>(r.data, "registration_types")); })
+      .then((r) => { if (alive && r.success && r.data) setKinds(objectWithLists<GstRegistrationKinds>(r.data, "registration_types", "composition_categories")); })
       .catch(() => { /* the pickers fall back to what is already selected */ });
     return () => { alive = false; };
   }, []);
@@ -144,6 +146,8 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
     setSaving(true);
     setMsg(null);
     try {
+      const chosenType = kinds?.registration_types?.find(
+        t => t.value === form.registration_type);
       const res = await api.clientGstRegistrations.create({
         client_id: clientId,
         gstin: form.gstin.trim().toUpperCase(),
@@ -151,6 +155,8 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
         filing_frequency: form.filing_frequency,
         trade_name: form.trade_name.trim() || null,
         effective_from: form.effective_from || null,
+        composition_category: chosenType?.files_cmp08
+          ? (form.composition_category || null) : null,
       });
       if (!res.success) throw new Error(res.error ?? "Couldn't add the registration.");
       setShowForm(false);
@@ -348,7 +354,8 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
             </thead>
             <tbody className="divide-y divide-ps-border">
               {rows.map((r) => (
-                <tr key={r.gstin} className="align-top">
+                <Fragment key={r.gstin}>
+                <tr className="align-top">
                   <td className="py-2">
                     <span className="font-mono text-ps-ink">{r.gstin}</span>
                     {r.trade_name && (
@@ -422,6 +429,19 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                     )}
                   </td>
                 </tr>
+                {/* A composition registration never files GSTR-1/3B — CMP-08
+                    is the return it DOES owe, so it is offered right here
+                    rather than on a return screen it must not open. Not for
+                    a cancelled one: s.29 closes it, but the returns it still
+                    owes are for periods already past, not a fresh quarter. */}
+                {r.files_cmp08 && !r.effective_to && (
+                  <tr>
+                    <td colSpan={6} className="pb-2">
+                      <Cmp08Panel clientId={clientId} gstin={r.gstin} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -455,21 +475,56 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                 <select value={form.registration_type}
                   onChange={(e) => setForm(f => ({ ...f, registration_type: e.target.value }))}
                   className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg">
-                  {(kinds?.registration_types ?? [{ value: form.registration_type, files_gstr1_and_3b: true, other_return_form: null }])
+                  {(kinds?.registration_types ?? [{ value: form.registration_type, files_gstr1_and_3b: true, files_cmp08: false, other_return_form: null }])
                     .map((t) => (
                       <option key={t.value} value={t.value}>{pretty(t.value)}</option>
                     ))}
                 </select>
                 {(() => {
                   const chosen = kinds?.registration_types?.find(t => t.value === form.registration_type);
-                  return chosen?.other_return_form ? (
+                  if (!chosen?.other_return_form) return null;
+                  // The return this type owes IS prepared here, on this same
+                  // row once added, for exactly the types this screen knows
+                  // how to prepare (files_cmp08 today) — every other one
+                  // genuinely is not, so the two get different sentences.
+                  return (
                     <span className="block text-3xs text-amber-800 mt-1 leading-tight">
-                      {chosen.other_return_form} — which this product does not build, so
-                      no GSTR-1 or GSTR-3B will be prepared for it.
+                      {chosen.other_return_form}. No GSTR-1 or GSTR-3B will be
+                      prepared for it{chosen.files_cmp08
+                        ? " — its own return is, once this registration is added"
+                        : ", which this product does not yet build"}.
                     </span>
-                  ) : null;
+                  );
                 })()}
               </label>
+
+              {kinds?.registration_types?.find(t => t.value === form.registration_type)?.files_cmp08 && (
+                <label className="text-xs block">
+                  <span className="block text-ps-body font-medium mb-1">
+                    Which s.10 rate applies
+                  </span>
+                  <select value={form.composition_category}
+                    onChange={(e) => setForm(f => ({ ...f, composition_category: e.target.value }))}
+                    className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg">
+                    <option value="">Not recorded yet</option>
+                    {(kinds?.composition_categories ?? []).map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {pretty(c.value)} ({(c.rate_bps / 100).toFixed(0)}%)
+                      </option>
+                    ))}
+                  </select>
+                  <span className="block text-3xs text-ps-hint mt-1 leading-tight">
+                    A manufacturer or trader, a restaurant and another service
+                    provider each pay a different rate on the same turnover
+                    (CGST Act s.10). Leaving this unrecorded still lets its
+                    return be prepared — it names the gap instead of a figure.
+                    {kinds && !kinds.composition_rates_verified && (
+                      <> Rates shown are not independently verified against
+                      Rule 7 in this environment.</>
+                    )}
+                  </span>
+                </label>
+              )}
 
               <label className="text-xs block">
                 <span className="block text-ps-body font-medium mb-1">Filing frequency</span>
