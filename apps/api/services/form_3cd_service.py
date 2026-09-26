@@ -300,12 +300,21 @@ def save_manual_clauses(db, firm_id: str, client_id: str, financial_year: str,
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .eq("financial_year", financial_year).limit(1)
                 .execute().data or [])
-    payload = {"firm_id": firm_id, "client_id": client_id,
-               "financial_year": financial_year, "clauses_json": clauses,
-               "status": status}
+    # Inline at both calls rather than built once and passed by name: the
+    # schema-safety scanner (tests/test_backend_columns_exist_pg.py) reads a
+    # write's columns off a literal dict argument, not off whatever a variable
+    # happens to be bound to, so a shared `payload` is invisible to it twice.
     if existing:
-        (db.table("tax_audit_checklists").update(payload)
+        (db.table("tax_audit_checklists")
+         .update({"firm_id": firm_id, "client_id": client_id,
+                  "financial_year": financial_year, "clauses_json": clauses,
+                  "status": status})
          .eq("id", existing[0]["id"]).execute())
     else:
-        db.table("tax_audit_checklists").insert(payload).execute()
-    return payload
+        db.table("tax_audit_checklists").insert(
+            {"firm_id": firm_id, "client_id": client_id,
+             "financial_year": financial_year, "clauses_json": clauses,
+             "status": status}).execute()
+    return {"firm_id": firm_id, "client_id": client_id,
+            "financial_year": financial_year, "clauses_json": clauses,
+            "status": status}
