@@ -124,7 +124,7 @@ export function deriveHealthAlerts(health: ClientHealth): HealthAlert[] {
   if (health.hard_override && health.hard_override_reason) {
     alerts.push({ severity: "critical", dimension: "Compliance", message: health.hard_override_reason });
   }
-  for (const [key, dim] of Object.entries(health.dimensions)) {
+  for (const [key, dim] of Object.entries(health.dimensions ?? {})) {
     if (dim.score < 50) {
       const label = DIMENSION_LABELS[key] ?? key;
       alerts.push({

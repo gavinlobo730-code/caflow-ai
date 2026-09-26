@@ -101,13 +101,21 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
 
   return (
     <div className="relative shrink-0">
-      <header className="flex items-center gap-2 md:gap-3 h-12 px-2 md:px-4 bg-white border-b border-gray-200">
+      {/* DESIGN FIX (audit finding §1): with the firm rail gone inside a
+          client, this bar was the only chrome a CA sees all day and it read
+          as a different, thinner product — plain white, no brand colour,
+          against the navy rail everywhere else. A 3px brand-navy top edge
+          keeps this bar visually part of the same product without bringing
+          the clutter the rail's removal was meant to cut. */}
+      <header className="flex items-center gap-2 md:gap-3 h-12 px-2 md:px-4 bg-white border-b border-gray-200 border-t-[3px] border-t-brand">
         {/* The way out. First control on the bar, because with the rail gone it
-            is the only one, and a CA must never have to hunt for it. */}
+            is the only one, and a CA must never have to hunt for it.
+            Bordered as its own pill (not just text) so it reads as clearly
+            clickable at a glance, matching the module-switcher pill's weight. */}
         <Link
           href="/clients"
           title="Exit client workspace"
-          className="flex items-center gap-1.5 h-8 px-2 rounded-lg text-xs font-medium text-ps-hint hover:text-ps-ink hover:bg-ps-bg transition-colors shrink-0"
+          className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-ps-border text-xs font-medium text-ps-label hover:text-ps-ink hover:border-brand hover:bg-ps-bg transition-colors shrink-0"
         >
           <ArrowLeft size={14} />
           <span className="hidden sm:inline">All clients</span>
@@ -117,7 +125,15 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
 
         <Building2 size={15} className="text-gray-400 shrink-0 hidden sm:block" />
 
-        <div className="flex items-center gap-2 md:gap-3 min-w-0">
+        {/* BUG FIX (audit finding 7c): at a phone width the client name ran
+            straight through the module-switcher pill next to it instead of
+            truncating — the Combobox trigger button is `inline-flex`, which
+            sizes to its own content rather than shrinking with this row, so
+            `min-w-0`/`flex-shrink` alone on it never took effect. A hard cap
+            plus `overflow-hidden` here, on the one ancestor this header
+            controls, forces the name to truncate regardless of how the
+            shared Combobox sizes itself internally. */}
+        <div className="flex items-center gap-2 md:gap-3 min-w-0 max-w-[42vw] overflow-hidden sm:max-w-none">
           {/* The client's name IS the switcher — but only once we know the
               name. Offering a picker over "Couldn't load client" invites a CA
               to navigate from a header that does not know where it is. */}

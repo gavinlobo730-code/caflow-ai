@@ -52,7 +52,7 @@ import { CustomerFormModal } from "@/components/customers/CustomerFormModal";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { newInvoiceHref, editInvoiceHref } from "@/lib/invoices/workspaceNav";
 import { writeDuplicateSeed } from "@/lib/invoices/duplicateSeed";
 import {
@@ -252,11 +252,17 @@ export default function SalesPage() {
   // effect from window.location.search, the way ?cust= below already is: this
   // page is a static export, so nothing may touch `window` during render.
   const [openDoc, setOpenDoc] = useState<string | null>(null);
+  // Reactive, not mount-only: a same-route drill-through (e.g. from the
+  // ledger) changes only the query string and does not remount this page, so
+  // reading window.location.search once on mount misses it — the tab stays
+  // wherever it was and the address bar disagrees with the screen.
+  // useSearchParams() re-renders this effect on every URL change, mount or not.
+  const tabDeepLinkParams = useSearchParams();
   useEffect(() => {
-    const { tab: t, doc } = openedAt(window.location.search);
+    const { tab: t, doc } = openedAt(tabDeepLinkParams.toString());
     if (t && TABS.some((x) => x.id === t)) setTab(t as SalesTab);
     setOpenDoc(doc);
-  }, []);
+  }, [tabDeepLinkParams]);
 
   // Cross-tab navigation (e.g. Customers → "View Invoices" / "View Ledger").
   // The target customer is stashed in the URL (?cust=) and the tab switches;
