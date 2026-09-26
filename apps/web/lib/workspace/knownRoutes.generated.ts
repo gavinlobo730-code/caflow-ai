@@ -98,6 +98,7 @@ export const KNOWN_ROUTE_SHAPES: string[][] = [
   ["income-tax","notices"],
   ["income-tax","section-32"],
   ["income-tax","tax-audit"],
+  ["income-tax","tax-audit","form-3cd"],
   ["insights"],
   ["join"],
   ["knowledge"],

@@ -142,6 +142,7 @@ export const SCREENS: Screen[] = [
   firm("/income-tax/notices", "Notices", "Income tax", ["143(1)", "139(9)", "intimation", "scrutiny"]),
   firm("/income-tax/section-32", "Depreciation (section 32)", "Income tax", ["32", "additional depreciation", "block"]),
   firm("/income-tax/tax-audit", "Tax audit", "Income tax", ["44ab", "3cd", "3ca", "3cb", "audit report"]),
+  firm("/income-tax/tax-audit/form-3cd", "Form 3CD", "Income tax", ["44ab", "statement of particulars", "clause register"]),
   firm("/tds", "TDS", "TDS", ["withholding", "deduction"]),
   firm("/tds/returns", "TDS returns", "TDS", ["24q", "26q", "27q", "27eq", "quarterly statement", "fvu"]),
 

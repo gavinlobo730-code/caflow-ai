@@ -53,8 +53,8 @@ block a track.
 
 | what | now | was 24 Sep | how it was measured |
 |---|---|---|---|
-| Audit findings closed | **266 of 279** | 265 | `docs/audits/findings-status.json` |
-| — partial | 6 | 6 | ACC-13, FA-11, IT-11, PAY-27, SALES-23, TDS-22 |
+| Audit findings closed | **269 of 279** | 265 | `docs/audits/findings-status.json` |
+| — partial | 3 | 6 | FA-11, IT-11, PAY-27 |
 | — open | 2 | 2 | TDS-16, GST-25 — both blocked on a document |
 | — not a defect as stated | 5 | 5 | including **PAY-28**, re-read after the redesign |
 | Migrations | **416** | 416 | `ls apps/api/migrations/ \| tail -1` — Tracks 1–3 carried none |
@@ -188,18 +188,64 @@ until somebody read the callers.
 | 3c-3 | **Fee concentration** — if the largest client leaves, what happens | **done 25 Sep** ✅ `domain/practice/concentration.py` + `GET /api/analytics/concentration`, rendered on `/practice/profitability`. The ICAI fee-dependence threat is NAMED and no threshold is drawn: icai.org is refused at this environment's proxy, and a percentage from memory on an independence question hands a firm a clean bill of health nobody issued |
 | 3c-1, 3c-2, 3c-4, and the tax half of 3c-5 | Effective tax rate trend · ITC leakage trend · GST/TDS/payroll trends · cross-client tax benchmarking | **done 25 Sep** ✅ **Migration 417** `client_period_metrics`, D30's twelve figures, one row per (client, financial year), re-derived nightly by the 06:00 IST sweep beside the two steps that already pay the per-client read. `domain/practice/client_metrics.py` is the authority, `GET /api/analytics/benchmark` serves it and `/practice/benchmark` renders it beside Profitability — the fee and tax halves of one question. The trends are free, because a year of rows IS the trend. **Every figure is NULLABLE with no default and NULL is excluded from the distribution**: in a benchmark a nil that means *not derived* moves every median it is counted in and makes the client it belongs to read as the firm's best performer on a ratio nobody computed for them. It ranks and never judges — no band, no threshold, no verdict |
 
-### §C — the six partials (was Phase 1.6)
+### §C — the remaining findings (was Phase 1.6, was "the six partials")
+
+Two left this table already: **SALES-23** (may the nightly sweep email a
+client's own customers — *no, the CA presses send*, D27) and **ACC-13** (cost
+centres and a party-wise ledger — *build it*, D29, migrations 418+419), both
+closed 25 Sep. **TDS-22 is the third**, closed the same day: the owner fetched
+the bare text of §194-I and §194J from incometaxindia.gov.in and pasted it in —
+2% for plant/machinery/equipment and technical services, 10% for the other
+limb of each — a `[P]`-graded primary source. `domain/tds/section_rates.py`'s
+194I(A)/194J(A) now carry that rate with no `rate_gap`; the bare (clause-less)
+sections still warn, reworded to name the confirmed split rather than an
+unheld rate.
 
 | finding | what remains | blocked? |
 |---|---|---|
 | PAY-27 | three more payroll report shapes, if wanted | no |
-| IT-11 | **Form 3CD** — a clause workspace, needs a migration | document #4 |
+| IT-11 | **Form 3CD** — PARTLY BUILT 25 Sep, no migration needed after all (see below) | no — the rest is derivation work |
 | SALES-23 | ~~whether the nightly sweep may EMAIL a client's customers~~ | **answered — D27, no.** Closed 25 Sep |
 | ACC-13 | **cost centres** — a dimension on `journal_lines` | **answered — D29, and CLOSED, both halves.** Migration 418: a `cost_centres` master, a nullable `journal_lines.cost_centre_id`, and an allocation report whose unallocated balance is its own row. Migration 419: the party-wise ledger, DERIVED from `source_type`/`source_id` with no column, whose unattributed rows are the difference between the control account and the Customer Statement |
-| TDS-22 | two numbers for the §194I(a)/§194J(a) limbs | document #4 |
-| FA-11 | shift working (NESD markings); revaluation and component accounting unstarted | document #9 |
-| TDS-16 *(open)* | the FVU/RPU file writer | document #3 |
-| GST-25 *(open)* | composition, TCS on GSTR-8, GSTR-9C | document #5 |
+| TDS-22 | two numbers for the §194I(a)/§194J(a) limbs | **answered — closed 25 Sep**, see above |
+| FA-11 | shift working (NESD markings); revaluation and component accounting unstarted | not a document — an owner build-order call |
+| TDS-16 *(open)* | the FVU/RPU file writer — a confirmed s.393 payment-code SUBSET landed 25 Sep, the byte-level writer itself is untouched | not a document any more — a multi-week build |
+| GST-25 *(open)* | composition, TCS on GSTR-8, GSTR-9C — the SCHEMA blocker cleared 25 Sep (VBA extracted from all three offline utilities), the build itself has not started | not a document any more — three separate builds, each GST-10-scale |
+
+**25 September, overnight run.** The owner fetched documents #3 (TDS file
+layouts), #4 (Form 3CD) and #5 (GST offline utilities) and asked for them to
+be built while unavailable to answer questions, with an honest report of what
+remained. Three things landed, none needing a migration:
+
+- **TDS-16, partly.** `domain/tds/vocabulary.py`'s s.393 payment-code table
+  was a blanket refusal; the owner's own Protean file-format spreadsheets
+  turned out to carry it in their own Annexure 2. Fourteen sections are now
+  answered exactly, cited to the row that states them; two (s.194A, s.194J's
+  professional-fee limb) split further under the new table on facts the
+  registry cannot see and stay named gaps rather than guesses. **The full
+  byte-level FVU/RPU text-file writer was deliberately NOT attempted** — it
+  needs schema fields this product does not hold (deductor GSTN, a structured
+  responsible-person block) and is multi-week-scale work a single session
+  should not rush against a real government filing format.
+- **IT-11, partly.** Form 3CD's 44 clauses are now a register
+  (`domain/income_tax/form_3cd.py`, transcribed from the Income-tax Rules
+  1962 form itself), reachable at `/income-tax/tax-audit/form-3cd`. Eight
+  clauses are answered live by REUSING existing modules — §32 block
+  depreciation, §43B(h)/MSMED §16 interest, brought-forward losses, TDS
+  compliance summarised by section, the client's stock valuation policy, and
+  the GST-registered/unregistered expenditure split — never re-derived. The
+  other 36 are named with the form's own text and a reason, and the CA
+  records them on the same screen. No migration: `public.tax_audit_checklists`
+  (migration 014) had held the exact shape needed since the first schema
+  sweep, with zero readers until tonight.
+- **GST-25, not built, but no longer document-blocked.** The three return
+  types (composition/CMP-08+GSTR-4, GSTR-8 TCS, GSTR-9C) each need their own
+  data model and statutory engine on the scale of GSTR-9's own build (GST-10)
+  — attempting even one correctly, end to end, alongside the other two
+  tonight risked a rushed migration nobody could review before it auto-applies
+  to production. The VBA macros behind all three offline utilities were
+  extracted (JSON field names, validation rules) and are the primary source a
+  future build should start from.
 
 ---
 

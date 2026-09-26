@@ -490,6 +490,9 @@ export default function TaxAuditPage() {
           </p>
         </div>
         <YearPicker value={fyFilter} onChange={setFyFilter} className="w-auto" />
+        <Link href="/income-tax/tax-audit/form-3cd">
+          <Button size="sm" variant="outline">Form 3CD</Button>
+        </Link>
         <Button size="sm" onClick={() => setShowAdd(true)}>
           <Plus size={14} className="mr-1" /> Add Audit
         </Button>

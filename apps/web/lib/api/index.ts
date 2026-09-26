@@ -484,6 +484,30 @@ export interface TaxAuditApplicability {
   return_due_date: string | null;
 }
 
+/** GET /api/income-tax/form-3cd — the 44-clause statement of particulars
+ *  annexed to a §44AB tax audit report.
+ *
+ *  Every DERIVED clause reuses an existing module — §32 block depreciation,
+ *  §43B(h)/MSMED §16, brought-forward losses, TDS compliance, the GST
+ *  registration split — this screen computes nothing itself. A clause this
+ *  product cannot answer carries `derived: false` and a `note` saying why,
+ *  or the CA's own recorded value where one has been saved via the PUT. */
+export interface Form3cdClause {
+  code: string;
+  heading: string;
+  derived: boolean;
+  value: unknown;
+  note: string;
+}
+export interface Form3cdRegister {
+  financial_year: string;
+  client_id: string;
+  derived_count: number;
+  manual_count: number;
+  clauses: Form3cdClause[];
+  checklist_status?: "draft" | "review" | "finalised";
+}
+
 /** GET /api/income-tax/msme-43bh — what §43B(h) adds back this year, DERIVED
  *  from the purchase ledger rather than from a table the CA re-keys (PUR-15).
  *
@@ -3020,6 +3044,31 @@ export const api = {
         `/api/income-tax/msme-43bh?client_id=${encodeURIComponent(client_id)}` +
         `&fy=${encodeURIComponent(fy)}` +
         (bankRateBps === undefined ? "" : `&bank_rate_bps=${bankRateBps}`)),
+    /** The Form 3CD register for one client and one previous year.
+     *
+     *  `nature` (business|profession) is needed only to resolve clause 8 —
+     *  never inferred from turnover — and `bankRateBps` only for clause 22's
+     *  MSMED §16 interest. Both are optional; the clauses that need them are
+     *  simply named unresolved without them. */
+    form3cd: (client_id: string, fy: string, opts?: {
+      nature?: "business" | "profession";
+      bankRateBps?: number;
+    }) => {
+      const p = new URLSearchParams({ client_id, fy });
+      if (opts?.nature) p.set("nature", opts.nature);
+      if (opts?.bankRateBps !== undefined) p.set("bank_rate_bps", String(opts.bankRateBps));
+      return request<ApiResp<Form3cdRegister>>(`/api/income-tax/form-3cd?${p.toString()}`);
+    },
+    /** Record the CA's own answer for a clause this product does not derive.
+     *  A code that IS derivable is stored but never rendered in its place —
+     *  the GET only reads a manual entry for a code it could not resolve. */
+    saveForm3cdManualClauses: (client_id: string, fy: string, body: {
+      clauses: Record<string, unknown>;
+      status?: "draft" | "review" | "finalised";
+    }) =>
+      request<ApiResp<{ clauses_json: Record<string, unknown>; status: string }>>(
+        `/api/income-tax/form-3cd?client_id=${encodeURIComponent(client_id)}&fy=${encodeURIComponent(fy)}`,
+        { method: "PUT", body: JSON.stringify(body) }),
   },
   documents: {
     list: (client_id?: string) => request(`/api/documents${client_id ? `?client_id=${client_id}` : ""}`),

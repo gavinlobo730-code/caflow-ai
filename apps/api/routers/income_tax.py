@@ -2372,3 +2372,89 @@ def book_to_tax_bridge(
         # see WHY without a second request.
         "section_32": section_32,
     })
+
+
+# ── Form 3CD (IT-11) — the statement of particulars annexed to a tax audit ──
+# report. See domain/income_tax/form_3cd.py for the clause vocabulary (which
+# clauses this product derives, and why the rest are named rather than
+# guessed) and services/form_3cd_service.py for where each derived figure
+# comes from. Every derived clause reuses an existing module — nothing here
+# recomputes §32, §43B(h), MSMED §16 interest, brought-forward losses, TDS
+# compliance or the GST-registration split.
+
+@router.get("/form-3cd")
+def form_3cd_register(
+    client_id: str,
+    fy: Annotated[FYLabel, Query(description="YYYY-YY, e.g. 2025-26")],
+    nature: Optional[str] = Query(
+        None, description="business | profession — needed only to resolve "
+                          "clause 8 (§44AB), and never inferred from turnover"),
+    bank_rate_bps: Optional[int] = Query(
+        None, description="RBI Bank Rate over the delay, for clause 22's "
+                          "MSMED §16 interest — not held here, refused if "
+                          "omitted"),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """The 44-clause register: every clause this product can honestly answer,
+    computed from the books, and every other clause named with the reason —
+    or the CA's own recorded answer, where one has been saved.
+
+    Reads only. `PUT /form-3cd` is where a CA records a manual clause.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        from domain.income_tax import form_3cd as f3cd
+        return api_response(True, f3cd.build_register(
+            client_id=client_id, financial_year=fy, derived={}).to_dict())
+    from services.form_3cd_service import build
+    return api_response(True, build(
+        db, current_user["firm_id"], client_id, fy,
+        nature=nature, bank_rate_bps=bank_rate_bps))
+
+
+class Form3cdManualClauses(BaseModel):
+    clauses: dict = Field(
+        default_factory=dict,
+        description="clause code -> the CA's own value/note, for a clause "
+                    "this product does not derive")
+    status: str = Field("draft", description="draft | review | finalised")
+
+    @field_validator("status")
+    @classmethod
+    def _known_status(cls, v: str) -> str:
+        allowed = {"draft", "review", "finalised"}
+        if v not in allowed:
+            raise ValueError(f"status must be one of {sorted(allowed)}")
+        return v
+
+
+@router.put("/form-3cd")
+def save_form_3cd_manual_clauses(
+    client_id: str,
+    fy: Annotated[FYLabel, Query(description="YYYY-YY, e.g. 2025-26")],
+    req: Form3cdManualClauses,
+    current_user: dict = Depends(rbac("income_tax", "write")),
+):
+    """Record the CA's own answers for clauses this product does not derive.
+
+    Stored on `tax_audit_checklists` (migration 014) — a table that has
+    existed since the first schema sweep with no reader or writer anywhere in
+    this codebase until now. A clause code that is ALSO one this product
+    derives is stored but never shown in its place: `GET /form-3cd` only
+    consults a manual entry for a code absent from what it could derive, so a
+    note saved against clause 18 can never shadow a live §32 figure.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"client_id": client_id, "financial_year": fy,
+                                   "clauses_json": req.clauses,
+                                   "status": req.status})
+    from services.form_3cd_service import save_manual_clauses
+    return api_response(True, save_manual_clauses(
+        db, current_user["firm_id"], client_id, fy, req.clauses, req.status))

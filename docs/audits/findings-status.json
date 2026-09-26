@@ -11,7 +11,7 @@
     "partial": "verified against the code: part of the finding is fixed and part is still true. `why` says which part is closed and `what_is_left` says what is not. Never quote one of these as done."
   },
   "_the_stale_problem_this_exists_to_end": "docs/audits/2026-09-11-the-verification-pass.md measured the backlog ~10% stale. Five days later docs/audits/2026-09-12-the-probe-pass/ measured the same backlog 38-59% stale by subsystem, because five tranches had landed and nothing re-scored. On 12 September a further hand-check found INV-04, INV-07, FA-03, FA-16, FA-18, PAY-17, PAY-18, PUR-30, TDS-31, GST-03 and PUR-12 all recorded open and all in fact closed. A status that is only ever written by an audit is a status that is wrong by the time it is read.",
-  "verified_on": "2026-09-24",
+  "verified_on": "2026-09-25",
   "findings": {
     "INV-04": {
       "status": "closed",
@@ -327,10 +327,10 @@
     },
     "IT-11": {
       "status": "partial",
-      "verified_on": "2026-09-13",
-      "why": "THE §44AB APPLICABILITY HALF IS CLOSED. domain/income_tax/tax_audit.py decides clauses (a) and (b) and names (c)/(d)/(e) as untested; GET /api/income-tax/tax-audit/applicability serves it and the Tax Audit tracker asks. The nature of the activity is an INPUT now — the screen read it off the amount and told a ₹60 lakh business that a profession's threshold applied. The proviso to §44AB(a) is applied where all three cash figures are stated and refused otherwise. apps/web/lib/income-tax/taxAuditThresholds.ts is deleted. WHAT REMAINS is Form 3CD itself — a clause workspace, which needs a migration.",
-      "reread_on": "2026-09-18",
-      "what_is_left": "Form 3CD itself — a clause workspace, which needs a migration. The `why` above has said so since 13-09-2026 and this field said \"None\", which is the two halves of one record disagreeing; corrected 18-09-2026. §44AB APPLICABILITY is closed and is a different question from the REPORT's forty-odd clauses."
+      "verified_on": "2026-09-25",
+      "why": "THE §44AB APPLICABILITY HALF IS CLOSED (13-09-2026, unchanged). THE 3CD CLAUSE REGISTER IS NOW PARTLY BUILT (25-09-2026), against the primary-source Form 3CD (Income-tax Rules 1962, transcribed clause-for-clause). domain/income_tax/form_3cd.py holds all 44 clauses (44a/30A/30B/30C sub-clauses included, 28/29 kept as omitted placeholders); services/form_3cd_service.py DERIVES eight of them by REUSING existing modules — never re-deriving — and GET/PUT /api/income-tax/form-3cd serves the register and a CA's own manual entries for the rest. Reachable from /income-tax/tax-audit (a 'Form 3CD' button) at /income-tax/tax-audit/form-3cd. NO MIGRATION was needed: manual clauses are stored on public.tax_audit_checklists (migration 014), which existed since the first schema sweep with zero readers/writers until now.",
+      "reread_on": "2026-09-25",
+      "what_is_left": "36 of 44 clauses remain manual-only (named with the form's own text and a reason, never guessed) — the ones this product genuinely has no data for (§40A(2)(b) related-party payments, §269SS/269T cash loans, ICDS adjustments, Form 61/61A/61B, CbCR, cost/excise audits, etc.). Three DERIVABLE-BUT-NOT-YET-WIRED candidates were identified and deliberately deferred rather than rushed: clause 35 (stock quantitative details — INV-01/INV-04 hold opening/closing stock but not the form's own row shape or manufacturing yield), clause 40 (turnover/GP/NP ratios for the current AND preceding year — needs two P&L calls composed, not built tonight), and clause 33 (Chapter VI-A — the CLAIMS are the CA's own entries on the ITR computation workspace, not derivable from books, so wiring it needs joining to a computation snapshot rather than a simple derivation). None of the eight LIVE derivations touch a schema change; all reuse an existing, already-tested module (msme_43bh_service, section_32_service, computation_workspace.list_bf_losses, opening_documents.without_carried_over) rather than re-implementing the rule."
     },
     "IT-19": {
       "status": "closed",
@@ -2317,13 +2317,16 @@
       "reread_on": "2026-09-16"
     },
     "TDS-22": {
-      "status": "partial",
-      "verified_on": "2026-09-12",
-      "why": "the CLAUSE is now recordable: 194I(A)/(B) and 194J(A)/(B) are in the registry with parent_section set, the (b) limbs carry the rate the parent already holds and are complete, and the (a) limbs withhold at the parent's higher rate with a rate_gap saying so. The clause codes come from the ITD's own ITR-6 AY 2026-27 schema in this repo, which is what removed the recorded objection to adding them. GET /api/tds/sections serves the parent, the gap, and s.197 eligibility resolved on the parent",
-      "needs": "the concessional RATES themselves — s.194I(a) plant and machinery, s.194J(a) technical services — read off the Finance Act by a person. Nothing in the module states 2%, deliberately: an under-deduction disallows the whole expenditure under s.40(a)(ia) while an excess is the payee's to reclaim",
-      "reread_on": "2026-09-18",
-      "what_is_left": "The (a) limbs' own RATES — §194I(a) plant, machinery or equipment and §194J(a) fees for technical services — and that is a RECORDED REFUSAL rather than unscheduled work. Nothing in the module states 2%: it could not be read off a Finance Act from this environment, an under-deduction disallows the WHOLE expenditure under §40(a)(ia) while an excess is the payee's to reclaim, so both limbs withhold at the PARENT's higher rate and say so in `rate_gap`. Closing it means a human reading the rate, the §3b shape. (This field said \"None\", which was wrong about the refusal rather than about the work; corrected 18-09-2026.)",
-      "user_visible_impact": "WAS: a CA could not record WHICH limb of §194I or §194J a payment fell under at all, so plant hire and technical fees were withheld at the land-and-building and professional-fee rates. NOW: the clause is selectable, the (b) limbs are complete, and an (a) limb over-deducts at the parent's rate with a sentence saying the lower rate has not been read off the Finance Act — over-deducting is the direction a rate nobody has confirmed may take."
+      "status": "closed",
+      "verified_on": "2026-09-25",
+      "why": "CLOSED 25-09-2026. The CLAUSE half closed earlier (194I(A)/194I(B)/194J(A)/194J(B) in the registry, parent_section set, s.197 eligibility resolved on the parent). The RATE half closed today: the bare text of s.194-I and s.194J, read directly from incometaxindia.gov.in (Income-tax Act, 1961) by the owner and pasted into the session, states 194-I(a) at 2% (machinery, plant or equipment) against 194-I(b) at 10%, and 194J's technical-services limb at 2% against its professional-fee/royalty/s.28(va) limb at 10% — a [P]-graded primary source, not a search-engine summary. domain/tds/section_rates.py now carries 200bps on both individual_rate_bps and company_rate_bps for 194I(A) and 194J(A), with rate_gap removed from both (they are complete, same shape as the (b) limbs). The BARE parent sections (194I, 194J — no clause recorded) still carry a rate_gap, reworded: it no longer says the rate is unheld, it names the confirmed 2%/10% split and tells the CA to record the clause to get it directly, defaulting to the safer 10% otherwise. The call-centre proviso (s.194J, 2% for a payee whose business is only operating a call centre) is named as NOT modelled — it is a fact about the payee's business, not a clause of the bill, and this registry carries no payee-level facts of that kind.",
+      "commits": [
+        "domain/tds/section_rates.py — 194I(A)/194J(A) rates confirmed, rate_gap removed; bare-section rate_gap reworded",
+        "tests/test_a_clause_of_a_section_can_be_recorded.py — rewritten for the closed state",
+        "tests/test_a_section_with_two_limbs_says_which_one_it_priced.py — CONCESSIONAL_LIMBS retired, all four limbs assert complete"
+      ],
+      "reread_on": "2026-09-25",
+      "what_is_left": "Nothing on the rate or the clause. Still deliberately unmodelled and named as such: the s.194J call-centre proviso (a payee-level fact, not a bill clause)."
     },
     "TDS-23": {
       "status": "closed",

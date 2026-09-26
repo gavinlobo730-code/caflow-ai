@@ -204,7 +204,8 @@ change. The code is the authority; keep this file in step with it.
 - GSTR-3B due date: 20th of the following month
 - GSTR-9 (annual): 31st December
 - TDS return (24Q salary / 26Q residents / 27Q non-residents — Rule 31A(2) sets one due date per quarter regardless of form): Q1 31 Jul, Q2 31 Oct, Q3 31 Jan, Q4 31 May. Q4 is the exception — it is NOT the end of the month following quarter end (that would be 30 Apr). services/compliance_engine.py::tds_return_due_date is the authority; keep any prose in step with it. **The DUE DATES above survive the 2025 Act unchanged. The FORM AND SECTION NUMBERS do not — see the next bullet.**
-- **From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it.** The Income-tax Act 2025 with the Income-tax Rules 2026 (CBDT Notification 22/2026, 20-03-2026, G.S.R. 198(E), plus a corrigendum) renumbered the statements — **24Q→138, 26Q→140, 27Q→144, 27EQ→143** — and the certificates — **Form 16→130** (three parts now), **16A→131** (quarterly now), **26AS→168**, **15G/15H→121**. It also collapsed the sections: **192→392**, the whole **194-series→393(1)**, **195→393(2)** (NOT 400 — one widely-copied source has that wrong), TCS→394, and returns now carry numeric payment codes 1001–1067. **Rates and thresholds are unchanged**, so `section_rates.py` holds right numbers under 1961-Act keys — and it stays that way. **This is a FORK, not a migration.** The transition is **by EVENT — credit or payment, whichever is earlier** — so periods up to 31-03-2026 keep the old forms and sections indefinitely, including belated and revised returns; both vocabularies are permanent. `act_for_date` is the definition and `act_for_fy` is derived from it, sound because commencement is exactly an FY boundary. **Translate at the boundary, never rekey a store**: ask the module where a form number or section code is emitted, and leave every rate lookup, stored challan and test on the 1961 keys. **There are TWO such boundaries on a quarterly statement and for a while only one was translated** — `tds_return_service` resolved the FORM through the vocabulary and left every deductee line's `section` as stored, so a FY 2026-27 26Q came back as Form 140 with each line citing 194J, a section that Act does not contain (TDS-17). The label now goes out as `section` and the stored 1961 code travels beside it as `section_1961`, which is load-bearing rather than decorative: s. 393(1) has no reverse, so a reader given only the label cannot recover the section that produced it — and `lib/data/tds.ts` writes the whole payload into `tds_returns.fvu_json`. A section the 2025 Act has no code for (s. 192A, say) keeps its stored code and is named in `statutory_gaps`; it is never guessed into 393(1). Challan matching accepts BOTH labels in every period — a challan records what somebody typed, not which Act governs the quarter. Three refusals are deliberate: the **s. 393 payment-code table is not held** (a wrong code is accepted and then wrong — a human step, like the ITR schemas), **s. 393(1) has no reverse**, and **a form cannot be asked for without a period**. ITR-1..7 are NOT renumbered — AY 2026-27 is still the 1961 Act. Verified 2026-09-04; see `docs/compliance/03-income-tax-and-tds.md`.
+- **From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it.** The Income-tax Act 2025 with the Income-tax Rules 2026 (CBDT Notification 22/2026, 20-03-2026, G.S.R. 198(E), plus a corrigendum) renumbered the statements — **24Q→138, 26Q→140, 27Q→144, 27EQ→143** — and the certificates — **Form 16→130** (three parts now), **16A→131** (quarterly now), **26AS→168**, **15G/15H→121**. It also collapsed the sections: **192→392**, the whole **194-series→393(1)**, **195→393(2)** (NOT 400 — one widely-copied source has that wrong), TCS→394, and returns now carry numeric payment codes 1001–1067. **Rates and thresholds are unchanged**, so `section_rates.py` holds right numbers under 1961-Act keys — and it stays that way. **This is a FORK, not a migration.** The transition is **by EVENT — credit or payment, whichever is earlier** — so periods up to 31-03-2026 keep the old forms and sections indefinitely, including belated and revised returns; both vocabularies are permanent. `act_for_date` is the definition and `act_for_fy` is derived from it, sound because commencement is exactly an FY boundary. **Translate at the boundary, never rekey a store**: ask the module where a form number or section code is emitted, and leave every rate lookup, stored challan and test on the 1961 keys. **There are TWO such boundaries on a quarterly statement and for a while only one was translated** — `tds_return_service` resolved the FORM through the vocabulary and left every deductee line's `section` as stored, so a FY 2026-27 26Q came back as Form 140 with each line citing 194J, a section that Act does not contain (TDS-17). The label now goes out as `section` and the stored 1961 code travels beside it as `section_1961`, which is load-bearing rather than decorative: s. 393(1) has no reverse, so a reader given only the label cannot recover the section that produced it — and `lib/data/tds.ts` writes the whole payload into `tds_returns.fvu_json`. A section the 2025 Act has no code for (s. 192A, say) keeps its stored code and is named in `statutory_gaps`; it is never guessed into 393(1). Challan matching accepts BOTH labels in every period — a challan records what somebody typed, not which Act governs the quarter. Three refusals are deliberate: the **s. 393 payment-code table is not FULLY held** (a wrong code is accepted and then wrong — a human step, like the ITR schemas — see the next bullet for what changed), **s. 393(1) has no reverse**, and **a form cannot be asked for without a period**. ITR-1..7 are NOT renumbered — AY 2026-27 is still the 1961 Act. Verified 2026-09-04; see `docs/compliance/03-income-tax-and-tds.md`.
+- **A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD** (25-09-2026), from a **primary source**: the file-format specification Protean (formerly NSDL) publishes for the RENUMBERED statements themselves (Form 138/140/144, current version, "for Tax Year 2026-27 onwards"), whose own Annexure 2 tables state "Nature of Payment | Section | Section code to be used in the return" against every s. 393 table entry — a `[P]`-graded read of the government's own document, the same grade GST-32's IRP validations carry, not the Act's text and not a search-engine summary of either. `domain/tds/vocabulary.payment_code_for()` answers fourteen of the sections `section_rates.py` already holds: s.192 (by a stated default — non-Government, since no client here is modelled as a government department), s.193, s.194, s.194B, s.194C (by which rate applied — its own two rows split on exactly `TDSSectionRule`'s individual/company rates, so no new fact is needed), s.194D, s.194G, s.194H, s.194I(a)/(b), s.194J(a), s.194LA, s.194Q, s.194T. **Several sections turned out to split FURTHER under the new table on a fact no rate difference had exposed**, and recording either half would be the exact guess this module exists to refuse: s.194A splits into three codes by the payee's age and the payer's kind, none of which this registry's single rate distinguishes; s.194J(b) — the professional-fee limb — shares its own citation (Table Sl. No. 6(iii).D(b)) with a DIRECTOR's remuneration under a DIFFERENT code, and s.194J(b) cannot tell a professional fee from a director's fee apart. Both stay named gaps. `payment_code_gap()` still names the whole table's incompleteness at the return level; `Vocabulary.payment_code()` is the per-line answer where one now exists, and is deliberately NOT yet wired into `tds_return_service.py`'s per-line deductee output — that needs the payload shape itself to carry a `payment_code` field, which is a separate, call-site-touching change against a live, tested return-building pipeline and is recorded as the next step rather than rushed alongside this one.
 - **A TDS threshold is a TRIGGER, not a deductible allowance, and most of the
   §194 series aggregates over the year.** §194C(5) charges where "the aggregate
   of the amounts of such sums credited or paid ... exceeds one lakh rupees", and
@@ -299,6 +300,49 @@ change. The code is the authority; keep this file in step with it.
   return back). **A filing that pins NOTHING is allowed through**: the column is
   nullable and a CA who computed outside the product has no snapshot to pin, so
   refusing would make the pin mandatory by accident.
+- **FORM 3CD IS 44 CLAUSES, AND EIGHT OF THEM REUSE ENGINES THIS PRODUCT ALREADY
+  HAD** (IT-11, 25-09-2026). The Tax Audit tracker recorded whether an audit
+  happened and never assembled the report's own particulars, although most of
+  what a real 3CD needs is already computed somewhere else in this product —
+  `domain/income_tax/form_3cd.py` is the clause vocabulary, transcribed
+  clause-for-clause from the Income-tax Rules 1962 form itself, and
+  `services/form_3cd_service.py` is what fetches each derivable clause by
+  CALLING the module that already owns the rule, never re-deriving it: clause
+  18 (depreciation) reads `section_32_service`, clause 22 (MSMED §16 interest)
+  and the MSME limb of clause 26 (§43B) both read `msme_43bh_service.
+  for_financial_year` — one call answers both, because §16's clock is the
+  same appointed day §43B(h) already computes — clause 32(a) reads
+  `computation_workspace.list_bf_losses`, clause 34 groups `tds_deductions` by
+  section, clause 44 splits `purchase_bills` by `vendors.
+  gst_registration_status` (excluding opening/carried-over bills, the
+  `opening_documents.without_carried_over` discipline), clause 14 reads
+  `clients.inventory_costing_method`, and clause 8 resolves §44AB(a)/(b) from
+  the Tax Audit tracker's own turnover once the CA states the activity
+  (business or profession is never inferred from the amount, the same rule
+  `/tax-audit/applicability` already holds). **`derived` and a CA's own
+  recorded answer are two SEPARATE channels into the register, and conflating
+  them is the one bug that would have shipped**: a manual note saved against a
+  clause must never come back marked as a computed figure, or a screen would
+  render a CA's own textarea entry as read-only the next time the register
+  opens — `build_register` takes `manual` apart from `derived` for exactly
+  this reason. **No migration.** `public.tax_audit_checklists` (migration
+  014) has held `(firm_id, client_id, financial_year, clauses_json, status)`
+  since the very first schema sweep with NO reader or writer anywhere in this
+  codebase until now — the same shape a manual-clause store needs, so this is
+  the first caller rather than a new table. The other 36 clauses are named
+  with the form's own text and why this product does not reach them (§40A(2)
+  (b) related-party payments, §269SS/269T cash loans, ICDS adjustments, Form
+  61/61A/61B, CbCR, cost/excise audits, and the rest) — reachable at
+  `/income-tax/tax-audit/form-3cd`, linked from the Tax Audit tracker.
+  **Three derivable-looking clauses were deliberately left manual rather than
+  rushed**: clause 33 (Chapter VI-A) is the CA's own claims on the ITR
+  computation workspace, not a fact the books hold, so deriving it needs a
+  join to a computation snapshot rather than a lookup; clause 35 (stock
+  quantitative detail) and clause 40 (turnover/GP/NP ratios for the current
+  AND preceding year) both have the raw figures available (`stock_position_
+  as_at`, the Profit & Loss) but assembling them into the form's own row
+  shape is unfinished work, not a missing capability, and is named as such
+  rather than answered halfway.
 - **§140A IS PAID BEFORE THE RETURN IS FURNISHED, AND A SHORT CHALLAN LANDS
   FEE FIRST** (IT-13, migration 407). §140A(1) makes the tax, interest and fee
   on a return payable *before* it is furnished and requires the return to be
@@ -1085,19 +1129,32 @@ change. The code is the authority; keep this file in step with it.
   behaves exactly as before — and `minor_head` is settable (200 = paid over by
   the deductor, 400 = against a demand; the company / non-company split is the
   MAJOR head 0020/0021, which migration 037's inline comment had backwards).
-- **§194I AND §194J EACH CHARGE TWO RATES, AND THE CLAUSE IS NOW RECORDABLE
-  WITHOUT THE RATE BEING INVENTED** (TDS-22). §194I charges rent of plant,
-  machinery or equipment at a lower rate than rent of land, buildings or
-  furniture; §194J charges fees for technical services at a lower rate than
-  professional fees. `domain/tds/section_rates.py` holds one key per section
-  plus four clause limbs — `194I(A)`, `194I(B)`, `194J(A)`, `194J(B)` — and the
-  distinction matters twice: **the (b) limbs ARE the rate the registry already
-  holds** (land/building/furniture rent, and professional fees), so selecting
-  one is complete and carries no gap, while **the (a) limbs withhold at the
-  parent's higher rate and say so** in `rate_gap`. Nothing in the module states
-  2%: an under-deduction disallows the whole expenditure under §40(a)(ia) while
-  an excess is the payee's to reclaim, so over-deducting is the direction a
-  rate nobody has read off the Finance Act may take.
+- **§194I AND §194J EACH CHARGE TWO RATES, AND BOTH ARE NOW HELD** (TDS-22,
+  closed 25-09-2026). §194I charges rent of plant, machinery or equipment at a
+  lower rate than rent of land, buildings or furniture; §194J charges fees for
+  technical services at a lower rate than professional fees. `domain/tds/
+  section_rates.py` holds one key per section plus four clause limbs —
+  `194I(A)`, `194I(B)`, `194J(A)`, `194J(B)` — and **all four are complete**:
+  the (b) limbs carry the rate the registry already held (land/building/
+  furniture rent, and professional fees), and **the (a) limbs now carry their
+  own confirmed 2%**, read directly from the bare text of both sections on
+  incometaxindia.gov.in (Income-tax Act, 1961) — a `[P]`-graded primary source,
+  not a recollection: "two per cent for the use of any machinery or plant or
+  equipment" (§194-I(a)) and "two per cent ... in case of fees for technical
+  services (not being a professional service)" (§194J(1)), against 10% for the
+  other limb of each. Neither limb carries a `rate_gap` any more.
+  **THE BARE SECTIONS STILL WARN, and the warning's job changed.** A payment
+  recorded under the bare "194I" or "194J" — no clause chosen — still cannot
+  tell which limb it is, so it withholds at the higher rate by default
+  (over-deducting is the recoverable direction: an excess is the payee's to
+  reclaim, while an under-deduction disallows the whole expenditure under
+  §40(a)(ia)). The `rate_gap` on the bare section now NAMES the confirmed 2%
+  and 10% and tells the CA to record the clause to get it directly, rather
+  than saying the rate is unheld.
+  **NOT MODELLED, and named rather than guessed**: §194J's proviso also cuts
+  the rate to 2% for a payee whose business is *only* operating a call centre
+  — a fact about the payee's business, not a clause of the bill, and this
+  registry carries no payee-level facts of that kind.
   **The clause CODES are a primary source inside this repository** — the ITD's
   own ITR-6 AY 2026-27 schema, `domain/income_tax/schemas/ITR6_2026_Main_V1.0.json`,
   enumerates `4-IA:194I(a)`, `4-IB:194I(b)`, `94J-A:194J(a)`, `94J-B:194J(b)` —
