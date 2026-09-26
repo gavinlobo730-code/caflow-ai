@@ -1869,6 +1869,102 @@ export type GSTR9Working = {
   source: string;
 };
 
+/** One row of GSTR-9C Table 9, Table 11 or Part V's rate-wise array. */
+export type Gstr9cRateWiseLine = {
+  id?: string;
+  table_ref: "9" | "11" | "partv";
+  rate_description: string;
+  taxable_value_paise: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  cess_paise: number;
+  tax_paise?: number;
+};
+
+/** One row of GSTR-9C Table 14's expense-head array. */
+export type Gstr9cExpenseLine = {
+  id?: string;
+  expense_head: string;
+  value_paise: number;
+  total_itc_paise: number;
+  eligible_itc_availed_paise: number;
+};
+
+/** FORM GSTR-9C — the audited-books reconciliation statement (CGST s.44,
+ *  Rule 80(3), GST-25). Almost every figure is CA-recorded because the
+ *  audited financial statements are not this product's own books — see
+ *  `domain/gst/gstr9c.py`. `threshold_table` and `self_certification_from_fy`
+ *  are REFERENCE ONLY and never decide whether a client must file this.
+ *  Prepare-only; nothing here is transmitted. */
+export type Gstr9cWorking = {
+  financial_year: string;
+  gstin: string;
+  registration_type: string | null;
+  reconciliation_id: string | null;
+  act_name: string | null;
+  table5: {
+    audited_turnover_paise: number | null;
+    adjustments_total_paise: number | null;
+    turnover_after_adjustments_paise: number | null;
+    declared_turnover_paise: number;
+    unreconciled_paise: number | null;
+    reasons: string[];
+  };
+  table7: {
+    taxable_turnover_after_adjustments_paise: number | null;
+    declared_taxable_turnover_paise: number;
+    unreconciled_paise: number | null;
+    reasons: string[];
+  };
+  table9: {
+    lines: Gstr9cRateWiseLine[];
+    total_payable_paise: Record<string, number>;
+    declared: Record<string, number>;
+    declared_tax_paid_paise: number;
+  };
+  table11: {
+    lines: Gstr9cRateWiseLine[];
+    total_paise: Record<string, number>;
+  };
+  table12: {
+    itc_per_audited_fs_paise: number | null;
+    booked_earlier_claimed_this_fy_paise: number | null;
+    booked_this_fy_claimed_later_fy_paise: number | null;
+    audited_adjusted_paise: number | null;
+    itc_claim_paise: number;
+    itc_claim_alternate_paise: number;
+    unreconciled_paise: number | null;
+    reasons: string[];
+  };
+  table14: {
+    lines: Gstr9cExpenseLine[];
+    total_value_paise: number;
+    total_itc_paise: number;
+    total_eligible_itc_availed_paise: number;
+    itc_claim_paise: number;
+    unreconciled_paise: number;
+  };
+  table16: {
+    tax_igst_paise: number | null;
+    tax_cgst_paise: number | null;
+    tax_sgst_paise: number | null;
+    tax_cess_paise: number | null;
+    interest_paise: number | null;
+    penalty_paise: number | null;
+    reasons: string[];
+  };
+  part_v: {
+    lines: Gstr9cRateWiseLine[];
+    total_paise: Record<string, number>;
+  };
+  gaps: string[];
+  threshold_table: { up_to_paise: number | null; gstr9_required: boolean;
+    gstr9c_required: boolean; label: string }[];
+  self_certification_from_fy: string;
+  gstr9c_verified: boolean;
+};
+
 export type OpeningDocument = {
   id: string;
   kind: "receivable" | "payable";
@@ -5728,6 +5824,93 @@ export const api = {
       if (gstin) q.set("gstin", gstin);
       return request<ApiResp<GSTR9Working>>(`/api/gst-workspace/gstr9/compute?${q}`);
     },
+  },
+
+  /** FORM GSTR-9C — the audited-books reconciliation statement (CGST s.44,
+   *  Rule 80(3), GST-25), built from `gstr9c`'s recorded Tables 5/7/12/16
+   *  plus the rate-wise (9/11/Part V) and expense-head (14) child rows. */
+  gstr9c: {
+    compute: (clientId: string, financialYear: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, financial_year: financialYear });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<Gstr9cWorking>>(`/api/gst-workspace/gstr9c/compute?${q}`);
+    },
+    getReconciliation: (clientId: string, financialYear: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, financial_year: financialYear });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<Record<string, unknown> | null>>(`/api/gstr9c/reconciliation?${q}`);
+    },
+    saveReconciliation: (body: {
+      client_id: string; gstin?: string; financial_year: string;
+      act_name?: string | null;
+      turnover_per_audited_fs_paise?: number | null;
+      unbilled_revenue_begin_paise?: number | null;
+      unadjusted_advances_end_paise?: number | null;
+      deemed_supply_paise?: number | null;
+      credit_notes_issued_post_fy_paise?: number | null;
+      trade_discount_not_permissible_paise?: number | null;
+      unbilled_revenue_end_paise?: number | null;
+      unadjusted_advances_begin_paise?: number | null;
+      credit_notes_in_fs_not_permissible_paise?: number | null;
+      sez_dta_adjustment_paise?: number | null;
+      composition_period_turnover_paise?: number | null;
+      section_15_adjustment_paise?: number | null;
+      forex_adjustment_paise?: number | null;
+      other_turnover_adjustment_paise?: number | null;
+      turnover_after_adjustments_paise?: number | null;
+      turnover_reasons?: string[];
+      exempt_nil_nongst_turnover_paise?: number | null;
+      zero_rated_no_tax_turnover_paise?: number | null;
+      reverse_charge_turnover_paise?: number | null;
+      ecommerce_9_5_turnover_paise?: number | null;
+      taxable_turnover_after_adjustments_paise?: number | null;
+      taxable_turnover_reasons?: string[];
+      itc_per_audited_fs_paise?: number | null;
+      itc_booked_earlier_fy_claimed_this_fy_paise?: number | null;
+      itc_booked_this_fy_claimed_later_fy_paise?: number | null;
+      itc_reasons?: string[];
+      unreconciled_itc_tax_igst_paise?: number | null;
+      unreconciled_itc_tax_cgst_paise?: number | null;
+      unreconciled_itc_tax_sgst_paise?: number | null;
+      unreconciled_itc_tax_cess_paise?: number | null;
+      unreconciled_itc_interest_paise?: number | null;
+      unreconciled_itc_penalty_paise?: number | null;
+      itc_reasons_16?: string[];
+      notes?: string | null;
+    }) =>
+      request<ApiResp<Record<string, unknown>>>("/api/gstr9c/reconciliation",
+        { method: "POST", body: JSON.stringify(body) }),
+    listRateWiseLines: (clientId: string, reconciliationId: string, tableRef?: "9" | "11" | "partv") => {
+      const q = new URLSearchParams({ client_id: clientId, reconciliation_id: reconciliationId });
+      if (tableRef) q.set("table_ref", tableRef);
+      return request<ApiResp<Gstr9cRateWiseLine[]>>(`/api/gstr9c/rate-wise-lines?${q}`);
+    },
+    addRateWiseLine: (body: {
+      client_id: string; reconciliation_id: string; table_ref: "9" | "11" | "partv";
+      rate_description: string; taxable_value_paise?: number; igst_paise?: number;
+      cgst_paise?: number; sgst_paise?: number; cess_paise?: number;
+    }) =>
+      request<ApiResp<Gstr9cRateWiseLine>>("/api/gstr9c/rate-wise-lines",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteRateWiseLine: (lineId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/gstr9c/rate-wise-lines/${lineId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+    listExpenseLines: (clientId: string, reconciliationId: string) =>
+      request<ApiResp<Gstr9cExpenseLine[]>>(
+        `/api/gstr9c/expense-lines?client_id=${encodeURIComponent(clientId)}` +
+        `&reconciliation_id=${encodeURIComponent(reconciliationId)}`),
+    addExpenseLine: (body: {
+      client_id: string; reconciliation_id: string; expense_head: string;
+      value_paise?: number; total_itc_paise?: number;
+      eligible_itc_availed_paise?: number;
+    }) =>
+      request<ApiResp<Gstr9cExpenseLine>>("/api/gstr9c/expense-lines",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteExpenseLine: (lineId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/gstr9c/expense-lines/${lineId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
   },
 
   /** The bill-wise breakup of a client's opening balances (ACC-14). */

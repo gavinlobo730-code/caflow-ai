@@ -11,6 +11,7 @@ import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
 import RegistrationsTab from "@/components/gst/RegistrationsTab";
 import { todayLocalISO } from "@/lib/dateMath";
 import GSTR9Working from "@/components/gst/GSTR9Working";
+import Gstr9cWorking from "@/components/gst/Gstr9cWorking";
 import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
 import { IffPanel } from "@/components/gst/IffPanel";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
@@ -2009,6 +2010,11 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
           been saved: the point is to produce the figures, and until GST-10 the
           tab could only ever show a draft nothing created. */}
       <GSTR9Working clientId={clientId} financialYear={fy} />
+
+      {/* GSTR-9C — the audited-books reconciliation (GST-25), filed alongside
+          GSTR-9 for the same year. Reads the consolidation above rather than
+          a second, independent one. */}
+      <Gstr9cWorking clientId={clientId} financialYear={fy} />
     </div>
   );
 }
