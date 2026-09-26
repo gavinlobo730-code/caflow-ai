@@ -66,6 +66,7 @@ from domain.tds import vocabulary as _vocabulary
 
 from core.ist_clock import month_end_date
 from domain.tds import challan_mapping
+from domain.tds import keying_sheet as _keying_sheet
 from domain.tds.tds_computer import (
     TDSComputer, TDSDeducteeRecord, TDS27QDeducteeRecord,
 )
@@ -532,7 +533,7 @@ def tds_26q_from_books(
     books_paise = payload.total_tds_deducted_paise
     matched = tds_payable_id is not None and books_paise == gl_paise
 
-    return {
+    result = {
         "period": {"financial_year": fy, "quarter": quarter, "start": start, "end": end, "due_date": due_date},
         # Form 140 from FY 2026-27, still 26Q for earlier periods — including a
         # belated or revised one filed today. See domain/tds/vocabulary.py.
@@ -543,6 +544,8 @@ def tds_26q_from_books(
         "source": "posted_purchase_bills_and_advances",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
+        "deductor_pan": payload.deductor_pan,
+        "deductor_address": payload.deductor_address,
         "financial_year": payload.financial_year,
         "quarter": payload.quarter,
         "quarter_end_date": payload.quarter_end_date,
@@ -611,6 +614,8 @@ def tds_26q_from_books(
         },
         "ca_review_required": True,
     }
+    result["keying_sheet"] = _keying_sheet.build(result)
+    return result
 
 
 def _finalized_payroll_runs(db, firm_id: str, client_id: str, start: str, end: str) -> list[dict]:
@@ -758,7 +763,7 @@ def tds_27q_from_books(
     # reconciles at zero against zero and that is correct, not a coincidence.
     matched = tds_payable_id is not None and books_paise == gl_paise
 
-    return {
+    result = {
         "period": {"financial_year": fy, "quarter": quarter, "start": start, "end": end, "due_date": due_date},
         # Form 144 from FY 2026-27, still 27Q for earlier periods — including a
         # belated or revised one filed today. See domain/tds/vocabulary.py.
@@ -769,6 +774,8 @@ def tds_27q_from_books(
         "source": "posted_purchase_bills_and_advances",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
+        "deductor_pan": payload.deductor_pan,
+        "deductor_address": payload.deductor_address,
         "financial_year": payload.financial_year,
         "quarter": payload.quarter,
         "quarter_end_date": payload.quarter_end_date,
@@ -811,6 +818,8 @@ def tds_27q_from_books(
             "journal_entry_count": len(set(journal_ids)),
         },
     }
+    result["keying_sheet"] = _keying_sheet.build(result)
+    return result
 
 
 def tds_24q_from_books(
@@ -904,7 +913,7 @@ def tds_24q_from_books(
     books_paise = payload.total_tds_deducted_paise
     matched = tds_salary_id is not None and books_paise == gl_paise
 
-    return {
+    result = {
         "period": {"financial_year": fy, "quarter": quarter, "start": start, "end": end, "due_date": due_date},
         # The PERIOD names the form, not a literal. FY 2026-27 onward this is
         # Form 138 under the Income-tax Act 2025; a belated FY 2025-26 return is
@@ -923,6 +932,8 @@ def tds_24q_from_books(
         "source": "finalized_payroll_runs",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
+        "deductor_pan": payload.deductor_pan,
+        "deductor_address": payload.deductor_address,
         "financial_year": payload.financial_year,
         "quarter": payload.quarter,
         "quarter_end_date": payload.quarter_end_date,
@@ -957,3 +968,5 @@ def tds_24q_from_books(
         },
         "ca_review_required": True,
     }
+    result["keying_sheet"] = _keying_sheet.build(result)
+    return result

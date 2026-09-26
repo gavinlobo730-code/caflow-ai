@@ -63,6 +63,50 @@ export interface TDSChallan {
   section?: string;
 }
 
+/** TDS-16. Every already-computed figure, grouped the way the government's
+ *  own Return Preparation Utility groups them — File Header/Batch Header
+ *  (the deductor), then one Challan Detail block per deposit with its own
+ *  Deductee Detail rows underneath. `domain/tds/keying_sheet.py` derives
+ *  NOTHING here; it only groups what the from-books builder already computed.
+ *
+ *  This is NOT the government's own upload file — `gaps` always carries
+ *  `NO_FVU_FILE_IS_PRODUCED`, naming why (egress to the primary RPU/FVU file
+ *  spec is blocked in this environment, and the spec itself is confirmed to
+ *  be under active revision for the current filing period). See the Python
+ *  module's own docstring for the full reasoning. */
+export interface TDSKeyingSheetChallanSection {
+  record_type: string;
+  challan: TDSChallan | null;
+  /** Present only where `challan` is null — a deductee names a challan this
+   *  statement never read, so the section is built from the reference alone. */
+  challan_reference?: { bsr_code: string; challan_no: string; challan_date: string };
+  deductees: TDSDeductee[];
+}
+
+export interface TDSKeyingSheet {
+  form: string;
+  act?: string;
+  financial_year: string;
+  quarter: string;
+  record_types: {
+    file_header: string;
+    batch_header: string;
+    challan_detail: string;
+    deductee_detail: string;
+  };
+  deductor: {
+    tan: string;
+    deductor_name: string;
+    deductor_pan: string | null;
+    deductor_address: string | null;
+  };
+  challan_sections: TDSKeyingSheetChallanSection[];
+  unmatched_deductees: TDSDeductee[];
+  deductee_count: number;
+  challan_count: number;
+  gaps: string[];
+}
+
 /* Compute26QRequest / Compute24QRequest AND THEIR TWO CALLERS ARE GONE.
  *
  * `/api/tds/26q/compute` and `/24q/compute` are pure functions over deductee
@@ -93,6 +137,8 @@ export interface TDSReturnPayload {
   form: string;
   tan: string;
   deductor_name: string;
+  deductor_pan?: string;
+  deductor_address?: string;
   financial_year: string;
   quarter: string;
   quarter_end_date: string;
@@ -125,6 +171,8 @@ export interface TDSReturnPayload {
     tds_paise: number;
     reason: string;
   };
+  /** TDS-16. Present only on a from-books build — see TDSKeyingSheet above. */
+  keying_sheet?: TDSKeyingSheet;
   period?: {
     financial_year: string;
     quarter: string;

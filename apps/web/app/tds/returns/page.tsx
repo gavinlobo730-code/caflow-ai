@@ -26,7 +26,7 @@ import {
   saveTDSReturn, downloadTDSJSON, currentFinancialYear, currentQuarter,
   type TDSReturnPayload, type TDSReturnStatus, type TDSQuarter, type TDSReturnType,
 } from "@/lib/data/tds";
-import { Callout } from "@/components/ui/callout";
+import { Callout, GapList } from "@/components/ui/callout";
 
 function r(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -69,7 +69,7 @@ export default function TDSReturnsPage() {
   const [prn, setPrn] = useState("");
   const [ackNumber, setAckNumber] = useState("");
 
-  const [tab, setTab] = useState<"summary" | "deductees" | "challans" | "json">("summary");
+  const [tab, setTab] = useState<"summary" | "deductees" | "challans" | "keying" | "json">("summary");
 
   // The generic filing walk-through (services/filing_demo/tds_return).
   // Offered only where the server says the demo exists — the dead-control
@@ -280,12 +280,12 @@ export default function TDSReturnsPage() {
           {/* Tabs */}
           <div className="bg-white border border-ps-border rounded-xl overflow-hidden">
             <div className="flex border-b border-ps-border">
-              {(["summary", "deductees", "challans", "json"] as const).map(t => (
+              {(["summary", "deductees", "challans", "keying", "json"] as const).map(t => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`px-4 py-3 text-sm font-medium capitalize transition-colors ${
                     tab === t ? "border-b-2 border-brand text-blue-600" : "text-ps-label hover:text-ps-body"
                   }`}>
-                  {t}
+                  {t === "keying" ? "Keying sheet" : t}
                 </button>
               ))}
             </div>
@@ -465,6 +465,102 @@ export default function TDSReturnsPage() {
                   </div>
                 ) : (
                   <p className="text-sm text-ps-label text-center py-8">No challans linked to this period.</p>
+                )
+              )}
+
+              {tab === "keying" && (
+                result.keying_sheet ? (
+                  <div className="space-y-4">
+                    {/* TDS-16. This groups what the tabs above already show —
+                        it derives nothing new — under the RPU's own record
+                        hierarchy, so a CA can key it into the government's
+                        free Return Preparation Utility in the same order the
+                        RPU itself asks for it. It is never the government's
+                        own upload file — the gap list below always says so. */}
+                    <div className="text-xs text-ps-label space-y-1">
+                      <p>
+                        <strong>{result.keying_sheet.record_types.batch_header}:</strong>{" "}
+                        TAN <strong className="font-mono">{result.keying_sheet.deductor.tan}</strong>,{" "}
+                        {result.keying_sheet.deductor.deductor_name}
+                        {result.keying_sheet.deductor.deductor_pan && (
+                          <> · PAN <span className="font-mono">{result.keying_sheet.deductor.deductor_pan}</span></>
+                        )}
+                        {result.keying_sheet.deductor.deductor_address && (
+                          <> · {result.keying_sheet.deductor.deductor_address}</>
+                        )}
+                      </p>
+                    </div>
+
+                    {result.keying_sheet.challan_sections.map((section, i) => (
+                      <div key={i} className="border border-ps-border rounded-lg overflow-hidden">
+                        <div className="bg-ps-bg px-3 py-2 text-xs font-semibold text-ps-body">
+                          {section.record_type} — BSR{" "}
+                          <span className="font-mono">
+                            {section.challan?.bsr_code ?? section.challan_reference?.bsr_code ?? "—"}
+                          </span>{" "}
+                          · Challan No{" "}
+                          <span className="font-mono">
+                            {section.challan?.challan_no ?? section.challan_reference?.challan_no ?? "—"}
+                          </span>{" "}
+                          · {section.challan?.payment_date ?? section.challan_reference?.challan_date ?? "—"}
+                          {section.challan && <> · {r(section.challan.tds_paise)}</>}
+                          {!section.challan && (
+                            <span className="ml-2 text-state-attention">not in this quarter&apos;s challan list</span>
+                          )}
+                        </div>
+                        <table className="w-full text-xs">
+                          <thead className="border-b border-ps-border">
+                            <tr>
+                              <th className="text-left px-3 py-1.5 text-ps-label">
+                                {result.keying_sheet!.record_types.deductee_detail}
+                              </th>
+                              <th className="text-left px-3 py-1.5 text-ps-label font-mono">PAN</th>
+                              <th className="text-left px-3 py-1.5 text-ps-label">Section</th>
+                              <th className="text-right px-3 py-1.5 text-ps-label">Amount</th>
+                              <th className="text-right px-3 py-1.5 text-ps-label">Rate</th>
+                              <th className="text-right px-3 py-1.5 text-ps-label">TDS</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-ps-border">
+                            {section.deductees.map((d, j) => (
+                              <tr key={j}>
+                                <td className="px-3 py-1.5">{d.deductee_name}</td>
+                                <td className="px-3 py-1.5 font-mono">{d.deductee_pan}</td>
+                                <td className="px-3 py-1.5">{d.section}</td>
+                                <td className="px-3 py-1.5 text-right">{r(d.payment_amount_paise)}</td>
+                                <td className="px-3 py-1.5 text-right">{d.tds_rate_pct}%</td>
+                                <td className="px-3 py-1.5 text-right font-semibold">{r(d.tds_deducted_paise)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+
+                    {result.keying_sheet.unmatched_deductees.length > 0 && (
+                      <div className="border border-state-attention-border rounded-lg overflow-hidden">
+                        <div className="bg-state-attention-surface px-3 py-2 text-xs font-semibold text-state-attention">
+                          No matching challan
+                        </div>
+                        <table className="w-full text-xs">
+                          <tbody className="divide-y divide-ps-border">
+                            {result.keying_sheet.unmatched_deductees.map((d, j) => (
+                              <tr key={j}>
+                                <td className="px-3 py-1.5">{d.deductee_name}</td>
+                                <td className="px-3 py-1.5 font-mono">{d.deductee_pan}</td>
+                                <td className="px-3 py-1.5">{d.section}</td>
+                                <td className="px-3 py-1.5 text-right">{r(d.tds_deducted_paise)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    <GapList gaps={result.keying_sheet.gaps} tone="note" title="Before you key this in" />
+                  </div>
+                ) : (
+                  <p className="text-sm text-ps-label text-center py-8">No keying sheet on this result.</p>
                 )
               )}
 
