@@ -1945,10 +1945,17 @@ export type ClientGstRegistration = {
   effective_to: string | null;
   label: string;
   files_gstr1_and_3b: boolean;
+  /** Same boolean shape as `files_gstr1_and_3b` — whether THIS registration
+   *  owes FORM GST CMP-08 (GST-25). Never derive this from `registration_type`
+   *  in a screen; that is the vocabulary this field exists to keep server-side. */
+  files_cmp08: boolean;
   /** Set when this registration owes a DIFFERENT form — a composition dealer
    *  files CMP-08 and GSTR-4, an ISD files GSTR-6, and so on. Offering it a
    *  GSTR-3B screen offers a return it must not file. */
   other_return_form: string | null;
+  /** Which s.10 rate a COMPOSITION registration pays. Meaningless otherwise;
+   *  null means unrecorded rather than any particular rate (GST-25). */
+  composition_category: string | null;
 };
 
 /** One financial year's CGST s.2(6) aggregate turnover, as the CA recorded it. */
@@ -1979,9 +1986,48 @@ export type GstRegistrationKinds = {
   registration_types: {
     value: string;
     files_gstr1_and_3b: boolean;
+    files_cmp08: boolean;
     other_return_form: string | null;
   }[];
   filing_frequencies: string[];
+  /** s.10's three categories, each with its total rate in basis points
+   *  (CGST + SGST combined — there is no IGST limb on a composition dealer's
+   *  outward side at all, s.10(2)(c) barring inter-State outward supply
+   *  outright). GST-25. */
+  composition_categories: { value: string; rate_bps: number }[];
+  /** [S]-graded — see domain/gst/composition.py. Rendered as a caveat, never
+   *  hidden: a confident-looking rate that has not been checked against
+   *  Rule 7's own table is the failure mode this field exists to prevent. */
+  composition_rates_verified: boolean;
+};
+
+/** FORM GST CMP-08 for one quarter — a composition registration's flat-rate
+ *  statement under s.10 (GST-25). Prepare-only; nothing here is transmitted. */
+export type Cmp08Line = {
+  taxable_value_paise: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  cess_paise: number;
+  tax_paise: number;
+};
+
+export type Cmp08Working = {
+  period: string;
+  gstin: string;
+  registration_type: string;
+  financial_year: string;
+  quarter: string;
+  /** Null means unrecorded — the statement still answers, at a nil rate, and
+   *  says so in `gaps`. */
+  category: string | null;
+  rate_bps: number | null;
+  outward_supplies: Cmp08Line;
+  inward_rcm_supplies: Cmp08Line;
+  tax_paid: Cmp08Line;
+  interest_paise: number;
+  gaps: string[];
+  composition_rates_verified: boolean;
 };
 
 export type Vendor = {
@@ -5376,6 +5422,19 @@ export const api = {
     },
   },
 
+  /** FORM GST CMP-08 for one quarter — a COMPOSITION registration's flat-rate
+   *  statement under s.10 (GST-25), never GSTR-1/GSTR-3B. `period` is any
+   *  month of the quarter; the server always resolves it quarterly (Rule 62). */
+  cmp08: {
+    compute: (clientId: string, period: string, gstin?: string,
+              interestPaise?: number) => {
+      const q = new URLSearchParams({ client_id: clientId, period });
+      if (gstin) q.set("gstin", gstin);
+      if (interestPaise) q.set("interest_paise", String(interestPaise));
+      return request<ApiResp<Cmp08Working>>(`/api/gst-workspace/cmp08/compute?${q}`);
+    },
+  },
+
   /** The annual return's working (GST-10). */
   gstr9: {
     compute: (clientId: string, financialYear: string, gstin?: string) => {
@@ -5522,6 +5581,7 @@ export const api = {
       filing_frequency?: string;
       trade_name?: string | null;
       effective_from?: string | null;
+      composition_category?: string | null;
     }) => request<ApiResp<ClientGstRegistration>>("/api/client-gst-registrations",
       { method: "POST", body: JSON.stringify(body) }),
     /** Records a s.29 cancellation. NOT a delete — the returns for every period

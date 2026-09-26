@@ -1071,6 +1071,60 @@ def compute_iff(
         db, firm_id, client_id, period, registration.gstin))
 
 
+@router.get("/cmp08/compute")
+def compute_cmp08(
+    client_id: str = Query(...),
+    period: str = Query(..., pattern=r"^\d{6}$",
+                        description="MMYYYY of any month in the quarter"),
+    gstin: Optional[str] = Query(None),
+    interest_paise: int = Query(0, ge=0),
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """FORM GST CMP-08 for one quarter — a COMPOSITION registration's flat-rate
+    statement under CGST s.10 (GST-25), never GSTR-1/GSTR-3B.
+
+    `gstin` selects the registration (GST-20); omitting it means the primary —
+    the common case for a small composition dealer holding one GSTIN. A
+    registration that is not composition, or a GSTIN the client does not hold,
+    is refused with a 422 naming which.
+
+    `interest_paise` is the CA's own figure (row 4) — s.50(1) interest on a
+    late CMP-08 depends on how late the PAYMENT actually was, which this
+    computation has no visibility into; see domain/gst/composition.py.
+
+    Rates are `[S]`-graded — `composition_rates_verified` on the response says
+    so — and reads and writes nothing but this request.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "period": period, "gstin": gstin, "financial_year": None,
+            "quarter": None, "category": None, "rate_bps": None,
+            "outward_supplies": {"taxable_value_paise": 0, "igst_paise": 0,
+                                 "cgst_paise": 0, "sgst_paise": 0,
+                                 "cess_paise": 0, "tax_paise": 0},
+            "inward_rcm_supplies": {"taxable_value_paise": 0, "igst_paise": 0,
+                                    "cgst_paise": 0, "sgst_paise": 0,
+                                    "cess_paise": 0, "tax_paise": 0},
+            "tax_paid": {"taxable_value_paise": 0, "igst_paise": 0,
+                        "cgst_paise": 0, "sgst_paise": 0, "cess_paise": 0,
+                        "tax_paise": 0},
+            "interest_paise": interest_paise, "gaps": [],
+            "composition_rates_verified": False,
+        })
+    from core.supabase_client import get_supabase
+    from services import gst_return_service
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    try:
+        return api_response(True, gst_return_service.cmp08_statement(
+            db, firm_id, client_id, period, gstin,
+            interest_paise=interest_paise))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.get("/gstr9/compute")
 def compute_gstr9(
     client_id: str = Query(...),

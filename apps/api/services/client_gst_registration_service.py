@@ -23,9 +23,15 @@ from domain.gst import registrations as reg
 _logger = logging.getLogger("caflow.client_gst_registrations")
 
 #: What the client row has to carry for `primary_of` to build the primary.
+#: `gst_registration_type`/`composition_category` (migration 420, GST-25) are
+#: what let the PRIMARY registration be composition — a narrow select that
+#: omits them makes `registrations.primary_of()`'s read of them a silent
+#: no-op, exactly the trap this file's own header warns every other domain
+#: module against.
 CLIENT_COLUMNS = (
     "id, firm_id, client_name, legal_name, gstin, state_code, "
-    "gst_filing_frequency, gst_registration_date"
+    "gst_filing_frequency, gst_registration_date, gst_registration_type, "
+    "composition_category"
 )
 
 #: Every column of an additional registration. Named once so a read that omits
@@ -33,7 +39,8 @@ CLIENT_COLUMNS = (
 REGISTRATION_COLUMNS = (
     "id, firm_id, client_id, gstin, state_code, registration_type, "
     "filing_frequency, trade_name, address_line1, address_line2, city, "
-    "pincode, effective_from, effective_to, notes, created_at, deleted_at"
+    "pincode, effective_from, effective_to, notes, created_at, deleted_at, "
+    "composition_category"
 )
 
 
@@ -43,9 +50,14 @@ def _first(rows) -> Optional[dict]:
 
 
 def _client(db, firm_id: str, client_id: str) -> dict:
+    # Inlined rather than reading CLIENT_COLUMNS by name — the schema-safety
+    # scanner (tests/test_backend_columns_exist_pg.py) resolves a literal
+    # .select() string and nothing reached through a variable, so a projection
+    # built from the constant would be invisible to it.
     row = _first(db.table("clients").select(
         "id, firm_id, client_name, legal_name, gstin, state_code, "
-        "gst_filing_frequency, gst_registration_date")
+        "gst_filing_frequency, gst_registration_date, gst_registration_type, "
+        "composition_category")
         .eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data)
     if not row:
         raise HTTPException(status_code=404, detail="Client not found.")
@@ -58,7 +70,7 @@ def _rows(db, firm_id: str, client_id: str) -> list[dict]:
             "id, firm_id, client_id, gstin, state_code, registration_type, "
             "filing_frequency, trade_name, address_line1, address_line2, city, "
             "pincode, effective_from, effective_to, notes, created_at, "
-            "deleted_at")
+            "deleted_at, composition_category")
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .is_("deleted_at", "null"),
         key="id", label="client_gst_registrations")
@@ -74,6 +86,7 @@ def listing(db, firm_id: str, client_id: str) -> list[dict]:
             "gstin": r.gstin,
             "state_code": r.state_code,
             "registration_type": r.registration_type,
+            "composition_category": r.composition_category,
             "filing_frequency": r.filing_frequency,
             "is_primary": r.is_primary,
             "trade_name": r.trade_name,
@@ -81,6 +94,10 @@ def listing(db, firm_id: str, client_id: str) -> list[dict]:
             "effective_to": r.effective_to,
             "label": r.label,
             "files_gstr1_and_3b": r.files_gstr1_and_3b,
+            # A boolean, the same shape as files_gstr1_and_3b, so the screen
+            # never has to hardcode the word "composition" to decide whether
+            # to offer the CMP-08 panel.
+            "files_cmp08": r.files_cmp08,
             # The refusal is DATA, so a screen can grey the return out and say
             # which form this registration actually owes.
             "other_return_form": reg.OTHER_RETURN_FORMS.get(r.registration_type),
@@ -115,6 +132,7 @@ def create(db, firm_id: str, client_id: str, *, gstin: str,
            effective_from: Optional[str] = None,
            effective_to: Optional[str] = None,
            notes: Optional[str] = None,
+           composition_category: Optional[str] = None,
            actor_id: Optional[str] = None) -> dict:
     """Record an additional registration."""
     client = _client(db, firm_id, client_id)
@@ -122,7 +140,8 @@ def create(db, firm_id: str, client_id: str, *, gstin: str,
     refusal = reg.problem_with_new(
         client, _rows(db, firm_id, client_id), gstin=value,
         state_code=state_code, registration_type=registration_type,
-        filing_frequency=filing_frequency)
+        filing_frequency=filing_frequency,
+        composition_category=composition_category)
     if not refusal.ok:
         raise HTTPException(status_code=422, detail=" ".join(refusal.reasons))
 
@@ -145,6 +164,7 @@ def create(db, firm_id: str, client_id: str, *, gstin: str,
         "effective_from": effective_from,
         "effective_to": effective_to,
         "notes": notes,
+        "composition_category": composition_category,
         "created_by": actor_id,
     }).execute().data or []
     return rows[0] if rows else {}

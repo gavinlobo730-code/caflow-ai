@@ -56,6 +56,16 @@ test("a registration that owes a DIFFERENT return says which", () => {
   assert.doesNotMatch(src, /GSTR-6/);
 });
 
+test("which registration owes CMP-08 is a boolean off the wire, GST-25", () => {
+  /* files_cmp08 is the same shape as files_gstr1_and_3b — a screen must not
+     hardcode the word "composition" to decide whether to offer the CMP-08
+     panel or the s.10 category picker, or a second vocabulary of registration
+     types grows here the day a third one needs its own screen. */
+  const src = code(TAB);
+  assert.match(src, /files_cmp08/);
+  assert.doesNotMatch(src, /"composition"/);
+});
+
 test("the primary is shown and never editable here", () => {
   /* It is `clients.gstin`, written on the client record. Offering a Remove
      button on it would either fail or delete the wrong thing. */
@@ -82,6 +92,17 @@ test("the tab is reachable from the client GST screen", () => {
   assert.match(src, /tab === "registrations" && <RegistrationsTab/);
 });
 
+test("CMP-08 is offered on the row that owes it, GST-25", () => {
+  /* The panel lives on this tab, not on a return screen — a composition
+     registration never files GSTR-1/3B, so its own return has to be reached
+     from the row that says so, gated on the server's own boolean and on the
+     registration not being cancelled (s.29 does not reopen the quarter). */
+  const src = code(TAB);
+  assert.match(src, /import \{ Cmp08Panel \} from "@\/components\/gst\/Cmp08Panel"/);
+  assert.match(src, /r\.files_cmp08 && !r\.effective_to/);
+  assert.match(src, /<Cmp08Panel clientId=\{clientId\} gstin=\{r\.gstin\} \/>/);
+});
+
 test("the api layer carries shapes and no statute", () => {
   const src = code(API);
   const start = src.indexOf("clientGstRegistrations: {");
@@ -92,4 +113,12 @@ test("the api layer carries shapes and no statute", () => {
   // two would make a cancellation look like a mistake.
   assert.match(ns, /\/close[\s\S]{0,160}method: "POST"/);
   assert.match(ns, /method: "DELETE"/);
+});
+
+test("cmp08 is its own namespace and never GSTR-1/3B's", () => {
+  const src = code(API);
+  const start = src.indexOf("cmp08: {");
+  assert.ok(start > 0, "the cmp08 namespace exists");
+  const ns = src.slice(start, start + 500);
+  assert.match(ns, /\/api\/gst-workspace\/cmp08\/compute/);
 });

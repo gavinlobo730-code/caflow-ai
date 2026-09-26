@@ -48,6 +48,11 @@ class RegistrationIn(BaseModel):
     state_code: Optional[str] = None
     registration_type: str = reg.REGULAR
     filing_frequency: str = reg.MONTHLY
+    # Which s.10 rate a COMPOSITION registration pays (GST-25, migration 420).
+    # Meaningless for any other registration_type; unrecorded is allowed (a
+    # named gap on the CMP-08 statement, not a reason to refuse the row) but an
+    # unrecognised value is refused — domain/gst/registrations.problem_with_new.
+    composition_category: Optional[str] = None
     trade_name: Optional[str] = None
     address_line1: Optional[str] = None
     address_line2: Optional[str] = None
@@ -76,17 +81,32 @@ def list_kinds(current_user: dict = Depends(rbac("gst", "read"))):
     A composition dealer, an ISD, a s.51 deductor and a s.52 collector each owe
     a DIFFERENT form, and `other_return_form` names it. Offering them a GSTR-3B
     screen offers a return they must not file.
+
+    `composition_categories` is served here rather than left for a screen to
+    hardcode — a picker with its own copy of s.10's three categories is a
+    second vocabulary of the exact kind this module exists to retire. Rates
+    are `[S]`-graded (`domain/gst/composition.VERIFIED` is False) — see that
+    module's header before quoting one to a client.
     """
+    from domain.gst import composition as cmp
     return api_response(True, {
         "registration_types": [
             {
                 "value": t,
                 "files_gstr1_and_3b": t in reg.FILES_GSTR1_AND_3B,
+                # Same boolean shape as files_gstr1_and_3b, so a screen never
+                # has to hardcode the word "composition" to offer CMP-08.
+                "files_cmp08": t == reg.COMPOSITION,
                 "other_return_form": reg.OTHER_RETURN_FORMS.get(t),
             }
             for t in reg.REGISTRATION_TYPES
         ],
         "filing_frequencies": list(reg.FILING_FREQUENCIES),
+        "composition_categories": [
+            {"value": c, "rate_bps": cmp.COMPOSITION_RATE_BPS[c]}
+            for c in cmp.COMPOSITION_CATEGORIES
+        ],
+        "composition_rates_verified": cmp.VERIFIED,
     })
 
 
@@ -122,7 +142,8 @@ def add_registration(
         address_line1=data.address_line1, address_line2=data.address_line2,
         city=data.city, pincode=data.pincode,
         effective_from=data.effective_from, effective_to=data.effective_to,
-        notes=data.notes, actor_id=current_user.get("id"))
+        notes=data.notes, composition_category=data.composition_category,
+        actor_id=current_user.get("id"))
     log_event(current_user.get("firm_id") or "", "client_gst_registration",
               row.get("id") or "", "create",
               actor_id=current_user.get("auth_user_id"),
