@@ -32,6 +32,7 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
 import { Cmp08Panel } from "@/components/gst/Cmp08Panel";
 import { Gstr8Panel } from "@/components/gst/Gstr8Panel";
+import { Gstr4AnnualPanel } from "@/components/gst/Gstr4AnnualPanel";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -451,6 +452,16 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                     </td>
                   </tr>
                 )}
+                {/* The same COMPOSITION registration that files CMP-08 also
+                    files GSTR-4 Annual — a separate boolean and a separate
+                    panel, never inferred from files_cmp08 coinciding today. */}
+                {r.files_gstr4_annual && !r.effective_to && (
+                  <tr>
+                    <td colSpan={6} className="pb-2">
+                      <Gstr4AnnualPanel clientId={clientId} gstin={r.gstin} />
+                    </td>
+                  </tr>
+                )}
                 </Fragment>
               ))}
             </tbody>
@@ -485,7 +496,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                 <select value={form.registration_type}
                   onChange={(e) => setForm(f => ({ ...f, registration_type: e.target.value }))}
                   className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg">
-                  {(kinds?.registration_types ?? [{ value: form.registration_type, files_gstr1_and_3b: true, files_cmp08: false, files_gstr8: false, other_return_form: null }])
+                  {(kinds?.registration_types ?? [{ value: form.registration_type, files_gstr1_and_3b: true, files_cmp08: false, files_gstr8: false, files_gstr4_annual: false, other_return_form: null }])
                     .map((t) => (
                       <option key={t.value} value={t.value}>{pretty(t.value)}</option>
                     ))}
@@ -495,9 +506,10 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                   if (!chosen?.other_return_form) return null;
                   // The return this type owes IS prepared here, on this same
                   // row once added, for exactly the types this screen knows
-                  // how to prepare (files_cmp08, files_gstr8) — every other
-                  // one genuinely is not, so the two get different sentences.
-                  const prepared = chosen.files_cmp08 || chosen.files_gstr8;
+                  // how to prepare (files_cmp08, files_gstr8, files_gstr4_annual)
+                  // — every other one genuinely is not, so the two get
+                  // different sentences.
+                  const prepared = chosen.files_cmp08 || chosen.files_gstr8 || chosen.files_gstr4_annual;
                   return (
                     <span className="block text-3xs text-amber-800 mt-1 leading-tight">
                       {chosen.other_return_form}. No GSTR-1 or GSTR-3B will be

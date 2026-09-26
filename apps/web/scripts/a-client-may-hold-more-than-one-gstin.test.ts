@@ -75,6 +75,16 @@ test("which registration owes GSTR-8 is a boolean off the wire, GST-25", () => {
   assert.doesNotMatch(src, /"tcs_collector"/);
 });
 
+test("which registration owes GSTR-4 Annual is a boolean off the wire, GST-25", () => {
+  /* files_gstr4_annual is the same shape as files_cmp08 and files_gstr8 — the
+     same COMPOSITION registrations that file CMP-08 quarterly also file this
+     annually, and the screen must never infer one from the other coinciding
+     today; each is its own field, asked separately. */
+  const src = code(TAB);
+  assert.match(src, /files_gstr4_annual/);
+  assert.doesNotMatch(src, /"composition"/);
+});
+
 test("the primary is shown and never editable here", () => {
   /* It is `clients.gstin`, written on the client record. Offering a Remove
      button on it would either fail or delete the wrong thing. */
@@ -121,6 +131,15 @@ test("GSTR-8 is offered on the row that owes it, GST-25", () => {
   assert.match(src, /<Gstr8Panel clientId=\{clientId\} gstin=\{r\.gstin\} \/>/);
 });
 
+test("GSTR-4 Annual is offered on the row that owes it, GST-25", () => {
+  /* A COMPOSITION registration files GSTR-4 Annual (s.44/Rule 80(3)) beside
+     CMP-08 — same shape as the other two panels above. */
+  const src = code(TAB);
+  assert.match(src, /import \{ Gstr4AnnualPanel \} from "@\/components\/gst\/Gstr4AnnualPanel"/);
+  assert.match(src, /r\.files_gstr4_annual && !r\.effective_to/);
+  assert.match(src, /<Gstr4AnnualPanel clientId=\{clientId\} gstin=\{r\.gstin\} \/>/);
+});
+
 test("the api layer carries shapes and no statute", () => {
   const src = code(API);
   const start = src.indexOf("clientGstRegistrations: {");
@@ -156,4 +175,16 @@ test("ecommerceOperator is its own namespace, the rows GSTR-8 is built from", ()
   const ns = src.slice(start, start + 2000);
   assert.match(ns, /\/api\/ecommerce-operator\/supplies/);
   assert.match(ns, /\/api\/ecommerce-operator\/unregistered-supplies/);
+});
+
+test("gstr4Annual is its own namespace and never GSTR-1/3B's", () => {
+  const src = code(API);
+  const start = src.indexOf("gstr4Annual: {");
+  assert.ok(start > 0, "the gstr4Annual namespace exists");
+  const ns = src.slice(start, start + 4000);
+  assert.match(ns, /\/api\/gst-workspace\/gstr4-annual\/compute/);
+  assert.match(ns, /\/api\/gstr4-annual\/b2b-supplies/);
+  assert.match(ns, /\/api\/gstr4-annual\/b2b-rc-supplies/);
+  assert.match(ns, /\/api\/gstr4-annual\/urp-supplies/);
+  assert.match(ns, /\/api\/gstr4-annual\/import-of-services/);
 });

@@ -1952,6 +1952,10 @@ export type ClientGstRegistration = {
   /** Same shape again — whether THIS registration owes FORM GSTR-8, a s.52
    *  e-commerce operator's TCS statement (GST-25). */
   files_gstr8: boolean;
+  /** Same shape again — whether THIS registration owes FORM GSTR-4 Annual,
+   *  the same COMPOSITION registrations that file CMP-08 quarterly also
+   *  file this annually (CGST s.44/Rule 80(3), GST-25). */
+  files_gstr4_annual: boolean;
   /** Set when this registration owes a DIFFERENT form — a composition dealer
    *  files CMP-08 and GSTR-4, an ISD files GSTR-6, and so on. Offering it a
    *  GSTR-3B screen offers a return it must not file. */
@@ -1991,6 +1995,7 @@ export type GstRegistrationKinds = {
     files_gstr1_and_3b: boolean;
     files_cmp08: boolean;
     files_gstr8: boolean;
+    files_gstr4_annual: boolean;
     other_return_form: string | null;
   }[];
   filing_frequencies: string[];
@@ -2092,6 +2097,98 @@ export type Gstr8Working = {
   supplies: Gstr8Supply[];
   unregistered_supplies: Gstr8UnregisteredSupply[];
   gstr8_rates_verified: boolean;
+};
+
+/** One counterparty/rate line — GSTR-4 Annual Table 4A or 4B (GST-25). Both
+ *  share this shape; 4A is a REGISTERED supplier's non-reverse-charge supply
+ *  (informational — the supplier already remitted the tax) and 4B is the
+ *  reverse-charge version of the same table (self-assessed, feeds the
+ *  return's own liability). */
+export type Gstr4AnnualB2BSupply = {
+  id: string;
+  gstin: string;
+  financial_year: string;
+  supplier_gstin: string;
+  place_of_supply: string;
+  rate_bps: number;
+  taxable_value_paise: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  cess_paise: number;
+  notes: string | null;
+};
+
+/** One unregistered supplier's line — GSTR-4 Annual Table 4C. Reverse charge
+ *  is a PER-ROW fact here, unlike 4A/4B where it is the table itself that
+ *  says so; `supply_type`/`rate_bps` are recorded only when it is true. */
+export type Gstr4AnnualUrpSupply = {
+  id: string;
+  gstin: string;
+  financial_year: string;
+  counterparty_pan: string | null;
+  reverse_charge: boolean;
+  place_of_supply: string;
+  supply_type: string | null;
+  rate_bps: number | null;
+  taxable_value_paise: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  cess_paise: number;
+  notes: string | null;
+};
+
+/** One rate line — GSTR-4 Annual Table 4D, import of services. No CGST/SGST
+ *  field at all: IGST Act s.7(4) makes this always inter-State. */
+export type Gstr4AnnualImportOfService = {
+  id: string;
+  gstin: string;
+  financial_year: string;
+  place_of_supply: string;
+  rate_bps: number;
+  taxable_value_paise: number;
+  igst_paise: number;
+  cess_paise: number;
+  notes: string | null;
+};
+
+export type Gstr4AnnualFinding = {
+  table: string;
+  identifier: string;
+  problems: string[];
+};
+
+/** Table 5 — four already-computed CMP-08 statements for the year, summed. */
+export type Gstr4AnnualTable5 = {
+  outward_taxable_paise: number;
+  outward_tax_paise: number;
+  inward_rcm_taxable_paise: number;
+  inward_rcm_tax_paise: number;
+  tax_paid_paise: number;
+  interest_paise: number;
+  gaps: string[];
+};
+
+/** FORM GSTR-4 Annual for one financial year — a COMPOSITION registration's
+ *  annual return (CGST s.44/Rule 80(3), GST-25). Tables 4A-4D are CHECKED
+ *  against what a CA recorded, not derived from the books — see
+ *  `domain/gst/gstr4_annual.py`. Prepare-only. */
+export type Gstr4AnnualWorking = {
+  financial_year: string;
+  gstin: string;
+  registration_type: string | null;
+  b2b_supplies: Gstr4AnnualB2BSupply[];
+  b2b_rc_supplies: Gstr4AnnualB2BSupply[];
+  urp_supplies: Gstr4AnnualUrpSupply[];
+  import_of_services: Gstr4AnnualImportOfService[];
+  b2b_total_taxable_paise: number;
+  liability_taxable_paise: number;
+  liability_tax_paise: number;
+  findings: Gstr4AnnualFinding[];
+  table_5: Gstr4AnnualTable5;
+  gaps: string[];
+  gstr4_annual_verified: boolean;
 };
 
 export type Vendor = {
@@ -5540,6 +5637,86 @@ export const api = {
     deleteUnregisteredSupply: (supplyId: string, clientId: string) =>
       request<ApiResp<{ id: string; deleted: boolean }>>(
         `/api/ecommerce-operator/unregistered-supplies/${supplyId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+  },
+
+  /** FORM GSTR-4 Annual for one financial year — a COMPOSITION
+   *  registration's annual return (CGST s.44/Rule 80(3), GST-25), built
+   *  from `gstr4Annual`'s recorded Tables 4A-4D plus Table 5 (four summed
+   *  CMP-08 statements). */
+  gstr4Annual: {
+    compute: (clientId: string, financialYear: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, financial_year: financialYear });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<Gstr4AnnualWorking>>(`/api/gst-workspace/gstr4-annual/compute?${q}`);
+    },
+    listB2BSupplies: (clientId: string, financialYear: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, financial_year: financialYear });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<Gstr4AnnualB2BSupply[]>>(`/api/gstr4-annual/b2b-supplies?${q}`);
+    },
+    recordB2BSupply: (body: {
+      client_id: string; gstin?: string; financial_year: string; supplier_gstin: string;
+      place_of_supply: string; rate_bps?: number; taxable_value_paise?: number;
+      igst_paise?: number; cgst_paise?: number; sgst_paise?: number;
+      cess_paise?: number; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr4AnnualB2BSupply>>("/api/gstr4-annual/b2b-supplies",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteB2BSupply: (supplyId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/gstr4-annual/b2b-supplies/${supplyId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+    listB2BRcSupplies: (clientId: string, financialYear: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, financial_year: financialYear });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<Gstr4AnnualB2BSupply[]>>(`/api/gstr4-annual/b2b-rc-supplies?${q}`);
+    },
+    recordB2BRcSupply: (body: {
+      client_id: string; gstin?: string; financial_year: string; supplier_gstin: string;
+      place_of_supply: string; rate_bps?: number; taxable_value_paise?: number;
+      igst_paise?: number; cgst_paise?: number; sgst_paise?: number;
+      cess_paise?: number; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr4AnnualB2BSupply>>("/api/gstr4-annual/b2b-rc-supplies",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteB2BRcSupply: (supplyId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/gstr4-annual/b2b-rc-supplies/${supplyId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+    listUrpSupplies: (clientId: string, financialYear: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, financial_year: financialYear });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<Gstr4AnnualUrpSupply[]>>(`/api/gstr4-annual/urp-supplies?${q}`);
+    },
+    recordUrpSupply: (body: {
+      client_id: string; gstin?: string; financial_year: string;
+      counterparty_pan?: string | null; reverse_charge?: boolean;
+      place_of_supply: string; supply_type?: string | null; rate_bps?: number | null;
+      taxable_value_paise?: number; igst_paise?: number; cgst_paise?: number;
+      sgst_paise?: number; cess_paise?: number; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr4AnnualUrpSupply>>("/api/gstr4-annual/urp-supplies",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteUrpSupply: (supplyId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/gstr4-annual/urp-supplies/${supplyId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+    listImportOfServices: (clientId: string, financialYear: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, financial_year: financialYear });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<Gstr4AnnualImportOfService[]>>(`/api/gstr4-annual/import-of-services?${q}`);
+    },
+    recordImportOfService: (body: {
+      client_id: string; gstin?: string; financial_year: string; place_of_supply: string;
+      rate_bps?: number; taxable_value_paise?: number; igst_paise?: number;
+      cess_paise?: number; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr4AnnualImportOfService>>("/api/gstr4-annual/import-of-services",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteImportOfService: (supplyId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/gstr4-annual/import-of-services/${supplyId}?client_id=${encodeURIComponent(clientId)}`,
         { method: "DELETE" }),
   },
 

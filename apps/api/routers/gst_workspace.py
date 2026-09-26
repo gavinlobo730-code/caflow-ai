@@ -1170,6 +1170,52 @@ def compute_gstr8(
         raise HTTPException(status_code=422, detail=str(e))
 
 
+@router.get("/gstr4-annual/compute")
+def compute_gstr4_annual(
+    client_id: str = Query(...),
+    # `Annotated[...]`, NOT `FYLabel = Query(...)` — see compute_gstr9's own
+    # comment; FastAPI discards the validator silently in the other form.
+    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    gstin: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """FORM GSTR-4 Annual for one financial year — a COMPOSITION
+    registration's annual return under CGST s.44/Rule 80(3) (GST-25), built
+    from Tables 4A-4D recorded under `/api/gstr4-annual/*` plus Table 5,
+    which is four already-computed CMP-08 statements summed.
+
+    `gstin` selects the registration (GST-20); omitting it means the
+    primary. A registration that is not COMPOSITION, or a GSTIN the client
+    does not hold, is refused with a 422 naming which.
+
+    Reads and writes nothing but this request.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "financial_year": financial_year, "gstin": gstin,
+            "registration_type": None,
+            "b2b_supplies": [], "b2b_rc_supplies": [], "urp_supplies": [],
+            "import_of_services": [],
+            "b2b_total_taxable_paise": 0, "liability_taxable_paise": 0,
+            "liability_tax_paise": 0, "findings": [],
+            "table_5": {"outward_taxable_paise": 0, "outward_tax_paise": 0,
+                       "inward_rcm_taxable_paise": 0, "inward_rcm_tax_paise": 0,
+                       "tax_paid_paise": 0, "interest_paise": 0, "gaps": []},
+            "gaps": [], "gstr4_annual_verified": False,
+        })
+    from core.supabase_client import get_supabase
+    from services import gstr4_annual_service
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    try:
+        return api_response(True, gstr4_annual_service.gstr4_annual_statement(
+            db, firm_id, client_id, financial_year, gstin))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.get("/gstr9/compute")
 def compute_gstr9(
     client_id: str = Query(...),
