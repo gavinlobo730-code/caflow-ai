@@ -1,0 +1,382 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+''
+' @desc Common Functions in excel macro
+' @author Kaushik Rajbongshi
+
+' @desc This function opens a JSON file and parse it using JSONConverter
+' @args(1) Full path of input file as String
+' @return JSON object As Object
+Public Function openJSON(sFilePath As String) As Object
+On Error GoTo ERR_HANDLER
+    Dim fileText As String, r As Integer
+    Open sFilePath For Input As #1
+    Do Until EOF(1)
+        Line Input #1, strLine
+        fileText = fileText & strLine
+        r = r + 1
+    Loop
+    Close #1
+    Set openJSON = JsonConverter.ParseJson(fileText)
+CLEAN_UP:
+    Exit Function
+ERR_HANDLER:
+   ' MsgBox ("Error loading JSON file. Invalid JSON file/format."), vbCritical
+    GoTo CLEAN_UP
+End Function
+
+' @desc This function creates a nested JSON structure from a defined range in an excel sheet.
+'       It also includes some specific validations like rate and invoice number, and does VlookUp for dropdown values.
+' @args(1) The name of the workbook Sheet as String
+' @args(2) The index of the starting row in workbook Sheet from where data needs to be read as Integer
+' @args(3) The index of the starting column in workbook Sheet from where data needs to be read as Integer
+' @args(4) The index of the ending column in workbook Sheet from where data needs to be read as Integer
+' @args(5) The index of the column in workbook Sheet which will be the primary key in the data range as Integer
+' @args(6) (OPTIONAL) The index of the column in workbook Sheet which will create a composition key
+'           with the primary key in the data range(used when primary key is not alone sufficient
+'           to identifym a unique record) as Integer
+' @args(7) (OPTIONAL) The index of the other column in workbook Sheet which will create a composition key
+'           with the primary key in the data range(used when primary key is not alone sufficient
+'           to identifym a unique record) as Integer
+' @args(8) (OPTIONAL) The index of the other column in workbook Sheet which will create a composition key
+'           with the primary key in the data range(used when primary key is not alone sufficient
+'           to identifym a unique record) as Integer
+' @args(9) (OPTIONAL) An identifier to tag JSON string item as String
+' @return List of objects stored with a key As Scripting.Dictionary
+Public Function createSimpleJson(sheetName As String, startRow As Integer, colStartNum As Integer, _
+    colEndNum As Integer, colPrimaryKey As Integer, Optional colUniqueKey1 As Integer, _
+    Optional colUniqueKey2 As Integer, Optional colUniqueKey3 As Integer, Optional colUniqueKey4 As Integer, _
+    Optional itemSubName As String) As Scripting.Dictionary
+    
+    Dim jsonList As New Scripting.Dictionary, jsonObject As New Scripting.Dictionary, jsonItems As New Scripting.Dictionary
+    Dim i As Integer, j As Integer, lastRow As Integer
+    Dim cell As Variant, mapKeyValue As Variant, doubleVal As Double
+    Dim rng As Range
+    Dim compositeKey As String
+    
+    With Sheets(sheetName)
+        i = startRow
+        Do Until (IsEmpty(.Cells(i, colPrimaryKey)) _
+            Or Trim(.Cells(i, colPrimaryKey).Value & vbNullString) = vbNullString)
+            
+            If colPrimaryKey = 2 And .Cells(startRow - 1, 2).Value = "ctin" Then
+             compositeKey = UCase(Trim(.Cells(i, colPrimaryKey).Value))
+             
+'              ElseIf colUniqueKey1 = 2 And .Cells(startRow - 1, 2).Value = "cpan" Then
+'              If (Trim(.Cells(i, colUniqueKey1).Value)) <> vbNullString Then
+'             compositeKey = UCase(Trim(.Cells(i, colUniqueKey1).Value))
+'            ' Debug.Print JsonConverter.ConvertToJson(ctinDetails1, Whitespace:=2)
+'             End If
+             
+            Else
+             compositeKey = Trim(.Cells(i, colPrimaryKey).Value)
+            End If
+           
+            
+            
+           
+            
+            If colUniqueKey1 <> 0 And colUniqueKey1 <> 2 Then
+                compositeKey = compositeKey & "_" & Trim(.Cells(i, colUniqueKey1).Value)
+                
+                  ElseIf colUniqueKey1 = 2 And .Cells(startRow - 1, 2).Value = "cpan" Then
+          '    If (Trim(.Cells(i, colUniqueKey1).Value)) <> vbNullString Then
+             compositeKey = compositeKey & "_" & UCase(Trim(.Cells(i, colUniqueKey1).Value))
+            ' Debug.Print JsonConverter.ConvertToJson(ctinDetails1, Whitespace:=2)
+            ' End If
+            End If
+            
+            If colUniqueKey2 <> 0 Then
+                compositeKey = compositeKey & "_" & Trim(.Cells(i, colUniqueKey2).Value)
+            End If
+            If colUniqueKey3 <> 0 Then
+                compositeKey = compositeKey & "_" & Trim(.Cells(i, colUniqueKey3).Value)
+            End If
+            
+             If colUniqueKey4 <> 0 Then
+                compositeKey = compositeKey & "_" & Trim(.Cells(i, colUniqueKey4).Value)
+            End If
+            
+            For j = colStartNum To colEndNum
+                On Error Resume Next
+                Set rng = Worksheets("master").Range(.Cells(startRow - 1, j).Value & "_map")
+                If Err.Number = 0 Then
+                    
+                    If .Cells(startRow - 1, j).Value = "pos" And Trim(.Cells(i, j).Value & vbNullString) <> vbNullString Then
+                        mapKeyValue = Application.VLookup(Left(.Cells(i, j).Value, 2) & "C", rng, 1, False)
+                        mapKeyValue = Left(mapKeyValue, 2)
+                    ElseIf .Cells(startRow - 1, j).Value = "rsn" And Trim(.Cells(i, j).Value & vbNullString) <> vbNullString Then
+                        mapKeyValue = Application.VLookup(Trim(.Cells(i, j).Value & vbNullString), Worksheets("master").Range("Note_Reason"), 2, False)
+                        mapKeyValue = Left(mapKeyValue, 2)
+                    Else
+                        mapKeyValue = Application.VLookup(.Cells(i, j).Value, rng, 1, True)
+                    End If
+                    
+                    If IsError(mapKeyValue) Then
+                        jsonItems(.Cells(startRow - 1, j).Value) = vbNullString
+                    Else
+                        jsonItems(.Cells(startRow - 1, j).Value) = Trim(mapKeyValue)
+                    End If
+                Else
+                    Err.Clear
+                    If .Cells(startRow - 1, j).Value = "inum" Or .Cells(startRow - 1, j).Value = "nt_num" Or .Cells(startRow - 1, j).Value = "oinum" Or .Cells(startRow - 1, j).Value = "ont_num" Then
+                        jsonItems(.Cells(startRow - 1, j).Value) = CStr(Trim(.Cells(i, j).Value))
+                    ElseIf .Cells(startRow - 1, j).Value = "csamt" Then
+                        If Trim(.Cells(i, j).Value & vbNullString) = vbNullString Then
+                          jsonItems(.Cells(startRow - 1, j).Value) = CDbl(0)
+                        Else
+                          jsonItems(.Cells(startRow - 1, j).Value) = Round(CDbl(Trim(.Cells(i, j).Value)), 2)
+                        End If
+                    ElseIf .Cells(startRow - 1, j).Value = "iamt" Then
+                        If Trim(.Cells(i, j).Value & vbNullString) = vbNullString Then
+                          jsonItems(.Cells(startRow - 1, j).Value) = CDbl(0)
+                        Else
+                          jsonItems(.Cells(startRow - 1, j).Value) = Round(CDbl(Trim(.Cells(i, j).Value)), 2)
+                        End If
+                    ElseIf .Cells(startRow - 1, j).Value = "camt" Then
+                        If Trim(.Cells(i, j).Value & vbNullString) = vbNullString Then
+                          jsonItems(.Cells(startRow - 1, j).Value) = CDbl(0)
+                        Else
+                          jsonItems(.Cells(startRow - 1, j).Value) = Round(CDbl(Trim(.Cells(i, j).Value)), 2)
+                        End If
+                     ElseIf .Cells(startRow - 1, j).Value = "samt" Then
+                        If Trim(.Cells(i, j).Value & vbNullString) = vbNullString Then
+                          jsonItems(.Cells(startRow - 1, j).Value) = CDbl(0)
+                        Else
+                          jsonItems(.Cells(startRow - 1, j).Value) = Round(CDbl(Trim(.Cells(i, j).Value)), 2)
+                        End If
+                     ElseIf .Cells(startRow - 1, j).Value = "rt" Then
+                        If Trim(.Cells(i, j).Value & vbNullString) = vbNullString Then
+                          jsonItems(.Cells(startRow - 1, j).Value) = CDbl(0)
+                       Else
+                          jsonItems(.Cells(startRow - 1, j).Value) = Round(CDbl(Trim(.Cells(i, j).Value)), 2)
+                        End If
+                     ElseIf .Cells(startRow - 1, j).Value = "txval" Then
+                        If Trim(.Cells(i, j).Value & vbNullString) = vbNullString Then
+                          jsonItems(.Cells(startRow - 1, j).Value) = CDbl(0)
+                        Else
+                          jsonItems(.Cells(startRow - 1, j).Value) = Round(CDbl(Trim(.Cells(i, j).Value)), 2)
+                        End If
+                    ElseIf CommonUtil.matchRegex(Trim(.Cells(i, j).Value), AMT_REGEX) Then
+                        jsonItems(.Cells(startRow - 1, j).Value) = Round(CDbl(Trim(.Cells(i, j).Value)), 2)
+                    Else
+                        jsonItems(.Cells(startRow - 1, j).Value) = Trim(.Cells(i, j).Value)
+                    End If
+                End If
+            Next
+            If Len(itemSubName) = 0 Then
+                jsonList.Add compositeKey, jsonItems
+            Else
+                jsonObject.Add itemSubName, jsonItems
+                jsonList.Add compositeKey, jsonObject
+            End If
+   
+            Set jsonItems = Nothing
+            Set jsonObject = Nothing
+            
+            i = i + 1
+        Loop
+    End With
+    Set createSimpleJson = jsonList
+End Function
+
+' @desc This function compares an input with a provided Regular Expression
+' @args(1) Input As Variant
+' @args(1) RegEx As String
+' @return true/false As Boolean
+Public Function matchRegex(iterm As Variant, iRegex As String) As Boolean
+    Set OBJ_RE = CreateObject("VBScript.RegExp")
+    OBJ_RE.Global = True
+    OBJ_RE.IgnoreCase = False
+    OBJ_RE.Pattern = iRegex
+    If Not OBJ_RE.Test(Trim(iterm)) Then
+        matchRegex = False
+    Else
+        matchRegex = True
+    End If
+End Function
+
+Public Function FuzzyFind(lookup_value As String, tbl_array As Range) As String
+    Dim i As Integer, str As String, Value As String
+    Dim a As Integer, b As Integer, cell As Variant
+    For Each cell In tbl_array
+      str = cell
+      For i = 1 To Len(lookup_value)
+        If InStr(cell, Mid(lookup_value, i, 1)) > 0 Then
+          a = a + 1
+          cell = Mid(cell, 1, InStr(cell, Mid(lookup_value, i, 1)) - 1) & Mid(cell, InStr(cell, Mid(lookup_value, i, 1)) + 1, 9999)
+        End If
+      Next i
+      a = a - Len(cell)
+      If a > b Then
+        b = a
+        Value = str
+      End If
+      a = 0
+    Next cell
+    FuzzyFind = Value
+End Function
+
+Public Sub HideorShowErrorSheets()
+    Dim ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        If InStr(UCase(ws.Name), "ERROR") <> 0 Then
+            If IsEmpty(ws.Range("B" & START_ROW).Value) _
+                Or Trim(ws.Range("B" & START_ROW).Value & vbNullString) = vbNullString Then
+                ws.Visible = xlSheetHidden
+            Else
+                ws.Visible = xlSheetVisible
+            End If
+        End If
+    Next ws
+End Sub
+
+Sub ToggleCutCopyAndPaste(Allow As Boolean)
+'Activate/deactivate cut, copy, paste and pastespecial menu items
+    Call EnableMenuItem(21, Allow)    ' cut
+    'Call EnableMenuItem(19, Allow)    ' copy
+    'Call EnableMenuItem(22, Allow)    ' paste
+    'Call EnableMenuItem(755, Allow)   ' pastespecial
+
+'Activate/deactivate drag and drop ability
+    Application.CellDragAndDrop = True 'always allow
+
+'Activate/deactivate cut, copy, paste and pastespecial shortcut keys
+    With Application
+        Select Case Allow
+            Case Is = False
+                '.OnKey "^c", "CutCopyPasteDisabled"
+                '.OnKey "^v", "CutCopyPasteDisabled"
+                .OnKey "^x", "CutCopyPasteDisabled"
+                .OnKey "+{DEL}", "CutCopyPasteDisabled"
+                .OnKey "^{INSERT}", "CutCopyPasteDisabled"
+            Case Is = True
+                '.OnKey "^c"
+                '.OnKey "^v"
+                .OnKey "^x"
+                .OnKey "+{DEL}"
+                .OnKey "^{INSERT}"
+            End Select
+    End With
+End Sub
+
+Sub EnableMenuItem(ctlId As Integer, Enabled As Boolean)
+     'Activate/Deactivate specific menu item
+    Dim cBar As CommandBar
+    Dim cBarCtrl As CommandBarControl
+    For Each cBar In Application.CommandBars
+        If cBar.Name <> "Clipboard" Then
+            Set cBarCtrl = cBar.FindControl(ID:=ctlId, recursive:=True)
+            If Not cBarCtrl Is Nothing Then cBarCtrl.Enabled = Enabled
+        End If
+    Next
+End Sub
+ 
+Sub CutCopyPasteDisabled()
+'Inform user that the functions have been disabled
+    MsgBox "Sorry! Cutting (Ctrl+X) have been disabled in this workbook!", vbInformation
+End Sub
+
+Function collectionToArray(ByVal c As Collection) As Variant()
+    Dim a() As Variant: ReDim a(0 To c.count - 1)
+    Dim i As Integer
+    For i = 1 To c.count
+        a(i - 1) = c.Item(i)
+    Next
+    collectionToArray = a
+End Function
+
+Function convertStringToDate(dateStr As String) As Date
+    Dim dateFormatted As Date
+    If Trim(dateStr & vbNullString) <> vbNullString Then
+        Dim dd As Integer: dd = Split(dateStr, "-")(0)
+        Dim mm As Integer: mm = Split(dateStr, "-")(1)
+        Dim yyyy As Integer: yyyy = Split(dateStr, "-")(2)
+        dateFormatted = CDate(yyyy & "-" & mm & "-" & dd)
+    End If
+    convertStringToDate = dateFormatted
+End Function
+
+Public Function IsInArray(ByVal VarToBeFound As Variant) As Boolean
+    Dim Arr
+    Arr = Array("0", "0.1", "0.25", "1", "1.5", "3", "5", "6", "7.5", "12", "18", "28", "40")
+    Dim Element As Variant
+    For Each Element In Arr
+        If Element = VarToBeFound Then
+            IsInArray = True
+            Exit Function
+        End If
+    Next Element
+
+    IsInArray = False
+End Function
+
+Public Function IsPosInArray(ByVal VarToBeFound As Variant) As Boolean
+    Dim Arr
+    Arr = Array("01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "97")
+    Dim Element As Variant
+    For Each Element In Arr
+        If Element = VarToBeFound Then
+            IsPosInArray = True
+            Exit Function
+        End If
+    Next Element
+
+    IsPosInArray = False
+End Function
+
+Public Function IsInSupplyType(ByVal VarToBeFound As Variant) As Boolean
+    Dim Arr
+    Arr = Array("Inter-State", "Intra-State")
+    Dim Element As Variant
+    For Each Element In Arr
+        If Element = VarToBeFound Then
+            IsInSupplyType = True
+            Exit Function
+        End If
+    Next Element
+
+    IsInSupplyType = False
+End Function
+
+Public Function IsInActionType(ByVal VarToBeFound As Variant) As Boolean
+    Dim Arr
+    Arr = Array("Add", "Delete")
+    Dim Element As Variant
+    For Each Element In Arr
+        If Element = VarToBeFound Then
+            IsInActionType = True
+            Exit Function
+        End If
+    Next Element
+
+    IsInActionType = False
+End Function
+
+Public Function IsInReverseCharge(ByVal VarToBeFound As Variant) As Boolean
+    Dim Arr
+    Arr = Array("Yes", "No")
+    Dim Element As Variant
+    For Each Element In Arr
+        If Element = VarToBeFound Then
+            IsInReverseCharge = True
+            Exit Function
+        End If
+    Next Element
+
+    IsInReverseCharge = False
+End Function
+
+Public Function IsFyInArray(ByVal VarToBeFound As Variant) As Boolean
+    Dim Arr
+    Arr = Array("2019-20", "2020-21", "2021-22", "2022-23", "2023-24", "2024-25", "2025-26", "2026-27")
+    Dim Element As Variant
+    For Each Element In Arr
+        If Element = VarToBeFound Then
+            IsFyInArray = True
+            Exit Function
+        End If
+    Next Element
+
+    IsFyInArray = False
+End Function
+-------------------------------------------------------------------------------

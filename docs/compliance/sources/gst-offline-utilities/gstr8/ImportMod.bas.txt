@@ -1,0 +1,766 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+'Macro that imports home sheet from the downloaded JSON
+Public Sub importJsontoHome(jsonData As Object)
+    Dim year, lyear, ryear As String
+    Dim month As Integer
+    Sheets("Home").Unprotect "pass"
+    If jsonData.Exists("gstin") Then
+        Sheets("Home").Cells(6, "B").value = jsonData("gstin")
+    End If
+    If jsonData.Exists("fp") Then
+        Sheets("Home").Unprotect "pass"
+        Sheets("Home").Cells(6, "E").value = Application.VLookup(CInt(Left(jsonData("fp"), 2)), Sheets("Master sheet").Range("K2:L13"), 2, False)
+        month = CInt(Left(jsonData("fp"), 2))
+        If (month < 4) Then
+           ryear = Right(jsonData("fp"), 2)
+           lyear = "20" + Right(jsonData("fp"), 2)
+           lyear = CStr(val(lyear) - 1)
+           year = lyear + "-" + ryear
+        Else
+           lyear = Right(jsonData("fp"), 4)
+           ryear = CStr(val(Right(jsonData("fp"), 2)) + 1)
+           year = lyear + "-" + ryear
+        End If
+        Sheets("Home").Unprotect "pass"
+        Sheets("Home").Cells(6, "D").value = year
+    End If
+    Sheets("Home").Protect "pass"
+End Sub
+
+'Macro that imports TCS Amend sheet from the downloaded JSON
+Public Sub ImportJsontoAmend(jsonData As Object)
+    importFlag = True
+    Dim Item As Dictionary
+    Dim month As Integer
+    Dim i As Long, j As Long, k As Long
+    Dim start_row As Long
+    Dim ra As String
+    Dim year As String, lyear As String, ryear As String
+    Dim posLookup As Object, posState As String
+    Dim oposLookup As Object, oposState As String
+    Dim duplicateFound As Boolean
+    Dim lastRow As Long
+
+    start_row = ExtraMod.getLastRowAmend
+    i = start_row
+
+    Set posLookup = CreateObject("Scripting.Dictionary")
+    Set oposLookup = CreateObject("Scripting.Dictionary")
+
+    For j = 3 To 40
+        If Sheets("Master sheet").Cells(j, 13).value <> "" Then
+            posLookup(Sheets("Master sheet").Cells(j, 14).value) = Sheets("Master sheet").Cells(j, 13).value
+        End If
+    Next j
+
+    For k = 3 To 40
+        If Sheets("Master sheet").Cells(k, 13).value <> "" Then
+            oposLookup(Sheets("Master sheet").Cells(k, 14).value) = Sheets("Master sheet").Cells(k, 13).value
+        End If
+    Next k
+
+    If Sheets("Master sheet").Range("J1").value = 2 Then
+        Sheets("4 Amend").Unprotect "pass"
+        Sheets("4 Amend").Range("B7:T15007").ClearContents
+        Sheets("4 Amend").Range("B7:H15007").Locked = False
+        Sheets("4 Amend").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        i = 7
+    End If
+
+    If MainMod.checkDate(jsonData) Then
+        If jsonData.Exists("tcsa") Then
+            Application.EnableEvents = False
+
+            For Each Item In jsonData("tcsa")
+                month = CInt(Left(Item("ofp"), 2))
+                If month < 4 Then
+                    ryear = Right(Item("ofp"), 2)
+                    lyear = "20" & Right(Item("ofp"), 2)
+                    lyear = CStr(val(lyear) - 1)
+                    year = lyear & "-" & ryear
+                Else
+                    lyear = Right(Item("ofp"), 4)
+                    ryear = CStr(val(Right(Item("ofp"), 2)) + 1)
+                    year = lyear & "-" & ryear
+                End If
+
+                If oposLookup.Exists(Item("opos")) Then
+                    oposState = oposLookup(Item("opos"))
+                Else
+                    oposState = Item("opos")
+                End If
+
+                If posLookup.Exists(Item("pos")) Then
+                    posState = posLookup(Item("pos"))
+                Else
+                    posState = Item("pos")
+                End If
+
+                duplicateFound = False
+                lastRow = Sheets("4 Amend").Cells(Sheets("4 Amend").Rows.count, 2).End(xlUp).row
+                Dim x As Long
+                For x = 7 To lastRow
+                    If Sheets("4 Amend").Cells(x, 2).value = year And _
+                       Sheets("4 Amend").Cells(x, 4).value = Item("ostin") And _
+                       Sheets("4 Amend").Cells(x, 7).value = Item("stin") And _
+                       Sheets("4 Amend").Cells(x, 6).value = oposState And _
+                       Sheets("4 Amend").Cells(x, 9).value = posState Then
+                        duplicateFound = True
+                        Exit For
+                    End If
+                Next x
+
+                If Not duplicateFound Then
+                    Sheets("4 Amend").Unprotect "pass"
+                    Sheets("4 Amend").Cells(i, 2).value = year
+                    Sheets("4 Amend").Cells(i, 3).value = Application.VLookup(month, Sheets("Master sheet").Range("K2:L13"), 2, False)
+                    Sheets("4 Amend").Cells(i, 4).value = Item("ostin")
+                    Sheets("4 Amend").Cells(i, 5).value = Item("ostin_name")
+                    Sheets("4 Amend").Cells(i, 6).value = oposState
+                    Sheets("4 Amend").Cells(i, 7).value = Item("stin")
+                    Sheets("4 Amend").Cells(i, 8).value = Item("stin_name")
+                    Sheets("4 Amend").Cells(i, 9).value = posState
+                    Sheets("4 Amend").Cells(i, 10).value = Item("supR")
+                    Sheets("4 Amend").Cells(i, 11).value = Item("retsupR")
+                    Sheets("4 Amend").Cells(i, 12).value = Item("supU")
+                    Sheets("4 Amend").Cells(i, 13).value = Item("retsupU")
+                    Sheets("4 Amend").Cells(i, 14).value = Item("amt")
+                    Sheets("4 Amend").Cells(i, 15).value = Format(Item("iamt"), Accounting)
+                    Sheets("4 Amend").Cells(i, 16).value = Format(Item("camt"), Accounting)
+                    Sheets("4 Amend").Cells(i, 17).value = Format(Item("samt"), Accounting)
+
+                    If Item("flag") = "A" Then
+                        Sheets("4 Amend").Cells(i, 18).value = "Add"
+                    ElseIf Item("flag") = "D" Then
+                        Sheets("4 Amend").Cells(i, 18).value = "Delete"
+                    End If
+
+                    i = i + 1
+                End If
+            Next Item
+
+            Application.EnableEvents = True
+
+            ra = "B" & start_row & ":D" & (i - 1)
+            Sheets("4 Amend").Range(ra).Locked = True
+            Sheets("4 Amend").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+
+            Sheets("Master sheet").Unprotect "pass"
+            Sheets("Master sheet").Range("J1").value = 1
+            Sheets("Master sheet").Protect "pass"
+        End If
+    End If
+
+    importFlag = False
+End Sub
+
+'Macro that imports TCS sheet from the downloaded JSON
+Public Sub ImportJsontoTCS(jsonData As Object)
+    importFlag = True
+    Dim Item As Dictionary
+    Dim i As Long
+    Dim start_row As Long
+    Dim ra As String
+    Dim posLookup As Object
+    Dim posState As String
+    Dim lastRow As Long
+    Dim duplicateFound As Boolean
+    Dim existingStin As String
+    Dim existingPos As String
+
+    start_row = ExtraMod.getLastRowTCS
+    i = start_row
+
+    ' Create a dictionary to map state codes to state names from Master sheet
+    Set posLookup = CreateObject("Scripting.Dictionary")
+
+    ' Populate dictionary with state names from Master sheet
+    Dim j As Long
+    For j = 3 To 40
+        If Sheets("Master sheet").Cells(j, 13).value <> "" Then
+            posLookup(Sheets("Master sheet").Cells(j, 14).value) = Sheets("Master sheet").Cells(j, 13).value
+        End If
+    Next j
+
+    If Sheets("Master sheet").Range("J1").value = 2 Then
+        Sheets("3 TCS").Unprotect "pass"
+        Sheets("3 TCS").Range("B6:O15006").ClearContents
+        Sheets("3 TCS").Range("B6:B15006").Locked = False
+        Sheets("3 TCS").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        i = 6
+    End If
+
+    If MainMod.checkDate(jsonData) Then
+        If jsonData.Exists("tcs") Then
+            Application.EnableEvents = False
+
+            For Each Item In jsonData("tcs")
+                existingStin = Item("stin")
+                existingPos = Item("pos")
+                duplicateFound = False
+
+                lastRow = Sheets("3 TCS").Cells(Sheets("3 TCS").Rows.count, 2).End(xlUp).row
+
+                ' Check for duplicates in columns 2 (stin) and 4 (pos)
+                Dim iCheck As Long
+                For iCheck = 6 To lastRow
+                    If Sheets("3 TCS").Cells(iCheck, 2).value = existingStin And _
+                       Sheets("3 TCS").Cells(iCheck, 4).value = posLookup(existingPos) Then
+                        duplicateFound = True
+                        Exit For
+                    End If
+                Next iCheck
+
+                If Not duplicateFound Then
+                    Sheets("3 TCS").Unprotect "pass"
+                    Sheets("3 TCS").Cells(i, 2).value = Item("stin")
+                    Sheets("3 TCS").Cells(i, 3).value = Item("stin_name")
+
+                    If posLookup.Exists(Item("pos")) Then
+                        posState = posLookup(Item("pos"))
+                    Else
+                        posState = Item("pos")
+                    End If
+
+                    Sheets("3 TCS").Cells(i, 4).value = posState
+                    Sheets("3 TCS").Cells(i, 5).value = Item("supR")
+                    Sheets("3 TCS").Cells(i, 6).value = Item("retsupR")
+                    Sheets("3 TCS").Cells(i, 7).value = Item("supU")
+                    Sheets("3 TCS").Cells(i, 8).value = Item("retsupU")
+                    Sheets("3 TCS").Cells(i, 9).value = Item("amt")
+                    Sheets("3 TCS").Cells(i, 10).value = Format(Item("iamt"), Accounting)
+                    Sheets("3 TCS").Cells(i, 11).value = Format(Item("camt"), Accounting)
+                    Sheets("3 TCS").Cells(i, 12).value = Format(Item("samt"), Accounting)
+
+                    If Item("flag") = "A" Then
+                        Sheets("3 TCS").Cells(i, 13).value = "Add"
+                    ElseIf Item("flag") = "D" Then
+                        Sheets("3 TCS").Cells(i, 13).value = "Delete"
+                    End If
+
+                    i = i + 1
+                End If
+            Next Item
+
+            Application.EnableEvents = True
+            ra = "B" & start_row & ":B" & (i - 1)
+            Sheets("3 TCS").Range(ra).Locked = True
+            Sheets("3 TCS").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        End If
+    End If
+
+    importFlag = False
+End Sub
+
+'Macro that imports TCS sheet from the Error JSON
+Public Sub ImportErrortoTCS(jsonData As Object)
+    importFlag = True
+    Dim Item As Dictionary
+    Dim i, start_row As Long
+    Dim posLookup As Object
+    Dim posState As String
+    Dim lastRow As Long
+    Dim duplicateFound As Boolean
+    Dim existingStin As String
+    Dim existingPos As String
+    
+    start_row = ExtraMod.getLastRowTCS
+    i = start_row
+
+    ' Create a dictionary to map state codes to state names from Master sheet
+    Set posLookup = CreateObject("Scripting.Dictionary")
+
+    ' Populate posLookup from Master sheet (N3:N40 = codes, M3:M40 = state names)
+    Dim j As Long
+    For j = 3 To 40
+        If Sheets("Master sheet").Cells(j, 13).value <> "" Then
+            posLookup(Sheets("Master sheet").Cells(j, 14).value) = Sheets("Master sheet").Cells(j, 13).value
+        End If
+    Next j
+
+    ' Initial sheet setup if required
+    If Sheets("Master sheet").Range("J1").value = 1 Then
+        Sheets("3 TCS").Unprotect "pass"
+        Sheets("3 TCS").Range("B6:O15006").ClearContents
+        Sheets("3 TCS").Range("B6:B15006").Locked = False
+        Sheets("3 TCS").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        i = 6
+    End If
+
+    If MainMod.checkDate(jsonData) Then
+        If jsonData("error_report").Exists("tcs") Then
+            Application.EnableEvents = False
+            
+            For Each Item In jsonData("error_report")("tcs")
+                
+                ' Unprotect before updating any cell
+                Sheets("3 TCS").Unprotect "pass"
+                
+                ' Prepare values for duplicate checking
+                existingStin = Item("stin")
+                existingPos = Item("pos")
+                duplicateFound = False
+
+                lastRow = Sheets("3 TCS").Cells(Sheets("3 TCS").Rows.count, 2).End(xlUp).row
+                Dim iCheck As Long
+                For iCheck = 6 To lastRow
+                    If Sheets("3 TCS").Cells(iCheck, 2).value = existingStin And _
+                       Sheets("3 TCS").Cells(iCheck, 4).value = posLookup(existingPos) Then
+                        duplicateFound = True
+                        Exit For
+                    End If
+                Next iCheck
+
+                If Not duplicateFound Then
+                    ' Insert the values in appropriate cells
+                    Sheets("3 TCS").Cells(i, 2).value = Item("stin")
+                Sheets("3 TCS").Unprotect "pass"
+                    Sheets("3 TCS").Cells(i, 3).value = Item("stin_name")
+
+                    ' Check if pos exists in the dictionary and replace it with the state name
+                    If posLookup.Exists(Item("pos")) Then
+                        posState = posLookup(Item("pos"))
+                    Else
+                        posState = Item("pos")
+                    End If
+                Sheets("3 TCS").Unprotect "pass"
+                    Sheets("3 TCS").Cells(i, 4).value = posState ' Populate the translated state name
+
+                Sheets("3 TCS").Unprotect "pass"
+                    Sheets("3 TCS").Cells(i, 5).value = Item("supR")
+                Sheets("3 TCS").Unprotect "pass"
+                    Sheets("3 TCS").Cells(i, 6).value = Item("retsupR")
+                    Sheets("3 TCS").Cells(i, 7).value = Item("supU")
+                    Sheets("3 TCS").Cells(i, 8).value = Item("retsupU")
+                    Sheets("3 TCS").Cells(i, 9).value = Item("amt")
+                    Sheets("3 TCS").Cells(i, 10).value = Format(Item("iamt"), Accounting)
+                    Sheets("3 TCS").Cells(i, 11).value = Format(Item("camt"), Accounting)
+                    Sheets("3 TCS").Cells(i, 12).value = Format(Item("samt"), Accounting)
+                    Sheets("3 TCS").Cells(i, 15).value = Item("error_msg")
+
+                    If Item("flag") = "A" Then
+                        Sheets("3 TCS").Cells(i, 13).value = "Add"
+                    ElseIf Item("flag") = "D" Then
+                        Sheets("3 TCS").Cells(i, 13).value = "Delete"
+                    End If
+
+                    i = i + 1
+                End If
+            Next Item
+
+            Application.EnableEvents = True
+            Dim ra As String
+            ra = "B" & start_row & ":B" & (i - 1)
+            Sheets("3 TCS").Range(ra).Locked = True
+
+            Sheets("3 TCS").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        End If
+    End If
+
+    importFlag = False
+End Sub
+
+'Macro that imports TCS Amend sheet from the Error JSON
+Public Sub ImportErrortoAmend(jsonData As Object)
+    importFlag = True
+    Dim Item As Dictionary
+    Dim month As Integer
+    Dim i As Long
+    Dim start_row As Long
+    Dim year, lyear, ryear As String
+    Dim posLookup As Object
+    Dim posState As String
+    Dim oposState As String
+    Dim oposLookup As Object
+    Dim lastRow As Long
+    Dim duplicateFound As Boolean
+    Dim existingYear As String
+    Dim existingOstin As String
+    Dim existingStin As String
+    Dim existingOpos As String
+    Dim existingPos As String
+    
+    start_row = ExtraMod.getLastRowAmend
+    i = start_row
+    
+    ' Create a dictionary to map state codes to state names from Master sheet
+    Set posLookup = CreateObject("Scripting.Dictionary")
+    Set oposLookup = CreateObject("Scripting.Dictionary")
+    
+    ' Loop through rows M3:M40 and N3:N40 in Master sheet to populate posLookup
+    Dim j As Long
+    For j = 3 To 40
+        If Sheets("Master sheet").Cells(j, 13).value <> "" Then ' Check if there's a valid state name
+            posLookup(Sheets("Master sheet").Cells(j, 14).value) = Sheets("Master sheet").Cells(j, 13).value
+        End If
+    Next j
+    
+    ' Loop through rows M3:M40 and N3:N40 in Master sheet to populate oposLookup
+    Dim k As Long
+    For k = 3 To 40
+        If Sheets("Master sheet").Cells(k, 13).value <> "" Then ' Check if there's a valid state name
+            oposLookup(Sheets("Master sheet").Cells(k, 14).value) = Sheets("Master sheet").Cells(k, 13).value
+        End If
+    Next k
+    
+    If (Sheets("Master sheet").Range("J1").value) = 1 Then
+        Sheets("4 Amend").Unprotect "pass"
+        Sheets("4 Amend").Range("B7:P15007").ClearContents
+        Sheets("4 Amend").Range("B7:D15007").Locked = False
+        Sheets("4 Amend").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        i = 7
+    End If
+    
+    If MainMod.checkDate(jsonData) Then
+        If jsonData("error_report").Exists("tcsa") Then
+            Application.EnableEvents = False
+            For Each Item In jsonData("error_report")("tcsa")
+                ' Calculate year and other values
+                month = CInt(Left(Item("ofp"), 2))
+                If (month < 4) Then
+                    ryear = Right(Item("ofp"), 2)
+                    lyear = "20" + Right(Item("ofp"), 2)
+                    lyear = CStr(val(lyear) - 1)
+                    year = lyear + "-" + ryear
+                Else
+                    lyear = Right(Item("ofp"), 4)
+                    ryear = CStr(val(Right(Item("ofp"), 2)) + 1)
+                    year = lyear + "-" + ryear
+                End If
+                
+                ' Extract values for duplicate check
+                existingYear = year
+                existingOstin = Item("ostin")
+                existingStin = Item("stin")
+                If oposLookup.Exists(Item("opos")) Then
+                    existingOpos = oposLookup(Item("opos"))
+                Else
+                    existingOpos = Item("opos")
+                End If
+                
+                If posLookup.Exists(Item("pos")) Then
+                    existingPos = posLookup(Item("pos"))
+                Else
+                    existingPos = Item("pos")
+                End If
+
+                
+                ' Check for duplicates
+                duplicateFound = False
+                lastRow = Sheets("4 Amend").Cells(Sheets("4 Amend").Rows.count, 2).End(xlUp).row
+                For iCheck = 7 To lastRow
+                    If Sheets("4 Amend").Cells(iCheck, 2).value = existingYear And _
+                       Sheets("4 Amend").Cells(iCheck, 4).value = existingOstin And _
+                       Sheets("4 Amend").Cells(iCheck, 7).value = existingStin And _
+                       Sheets("4 Amend").Cells(iCheck, 6).value = existingOpos And _
+                       Sheets("4 Amend").Cells(iCheck, 9).value = existingPos Then
+                        duplicateFound = True
+                        Exit For
+                    End If
+                Next iCheck
+                
+                ' If duplicate is not found, add the row
+                If Not duplicateFound Then
+                    Sheets("4 Amend").Unprotect "pass"
+                    Sheets("4 Amend").Cells(i, 3).value = Application.VLookup(CInt(Left(Item("ofp"), 2)), Sheets("Master sheet").Range("K2:L13"), 2, False)
+                    Sheets("4 Amend").Cells(i, 2).value = year
+                    Sheets("4 Amend").Cells(i, 4).value = Item("ostin")
+                    Sheets("4 Amend").Cells(i, 5).value = Item("ostin_name")
+                    
+                    ' Check if pos exists in the dictionary and replace it with the state name
+                    If oposLookup.Exists(Item("opos")) Then
+                        oposState = oposLookup(Item("opos"))
+                    Else
+                        oposState = Item("opos") ' If not found, just use the original pos value
+                    End If
+                    Sheets("4 Amend").Cells(i, 6).value = oposState
+                    Sheets("4 Amend").Cells(i, 7).value = Item("stin")
+                    Sheets("4 Amend").Cells(i, 8).value = Item("stin_name")
+                    
+                    ' Check if pos exists in the dictionary and replace it with the state name
+                    If posLookup.Exists(Item("pos")) Then
+                        posState = posLookup(Item("pos"))
+                    Else
+                        posState = Item("pos") ' If not found, just use the original pos value
+                    End If
+                    Sheets("4 Amend").Cells(i, 9).value = posState
+                    Sheets("4 Amend").Cells(i, 10).value = Item("supR")
+                    Sheets("4 Amend").Cells(i, 11).value = Item("retsupR")
+                    Sheets("4 Amend").Cells(i, 12).value = Item("supU")
+                    Sheets("4 Amend").Cells(i, 13).value = Item("retsupU")
+                    Sheets("4 Amend").Cells(i, 14).value = Item("amt")
+                    Sheets("4 Amend").Cells(i, 20).value = Item("error_msg")
+                    Sheets("4 Amend").Cells(i, 15).value = Format(Item("iamt"), Accounting)
+                    Sheets("4 Amend").Cells(i, 16).value = Format(Item("camt"), Accounting)
+                    Sheets("4 Amend").Cells(i, 17).value = Format(Item("samt"), Accounting)
+                    
+                    If Item("flag") = "A" Then
+                        Sheets("4 Amend").Cells(i, 18).value = "Add"
+                    ElseIf Item("flag") = "D" Then
+                        Sheets("4 Amend").Cells(i, 18).value = "Delete"
+                    End If
+                    i = i + 1
+                End If
+            Next Item
+            Application.EnableEvents = True
+            ra = "B" & start_row & ":D" & (i - 1)
+            Sheets("4 Amend").Range(ra).Locked = True
+            Sheets("4 Amend").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+            Sheets("Master sheet").Unprotect "pass"
+            Sheets("Master sheet").Range("J1").value = 2
+            Sheets("Master sheet").Unprotect "pass"
+        End If
+    End If
+    importFlag = False
+End Sub
+
+'Macro that imports UNRD sheet from the downloaded JSON
+Public Sub ImportJsontoUNRD(jsonData As Object)
+importFlag = True
+Dim Item As Dictionary
+    Dim i As Long
+    Dim start_row As Long
+    Dim ra As String
+    start_row = ExtraMod.getLastRowUNRD
+    i = start_row
+    If (Sheets("Master sheet").Range("J1").value) = 2 Then
+        Sheets("3.1 UNRD").Unprotect "pass"
+        Sheets("3.1 UNRD").Range("B6:I1048576").ClearContents
+        Sheets("3.1 UNRD").Range("B6:I1048576").Locked = False
+        Sheets("3.1 UNRD").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        i = 6
+    End If
+    If MainMod.checkDate(jsonData) Then
+        If jsonData.Exists("urd") Then
+            Application.EnableEvents = False
+            For Each Item In jsonData("urd")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    Sheets("3.1 UNRD").Cells(i, 2).value = Item("eid")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    Sheets("3.1 UNRD").Cells(i, 3).value = Item("eidname")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    Sheets("3.1 UNRD").Cells(i, 4).value = Item("grsval")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    Sheets("3.1 UNRD").Cells(i, 5).value = Item("supret")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    Sheets("3.1 UNRD").Cells(i, 6).value = Item("amt")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    If Item("flag") = "A" Then
+                        Sheets("3.1 UNRD").Cells(i, 7).value = "Add"
+                    ElseIf Item("flag") = "D" Then
+                        Sheets("3.1 UNRD").Cells(i, 7).value = "Delete"
+                    End If
+                    i = i + 1
+               Next
+            Application.EnableEvents = True
+            ra = "B" & start_row & ":B" & (i - 1)
+            Sheets("3.1 UNRD").Range(ra).Locked = True
+            Sheets("3.1 UNRD").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        End If
+        
+    End If
+    importFlag = False
+
+End Sub
+
+'Macro that imports Amend-UNRD sheet from the downloaded JSON
+Public Sub ImportJsontoUNRDA(jsonData As Object)
+    importFlag = True
+    Dim Item As Dictionary
+    Dim month As Integer
+    Dim i As Long
+    Dim start_row As Long
+    Dim ra As String
+    Dim year, lyear, ryear As String
+    
+    start_row = ExtraMod.getLastRowUNRDA
+    i = start_row
+    If (Sheets("Master sheet").Range("J1").value) = 2 Then
+        Sheets("4.1 Amend-UNRD").Unprotect "pass"
+        Sheets("4.1 Amend-UNRD").Range("B7:M1048576").ClearContents
+        Sheets("4.1 Amend-UNRD").Range("B7:M1048576").Locked = False
+        Sheets("4.1 Amend-UNRD").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        i = 7
+    End If
+    If MainMod.checkDate(jsonData) Then
+        If jsonData.Exists("urda") Then
+                Application.EnableEvents = False
+                For Each Item In jsonData("urda")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 3).value = Application.VLookup(CInt(Left(Item("ofp"), 2)), Sheets("Master sheet").Range("K2:L13"), 2, False)
+                    month = CInt(Left(Item("ofp"), 2))
+                    If (month < 4) Then
+                       ryear = Right(Item("ofp"), 2)
+                       lyear = "20" + Right(Item("ofp"), 2)
+                       lyear = CStr(val(lyear) - 1)
+                       year = lyear + "-" + ryear
+                    Else
+                       lyear = Right(Item("ofp"), 4)
+                       ryear = CStr(val(Right(Item("ofp"), 2)) + 1)
+                       year = lyear + "-" + ryear
+                    End If
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 2).value = year
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 4).value = Item("oeid")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 5).value = Item("oeidname")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 6).value = Item("eid")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 7).value = Item("eidname")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 8).value = Item("grsval")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 9).value = Item("supret")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 10).value = Item("amt")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    
+                    If Item("flag") = "A" Then
+                        Sheets("4.1 Amend-UNRD").Cells(i, 11).value = "Add"
+                    ElseIf Item("flag") = "D" Then
+                        Sheets("4.1 Amend-UNRD").Cells(i, 11).value = "Delete"
+                    End If
+                    i = i + 1
+                Next
+            Application.EnableEvents = True
+            ra = "B" & start_row & ":D" & (i - 1)
+            Sheets("4.1 Amend-UNRD").Range(ra).Locked = True
+            Sheets("4.1 Amend-UNRD").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+            Sheets("Master sheet").Unprotect "pass"
+            Sheets("Master sheet").Range("J1").value = 1
+            Sheets("Master sheet").Protect "pass"
+        End If
+        
+    End If
+    importFlag = False
+
+End Sub
+
+'Macro that imports UNRD sheet from the Error JSON
+Public Sub ImportErrortoUNRD(jsonData As Object)
+        importFlag = True
+    Dim i, start_row As Long
+    start_row = ExtraMod.getLastRowUNRD
+    i = start_row
+    
+    If (Sheets("Master sheet").Range("J1").value) = 1 Then
+        Sheets("3.1 UNRD").Unprotect "pass"
+        Sheets("3.1 UNRD").Range("B6:I1048576").ClearContents
+        Sheets("3.1 UNRD").Range("B6:I1048576").Locked = False
+        Sheets("3.1 UNRD").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        i = 6
+    End If
+    If MainMod.checkDate(jsonData) Then
+        If jsonData("error_report").Exists("urd") Then
+        'MsgBox VarType(jsonData("error_report"))
+        Application.EnableEvents = False
+        For Each Item In jsonData("error_report")("urd")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    Sheets("3.1 UNRD").Cells(i, 2).value = Item("eid")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    Sheets("3.1 UNRD").Cells(i, 3).value = Item("eidname")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    Sheets("3.1 UNRD").Cells(i, 4).value = Item("grsval")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    Sheets("3.1 UNRD").Cells(i, 5).value = Item("supret")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    Sheets("3.1 UNRD").Cells(i, 6).value = Item("amt")
+                    Sheets("3.1 UNRD").Unprotect "pass"
+                    Sheets("3.1 UNRD").Cells(i, 9).value = Item("error_msg")
+                    If Item("flag") = "A" Then
+                        Sheets("3.1 UNRD").Cells(i, 7).value = "Add"
+                    ElseIf Item("flag") = "D" Then
+                        Sheets("3.1 UNRD").Cells(i, 7).value = "Delete"
+                    End If
+                    i = i + 1
+               Next
+               Application.EnableEvents = True
+                ra = "B" & start_row & ":B" & (i - 1)
+                Sheets("3.1 UNRD").Range(ra).Locked = True
+        End If
+        
+        
+        Sheets("3.1 UNRD").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End If
+    importFlag = False
+End Sub
+
+'Macro that imports Amend-UNRD sheet from the Error JSON
+Public Sub ImportErrortoUNRDA(jsonData As Object)
+    importFlag = True
+    Dim Item As Dictionary
+    Dim month As Integer
+    Dim i As Long
+    Dim start_row As Long
+    Dim year, lyear, ryear As String
+    
+    start_row = ExtraMod.getLastRowUNRDA
+    i = start_row
+    If (Sheets("Master sheet").Range("J1").value) = 1 Then
+        Sheets("4.1 Amend-UNRD").Unprotect "pass"
+        Sheets("4.1 Amend-UNRD").Range("B7:M1048576").ClearContents
+        Sheets("4.1 Amend-UNRD").Range("B7:M1048576").Locked = False
+        Sheets("4.1 Amend-UNRD").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        i = 7
+    End If
+     
+    If MainMod.checkDate(jsonData) Then
+        If jsonData("error_report").Exists("urda") Then
+            Application.EnableEvents = False
+            For Each Item In jsonData("error_report")("urda")
+                 Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 3).value = Application.VLookup(CInt(Left(Item("ofp"), 2)), Sheets("Master sheet").Range("K2:L13"), 2, False)
+                    month = CInt(Left(Item("ofp"), 2))
+                    If (month < 4) Then
+                       ryear = Right(Item("ofp"), 2)
+                       lyear = "20" + Right(Item("ofp"), 2)
+                       lyear = CStr(val(lyear) - 1)
+                       year = lyear + "-" + ryear
+                    Else
+                       lyear = Right(Item("ofp"), 4)
+                       ryear = CStr(val(Right(Item("ofp"), 2)) + 1)
+                       year = lyear + "-" + ryear
+                    End If
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 2).value = year
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 4).value = Item("oeid")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 5).value = Item("oeidname")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 6).value = Item("eid")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 7).value = Item("eidname")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 8).value = Item("grsval")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 9).value = Item("supret")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 10).value = Item("amt")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    Sheets("4.1 Amend-UNRD").Cells(i, 13).value = Item("error_msg")
+                    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+                    If Item("flag") = "A" Then
+                        Sheets("4.1 Amend-UNRD").Cells(i, 11).value = "Add"
+                    ElseIf Item("flag") = "D" Then
+                        Sheets("4.1 Amend-UNRD").Cells(i, 11).value = "Delete"
+                    End If
+                  i = i + 1
+                Next
+                Application.EnableEvents = True
+                ra = "B" & start_row & ":D" & (i - 1)
+                Sheets("4.1 Amend-UNRD").Range(ra).Locked = True
+                Sheets("4.1 Amend-UNRD").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+                Sheets("Master sheet").Unprotect "pass"
+                Sheets("Master sheet").Range("J1").value = 2
+                Sheets("Master sheet").Unprotect "pass"
+        End If
+        
+    End If
+    importFlag = False
+
+End Sub
+-------------------------------------------------------------------------------

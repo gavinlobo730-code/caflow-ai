@@ -1,0 +1,363 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+'Macro that gets called when generate JSON is clicked
+Public Sub createJsonFile()
+    Application.EnableEvents = False
+    Dim rowNo As Integer
+    Dim path, json, year As String
+    Dim fs As Object, jsonfile
+    'Dim startRowTCS, ENDROWAmend, ENDROWTCS, startRowAmend As Long
+    Dim startRowTCS, ENDROWAmend, ENDROWTCS, startRowAmend, startRowUNRD, ENDROWUnrda, ENDROWUnrd, startRowUNRDA As Long
+
+    Dim month As Integer
+    '''''''
+    
+    Dim excelRange As Range
+    Dim jsonItems As New Collection
+    Dim jsonDictionary As New Dictionary
+    Dim i As Long
+    Dim cell As Variant
+    
+    '''''
+    Dim sec As Boolean: sec = False
+    Dim divide As Boolean: divide = False
+    startRowTCS = 6
+    startRowUNRD = 6
+    startRowAmend = 7
+    startRowUNRDA = 7
+    ENDROWTCS = ExtraMod.getLastRowTCS
+    ENDROWUnrd = ExtraMod.getLastRowUNRD
+    ENDROWAmend = ExtraMod.getLastRowAmend
+    ENDROWUnrda = ExtraMod.getLastRowUNRDA
+    
+'    MsgBox ENDROWTCS
+'    MsgBox ENDROWAmend
+'    MsgBox JsonConverter.ConvertToJson(jsonItems, Whitespace:=3)
+ 'Included UNRD and Amend-UNRD
+    Set jsonItems = Nothing
+    If MainMod.checkEmpty Then
+        MsgBox "All 4 sheets TCS, Amend, URND and Amend UNRD are empty. JSON file cannot be generated."
+        Exit Sub
+    End If
+    
+    
+    If Not MainMod.validateHomeGSTINData Then
+        If (ValidateMod.validateTCS("summary") And ValidateMod.validateUNRD("summary") And ValidateMod.validateAmend("summary") And ValidateMod.validateUNRDA("summary")) Then
+            fileName = Sheets("Home").Cells(6, 4) & "_" & Sheets("Home").Cells(6, 5) & "_" & Trim(Sheets("Home").Cells(6, 2) & vbNullString) & "_R8_Output_JSON"
+            path = Application.GetSaveAsFilename(fileName)
+              If (ENDROWTCS - startRowTCS - 1) + (ENDROWUnrd - startRowUNRD - 1) + (ENDROWAmend - startRowAmend - 1) + (ENDROWUnrda - startRowUNRDA - 1) > 20000 Then
+                temp = ENDROWAmend
+                temp1 = ENDROWUnrda
+                ENDROWAmend = 5008
+                ENDROWUnrda = 5008
+                divide = True
+                GoTo p
+s:
+                startRowAmend = 5008
+                startRowUNRDA = 5008
+                ENDROWAmend = temp
+                ENDROWUnrda = temp1
+                ENDROWTCS = 6
+                ENDROWUnrd = 6
+                divide = False
+            End If
+            
+p:
+            If path <> "False" Then
+                MsgBox path
+                Set fs = CreateObject("Scripting.FileSystemObject")
+                If divide = True Then
+                    path = Left(path, Len(path) - 1)
+                    path = path + "_1.json"
+                    sec = True
+                ElseIf sec = True Then
+                    path = Left(path, Len(path) - 7)
+                    path = path + "_2.json"
+                    sec = False
+                Else
+                    Dim extn As String
+                    extn = fs.GetExtensionName(path)
+                    If Not extn = "json" Then
+                        path = path + "json"
+                    Else
+                        path = path
+                    End If
+                End If
+                Set jsonfile = fs.CreateTextFile(path, True)
+                
+                
+                jsonfile.Write ("{""gstin"":""")
+                jsonfile.Write Trim(Sheets("Home").Cells(6, "B"))
+                jsonfile.Write (""",""fp"":""")
+                month = Application.VLookup(Trim(Sheets("Home").Cells(6, 5).value), Sheets("Master sheet").Range("G2:H13"), 2, False)
+                jsonfile.Write (Format(month, "00"))
+                If (month > 3) Then
+                    jsonfile.Write (Left(Sheets("Home").Cells(6, "D"), 4))
+                Else
+                    jsonfile.Write ("20" & Right(Sheets("Home").Cells(6, "D"), 2))
+                End If
+                jsonfile.Write ("""")
+                
+                If startRowTCS = ENDROWTCS Then
+                     GoTo a
+                Else
+                    jsonfile.Write (",""tcs"":")
+                    For rowNo = startRowTCS To ENDROWTCS - 1 Step 1
+                               
+                               
+                        Application.EnableEvents = False
+                        For col = 5 To 11
+                            If Sheets("3 TCS").Cells(rowNo, col) = vbNullString Then
+                                
+                                Sheets("3 TCS").Cells(rowNo, col) = 0
+                               
+                            End If
+                        Next
+                        Application.EnableEvents = True
+                        jsonDictionary("stin") = Sheets("3 TCS").Cells(rowNo, 2)
+                        yr = Left(Sheets("Home").Range("D6").value, 4)
+                        If (yr >= 2025) Then
+                        col = 4
+                        'If Trim(Sheets("3 TCS").Cells(rowNo, col).value & vbNullString) = vbNullString Then
+                            jsonDictionary("pos") = Left(Sheets("3 TCS").Cells(rowNo, 4).value, 2)
+                        'End If
+                        End If
+                        jsonDictionary("amt") = Application.Round(Sheets("3 TCS").Cells(rowNo, 9), 2)
+                        jsonDictionary("supR") = Application.Round(Sheets("3 TCS").Cells(rowNo, 5), 2)
+                        jsonDictionary("retsupR") = Application.Round(Sheets("3 TCS").Cells(rowNo, 6), 2)
+                        jsonDictionary("supU") = Application.Round(Sheets("3 TCS").Cells(rowNo, 7), 2)
+                        jsonDictionary("retsupU") = Application.Round(Sheets("3 TCS").Cells(rowNo, 8), 2)
+                        jsonDictionary("iamt") = Application.Round(Sheets("3 TCS").Cells(rowNo, 10), 2)
+                        jsonDictionary("camt") = Application.Round(Sheets("3 TCS").Cells(rowNo, 11), 2)
+                        jsonDictionary("samt") = Application.Round(Sheets("3 TCS").Cells(rowNo, 12), 2)
+                        
+                        If UCase(Sheets("3 TCS").Cells(rowNo, 13)) = "ADD" Then
+                            jsonDictionary("flag") = "A"
+                        Else
+                            jsonDictionary("flag") = "D"
+                        End If
+                        
+                        jsonItems.Add jsonDictionary
+                        Set jsonDictionary = Nothing
+                        
+'                        json = (("""stin"":""") & Trim(Sheets("3 TCS").Cells(rowNo, 2)) & (""",""amt"":") & (Replace(Format(Sheets("3 TCS").Cells(rowNo, 7), "Standard"), ",", "")) & (",""supR"":") & (Replace(Format(Sheets("3 TCS").Cells(rowNo, 3), "Standard"), ",", "")) & (",""retsupR"":") & (Replace(Format(Sheets("3 TCS").Cells(rowNo, 4), "Standard"), ",", "")) & (",""supU"":") & (Replace(Format(Sheets("3 TCS").Cells(rowNo, 5), "Standard"), ",", "")) & (",""retsupU"":") & (Replace(Format(Sheets("3 TCS").Cells(rowNo, 6), "Standard"), ",", "")) & (",""iamt"":") & (Replace(Format(Sheets("3 TCS").Cells(rowNo, 8), "Standard"), ",", "")) & (",""camt"":") & (Replace(Format(Sheets("3 TCS").Cells(rowNo, 9), "Standard"), ",", "")) & (",""samt"":") & (Replace(Format(Sheets("3 TCS").Cells(rowNo, 10), "Standard"), ",", "")))
+'
+'                        If UCase(Sheets("3 TCS").Cells(rowNo, 11)) = "ADD" Then
+'                            json = json & (",""flag"":""A""")
+'                        Else
+'                            json = json & (",""flag"":""D""")
+'                        End If
+'
+'
+'                        If rowNo = ENDROWTCS - 1 Then
+'                            json = json & ("}")
+'                        Else
+'                            json = json & ("},{")
+'                        End If
+'
+'                        jsonfile.Write json
+'
+                    Next
+                    
+                    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+                    Set jsonItems = Nothing
+                End If
+                
+ 'included UNRD
+a:
+                If startRowUNRD = ENDROWUnrd Then
+                     GoTo e
+                Else
+
+                    jsonfile.Write (",""urd"":")
+                    For rowNo = startRowUNRD To ENDROWUnrd - 1 Step 1
+                               
+                               
+                        Application.EnableEvents = False
+                        For col = 4 To 5
+                            If Sheets("3.1 UNRD").Cells(rowNo, col) = vbNullString Then
+                                
+                                Sheets("3.1 UNRD").Cells(rowNo, col) = 0
+                               
+                            End If
+                        Next
+                        Application.EnableEvents = True
+                        jsonDictionary("eid") = Sheets("3.1 UNRD").Cells(rowNo, 2)
+                        jsonDictionary("amt") = Application.Round(Sheets("3.1 UNRD").Cells(rowNo, 6), 2)
+                        jsonDictionary("grsval") = Application.Round(Sheets("3.1 UNRD").Cells(rowNo, 4), 2)
+                        jsonDictionary("supret") = Application.Round(Sheets("3.1 UNRD").Cells(rowNo, 5), 2)
+                        
+                        If UCase(Sheets("3.1 UNRD").Cells(rowNo, 7)) = "ADD" Then
+                            jsonDictionary("flag") = "A"
+                        Else
+                            jsonDictionary("flag") = "D"
+                        End If
+                        
+                        jsonItems.Add jsonDictionary
+                        Set jsonDictionary = Nothing
+                        
+                    Next
+                    
+                    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+                    Set jsonItems = Nothing
+                End If
+
+e:
+                If startRowAmend = ENDROWAmend Then
+                    GoTo b
+                Else
+                    'jsonfile.Write ("]")
+
+                    jsonfile.Write (",""tcsa"":")
+                    For rowNo = startRowAmend To ENDROWAmend - 1 Step 1
+                        Application.EnableEvents = False
+                        For col = 10 To 16
+                            If Sheets("4 Amend").Cells(rowNo, col) = vbNullString Then
+                                
+                                Sheets("4 Amend").Cells(rowNo, col) = 0
+                                
+                                
+                            End If
+                        Next
+                        Application.EnableEvents = True
+                        month = Application.VLookup(Trim(Sheets("4 Amend").Cells(rowNo, 3).value), Sheets("Master sheet").Range("G2:H13"), 2, False)
+                        
+                        If month > 3 Then
+                            jsonDictionary("ofp") = (Format(month, "00")) & Left(Trim(Sheets("4 Amend").Cells(rowNo, 2)), 4)
+                        Else
+                            year = "20" + Right(Trim(Sheets("4 Amend").Cells(rowNo, 2)), 2)
+                            jsonDictionary("ofp") = (Format(month, "00")) & year
+                        End If
+                        
+                        jsonDictionary("ostin") = Sheets("4 Amend").Cells(rowNo, 4)
+                        yr = Left(Sheets("4 Amend").Cells(rowNo, 2).value, 4)
+                        If (yr >= 2025) Then
+                        col = 6
+                        'If Trim(Sheets("4 Amend").Cells(rowNo, col).value & vbNullString) = vbNullString Then
+                            jsonDictionary("opos") = Left(Sheets("4 Amend").Cells(rowNo, 6).value, 2)
+                        'End If
+                        End If
+                        jsonDictionary("amt") = Application.Round(Sheets("4 Amend").Cells(rowNo, 14), 2)
+                        jsonDictionary("stin") = Sheets("4 Amend").Cells(rowNo, 7)
+                        yr = Left(Sheets("4 Amend").Cells(rowNo, 2).value, 4)
+                        If (yr >= 2025) Then
+                        col = 9
+                        'If Trim(Sheets("4 Amend").Cells(rowNo, col).value & vbNullString) = vbNullString Then
+                            jsonDictionary("pos") = Left(Sheets("4 Amend").Cells(rowNo, 9).value, 2)
+                        'End If
+                        End If
+                        jsonDictionary("supR") = Application.Round(Sheets("4 Amend").Cells(rowNo, 10), 2)
+                        jsonDictionary("retsupR") = Application.Round(Sheets("4 Amend").Cells(rowNo, 11), 2)
+                        jsonDictionary("supU") = Application.Round(Sheets("4 Amend").Cells(rowNo, 12), 2)
+                        jsonDictionary("retsupU") = Application.Round(Sheets("4 Amend").Cells(rowNo, 13), 2)
+                        jsonDictionary("iamt") = Application.Round(Sheets("4 Amend").Cells(rowNo, 15), 2)
+                        jsonDictionary("camt") = Application.Round(Sheets("4 Amend").Cells(rowNo, 16), 2)
+                        jsonDictionary("samt") = Application.Round(Sheets("4 Amend").Cells(rowNo, 17), 2)
+                        If UCase(Sheets("4 Amend").Cells(rowNo, 18)) = "ADD" Then
+                            jsonDictionary("flag") = "A"
+                        Else
+                            jsonDictionary("flag") = "D"
+                        End If
+                        jsonItems.Add jsonDictionary
+                        Set jsonDictionary = Nothing
+'                        json = json & ((""",""ostin"":""") & Trim(Sheets("4 Amend").Cells(rowNo, 4)) & (""",""amt"":") & (Replace(Format(Sheets("4 Amend").Cells(rowNo, 10), "Standard"), ",", "")) & (",""stin"":""") & Trim(Sheets("4 Amend").Cells(rowNo, 5)) & (""",""supR"":") & (Replace(Format(Sheets("4 Amend").Cells(rowNo, 6), "Standard"), ",", "")) & (",""retsupR"":") & (Replace(Format(Sheets("4 Amend").Cells(rowNo, 7), "Standard"), ",", "")) & (",""supU"":") & (Replace(Format(Sheets("4 Amend").Cells(rowNo, 8), "Standard"), ",", "")) & (",""retsupU"":") & (Replace(Format(Sheets("4 Amend").Cells(rowNo, 9), "Standard"), ",", "")) & (",""iamt"":") & (Replace(Format(Sheets("4 Amend").Cells(rowNo, 11), "Standard"), ",", "")) & (",""camt"":") & (Replace(Format(Sheets("4 Amend").Cells(rowNo, 12), "Standard"), ",", "")) & (",""samt"":") & (Replace(Format(Sheets("4 Amend").Cells(rowNo, 13), "Standard"), ",", "")))
+'
+'                        If UCase(Sheets("4 Amend").Cells(rowNo, 14)) = "ADD" Then
+'                            json = json & (",""flag"":""A""")
+'                        Else
+'                            json = json & (",""flag"":""D""")
+'                        End If
+'
+'
+'                        If rowNo = ENDROWAmend - 1 Then
+'                            json = json & ("}")
+'                        Else
+'                            json = json & ("},{")
+'                        End If
+'
+'                        jsonfile.Write json
+                        
+                    Next
+                    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+                    Set jsonItems = Nothing
+                    'jsonfile.Write ("}")
+                End If
+               
+              
+' Included UNRDA
+b:
+                If startRowUNRDA = ENDROWUnrda Then
+                    jsonfile.Write ("}")
+                    GoTo q
+                
+                
+                Else
+                    'jsonfile.Write ("]")
+
+                    jsonfile.Write (",""urda"":")
+                    For rowNo = startRowUNRDA To ENDROWUnrda - 1 Step 1
+                        Application.EnableEvents = False
+                        For col = 8 To 9
+                            If Sheets("4.1 Amend-UNRD").Cells(rowNo, col) = vbNullString Then
+                                
+                                Sheets("4.1 Amend-UNRD").Cells(rowNo, col) = 0
+                                
+                                
+                            End If
+                        Next
+                        Application.EnableEvents = True
+                        month = Application.VLookup(Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).value), Sheets("Master sheet").Range("G2:H13"), 2, False)
+                        
+                        If month > 3 Then
+                            jsonDictionary("ofp") = (Format(month, "00")) & Left(Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2)), 4)
+                        Else
+                            year = "20" + Right(Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2)), 2)
+                            jsonDictionary("ofp") = (Format(month, "00")) & year
+                        End If
+                        
+                        jsonDictionary("oeid") = Sheets("4.1 Amend-UNRD").Cells(rowNo, 4)
+                        jsonDictionary("amt") = Application.Round(Sheets("4.1 Amend-UNRD").Cells(rowNo, 10), 2)
+                        jsonDictionary("eid") = Sheets("4.1 Amend-UNRD").Cells(rowNo, 6)
+                        jsonDictionary("grsval") = Application.Round(Sheets("4.1 Amend-UNRD").Cells(rowNo, 8), 2)
+                        jsonDictionary("supret") = Application.Round(Sheets("4.1 Amend-UNRD").Cells(rowNo, 9), 2)
+                        
+                        If UCase(Sheets("4.1 Amend-UNRD").Cells(rowNo, 11)) = "ADD" Then
+                            jsonDictionary("flag") = "A"
+                        Else
+                            jsonDictionary("flag") = "D"
+                        End If
+                        jsonItems.Add jsonDictionary
+                        Set jsonDictionary = Nothing
+
+                        
+                    Next
+                    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+                    Set jsonItems = Nothing
+                    jsonfile.Write ("}")
+                End If
+q:
+                jsonfile.Close
+                If divide = True Then
+                    GoTo s
+                End If
+                MsgBox "File has been created and placed in  " & path & "  ! You may now proceed to upload the File in the GST Web Portal", vbInformation
+                
+                Set fs = Nothing
+                Set jsonfile = Nothing
+                
+            End If
+        Else
+            Sheets("Home").Select
+            MsgBox "There are validation Errors in the other sheets. Clear it first to generate JSON file"
+            
+            End
+        End If
+    Else
+        MsgBox ("Please enter GSTIN, Financial Year and Tax Period before Generating JSON file file(s)."), vbCritical
+        End
+    End If
+    Sheets("Home").Select
+    Application.EnableEvents = True
+End Sub
+
+
+-------------------------------------------------------------------------------

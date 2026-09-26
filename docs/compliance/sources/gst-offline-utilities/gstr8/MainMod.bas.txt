@@ -1,0 +1,1277 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Public Const GSTIN_REGEX = "[0-9]{2}[A-Z]{4}[0-9A-Z]{1}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[Z1-9A-J]{1}[0-9A-Z]{1}$"
+Public Const GSTIN_REGEX_HOME = "[0-9]{2}[A-Z]{4}[0-9A-Z]{1}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[C]{1}[0-9A-Z]{1}$"
+Public Const ES_ID_REGEX = "^[0-9]{12}[E][S][0-9a-zA-Z]{1}$"
+Public Const AMT_REGEX = "^\d{1,13}\.?\d{0,2}$"
+Public Const AMT_REGEX_1 = "^-?\d{1,13}\.?\d{0,2}$"
+Public Const UIN_REGEX = "[0-9]{4}[A-Z]{3}[0-9]{5}[U|O]{1}[N]{1}[A-Z0-9]{1}" '"[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}UN[0-9A-Z]{1}$"
+Public Const First = 1
+Public importFlag As Boolean
+Public hoverTCS As Boolean
+Public hoverUNRD As Boolean
+Public hoverTCSA As Boolean
+Public hoverUNRDA As Boolean
+
+'Macro that gets called when validate sheet button in TCS Sheet is clicked
+Public Sub validateTCSsheet()
+    If Not ValidateMod.validateTCS("macro") And Not (MainMod.validateHomeGSTINData) Then
+         MsgBox "There are errors in the sheet(highlighted by Red colored cells).Please correct them to proceed", vbCritical
+    End If
+    
+End Sub
+'Macro that gets called when validate sheet button in TCS Amend sheet is clicked
+Public Sub validateAmendSheet()
+    If Not ValidateMod.validateAmend("macro") And Not (MainMod.validateHomeGSTINData) Then
+         MsgBox "There are errors in the sheet(highlighted by Red colored cells).Please correct them to proceed", vbCritical
+    End If
+End Sub
+'Macro that gets called when validate sheet button in Suppliers Master-RD is clicked
+Public Sub validateMastersheet()
+    If Not ValidateMod.ValidateGSTINMaster("macro") Then
+         MsgBox "There are errors in the sheet(highlighted by Red colored cells).Please correct them to proceed", vbCritical
+    End If
+End Sub
+'Macro to clear summary in home sheet when no is clicked in open saved version
+Public Sub clearSummary()
+    Sheets("Home").Unprotect "pass"
+    Sheets("Home").Rows(21).ClearContents
+    Sheets("Home").Rows(23).ClearContents
+    Sheets("Home").Rows(25).ClearContents
+    Sheets("Home").Rows(27).ClearContents
+    Sheets("Home").Cells(28, 4).ClearContents
+    Sheets("Home").Cells(28, 5).ClearContents
+    Sheets("Home").Cells(28, 6).ClearContents
+    Sheets("Home").Cells(28, 7).ClearContents
+    Sheets("Home").Protect "pass"
+End Sub
+'Macro that gets called when Open Downloaded JSON button is clicked
+Public Sub importFromJSON()
+    Dim jsonData As Object, filePath As Variant, filePaths() As String, fileProcessed As Integer: fileProcessed = 0
+    
+        filePaths = FileUtil.openFile(False)
+        'Clear all sheets first
+        'Call TCSMod.clearTCSSheet
+        'Call AmendMod.clearAmendSheet
+        'Call HomeMod.clearHomeMod
+        
+        For Each filePath In filePaths
+            If Trim(filePath & vbNullString) <> vbNullString Then
+                Set jsonData = CommonUtil.openJSON(CStr(filePath))
+                If jsonData.Exists("error_report") Then
+                    MsgBox ("Invalid JSON file/format.Please check the file and try opening again."), vbCritical
+                Else
+                    'Call HomeMod.loadGSTINData(jsonData)
+                    Application.ScreenUpdating = False
+                     Call ImportMod.importJsontoHome(jsonData)
+                     Call ImportMod.ImportJsontoTCS(jsonData)
+                     Call ImportMod.ImportJsontoAmend(jsonData)
+                     
+                     'Included UNRD, Amend-UNRD calls
+                     Call ImportMod.ImportJsontoUNRD(jsonData)
+                     Call ImportMod.ImportJsontoUNRDA(jsonData)
+
+                     Application.ScreenUpdating = True
+                     fileProcessed = fileProcessed + 1
+                End If
+            End If
+        Next
+        If fileProcessed > 0 Then
+            MsgBox ("Downloaded GSTR-8 file succesfully imported")
+        Else
+            MsgBox ("No files imported")
+        End If
+    
+End Sub
+'Macro that gets called when Open Downloaded Error JSON file button is clicked
+Public Sub importErrorFromJson()
+    Dim jsonData As Object, filePath As Variant, filePaths() As String, fileProcessed As Integer: fileProcessed = 0
+    
+   
+        filePaths = FileUtil.openFile(False)
+        For Each filePath In filePaths
+                If Trim(filePath & vbNullString) <> vbNullString Then
+                    Set jsonData = CommonUtil.openJSON(CStr(filePath))
+                    
+                    If Not jsonData.Exists("error_report") Then
+                        MsgBox ("Invalid JSON file/format.Please check the file and try opening again."), vbCritical
+                    Else
+                        Application.ScreenUpdating = False
+                        Call ImportMod.importJsontoHome(jsonData)
+                        Call ImportMod.ImportErrortoTCS(jsonData)
+                        Call ImportMod.ImportErrortoAmend(jsonData)
+                         
+                         'Included UNRD, Amend-UNRD Error calls
+                        Call ImportMod.ImportErrortoUNRD(jsonData)
+                        Call ImportMod.ImportErrortoUNRDA(jsonData)
+
+                         fileProcessed = fileProcessed + 1
+                         Application.ScreenUpdating = True
+                    End If
+                End If
+                Next
+        
+        If fileProcessed > 0 Then
+            MsgBox ("Error report succesfully imported")
+        Else
+            MsgBox ("No files imported")
+        End If
+    
+End Sub
+'Validates home sheet values
+Public Function validateGSTINData() As Boolean
+    Sheets("Home").Unprotect "pass"
+    isValidated = True
+    Dim col As Integer, rowNo As Integer: rowNo = 6
+       
+    Range(Sheets("Home").Cells(rowNo, 2), Sheets("Home").Cells(rowNo, 5)).Interior.ColorIndex = 2
+    Range(Sheets("Home").Cells(rowNo, 2), Sheets("Home").Cells(rowNo, 5)).ClearComments
+    
+    'GSTIN format check
+    
+    If Not CommonUtil.matchRegex(Trim(Sheets("Home").Cells(rowNo, 2).value), GSTIN_REGEX_HOME) Then
+        Sheets("Home").Cells(rowNo, 2).Interior.ColorIndex = 3
+        Sheets("Home").Cells(rowNo, 2).ClearComments
+        MsgBox ("Invalid GSTIN in Home page")
+        isValidated = False
+    End If
+    If Trim(Sheets("Home").Cells(rowNo, 4).value) <> vbNullString Then
+    ' Clear previous formatting and comments first (if any)
+        With Sheets("Home").Cells(rowNo, 4)
+            .Interior.ColorIndex = -4142 ' No Fill
+            If Not .Comment Is Nothing Then
+                .ClearComments
+            End If
+        End With
+        
+        ' Ensure the value in "Home" is trimmed of spaces
+        Dim cellValue As String
+        cellValue = Trim(Sheets("Home").Cells(rowNo, 4).value)
+        
+        ' Search for the value in "Master sheet"
+        With Sheets("Master sheet").Range("$D$3:$D$11")
+            Set c = .Find(What:=cellValue, LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=False)
+            
+            If c Is Nothing Then
+                ' If the value is not found, highlight in red and add a comment
+                Sheets("Home").Cells(rowNo, 4).Interior.ColorIndex = 3 ' Red color
+                Sheets("Home").Cells(rowNo, 4).AddComment "Please select a valid year from the dropdown"
+            End If
+        End With
+    End If
+
+   
+     If Trim(Sheets("Home").Cells(rowNo, 5).value) <> vbNullString Then
+            With Sheets("Master sheet").Range("$G$2:$G$13")
+               Set c = .Find(What:=(Sheets("Home").Cells(rowNo, 5).value))
+    '
+                    If c Is Nothing Then
+                    
+                    Sheets("Home").Cells(rowNo, 5).Interior.ColorIndex = 3
+                    Sheets("Home").Cells(rowNo, 5).ClearComments
+                    Sheets("Home").Cells(rowNo, 5).AddComment "Please select a valid month from the dropdown"
+                    
+                    
+                    
+                    End If
+            End With
+        End If
+   
+    Sheets("Home").Protect "pass"
+        
+End Function
+'validates home sheet values
+Public Function validateHomeGSTINData() As Boolean
+    Sheets("Home").Unprotect "pass"
+    validateHomeGSTINData = False
+    isValidated = True
+    Dim col As Integer, rowNo As Integer: rowNo = 6
+       
+    Range(Sheets("Home").Cells(rowNo, 2), Sheets("Home").Cells(rowNo, 5)).Interior.ColorIndex = xlNone
+    Range(Sheets("Home").Cells(rowNo, 2), Sheets("Home").Cells(rowNo, 5)).ClearComments
+    
+    'GSTIN format check
+    
+    If Not CommonUtil.matchRegex(Trim(Sheets("Home").Cells(rowNo, 2).value), GSTIN_REGEX_HOME) Then
+        Sheets("Home").Cells(rowNo, 2).Interior.ColorIndex = 3
+        Sheets("Home").Cells(rowNo, 2).ClearComments
+        Sheets("Home").Cells(rowNo, 2).AddComment "Invalid GSTIN"
+        validateHomeGSTINData = True
+    End If
+    'Mandatory field check
+    For col = 2 To 5
+       If col <> 3 And Trim(Sheets("Home").Cells(rowNo, col).value & vbNullString) = vbNullString Then
+         Sheets("Home").Cells(rowNo, col).Interior.ColorIndex = 3
+         Sheets("Home").Cells(rowNo, col).ClearComments
+        Sheets("Home").Cells(rowNo, col).AddComment "This field is Mandatory"
+         validateHomeGSTINData = True
+        End If
+    Next
+    
+    
+    Sheets("Home").Protect "pass"
+End Function
+'To check if the tax period in the json is same as the home sheet value
+Public Function checkDate(jsonData As Object) As Boolean
+ Dim month, year As String
+ checkDate = True
+ month = Format(Application.VLookup(Trim(Sheets("Home").Cells(6, 5).value), Sheets("Master sheet").Range("G2:H13"), 2, False), "00")
+ If (month > 3) Then
+    year = Left(Sheets("Home").Cells(6, "D"), 4)
+ Else
+    year = "20" + Right(Sheets("Home").Cells(6, "D"), 2)
+End If
+ If (jsonData.Exists("gstin") And Trim(jsonData("gstin") & vbNullString) <> vbNullString) _
+        And (jsonData.Exists("fp") And Trim(jsonData("fp") & vbNullString) <> vbNullString) Then
+        If Trim(Sheets("Home").Cells(6, 2).value) <> jsonData("gstin") Or (Left(jsonData("fp"), 2)) <> month Or Right(jsonData("fp"), 4) <> year Then
+             MsgBox ("The GSTIN, Financial Year or Tax Period entered do not match in opened JSON file.Please check the file and open again.")
+             checkDate = False
+            End
+        
+        End If
+    Else
+        MsgBox "The GSTIN, Financial Year or Tax Period is missing in opened JSON file.Please check the file and open again.", vbCritical
+        checkDate = False
+        End
+    End If
+End Function
+
+'To calculate summary in home sheet
+Public Sub genSummary()
+    Dim asum, isum, csum, ssum As Double, count, unique_count As Integer
+    Dim duplicate As New Scripting.Dictionary
+    'for TCS sheet
+    Dim rowNo, last_row As Long
+    Sheets("Home").Unprotect "pass"
+    rowNo = 6
+    count = 0
+    asum = 0
+    isum = 0
+    csum = 0
+    ssum = 0
+    unique_count = 0
+    last_row = ExtraMod.getLastRowTCS - 1
+    If (MainMod.validateHomeGSTINData) Then
+      MsgBox "First enter GSTIN, Tax period and Financial year in Home Page to validate the TCS sheet."
+      Exit Sub
+    End If
+    If (ValidateMod.validateTCS("summary")) Then
+        Do Until rowNo > last_row
+            If (Sheets("3 TCS").Cells(rowNo, 13).value = "Add") Then
+                count = count + 1
+                asum = asum + Sheets("3 TCS").Cells(rowNo, 9).value
+                isum = isum + Sheets("3 TCS").Cells(rowNo, 10).value
+                csum = csum + Sheets("3 TCS").Cells(rowNo, 11).value
+                ssum = ssum + Sheets("3 TCS").Cells(rowNo, 12).value
+                Key = Sheets("3 TCS").Cells(rowNo, 2).value
+                If Not duplicate.Exists(Key) Then
+                    unique_count = unique_count + 1
+                    duplicate.Add Key, unique_count
+                End If
+            End If
+            
+            rowNo = rowNo + 1
+         Loop
+            Sheets("Home").Unprotect "pass"
+            Sheets("Home").Cells(21, 2).value = unique_count
+            Sheets("Home").Cells(21, 3).value = count
+            Sheets("Home").Cells(21, 4).value = asum
+            Sheets("Home").Cells(21, 5).value = isum
+            Sheets("Home").Cells(21, 6).value = csum
+            Sheets("Home").Cells(21, 7).value = ssum
+    Else
+        MsgBox "There are validation Error(s) in TCS Sheet"
+        End
+    End If
+    'for UNRD sheet
+    Sheets("Home").Unprotect "pass"
+    rowNo = 6
+    count = 0
+    asum = 0
+    unique_count = 0
+    last_row = ExtraMod.getLastRowUNRD - 1
+    If (MainMod.validateHomeGSTINData) Then
+      MsgBox "First enter GSTIN, Tax period and Financial year in Home Page to validate the TCS sheet."
+      Exit Sub
+    End If
+    If (ValidateMod.validateUNRD("summary")) Then
+        Do Until rowNo > last_row
+            If (Sheets("3.1 UNRD").Cells(rowNo, 7).value = "Add") Then
+                count = count + 1
+                asum = asum + Sheets("3.1 UNRD").Cells(rowNo, 6).value
+                Key = Sheets("3.1 UNRD").Cells(rowNo, 2).value
+                If Not duplicate.Exists(Key) Then
+                    unique_count = unique_count + 1
+                    duplicate.Add Key, unique_count
+                End If
+            End If
+            
+            rowNo = rowNo + 1
+         Loop
+            Sheets("Home").Unprotect "pass"
+            Sheets("Home").Cells(23, 2).value = unique_count
+            Sheets("Home").Cells(23, 3).value = count
+            Sheets("Home").Cells(23, 4).value = asum
+    Else
+        MsgBox "There are validation Error(s) in UNRD Sheet"
+        End
+    End If
+    ' FOr Amend sheet
+    rowNo = 7
+    count = 0
+    asum = 0
+    isum = 0
+    csum = 0
+    ssum = 0
+    unique_count = 0
+    last_row = ExtraMod.getLastRowAmend - 1
+    If (ValidateMod.validateAmend("summary")) Then
+        Do Until rowNo > last_row
+            If (Sheets("4 Amend").Cells(rowNo, 18).value = "Add") Then
+                count = count + 1
+                asum = asum + Sheets("4 Amend").Cells(rowNo, 14).value
+                isum = isum + Sheets("4 Amend").Cells(rowNo, 15).value
+                csum = csum + Sheets("4 Amend").Cells(rowNo, 16).value
+                ssum = ssum + Sheets("4 Amend").Cells(rowNo, 17).value
+                Key = Sheets("4 Amend").Cells(rowNo, 6).value
+                If Not duplicate.Exists(Key) Then
+                    unique_count = unique_count + 1
+                    duplicate.Add Key, unique_count
+                End If
+            End If
+            
+            rowNo = rowNo + 1
+         Loop
+            Sheets("Home").Unprotect "pass"
+            Sheets("Home").Cells(25, 2).value = unique_count
+            Sheets("Home").Cells(25, 3).value = count
+            Sheets("Home").Cells(25, 4).value = asum
+            Sheets("Home").Cells(25, 5).value = isum
+            Sheets("Home").Cells(25, 6).value = csum
+            Sheets("Home").Cells(25, 7).value = ssum
+    Else
+        MsgBox "There are validation Error(s) in Amend Sheet"
+        End
+    End If
+    ' For Amend UNRD sheet
+    rowNo = 7
+    count = 0
+    asum = 0
+    unique_count = 0
+    last_row = ExtraMod.getLastRowUNRDA - 1
+    If (ValidateMod.validateUNRDA("summary")) Then
+        Do Until rowNo > last_row
+            If (Sheets("4.1 Amend-UNRD").Cells(rowNo, 11).value = "Add") Then
+                count = count + 1
+                asum = asum + Sheets("4.1 Amend-UNRD").Cells(rowNo, 10).value
+                Key = Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).value
+                If Not duplicate.Exists(Key) Then
+                    unique_count = unique_count + 1
+                    duplicate.Add Key, unique_count
+                End If
+            End If
+            
+            rowNo = rowNo + 1
+         Loop
+            Sheets("Home").Unprotect "pass"
+            Sheets("Home").Cells(27, 2).value = unique_count
+            Sheets("Home").Cells(27, 3).value = count
+            Sheets("Home").Cells(27, 4).value = asum
+    Else
+        MsgBox "There are validation Error(s) in Amend UNRD Sheet"
+        End
+    End If
+        'For calculating grand total
+    Worksheets("home").Activate
+    Sheets("Home").Cells(28, 4).value = Sheets("Home").Cells(21, 4).value + Sheets("Home").Cells(23, 4).value + Sheets("Home").Cells(25, 4).value + Sheets("Home").Cells(27, 4).value
+    Sheets("Home").Cells(28, 5).value = Sheets("Home").Cells(21, 5).value + Sheets("Home").Cells(25, 5).value
+    Sheets("Home").Cells(28, 6).value = Sheets("Home").Cells(21, 6).value + Sheets("Home").Cells(25, 6).value
+    Sheets("Home").Cells(28, 7).value = Sheets("Home").Cells(21, 7).value + Sheets("Home").Cells(25, 7).value
+    
+    Sheets("Home").Protect "pass"
+    
+    
+End Sub
+'Macro that gets called when Go home button is clicked
+Public Sub goHome()
+    Worksheets("home").Activate
+End Sub
+'To check if the data passed is not same as the Tax collector GSTIN
+Public Function DeductorCheck(val) As Boolean
+    ded = Sheets("Home").Cells(6, 2).value
+    DeductorCheck = True
+    If ded = val Then
+        DeductorCheck = False
+    End If
+End Function
+'To check if the passed data has the same state as the Tax collector GSTIN
+Public Function samestateCheck(val) As Boolean
+    ded = Left(Sheets("Home").Cells(6, 2).value, 2)
+    samestateCheck = True
+    val1 = Left(val, 2)
+    If ded <> val1 Then
+        samestateCheck = False
+    End If
+End Function
+
+'To check if TCS and TCSA sheet is empty
+
+Public Function checkEmpty() As Boolean
+    tcs = ExtraMod.getLastRowTCS
+    tcsa = ExtraMod.getLastRowAmend
+  'Adding UNRD and UNRDA
+    unrd = ExtraMod.getLastRowUNRD
+    unrda = ExtraMod.getLastRowUNRDA
+        
+    checkEmpty = False
+    If tcs = 6 And unrd = 6 And tcsa = 7 And unrda = 7 Then
+        checkEmpty = True
+    End If
+    
+End Function
+
+
+'To assign dropdown of year column in TCS Amend sheet when Financial year in home sheet is entered
+Public Sub Assign_dropdown(sheetName As String)
+    Sheets(sheetName).Unprotect "pass"
+    Application.EnableEvents = False
+    If sheetName = "4 Amend" Then
+        Sheets(sheetName).Select
+        'Sheets(sheetName).Unprotect "pass"
+        'Sheets(sheetName).Range("C6:C10006").ClearContents
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Range("B7:B15007").Select
+        
+    End If
+    If Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(3, "D").value Then
+        GoTo 1
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(4, "D").value Then
+        GoTo 2
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(5, "D").value Then
+        GoTo 3
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(6, "D").value Then
+        GoTo 4
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(7, "D").value Then
+        GoTo 5
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(8, "D").value Then
+        GoTo 6
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(9, "D").value Then
+        GoTo 7
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(10, "D").value Then
+        GoTo 8
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(11, "D").value Then
+        GoTo 9
+    ElseIf Sheets("Home").Cells(6, "D").value = vbNullString Then
+        GoTo 10
+    End If
+1:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$4"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    GoTo 11
+2:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$5"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+3:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$6"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+4:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$7"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+5:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$8"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+6:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$9"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+7:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$10"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+8:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$11"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+9:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$12"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+10:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+11:
+    Sheets(sheetName).Select
+    Sheets(sheetName).Cells(1, 1).Select
+    Sheets("Home").Select
+    Application.EnableEvents = True
+End Sub
+
+
+'Method to get the trade name in 3 TCS Sheet upon entering the gstin
+
+Public Sub Range_End_Method1()
+
+Dim i As Long
+Dim data As Scripting.Dictionary
+Dim lastRow As Long
+Dim ws As Worksheet
+Dim F As Range
+Set ws = ActiveSheet
+Set data = createSimpleJson("Suppliers Master-RD", 5, 3, 5, 3)
+Dim row As Integer: row = 6
+Dim col As Integer: col = 2
+lastRow = Sheets("3 TCS").Range("B" & Rows.count).End(xlUp).row
+'arr = ActiveSheet.Range(Cells(5, 2), Cells(lastRow, 2)).value
+Dim arr() As String
+Do Until (Sheets("3 TCS").Cells(row, col).value & vbNullString = vbNullString)
+    ReDim arr(row - 6)
+    row = row + 1
+Loop
+row = 6
+Do Until (Sheets("3 TCS").Cells(row, col).value & vbNullString = vbNullString)
+    arr(row - 6) = Sheets("3 TCS").Cells(row, col).value
+    row = row + 1
+Loop
+row = 6
+Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+If (Not arr) <> -1 Then
+For Each a In arr
+   If data.Exists(CStr(a)) Then
+       Set F = ActiveSheet.Cells(row, 2).Find(CStr(a))
+            If Not F Is Nothing Then
+                If data(CStr(a))("Trade name if any") & vbNullString = vbNullString Then
+                    ActiveSheet.Cells(F.row, 3).value = data(CStr(a))("Legal name")
+                Else
+                    ActiveSheet.Cells(F.row, 3).value = data(CStr(a))("Trade name if any")
+                End If
+            End If
+        
+    End If
+    row = row + 1
+    
+Next
+End If
+    
+'Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+        
+End Sub
+
+
+Public Function createSimpleJson(sheetName As String, startRow As Integer, colStartNum As Integer, _
+    colEndNum As Integer, colPrimaryKey As Integer, Optional colUniqueKey1 As Integer, _
+    Optional colUniqueKey2 As Integer, Optional colUniqueKey3 As Integer, _
+    Optional itemSubName As String) As Scripting.Dictionary
+    
+    Dim jsonList As New Scripting.Dictionary, jsonObject As New Scripting.Dictionary, jsonItems As New Scripting.Dictionary
+    Dim i As Integer, j As Integer, lastRow As Integer
+    Dim cell As Variant, mapKeyValue As Variant, doubleVal As Double
+    Dim rng As Range
+    Dim compositeKey As String
+    
+    With Sheets("Suppliers Master-RD")
+        i = startRow
+        Do Until (IsEmpty(.Cells(i, colPrimaryKey)) _
+            Or Trim(.Cells(i, colPrimaryKey).value & vbNullString) = vbNullString)
+            compositeKey = Trim(.Cells(i, colPrimaryKey).value)
+            If colUniqueKey1 <> 0 Then
+                compositeKey = compositeKey & "_" & Trim(.Cells(i, colUniqueKey1).value)
+            End If
+            If colUniqueKey2 <> 0 Then
+                compositeKey = compositeKey & "_" & Trim(.Cells(i, colUniqueKey2).value)
+            End If
+            If colUniqueKey3 <> 0 Then
+                compositeKey = compositeKey & "_" & Trim(.Cells(i, colUniqueKey3).value)
+            End If
+            For j = colStartNum To colEndNum
+                On Error Resume Next
+                Set rng = Worksheets("master").Range(.Cells(startRow - 1, j).value & "_map")
+                If Err.Number = 0 Then
+                    If .Cells(startRow - 1, j).value = "pos" And Trim(.Cells(i, j).value & vbNullString) <> vbNullString Then
+                        mapKeyValue = Application.VLookup(Left(.Cells(i, j).value, 2) & "C", rng, 1, False)
+                        mapKeyValue = Left(mapKeyValue, 2)
+                    Else
+                        mapKeyValue = Application.VLookup(.Cells(i, j).value, rng, 1, True)
+                    End If
+                    
+                    If IsError(mapKeyValue) Then
+                        jsonItems(.Cells(startRow - 1, j).value) = vbNullString
+                    Else
+                        jsonItems(.Cells(startRow - 1, j).value) = Trim(mapKeyValue)
+                    End If
+                Else
+                    Err.Clear
+                    
+                        jsonItems(.Cells(startRow - 1, j).value) = Trim(.Cells(i, j).value)
+                    
+                End If
+            Next
+            If Len(itemSubName) = 0 Then
+                jsonList.Add compositeKey, jsonItems
+            Else
+                jsonObject.Add itemSubName, jsonItems
+                jsonList.Add compositeKey, jsonObject
+            End If
+   
+            Set jsonItems = Nothing
+            Set jsonObject = Nothing
+            
+            i = i + 1
+        Loop
+    End With
+    Set createSimpleJson = jsonList
+End Function
+
+
+'Method to get the trade name in 4 Amend Sheet upon entering the gstin
+
+Public Sub Range_End_Method2()
+
+Dim i As Long
+Dim data As Scripting.Dictionary
+Dim lastRow As Long
+Dim ws As Worksheet
+Dim F As Range
+Set ws = ActiveSheet
+Set data = createSimpleJson("Suppliers Master-RD", 5, 3, 5, 3)
+Dim row As Integer: row = 7
+Dim col As Integer: col = 4
+lastRow = Sheets("4 Amend").Range("D" & Rows.count).End(xlUp).row
+'arr = ActiveSheet.Range(Cells(5, 2), Cells(lastRow, 2)).value
+Dim arr() As String
+Do Until (Sheets("4 Amend").Cells(row, col).value & vbNullString = vbNullString)
+    ReDim arr(row - 7)
+    row = row + 1
+Loop
+row = 7
+Do Until (Sheets("4 Amend").Cells(row, col).value & vbNullString = vbNullString)
+    arr(row - 7) = Sheets("4 Amend").Cells(row, col).value
+    row = row + 1
+Loop
+row = 7
+Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+If (Not arr) <> -1 Then
+For Each a In arr
+   If data.Exists(CStr(a)) Then
+       Set F = ActiveSheet.Cells(row, 4).Find(CStr(a))
+       'ActiveSheet.Cells(F.row, 6).value = F
+            If Not F Is Nothing Then
+                If data(CStr(a))("Trade name if any") & vbNullString = vbNullString Then
+                    ActiveSheet.Cells(F.row, 5).value = data(CStr(a))("Legal name")
+                Else
+                    ActiveSheet.Cells(F.row, 5).value = data(CStr(a))("Trade name if any")
+                End If
+            End If
+        
+    End If
+    row = row + 1
+    
+Next
+End If
+    
+'Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+        
+End Sub
+
+Public Sub Range_End_Method3()
+
+Dim i As Long
+Dim data As Scripting.Dictionary
+Dim lastRow As Long
+Dim ws As Worksheet
+Dim F As Range
+Set ws = ActiveSheet
+Set data = createSimpleJson("Suppliers Master-RD", 5, 3, 5, 3)
+Dim row As Integer: row = 7
+Dim col As Integer: col = 6
+lastRow = Sheets("4 Amend").Range("F" & Rows.count).End(xlUp).row
+'arr = ActiveSheet.Range(Cells(5, 2), Cells(lastRow, 2)).value
+Dim arr() As String
+Do Until (Sheets("4 Amend").Cells(row, col).value & vbNullString = vbNullString)
+    ReDim arr(row - 7)
+    row = row + 1
+Loop
+row = 7
+Do Until (Sheets("4 Amend").Cells(row, col).value & vbNullString = vbNullString)
+    arr(row - 7) = Sheets("4 Amend").Cells(row, col).value
+    row = row + 1
+Loop
+row = 7
+Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+If (Not arr) <> -1 Then
+For Each a In arr
+   If data.Exists(CStr(a)) Then
+       Set F = ActiveSheet.Cells(row, 6).Find(CStr(a))
+      'ActiveSheet.Cells(F.row, 6).value = F
+            If Not F Is Nothing Then
+                If data(CStr(a))("Trade name if any") & vbNullString = vbNullString Then
+                    ActiveSheet.Cells(F.row, 7).value = data(CStr(a))("Legal name")
+                Else
+                    ActiveSheet.Cells(F.row, 7).value = data(CStr(a))("Trade name if any")
+                End If
+            End If
+        
+    End If
+    row = row + 1
+    
+Next
+End If
+    
+'Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+        
+End Sub
+
+'Method to get the trade name in 3.1 UNRD Sheet upon entering the Enrolment ID
+Public Sub Range_End_Method4()
+Dim i As Long
+Dim data As Scripting.Dictionary
+Dim lastRow As Long
+Dim ws As Worksheet
+Dim F As Range
+Set ws = ActiveSheet
+Set data = createSimpleJson1("Suppliers Master-UNRD", 5, 3, 5, 3)
+Dim row As Integer: row = 6
+Dim col As Integer: col = 2
+lastRow = Sheets("3.1 UNRD").Range("B" & Rows.count).End(xlUp).row
+'arr = ActiveSheet.Range(Cells(5, 2), Cells(lastRow, 2)).value
+Dim arr() As String
+Do Until (Sheets("3.1 UNRD").Cells(row, col).value & vbNullString = vbNullString)
+    ReDim arr(row - 6)
+    row = row + 1
+Loop
+row = 6
+Do Until (Sheets("3.1 UNRD").Cells(row, col).value & vbNullString = vbNullString)
+    arr(row - 6) = Sheets("3.1 UNRD").Cells(row, col).value
+    row = row + 1
+Loop
+row = 6
+Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+If (Not arr) <> -1 Then
+For Each a In arr
+   If data.Exists(CStr(a)) Then
+       Set F = ActiveSheet.Cells(row, 2).Find(CStr(a))
+            If Not F Is Nothing Then
+                If data(CStr(a))("Trade name if any") & vbNullString = vbNullString Then
+                    ActiveSheet.Cells(F.row, 3).value = data(CStr(a))("Legal name")
+                Else
+                    ActiveSheet.Cells(F.row, 3).value = data(CStr(a))("Trade name if any")
+                End If
+            End If
+        
+    End If
+    row = row + 1
+    
+Next
+End If
+    
+'Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+
+End Sub
+
+'Retrieving the EID and Trade name from Suppliers Master-UNRD Sheet
+
+Public Function createSimpleJson1(sheetName As String, startRow As Integer, colStartNum As Integer, _
+    colEndNum As Integer, colPrimaryKey As Integer, Optional colUniqueKey1 As Integer, _
+    Optional colUniqueKey2 As Integer, Optional colUniqueKey3 As Integer, _
+    Optional itemSubName As String) As Scripting.Dictionary
+    
+    Dim jsonList As New Scripting.Dictionary, jsonObject As New Scripting.Dictionary, jsonItems As New Scripting.Dictionary
+    Dim i As Integer, j As Integer, lastRow As Integer
+    Dim cell As Variant, mapKeyValue As Variant, doubleVal As Double
+    Dim rng As Range
+    Dim compositeKey As String
+    
+    With Sheets("Suppliers Master-UNRD")
+        i = startRow
+        Do Until (IsEmpty(.Cells(i, colPrimaryKey)) _
+            Or Trim(.Cells(i, colPrimaryKey).value & vbNullString) = vbNullString)
+            compositeKey = Trim(.Cells(i, colPrimaryKey).value)
+            If colUniqueKey1 <> 0 Then
+                compositeKey = compositeKey & "_" & Trim(.Cells(i, colUniqueKey1).value)
+            End If
+            If colUniqueKey2 <> 0 Then
+                compositeKey = compositeKey & "_" & Trim(.Cells(i, colUniqueKey2).value)
+            End If
+            If colUniqueKey3 <> 0 Then
+                compositeKey = compositeKey & "_" & Trim(.Cells(i, colUniqueKey3).value)
+            End If
+            For j = colStartNum To colEndNum
+                On Error Resume Next
+                Set rng = Worksheets("master").Range(.Cells(startRow - 1, j).value & "_map")
+                If Err.Number = 0 Then
+                    If .Cells(startRow - 1, j).value = "pos" And Trim(.Cells(i, j).value & vbNullString) <> vbNullString Then
+                        mapKeyValue = Application.VLookup(Left(.Cells(i, j).value, 2) & "C", rng, 1, False)
+                        mapKeyValue = Left(mapKeyValue, 2)
+                    Else
+                        mapKeyValue = Application.VLookup(.Cells(i, j).value, rng, 1, True)
+                    End If
+                    
+                    If IsError(mapKeyValue) Then
+                        jsonItems(.Cells(startRow - 1, j).value) = vbNullString
+                    Else
+                        jsonItems(.Cells(startRow - 1, j).value) = Trim(mapKeyValue)
+                    End If
+                Else
+                    Err.Clear
+                    
+                        jsonItems(.Cells(startRow - 1, j).value) = Trim(.Cells(i, j).value)
+                    
+                End If
+            Next
+            If Len(itemSubName) = 0 Then
+                jsonList.Add compositeKey, jsonItems
+            Else
+                jsonObject.Add itemSubName, jsonItems
+                jsonList.Add compositeKey, jsonObject
+            End If
+   
+            Set jsonItems = Nothing
+            Set jsonObject = Nothing
+            
+            i = i + 1
+        Loop
+    End With
+    Set createSimpleJson1 = jsonList
+
+End Function
+
+'Macro that gets called when validate sheet button in UNRD Sheet is clicked
+Public Sub validateUNRDsheet()
+If Not ValidateMod.validateUNRD("macro") And Not (MainMod.validateHomeGSTINData) Then
+         MsgBox "There are errors in the sheet(highlighted by Red colored cells).Please correct them to proceed", vbCritical
+    End If
+End Sub
+
+'Macro that gets called when validate sheet button in Suppliers Master-UNRD is clicked
+
+Public Sub validateEIDMasterSheet()
+  If Not ValidateMod.ValidateEIDMaster("macro") Then
+         MsgBox "There are errors in the sheet(highlighted by Red colored cells).Please correct them to proceed", vbCritical
+    End If
+End Sub
+
+'Method to get the trade name in 4.1 Amend UNRD Sheet upon entering the EID in original
+Public Sub Range_End_Method5()
+
+Dim i As Long
+Dim data As Scripting.Dictionary
+Dim lastRow As Long
+Dim ws As Worksheet
+Dim F As Range
+Set ws = ActiveSheet
+Set data = createSimpleJson1("Suppliers Master-RD", 5, 3, 5, 3)
+Dim row As Integer: row = 7
+Dim col As Integer: col = 4
+lastRow = Sheets("4.1 Amend-UNRD").Range("D" & Rows.count).End(xlUp).row
+'arr = ActiveSheet.Range(Cells(5, 2), Cells(lastRow, 2)).value
+Dim arr() As String
+Do Until (Sheets("4.1 Amend-UNRD").Cells(row, col).value & vbNullString = vbNullString)
+    ReDim arr(row - 7)
+    row = row + 1
+Loop
+row = 7
+Do Until (Sheets("4.1 Amend-UNRD").Cells(row, col).value & vbNullString = vbNullString)
+    arr(row - 7) = Sheets("4.1 Amend-UNRD").Cells(row, col).value
+    row = row + 1
+Loop
+row = 7
+Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+If (Not arr) <> -1 Then
+For Each a In arr
+   If data.Exists(CStr(a)) Then
+       Set F = ActiveSheet.Cells(row, 4).Find(CStr(a))
+       'ActiveSheet.Cells(F.row, 6).value = F
+            If Not F Is Nothing Then
+                If data(CStr(a))("Trade name if any") & vbNullString = vbNullString Then
+                    ActiveSheet.Cells(F.row, 5).value = data(CStr(a))("Legal name")
+                Else
+                    ActiveSheet.Cells(F.row, 5).value = data(CStr(a))("Trade name if any")
+                End If
+            End If
+        
+    End If
+    row = row + 1
+    
+Next
+End If
+    
+'Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+        
+End Sub
+
+'Method to get the trade name in 4.1 Amend UNRD Sheet upon entering the EID in revised
+Public Sub Range_End_Method6()
+Dim i As Long
+Dim data As Scripting.Dictionary
+Dim lastRow As Long
+Dim ws As Worksheet
+Dim F As Range
+Set ws = ActiveSheet
+Set data = createSimpleJson1("Suppliers Master-RD", 5, 3, 5, 3)
+Dim row As Integer: row = 7
+Dim col As Integer: col = 6
+lastRow = Sheets("4.1 Amend-UNRD").Range("F" & Rows.count).End(xlUp).row
+'arr = ActiveSheet.Range(Cells(5, 2), Cells(lastRow, 2)).value
+Dim arr() As String
+Do Until (Sheets("4.1 Amend-UNRD").Cells(row, col).value & vbNullString = vbNullString)
+    ReDim arr(row - 7)
+    row = row + 1
+Loop
+row = 7
+Do Until (Sheets("4.1 Amend-UNRD").Cells(row, col).value & vbNullString = vbNullString)
+    arr(row - 7) = Sheets("4.1 Amend-UNRD").Cells(row, col).value
+    row = row + 1
+Loop
+row = 7
+Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+If (Not arr) <> -1 Then
+For Each a In arr
+   If data.Exists(CStr(a)) Then
+       Set F = ActiveSheet.Cells(row, 6).Find(CStr(a))
+      'ActiveSheet.Cells(F.row, 6).value = F
+            If Not F Is Nothing Then
+                If data(CStr(a))("Trade name if any") & vbNullString = vbNullString Then
+                    ActiveSheet.Cells(F.row, 7).value = data(CStr(a))("Legal name")
+                Else
+                    ActiveSheet.Cells(F.row, 7).value = data(CStr(a))("Trade name if any")
+                End If
+            End If
+        
+    End If
+    row = row + 1
+    
+Next
+End If
+    
+'Debug.Print JsonConverter.ConvertToJson(data, Whitespace:=2)
+End Sub
+
+'Macro that gets called when validate sheet button in  Amend UNRD sheet is clicked
+Public Sub validateUNRDASheet()
+If Not ValidateMod.validateUNRDA("macro") And Not (MainMod.validateHomeGSTINData) Then
+         MsgBox "There are errors in the sheet(highlighted by Red colored cells).Please correct them to proceed", vbCritical
+    End If
+End Sub
+
+'To assign dropdown of year column in  Amend UNRD sheet when Financial year in home sheet is entered
+Public Sub Assign_dropdownEID(sheetName As String)
+    Sheets(sheetName).Unprotect "pass"
+    Application.EnableEvents = False
+    If sheetName = "4.1 Amend-UNRD" Then
+        Sheets(sheetName).Select
+        'Sheets(sheetName).Unprotect "pass"
+        'Sheets(sheetName).Range("C6:C10006").ClearContents
+        Sheets(sheetName).Unprotect "pass"
+        Sheets(sheetName).Range("B7:B1048576").Select
+        
+    End If
+    If Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(3, "D").value Then
+        GoTo 1
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(4, "D").value Then
+        GoTo 2
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(5, "D").value Then
+        GoTo 3
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(6, "D").value Then
+        GoTo 4
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(7, "D").value Then
+        GoTo 5
+    ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(8, "D").value Then
+        GoTo 6
+     ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(9, "D").value Then
+        GoTo 7
+     ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(10, "D").value Then
+        GoTo 8
+     ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(11, "D").value Then
+        GoTo 9
+    ElseIf Sheets("Home").Cells(6, "D").value = vbNullString Then
+        GoTo 10
+    End If
+1:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$4"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+    GoTo 11
+2:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$5"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+3:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$6"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+4:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$7"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+5:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$8"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+6:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$9"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+7:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$10"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+8:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$11"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+9:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Unprotect "pass"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+        xlBetween, Formula1:="='Master sheet'!$E$3:$E$12"
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .InputTitle = ""
+        .ErrorTitle = ""
+        .InputMessage = ""
+        .ErrorMessage = ""
+        .ShowInput = True
+        .ShowError = True
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+        GoTo 11
+    End With
+10:
+    With selection.Validation
+        .Delete
+        Sheets(sheetName).Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    End With
+11:
+    Sheets(sheetName).Select
+    Sheets(sheetName).Cells(1, 1).Select
+    Sheets("Home").Select
+    Application.EnableEvents = True
+
+End Sub
+-------------------------------------------------------------------------------

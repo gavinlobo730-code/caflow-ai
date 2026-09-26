@@ -1,0 +1,1178 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Option Explicit
+Public Sub loadURPData(jsonData As Object)
+    Dim invoiceList As Dictionary, invoice As Dictionary, Item As Dictionary
+    Dim ctin As Dictionary
+    Dim i As Integer: i = START_ROW
+    Dim itemcount As Integer: itemcount = 0
+    Do Until Trim(Sheets("4C. URP").Cells(i, 2).Value & vbNullString) = vbNullString
+        i = i + 1
+    Loop
+    If jsonData.Exists("b2bur") Then
+        For Each invoice In jsonData("b2bur")
+
+                For Each Item In invoice("itms")
+
+                    Sheets("4C. URP").Cells(i, 2).Value = invoice("cpan")
+                   
+                   If Trim(invoice("rchrg") & vbNullString) <> vbNullString Then
+                     If (CStr(invoice("rchrg")) = "Y") Then
+           ' MsgBox CStr(ctin("flag"))'
+                        Sheets("4C. URP").Cells(i, 3).Value = "Yes"
+                     Else
+                        Sheets("4C. URP").Cells(i, 3).Value = "No"
+                    End If
+                  
+                   If Trim(invoice("pos") & vbNullString) <> vbNullString Then
+                   If CommonUtil.IsPosInArray(invoice("pos")) Then
+                        Sheets("4C. URP").Cells(i, 4).Value = Application.VLookup(invoice("pos") & "C", Worksheets("master").Range("pos_map"), 2, False)
+                   
+                   If invoice("pos") <> vbNullString Then
+                        Sheets("4C. URP").Cells(i, 4).Value = Application.VLookup(invoice("pos") & "C", Worksheets("master").Range("pos_map"), 2, False)
+                    End If
+                    If Trim(invoice("sply_ty") & vbNullString) <> vbNullString Then
+                        Sheets("4C. URP").Cells(i, 5).Value = Application.VLookup(invoice("sply_ty"), Worksheets("master").Range("sply_ty_map"), 2, False)
+                    End If
+                    End If
+                     Else
+                       Sheets("4C. URP").Cells(i, 4).Value = vbNullString
+              End If
+               End If
+                    
+           
+                  If CStr(invoice("rchrg") = "N") Then
+                    Sheets("4C. URP").Cells(i, 7).Value = vbNullString
+                 Else
+                    Sheets("4C. URP").Cells(i, 7).Value = Item("rt")
+                End If
+                    Sheets("4C. URP").Cells(i, 6).Value = Item("txval")
+                    Sheets("4C. URP").Cells(i, 8).Value = Item("iamt")
+                    Sheets("4C. URP").Cells(i, 9).Value = Item("camt")
+                    Sheets("4C. URP").Cells(i, 10).Value = Item("samt")
+                    Sheets("4C. URP").Cells(i, 11).Value = Item("csamt")
+                  
+                 
+                    
+                    
+           If (CStr(invoice("flag")) = "D") Then
+           ' MsgBox CStr(ctin("flag"))
+            Sheets("4C. URP").Cells(i, 12).Value = "Delete"
+            Else
+            Sheets("4C. URP").Cells(i, 12).Value = "Add"
+            End If
+                  '  Sheets("4C. URP").Cells(i, 12).Value = "Added"
+
+                    i = i + 1
+                Next
+            Next
+        'Next
+    End If
+End Sub
+Public Function loadURPErrorData(jsonData As Object, errorSheets As Collection) As Variant
+    Dim invoiceList As Dictionary, invoice As Dictionary, Item As Dictionary
+    Dim i As Integer: i = START_ROW
+    Do Until Trim(Sheets("4C. URP").Cells(i, 2).Value & vbNullString) = vbNullString
+        i = i + 1
+    Loop
+    If jsonData("error_report").Exists("b2bur") Then
+        errorSheets.Add "4C. URP"
+        For Each invoice In jsonData("error_report")("b2bur")
+                For Each Item In invoice("itms")
+
+                    Sheets("4C. URP").Cells(i, 2).Value = invoice("cpan")
+                   ' Sheets("4C. URP").Cells(i, 3).Value = invoice("rchrg")
+                   If Trim(invoice("rchrg") & vbNullString) <> vbNullString Then
+                     If (CStr(invoice("rchrg")) = "Y") Then
+           ' MsgBox CStr(ctin("flag"))'
+                        Sheets("4C. URP").Cells(i, 3).Value = "Yes"
+                     Else
+                        Sheets("4C. URP").Cells(i, 3).Value = "No"
+                    End If
+                  
+                   
+                    If Trim(invoice("pos") & vbNullString) <> vbNullString Then
+                         ' If Trim(invoice("pos") & vbNullString) <> vbNullString Then
+                   If CommonUtil.IsPosInArray(invoice("pos")) Then
+                        Sheets("4C. URP").Cells(i, 4).Value = Application.VLookup(invoice("pos") & "C", Worksheets("master").Range("pos_map"), 2, False)
+                     If invoice("pos") <> vbNullString Then
+                        Sheets("4C. URP").Cells(i, 4).Value = Application.VLookup(invoice("pos") & "C", Worksheets("master").Range("pos_map"), 2, False)
+                    End If
+                    If Trim(invoice("sply_ty") & vbNullString) <> vbNullString Then
+                        Sheets("4C. URP").Cells(i, 5).Value = Application.VLookup(invoice("sply_ty"), Worksheets("master").Range("sply_ty_map"), 2, False)
+                    End If
+                    End If
+                       Else
+                       Sheets("4C. URP").Cells(i, 4).Value = vbNullString
+              End If
+              End If
+               
+                    If CStr(invoice("rchrg") = "N") Then
+                    Sheets("4C. URP").Cells(i, 7).Value = vbNullString
+                 Else
+                    Sheets("4C. URP").Cells(i, 7).Value = Item("rt")
+                End If
+                    Sheets("4C. URP").Cells(i, 7).Value = Item("rt")
+                    Sheets("4C. URP").Cells(i, 8).Value = Item("iamt")
+                    Sheets("4C. URP").Cells(i, 9).Value = Item("camt")
+                    Sheets("4C. URP").Cells(i, 10).Value = Item("samt")
+
+                    Sheets("4C. URP").Cells(i, 11).Value = Item("csamt")
+                    
+            If (CStr(invoice("flag")) = "D") Then
+          
+            Sheets("4C. URP").Cells(i, 12).Value = "Delete"
+            Else
+            Sheets("4C. URP").Cells(i, 12).Value = "Add"
+            End If
+             If (CStr(invoice("error_msg")) <> vbNullString) Then
+              Sheets("4C. URP").Cells(i, 14).Value = invoice("error_msg")
+             End If
+
+                    i = i + 1
+                Next
+            Next
+       ' Next
+    End If
+    Set loadURPErrorData = errorSheets
+End Function
+Public Function createURPJson() As Variant
+      Dim b2burDetails As New Scripting.Dictionary
+    Dim rateItems As Scripting.Dictionary, actionDetails As Scripting.Dictionary, ctinDetails As Scripting.Dictionary, itemsDetails As Scripting.Dictionary, invoiceItems As Scripting.Dictionary, ctinItems As Scripting.Dictionary, posItems As Scripting.Dictionary, atItems As Scripting.Dictionary
+    
+    Dim itmsCollection As Collection, itmObject As Object
+    Dim posCollection As Collection
+    
+    Dim count As Integer, k1 As Variant, k2 As Variant
+    
+    Set itemsDetails = createSimpleJson("4C. URP", 7, 6, 11, 3, 2, 4, 6, 5)
+    Set ctinDetails = createSimpleJson("4C. URP", 7, 2, 5, 3, 2, 4, 12)
+    'Set actionDetails = createSimpleJson("4C. URP", 7, 2, 5, 2, 3)
+  
+    
+   'Debug.Print JsonConverter.ConvertToJson(itemsDetails, Whitespace:=2)
+    
+    
+   'Debug.Print JsonConverter.ConvertToJson(ctinDetails, Whitespace:=2)
+    Dim delcount As Integer
+    delcount = 15
+    For Each k1 In ctinDetails.Keys
+     If CStr(Split(k1, "_")(1)) = vbNullString Then
+           ctinDetails(k1).Remove "cpan"
+       End If
+    Set itmsCollection = New Collection
+     For Each k2 In itemsDetails.Keys
+        
+        If CStr(Split(k1, "_")(0) & "_" & Split(k1, "_")(1) & "_" & Split(k1, "_")(2)) = CStr(Split(k2, "_")(0) & "_" & Split(k2, "_")(1) & "_" & Split(k2, "_")(2)) Then
+              'If CStr(Split(k2, "_")(0)) = "Inter-State" Then
+               
+            If CStr(Split(k2, "_")(4)) = vbNullString Then
+           ctinDetails(k1).Remove "sply_ty"
+          End If
+            Set itmObject = itemsDetails.Item(k2)
+        
+                itmsCollection.Add itmObject
+                Set itmObject = Nothing
+                
+            End If
+        Next
+        ctinDetails(k1).Add "itms", itmsCollection
+      '  'Debug.Print JsonConverter.ConvertToJson(ctinDetails, Whitespace:=2)
+        Set itmsCollection = Nothing
+    Next
+
+    If ctinDetails.count > 0 Then
+        Set itmsCollection = New Collection
+        For Each k1 In ctinDetails.Keys
+        
+          
+             If CStr(Split(k1, "_")(3)) = "Delete" Then
+                 ctinDetails(k1).Add "flag", "D"
+               
+                 ' ctinDetails(k1).Add "flag", "A"
+              End If
+                  '  MsgBox CStr(delcount)
+            Set itmObject = ctinDetails.Item(k1)
+            itmsCollection.Add itmObject
+            Set itmObject = Nothing
+        Next
+        b2burDetails.Add "b2bur", itmsCollection
+        Set itmsCollection = Nothing
+    End If
+    
+    ' Debug.Print JsonConverter.ConvertToJson(b2burDetails, Whitespace:=2)
+    Set createURPJson = b2burDetails
+End Function
+
+Public Function validateURP() As Boolean
+    Dim icol As Integer, iRow As Integer: iRow = START_ROW
+    
+    Application.ScreenUpdating = False
+    Sheets("4C. URP").Unprotect "Gstr4@321"
+    Dim iCol2 As Integer, isValidated As Boolean: isValidated = True
+    
+    Dim tempInvoice As String, tempAction As String
+    Dim uniqueMap As New Scripting.Dictionary, actionDetails As Scripting.Dictionary, uniqueRateDetails As Scripting.Dictionary, ctinDetails As Scripting.Dictionary
+    Dim uniqueActionDetails As Scripting.Dictionary, actionMap As New Scripting.Dictionary, uniquePanDetails As New Scripting.Dictionary, uniqueMap1 As New Scripting.Dictionary
+    Dim uniqueRateDetails1 As New Scripting.Dictionary, uniqueMap2 As New Scripting.Dictionary, uniqueChargeDetails As New Scripting.Dictionary, uniqueMap4 As New Scripting.Dictionary, uniqueMap5 As New Scripting.Dictionary
+    Dim actionDetails1 As New Scripting.Dictionary, actionDetails2 As New Scripting.Dictionary, ctinDetails1 As New Scripting.Dictionary, ctinDetails2 As New Scripting.Dictionary, actionMap1 As New Scripting.Dictionary, actionMap2 As New Scripting.Dictionary
+    Dim uniqueMap3 As New Scripting.Dictionary, uniqueRateDetails2 As New Scripting.Dictionary, uniqueRateDetails3 As New Scripting.Dictionary
+     Dim key As String, key1 As String, key3 As String
+      Dim duplicate As New Scripting.Dictionary, duplicate1 As New Scripting.Dictionary, duplicate3 As New Scripting.Dictionary
+      Set duplicate = Nothing
+      Set duplicate1 = Nothing
+      Set duplicate3 = Nothing
+   'Dim uniqueMap As New Scripting.Dictionary, uniqueRateDetails As Scripting.Dictionary
+    Dim k1 As Variant
+    
+    
+    If Not HomeMod.validateGSTINData Then
+        MsgBox "Please enter the details in 'Home' Sheet."
+        Sheets("Home").Activate
+        End
+    End If
+'
+    Range(Sheets("4C. URP").Cells(iRow, 2), Sheets("4C. URP").Cells(FIXED_END_ROW_TO_CLEAR, 11)).Interior.ColorIndex = 2
+    Range(Sheets("4C. URP").Cells(iRow, 12), Sheets("4C. URP").Cells(FIXED_END_ROW_TO_CLEAR, 13)).Interior.ColorIndex = 2
+    Range(Sheets("4C. URP").Cells(iRow, 2), Sheets("4C. URP").Cells(FIXED_END_ROW_TO_CLEAR, 12)).ClearComments
+    'Range(Sheets("4C. URP").Cells(iRow, 12), Sheets("4C. URP").Cells(FIXED_END_ROW_TO_CLEAR, 12)).ClearComments
+    Range(Sheets("4C. URP").Cells(iRow, 13), Sheets("4C. URP").Cells(FIXED_END_ROW_TO_CLEAR, 14)).ClearContents
+    
+
+    Do Until IsEmpty(Sheets("4C. URP").Cells(iRow, 2).Value) And IsEmpty(Sheets("4C. URP").Cells(iRow, 3).Value) And IsEmpty(Sheets("4C. URP").Cells(iRow, 4).Value) And IsEmpty(Sheets("4C. URP").Cells(iRow, 5).Value) And IsEmpty(Sheets("4C. URP").Cells(iRow, 6).Value) And IsEmpty(Sheets("4C. URP").Cells(iRow, 7).Value) And IsEmpty(Sheets("4C. URP").Cells(iRow, 12).Value)
+    Application.ScreenUpdating = False
+    Sheets("4C. URP").Unprotect "Gstr4@321"
+                     
+    'flag check
+    
+                If Trim(Sheets("4C. URP").Cells(iRow, 12).Value & vbNullString) = vbNullString Then
+                Application.ScreenUpdating = False
+                 Sheets("4C. URP").Unprotect "Gstr4@321"
+                    Sheets("4C. URP").Cells(iRow, 12).Interior.ColorIndex = 3
+                    Sheets("4C. URP").Cells(iRow, 12).ClearComments
+                    Sheets("4C. URP").Cells(iRow, 12).AddComment "Please provide details in mandatory fields."
+                    Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                    isValidated = isValidated And False
+                    
+                Else
+                
+              
+    
+                 If Not CommonUtil.IsInActionType(Trim(Sheets("4C. URP").Cells(iRow, 12).Value & vbNullString)) Then
+                Application.ScreenUpdating = False
+                Sheets("4C. URP").Unprotect "Gstr4@321"
+                       
+                       Sheets("4C. URP").Cells(iRow, 12).Interior.ColorIndex = 3
+                       Sheets("4C. URP").Cells(iRow, 12).ClearComments
+                       Sheets("4C. URP").Cells(iRow, 12).AddComment "Please select correct option for action from the dropdown i.e. either add or delete."
+                       Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                       isValidated = isValidated And False
+                       
+              
+                
+                   End If
+            
+                End If
+                
+            
+                
+               
+                If Trim(Sheets("4C. URP").Cells(iRow, 3).Value & vbNullString) = vbNullString Then
+                    Application.ScreenUpdating = False
+                    Sheets("4C. URP").Unprotect "Gstr4@321"
+                
+                    Sheets("4C. URP").Cells(iRow, 3).Interior.ColorIndex = 3
+                    Sheets("4C. URP").Cells(iRow, 3).ClearComments
+                    Sheets("4C. URP").Cells(iRow, 3).AddComment "Please provide details in mandatory fields."
+                    Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                    isValidated = isValidated And False
+                End If
+                
+                If Trim(Sheets("4C. URP").Cells(iRow, 3).Value & vbNullString) = vbNullString And Trim(Sheets("4C. URP").Cells(iRow, 5).Value & vbNullString) = vbNullString Then
+                     Application.ScreenUpdating = False
+                    Sheets("4C. URP").Unprotect "Gstr4@321"
+                    
+                    Sheets("4C. URP").Cells(iRow, 5).Interior.ColorIndex = 3
+                    Sheets("4C. URP").Cells(iRow, 5).ClearComments
+                    Sheets("4C. URP").Cells(iRow, 5).AddComment "Please provide details in mandatory fields."
+                    Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                    isValidated = isValidated And False
+                End If
+               ' End If
+                
+
+                If Trim(Sheets("4C. URP").Cells(iRow, 4).Value & vbNullString) = vbNullString Then
+                     Application.ScreenUpdating = False
+                    Sheets("4C. URP").Unprotect "Gstr4@321"
+                    Sheets("4C. URP").Cells(iRow, 4).Interior.ColorIndex = 3
+                    Sheets("4C. URP").Cells(iRow, 4).ClearComments
+                    Sheets("4C. URP").Cells(iRow, 4).AddComment "Please provide details in mandatory fields."
+                    Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                    isValidated = isValidated And False
+                End If
+                
+                If Trim(Sheets("4C. URP").Cells(iRow, 6).Value & vbNullString) = vbNullString Then
+                Application.ScreenUpdating = False
+                Sheets("4C. URP").Unprotect "Gstr4@321"
+                    Sheets("4C. URP").Cells(iRow, 6).Interior.ColorIndex = 3
+                    Sheets("4C. URP").Cells(iRow, 6).ClearComments
+                    Sheets("4C. URP").Cells(iRow, 6).AddComment "Please provide details in mandatory fields."
+                    Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                    isValidated = isValidated And False
+                End If
+
+              
+            If Trim(Sheets("4C. URP").Cells(iRow, 2).Value & vbNullString) <> vbNullString Then
+            
+            Application.ScreenUpdating = False
+            Sheets("4C. URP").Unprotect "Gstr4@321"
+              If Not CommonUtil.matchRegex(Trim(Sheets("4C. URP").Cells(iRow, 2).Value), PAN_REGEX) Then
+                    Sheets("4C. URP").Cells(iRow, 2).Interior.ColorIndex = 3
+                    Sheets("4C. URP").Cells(iRow, 2).ClearComments
+                    Sheets("4C. URP").Cells(iRow, 2).AddComment "Please provide a valid PAN."
+                    Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                    isValidated = isValidated And False
+                    End If
+                End If
+                
+                
+                
+                
+            
+         ' To Check Reverse Charge as ="No"
+            
+           For iCol2 = 8 To 11
+            
+            If Trim(Sheets("4C. URP").Cells(iRow, 3).Value & vbNullString) = "No" Then
+              
+                If ((Sheets("4C. URP").Cells(iRow, iCol2).Value) <> vbNullString And (Sheets("4C. URP").Cells(iRow, iCol2).Value) <> 0) Then
+                 Application.ScreenUpdating = False
+                 Sheets("4C. URP").Unprotect "Gstr4@321"
+                 Sheets("4C. URP").Cells(iRow, iCol2).Interior.ColorIndex = 3
+                 Sheets("4C. URP").Cells(iRow, iCol2).ClearComments
+                 Sheets("4C. URP").Cells(iRow, iCol2).AddComment "No entry is required to be made under Rate & Tax heads."
+                 Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                 isValidated = isValidated And False
+                End If
+                
+            ElseIf Trim(Sheets("4C. URP").Cells(iRow, 3).Value & vbNullString) = "Yes" Then
+            Application.ScreenUpdating = False
+            Sheets("4C. URP").Unprotect "Gstr4@321"
+            Dim i As Integer
+            i = 7
+            If Trim(Sheets("4C. URP").Cells(iRow, i).Value & vbNullString) = vbNullString Then
+
+            
+                Sheets("4C. URP").Cells(iRow, i).Interior.ColorIndex = 3
+                Sheets("4C. URP").Cells(iRow, i).ClearComments
+                Sheets("4C. URP").Cells(iRow, i).AddComment "Select applicable rate of tax from dropdown."
+                Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                isValidated = isValidated And False
+             End If
+             
+           
+        End If
+        Next
+        
+        
+        
+        If Trim(Sheets("4C. URP").Cells(iRow, 3).Value & vbNullString) <> vbNullString Then
+             Application.ScreenUpdating = False
+            Sheets("4C. URP").Unprotect "Gstr4@321"
+              Dim revCharge As String: revCharge = Trim(Sheets("4C. URP").Cells(iRow, 3).Value & vbNullString)
+              Dim icolms1 As Integer
+               icolms1 = 3
+              If CommonUtil.IsInReverseCharge(revCharge) Then
+                
+               
+              Else
+                         Sheets("4C. URP").Cells(iRow, icolms1).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, icolms1).ClearComments
+                         Sheets("4C. URP").Cells(iRow, icolms1).AddComment "Please select correct option for reverse charge from the dropdown i.e. either Yes or No."
+                         Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+              End If
+               End If
+               
+               
+               
+               
+          If Trim(Sheets("4C. URP").Cells(iRow, 5).Value & vbNullString) <> vbNullString Then
+              Dim sType As String: sType = Trim(Sheets("4C. URP").Cells(iRow, 5).Value & vbNullString)
+              Dim icolms As Integer
+               icolms = 5
+              If Not CommonUtil.IsInSupplyType(sType) Then
+              
+              Application.ScreenUpdating = False
+             Sheets("4C. URP").Unprotect "Gstr4@321"
+            
+                         Sheets("4C. URP").Cells(iRow, icolms).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, icolms).ClearComments
+                         Sheets("4C. URP").Cells(iRow, icolms).AddComment "Please select correct supply type from the dropdown i.e. either Intra-State or Inter-State."
+                         Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+              End If
+               End If
+        
+        Dim i1 As Integer
+         i1 = 7
+            
+            If Trim(Sheets("4C. URP").Cells(iRow, 3).Value & vbNullString) = "No" Then
+              
+                If ((Sheets("4C. URP").Cells(iRow, i1).Value) <> vbNullString) Then
+                
+               Application.ScreenUpdating = False
+               Sheets("4C. URP").Unprotect "Gstr4@321"
+                 Sheets("4C. URP").Cells(iRow, 7).Interior.ColorIndex = 3
+                 Sheets("4C. URP").Cells(iRow, 7).ClearComments
+                 Sheets("4C. URP").Cells(iRow, 7).AddComment "No entry is required to be made under Rate & Tax heads."
+                 Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                 isValidated = isValidated And False
+                End If
+                End If
+                
+        
+         If Trim(Sheets("4C. URP").Cells(iRow, 7).Value & vbNullString) <> vbNullString Then
+              Dim rateValue As String: rateValue = Trim(Sheets("4C. URP").Cells(iRow, 7).Value & vbNullString)
+              Dim icolm As Integer
+               icolm = 7
+              If Not CommonUtil.IsInArray(rateValue) Then
+              Application.ScreenUpdating = False
+             Sheets("4C. URP").Unprotect "Gstr4@321"
+        
+                         Sheets("4C. URP").Cells(iRow, icolm).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, icolm).ClearComments
+                         Sheets("4C. URP").Cells(iRow, icolm).AddComment "Select applicable rate of tax from dropdown."
+                         Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+                     
+              End If
+              
+
+               End If
+               
+               
+                 
+                
+            
+                If Trim(Sheets("4C. URP").Cells(iRow, 5).Value & vbNullString) <> vbNullString And Trim(Sheets("4C. URP").Cells(iRow, 3).Value & vbNullString) <> "No" Then
+                   
+                     Dim supplyType As String: supplyType = Trim(Sheets("4C. URP").Cells(iRow, 5).Value & vbNullString)
+                     If CommonUtil.IsInSupplyType(supplyType) Then
+                    If (supplyType = "Inter-State") Then
+                     ' Dim cgstTax As Integer: cgstTax = (Sheets("4C. URP").Cells(iRow, 9).Value)
+                     '   Dim sgstTax As Integer: sgstTax = (Sheets("4C. URP").Cells(iRow, 10).Value)
+                    '  MsgBox cgstTax
+                    
+                     If (Trim(Sheets("4C. URP").Cells(iRow, 9).Value) <> vbNullString And CommonUtil.matchRegex(Trim(Sheets("4C. URP").Cells(iRow, 9).Value), AMT_REGEX)) Then
+                      Dim cgstTax As Double: cgstTax = (Sheets("4C. URP").Cells(iRow, 9).Value)
+                      If (CStr(cgstTax) <> vbNullString And CStr(cgstTax) <> 0) Then
+                      Application.ScreenUpdating = False
+                      Sheets("4C. URP").Unprotect "Gstr4@321"
+                         Sheets("4C. URP").Cells(iRow, 9).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, 9).ClearComments
+                         Sheets("4C. URP").Cells(iRow, 9).AddComment "Please provide details in Integrated tax column."
+                         Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+                      End If
+                      End If
+                      
+                       If (Trim(Sheets("4C. URP").Cells(iRow, 10).Value) <> vbNullString And CommonUtil.matchRegex(Trim(Sheets("4C. URP").Cells(iRow, 10).Value), AMT_REGEX)) Then
+                         Dim sgstTax As Double: sgstTax = (Sheets("4C. URP").Cells(iRow, 10).Value)
+                         If (CStr(sgstTax) <> vbNullString And CStr(sgstTax) <> 0) Then
+                          Application.ScreenUpdating = False
+                          Sheets("4C. URP").Unprotect "Gstr4@321"
+                          Sheets("4C. URP").Cells(iRow, 10).Interior.ColorIndex = 3
+                          Sheets("4C. URP").Cells(iRow, 10).ClearComments
+                          Sheets("4C. URP").Cells(iRow, 10).AddComment "Please provide details in Integrated tax columns."
+                          Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                          isValidated = isValidated And False
+                      End If
+                      End If
+                      
+                    Else
+                    If (Trim(Sheets("4C. URP").Cells(iRow, 8).Value) <> vbNullString And CommonUtil.matchRegex(Trim(Sheets("4C. URP").Cells(iRow, 8).Value), AMT_REGEX)) Then
+                      Dim igstTax As Double: igstTax = (Sheets("4C. URP").Cells(iRow, 8).Value)
+                       If (CStr(igstTax) <> vbNullString And CStr(igstTax) <> 0) Then
+                       Application.ScreenUpdating = False
+                        Sheets("4C. URP").Unprotect "Gstr4@321"
+                         Sheets("4C. URP").Cells(iRow, 8).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, 8).ClearComments
+                         Sheets("4C. URP").Cells(iRow, 8).AddComment "Please provide details in Central tax and State/UT tax columns."
+                         Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+                      End If
+                      End If
+                      End If
+                    End If
+                    End If
+                
+                
+                  ' Check center tax and state tax equal
+            If Trim(Sheets("4C. URP").Cells(iRow, 5).Value & vbNullString) <> vbNullString And Trim(Sheets("4C. URP").Cells(iRow, 3).Value & vbNullString) <> "No" Then
+                 Dim supplyType1 As String: supplyType1 = Trim(Sheets("4C. URP").Cells(iRow, 5).Value & vbNullString)
+                    If (supplyType1 = "Intra-State") Then
+                      Dim cgstTax1 As String: cgstTax1 = Trim(Sheets("4C. URP").Cells(iRow, 9).Value)
+                      Dim sgstTax1 As String: sgstTax1 = Trim(Sheets("4C. URP").Cells(iRow, 10).Value)
+                     ' MsgBox cgstTax1
+                      
+                      If (cgstTax1 <> sgstTax1) Then
+                       Application.ScreenUpdating = False
+                          Sheets("4C. URP").Unprotect "Gstr4@321"
+                         Sheets("4C. URP").Cells(iRow, 9).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, 9).ClearComments
+                         Sheets("4C. URP").Cells(iRow, 9).AddComment "Central and State/UT tax should be equal."
+                         Sheets("4C. URP").Cells(iRow, 10).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, 10).ClearComments
+                         Sheets("4C. URP").Cells(iRow, 10).AddComment "Central and State/UT tax should be equal."
+                         Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+                      End If
+                   End If
+                End If
+                
+    'Mandatory field check
+        For icol = 4 To 6
+       Application.ScreenUpdating = False
+        Sheets("4C. URP").Unprotect "Gstr4@321"
+        
+        If Trim(Sheets("4C. URP").Cells(iRow, 3).Value & vbNullString) = "Yes" Then
+            If Trim(Sheets("4C. URP").Cells(iRow, icol).Value & vbNullString) = vbNullString Then
+          
+                Sheets("4C. URP").Cells(iRow, icol).Interior.ColorIndex = 3
+                Sheets("4C. URP").Cells(iRow, icol).ClearComments
+                Sheets("4C. URP").Cells(iRow, icol).AddComment "Please provide details in mandatory fields."
+                Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                isValidated = isValidated And False
+                End If
+           
+           ElseIf Trim(Sheets("4C. URP").Cells(iRow, 3).Value & vbNullString) = "No" Then
+                If Trim(Sheets("4C. URP").Cells(iRow, 5).Value & vbNullString) <> vbNullString Then
+               Sheets("4C. URP").Cells(iRow, 5).Interior.ColorIndex = 3
+                Sheets("4C. URP").Cells(iRow, 5).ClearComments
+                Sheets("4C. URP").Cells(iRow, 5).AddComment "Supply type is not required to be provided."
+                Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                isValidated = isValidated And False
+              End If
+             
+            End If
+            
+              Dim iamount As String: iamount = Trim(Sheets("4C. URP").Cells(iRow, 6).Value & vbNullString)
+               If iamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4C. URP").Cells(iRow, 6).Value), AMT_REGEX) Then
+                      Application.ScreenUpdating = False
+                        Sheets("4C. URP").Unprotect "Gstr4@321"
+                         Sheets("4C. URP").Cells(iRow, 6).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, 6).ClearComments
+                         Sheets("4C. URP").Cells(iRow, 6).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+            
+             Dim igamount As String: igamount = Trim(Sheets("4C. URP").Cells(iRow, 8).Value & vbNullString)
+               If igamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4C. URP").Cells(iRow, 8).Value), AMT_REGEX) Then
+                      Application.ScreenUpdating = False
+                        Sheets("4C. URP").Unprotect "Gstr4@321"
+                         Sheets("4C. URP").Cells(iRow, 8).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, 8).ClearComments
+                         Sheets("4C. URP").Cells(iRow, 8).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+               Dim cgamount As String: cgamount = Trim(Sheets("4C. URP").Cells(iRow, 9).Value & vbNullString)
+               If cgamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4C. URP").Cells(iRow, 9).Value), AMT_REGEX) Then
+                        Application.ScreenUpdating = False
+                        Sheets("4C. URP").Unprotect "Gstr4@321"
+                         Sheets("4C. URP").Cells(iRow, 9).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, 9).ClearComments
+                         Sheets("4C. URP").Cells(iRow, 9).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+               Dim sgamount As String: sgamount = Trim(Sheets("4C. URP").Cells(iRow, 10).Value & vbNullString)
+               If sgamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4C. URP").Cells(iRow, 10).Value), AMT_REGEX) Then
+                        Application.ScreenUpdating = False
+                        Sheets("4C. URP").Unprotect "Gstr4@321"
+                         Sheets("4C. URP").Cells(iRow, 10).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, 10).ClearComments
+                         Sheets("4C. URP").Cells(iRow, 10).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+               Dim csamount As String: csamount = Trim(Sheets("4C. URP").Cells(iRow, 11).Value & vbNullString)
+               If csamount <> vbNullString And Not CommonUtil.matchRegex(Trim(Sheets("4C. URP").Cells(iRow, 11).Value), AMT_REGEX) Then
+                        Application.ScreenUpdating = False
+                        Sheets("4C. URP").Unprotect "Gstr4@321"
+                         Sheets("4C. URP").Cells(iRow, 11).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow, 11).ClearComments
+                         Sheets("4C. URP").Cells(iRow, 11).AddComment "In the taxable value and tax amount fields, enter numeric values only."
+                         Sheets("4C. URP").Cells(iRow, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+               End If
+           
+           Next
+    
+     iRow = iRow + 1
+     
+      Application.ScreenUpdating = True
+    Sheets("4C. URP").Protect "Gstr4@321"
+      Loop
+    
+      
+'Unique check for RATE when PAN is NOT Present
+Set uniqueRateDetails = createSimpleJson("4C. URP", 7, 3, 4, 3, 2, 7)
+
+ 'Debug.Print JsonConverter.ConvertToJson(uniqueRateDetails, Whitespace:=2)
+
+            Dim iRows6 As Integer
+            Dim temp6 As Variant
+           ' Dim rCell5 As Range
+            iRows6 = 7
+            Dim uniqueCount4 As Integer
+            uniqueCount4 = 0
+            
+            For Each k1 In uniqueRateDetails.Keys
+                Do Until IsEmpty(Sheets("4C. URP").Cells(iRows6, 3).Value)
+                 
+                 Application.ScreenUpdating = False
+                Sheets("4C. URP").Unprotect "Gstr4@321"
+                
+                    temp6 = Sheets("4C. URP").Cells(iRows6, 3).Value & "_" & Sheets("4C. URP").Cells(iRows6, 2).Value & "_" & Sheets("4C. URP").Cells(iRows6, 7).Value
+                '   MsgBox temps
+                    If UCase(k1) = UCase(temp6) Then
+                       If uniqueMap3.Exists(k1) Then
+                        uniqueCount4 = uniqueMap3(k1)
+                        uniqueMap3.Remove k1
+                        uniqueMap3.Add k1, uniqueCount4 + 1
+               
+                        Else
+                        uniqueMap3.Add k1, 1
+                        End If
+                      
+                    End If
+                 
+                    iRows6 = iRows6 + 1
+                 
+                 Loop
+             
+                 temp6 = ""
+                 iRows6 = 7
+                 uniqueCount4 = 0
+              Next
+   'Debug.Print JsonConverter.ConvertToJson(uniqueMap3, Whitespace:=2)
+
+
+            Dim iRows7 As Integer
+            Dim temp7 As Variant
+            Dim rCell5 As Range
+            iRows7 = 7
+           
+            For Each k1 In uniqueMap3.Keys
+            If uniqueMap3.Item(k1) > 1 Then
+               
+               Dim rt1 As String
+               rt1 = Split(k1, "_")(2)
+               If (CStr(rt1) <> vbNullString) Then
+               
+                Do Until IsEmpty(Sheets("4C. URP").Cells(iRows7, 4).Value)
+                
+                Application.ScreenUpdating = False
+                Sheets("4C. URP").Unprotect "Gstr4@321"
+                
+               ' If Trim(Sheets("4C. URP").Cells(iRows7, 2).Value & vbNullString) = vbNullString Then
+                    temp7 = Sheets("4C. URP").Cells(iRows7, 3).Value & "_" & Sheets("4C. URP").Cells(iRows7, 2).Value & "_" & Sheets("4C. URP").Cells(iRows7, 7).Value
+                    
+                    If UCase(temp7) = UCase(k1) Then
+                        Range(Sheets("4C. URP").Cells(iRows7, 7), Sheets("4C. URP").Cells(iRows7, 7)).Interior.ColorIndex = 3
+                        Sheets("4C. URP").Activate
+                        ActiveSheet.Range(Cells(iRows7, 7), Cells(iRows7, 7)).Select
+                        For Each rCell5 In Selection
+                            With rCell5
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="Duplicate record found, update the same."
+                            End With
+                        Next
+                        Sheets("4C. URP").Cells(iRows7, 13).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                   ' End If
+                    
+                    iRows7 = iRows7 + 1
+                Loop
+            End If
+            End If
+            temp7 = ""
+            iRows7 = 7
+        Next
+        
+         
+
+' ' Check Unique for PAN When RCHRG =  NO.
+ Set uniqueRateDetails2 = createSimpleJson("4C. URP", 7, 2, 4, 3, 2, 4)
+
+ 'Debug.Print JsonConverter.ConvertToJson(uniqueRateDetails2, Whitespace:=2)
+
+            Dim iRows8 As Integer
+            Dim temp8 As Variant
+           ' Dim rCell5 As Range
+            iRows8 = 7
+            Dim uniqueCount5 As Integer
+            uniqueCount5 = 0
+
+            For Each k1 In uniqueRateDetails2.Keys
+                Do Until IsEmpty(Sheets("4C. URP").Cells(iRows8, 3).Value)
+                
+                Application.ScreenUpdating = False
+                Sheets("4C. URP").Unprotect "Gstr4@321"
+                
+                'If Trim(Sheets("4C. URP").Cells(iRows8, 3).Value & vbNullString) = "No" Then
+                    temp8 = Sheets("4C. URP").Cells(iRows8, 3).Value & "_" & Sheets("4C. URP").Cells(iRows8, 2).Value & "_" & Sheets("4C. URP").Cells(iRows8, 4).Value
+                '   MsgBox temps
+                    If UCase(k1) = UCase(temp8) Then
+                       If uniqueMap4.Exists(k1) Then
+                        uniqueCount5 = uniqueMap4(k1)
+                        uniqueMap4.Remove k1
+                        uniqueMap4.Add k1, uniqueCount5 + 1
+
+                        Else
+                        uniqueMap4.Add k1, 1
+                        End If
+                    End If
+                   ' End If
+
+                    iRows8 = iRows8 + 1
+
+                 Loop
+
+                 temp8 = ""
+                 iRows8 = 7
+                 uniqueCount5 = 0
+              Next
+' Debug.Print JsonConverter.ConvertToJson(uniqueMap4, Whitespace:=2)
+
+
+            Dim iRows9 As Integer
+            Dim temp9 As Variant
+            Dim rCell9 As Range
+            iRows9 = 7
+
+            For Each k1 In uniqueMap4.Keys
+            If uniqueMap4.Item(k1) > 1 Then
+
+               Dim rt3 As String
+               rt3 = Split(k1, "_")(2)
+               If (CStr(rt3) <> vbNullString) Then
+
+                Do Until IsEmpty(Sheets("4C. URP").Cells(iRows9, 3).Value)
+                
+                Application.ScreenUpdating = False
+                Sheets("4C. URP").Unprotect "Gstr4@321"
+                
+                If Trim(Sheets("4C. URP").Cells(iRows9, 2).Value & vbNullString) <> vbNullString Then
+                If Trim(Sheets("4C. URP").Cells(iRows9, 3).Value & vbNullString) = "No" Then
+                    temp9 = Sheets("4C. URP").Cells(iRows9, 3).Value & "_" & Sheets("4C. URP").Cells(iRows9, 2).Value & "_" & Sheets("4C. URP").Cells(iRows9, 4).Value
+
+                    If UCase(temp9) = UCase(k1) Then
+                        Range(Sheets("4C. URP").Cells(iRows9, 2), Sheets("4C. URP").Cells(iRows9, 2)).Interior.ColorIndex = 3
+                        Sheets("4C. URP").Activate
+                        ActiveSheet.Range(Cells(iRows9, 2), Cells(iRows9, 2)).Select
+                        For Each rCell9 In Selection
+                            With rCell9
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="Duplicate record found, update the same."
+                            End With
+                        Next
+                        Sheets("4C. URP").Cells(iRows9, 13).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                    End If
+                    End If
+
+                    iRows9 = iRows9 + 1
+                Loop
+            End If
+            End If
+            temp9 = ""
+            iRows9 = 7
+        Next
+
+
+
+'
+ 
+ 
+ 'Unique check when PAN is blank and RCHRG = "NO"
+ Set uniqueRateDetails3 = createSimpleJson("4C. URP", 7, 2, 4, 3, 2, 4)
+
+
+            Dim iRows10 As Integer
+            Dim temp10 As Variant
+           ' Dim rCell5 As Range
+            iRows10 = 7
+            Dim uniqueCount6 As Integer
+            uniqueCount6 = 0
+
+            For Each k1 In uniqueRateDetails3.Keys
+                Do Until IsEmpty(Sheets("4C. URP").Cells(iRows10, 3).Value)
+                
+                Application.ScreenUpdating = False
+                Sheets("4C. URP").Unprotect "Gstr4@321"
+                
+                'If Trim(Sheets("4C. URP").Cells(iRows8, 3).Value & vbNullString) = "No" Then
+                    temp10 = Sheets("4C. URP").Cells(iRows10, 3).Value & "_" & Sheets("4C. URP").Cells(iRows10, 2).Value & "_" & Sheets("4C. URP").Cells(iRows10, 4).Value
+                '   MsgBox temps
+                    If UCase(k1) = UCase(temp10) Then
+                       If uniqueMap5.Exists(k1) Then
+                        uniqueCount6 = uniqueMap5(k1)
+                        uniqueMap5.Remove k1
+                        uniqueMap5.Add k1, uniqueCount6 + 1
+
+                        Else
+                        uniqueMap5.Add k1, 1
+                        End If
+                    End If
+                   ' End If
+
+                    iRows10 = iRows10 + 1
+
+                 Loop
+
+                 temp10 = ""
+                 iRows10 = 7
+                 uniqueCount6 = 0
+              Next
+ 'Debug.Print JsonConverter.ConvertToJson(uniqueMap5, Whitespace:=2)
+
+
+            Dim iRows11 As Integer
+            Dim temp11 As Variant
+            Dim rCellm As Range
+            iRows11 = 7
+
+            For Each k1 In uniqueMap5.Keys
+            If uniqueMap5.Item(k1) > 1 Then
+
+               Dim rt4 As String
+               rt4 = Split(k1, "_")(2)
+               If (CStr(rt4) <> vbNullString) Then
+
+                Do Until IsEmpty(Sheets("4C. URP").Cells(iRows11, 3).Value)
+                
+                Application.ScreenUpdating = False
+                Sheets("4C. URP").Unprotect "Gstr4@321"
+                
+                If Trim(Sheets("4C. URP").Cells(iRows11, 2).Value & vbNullString) = vbNullString Then
+                If Trim(Sheets("4C. URP").Cells(iRows11, 3).Value & vbNullString) = "No" Then
+                    temp11 = Sheets("4C. URP").Cells(iRows11, 3).Value & "_" & Sheets("4C. URP").Cells(iRows11, 2).Value & "_" & Sheets("4C. URP").Cells(iRows11, 4).Value
+
+                    If UCase(temp11) = UCase(k1) Then
+                        Range(Sheets("4C. URP").Cells(iRows11, 3), Sheets("4C. URP").Cells(iRows11, 3)).Interior.ColorIndex = 3
+                        Sheets("4C. URP").Activate
+                        ActiveSheet.Range(Cells(iRows11, 3), Cells(iRows11, 3)).Select
+                        For Each rCellm In Selection
+                            With rCellm
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="Duplicate record found, update the same."
+                            End With
+                        Next
+                        Sheets("4C. URP").Cells(iRows11, 13).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                    End If
+                    End If
+
+                    iRows11 = iRows11 + 1
+                Loop
+            End If
+            End If
+            temp11 = ""
+            iRows11 = 7
+        Next
+        
+        
+ 
+         
+' Check HOME sheet POS and 4C sheet pos value check
+
+            Dim iRows3 As Integer
+            Dim temp3 As Variant
+            Dim rCell3 As Range
+            iRows3 = 7
+       Dim homePOS As String: homePOS = CStr(Left(Sheets("Home").Cells(7, 2).Value, 2))
+       
+             If (homePOS <> vbNullString) Then
+                Do Until IsEmpty(Sheets("4C. URP").Cells(iRows3, 3).Value) And IsEmpty(Sheets("4C. URP").Cells(iRows3, 4).Value) And IsEmpty(Sheets("4C. URP").Cells(iRows3, 6).Value)
+                    
+                Application.ScreenUpdating = False
+                Sheets("4C. URP").Unprotect "Gstr4@321"
+                
+                    temp3 = CStr(Left(Sheets("4C. URP").Cells(iRows3, 4).Value, 2))
+                    If temp3 <> homePOS And temp3 <> vbNullString Then
+                        Range(Sheets("4C. URP").Cells(iRows3, 4), Sheets("4C. URP").Cells(iRows3, 4)).Interior.ColorIndex = 3
+                        Sheets("4C. URP").Activate
+                        ActiveSheet.Range(Cells(iRows3, 4), Cells(iRows3, 4)).Select
+                        For Each rCell3 In Selection
+                            With rCell3
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="POS should be same as the State code of GSTIN provided in home sheet."
+                            End With
+                        Next
+                        Sheets("4C. URP").Cells(iRows3, 13).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                    iRows3 = iRows3 + 1
+                Loop
+            End If
+            temp3 = ""
+            iRows3 = 7
+            
+            
+            
+            
+            
+            
+            
+ 
+    'Check Action type for same GSTN and POS
+    Set ctinDetails1 = createSimpleJson("4C. URP", 7, 2, 4, 3, 2, 4)
+    Set actionDetails1 = createSimpleJson("4C. URP", 7, 2, 4, 3, 2, 4, 12)
+
+      Dim actionCount1 As Integer
+       'Dim iRows12 As Integer
+      Dim k3 As Variant
+       'If tri = Null Then
+        For Each k1 In ctinDetails1.Keys
+        'iRows12 = 7
+        actionCount1 = 0
+        For Each k3 In actionDetails1.Keys
+       ' Do Until IsEmpty(Sheets("4C. URP").Cells(iRows12, 3).Value)
+        
+            If CStr(UCase(k1)) = CStr(UCase(Split(k3, "_")(0) & "_" & Split(k3, "_")(1) & "_" & Split(k3, "_")(2))) Then
+              If actionMap1.Exists(k1) Then
+               actionCount1 = actionMap1(k1)
+               actionMap1.Remove k1
+               actionMap1.Add k1, actionCount1 + 1
+
+               Else
+               actionMap1.Add k1, 1
+               End If
+
+            End If
+          '  Loop
+            'End If
+        Next
+    Next
+   ' End If
+
+'Debug.Print JsonConverter.ConvertToJson(actionMap1, Whitespace:=2)
+'
+            Dim iRows1 As Integer
+            Dim temp As Variant
+             Dim temp2 As Variant
+            Dim rCell As Range
+           
+
+            For Each k1 In actionMap1.Keys
+            iRows1 = 7
+            'If temp2.Exists(actionMap1) Then
+            If actionMap1.Item(k1) > 1 Then
+
+     Do Until IsEmpty(Sheets("4C. URP").Cells(iRows1, 3).Value)
+    
+                Application.ScreenUpdating = False
+                Sheets("4C. URP").Unprotect "Gstr4@321"
+  
+                    temp2 = Sheets("4C. URP").Cells(iRows1, 3).Value & "_" & Sheets("4C. URP").Cells(iRows1, 2).Value & "_" & Sheets("4C. URP").Cells(iRows1, 4).Value
+                    
+                    If UCase(temp2) = UCase(k1) Then
+                      If Trim(Sheets("4C. URP").Cells(iRows1, 12).Value & vbNullString) = vbNullString Then
+                       Sheets("4C. URP").Cells(iRows1, 12).Interior.ColorIndex = 3
+                       Sheets("4C. URP").Cells(iRows1, 12).ClearComments
+                       Sheets("4C. URP").Cells(iRows1, 12).AddComment "Please provide details in mandatory fields."
+                       Sheets("4C. URP").Cells(iRows1, 13).Value = "Error found in row."
+                       isValidated = isValidated And False
+                       
+                       ElseIf Not CommonUtil.IsInActionType(Trim(Sheets("4C. URP").Cells(iRows1, 12).Value & vbNullString)) Then
+                       Sheets("4C. URP").Cells(iRows1, 12).Interior.ColorIndex = 3
+                       Sheets("4C. URP").Cells(iRows1, 12).ClearComments
+                       Sheets("4C. URP").Cells(iRows1, 12).AddComment "Please select correct option for action from the dropdown i.e. either Add or Delete."
+                       Sheets("4C. URP").Cells(iRows1, 13).Value = "Error found in row."
+                       isValidated = isValidated And False
+                       
+                       Else
+                       Range(Sheets("4C. URP").Cells(iRows1, 12), Sheets("4C. URP").Cells(iRows1, 12)).Interior.ColorIndex = 3
+                        Sheets("4C. URP").Activate
+                        ActiveSheet.Range(Cells(iRows1, 12), Cells(iRows1, 12)).Select
+                        For Each rCell In Selection
+                            With rCell
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="Records on same PAN/ without PAN with reverse charge as 'Yes' shall have same action i.e. Add or Delete."
+                            End With
+                        Next
+                        Sheets("4C. URP").Cells(iRows1, 13).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                    End If
+                    
+                   iRows1 = iRows1 + 1
+                Loop
+            End If
+            ' End If
+            temp2 = ""
+
+        Next
+
+
+
+
+'Check Action type for same GSTN and POS
+    Set ctinDetails2 = createSimpleJson("4C. URP", 7, 2, 5, 3, 2, 4)
+    Set actionDetails2 = createSimpleJson("4C. URP", 7, 2, 5, 3, 2, 4, 5)
+
+      Dim actionCount2 As Integer
+       'Dim iRows12 As Integer
+      Dim k4 As Variant
+       'If tri = Null Then
+        For Each k1 In ctinDetails2.Keys
+        'iRows12 = 7
+        actionCount2 = 0
+        For Each k4 In actionDetails2.Keys
+       ' Do Until IsEmpty(Sheets("4C. URP").Cells(iRows12, 3).Value)
+        
+            If CStr(UCase(k1)) = CStr(UCase(Split(k4, "_")(0) & "_" & Split(k4, "_")(1) & "_" & Split(k4, "_")(2))) Then
+              If actionMap2.Exists(k1) Then
+               actionCount2 = actionMap2(k1)
+               actionMap2.Remove k1
+               actionMap2.Add k1, actionCount2 + 1
+
+               Else
+               actionMap2.Add k1, 1
+               End If
+
+            End If
+          '  Loop
+            'End If
+        Next
+    Next
+   ' End If
+
+'Debug.Print JsonConverter.ConvertToJson(actionMap2, Whitespace:=2)
+'
+            Dim iRow4 As Integer
+            Dim temp4 As Variant
+            ' Dim temp2 As Variant
+            Dim rCell4 As Range
+           
+
+            For Each k1 In actionMap2.Keys
+            iRow4 = 7
+            'If temp2.Exists(actionMap1) Then
+            If actionMap2.Item(k1) > 1 Then
+
+    Do Until IsEmpty(Sheets("4C. URP").Cells(iRow4, 3).Value)
+  
+                 Application.ScreenUpdating = False
+                Sheets("4C. URP").Unprotect "Gstr4@321"
+                
+                    temp4 = Sheets("4C. URP").Cells(iRow4, 3).Value & "_" & Sheets("4C. URP").Cells(iRow4, 2).Value & "_" & Sheets("4C. URP").Cells(iRow4, 4).Value
+                    
+                If UCase(temp4) = UCase(k1) Then
+                If Trim(Sheets("4C. URP").Cells(iRow4, 5).Value & vbNullString) <> vbNullString And (Sheets("4C. URP").Cells(iRow4, 3).Value) = "Yes" Then
+                    
+                If Not CommonUtil.IsInSupplyType(Trim(Sheets("4C. URP").Cells(iRow4, 5).Value & vbNullString)) Then
+              
+            
+                         Sheets("4C. URP").Cells(iRow4, 5).Interior.ColorIndex = 3
+                         Sheets("4C. URP").Cells(iRow4, 5).ClearComments
+                         Sheets("4C. URP").Cells(iRow4, 5).AddComment "Please select correct supply type from the dropdown i.e. either Intra-State or Inter-State."
+                         Sheets("4C. URP").Cells(iRow4, 13).Value = "Error found in row."
+                         isValidated = isValidated And False
+                
+                 
+                 ElseIf Trim(Sheets("4C. URP").Cells(iRow4, 5).Value & vbNullString) = vbNullString Then
+          
+                   Sheets("4C. URP").Cells(iRow4, 5).Interior.ColorIndex = 3
+                    Sheets("4C. URP").Cells(iRow4, 5).ClearComments
+                   Sheets("4C. URP").Cells(iRow4, 5).AddComment "Please provide details in mandatory fields."
+                   Sheets("4C. URP").Cells(iRow4, 13).Value = "Error found in row."
+                   isValidated = isValidated And False
+                
+                
+                  Else
+                        Range(Sheets("4C. URP").Cells(iRow4, 5), Sheets("4C. URP").Cells(iRow4, 5)).Interior.ColorIndex = 3
+                        Sheets("4C. URP").Activate
+                        ActiveSheet.Range(Cells(iRow4, 5), Cells(iRow4, 5)).Select
+                        For Each rCell4 In Selection
+                            With rCell4
+                                .ClearComments
+                                .AddComment
+                                .Comment.Text Text:="Records on same PAN/ without PAN attracting reverse charge, shall have same supply type - Inter-State/ Intra-State."
+                            End With
+                        Next
+                        Sheets("4C. URP").Cells(iRow4, 13).Value = "Error found in row."
+                        isValidated = isValidated And False
+                    End If
+                    End If
+                    End If
+
+                    iRow4 = iRow4 + 1
+                Loop
+            End If
+            ' End If
+            temp4 = ""
+
+        Next
+
+    validateURP = isValidated
+    Application.ScreenUpdating = True
+    Sheets("4C. URP").Protect "Gstr4@321"
+    
+End Function
+
+Public Sub validateURPSheet()
+    If Not validateURP Then
+        MsgBox "There are errors in the sheet(highlighted by Red colored cells).You can also filter erroneous items based on the Error(if any) column at the end of the sheet.", vbCritical
+    Else
+        MsgBox "Sheet successfully validated. No error(s) found", vbOKOnly
+    End If
+End Sub
+Public Sub clearURPSheet()
+    Application.ScreenUpdating = False
+    Sheets("4C. URP").Unprotect "Gstr4@321"
+    With Sheets("4C. URP")
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 7)).ClearContents
+        .Range(.Cells(START_ROW, 8), .Cells(FIXED_END_ROW_TO_CLEAR, 14)).ClearContents
+        
+      Application.ScreenUpdating = False
+      Sheets("4C. URP").Unprotect "Gstr4@321"
+
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 7)).Interior.ColorIndex = 2
+        .Range(.Cells(START_ROW, 8), .Cells(FIXED_END_ROW_TO_CLEAR, 14)).Interior.ColorIndex = 2
+
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 7)).ClearComments
+        .Range(.Cells(START_ROW, 8), .Cells(FIXED_END_ROW_TO_CLEAR, 14)).ClearComments
+    End With
+    Application.ScreenUpdating = False
+     Sheets("4C. URP").Protect "Gstr4@321"
+End Sub
+Public Function getLastRowURP() As Long
+    Dim rowNo As Long: rowNo = 6
+     getLastRowURP = rowNo
+    
+    Do Until IsEmpty(Sheets("4C. URP").Cells(rowNo, 3).Value) And IsEmpty(Sheets("4C. URP").Cells(rowNo, 4).Value) And IsEmpty(Sheets("4C. URP").Cells(rowNo, 5).Value) And IsEmpty(Sheets("4C. URP").Cells(rowNo, 6).Value) And IsEmpty(Sheets("4C. URP").Cells(rowNo, 7).Value) And IsEmpty(Sheets("4C. URP").Cells(rowNo, 12).Value)
+        
+            
+        rowNo = rowNo + 1
+        getLastRowURP = rowNo
+        If rowNo = 15007 Then
+            Exit Do
+        End If
+    Loop
+
+End Function
+
+
+-------------------------------------------------------------------------------

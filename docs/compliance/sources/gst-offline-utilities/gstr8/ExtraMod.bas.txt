@@ -1,0 +1,92 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+'To find the last row in TCS Sheet
+Public Function getLastRowTCS() As Long
+    Dim rowNo As Long: rowNo = 6
+    getLastRowTCS = rowNo
+    
+    Do Until IsEmpty(Sheets("3 TCS").Cells(rowNo, 2).value) And IsEmpty(Sheets("3 TCS").Cells(rowNo, 3).value) And IsEmpty(Sheets("3 TCS").Cells(rowNo, 4).value) And IsEmpty(Sheets("3 TCS").Cells(rowNo, 5).value) And IsEmpty(Sheets("3 TCS").Cells(rowNo, 6).value) And IsEmpty(Sheets("3 TCS").Cells(rowNo, 11).value)
+        
+            
+        rowNo = rowNo + 1
+        getLastRowTCS = rowNo
+        If rowNo = 15007 Then
+            Exit Do
+        End If
+    Loop
+
+End Function
+
+'To find the last row in UNRD Sheet
+Public Function getLastRowUNRD() As Long
+    Dim rowNo As Long: rowNo = 6
+    getLastRowUNRD = rowNo
+    
+    Do Until IsEmpty(Sheets("3.1 UNRD").Cells(rowNo, 2).value) And IsEmpty(Sheets("3.1 UNRD").Cells(rowNo, 3).value) And IsEmpty(Sheets("3.1 UNRD").Cells(rowNo, 4).value) And IsEmpty(Sheets("3.1 UNRD").Cells(rowNo, 5).value)
+        rowNo = rowNo + 1
+        getLastRowUNRD = rowNo
+        If rowNo = 1048576 Then
+            Exit Do
+        End If
+    Loop
+End Function
+
+'To find the last row in TCS Amend Sheet
+Public Function getLastRowAmend() As Long
+    Dim rowNo As Long: rowNo = 7
+    getLastRowAmend = rowNo
+    Do Until (IsEmpty(Sheets("4 Amend").Cells(rowNo, 2).value) And IsEmpty(Sheets("4 Amend").Cells(rowNo, 3).value) And IsEmpty(Sheets("4 Amend").Cells(rowNo, 4).value) And IsEmpty(Sheets("4 Amend").Cells(rowNo, 5).value) And IsEmpty(Sheets("4 Amend").Cells(rowNo, 6).value) And IsEmpty(Sheets("4 Amend").Cells(rowNo, 7).value) And IsEmpty(Sheets("4 Amend").Cells(rowNo, 8).value) And IsEmpty(Sheets("4 Amend").Cells(rowNo, 9).value) And IsEmpty(Sheets("4 Amend").Cells(rowNo, 14).value))
+        
+        rowNo = rowNo + 1
+        getLastRowAmend = rowNo
+        If rowNo = 15008 Then
+            Exit Do
+        End If
+    Loop
+
+End Function
+
+' To find the last row in UNRD Amend Sheet
+Public Function getLastRowUNRDA() As Long
+    Dim rowNo As Long: rowNo = 7
+    getLastRowUNRDA = rowNo
+    Do Until (IsEmpty(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value) And IsEmpty(Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).value) And IsEmpty(Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).value) And IsEmpty(Sheets("4.1 Amend-UNRD").Cells(rowNo, 5).value) And IsEmpty(Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).value) And IsEmpty(Sheets("4.1 Amend-UNRD").Cells(rowNo, 7).value) And IsEmpty(Sheets("4.1 Amend-UNRD").Cells(rowNo, 8).value) And IsEmpty(Sheets("4.1 Amend-UNRD").Cells(rowNo, 9).value))
+        rowNo = rowNo + 1
+        getLastRowUNRDA = rowNo
+        If rowNo = 1048576 Then
+            Exit Do
+        End If
+    Loop
+End Function
+
+'To find the last row in Suppliers Master-RD
+Public Function getLastRowMaster() As Long
+    Dim rowNo As Long: rowNo = 5
+    getLastRowMaster = rowNo
+    Do Until (IsEmpty(Sheets("Suppliers Master-RD").Cells(rowNo, 3).value))
+        If rowNo = 30006 Then
+            Exit Do
+        End If
+            
+        rowNo = rowNo + 1
+        getLastRowMaster = rowNo
+        
+    Loop
+
+End Function
+
+'To find the last row in Suppliers Master-UNRD
+Public Function getLastRowMasterEID() As Long
+    Dim rowNo As Long: rowNo = 5
+    getLastRowMasterEID = rowNo
+    Do Until (IsEmpty(Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).value))
+        If rowNo = 1049576 Then
+            Exit Do
+        End If
+            
+        rowNo = rowNo + 1
+        getLastRowMasterEID = rowNo
+        
+    Loop
+
+End Function
+-------------------------------------------------------------------------------

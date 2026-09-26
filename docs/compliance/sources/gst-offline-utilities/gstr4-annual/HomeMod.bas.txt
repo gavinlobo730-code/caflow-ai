@@ -1,0 +1,100 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Public Sub loadGSTINData(jsonData As Object)
+    Dim i As Integer: i = START_ROW
+    Dim fpx As String
+    
+    If (jsonData.Exists("gstin") And Trim(jsonData("gstin") & vbNullString) <> vbNullString) _
+        And (jsonData.Exists("fp") And Trim(jsonData("fp") & vbNullString) <> vbNullString) _
+        And (Len(jsonData("fp")) = 6) Then
+        fpx = jsonData("fp")
+              
+        If (Left(fpx, 2) = "03") Then
+            'check matching gstin,fp,fy
+            Dim sheetFP As String: sheetFP = (Left(Application.VLookup(Sheets("Home").Cells(7, 3).Value, Sheets("master").Range("fin_map"), 2, False), 4) + 1)
+             sheetFP = "03" + sheetFP
+            If UCase(Trim(Sheets("Home").Cells(i, 2).Value)) <> UCase(jsonData("gstin")) _
+                Or fpx <> sheetFP Then
+                
+                MsgBox ("GSTIN/Financial year provided in Home sheet are not matching with the JSON file."), vbCritical
+                Application.Cursor = xlNormal 'show processing complete
+                End 'terminate calling sub
+            
+            End If
+          Else
+           MsgBox ("GSTIN/Financial year provided in Home sheet are not matching with the JSON file."), vbCritical
+           Application.Cursor = xlNormal 'show processing complete
+           End 'terminate calling sub
+        End If
+    Else
+        MsgBox "GSTIN/Financial year provided in Home sheet are not matching with the JSON file.", vbCritical
+        End 'terminate calling sub
+    End If
+
+    
+End Sub
+
+Public Function validateGSTINData() As Boolean
+    Dim icol As Integer, iRow As Integer: iRow = START_ROW
+    Dim isValidated As Boolean: isValidated = True
+    
+    'Sheets("Home").Unprotect Password:=PW_PROTECT ' unprotect sheet
+    Range(Sheets("Home").Cells(iRow, 2), Sheets("Home").Cells(iRow, 5)).Interior.ColorIndex = 2
+    Range(Sheets("Home").Cells(iRow, 2), Sheets("Home").Cells(iRow, 5)).ClearComments
+    'Mandatory field check
+    For icol = 2 To 3
+        If icol = 2 And Trim(Sheets("Home").Cells(iRow, icol).Value & vbNullString) = vbNullString Then
+            Sheets("Home").Cells(iRow, icol).Interior.ColorIndex = 3
+            Sheets("Home").Cells(iRow, icol).ClearComments
+            Sheets("Home").Cells(iRow, icol).AddComment "Please enter a GSTIN."
+            isValidated = isValidated And False
+        End If
+        
+        
+        If icol = 3 And Trim(Sheets("Home").Cells(iRow, icol).Value & vbNullString) = vbNullString Then
+            Sheets("Home").Cells(iRow, icol).Interior.ColorIndex = 3
+            Sheets("Home").Cells(iRow, icol).ClearComments
+            Sheets("Home").Cells(iRow, icol).AddComment "Please select financial year."
+            isValidated = isValidated And False
+        End If
+        
+    Next
+    'GSTIN/CTIN format check
+    If Trim(Sheets("Home").Cells(iRow, 2).Value & vbNullString) <> vbNullString Then
+    If (Trim(Sheets("Home").Cells(iRow, 2).Value & vbNullString) <> vbNullString _
+    And Not CommonUtil.matchRegex(Trim(Sheets("Home").Cells(iRow, 2).Value), GSTIN_REGEX)) Then
+        Sheets("Home").Cells(iRow, 2).Interior.ColorIndex = 3
+        Sheets("Home").Cells(iRow, 2).ClearComments
+        Sheets("Home").Cells(iRow, 2).AddComment "Please enter a valid GSTIN."
+        isValidated = isValidated And False
+        
+    'If Trim(Sheets("Home").Cells(iRow, 2).Value & vbNullString) <> vbNullString And
+     ElseIf 99 = CStr(Left(Sheets("Home").Cells(iRow, 2).Value, 2)) Then  'check GSTIN/CTIN state code
+        Sheets("Home").Cells(iRow, 2).Interior.ColorIndex = 3
+        Sheets("Home").Cells(iRow, 2).ClearComments
+        Sheets("Home").Cells(iRow, 2).AddComment "Please enter a valid GSTIN."
+        isValidated = isValidated And False
+        ' Need to test with first one
+    ElseIf Trim(Sheets("Home").Cells(iRow, 3).Value & vbNullString) <> vbNullString Then 'check GSTIN/CTIN state code
+        If Not CommonUtil.IsFyInArray(Trim(Sheets("Home").Cells(iRow, 3).Value & vbNullString)) Then
+        Sheets("Home").Cells(iRow, 3).Interior.ColorIndex = 3
+        Sheets("Home").Cells(iRow, 3).ClearComments
+        Sheets("Home").Cells(iRow, 3).AddComment "Please select correct option for financial year from the dropdown."
+        isValidated = isValidated And False
+        End If
+       
+    ElseIf Not CommonUtil.matchRegex(CStr(Left(Sheets("Home").Cells(iRow, 2).Value, 2)), POSCOD_REGEX) Then  'check GSTIN/CTIN state code
+        Sheets("Home").Cells(iRow, 2).Interior.ColorIndex = 3
+        Sheets("Home").Cells(iRow, 2).ClearComments
+        Sheets("Home").Cells(iRow, 2).AddComment "Please enter a valid GSTIN."
+        isValidated = isValidated And False
+  End If
+    End If
+    
+    'Sheets("Home").Protect Password:=PW_PROTECT ' protect sheet again
+    validateGSTINData = isValidated
+End Function
+
+
+
+
+-------------------------------------------------------------------------------

@@ -1,0 +1,1200 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Public Sub Validate_Reasons()
+    validate = True
+    
+    sheet_name = ActiveSheet.Name
+    'MsgBox sheet_name
+    If sheet_name = sheet2_name Then
+        col = fixed_col_two_six
+        start_row = start_row_two_six
+        end_row = end_row_two_six
+        sheet_name = sheet2_name
+        sv_col = sv_col_two_six
+    ElseIf sheet_name = sheet4_name Then
+        col = fixed_col_two_eight
+        start_row = start_row_two_eight
+        end_row = end_row_two_eight
+        sheet_name = sheet4_name
+        sv_col = sv_col_two_eight
+    ElseIf sheet_name = sheet6_name Then
+        col = fixed_col_three_ten
+        start_row = start_row_three_ten
+        end_row = end_row_three_ten
+        sheet_name = sheet6_name
+        sv_col = sv_col_three_ten
+    ElseIf sheet_name = sheet9_name Then
+        col = fixed_col_four_thirt
+        start_row = start_row_four_thirt
+        end_row = end_row_four_thirt
+        sheet_name = sheet9_name
+        sv_col = sv_col_four_thirt
+    
+    ElseIf sheet_name = sheet11_name Then
+        col = fixed_col_four_fift
+        start_row = start_row_four_fift
+        end_row = end_row_four_fift
+        sheet_name = sheet11_name
+        sv_col = sv_col_four_fift
+    End If
+    For i = start_row To end_row
+        Sheets(sheet_name).Cells(i, col).Interior.ColorIndex = 0
+        Sheets(sheet_name).Cells(i, sv_col).ClearContents
+    Next
+    Call Delete_reasons(sheet_name, start_row, end_row, col)
+
+    
+    For i = start_row To end_row
+        Sheets(sheet_name).Cells(i, col) = Trim(Sheets(sheet_name).Cells(i, col))
+        If (Sheets(sheet_name).Cells(i, col).value & vbNullString) <> vbNullString And Not Common_Module.matchRegex((Sheets(sheet_name).Cells(i, col).value), char_REGEX) Then
+        
+            Call Common_Module.display_error(sheet_name, i, col, EM1)
+        
+        End If
+    Next
+    If validate = False Then
+        MsgBox "There are Validation error(s) in the sheet.Correct them to proceed."
+    Else
+        MsgBox "Sheet Successfully validated."
+    End If
+End Sub
+Public Function Delete_reasons(sheet_name, start_row, end_row, fixed_col)
+    last_value = start_row
+    For i = start_row + 1 To start_row + 9
+        If (Sheets(sheet_name).Cells(i, fixed_col).value) <> vbNullString Then
+            last_value = i
+        End If
+    Next
+    If last_value = start_row Then
+        GoTo s
+    End If
+    If last_value > start_row And (Sheets(sheet_name).Cells(start_row, fixed_col).value) = vbNullString Then
+        Common_Module.display_error sheet_name, start_row, fixed_col, EM9
+    End If
+    i = start_row + 1
+    Do While i <= last_value
+        If (Sheets(sheet_name).Cells(i, fixed_col).value) = vbNullString Then
+            Rows(i).EntireRow.Delete
+            'Sheets(sheet_name).Range(fixed_col & CStr(i)).Delete Shift:=xlUp
+            Common_Module.Decrement_Last_row (sheet_name)
+            last_value = last_value - 1
+            end_row = end_row - 1
+            GoTo h
+        End If
+        i = i + 1
+h:
+    Loop
+s:
+    i = last_value + 1
+    j = start_row + 9
+    Do While i <= j
+        If (Sheets(sheet_name).Cells(i, Chr(Asc(fixed_col) - 1)).value) <> vbNullString Then
+            Rows(i).EntireRow.Delete
+            Common_Module.Decrement_Last_row (sheet_name)
+            end_row = end_row - 1
+            j = j - 1
+            GoTo n
+        End If
+        i = i + 1
+n:
+    Loop
+    'end_row = last_value
+    Call Common_Module.Arrange_Reasons(sheet_name, start_row, end_row, fixed_col)
+    
+End Function
+Public Function Delete_expense(sheet_name, start_row, end_row, fixed_col)
+    last_value = start_row
+    For i = start_row + 1 To end_row
+        If Trim(Sheets(sheet_name).Cells(i, fixed_col).value) <> vbNullString Or Trim(Sheets(sheet_name).Cells(i, Chr(Asc(fixed_col) + 2)).value) <> vbNullString Or Trim(Sheets(sheet_name).Cells(i, Chr(Asc(fixed_col) + 4)).value) <> vbNullString Then
+            last_value = i
+        End If
+    Next
+    If last_value = start_row Then
+        GoTo s
+    End If
+    If last_value > start_row And Trim(Sheets(sheet_name).Cells(start_row, fixed_col).value) = vbNullString And Trim(Sheets(sheet_name).Cells(start_row, Chr(Asc(fixed_col) + 2)).value) = vbNullString And Trim(Sheets(sheet_name).Cells(start_row, Chr(Asc(fixed_col) + 4)).value) = vbNullString Then
+        Common_Module.display_error sheet_name, start_row, fixed_col, EM9
+        Common_Module.display_error sheet_name, start_row, Chr(Asc(fixed_col) + 2), EM9
+        Common_Module.display_error sheet_name, start_row, Chr(Asc(fixed_col) + 4), EM9
+    End If
+    i = start_row + 1
+    Do While i <= last_value
+        If Trim(Sheets(sheet_name).Cells(i, fixed_col).value) = vbNullString And Trim(Sheets(sheet_name).Cells(i, Chr(Asc(fixed_col) + 2)).value) = vbNullString And Trim(Sheets(sheet_name).Cells(i, Chr(Asc(fixed_col) + 4)).value) = vbNullString Then
+            Common_Module.Decrement_Last_row (sheet_name)
+            last_value = last_value - 1
+            end_row = end_row - 1
+            Rows(i).EntireRow.Delete
+'            Sheets(sheet_name).Range(fixed_col & CStr(i)).Delete Shift:=xlUp
+'            Sheets(sheet_name).Range(Chr(Asc(fixed_col) + 2) & CStr(i)).Delete Shift:=xlUp
+'            Sheets(sheet_name).Range(Chr(Asc(fixed_col) + 4) & CStr(i)).Delete Shift:=xlUp
+'            Sheets(sheet_name).Range(Chr(Asc(fixed_col) - 2) & CStr(i)).Delete Shift:=xlUp
+'            Sheets(sheet_name).Range(Chr(Asc(fixed_col) - 3) & CStr(i)).Delete Shift:=xlUp
+            GoTo h
+        End If
+        i = i + 1
+h:
+    Loop
+s:
+    i = last_value + 1
+    j = end_row + 1
+    Do While i < j
+        If Trim(Sheets(sheet_name).Cells(i, Chr(Asc(fixed_col) - 2)).value) <> vbNullString Then
+            Common_Module.Decrement_Last_row (sheet_name)
+            end_row = end_row - 1
+            Rows(i).EntireRow.Delete
+            
+            j = j - 1
+            GoTo n
+        End If
+        i = i + 1
+n:
+    Loop
+    
+    Call Common_Module.Arrange_Expense(sheet_name, start_row, end_row, fixed_col)
+End Function
+Public Function Delete_qual(sheet_name, start_row, end_row, fixed_col)
+    last_value = start_row
+    For i = start_row + 1 To end_row
+        If Trim(Sheets(sheet_name).Cells(i, fixed_col).value) <> vbNullString Or Trim(Sheets(sheet_name).Cells(i, Chr(Asc(fixed_col) + 4)).value) <> vbNullString Then
+            last_value = i
+        End If
+    Next
+    If last_value = start_row Then
+        GoTo s
+    End If
+    If last_value > start_row And Trim(Sheets(sheet_name).Cells(start_row, fixed_col).value) = vbNullString And Trim(Sheets(sheet_name).Cells(start_row, Chr(Asc(fixed_col) + 4)).value) = vbNullString Then
+        Common_Module.display_error sheet_name, start_row, fixed_col, EM9
+        Common_Module.display_error sheet_name, start_row, Chr(Asc(fixed_col) + 4), EM9
+    End If
+    i = start_row + 1
+    Do While i <= last_value
+        If Trim(Sheets(sheet_name).Cells(i, fixed_col).value) = vbNullString And Trim(Sheets(sheet_name).Cells(i, Chr(Asc(fixed_col) + 4)).value) = vbNullString Then
+            Rows(i).EntireRow.Delete
+            Common_Module.Decrement_Last_row (sheet_name)
+            last_value = last_value - 1
+            end_row = end_row - 1
+            GoTo h
+        End If
+        i = i + 1
+h:
+    Loop
+s:
+    i = last_value + 1
+    j = end_row + 1
+    Do While i < j
+        If Trim(Sheets(sheet_name).Cells(i, Chr(Asc(fixed_col) - 1)).value) <> vbNullString Then
+            Rows(i).EntireRow.Delete
+            Common_Module.Decrement_Last_row (sheet_name)
+            end_row = end_row - 1
+            j = j - 1
+            GoTo n
+        End If
+        i = i + 1
+n:
+    Loop
+    
+    Call Common_Module.Arrange_qual(sheet_name, start_row, end_row, fixed_col)
+End Function
+Public Sub Validate_Table5()
+    Dim i As Integer
+    Dim col As String, sheet_name As String
+    validate = True
+    
+    sheet_name = sheet1_name
+    start_row = start_row_two_five
+    end_row = end_row_two_five
+    col = fixed_col_two_five
+    Sheets(sheet_name).Range(col & CStr(start_row) & ":" & col & CStr(end_row)).Interior.ColorIndex = 0
+    
+    Sheets(sheet_name).Range(sv_col_two_five & CStr(start_row) & ":" & sv_col_two_five & CStr(end_row)).ClearContents
+    Sheets(sheet_name).Cells(end_row, col).Interior.ColorIndex = 15
+    Sheets(sheet_name).Cells(end_row - 2, col).Interior.ColorIndex = 15
+    
+    Dim selected_fy As String
+    selected_fy = Worksheets(home_sheet).Range("D10").value
+    
+    If Trim(Sheets(sheet_name).Cells(start_row, col).value) = vbNullString Then
+        Call Common_Module.display_error(sheet_name, start_row, col, EM2)
+    End If
+
+    If Trim(Sheets(sheet_name).Cells(end_row - 1, col).value) = vbNullString Then
+        Call Common_Module.display_error(sheet_name, end_row - 1, col, EM2)
+    End If
+    
+    For i = start_row To start_row + 5
+        validate1 = Common_Module.Negative_Amt(i, col, sheet_name)
+    Next
+    validate1 = Common_Module.Negative_Amt(start_row + 6, col, sheet_name)
+    validate1 = Common_Module.Negative_Amt(start_row + 7, col, sheet_name)
+    For i = start_row + 8 To start_row + 11
+        validate1 = Common_Module.Negative_Amt(i, col, sheet_name)
+    Next
+    For i = start_row + 12 To start_row + 14
+        validate1 = Common_Module.Negative_Amt(i, col, sheet_name)
+    Next
+    validate1 = Common_Module.Negative_Amt(end_row - 1, col, sheet_name)
+    
+    'If selected_fy = PARTB_RESTRICTED_FY Then'
+    If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) Then
+        Worksheets(sheet1_name).Range("h12:i12").Interior.Color = RGB(191, 191, 191)
+    End If
+    
+    If validate = False Then
+        MsgBox "There are Validation error(s) in the sheet.Correct them to proceed."
+    Else
+        MsgBox "Sheet Successfully validated."
+    End If
+    
+End Sub
+Public Sub Validate_Table7()
+    Dim i As Integer
+    Dim col As String, sheet_name As String
+    validate = True
+    
+    sheet_name = sheet3_name
+    start_row = start_row_two_seven
+    end_row = end_row_two_seven
+    col = fixed_col_two_seven
+    Sheets(sheet_name).Range(col & CStr(start_row) & ":" & col & CStr(end_row)).Interior.ColorIndex = 0
+    Sheets(sheet_name).Range(sv_col_two_seven & CStr(start_row) & ":" & sv_col_two_seven & CStr(end_row)).ClearContents
+    Sheets(sheet_name).Cells(start_row, col).Interior.ColorIndex = 15
+    Sheets(sheet_name).Cells(end_row, col).Interior.ColorIndex = 15
+    Sheets(sheet_name).Cells(end_row - 2, col).Interior.ColorIndex = 15
+    
+    If Trim(Sheets(sheet_name).Cells(end_row - 1, col).value) = vbNullString Then
+        Call Common_Module.display_error(sheet_name, end_row - 1, col, EM2)
+    End If
+    For i = start_row + 1 To start_row + 3
+        validate1 = Common_Module.Negative_Amt(i, col, sheet_name)
+    Next
+    validate1 = Common_Module.Negative_Amt(end_row - 1, col, sheet_name)
+    
+    If validate = False Then
+        MsgBox "There are Validation error(s) in the sheet.Correct them to proceed."
+    Else
+        MsgBox "Sheet Successfully validated."
+    End If
+    
+End Sub
+Public Sub Validate_Table9()
+    Dim i As Integer, irow As Integer, message As Boolean
+    Dim tcol As String, ccol As String, scol As String, cecol As String, icol As String, sheet_name As String
+    validate = True
+    sheet_name = sheet5_name
+    irow = start_row_three_nine
+    tcol = taxv_col_three_nine
+    ccol = ctax_col_three_nine
+    scol = stax_col_three_nine
+    icol = itax_col_three_nine
+    cecol = cetax_col_three_nine
+    end_row = end_row_three_nine
+    Sheets(sheet_name).Range(ccol & CStr(start_row_three_nine) & ":" & cecol & CStr(end_row_three_nine)).Interior.ColorIndex = 0
+    Sheets(sheet_name).Range(tcol & CStr(start_row_three_nine) & ":" & tcol & CStr(IIf(isFY2024OrLater, end_row_three_nine - 8, end_row_three_nine - 7))).Interior.ColorIndex = 0
+    
+
+    Sheets(sheet_name).Range(sv_col_three_nine & CStr(irow) & ":" & sv_col_three_nine & CStr(end_row)).ClearContents
+    Sheets(sheet_name).Range(ccol & CStr(end_row_three_nine) & ":" & cecol & CStr(end_row_three_nine)).Interior.ColorIndex = 15
+    Sheets(sheet_name).Range(ccol & CStr(end_row_three_nine - 2) & ":" & cecol & CStr(end_row_three_nine - 2)).Interior.ColorIndex = 15
+    validate1 = Common_Module.Negative_Amt(irow, tcol, sheet_name)
+    irowEnd = IIf(isFY2024OrLater, end_row_three_nine - 8, end_row_three_nine - 7)
+    For s = irow To irowEnd
+        If (Sheets(sheet_name).Cells(s, scol).value <> vbNullString Or Sheets(sheet_name).Cells(s, icol).value <> vbNullString Or Sheets(sheet_name).Cells(s, ccol).value <> vbNullString) And Sheets(sheet_name).Cells(s, tcol).value = vbNullString Then
+            Common_Module.display_error sheet_name, s, tcol, EM13
+        End If
+    Next
+    
+    For i = irow + 1 To irowEnd
+        validate1 = Common_Module.Negative_Amt(i, tcol, sheet_name)
+    Next
+    For i = irow To end_row_three_nine
+        If Not (i = end_row_three_nine Or i = end_row_three_nine - 2 Or i = end_row_three_nine - 1) Then
+            validate1 = Common_Module.Negative_Amt(i, ccol, sheet_name)
+        End If
+    Next
+    For i = irow To end_row_three_nine
+        If Not (i = end_row_three_nine Or i = end_row_three_nine - 2 Or i = end_row_three_nine - 1) Then
+            validate1 = Common_Module.Negative_Amt(i, scol, sheet_name)
+        End If
+    Next
+    For i = irow To end_row_three_nine
+       If Not (i = end_row_three_nine Or i = end_row_three_nine - 2 Or i = end_row_three_nine - 1) Then
+            validate1 = Common_Module.Negative_Amt(i, icol, sheet_name)
+        End If
+    Next
+    For i = irow To end_row_three_nine
+        If Not (i = end_row_three_nine Or i = end_row_three_nine - 2 Or i = end_row_three_nine - 1) Then
+            validate1 = Common_Module.Negative_Amt(i, cecol, sheet_name)
+        End If
+    Next
+   message = True
+    For s = 0 To 4
+        If s <> 3 Then
+            If Sheets(sheet_name).Cells(end_row_three_nine - 1, Chr(Asc(ccol) + s)).value = vbNullString Then
+            If message Then
+                Common_Module.display_error sheet_name, end_row_three_nine - 1, Chr(Asc(ccol) + s), EM2
+                Else
+                Common_Module.display_error sheet_name, end_row_three_nine - 1, Chr(Asc(ccol) + s), ""
+                  
+                  End If
+                  message = False
+            End If
+        End If
+    Next
+    validate1 = Common_Module.Negative_Amt(end_row_three_nine - 1, ccol, sheet_name)
+    validate1 = Common_Module.Negative_Amt(end_row_three_nine - 1, scol, sheet_name)
+    validate1 = Common_Module.Negative_Amt(end_row_three_nine - 1, icol, sheet_name)
+    validate1 = Common_Module.Negative_Amt(end_row_three_nine - 1, cecol, sheet_name)
+    If validate = False Then
+        MsgBox "There are Validation error(s) in the sheet.Correct them to proceed."
+    Else
+        MsgBox "Sheet Successfully validated."
+    End If
+End Sub
+Public Sub Validate_Table11()
+    Dim tcol As String, ccol As String, scol As String, cecol As String, icol As String, sheet_name As String
+    Dim i As Integer
+    validate = True
+    sheet_name = sheet7_name
+    irow = start_row_three_eleven
+    tcol = taxv_col_three_eleven
+    ccol = ctax_col_three_eleven
+    scol = stax_col_three_eleven
+    icol = itax_col_three_eleven
+    cecol = cetax_col_three_eleven
+    end_row = end_row_three_eleven
+    Sheets(sheet_name).Range(ccol & CStr(start_row_three_eleven) & ":" & cecol & CStr(end_row_three_eleven)).Interior.ColorIndex = 0
+    Sheets(sheet_name).Range(tcol & CStr(start_row_three_eleven) & ":" & tcol & CStr(IIf(isFY2024OrLater, end_row_three_eleven - 5, end_row_three_eleven - 4))).Interior.ColorIndex = 0
+    
+
+    Sheets(sheet_name).Range(sv_col_three_eleven & CStr(irow) & ":" & sv_col_three_eleven & CStr(end_row)).ClearContents
+    
+    irowEnd = IIf(isFY2024OrLater, end_row_three_eleven - 1, end_row_three_eleven)
+    For s = irow To irowEnd - 4
+        If (Sheets(sheet_name).Cells(s, scol).value <> vbNullString Or Sheets(sheet_name).Cells(s, icol).value <> vbNullString Or Sheets(sheet_name).Cells(s, ccol).value <> vbNullString) And Sheets(sheet_name).Cells(s, tcol).value = vbNullString Then
+            Common_Module.display_error sheet_name, s, tcol, EM13
+        End If
+    Next
+    For i = irow To irowEnd - 4
+        validate1 = Common_Module.Negative_Amt(i, tcol, sheet_name)
+    Next
+    For i = irow To end_row_three_eleven
+        validate1 = Common_Module.Negative_Amt(i, ccol, sheet_name)
+    Next
+    For i = irow To end_row_three_eleven
+        validate1 = Common_Module.Negative_Amt(i, scol, sheet_name)
+    Next
+    For i = irow To end_row_three_eleven
+        validate1 = Common_Module.Negative_Amt(i, icol, sheet_name)
+    Next
+    For i = irow To end_row_three_eleven
+        validate1 = Common_Module.Negative_Amt(i, cecol, sheet_name)
+    Next
+    If validate = False Then
+        MsgBox "There are Validation error(s) in the sheet.Correct them to proceed."
+    Else
+        MsgBox "Sheet Successfully validated."
+    End If
+End Sub
+Public Sub Validate_Table12()
+    Dim i As Integer
+    Dim col As String, sheet_name As String
+    validate = True
+    
+    sheet_name = sheet8_name
+    start_row = start_row_four_twelve
+    end_row = end_row_four_twelve
+    col = fixed_col_four_twelve
+    Sheets(sheet_name).Range(col & CStr(start_row) & ":" & col & CStr(end_row)).Interior.ColorIndex = 0
+    Sheets(sheet_name).Range(sv_col_four_twelve & CStr(start_row) & ":" & sv_col_four_twelve & CStr(end_row)).ClearContents
+    Sheets(sheet_name).Cells(end_row, col).Interior.ColorIndex = 15
+    Sheets(sheet_name).Cells(end_row - 2, col).Interior.ColorIndex = 15
+    For i = start_row To end_row - 1
+        Sheets(sheet_name).Cells(i, col).Interior.ColorIndex = 0
+    Next
+    If Trim(Sheets(sheet_name).Cells(start_row, col).value) = vbNullString Then
+            Call Common_Module.display_error(sheet_name, start_row, col, EM2)
+        End If
+    For i = start_row + 3 To end_row - 1
+        If Trim(Sheets(sheet_name).Cells(i, col).value) = vbNullString Then
+            Call Common_Module.display_error(sheet_name, i, col, EM2)
+        End If
+    Next
+    For i = start_row To start_row + 2
+        validate1 = Common_Module.Negative_Amt(i, col, sheet_name)
+    Next
+    validate1 = Common_Module.Negative_Amt(end_row - 1, col, sheet_name)
+    
+    If validate = False Then
+        MsgBox "There are Validation error(s) in the sheet.Correct them to proceed."
+    Else
+        MsgBox "Sheet Successfully validated."
+    End If
+End Sub
+Public Sub Validate_Table16()
+    Dim tcol As String, ccol As String, scol As String, cecol As String, icol As String, sheet_name As String
+    Dim i As Integer
+    validate = True
+    sheet_name = sheet12_name
+    irow = start_row_four_sixt
+    tcol = fixed_col_four_sixt
+    end_row = end_row_four_sixt
+    Sheets(sheet_name).Range(tcol & CStr(start_row_four_sixt) & ":" & tcol & CStr(end_row_four_sixt)).Interior.ColorIndex = 0
+    
+
+    Sheets(sheet_name).Range(sv_col_four_sixt & CStr(irow) & ":" & sv_col_four_sixt & CStr(end_row)).ClearContents
+    
+    
+    For i = irow To end_row_four_sixt
+        validate1 = Common_Module.Negative_Amt(i, tcol, sheet_name)
+    Next
+    
+    If validate = False Then
+        MsgBox "There are Validation error(s) in the sheet.Correct them to proceed."
+    Else
+        MsgBox "Sheet Successfully validated."
+    End If
+End Sub
+Public Sub Validate_TableFive()
+    Dim tcol As String, ccol As String, scol As String, cecol As String, icol As String, sheet_name As String
+    Dim i As Integer
+    Dim selected_fy As String
+    
+    selected_fy = Worksheets(home_sheet).Range("D10").value
+    
+    sheet_name = sheet13_name
+    validate = True
+    
+    irow = start_row_five
+    tcol = taxv_col_five
+    ccol = ctax_col_five
+    scol = stax_col_five
+    icol = itax_col_five
+    cecol = cetax_col_five
+    end_row = end_row_five
+    
+    Sheets(sheet_name).Range(tcol & CStr(start_row_five) & ":" & cecol & CStr(end_row_five)).Interior.ColorIndex = 0
+    Sheets(sheet_name).Range(sv_col_five & CStr(irow) & ":" & sv_col_five & CStr(end_row)).ClearContents
+     If isFY2024OrLater Then
+    Sheets(sheet_name).Range("D16:E16").Interior.Color = RGB(128, 128, 128)
+     End If
+    
+    
+    ' For s = irow To end_row_five
+     '   If (Sheets(sheet_name).Cells(s, scol).value <> vbNullString Or Sheets(sheet_name).Cells(s, icol).value <> vbNullString Or Sheets(sheet_name).Cells(s, ccol).value <> vbNullString) And Sheets(sheet_name).Cells(s, tcol).value = vbNullString Then
+      '      Common_Module.display_error sheet_name, s, tcol, EM13
+       '     End If
+      
+   ' Next
+   
+   
+   ' Skipping G2 column and row 15 if year is 24 or greater
+  For s = irow To end_row_five
+    If isFY2024OrLater = True And s = 16 Then GoTo SkipLoop
+
+    If (Sheets(sheet_name).Cells(s, scol).value <> vbNullString Or _
+        Sheets(sheet_name).Cells(s, icol).value <> vbNullString Or _
+        Sheets(sheet_name).Cells(s, ccol).value <> vbNullString) And _
+        Sheets(sheet_name).Cells(s, tcol).value = vbNullString Then
+        
+        Common_Module.display_error sheet_name, s, tcol, EM13
+    End If
+
+SkipLoop:
+Next s
+
+    
+    
+    For i = irow To end_row_five
+        validate1 = Common_Module.Negative_Amt(i, tcol, sheet_name)
+    Next
+    For i = irow To end_row_five
+        validate1 = Common_Module.Negative_Amt(i, ccol, sheet_name)
+    Next
+    For i = irow To end_row_five
+        validate1 = Common_Module.Negative_Amt(i, scol, sheet_name)
+    Next
+    For i = irow To end_row_five
+        validate1 = Common_Module.Negative_Amt(i, icol, sheet_name)
+    Next
+    For i = irow To end_row_five
+        validate1 = Common_Module.Negative_Amt(i, cecol, sheet_name)
+    Next
+    'If selected_fy <> PARTB_RESTRICTED_FY Then'
+    If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) = 0 Then
+       sheet_name = sheet13_name
+       start_row = word_start_row_five
+       end_row = word_end_row_five
+       col = word_col_five
+       Sheets(sheet_name).Cells(start_row + 6, col).Interior.ColorIndex = 0
+       Sheets(sheet_name).Cells(start_row + 7, col).Interior.ColorIndex = 0
+       Sheets(sheet_name).Cells(start_row + 10, col).Interior.ColorIndex = 0
+       
+       
+       For i = start_row To start_row + 7
+           Sheets(sheet_name).Cells(i, col).Interior.ColorIndex = 0
+       Next
+       For i = start_row + 4 To start_row + 7
+           Sheets(sheet_name).Cells(i, Chr(Asc(col) + 2)).Interior.ColorIndex = 0
+       Next
+       Sheets(sheet_name).Cells(end_row + 2, col).Interior.ColorIndex = 0
+       Sheets(sheet_name).Range(sv_col_five & CStr(start_row) & ":" & sv_col_five & CStr(end_row + 2)).ClearContents
+       
+       If isFY2024OrLater Then
+       Sheets(sheet_name).Range("D16:E16").Interior.Color = RGB(128, 128, 128)
+       End If
+       
+       For i = start_row To start_row + 4
+           If Trim(Sheets(sheet_name).Cells(i, col).value) = vbNullString Then
+               Call Common_Module.display_error(sheet_name, i, col, EM2)
+           End If
+       Next
+       If Trim(Sheets(sheet_name).Cells(start_row + 3, col).value) = "DD/MM/YYYY" Then
+           Call Common_Module.display_error(sheet_name, start_row + 3, col, EM2)
+       End If
+    
+       If Trim(Sheets(sheet_name).Cells(start_row + 6, col).value) = vbNullString Then
+               Call Common_Module.display_error(sheet_name, start_row + 6, col, EM2)
+       End If
+       If Trim(Sheets(sheet_name).Cells(start_row + 7, col).value) = vbNullString Then
+               Call Common_Module.display_error(sheet_name, start_row + 7, col, EM2)
+       End If
+       For i = start_row + 5 To start_row + 7
+           If Trim(Sheets(sheet_name).Cells(i, Chr(Asc(col) + 2)).value) = vbNullString Then
+               Call Common_Module.display_error(sheet_name, i, Chr(Asc(col) + 2), EM2)
+           End If
+       Next
+       If Trim(Sheets(sheet_name).Cells(end_row + 2, col).value) = vbNullString Then
+               Call Common_Module.display_error(sheet_name, end_row + 2, col, EM2)
+       End If
+       
+       If Trim(Sheets(sheet_name).Cells(start_row + 3, col).value) <> vbNullString And Trim(Sheets(sheet_name).Cells(start_row + 3, col).value) <> "DD/MM/YYYY" Then
+               If Not Common_Module.matchRegex(Trim(Sheets(sheet_name).Cells(start_row + 3, col).value), DATE_REGEX) Then
+                   Call Common_Module.display_error(sheet_name, start_row + 3, col, EM4)
+               Else
+                   Application.EnableEvents = False
+                   Sheets(sheet_name).Cells(start_row + 3, col).value = Replace(Sheets(sheet_name).Cells(start_row + 3, col).value, "-", "/")
+                   Sheets(sheet_name).Cells(start_row + 3, col).value = Replace(Sheets(sheet_name).Cells(start_row + 3, col).value, ".", "/")
+                   Sheets(sheet_name).Cells(start_row + 3, col).value = Common_Module.ConvertDate(Trim(Sheets(sheet_name).Cells(start_row + 3, col).value))
+                   Application.EnableEvents = True
+               End If
+       End If
+       Sheets(sheet_name).Cells(end_row - 7, "E") = Trim(Sheets(sheet_name).Cells(end_row - 7, "E"))
+       Call check_reg_val(sheet_name, end_row - 7, "E", ADDRESS_REGEX, EM6)
+       Call check_reg_val(sheet_name, end_row - 6, "E", NAME_REGEX, EM5)
+       Call check_reg_val(sheet_name, end_row - 5, "E", MEM_REGEX, EM7)
+       irow = end_row - 3
+       Sheets(sheet_name).Cells(irow, "E") = Trim(Sheets(sheet_name).Cells(irow, "E"))
+       Call check_reg_val(sheet_name, irow, "E", ADDRESS_REGEX, EM6)
+       Sheets(sheet_name).Cells(irow, "G") = Trim(Sheets(sheet_name).Cells(irow, "G"))
+       Call check_reg_val(sheet_name, irow, "G", ADDRESS_REGEX, EM6)
+       Sheets(sheet_name).Cells(irow + 1, "E") = Trim(Sheets(sheet_name).Cells(irow + 1, "E"))
+       Call check_reg_val(sheet_name, irow + 1, "E", ADDRESS_REGEX, EM6)
+       Sheets(sheet_name).Cells(irow + 1, "G") = Trim(Sheets(sheet_name).Cells(irow + 1, "G"))
+       Call check_reg_val(sheet_name, irow + 1, "G", ADDRESS_REGEX, EM6)
+       Sheets(sheet_name).Cells(irow + 2, "E") = Trim(Sheets(sheet_name).Cells(irow + 2, "E"))
+       Call check_reg_val(sheet_name, irow + 2, "E", ADDRESS_REGEX, EM6)
+       Sheets(sheet_name).Cells(irow + 2, "G") = Trim(Sheets(sheet_name).Cells(irow + 2, "G"))
+       Call check_reg_val(sheet_name, irow + 2, "G", ADDRESS_REGEX, EM6)
+       If Trim(Sheets(sheet_name).Cells(irow + 3, "E").value) <> vbNullString Then
+               With Sheets("State dropdown").Range("='State dropdown'!$A$1:$A$37")
+                  Set c = .Find(What:=(Sheets(sheet_name).Cells(irow + 3, "E").value))
+       '
+                       If c Is Nothing Then
+                       Common_Module.display_error sheet_name, irow + 3, "E", EM12
+                       
+                       End If
+               End With
+       End If
+       
+       If Sheets(sheet_name).Cells(irow + 3, "G").value <> vbNullString Then
+       If Sheets(sheet_name).Cells(irow + 3, "G") < 110001 Then
+           Common_Module.display_error sheet_name, irow + 3, "G", EM10
+       Else
+           Call check_reg_val(sheet_name, irow + 3, "G", PIN_REGEX, EM10)
+       End If
+       
+       End If
+       Call check_reg_val(sheet_name, end_row + 2, "E", PAN_REGEX, EM16)
+       
+    End If
+       
+   If validate = False Then
+       MsgBox "There are Validation error(s) in the sheet.Correct them to proceed."
+   Else
+       MsgBox "Sheet Successfully validated."
+   End If
+End Sub
+Public Sub Validate_Table14()
+    
+    Sheets(sheet10_name).Cells(end_row_four_fourt - 1, amte_col_four_fourt).Interior.ColorIndex = 0
+    Sheets(sheet10_name).Cells(end_row_four_fourt - 1, sv_col_four_fourt).ClearContents
+    Dim tcol As String, ccol As String, scol As String, cecol As String, icol As String, sheet_name As String
+    Dim i As Integer
+    validate = True
+    sheet_name = sheet10_name
+    irow = start_row_four_fourt
+    tcol = value_col_four_fourt
+    ccol = amt_col_four_fourt
+    scol = amte_col_four_fourt
+    end_row = end_row_four_fourt
+    Sheets(sheet_name).Range(tcol & CStr(start_row_four_fourt) & ":" & ccol & CStr(end_row_four_fourt - 3)).Interior.ColorIndex = 0
+    Sheets(sheet_name).Range(scol & CStr(start_row_four_fourt) & ":" & scol & CStr(end_row_four_fourt)).Interior.ColorIndex = 0
+
+
+    
+    Sheets(sheet_name).Range(sv_col_four_fourt & CStr(irow) & ":" & sv_col_four_fourt & CStr(end_row)).ClearContents
+    Sheets(sheet_name).Cells(end_row - 2, scol).Interior.ColorIndex = 15
+    Sheets(sheet_name).Cells(end_row, scol).Interior.ColorIndex = 15
+    
+    Call Delete_expense(sheet10_name, start_row_four_fourt_exp, end_row_four_fourt_exp, value_col_four_fourt)
+    end_row = end_row_four_fourt
+    
+    For s = irow To end_row_four_fourt - 3
+        If (Sheets(sheet_name).Cells(s, scol).value <> vbNullString Or Sheets(sheet_name).Cells(s, ccol).value <> vbNullString) And Sheets(sheet_name).Cells(s, tcol).value = vbNullString Then
+            Common_Module.display_error sheet_name, s, tcol, EM14
+        End If
+    Next
+    For i = irow To end_row_four_fourt - 3
+        validate1 = Common_Module.Negative_Amt(i, tcol, sheet_name)
+    Next
+    For i = irow To end_row_four_fourt - 3
+        validate1 = Common_Module.Negative_Amt(i, ccol, sheet_name)
+    Next
+    For i = irow To end_row_four_fourt
+        If Not (i = end_row_four_fourt Or i = end_row_four_fourt - 2 Or i = end_row_four_fourt - 1) Then
+            validate1 = Common_Module.Negative_Amt(i, scol, sheet_name)
+        End If
+    Next
+    If validate = False Then
+        MsgBox "There are Validation error(s) in the sheet.Correct them to proceed."
+    Else
+        MsgBox "Sheet Successfully validated."
+    End If
+    
+End Sub
+Public Sub Validate_PB1()
+   Call Delete_qual(sheet14_name, start_row_pb1_qual, end_row_pb1_qual, qual_col_pb1)
+    validate = True
+    start_row = start_row_pb1
+    end_row = end_row_pb1
+    sheet_name = sheet14_name
+    Sheets(sheet_name).Range("B" & CStr(start_row) & ":" & "J" & CStr(end_row)).Interior.ColorIndex = 0
+    Sheets(sheet_name).Range(pb1_sv_col & CStr(start_row) & ":" & pb1_sv_col & CStr(end_row)).ClearContents
+    Call Check_Mandatory(sheet_name, start_row, "B")
+    Call Check_Mandatory(sheet_name, start_row + 2, "D")
+    Call Check_Mandatory(sheet_name, start_row + 4, "D")
+    Call Check_Mandatory(sheet_name, start_row + 5, "D")
+    Call Check_Mandatory(sheet_name, start_row + 6, "D")
+    Call Check_Mandatory(sheet_name, start_row + 14, "E")
+    Call Check_Mandatory(sheet_name, start_row + 16, "E")
+    Call Check_Mandatory(sheet_name, start_row + 17, "G")
+    Call Check_Mandatory(sheet_name, start_row + 18, "E")
+    Call Check_Mandatory(sheet_name, start_row + 18, "G")
+    Call Check_Mandatory(sheet_name, start_row + 19, "E")
+    Call Check_Mandatory(sheet_name, start_row + 19, "G")
+    Call Check_Mandatory(sheet_name, start_row + 22, "D")
+    Call Check_Mandatory(sheet_name, start_row + 24, "E")
+    Call Check_Mandatory(sheet_name, start_row + 25, "G")
+    Call Check_Mandatory(sheet_name, start_row + 26, "E")
+    Call Check_Mandatory(sheet_name, start_row + 26, "G")
+    Call Check_Mandatory(sheet_name, start_row + 27, "E")
+    Call Check_Mandatory(sheet_name, start_row + 27, "G")
+    Call Check_Mandatory(sheet_name, start_row + 36, "B")
+    Call Check_Mandatory(sheet_name, start_row + 47, "F")
+    Call Check_Mandatory(sheet_name, start_row + 47, "I")
+    Call Check_Mandatory(sheet_name, start_row + 61, "C")
+    Call Check_Mandatory(sheet_name, end_row - 7, "D")
+    Call Check_Mandatory(sheet_name, end_row - 6, "D")
+    Call Check_Mandatory(sheet_name, end_row - 5, "D")
+    Call Check_Mandatory(sheet_name, end_row - 4, "D")
+    Call Check_Mandatory(sheet_name, end_row - 3, "E")
+    Call Check_Mandatory(sheet_name, end_row - 2, "G")
+    Call Check_Mandatory(sheet_name, end_row - 1, "E")
+    Call Check_Mandatory(sheet_name, end_row - 1, "G")
+    Call Check_Mandatory(sheet_name, end_row, "E")
+    Call Check_Mandatory(sheet_name, end_row, "G")
+    Call Check_Mandatory(sheet_name, 47, "D")
+    
+    Dim rg As Range
+    Dim cg As Range
+    Set rg = Range("AdAdrs")
+    For Each cg In rg
+    If Not cg.value = vbNullString Then
+        Call Check_Mandatory(sheet_name, start_row + 29, "E")
+        Call Check_Mandatory(sheet_name, start_row + 30, "G")
+        Call Check_Mandatory(sheet_name, start_row + 31, "E")
+        Call Check_Mandatory(sheet_name, start_row + 31, "G")
+        Call Check_Mandatory(sheet_name, start_row + 32, "E")
+        Call Check_Mandatory(sheet_name, start_row + 32, "G")
+    End If
+    Next cg
+    
+    Set rg = Range("AddAdrs")
+    For Each cg In rg
+    If Not cg.value = vbNullString Then
+        Call Check_Mandatory(sheet_name, start_row + 29, "E")
+        Call Check_Mandatory(sheet_name, start_row + 30, "G")
+        Call Check_Mandatory(sheet_name, start_row + 31, "E")
+        Call Check_Mandatory(sheet_name, start_row + 31, "G")
+        Call Check_Mandatory(sheet_name, start_row + 32, "E")
+        Call Check_Mandatory(sheet_name, start_row + 32, "G")
+    End If
+    Next cg
+    
+    Call Validate_Date(sheet_name, start_row + 2, "D")
+    Call Validate_Date(sheet_name, start_row + 5, "D")
+    Call Validate_Date(sheet_name, start_row + 6, "D")
+    If Not Sheets(sheet_name).Cells(start_row + 9, "D") = "DD/MM/YYYY" Then
+        Call Validate_Date(sheet_name, start_row + 9, "D")
+    End If
+    If Not Sheets(sheet_name).Cells(start_row + 10, "D") = "DD/MM/YYYY" Then
+        Call Validate_Date(sheet_name, start_row + 10, "D")
+    End If
+    Call Validate_Date(sheet_name, end_row - 4, "D")
+    Dim check_reg As String
+    
+    
+    Call check_reg_val(sheet_name, start_row + 14, "E", NAME_REGEX, EM5)
+    Sheets(sheet_name).Cells(start_row + 16, "G") = Trim(Sheets(sheet_name).Cells(start_row + 16, "G"))
+    Call check_reg_val(sheet_name, start_row + 16, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(start_row + 16, "E") = Trim(Sheets(sheet_name).Cells(start_row + 16, "E"))
+    Call check_reg_val(sheet_name, start_row + 16, "E", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(start_row + 17, "G") = Trim(Sheets(sheet_name).Cells(start_row + 17, "G"))
+    Call check_reg_val(sheet_name, start_row + 17, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(start_row + 17, "E") = Trim(Sheets(sheet_name).Cells(start_row + 17, "E"))
+    Call check_reg_val(sheet_name, start_row + 17, "E", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(start_row + 18, "G") = Trim(Sheets(sheet_name).Cells(start_row + 18, "G"))
+    Call check_reg_val(sheet_name, start_row + 18, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(start_row + 18, "E") = Trim(Sheets(sheet_name).Cells(start_row + 18, "E"))
+    Call check_reg_val(sheet_name, start_row + 18, "E", ADDRESS_REGEX, EM6)
+    If Trim(Sheets(sheet_name).Cells(start_row + 19, "E").value) <> vbNullString Then
+            With Sheets("State dropdown").Range("='State dropdown'!$A$1:$A$37")
+               Set c = .Find(What:=(Sheets(sheet_name).Cells(start_row + 19, "E").value))
+    '
+                    If c Is Nothing Then
+                    Common_Module.display_error sheet_name, start_row + 19, "E", EM12
+                    
+                    End If
+            End With
+    End If
+    'Call check_reg_val(sheet_name, start_row + 19, "G", PIN_REGEX, EM10)
+    If Sheets(sheet_name).Cells(start_row + 19, "G").value <> vbNullString Then
+    If Sheets(sheet_name).Cells(start_row + 19, "G") < 110001 Then
+        Common_Module.display_error sheet_name, start_row + 19, "G", EM10
+    Else
+    Call check_reg_val(sheet_name, start_row + 19, "G", PIN_REGEX, EM10)
+   End If
+   End If
+    
+    irow = start_row + 24
+    Sheets(sheet_name).Cells(irow, "G") = Trim(Sheets(sheet_name).Cells(irow, "G"))
+    Call check_reg_val(sheet_name, irow, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow, "E") = Trim(Sheets(sheet_name).Cells(irow, "E"))
+    Call check_reg_val(sheet_name, irow, "E", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 1, "G") = Trim(Sheets(sheet_name).Cells(irow + 1, "G"))
+    Call check_reg_val(sheet_name, irow + 1, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 1, "E") = Trim(Sheets(sheet_name).Cells(irow + 1, "E"))
+    Call check_reg_val(sheet_name, irow + 1, "E", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "G") = Trim(Sheets(sheet_name).Cells(irow + 2, "G"))
+    Call check_reg_val(sheet_name, irow + 2, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "E") = Trim(Sheets(sheet_name).Cells(irow + 2, "E"))
+    Call check_reg_val(sheet_name, irow + 2, "E", ADDRESS_REGEX, EM6)
+    If Trim(Sheets(sheet_name).Cells(irow + 3, "E").value) <> vbNullString Then
+            With Sheets("State dropdown").Range("='State dropdown'!$A$1:$A$37")
+               Set c = .Find(What:=(Sheets(sheet_name).Cells(irow + 3, "E").value))
+    '
+                    If c Is Nothing Then
+                    Common_Module.display_error sheet_name, irow + 3, "E", EM12
+                    
+                    End If
+            End With
+    End If
+    
+    If Sheets(sheet_name).Cells(irow + 3, "G").value <> vbNullString Then
+    If Sheets(sheet_name).Cells(irow + 3, "G") < 110001 Then
+        Common_Module.display_error sheet_name, irow + 3, "G", EM10
+    Else
+        Call check_reg_val(sheet_name, irow + 3, "G", PIN_REGEX, EM10)
+    End If
+    End If
+    
+    irow = start_row + 29
+    Sheets(sheet_name).Cells(irow, "G") = Trim(Sheets(sheet_name).Cells(irow, "G"))
+    Call check_reg_val(sheet_name, irow, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow, "E") = Trim(Sheets(sheet_name).Cells(irow, "E"))
+    Call check_reg_val(sheet_name, irow, "E", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 1, "G") = Trim(Sheets(sheet_name).Cells(irow + 1, "G"))
+    Call check_reg_val(sheet_name, irow + 1, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 1, "E") = Trim(Sheets(sheet_name).Cells(irow + 1, "E"))
+    Call check_reg_val(sheet_name, irow + 1, "E", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "G") = Trim(Sheets(sheet_name).Cells(irow + 2, "G"))
+    Call check_reg_val(sheet_name, irow + 2, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "E") = Trim(Sheets(sheet_name).Cells(irow + 2, "E"))
+    Call check_reg_val(sheet_name, irow + 2, "E", ADDRESS_REGEX, EM6)
+    If Trim(Sheets(sheet_name).Cells(irow + 3, "E").value) <> vbNullString Then
+            With Sheets("State dropdown").Range("='State dropdown'!$A$1:$A$37")
+               Set c = .Find(What:=(Sheets(sheet_name).Cells(irow + 3, "E").value))
+    '
+                    If c Is Nothing Then
+                    Common_Module.display_error sheet_name, irow + 3, "E", EM12
+                    
+                    End If
+            End With
+    End If
+    
+    If Sheets(sheet_name).Cells(irow + 3, "G").value <> vbNullString Then
+    If Sheets(sheet_name).Cells(irow + 3, "G") < 110001 Then
+        Common_Module.display_error sheet_name, irow + 3, "G", EM10
+    Else
+        Call check_reg_val(sheet_name, irow + 3, "G", PIN_REGEX, EM10)
+    End If
+    End If
+    
+    Sheets(sheet_name).Cells(end_row - 7, "D") = Trim(Sheets(sheet_name).Cells(end_row - 7, "D"))
+    Call check_reg_val(sheet_name, end_row - 7, "D", ADDRESS_REGEX, EM6)
+    Call check_reg_val(sheet_name, end_row - 6, "D", NAME_REGEX, EM5)
+    Call check_reg_val(sheet_name, end_row - 5, "D", MEM_REGEX, EM7)
+    irow = end_row - 3
+    Sheets(sheet_name).Cells(irow, "G") = Trim(Sheets(sheet_name).Cells(irow, "G"))
+    Call check_reg_val(sheet_name, irow, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow, "E") = Trim(Sheets(sheet_name).Cells(irow, "E"))
+    Call check_reg_val(sheet_name, irow, "E", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 1, "G") = Trim(Sheets(sheet_name).Cells(irow + 1, "G"))
+    Call check_reg_val(sheet_name, irow + 1, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 1, "E") = Trim(Sheets(sheet_name).Cells(irow + 1, "E"))
+    Call check_reg_val(sheet_name, irow + 1, "E", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "G") = Trim(Sheets(sheet_name).Cells(irow + 2, "G"))
+    Call check_reg_val(sheet_name, irow + 2, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "E") = Trim(Sheets(sheet_name).Cells(irow + 2, "E"))
+    Call check_reg_val(sheet_name, irow + 2, "E", ADDRESS_REGEX, EM6)
+    If Trim(Sheets(sheet_name).Cells(irow + 3, "E").value) <> vbNullString Then
+            With Sheets("State dropdown").Range("='State dropdown'!$A$1:$A$37")
+               Set c = .Find(What:=(Sheets(sheet_name).Cells(irow + 3, "E").value))
+    '
+                    If c Is Nothing Then
+                    Common_Module.display_error sheet_name, irow + 3, "E", EM12
+                    
+                    End If
+            End With
+    End If
+    
+    If Sheets(sheet_name).Cells(irow + 3, "G").value <> vbNullString Then
+    If Sheets(sheet_name).Cells(irow + 3, "G") < 110001 Then
+        Common_Module.display_error sheet_name, irow + 3, "G", EM10
+    Else
+        Call check_reg_val(sheet_name, irow + 3, "G", PIN_REGEX, EM10)
+    End If
+    End If
+    For s = start_row_pb1_qual To end_row_pb1_qual
+        Sheets(sheet_name).Cells(s, Chr(Asc(qual_col_pb1) + 4)) = Trim(Sheets(sheet_name).Cells(s, Chr(Asc(qual_col_pb1) + 4)))
+        Call Check_Mandatory(sheet_name, s, qual_col_pb1)
+        Call Check_Mandatory(sheet_name, s, Chr(Asc(qual_col_pb1) + 4))
+        Call check_reg_val(sheet_name, s, Chr(Asc(qual_col_pb1) + 4), QUAL_REGEX, EM11)
+        Worksheets(sheet_name).Range(Chr(Asc(qual_col_pb1) + 4) & CStr(s)).WrapText = True
+        Worksheets(sheet_name).Range(Chr(Asc(qual_col_pb1) + 4) & CStr(s)).EntireRow.AutoFit
+    Next
+    If validate = False Then
+        MsgBox "There are Validation error(s) in the sheet.Correct them to proceed."
+    Else
+        MsgBox "Sheet Successfully validated."
+    End If
+    
+End Sub
+Public Sub Validate_PB2()
+    Call Delete_qual(sheet15_name, start_row_pb2_qual, end_row_pb2_qual, qual_col_pb2)
+    validate = True
+    start_row = start_row_pb2
+    end_row = end_row_pb2
+    sheet_name = sheet15_name
+    Sheets(sheet_name).Range("B" & CStr(start_row) & ":" & "J" & CStr(end_row)).Interior.ColorIndex = 0
+    Sheets(sheet_name).Range(pb2_sv_col & CStr(start_row) & ":" & pb2_sv_col & CStr(end_row)).ClearContents
+    Call Check_Mandatory(sheet_name, start_row, "B")
+    Call Check_Mandatory(sheet_name, start_row + 2, "D")
+    Call Check_Mandatory(sheet_name, start_row + 4, "D")
+    Call Check_Mandatory(sheet_name, start_row + 5, "F")
+    Call Check_Mandatory(sheet_name, start_row + 6, "F")
+    Call Check_Mandatory(sheet_name, start_row + 6, "D")
+    Call Check_Mandatory(sheet_name, start_row + 7, "D")
+    Call Check_Mandatory(sheet_name, start_row + 7, "F")
+    Call Check_Mandatory(sheet_name, start_row + 11, "D")
+    Call Check_Mandatory(sheet_name, start_row + 13, "D")
+    Call Check_Mandatory(sheet_name, start_row + 14, "F")
+    Call Check_Mandatory(sheet_name, start_row + 15, "D")
+    Call Check_Mandatory(sheet_name, start_row + 15, "F")
+    Call Check_Mandatory(sheet_name, start_row + 16, "D")
+    Call Check_Mandatory(sheet_name, start_row + 16, "F")
+    Call Check_Mandatory(sheet_name, start_row + 18, "E")
+    Call Check_Mandatory(sheet_name, start_row + 20, "D")
+    Call Check_Mandatory(sheet_name, start_row + 22, "D")
+    Call Check_Mandatory(sheet_name, start_row + 24, "D")
+    Call Check_Mandatory(sheet_name, start_row + 25, "D")
+    Call Check_Mandatory(sheet_name, start_row + 26, "D")
+    
+    Call Check_Mandatory(sheet_name, start_row + 36, "B")
+    Call Check_Mandatory(sheet_name, start_row + 49, "C")
+    
+    Call Check_Mandatory(sheet_name, end_row - 7, "D")
+    Call Check_Mandatory(sheet_name, end_row - 6, "D")
+    Call Check_Mandatory(sheet_name, end_row - 5, "D")
+    Call Check_Mandatory(sheet_name, end_row - 4, "D")
+    Call Check_Mandatory(sheet_name, end_row - 3, "E")
+    Call Check_Mandatory(sheet_name, end_row - 2, "G")
+    Call Check_Mandatory(sheet_name, end_row - 1, "E")
+    Call Check_Mandatory(sheet_name, end_row - 1, "G")
+    Call Check_Mandatory(sheet_name, end_row, "E")
+    Call Check_Mandatory(sheet_name, end_row, "G")
+    
+    Call Validate_Date(sheet_name, start_row + 20, "D")
+    Call Validate_Date(sheet_name, start_row + 22, "D")
+    Call Validate_Date(sheet_name, start_row + 25, "D")
+    Call Validate_Date(sheet_name, start_row + 26, "D")
+    If Not Sheets(sheet_name).Cells(start_row + 29, "D") = "DD/MM/YYYY" Then
+        Call Validate_Date(sheet_name, start_row + 9, "D")
+    End If
+    If Not Sheets(sheet_name).Cells(start_row + 30, "D") = "DD/MM/YYYY" Then
+        Call Validate_Date(sheet_name, start_row + 10, "D")
+    End If
+    Call Validate_Date(sheet_name, end_row - 4, "D")
+    
+    Call check_reg_val(sheet_name, 23, "C", MEM_REGEX, EM7)
+    Call check_reg_val(sheet_name, 23, "E", ACTNAME_REGEX, EM19)
+    Call check_reg_val(sheet_name, start_row + 2, "D", NAME_REGEX, EM5)
+    irow = start_row + 4
+    Sheets(sheet_name).Cells(irow, "D") = Trim(Sheets(sheet_name).Cells(irow, "D"))
+    Call check_reg_val(sheet_name, irow, "D", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow, "F") = Trim(Sheets(sheet_name).Cells(irow, "F"))
+    Call check_reg_val(sheet_name, irow, "F", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 1, "D") = Trim(Sheets(sheet_name).Cells(irow + 1, "D"))
+    Call check_reg_val(sheet_name, irow + 1, "D", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 1, "F") = Trim(Sheets(sheet_name).Cells(irow + 1, "F"))
+    Call check_reg_val(sheet_name, irow + 1, "F", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "D") = Trim(Sheets(sheet_name).Cells(irow + 2, "D"))
+    Call check_reg_val(sheet_name, irow + 2, "D", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "F") = Trim(Sheets(sheet_name).Cells(irow + 2, "F"))
+    Call check_reg_val(sheet_name, irow + 2, "F", ADDRESS_REGEX, EM6)
+    If Trim(Sheets(sheet_name).Cells(irow + 3, "D").value) <> vbNullString Then
+            With Sheets("State dropdown").Range("='State dropdown'!$A$1:$A$37")
+               Set c = .Find(What:=(Sheets(sheet_name).Cells(irow + 3, "D").value))
+    '
+                    If c Is Nothing Then
+                    Common_Module.display_error sheet_name, irow + 3, "D", EM12
+                    
+                    End If
+            End With
+    End If
+   
+    If Sheets(sheet_name).Cells(irow + 3, "F").value <> vbNullString Then
+    If Sheets(sheet_name).Cells(irow + 3, "F") < 110001 Then
+        Common_Module.display_error sheet_name, irow + 3, "F", EM10
+    Else
+         Call check_reg_val(sheet_name, irow + 3, "F", PIN_REGEX, EM10)
+    End If
+    End If
+    
+    Call check_reg_val(sheet_name, start_row + 11, "D", NAME_REGEX, EM5)
+    irow = start_row + 13
+    Sheets(sheet_name).Cells(irow, "D") = Trim(Sheets(sheet_name).Cells(irow, "D"))
+    Call check_reg_val(sheet_name, irow, "D", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow, "F") = Trim(Sheets(sheet_name).Cells(irow, "F"))
+    Call check_reg_val(sheet_name, irow, "F", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 1, "D") = Trim(Sheets(sheet_name).Cells(irow + 1, "D"))
+    Call check_reg_val(sheet_name, irow + 1, "D", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 1, "F") = Trim(Sheets(sheet_name).Cells(irow + 1, "F"))
+    Call check_reg_val(sheet_name, irow + 1, "F", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "D") = Trim(Sheets(sheet_name).Cells(irow + 2, "D"))
+    Call check_reg_val(sheet_name, irow + 2, "D", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "F") = Trim(Sheets(sheet_name).Cells(irow + 2, "F"))
+    Call check_reg_val(sheet_name, irow + 2, "F", ADDRESS_REGEX, EM6)
+    If Trim(Sheets(sheet_name).Cells(irow + 3, "D").value) <> vbNullString Then
+            With Sheets("State dropdown").Range("='State dropdown'!$A$1:$A$37")
+               Set c = .Find(What:=(Sheets(sheet_name).Cells(irow + 3, "D").value))
+    '
+                    If c Is Nothing Then
+                    Common_Module.display_error sheet_name, irow + 3, "D", EM12
+                    
+                    End If
+            End With
+    End If
+    
+    If Trim(Sheets(sheet_name).Cells(23, "C").value) = vbNullString Then
+        Call Common_Module.display_error(sheet_name, 23, "C", EM2)
+    End If
+    If Sheets(sheet_name).Cells(irow + 3, "F").value <> vbNullString Then
+    If Sheets(sheet_name).Cells(irow + 3, "F") < 110001 Then
+        Common_Module.display_error sheet_name, irow + 3, "F", EM10
+    Else
+        Call check_reg_val(sheet_name, irow + 3, "F", PIN_REGEX, EM10)
+    End If
+    
+    End If
+    
+    Sheets(sheet_name).Cells(end_row - 7, "D") = Trim(Sheets(sheet_name).Cells(end_row - 7, "D"))
+    Call check_reg_val(sheet_name, end_row - 7, "D", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(end_row - 6, "D") = Trim(Sheets(sheet_name).Cells(end_row - 6, "D"))
+    Call check_reg_val(sheet_name, end_row - 6, "D", NAME_REGEX, EM5)
+    Sheets(sheet_name).Cells(end_row - 5, "D") = Trim(Sheets(sheet_name).Cells(end_row - 5, "D"))
+    Call check_reg_val(sheet_name, end_row - 5, "D", MEM_REGEX, EM7)
+    irow = end_row - 3
+    Sheets(sheet_name).Cells(irow, "E") = Trim(Sheets(sheet_name).Cells(irow, "E"))
+    Call check_reg_val(sheet_name, irow, "E", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow, "G") = Trim(Sheets(sheet_name).Cells(irow, "G"))
+    Call check_reg_val(sheet_name, irow, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 1, "E") = Trim(Sheets(sheet_name).Cells(irow + 1, "E"))
+    Call check_reg_val(sheet_name, irow + 1, "E", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow, "G") = Trim(Sheets(sheet_name).Cells(irow, "G"))
+    Call check_reg_val(sheet_name, irow + 1, "G", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "E") = Trim(Sheets(sheet_name).Cells(irow + 2, "E"))
+    Call check_reg_val(sheet_name, irow + 2, "E", ADDRESS_REGEX, EM6)
+    Sheets(sheet_name).Cells(irow + 2, "G") = Trim(Sheets(sheet_name).Cells(irow + 2, "G"))
+    Call check_reg_val(sheet_name, irow + 2, "G", ADDRESS_REGEX, EM6)
+    If Trim(Sheets(sheet_name).Cells(irow + 3, "E").value) <> vbNullString Then
+            With Sheets("State dropdown").Range("='State dropdown'!$A$1:$A$37")
+               Set c = .Find(What:=(Sheets(sheet_name).Cells(irow + 3, "E").value))
+    '
+                    If c Is Nothing Then
+                    Common_Module.display_error sheet_name, irow + 3, "E", EM12
+                    
+                    End If
+            End With
+    End If
+    
+    If Sheets(sheet_name).Cells(irow + 3, "G").value <> vbNullString Then
+    If Sheets(sheet_name).Cells(irow + 3, "G") < 110001 Then
+        Common_Module.display_error sheet_name, irow + 3, "G", EM10
+    Else
+        Call check_reg_val(sheet_name, irow + 3, "G", PIN_REGEX, EM10)
+    End If
+    End If
+    
+    For s = start_row_pb2_qual To end_row_pb2_qual
+        Sheets(sheet_name).Cells(s, Chr(Asc(qual_col_pb2) + 4)) = Trim(Sheets(sheet_name).Cells(s, Chr(Asc(qual_col_pb2) + 4)))
+        Call Check_Mandatory(sheet_name, s, qual_col_pb2)
+        Call Check_Mandatory(sheet_name, s, Chr(Asc(qual_col_pb2) + 4))
+        Call check_reg_val(sheet_name, s, Chr(Asc(qual_col_pb2) + 4), QUAL_REGEX, EM11)
+        Worksheets(sheet_name).Range(Chr(Asc(qual_col_pb2) + 4) & CStr(s)).WrapText = True
+    Next
+    
+    If validate = False Then
+        MsgBox "There are Validation error(s) in the sheet.Correct them to proceed."
+    Else
+        MsgBox "Sheet Successfully validated."
+    End If
+    
+End Sub
+Public Function Validate_Home()
+    sheet_name = home_sheet
+    start_row = start_row_home
+    col = fixed_col_home
+    Validate_Home = True
+    Sheets(sheet_name).Cells(start_row, col).Interior.ColorIndex = 0
+        Sheets(sheet_name).Cells(start_row + 1, col).Interior.ColorIndex = 0
+    Sheets(sheet_name).Cells(start_row + 2, col).Interior.ColorIndex = 0
+    Sheets(sheet_name).Cells(start_row + 3, col).Interior.ColorIndex = 0
+    Sheets(sheet_name).Cells(start_row + 4, col).Interior.ColorIndex = 0
+    Sheets(sheet_name).Cells(start_row + 5, col).Interior.ColorIndex = 0
+    Sheets(sheet_name).Cells(start_row + 6, col).Interior.ColorIndex = 0
+    Sheets(sheet_name).Range(sv_col_home & CStr(start_row) & ":" & sv_col_home & CStr(start_row + 6)).ClearContents
+    
+    If Trim(Sheets(sheet_name).Cells(start_row, col).value) = vbNullString Then
+            
+            Call Common_Module.display_error(sheet_name, start_row, col, EM2)
+            Validate_Home = False
+    End If
+    
+    Cells(start_row_home, fixed_col_home) = Trim(Cells(start_row_home, fixed_col_home))  '*******trim spaces
+    
+     If Trim(Sheets(home_sheet).Cells(start_row_home, fixed_col_home).value) = vbNullString Then
+            Call Common_Module.display_error(sheet_name, start_row, col, EM2)
+            Validate_Home = False
+    End If
+    If Trim(Sheets(sheet_name).Cells(start_row + 1, col).value) = vbNullString Then
+            
+            Call Common_Module.display_error(sheet_name, start_row + 1, col, EM2)
+            Validate_Home = False
+    End If
+    
+    If Trim(Sheets(home_sheet).Cells(start_row + 2, col).value & vbNullString) <> vbNullString And Not Common_Module.matchRegex(Trim(Sheets(home_sheet).Cells(start_row + 2, col).value), HNAME_REGEX) Then
+            
+            Call Common_Module.display_error(sheet_name, start_row + 2, col, EM15)
+            Validate_Home = False
+    End If
+    If Trim(Sheets(home_sheet).Cells(start_row + 3, col).value & vbNullString) <> vbNullString And Not Common_Module.matchRegex(Trim(Sheets(home_sheet).Cells(start_row + 3, col).value), HNAME_REGEX) Then
+            
+            Call Common_Module.display_error(sheet_name, start_row + 3, col, EM15)
+            Validate_Home = False
+    End If
+    
+    
+    
+    If Trim(Sheets(home_sheet).Cells(start_row + 4, col).value & vbNullString) <> vbNullString And Not Common_Module.matchRegex(Trim(Sheets(home_sheet).Cells(start_row + 4, col).value), ANAME_REGEX) Then
+            
+            Call Common_Module.display_error(sheet_name, start_row + 4, col, EM18)
+            Validate_Home = False
+    End If
+    
+    Dim selected_fy As String
+    selected_fy = Worksheets(home_sheet).Range("D10").value
+    
+    'If selected_fy <> PARTB_RESTRICTED_FY Then'
+    If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) = 0 Then
+        If Trim(Sheets(sheet_name).Cells(start_row + 5, col).value) = vbNullString Then
+                
+                Call Common_Module.display_error(sheet_name, start_row + 5, col, EM2)
+                Validate_Home = False
+        End If
+        
+        If Trim(Sheets(sheet_name).Cells(start_row + 1, col).value) <> vbNullString Then
+                With Sheets("Master").Range("=Master!$A$23:$A$30")
+                   Set c = .Find(What:=(Sheets(sheet_name).Cells(start_row + 1, col).value))
+        '
+                        If c Is Nothing Then
+                        Common_Module.display_error sheet_name, start_row + 1, col, EM12
+                        Validate_Home = False
+                        End If
+                End With
+        End If
+        
+        
+        If Trim(Sheets(sheet_name).Cells(start_row + 5, col).value) <> vbNullString Then
+                With Sheets("Master").Range("=Master!$A$19:$A$20")
+                   Set c = .Find(What:=(Sheets(sheet_name).Cells(start_row + 5, col).value))
+        '
+                        If c Is Nothing Then
+                        Common_Module.display_error sheet_name, start_row + 5, col, EM12
+                        Validate_Home = False
+                        End If
+                End With
+        End If
+    End If
+    
+End Function
+
+Public Function Validate_Date(sheet_name, rowNo, col)
+    If Trim(Sheets(sheet_name).Cells(rowNo, col).value) <> vbNullString And Trim(Sheets(sheet_name).Cells(rowNo, col).value) <> "DD/MM/YYYY" Then
+            If Not Common_Module.matchRegex(Trim(Sheets(sheet_name).Cells(rowNo, col).value), DATE_REGEX) Then
+                Call Common_Module.display_error(sheet_name, rowNo, col, EM4)
+            Else
+                Application.EnableEvents = False
+                Sheets(sheet_name).Cells(rowNo, col).value = Replace(Sheets(sheet_name).Cells(rowNo, col).value, ".", "/")
+                Sheets(sheet_name).Cells(rowNo, col).value = Replace(Sheets(sheet_name).Cells(rowNo, col).value, "-", "/")
+                Sheets(sheet_name).Cells(rowNo, col).value = Common_Module.ConvertDate(Trim(Sheets(sheet_name).Cells(rowNo, col).value))
+                Application.EnableEvents = True
+            End If
+    End If
+End Function
+Public Function Check_Mandatory(sheet_name, rowNo, col)
+    If Trim(Sheets(sheet_name).Cells(rowNo, col).value) = vbNullString Or Trim(Sheets(sheet_name).Cells(rowNo, col).value) = "DD/MM/YYYY" Then
+            Call Common_Module.display_error(sheet_name, rowNo, col, EM2)
+    End If
+
+End Function
+
+Public Function check_reg_val(sheet_name, rowNo, col, check_reg As String, Error_Message)
+    Dim sim_regex As String
+    sim_regex = check_reg
+    If (Sheets(sheet_name).Cells(rowNo, col).value) <> vbNullString And Not Common_Module.matchRegex((Sheets(sheet_name).Cells(rowNo, col).value), sim_regex) Then
+        Call Common_Module.display_error(sheet_name, rowNo, col, Error_Message)
+    End If
+End Function
+
+
+-------------------------------------------------------------------------------

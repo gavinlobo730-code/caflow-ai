@@ -1,0 +1,1925 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+'Function that validates TCS Sheet
+Public Function validateTCS(source As String) As Boolean
+    Application.ScreenUpdating = False
+    On Error Resume Next
+    Dim col, length1 As Integer
+    Dim i, j, gstinCol, posCol, rowNo, lastRow As Long
+    Dim igst, cgst, sgst, value As Double
+    Dim tflag, gstflag As Boolean
+    Dim yr, mnthIndex As Integer
+    Dim mnth, gstin, pos, Key As String
+    Dim mnthArr As Variant
+    Dim ws As Worksheet
+    Dim duplicate As Object
+    
+    Set duplicate = CreateObject("Scripting.Dictionary")
+    validateTCS = True
+    Sheets("3 TCS").Unprotect "pass"
+    rowNo = 6
+    'last_row = ExtraMod.getLastRowTCS - 1
+    
+    Set ws = ThisWorkbook.Sheets("3 TCS")
+    gstinCol = 2
+    posCol = 4
+    lastRow = ws.Cells(ws.Rows.count, gstinCol).End(xlUp).row
+    
+    'Clears all the previous errors and comments in the sheet
+    Sheets("3 TCS").Range("N6:N15006").value = ""
+    Sheets("3 TCS").Range("B6:M15006").Interior.Color = xlNone
+    Sheets("3 TCS").Range("B6:M15006").ClearComments
+    'Checks if datas are proper in home sheet
+    If (MainMod.validateHomeGSTINData) Then
+      Sheets("Home").Unprotect "pass"
+      Sheets("Home").Select
+      Sheets("Home").Protect "pass"
+      MsgBox "Please enter GSTIN, Tax period and Financial year in Home Page to validate the TCS/TCSA sheet."
+      Exit Function
+    End If
+    Do Until rowNo > lastRow
+        tflag = True
+        gstflag = True
+        'Checks If tax columns are empty,and assigns them as zero
+        If IsEmpty(Sheets("3 TCS").Cells(rowNo, 10).value) Then
+            Sheets("3 TCS").Cells(rowNo, 10).value = 0
+        End If
+        If IsEmpty(Sheets("3 TCS").Cells(rowNo, 11).value) Then
+            Sheets("3 TCS").Cells(rowNo, 11).value = 0
+        End If
+        If IsEmpty(Sheets("3 TCS").Cells(rowNo, 12).value) Then
+            Sheets("3 TCS").Cells(rowNo, 12).value = 0
+        End If
+        'Mandatory field check
+        col = 2
+            If Trim(Sheets("3 TCS").Cells(rowNo, col).value & vbNullString) = vbNullString Then
+                
+                Sheets("3 TCS").Cells(rowNo, col).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, col).ClearComments
+                Sheets("3 TCS").Cells(rowNo, col).AddComment "This field cannot be left blank"
+                Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                validateTCS = False
+            End If
+        'Mandatory field check for POS dropdown
+        yr = Left(Sheets("Home").Range("D6").value, 4)
+        If (yr >= 2025) Then
+        col = 4
+            If Trim(Sheets("3 TCS").Cells(rowNo, col).value & vbNullString) = vbNullString Then
+                Sheets("3 TCS").Cells(rowNo, col).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, col).ClearComments
+                Sheets("3 TCS").Cells(rowNo, col).AddComment "This field cannot be left blank"
+                Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                validateTCS = False
+            End If
+        End If
+      
+        
+        If Trim(Sheets("3 TCS").Cells(rowNo, 5).value & vbNullString) = vbNullString And Trim(Sheets("3 TCS").Cells(rowNo, 6).value & vbNullString) = vbNullString And Trim(Sheets("3 TCS").Cells(rowNo, 7).value & vbNullString) = vbNullString And Trim(Sheets("3 TCS").Cells(rowNo, 8).value & vbNullString) = vbNullString Then
+                
+                Sheets("3 TCS").Cells(rowNo, 5).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 5).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 5).AddComment "Any one of the Values is Mandatory"
+                Sheets("3 TCS").Cells(rowNo, 6).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 6).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 6).AddComment "Any one of the Values is Mandatory"
+                Sheets("3 TCS").Cells(rowNo, 7).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 7).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 7).AddComment "Any one of the Values is Mandatory"
+                Sheets("3 TCS").Cells(rowNo, 8).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 8).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 8).AddComment "Any one of the Values is Mandatory"
+                Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                validateTCS = False
+                
+                
+            End If
+        
+        'Mandatory check for action drop down
+        
+        If Trim(Sheets("3 TCS").Cells(rowNo, 13).value & vbNullString) = vbNullString Then
+                Sheets("3 TCS").Cells(rowNo, 13).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 13).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 13).AddComment "Please select an action"
+                Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                validateTCS = False
+                
+            End If
+        
+        'GSTIN format check
+        If Not CommonUtil.matchRegex(Sheets("3 TCS").Cells(rowNo, 2).value, GSTIN_REGEX) Then
+            If Trim(Sheets("3 TCS").Cells(rowNo, 2).value) = vbNullString Then
+                Sheets("3 TCS").Cells(rowNo, 2).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 2).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 2).AddComment "This field cannot be left blank"
+                Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                validateTCS = False
+                gstflag = False
+                GoTo woded
+            Else
+                Sheets("3 TCS").Cells(rowNo, 2).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 2).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 2).AddComment "Invalid GSTIN"
+                Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                validateTCS = False
+                gstflag = False
+                GoTo woded
+            End If
+            
+        End If
+        'GSTIN deductor check
+         If Not MainMod.DeductorCheck(Sheets("3 TCS").Cells(rowNo, 2).value) Then
+            Sheets("3 TCS").Cells(rowNo, 2).Interior.ColorIndex = 3
+            Sheets("3 TCS").Cells(rowNo, 2).ClearComments
+            Sheets("3 TCS").Cells(rowNo, 2).AddComment "Supplier GSTIN can’t be same as Tax collector GSTIN in Home sheet"
+            Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+            validateTCS = False
+            gstflag = False
+        End If
+        If Not MainMod.samestateCheck(Sheets("3 TCS").Cells(rowNo, 2).value) Then
+            Sheets("3 TCS").Cells(rowNo, 2).Interior.ColorIndex = 3
+            Sheets("3 TCS").Cells(rowNo, 2).ClearComments
+            Sheets("3 TCS").Cells(rowNo, 2).AddComment "Supplier State Code should be same as Tax collector State Code in Home sheet"
+            Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+            validateTCS = False
+            gstflag = False
+        End If
+        
+        
+woded:
+        
+        For col = 5 To 9
+            
+            
+                length1 = 13
+            
+                
+            value1 = Trim(Sheets("3 TCS").Cells(rowNo, col).value)
+            If Trim(value1) <> vbNullString Then
+            
+                On Error GoTo Flow
+                If IsNumeric(value1) Then
+                    'length check
+                    If (Len(Split(value1, ".", 2)(0)) > length1) Then
+                        Sheets("3 TCS").Cells(rowNo, col).Interior.ColorIndex = 3
+                        Sheets("3 TCS").Cells(rowNo, col).ClearComments
+                        Sheets("3 TCS").Cells(rowNo, col).AddComment "Amount should not be greater than " & CStr(length1) & " digits"
+                        Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                        validateTCS = False
+                        tflag = False
+                    End If
+Flow:
+                    'Amount check for original
+                    If Not CommonUtil.matchRegex(Trim(value1), AMT_REGEX) And Not (col = 9) Then
+                        'Negative check
+                        If Trim(Sheets("3 TCS").Cells(rowNo, col).value < 0) Then
+                            Sheets("3 TCS").Cells(rowNo, col).Interior.ColorIndex = 3
+                            Sheets("3 TCS").Cells(rowNo, col).ClearComments
+                            Sheets("3 TCS").Cells(rowNo, col).AddComment "Invalid Amount-1"
+                            Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                            validateTCS = False
+                            tflag = False
+                        Else
+                            
+                            Sheets("3 TCS").Cells(rowNo, col).Interior.ColorIndex = 3
+                            Sheets("3 TCS").Cells(rowNo, col).ClearComments
+                            Sheets("3 TCS").Cells(rowNo, col).AddComment "Amount should not have more than 2 decimal places."
+                            Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                            validateTCS = False
+                            tflag = False
+                        End If
+        
+                    End If
+                    
+                    If Not CommonUtil.matchRegex(Trim(value1), AMT_REGEX_1) And (col = 9) Then
+                                                  
+                            Sheets("3 TCS").Cells(rowNo, col).Interior.ColorIndex = 3
+                            Sheets("3 TCS").Cells(rowNo, col).ClearComments
+                            Sheets("3 TCS").Cells(rowNo, col).AddComment "Invalid Amount. Amount should not have more than 2 decimal places."
+                            Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                            validateTCS = False
+                            tflag = False
+                              
+                    End If
+                Else
+deci:
+                    Sheets("3 TCS").Cells(rowNo, col).Interior.ColorIndex = 3
+                    Sheets("3 TCS").Cells(rowNo, col).ClearComments
+                    Sheets("3 TCS").Cells(rowNo, col).AddComment "Invalid Amount"
+                    Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                    validateTCS = False
+                    tflag = False
+                End If
+            
+        End If
+        Next
+        If tflag = False Then
+            GoTo wotax
+        End If
+
+        ' Tax check Code
+           If tflag = True Then
+            
+            'Calculates net amount
+            If Trim(Sheets("3 TCS").Cells(rowNo, 5).value) = vbNullString And Trim(Sheets("3 TCS").Cells(rowNo, 6).value) = vbNullString And Trim(Sheets("3 TCS").Cells(rowNo, 7).value) = vbNullString And Trim(Sheets("3 TCS").Cells(rowNo, 8).value) = vbNullString Then
+                Sheets("3 TCS").Cells(rowNo, 9).ClearContents
+            ElseIf (Trim(Sheets("3 TCS").Cells(rowNo, 5).value) = vbNullString Or IsNumeric(Trim(Sheets("3 TCS").Cells(rowNo, 5).value))) And (Trim(Sheets("3 TCS").Cells(rowNo, 6).value) = vbNullString Or IsNumeric(Trim(Sheets("3 TCS").Cells(rowNo, 6).value))) And (Trim(Sheets("3 TCS").Cells(rowNo, 7).value) = vbNullString Or IsNumeric(Trim(Sheets("3 TCS").Cells(rowNo, 7).value))) And (Trim(Sheets("3 TCS").Cells(rowNo, 8).value) = vbNullString Or IsNumeric(Trim(Sheets("3 TCS").Cells(rowNo, 8).value))) Then
+                  Sheets("3 TCS").Cells(rowNo, 9) = Application.Round((Sheets("3 TCS").Cells(rowNo, 5) + Sheets("3 TCS").Cells(rowNo, 7) - Sheets("3 TCS").Cells(rowNo, 6) - Sheets("3 TCS").Cells(rowNo, 8)), 2)
+                 
+            Else
+               Sheets("3 TCS").Cells(rowNo, 9).ClearContents
+            End If
+            
+            homevalue = CStr(Sheets("Home").Cells(6, 2).value)
+            sheetvalue = CStr(Sheets("3 TCS").Cells(rowNo, 2).value)
+            
+            igst = Application.Round(Sheets("3 TCS").Cells(rowNo, 10).value, 2)
+            cgst = Application.Round(Sheets("3 TCS").Cells(rowNo, 11).value, 2)
+            sgst = Application.Round(Sheets("3 TCS").Cells(rowNo, 12).value, 2)
+            
+            If Sheets("3 TCS").Cells(rowNo, 9).value > 0 Then
+             
+             
+             If igst + cgst + sgst = 0 Or IsEmpty(igst + cgst + sgst) Then
+                Sheets("3 TCS").Cells(rowNo, 10).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 11).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 12).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 10).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 11).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 12).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 10).AddComment "One of either Integrated Tax or CGST/SGST applicable"
+                Sheets("3 TCS").Cells(rowNo, 11).AddComment "One of either Integrated Tax or CGST/SGST applicable"
+                Sheets("3 TCS").Cells(rowNo, 12).AddComment "One of either Integrated Tax or CGST/SGST applicable"
+                Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                validateTCS = False
+             End If
+                'rowNo = rowNo + 1
+                'GoTo check
+            If cgst <> sgst Then
+                        Sheets("3 TCS").Cells(rowNo, 11).Interior.ColorIndex = 3
+                        Sheets("3 TCS").Cells(rowNo, 12).Interior.ColorIndex = 3
+                        Sheets("3 TCS").Cells(rowNo, 11).ClearComments
+                        Sheets("3 TCS").Cells(rowNo, 12).ClearComments
+                        Sheets("3 TCS").Cells(rowNo, 11).AddComment "CGST and SGST amount should be equal"
+                        Sheets("3 TCS").Cells(rowNo, 12).AddComment "CGST and SGST amount should be equal"
+                        Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                        validateTCS = False
+                        'rowNo = rowNo + 1
+                        'GoTo check
+            Else
+                
+                yr = Left(Sheets("Home").Range("D6").value, 4)
+                mnthArr = Array("April", "May", "June")
+                mnthIndex = IsInArray(Sheets("Home").Range("E6").value, mnthArr)
+                
+                value = Round((igst + cgst + sgst) - Application.Round((Sheets("3 TCS").Cells(rowNo, 9).value) * (Sheets("Master sheet").Cells(3, 6).value), 2), 2)
+                
+                If (yr < 2024 Or (yr = 2024 And mnthIndex <> -1)) And (igst + cgst + sgst) <> Application.Round((Sheets("3 TCS").Cells(rowNo, 9).value) * (Sheets("Master sheet").Cells(3, 6).value), 2) And Not (value >= -0.01 And value <= 0.01) Then
+                    Sheets("3 TCS").Cells(rowNo, 10).Interior.ColorIndex = 3
+                    Sheets("3 TCS").Cells(rowNo, 11).Interior.ColorIndex = 3
+                    Sheets("3 TCS").Cells(rowNo, 12).Interior.ColorIndex = 3
+                    Sheets("3 TCS").Cells(rowNo, 10).ClearComments
+                    Sheets("3 TCS").Cells(rowNo, 11).ClearComments
+                    Sheets("3 TCS").Cells(rowNo, 12).ClearComments
+                    Sheets("3 TCS").Cells(rowNo, 10).AddComment "Total tax value must be 1% of net amount liable for TCS"
+                    Sheets("3 TCS").Cells(rowNo, 11).AddComment "Total tax value must be 1% of net amount liable for TCS"
+                    Sheets("3 TCS").Cells(rowNo, 12).AddComment "Total tax value must be 1% of net amount liable for TCS"
+                    Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                    validateTCS = False
+                    'rowNo = rowNo + 1
+                    'GoTo check
+                Else
+                    yr = Left(Sheets("Home").Range("D6").value, 4)
+                    mnthArr = Array("January", "February", "March", "July", "August", "September", "October", "November", "December")
+                    mnthIndex = IsInArray(Sheets("Home").Range("E6").value, mnthArr)
+                
+                    netliable = Sheets("3 TCS").Cells(rowNo, 9).value
+                    taxAmount = Application.Round((igst + cgst + sgst), 2)
+                    expectedTaxAmount1 = Application.Round(netliable * (Sheets("Master sheet").Cells(3, 6).value), 2)
+                    expectedTaxAmount2 = Application.Round(netliable * (Sheets("Master sheet").Cells(6, 6).value), 2)
+                        If expectedTaxAmount1 > expectedTaxAmount2 Then
+                            temp = expectedTaxAmount1
+                            expectedTaxAmount1 = expectedTaxAmount2
+                            expectedTaxAmount2 = temp
+                        End If
+                     If (yr > 2024 Or (yr = 2024 And mnthIndex <> -1)) And Not (value >= -0.01 And value <= 0.01) Then
+                        If (taxAmount < expectedTaxAmount1 Or taxAmount > expectedTaxAmount2) Then
+                        Sheets("3 TCS").Cells(rowNo, 10).Interior.ColorIndex = 3
+                        Sheets("3 TCS").Cells(rowNo, 11).Interior.ColorIndex = 3
+                        Sheets("3 TCS").Cells(rowNo, 12).Interior.ColorIndex = 3
+                        Sheets("3 TCS").Cells(rowNo, 10).ClearComments
+                        Sheets("3 TCS").Cells(rowNo, 11).ClearComments
+                        Sheets("3 TCS").Cells(rowNo, 12).ClearComments
+                        Sheets("3 TCS").Cells(rowNo, 10).AddComment "Total tax value must be between 0.5% to 1% of net amount liable for TCS"
+                        Sheets("3 TCS").Cells(rowNo, 11).AddComment "Total tax value must be between 0.5% to 1% of net amount liable for TCS"
+                        Sheets("3 TCS").Cells(rowNo, 12).AddComment "Total tax value must be between 0.5% to 1% of net amount liable for TCS"
+                        Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                        validateTCS = False
+                    End If
+                End If
+                
+                End If
+              
+            End If
+            Else
+                If igst > 0 Or cgst > 0 Or sgst > 0 Then
+                     Sheets("3 TCS").Cells(rowNo, 10).Interior.ColorIndex = 3
+                    Sheets("3 TCS").Cells(rowNo, 11).Interior.ColorIndex = 3
+                    Sheets("3 TCS").Cells(rowNo, 12).Interior.ColorIndex = 3
+                    Sheets("3 TCS").Cells(rowNo, 10).ClearComments
+                    Sheets("3 TCS").Cells(rowNo, 11).ClearComments
+                    Sheets("3 TCS").Cells(rowNo, 12).ClearComments
+                    Sheets("3 TCS").Cells(rowNo, 10).AddComment "Tax amounts are not applicable, when Net Amount eligible for TCS is zero or negative"
+                    Sheets("3 TCS").Cells(rowNo, 11).AddComment "Tax amounts are not applicable, when Net Amount eligible for TCS is zero or negative"
+                    Sheets("3 TCS").Cells(rowNo, 12).AddComment "Tax amounts are not applicable, when Net Amount eligible for TCS is zero or negative"
+                    Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                    validateTCS = False
+                End If
+            End If
+        End If
+        
+        
+wotax:
+        'Duplicate check
+        yr = Left(Sheets("Home").Range("D6").value, 4)
+        If (yr < 2025) Then
+        If gstflag = True Then
+            Key = Sheets("3 TCS").Cells(rowNo, 2).value & "_" & Sheets("3 TCS").Cells(rowNo, 13).value
+            If duplicate.Exists(Key) Then
+                Sheets("3 TCS").Cells(rowNo, 2).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 2).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 2).AddComment "Duplicate GSTIN Found"
+                Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                validateTCS = False
+            Else
+                duplicate.Add Key, iCntr
+            End If
+        End If
+        End If
+        
+        'Duplicate check for same GSTIN and POS
+         'For rowNo = 6 To lastRow
+        yr = Left(Sheets("Home").Range("D6").value, 4)
+        If (yr >= 2025) Then
+        If gstflag = True Then
+          Key = ws.Cells(rowNo, gstinCol).value & "_" & ws.Cells(rowNo, posCol).value
+            If duplicate.Exists(Key) Then
+                Sheets("3 TCS").Cells(rowNo, 2).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 2).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 2).AddComment "POS cannot be repeated under same GSTIN"
+                Sheets("3 TCS").Cells(rowNo, 4).Interior.ColorIndex = 3
+                Sheets("3 TCS").Cells(rowNo, 4).ClearComments
+                Sheets("3 TCS").Cells(rowNo, 4).AddComment "POS cannot be repeated under same GSTIN"
+                Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                validateTCS = False
+            Else
+                duplicate.Add Key, rowNo
+            End If
+        End If
+       End If
+    'Next rowNo
+         
+         
+         
+         
+        'To check the values of dropdown for POS column
+        If Trim(Sheets("3 TCS").Cells(rowNo, 4).value) <> vbNullString Then
+            With Sheets("Master sheet").Range("$M$3:$M$40")
+               Set c = .Find(What:=(Sheets("3 TCS").Cells(rowNo, 4).value), LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=True)
+    '
+                    If c Is Nothing Then
+                    Sheets("3 TCS").Cells(rowNo, 4).Interior.ColorIndex = 3
+                    Sheets("3 TCS").Cells(rowNo, 4).ClearComments
+                    Sheets("3 TCS").Cells(rowNo, 4).AddComment "Please select a valid POS from the dropdown"
+                    Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                    validateTCS = False
+                    
+                    End If
+            End With
+        End If
+         
+         
+        'To check the values of dropdown
+        If Trim(Sheets("3 TCS").Cells(rowNo, 13).value) <> vbNullString Then
+            With Sheets("Master sheet").Range("$C$3:$C$4")
+               Set c = .Find(What:=(Sheets("3 TCS").Cells(rowNo, 13).value), LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=True)
+    '
+                    If c Is Nothing Then
+                    Sheets("3 TCS").Cells(rowNo, 13).Interior.ColorIndex = 3
+                    Sheets("3 TCS").Cells(rowNo, 13).ClearComments
+                    Sheets("3 TCS").Cells(rowNo, 13).AddComment "Please select a valid action from the dropdown"
+                    Sheets("3 TCS").Cells(rowNo, 14).value = "Error in row"
+                    validateTCS = False
+                    
+                    End If
+            End With
+        End If
+        
+        rowNo = rowNo + 1
+
+Loop
+    
+    If validateTCS And Not IsEmpty(Sheets("3 TCS").Cells(6, 2).value) And (source <> "summary") Then
+        MsgBox "Sheet successfully validated. No error(s) found"
+    End If
+    
+    Sheets("3 TCS").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+    
+    Worksheets("3 TCS").Activate
+End Function
+'Function to validate TCS Amend sheet
+Public Function validateAmend(source As String) As Boolean
+    Application.ScreenUpdating = False
+    On Error Resume Next
+    Dim length1 As Integer
+    Dim i, j, gstinCol, posCol, gstinCol_1, posCol_1, rowNo, last_row As Long
+    Dim value1 As Variant
+    Dim yr, mnthIndex As Integer
+    Dim mnth As String
+    Dim rate As Double
+    Dim mnthArr, checkCols As Variant
+    Dim igst, cgst, sgst, value As Double
+    Dim gstflag, tflag, rgst As Boolean
+    Dim duplicate As New Scripting.Dictionary
+    Dim month, year, amendmonthyear, homemonthyear As String
+    Sheets("4 Amend").Unprotect "pass"
+    validateAmend = True
+    rowNo = 7
+    last_row = ExtraMod.getLastRowAmend - 1
+    
+    Set ws = ThisWorkbook.Sheets("3 TCS")
+    gstinCol = 4
+    posCol = 6
+    gstinCol_1 = 7
+    posCol_1 = 9
+    
+     'Clears all the previous errors and comments in the sheet
+    Sheets("4 Amend").Range("S7:S15007").value = ""
+    Sheets("4 Amend").Range("B7:R15007").Interior.Color = xlNone
+    Sheets("4 Amend").Range("B7:R15007").ClearComments
+    'Checks if datas are proper in home sheet
+    If (MainMod.validateHomeGSTINData) Then
+      Sheets("Home").Unprotect "pass"
+      Sheets("Home").Select
+      Sheets("Home").Protect "pass"
+      MsgBox "Please enter GSTIN, Tax period and Financial year in Home Page to validate the TCS/TCSA sheet."
+      Exit Function
+    End If
+    Do Until rowNo > last_row
+        gstflag = True
+        tflag = True
+        rgst = True
+        
+        'Checks If tax columns are empty,and assigns them as zero
+        If IsEmpty(Sheets("4 Amend").Cells(rowNo, 15).value) Then
+            Sheets("4 Amend").Cells(rowNo, 15).value = 0
+        End If
+        If IsEmpty(Sheets("4 Amend").Cells(rowNo, 16).value) Then
+            Sheets("4 Amend").Cells(rowNo, 16).value = 0
+        End If
+        If IsEmpty(Sheets("4 Amend").Cells(rowNo, 17).value) Then
+            Sheets("4 Amend").Cells(rowNo, 17).value = 0
+        End If
+        'Throws error if there are data in POS field prior impl
+        yr = Left(Sheets("4 Amend").Cells(rowNo, 2).value, 4)
+        If (yr < 2025) Then
+         For Each col In Array(6, 9)
+            If Trim(Sheets("4 Amend").Cells(rowNo, col).value & vbNullString) <> vbNullString Then
+                Sheets("4 Amend").Cells(rowNo, col).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, col).ClearComments
+                Sheets("4 Amend").Cells(rowNo, col).AddComment "POS is not applicable for return periods prior to April 2025"
+                Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                validateAmend = False
+            End If
+         Next col
+        End If
+        'Mandatory field check
+            yr = Left(Sheets("4 Amend").Cells(rowNo, 2).value, 4)
+            If (yr >= 2025) Then
+         For Each col In Array(6, 9)
+            If Trim(Sheets("4 Amend").Cells(rowNo, col).value & vbNullString) = vbNullString Then
+                Sheets("4 Amend").Cells(rowNo, col).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, col).ClearComments
+                Sheets("4 Amend").Cells(rowNo, col).AddComment "This field cannot be left blank"
+                Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                validateAmend = False
+            End If
+         Next col
+        End If
+            
+
+        
+        col = 7
+            If Trim(Sheets("4 Amend").Cells(rowNo, col).value & vbNullString) = vbNullString Then
+                
+                Sheets("4 Amend").Cells(rowNo, col).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, col).ClearComments
+                Sheets("4 Amend").Cells(rowNo, col).AddComment "This field cannot be left blank"
+                Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                validateAmend = False
+            End If
+        For col = 2 To 4
+            If Trim(Sheets("4 Amend").Cells(rowNo, col).value & vbNullString) = vbNullString Then
+                
+                Sheets("4 Amend").Cells(rowNo, col).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, col).ClearComments
+                Sheets("4 Amend").Cells(rowNo, col).AddComment "This field cannot be left blank"
+                Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                validateAmend = False
+            End If
+        Next
+        
+        If Trim(Sheets("4 Amend").Cells(rowNo, 10).value & vbNullString) = vbNullString And Trim(Sheets("4 Amend").Cells(rowNo, 11).value & vbNullString) = vbNullString And Trim(Sheets("4 Amend").Cells(rowNo, 12).value & vbNullString) = vbNullString And Trim(Sheets("4 Amend").Cells(rowNo, 13).value & vbNullString) = vbNullString Then
+                
+                Sheets("4 Amend").Cells(rowNo, 10).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 10).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 10).AddComment "Any one of the Values is Mandatory"
+                Sheets("4 Amend").Cells(rowNo, 11).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 11).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 11).AddComment "Any one of the values is Mandatory"
+                Sheets("4 Amend").Cells(rowNo, 12).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 12).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 12).AddComment "Any one of the values is Mandatory"
+                Sheets("4 Amend").Cells(rowNo, 13).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 13).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 13).AddComment "Any one of the values is Mandatory"
+                
+                Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                validateAmend = False
+               
+                
+            End If
+        'Mandatory field check for action drop down
+        If Trim(Sheets("4 Amend").Cells(rowNo, 18).value & vbNullString) = vbNullString Then
+                Sheets("4 Amend").Cells(rowNo, 18).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 18).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 18).AddComment "Please select an action"
+                Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                validateAmend = False
+                
+            End If
+        'Date check
+        If Not (MainMod.validateHomeGSTINData) Then
+            month = Application.VLookup(Trim(Sheets("Home").Cells(6, 5).value), Sheets("Master sheet").Range("G2:H13"), 2, False)
+            If (month > 3) Then
+                year = Left(Sheets("Home").Cells(6, "D"), 4)
+             
+             Else
+                year = "20" + Right(Sheets("Home").Cells(6, "D"), 2)
+            End If
+            
+            homemonthyear = year & month
+            month1 = Trim(Sheets("4 Amend").Cells(rowNo, 3).value)
+            
+            If Trim(month1) <> vbNullString Then
+                month = Application.VLookup(Trim(Sheets("4 Amend").Cells(rowNo, 3).value), Sheets("Master sheet").Range("G2:H13"), 2, False)
+                If (month > 3) Then
+                    amendyear = Left(Sheets("4 Amend").Cells(rowNo, 2).value, 4)
+                 
+                 Else
+                    amendyear = "20" + Right(Sheets("4 Amend").Cells(rowNo, 2).value, 2)
+                End If
+                
+                
+                
+                If amendyear > year Then
+                     Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                     Sheets("4 Amend").Cells(rowNo, 3).Interior.ColorIndex = 3
+                     Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+                     Sheets("4 Amend").Cells(rowNo, 2).AddComment "Month and Year in Amend Sheet should be lesser than in Home Sheet"
+                     Sheets("4 Amend").Cells(rowNo, 3).ClearComments
+                     Sheets("4 Amend").Cells(rowNo, 3).AddComment "Month and Year in Amend Sheet should be lesser than in Home Sheet"
+                     Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                     validateAmend = False
+                     
+                ElseIf amendyear < year Then
+                    GoTo last
+                End If
+               
+               
+                amendmonthyear = amendyear & month
+                   
+                value = val(homemonthyear)
+                valueamend = val(amendmonthyear)
+                If valueamend >= value Then
+                     Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                     Sheets("4 Amend").Cells(rowNo, 3).Interior.ColorIndex = 3
+                     Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+                     Sheets("4 Amend").Cells(rowNo, 2).AddComment "Month and Year in Amend Sheet should be lesser than in Home Sheet"
+                     Sheets("4 Amend").Cells(rowNo, 3).ClearComments
+                     Sheets("4 Amend").Cells(rowNo, 3).AddComment "Month and Year in Amend Sheet should be lesser than in Home Sheet"
+                     Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                     validateAmend = False
+                     
+                
+                End If
+            End If
+            Else
+                'Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                'Sheets("4 Amend").Cells(rowNo, 3).Interior.ColorIndex = 3
+                validateAmend = False
+                MsgBox "First enter GSTIN, Tax period and Financial year in Home Page to validate the Amend sheet."
+                
+            End If
+        
+last:
+        'GSTIN format check for original
+        If Not CommonUtil.matchRegex(Sheets("4 Amend").Cells(rowNo, 4).value, GSTIN_REGEX) Then
+            If Trim(Sheets("4 Amend").Cells(rowNo, 4).value) = vbNullString Then
+               Sheets("4 Amend").Cells(rowNo, 4).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 4).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 4).AddComment "This field cannot be left blank"
+                Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                validateAmend = False
+                gstflag = False
+                GoTo woded1
+            Else
+                Sheets("4 Amend").Cells(rowNo, 4).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 4).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 4).AddComment "Invalid GSTIN"
+                Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                validateAmend = False
+                gstflag = False
+                GoTo woded1
+            End If
+        End If
+        'GSTIN deductor check for original
+        If Not MainMod.DeductorCheck(Sheets("4 Amend").Cells(rowNo, 4).value) Then
+            Sheets("4 Amend").Cells(rowNo, 4).Interior.ColorIndex = 3
+            Sheets("4 Amend").Cells(rowNo, 4).ClearComments
+            Sheets("4 Amend").Cells(rowNo, 4).AddComment "Supplier GSTIN can’t be same as Tax collector GSTIN in Home sheet"
+            Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+            validateAmend = False
+            gstflag = False
+        End If
+        If Not MainMod.samestateCheck(Sheets("4 Amend").Cells(rowNo, 4).value) Then
+            Sheets("4 Amend").Cells(rowNo, 4).Interior.ColorIndex = 3
+            Sheets("4 Amend").Cells(rowNo, 4).ClearComments
+            Sheets("4 Amend").Cells(rowNo, 4).AddComment "Supplier State Code should be same as Tax collector State code in Home sheet"
+            Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+            validateAmend = False
+            gstflag = False
+        End If
+woded1:
+        'GSTIN format check for revised
+        If Not CommonUtil.matchRegex(Sheets("4 Amend").Cells(rowNo, 7).value, GSTIN_REGEX) Then
+            If Trim(Sheets("4 Amend").Cells(rowNo, 7).value) = vbNullString Then
+               Sheets("4 Amend").Cells(rowNo, 7).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 7).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 7).AddComment "This field cannot be left blank"
+                Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                validateAmend = False
+                rgst = False
+                GoTo woded2
+            Else
+                Sheets("4 Amend").Cells(rowNo, 7).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 7).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 7).AddComment "Invalid GSTIN"
+                Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                validateAmend = False
+                rgst = False
+                GoTo woded2
+            End If
+        End If
+        'GSTIN deductor check for revised
+        If Not MainMod.DeductorCheck(Sheets("4 Amend").Cells(rowNo, 7).value) Then
+            Sheets("4 Amend").Cells(rowNo, 7).Interior.ColorIndex = 3
+            Sheets("4 Amend").Cells(rowNo, 7).ClearComments
+            Sheets("4 Amend").Cells(rowNo, 7).AddComment "Supplier GSTIN can’t be same as Tax collector GSTIN in Home sheet"
+            Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+            validateAmend = False
+            rgst = False
+        End If
+        If Not MainMod.samestateCheck(Sheets("4 Amend").Cells(rowNo, 7).value) Then
+            Sheets("4 Amend").Cells(rowNo, 7).Interior.ColorIndex = 3
+            Sheets("4 Amend").Cells(rowNo, 7).ClearComments
+            Sheets("4 Amend").Cells(rowNo, 7).AddComment "Supplier State code should be same as Tax collector State Code in Home sheet"
+            Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+            validateAmend = False
+            rgst = False
+        End If
+        
+        
+woded2:
+        
+        For col = 10 To 13
+            
+            length1 = 13
+            
+            value1 = Sheets("4 Amend").Cells(rowNo, col).value
+            If Trim(value1) <> vbNullString Then
+                On Error GoTo Flow1
+                If IsNumeric(value1) Then
+                    
+                    'length check
+                    If (Len(Split(value1, ".", 2)(0)) > length1) Then
+                        Sheets("4 Amend").Cells(rowNo, col).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, col).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, col).AddComment "Amount should not be greater than " & CStr(length1) & " digits"
+                        Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                        validateAmend = False
+                        tflag = False
+                    End If
+                    
+Flow1:
+                    'Amount check for original
+                    If Not CommonUtil.matchRegex(Trim(value1), AMT_REGEX) Then
+                        'Negative check
+                        If Trim(Sheets("4 Amend").Cells(rowNo, col).value < 0) Then
+                            Sheets("4 Amend").Cells(rowNo, col).Interior.ColorIndex = 3
+                            Sheets("4 Amend").Cells(rowNo, col).ClearComments
+                            Sheets("4 Amend").Cells(rowNo, col).AddComment "Invalid Amount"
+                            Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                            validateAmend = False
+                            tflag = False
+                        Else
+                            Sheets("4 Amend").Cells(rowNo, col).Interior.ColorIndex = 3
+                            Sheets("4 Amend").Cells(rowNo, col).ClearComments
+                            Sheets("4 Amend").Cells(rowNo, col).AddComment "Invalid Amount"
+                            Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                            validateAmend = False
+                            tflag = False
+                        End If
+        
+                    End If
+                Else
+    
+                  Sheets("4 Amend").Cells(rowNo, col).Interior.ColorIndex = 3
+                  Sheets("4 Amend").Cells(rowNo, col).ClearComments
+                  Sheets("4 Amend").Cells(rowNo, col).AddComment "Invalid Amount"
+                  Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                  validateAmend = False
+                  tflag = False
+                End If
+
+        End If
+iter:
+               
+        Next
+        If tflag = False Then
+            GoTo wotax1
+        End If
+
+          'Tax check code
+        If tflag = True Then
+            
+            
+            
+            'Calculates net amount
+            If Trim(Sheets("4 Amend").Cells(rowNo, 10).value) = vbNullString And Trim(Sheets("4 Amend").Cells(rowNo, 11).value) = vbNullString And Trim(Sheets("4 Amend").Cells(rowNo, 12).value) = vbNullString And Trim(Sheets("4 Amend").Cells(rowNo, 13).value) = vbNullString Then
+                Sheets("4 Amend").Cells(rowNo, 14).ClearContents
+            ElseIf (Trim(Sheets("4 Amend").Cells(rowNo, 10).value) = vbNullString Or IsNumeric(Trim(Sheets("4 Amend").Cells(rowNo, 10).value))) And (Trim(Sheets("4 Amend").Cells(rowNo, 11).value) = vbNullString Or IsNumeric(Trim(Sheets("4 Amend").Cells(rowNo, 11).value))) And (Trim(Sheets("4 Amend").Cells(rowNo, 12).value) = vbNullString Or IsNumeric(Trim(Sheets("4 Amend").Cells(rowNo, 12).value))) And (Trim(Sheets("4 Amend").Cells(rowNo, 13).value) = vbNullString Or IsNumeric(Trim(Sheets("4 Amend").Cells(rowNo, 13).value))) Then
+                Sheets("4 Amend").Cells(rowNo, 14) = Application.Round((Sheets("4 Amend").Cells(rowNo, 10) + Sheets("4 Amend").Cells(rowNo, 12) - Sheets("4 Amend").Cells(rowNo, 11) - Sheets("4 Amend").Cells(rowNo, 13)), 2)
+            Else
+                Sheets("4 Amend").Cells(rowNo, 14).ClearContents
+            End If
+                
+             igst = Application.Round(Sheets("4 Amend").Cells(rowNo, 15).value, 2)
+             cgst = Application.Round(Sheets("4 Amend").Cells(rowNo, 16).value, 2)
+             sgst = Application.Round(Sheets("4 Amend").Cells(rowNo, 17).value, 2)
+            
+            If Sheets("4 Amend").Cells(rowNo, 14).value > 0 Then
+             
+             If igst + cgst + sgst = 0 Or IsEmpty(igst + cgst + sgst) Then
+                Sheets("4 Amend").Cells(rowNo, 15).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 16).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 17).Interior.ColorIndex = 3
+                Sheets("4 Amend").Cells(rowNo, 15).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 16).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 17).ClearComments
+                Sheets("4 Amend").Cells(rowNo, 15).AddComment "One of either Integrated Tax or CGST/SGST applicable"
+                Sheets("4 Amend").Cells(rowNo, 16).AddComment "One of either Integrated Tax or CGST/SGST applicable"
+                Sheets("4 Amend").Cells(rowNo, 17).AddComment "One of either Integrated Tax or CGST/SGST applicable"
+                Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                validateAmend = False
+                'rowNo = rowNo + 1
+                'GoTo check
+            End If
+            If cgst <> sgst Then
+                        Sheets("4 Amend").Cells(rowNo, 16).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, 17).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, 16).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, 17).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, 16).AddComment "CGST and SGST amount should be equal"
+                        Sheets("4 Amend").Cells(rowNo, 17).AddComment "CGST and SGST amount should be equal"
+                        Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                        validateAmend = False
+                        'rowNo = rowNo + 1
+                        'GoTo check
+            Else
+                yr = Left(Sheets("4 Amend").Cells(rowNo, 2).value, 4)
+                mnthArr = Array("April", "May", "June")
+                mnthIndex = IsInArray(Sheets("4 Amend").Cells(rowNo, 3).value, mnthArr)
+                
+                value = Round((igst + cgst + sgst) - Application.Round((Sheets("4 Amend").Cells(rowNo, 14).value) * (Sheets("Master sheet").Cells(3, 6).value), 2), 2)
+                
+                If (yr < 2024 Or (yr = 2024 And mnthIndex <> -1)) And (igst + cgst + sgst) <> Application.Round((Sheets("4 Amend").Cells(rowNo, 14).value) * (Sheets("Master sheet").Cells(3, 6).value), 2) And Not (value >= -0.01 And value <= 0.01) Then
+                    Sheets("4 Amend").Cells(rowNo, 15).Interior.ColorIndex = 3
+                    Sheets("4 Amend").Cells(rowNo, 16).Interior.ColorIndex = 3
+                    Sheets("4 Amend").Cells(rowNo, 17).Interior.ColorIndex = 3
+                    Sheets("4 Amend").Cells(rowNo, 15).ClearComments
+                    Sheets("4 Amend").Cells(rowNo, 16).ClearComments
+                    Sheets("4 Amend").Cells(rowNo, 17).ClearComments
+                    Sheets("4 Amend").Cells(rowNo, 15).AddComment "Total tax value must be 1% of net amount liable for TCS"
+                    Sheets("4 Amend").Cells(rowNo, 16).AddComment "Total tax value must be 1% of net amount liable for TCS"
+                    Sheets("4 Amend").Cells(rowNo, 17).AddComment "Total tax value must be 1% of net amount liable for TCS"
+                    Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                    validateAmend = False
+                    'rowNo = rowNo + 1
+                    'GoTo check
+                Else
+                    yr = Left(Sheets("4 Amend").Cells(rowNo, 2).value, 4)
+                    mnthArr = Array("January", "February", "March", "July", "August", "September", "October", "November", "December")
+                    mnthIndex = IsInArray(Sheets("4 Amend").Cells(rowNo, 3).value, mnthArr)
+                    netliable = Sheets("4 Amend").Cells(rowNo, 14).value
+                    taxAmount = Application.Round((igst + cgst + sgst), 2)
+                    expectedTaxAmount1 = Application.Round(netliable * (Sheets("Master sheet").Cells(3, 6).value), 2)
+                    expectedTaxAmount2 = Application.Round(netliable * (Sheets("Master sheet").Cells(6, 6).value), 2)
+                        If expectedTaxAmount1 > expectedTaxAmount2 Then
+                            temp = expectedTaxAmount1
+                            expectedTaxAmount1 = expectedTaxAmount2
+                            expectedTaxAmount2 = temp
+                        End If
+                    If (yr > 2024 Or (yr = 2024 And mnthIndex <> -1)) And Not (value >= -0.01 And value <= 0.01) Then
+                        If (taxAmount < expectedTaxAmount1 Or taxAmount > expectedTaxAmount2) Then
+                            Sheets("4 Amend").Cells(rowNo, 15).Interior.ColorIndex = 3
+                            Sheets("4 Amend").Cells(rowNo, 16).Interior.ColorIndex = 3
+                            Sheets("4 Amend").Cells(rowNo, 17).Interior.ColorIndex = 3
+                            Sheets("4 Amend").Cells(rowNo, 15).ClearComments
+                            Sheets("4 Amend").Cells(rowNo, 16).ClearComments
+                            Sheets("4 Amend").Cells(rowNo, 17).ClearComments
+                            Sheets("4 Amend").Cells(rowNo, 15).AddComment "Total tax value must be between 0.5% to 1% of net amount liable for TCS"
+                            Sheets("4 Amend").Cells(rowNo, 16).AddComment "Total tax value must be between 0.5% to 1% of net amount liable for TCS"
+                            Sheets("4 Amend").Cells(rowNo, 17).AddComment "Total tax value must be between 0.5% to 1% of net amount liable for TCS"
+                            Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                            validateAmend = False
+                        End If
+                    End If
+                End If
+            End If
+            Else
+                If igst > 0 Or cgst > 0 Or sgst > 0 Then
+                    Sheets("4 Amend").Cells(rowNo, 15).Interior.ColorIndex = 3
+                    Sheets("4 Amend").Cells(rowNo, 16).Interior.ColorIndex = 3
+                    Sheets("4 Amend").Cells(rowNo, 17).Interior.ColorIndex = 3
+                    Sheets("4 Amend").Cells(rowNo, 15).ClearComments
+                    Sheets("4 Amend").Cells(rowNo, 16).ClearComments
+                    Sheets("4 Amend").Cells(rowNo, 17).ClearComments
+                    Sheets("4 Amend").Cells(rowNo, 15).AddComment "Tax amounts are not applicable, when Net Amount eligible for TCS is zero or negative"
+                    Sheets("4 Amend").Cells(rowNo, 16).AddComment "Tax amounts are not applicable, when Net Amount eligible for TCS is zero or negative"
+                    Sheets("4 Amend").Cells(rowNo, 17).AddComment "Tax amounts are not applicable, when Net Amount eligible for TCS is zero or negative"
+                    Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                    validateAmend = False
+                End If
+            End If
+             
+            
+        End If
+         
+        
+            
+
+wotax1:
+    'Duplicate check
+    yr = Left(Sheets("4 Amend").Cells(rowNo, 2).value, 4)
+    If (yr < 2025) Then
+    If gstflag = True Then
+       Key = Sheets("4 Amend").Cells(rowNo, 2) & "_" & Sheets("4 Amend").Cells(rowNo, 3) & "_" & Sheets("4 Amend").Cells(rowNo, 4)
+           If duplicate.Exists(Key) Then
+               Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+               Sheets("4 Amend").Cells(rowNo, 3).Interior.ColorIndex = 3
+               Sheets("4 Amend").Cells(rowNo, 4).Interior.ColorIndex = 3
+               Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+               Sheets("4 Amend").Cells(rowNo, 2).AddComment "Duplicate Combination of month , year and GSTIN found"
+               Sheets("4 Amend").Cells(rowNo, 3).ClearComments
+               Sheets("4 Amend").Cells(rowNo, 3).AddComment "Duplicate Combination of month , year and GSTIN found"
+               Sheets("4 Amend").Cells(rowNo, 4).ClearComments
+               Sheets("4 Amend").Cells(rowNo, 4).AddComment "Duplicate Combination of month , year and GSTIN found"
+               Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+               
+              validateAmend = False
+               
+           Else
+               duplicate.Add Key, iCntr
+           End If
+    End If
+    End If
+    
+    'Duplicate check for same Original GSTIN and Original POS
+         yr = Left(Sheets("4 Amend").Cells(rowNo, 2).value, 4)
+    If (yr >= 2025) Then
+    If gstflag = True Then
+       Key = Sheets("4 Amend").Cells(rowNo, 2) & "_" & Sheets("4 Amend").Cells(rowNo, 3) & "_" & Sheets("4 Amend").Cells(rowNo, 4) & "_" & Sheets("4 Amend").Cells(rowNo, 6)
+           If duplicate.Exists(Key) Then
+               Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+               Sheets("4 Amend").Cells(rowNo, 3).Interior.ColorIndex = 3
+               Sheets("4 Amend").Cells(rowNo, 4).Interior.ColorIndex = 3
+               Sheets("4 Amend").Cells(rowNo, 6).Interior.ColorIndex = 3
+               Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+               Sheets("4 Amend").Cells(rowNo, 2).AddComment "POS for same GSTIN cannot be repeated in a tax-period"
+               Sheets("4 Amend").Cells(rowNo, 3).ClearComments
+               Sheets("4 Amend").Cells(rowNo, 3).AddComment "POS for same GSTIN cannot be repeated in a tax-period"
+               Sheets("4 Amend").Cells(rowNo, 4).ClearComments
+               Sheets("4 Amend").Cells(rowNo, 4).AddComment "POS for same GSTIN cannot be repeated in a tax-period"
+               Sheets("4 Amend").Cells(rowNo, 6).ClearComments
+               Sheets("4 Amend").Cells(rowNo, 6).AddComment "POS for same GSTIN cannot be repeated in a tax-period"
+               Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+               
+              validateAmend = False
+               
+           Else
+               duplicate.Add Key, iCntr
+           End If
+    End If
+    End If
+    
+
+
+         
+     'Duplicate check for same Revised GSTIN and Original POS
+         'For i = 7 To last_row
+         'gstin = ws.Cells(i, gstinCol_1).value
+         'pos = ws.Cells(i, posCol_1).value
+         'foundDuplicate = False
+         
+         'For j = i + 1 To last_row
+            'If ws.Cells(j, gstinCol_1).value = gstin And ws.Cells(j, posCol_1).value = pos Then
+            'foundDuplicate = True
+         'Exit For
+         'End If
+         'Next j
+         
+         'If foundDuplicate Then
+            'Sheets("4 Amend").Cells(rowNo, 7).Interior.ColorIndex = 3
+            'Sheets("4 Amend").Cells(rowNo, 7).ClearComments
+            'Sheets("4 Amend").Cells(rowNo, 7).AddComment "Duplicate GSTIN and POS Found"
+            'Sheets("4 Amend").Cells(rowNo, 9).Interior.ColorIndex = 3
+            'Sheets("4 Amend").Cells(rowNo, 9).ClearComments
+            'Sheets("4 Amend").Cells(rowNo, 9).AddComment "Duplicate GSTIN and POS Found"
+            'Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+            'validateAmend = False
+         'End If
+         'Next i
+         
+        'To check the dropdown values
+        If Trim(Sheets("4 Amend").Cells(rowNo, 3).value) <> vbNullString Then
+            With Sheets("Master sheet").Range("$G$2:$G$13")
+               Set c = .Find(What:=(Sheets("4 Amend").Cells(rowNo, 3).value), LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=True)
+    '
+                    If c Is Nothing Then
+                    Sheets("4 Amend").Cells(rowNo, 3).Interior.ColorIndex = 3
+                    Sheets("4 Amend").Cells(rowNo, 3).ClearComments
+                    Sheets("4 Amend").Cells(rowNo, 3).AddComment "Please select a valid month from the dropdown"
+                    Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                    validateAmend = False
+                    
+                    End If
+            End With
+        End If
+        If Trim(Sheets("4 Amend").Cells(rowNo, 2).value) <> vbNullString Then
+            If Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(3, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$4")
+                   Set c = .Find(What:=(Sheets("4 Amend").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                        validateAmend = False
+                        
+                        End If
+                End With
+            ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(4, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$5")
+                   Set c = .Find(What:=(Sheets("4 Amend").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                        validateAmend = False
+                        
+                        End If
+                End With
+             ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(5, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$6")
+                   Set c = .Find(What:=(Sheets("4 Amend").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                        validateAmend = False
+                        
+                        End If
+                End With
+            ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(6, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$7")
+                   Set c = .Find(What:=(Sheets("4 Amend").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                        validateAmend = False
+                        
+                        End If
+                End With
+            ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(7, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$8")
+                   Set c = .Find(What:=(Sheets("4 Amend").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                        validateAmend = False
+                        
+                        End If
+                End With
+            ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(8, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$9")
+                   Set c = .Find(What:=(Sheets("4 Amend").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                        validateAmend = False
+                        
+                        End If
+                End With
+            ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(9, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$10")
+                   Set c = .Find(What:=(Sheets("4 Amend").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                        validateAmend = False
+                        
+                        End If
+                End With
+                ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(10, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$11")
+                   Set c = .Find(What:=(Sheets("4 Amend").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                        validateAmend = False
+                                                End If
+                End With
+                ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(11, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$12")
+                   Set c = .Find(What:=(Sheets("4 Amend").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4 Amend").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4 Amend").Cells(rowNo, 2).ClearComments
+                        Sheets("4 Amend").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                        validateAmend = False
+                        
+                        End If
+                End With
+            End If
+        End If
+        If Trim(Sheets("4 Amend").Cells(rowNo, 18).value) <> vbNullString Then
+            With Sheets("Master sheet").Range("$C$3:$C$4")
+               Set c = .Find(What:=(Sheets("4 Amend").Cells(rowNo, 18).value), LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=True)
+    '
+                    If c Is Nothing Then
+                    Sheets("4 Amend").Cells(rowNo, 18).Interior.ColorIndex = 3
+                    Sheets("4 Amend").Cells(rowNo, 18).ClearComments
+                    Sheets("4 Amend").Cells(rowNo, 18).AddComment "Please select a valid action from the dropdown"
+                    Sheets("4 Amend").Cells(rowNo, 19).value = "Error in row"
+                    validateAmend = False
+                    
+                    End If
+            End With
+        End If
+
+        rowNo = rowNo + 1
+    Loop
+    
+    
+    If validateAmend And Not IsEmpty(Sheets("4 Amend").Cells(7, 2).value) And (source <> "summary") Then
+        MsgBox "Sheet successfully validated. No error(s) found"
+    End If
+    Sheets("4 Amend").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+    Worksheets("4 Amend").Activate
+    End Function
+'Function to validate Suppliers Master-RD
+Public Function ValidateGSTINMaster(source As String)
+    Application.ScreenUpdating = False
+    Dim i As Integer: i = 0
+    Dim rowNo, last_row, sno As Long
+    Dim duplicate As New Scripting.Dictionary
+    ValidateGSTINMaster = True
+    Sheets("Suppliers Master-RD").Unprotect "pass"
+    rowNo = 5
+    sno = 1
+    last_row = ExtraMod.getLastRowMaster - 1
+    'clear previous errors in Suppliers Master-RD and dropdowns in TCS and TCSA Sheet
+    Sheets("Suppliers Master-RD").Range("B5:B10005").ClearContents
+    Sheets("Suppliers Master-RD").Range("D" & CStr(last_row + 1) & ":E10005").ClearContents
+    Sheets("Suppliers Master-RD").Range("G5:G10005").value = ""
+    Sheets("Suppliers Master-RD").Range("C5:C10005").Interior.Color = xlNone
+    Sheets("Suppliers Master-RD").Range("C5:C10005").ClearComments
+    CommonUtil.Delete_dropdown ("3 TCS")
+    CommonUtil.Delete_dropdown ("4 Amend")
+    
+    Do Until rowNo > last_row
+        'Deletes if the action is selected as Delete
+        If Sheets("Suppliers Master-RD").Cells(rowNo, 6) = "Delete" Then
+                Rows(rowNo).EntireRow.Delete
+                last_row = last_row - 1
+                GoTo h
+        End If
+        'Serial number is assigned
+        Sheets("Suppliers Master-RD").Cells(rowNo, 2) = sno
+        sno = sno + 1
+        'GSTIN format check
+        gstflag = True
+        If Not CommonUtil.matchRegex(Sheets("Suppliers Master-RD").Cells(rowNo, 3).value, GSTIN_REGEX) Then
+            Sheets("Suppliers Master-RD").Cells(rowNo, 3).Interior.ColorIndex = 3
+            Sheets("Suppliers Master-RD").Cells(rowNo, 3).ClearComments
+            Sheets("Suppliers Master-RD").Cells(rowNo, 3).AddComment "Invalid GSTIN"
+            Sheets("Suppliers Master-RD").Cells(rowNo, 7).value = "Invalid GSTIN"
+            ValidateGSTINMaster = False
+            gstflag = False
+        End If
+        'Duplicate GSTIN check
+        If gstflag = True Then
+        Key = Sheets("Suppliers Master-RD").Cells(rowNo, 3)
+           If duplicate.Exists(Key) Then
+                Sheets("Suppliers Master-RD").Cells(rowNo, 3).Interior.ColorIndex = 3
+                Sheets("Suppliers Master-RD").Cells(rowNo, 3).ClearComments
+                Sheets("Suppliers Master-RD").Cells(rowNo, 3).AddComment "Duplicate GSTIN Found."
+                Sheets("Suppliers Master-RD").Cells(rowNo, 7).value = "Duplicate GSTIN Found."
+                ValidateGSTINMaster = False
+            Else
+               duplicate.Add Key, i
+               i = i + 1
+           End If
+        End If
+        rowNo = rowNo + 1
+        
+h:
+   Loop
+    If ValidateGSTINMaster = True And (source <> "summary") And last_row <> 4 Then
+        MsgBox "Sheet successfully validated. No error(s) founds"
+        CommonUtil.Assign_dropdown_submitted ("3 TCS")
+        CommonUtil.Assign_dropdown_submitted ("4 Amend")
+    End If
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+    Sheets("Suppliers Master-RD").Protect "pass"
+End Function
+
+'Function that validates UNRD Sheet
+
+Public Function validateUNRD(source As String) As Boolean
+    Application.ScreenUpdating = False
+    On Error Resume Next
+    Dim col, length1 As Integer
+    Dim rowNo, last_row As Long
+    Dim tflag, eidflag As Boolean
+    Dim duplicate As New Scripting.Dictionary
+    validateUNRD = True
+    Sheets("3.1 UNRD").Unprotect "pass"
+    rowNo = 6
+    last_row = ExtraMod.getLastRowUNRD - 1
+    
+    'Clears all the previous errors and comments in the sheet
+    Sheets("3.1 UNRD").Range("H6:H1048576").value = ""
+    Sheets("3.1 UNRD").Range("B6:G1048576").Interior.Color = xlNone
+    Sheets("3.1 UNRD").Range("B6:G1048576").ClearComments
+    'Checks if datas are proper in home sheet
+    If (MainMod.validateHomeGSTINData) Then
+      Sheets("Home").Unprotect "pass"
+      Sheets("Home").Select
+      Sheets("Home").Protect "pass"
+      MsgBox "Please enter GSTIN, Tax period and Financial year in Home Page to validate the UNRD/UNRDA sheet."
+      Exit Function
+    End If
+    Do Until rowNo > last_row
+        tflag = True
+        eidflag = True
+        'Mandatory field check
+        col = 2
+            If Trim(Sheets("3.1 UNRD").Cells(rowNo, col).value & vbNullString) = vbNullString Then
+                
+                Sheets("3.1 UNRD").Cells(rowNo, col).Interior.ColorIndex = 3
+                Sheets("3.1 UNRD").Cells(rowNo, col).ClearComments
+                Sheets("3.1 UNRD").Cells(rowNo, col).AddComment "Mandatory field cannot be left blank"
+                Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                validateUNRD = False
+                
+                
+            End If
+        
+        If Trim(Sheets("3.1 UNRD").Cells(rowNo, 4).value & vbNullString) = vbNullString And Trim(Sheets("3.1 UNRD").Cells(rowNo, 5).value & vbNullString) = vbNullString Then
+                
+                Sheets("3.1 UNRD").Cells(rowNo, 4).Interior.ColorIndex = 3
+                Sheets("3.1 UNRD").Cells(rowNo, 4).ClearComments
+                Sheets("3.1 UNRD").Cells(rowNo, 4).AddComment "Any one of the Values is Mandatory"
+                Sheets("3.1 UNRD").Cells(rowNo, 5).Interior.ColorIndex = 3
+                Sheets("3.1 UNRD").Cells(rowNo, 5).ClearComments
+                Sheets("3.1 UNRD").Cells(rowNo, 5).AddComment "Any one of the Values is Mandatory"
+                Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                validateUNRD = False
+                
+                
+            End If
+        
+        'Mandatory check for action drop down
+        
+        If Trim(Sheets("3.1 UNRD").Cells(rowNo, 7).value & vbNullString) = vbNullString Then
+                Sheets("3.1 UNRD").Cells(rowNo, 7).Interior.ColorIndex = 3
+                Sheets("3.1 UNRD").Cells(rowNo, 7).ClearComments
+                Sheets("3.1 UNRD").Cells(rowNo, 7).AddComment "Please select a valid action from the dropdown"
+                Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                validateUNRD = False
+                
+            End If
+        
+        'EID format check
+        If Not CommonUtil.matchRegex(Sheets("3.1 UNRD").Cells(rowNo, 2).value, ES_ID_REGEX) Then
+            If Trim(Sheets("3.1 UNRD").Cells(rowNo, 2).value) = vbNullString Then
+                Sheets("3.1 UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                Sheets("3.1 UNRD").Cells(rowNo, 2).ClearComments
+                Sheets("3.1 UNRD").Cells(rowNo, 2).AddComment "Mandatory field cannot be left blank"
+                Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                validateUNRD = False
+                eidflag = False
+                GoTo woded3
+            Else
+                Sheets("3.1 UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                Sheets("3.1 UNRD").Cells(rowNo, 2).ClearComments
+                Sheets("3.1 UNRD").Cells(rowNo, 2).AddComment "Please enter a valid Enrolment no."
+                Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                validateUNRD = False
+                eidflag = False
+                GoTo woded3
+            End If
+            
+        End If
+        'Checking whether the EID's first 2 digits match with the statecode of GSTN entered in home page
+        If Not MainMod.samestateCheck(Sheets("3.1 UNRD").Cells(rowNo, 2).value) Then
+            Sheets("3.1 UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+            Sheets("3.1 UNRD").Cells(rowNo, 2).ClearComments
+            Sheets("3.1 UNRD").Cells(rowNo, 2).AddComment "Please enter same State enrolment no."
+            Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+            validateUNRD = False
+            eidflag = False
+        End If
+        
+        
+woded3:
+        
+        For col = 4 To 5
+            
+            
+                length1 = 13
+            
+                
+            value1 = Trim(Sheets("3.1 UNRD").Cells(rowNo, col).value)
+            If Trim(value1) <> vbNullString Then
+            
+                On Error GoTo Flow2
+                If IsNumeric(value1) Then
+                    'length check
+                    If (Len(Split(value1, ".", 2)(0)) > length1) Then
+                        Sheets("3.1 UNRD").Cells(rowNo, col).Interior.ColorIndex = 3
+                        Sheets("3.1 UNRD").Cells(rowNo, col).ClearComments
+                        Sheets("3.1 UNRD").Cells(rowNo, col).AddComment "Amount should not be greater than " & CStr(length1) & " digits"
+                        Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                        validateUNRD = False
+                        tflag = False
+                    End If
+Flow2:
+                    'Amount check for original
+                    If Not CommonUtil.matchRegex(Trim(value1), AMT_REGEX) And Not (col = 6) Then
+                        'Negative check
+                        If Trim(Sheets("3.1 UNRD").Cells(rowNo, col).value < 0) Then
+                            Sheets("3.1 UNRD").Cells(rowNo, col).Interior.ColorIndex = 3
+                            Sheets("3.1 UNRD").Cells(rowNo, col).ClearComments
+                            Sheets("3.1 UNRD").Cells(rowNo, col).AddComment "Invalid Amount"
+                            Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                            validateUNRD = False
+                            tflag = False
+                        Else
+                            
+                            Sheets("3.1 UNRD").Cells(rowNo, col).Interior.ColorIndex = 3
+                            Sheets("3.1 UNRD").Cells(rowNo, col).ClearComments
+                            Sheets("3.1 UNRD").Cells(rowNo, col).AddComment "Invalid Amount. Amount should be maximum 13 digits with 2 decimal places."
+                            Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                            validateUNRD = False
+                            tflag = False
+                        End If
+        
+                    End If
+                    
+                    If Not CommonUtil.matchRegex(Trim(value1), AMT_REGEX_1) And (col = 6) Then
+                                                  
+                            Sheets("3.1 UNRD").Cells(rowNo, col).Interior.ColorIndex = 3
+                            Sheets("3.1 UNRD").Cells(rowNo, col).ClearComments
+                            Sheets("3.1 UNRD").Cells(rowNo, col).AddComment "Invalid Amount. Amount should be maximum 13 digits with 2 decimal places."
+                            Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                            validateUNRD = False
+                            tflag = False
+                              
+                    End If
+                Else
+deci:
+                    Sheets("3.1 UNRD").Cells(rowNo, col).Interior.ColorIndex = 3
+                    Sheets("3.1 UNRD").Cells(rowNo, col).ClearComments
+                    Sheets("3.1 UNRD").Cells(rowNo, col).AddComment "Invalid Amount"
+                    Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                    validateUNRD = False
+                    tflag = False
+                End If
+            
+        End If
+        Next
+        If tflag = False Then
+            GoTo wotax2
+        End If
+
+                 
+wotax2:
+        'Duplicate check
+        If eidflag = True Then
+            Key = Sheets("3.1 UNRD").Cells(rowNo, 2).value & "_" & Sheets("3.1 UNRD").Cells(rowNo, 7).value
+            If duplicate.Exists(Key) Then
+                Sheets("3.1 UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                Sheets("3.1 UNRD").Cells(rowNo, 2).ClearComments
+                Sheets("3.1 UNRD").Cells(rowNo, 2).AddComment "Duplicate Enrolment no. found"
+                Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                validateUNRD = False
+            Else
+                duplicate.Add Key, iCntr
+            End If
+        End If
+         
+        'To check the values of dropdown
+        If Trim(Sheets("3.1 UNRD").Cells(rowNo, 7).value) <> vbNullString Then
+            With Sheets("Master sheet").Range("$C$3:$C$4")
+               Set c = .Find(What:=(Sheets("3.1 UNRD").Cells(rowNo, 7).value), LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=True)
+    '
+                    If c Is Nothing Then
+                    Sheets("3.1 UNRD").Cells(rowNo, 7).Interior.ColorIndex = 3
+                    Sheets("3.1 UNRD").Cells(rowNo, 7).ClearComments
+                    Sheets("3.1 UNRD").Cells(rowNo, 7).AddComment "Please select a valid action from the dropdown"
+                    Sheets("3.1 UNRD").Cells(rowNo, 8).value = "Error in row"
+                    validateUNRD = False
+                    
+                    End If
+            End With
+        End If
+        
+        rowNo = rowNo + 1
+
+Loop
+    
+    If validateUNRD And Not IsEmpty(Sheets("3.1 UNRD").Cells(6, 2).value) And (source <> "summary") Then
+        MsgBox "Sheet successfully validated. No error(s) found"
+    End If
+    
+    Sheets("3.1 UNRD").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+    
+    Worksheets("3.1 UNRD").Activate
+
+End Function
+
+
+'Function to validate Suppliers Master-UNRD
+
+Public Function ValidateEIDMaster(source As String)
+    Application.ScreenUpdating = False
+    Dim i As Integer: i = 0
+    Dim rowNo, last_row, sno As Long
+    Dim duplicate As New Scripting.Dictionary
+    ValidateEIDMaster = True
+    Sheets("Suppliers Master-UNRD").Unprotect "pass"
+    rowNo = 5
+    sno = 1
+    last_row = ExtraMod.getLastRowMasterEID - 1
+    'clear previous errors in Suppliers Master-UNRD and dropdowns in UNRD and UNRDA Sheet
+    Sheets("Suppliers Master-UNRD").Range("B5:B1048576").ClearContents
+    Sheets("Suppliers Master-UNRD").Range("D" & CStr(last_row + 1) & ":E1048576").ClearContents
+    Sheets("Suppliers Master-UNRD").Range("G5:G1048576").value = ""
+    Sheets("Suppliers Master-UNRD").Range("C5:C1048576").Interior.Color = xlNone
+    Sheets("Suppliers Master-UNRD").Range("C5:C1048576").ClearComments
+    CommonUtil.Delete_dropdownEID ("3.1 UNRD")
+    CommonUtil.Delete_dropdownEID ("4.1 Amend-UNRD")
+    
+    Do Until rowNo > last_row
+        'Deletes if the action is selected as Delete
+        If Sheets("Suppliers Master-UNRD").Cells(rowNo, 6) = "Delete" Then
+                Rows(rowNo).EntireRow.Delete
+                last_row = last_row - 1
+                GoTo e
+        End If
+        'Serial number is assigned
+        Sheets("Suppliers Master-UNRD").Cells(rowNo, 2) = sno
+        sno = sno + 1
+        'EID format check
+        eidflag = True
+        If Not CommonUtil.matchRegex(Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).value, ES_ID_REGEX) Then
+            Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).Interior.ColorIndex = 3
+            Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).ClearComments
+            Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).AddComment "Please enter a valid Enrolment no."
+            Sheets("Suppliers Master-UNRD").Cells(rowNo, 7).value = "Errow in row"
+            ValidateEIDMaster = False
+            eidflag = False
+        End If
+        'Duplicate EID check
+        If eidflag = True Then
+        Key = Sheets("Suppliers Master-UNRD").Cells(rowNo, 3)
+           If duplicate.Exists(Key) Then
+                Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).Interior.ColorIndex = 3
+                Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).ClearComments
+                Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).AddComment "Duplicate Enrolment no. found"
+                Sheets("Suppliers Master-UNRD").Cells(rowNo, 7).value = "Error in row"
+                ValidateEIDMaster = False
+            Else
+               duplicate.Add Key, i
+               i = i + 1
+           End If
+        End If
+        'Checking whether the EID's first 2 digits match with the statecode of GSTN entered in home page
+        If Not MainMod.samestateCheck(Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).value) Then
+            Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).Interior.ColorIndex = 3
+            Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).ClearComments
+            Sheets("Suppliers Master-UNRD").Cells(rowNo, 3).AddComment "Please enter same State enrolment no."
+            Sheets("Suppliers Master-UNRD").Cells(rowNo, 7).value = "Error in row"
+            ValidateEIDMaster = False
+            eidflag = False
+        End If
+        rowNo = rowNo + 1
+        
+e:
+   Loop
+    If ValidateEIDMaster = True And (source <> "summary") And last_row <> 4 Then
+        MsgBox "Sheet successfully validated. No error(s) founds"
+        CommonUtil.Assign_dropdown_submittedEID ("3.1 UNRD")
+        CommonUtil.Assign_dropdown_submittedEID ("4.1 Amend-UNRD")
+    End If
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+    Sheets("Suppliers Master-UNRD").Protect "pass"
+
+End Function
+
+Public Function validateUNRDA(source As String) As Boolean
+    Application.ScreenUpdating = False
+    On Error Resume Next
+    Dim length1 As Integer
+    Dim rowNo, last_row As Long
+    Dim value1 As Variant
+    Dim eidflag, tflag, reid As Boolean
+    Dim duplicate As New Scripting.Dictionary
+    Dim month, year, amendmonthyear, homemonthyear As String
+    Sheets("4.1 Amend-UNRD").Unprotect "pass"
+    validateUNRDA = True
+    rowNo = 7
+    last_row = ExtraMod.getLastRowUNRDA - 1
+     'Clears all the previous errors and comments in the sheet
+    Sheets("4.1 Amend-UNRD").Range("L7:L1048576").value = ""
+    Sheets("4.1 Amend-UNRD").Range("B7:K1048576").Interior.Color = xlNone
+    Sheets("4.1 Amend-UNRD").Range("B7:K1048576").ClearComments
+    'Checks if datas are proper in home sheet
+    If (MainMod.validateHomeGSTINData) Then
+      Sheets("Home").Unprotect "pass"
+      Sheets("Home").Select
+      Sheets("Home").Protect "pass"
+      MsgBox "Please enter GSTIN, Tax period and Financial year in Home Page to validate the UNRD/UNRDA sheet."
+      Exit Function
+    End If
+    Do Until rowNo > last_row
+        eidflag = True
+        tflag = True
+        reid = True
+        
+        'Mandatory field check
+        For col = 2 To 6
+            If Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, col).value & vbNullString) = vbNullString And Not (col = 5) Then
+                
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, col).Interior.ColorIndex = 3
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, col).ClearComments
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, col).AddComment "Mandatory field cannot be left blank"
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                validateUNRDA = False
+               
+                
+            End If
+        Next
+        
+        If Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 8).value & vbNullString) = vbNullString And Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 9).value & vbNullString) = vbNullString Then
+                
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 8).Interior.ColorIndex = 3
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 8).ClearComments
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 8).AddComment "Any one of the Values is Mandatory"
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 9).Interior.ColorIndex = 3
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 9).ClearComments
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 9).AddComment "Any one of the values is Mandatory"
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                validateUNRDA = False
+               
+                
+            End If
+        'Mandatory field check for action drop down
+        If Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 11).value & vbNullString) = vbNullString Then
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 11).Interior.ColorIndex = 3
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 11).ClearComments
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 11).AddComment "Please select a valid action from the dropdown"
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                validateUNRDA = False
+                
+            End If
+        'Date check
+        If Not (MainMod.validateHomeGSTINData) Then
+            month = Application.VLookup(Trim(Sheets("Home").Cells(6, 5).value), Sheets("Master sheet").Range("G2:H13"), 2, False)
+            If (month > 3) Then
+                year = Left(Sheets("Home").Cells(6, "D"), 4)
+             
+             Else
+                year = "20" + Right(Sheets("Home").Cells(6, "D"), 2)
+            End If
+            
+            homemonthyear = year & month
+            month1 = Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).value)
+            
+            If Trim(month1) <> vbNullString Then
+                month = Application.VLookup(Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).value), Sheets("Master sheet").Range("G2:H13"), 2, False)
+                If (month > 3) Then
+                    amendyear = Left(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value, 4)
+                 
+                 Else
+                    amendyear = "20" + Right(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value, 2)
+                End If
+                
+                
+                
+                If amendyear > year Then
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).Interior.ColorIndex = 3
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Month and/or Year in Amend-UNRD Sheet should be lesser than in Home Sheet"
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).ClearComments
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).AddComment "Month and/or Year in Amend-UNRD Sheet should be lesser than in Home Sheet"
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                     validateUNRDA = False
+                     
+                ElseIf amendyear < year Then
+                    GoTo last
+                End If
+               
+               
+                amendmonthyear = amendyear & month
+                   
+                value = val(homemonthyear)
+                valueamend = val(amendmonthyear)
+                If valueamend >= value Then
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).Interior.ColorIndex = 3
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Month and/or Year in Amend-UNRD Sheet should be lesser than in Home Sheet"
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).ClearComments
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).AddComment "Month and/or Year in Amend-UNRD Sheet should be lesser than in Home Sheet"
+                     Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                     validateUNRDA = False
+                     
+                
+                End If
+            End If
+            Else
+                
+                validateUNRDA = False
+                MsgBox "First enter GSTIN, Tax period and Financial year in Home Page to validate the Amend UNRD sheet."
+                
+            End If
+        
+last:
+        'EID format check for original
+        If Not CommonUtil.matchRegex(Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).value, ES_ID_REGEX) Then
+            If Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).value) = vbNullString Then
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).Interior.ColorIndex = 3
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).ClearComments
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).AddComment "Mandatory field cannot be left blank"
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                validateUNRDA = False
+                eidflag = False
+                GoTo woded4
+            Else
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).Interior.ColorIndex = 3
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).ClearComments
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).AddComment "Please enter a valid Enrolment no."
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                validateUNRDA = False
+                eidflag = False
+                GoTo woded4
+            End If
+        End If
+        'Checking whether the EID's first 2 digits match with the statecode of GSTN entered in home page for original
+        If Not MainMod.samestateCheck(Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).value) Then
+            Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).Interior.ColorIndex = 3
+            Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).ClearComments
+            Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).AddComment "Please enter same State enrolment no."
+            Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+            validateUNRDA = False
+            eidflag = False
+        End If
+woded4:
+        'EID format check for revised
+        If Not CommonUtil.matchRegex(Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).value, ES_ID_REGEX) Then
+            If Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).value) = vbNullString Then
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).Interior.ColorIndex = 3
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).ClearComments
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).AddComment "Mandatory field cannot be left blank"
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                validateUNRDA = False
+                reid = False
+                GoTo woded5
+            Else
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).Interior.ColorIndex = 3
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).ClearComments
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).AddComment "Please enter a valid Enrolment no."
+                Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                validateUNRDA = False
+                reid = False
+                GoTo woded5
+            End If
+        End If
+         'Checking whether the EID's first 2 digits match with the statecode of GSTN entered in home page for revised
+        If Not MainMod.samestateCheck(Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).value) Then
+            Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).Interior.ColorIndex = 3
+            Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).ClearComments
+            Sheets("4.1 Amend-UNRD").Cells(rowNo, 6).AddComment "Please enter same State enrolment no."
+            Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+            validateUNRDA = False
+            reid = False
+        End If
+        
+        
+woded5:
+        
+        For col = 8 To 9
+            
+            length1 = 13
+            
+            
+            
+            
+            value1 = Sheets("4.1 Amend-UNRD").Cells(rowNo, col).value
+            If Trim(value1) <> vbNullString Then
+                On Error GoTo Flow2
+                If IsNumeric(value1) Then
+                    
+                    'length check
+                    If (Len(Split(value1, ".", 2)(0)) > length1) Then
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, col).Interior.ColorIndex = 3
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, col).ClearComments
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, col).AddComment "Amount should not be greater than " & CStr(length1) & " digits"
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                        validateUNRDA = False
+                        tflag = False
+                    End If
+                    
+Flow2:
+                    'Amount check for original
+                    If Not CommonUtil.matchRegex(Trim(value1), AMT_REGEX) Then
+                        'Negative check
+                        If Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, col).value < 0) Then
+                            Sheets("4.1 Amend-UNRD").Cells(rowNo, col).Interior.ColorIndex = 3
+                            Sheets("4.1 Amend-UNRD").Cells(rowNo, col).ClearComments
+                            Sheets("4.1 Amend-UNRD").Cells(rowNo, col).AddComment "Invalid Amount"
+                            Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                            validateUNRDA = False
+                            tflag = False
+                        Else
+                            Sheets("4.1 Amend-UNRD").Cells(rowNo, col).Interior.ColorIndex = 3
+                            Sheets("4.1 Amend-UNRD").Cells(rowNo, col).ClearComments
+                            Sheets("4.1 Amend-UNRD").Cells(rowNo, col).AddComment "Invalid Amount. Amount should be maximum 13 digits with 2 decimal places."
+                            Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                            validateUNRDA = False
+                            tflag = False
+                        End If
+        
+                    End If
+                Else
+    
+                  Sheets("4.1 Amend-UNRD").Cells(rowNo, col).Interior.ColorIndex = 3
+                  Sheets("4.1 Amend-UNRD").Cells(rowNo, col).ClearComments
+                  Sheets("4.1 Amend-UNRD").Cells(rowNo, col).AddComment "Invalid Amount. Amount should be maximum 13 digits with 2 decimal places."
+                  Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                  validateUNRDA = False
+                  tflag = False
+                End If
+
+        End If
+iter:
+               
+        Next
+        If tflag = False Then
+            GoTo wotax3
+        End If
+
+       
+wotax3:
+    'Duplicate check
+    If eidflag = True Then
+        Key = Sheets("4.1 Amend-UNRD").Cells(rowNo, 2) & "_" & Sheets("4.1 Amend-UNRD").Cells(rowNo, 3) & "_" & Sheets("4.1 Amend-UNRD").Cells(rowNo, 4)
+           If duplicate.Exists(Key) Then
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).Interior.ColorIndex = 3
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).Interior.ColorIndex = 3
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Duplicate combination of month, year and enrolment no. found"
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).ClearComments
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).AddComment "Duplicate combination of month, year and enrolment no. found"
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).ClearComments
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 4).AddComment "Duplicate combination of month, year and enrolment no. found"
+               Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+               
+               validateUNRDA = False
+               
+           Else
+               duplicate.Add Key, iCntr
+           End If
+    End If
+        'To check the dropdown values
+        If Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).value) <> vbNullString Then
+            With Sheets("Master sheet").Range("$G$2:$G$13")
+               Set c = .Find(What:=(Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).value), LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=True)
+    '
+                    If c Is Nothing Then
+                    Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).Interior.ColorIndex = 3
+                    Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).ClearComments
+                    Sheets("4.1 Amend-UNRD").Cells(rowNo, 3).AddComment "Please select a valid month from the dropdown"
+                    Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                    validateUNRDA = False
+                    
+                    End If
+            End With
+        End If
+        If Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value) <> vbNullString Then
+            If Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(3, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$4")
+                   Set c = .Find(What:=(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                        validateUNRDA = False
+                        
+                        End If
+                End With
+            ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(4, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$5")
+                   Set c = .Find(What:=(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                        validateUNRDA = False
+                        
+                        End If
+                End With
+             ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(5, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$6")
+                   Set c = .Find(What:=(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                        validateUNRDA = False
+                        
+                        End If
+                End With
+            ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(6, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$7")
+                   Set c = .Find(What:=(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                        validateUNRDA = False
+                        
+                        End If
+                End With
+            ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(7, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$8")
+                   Set c = .Find(What:=(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                        validateUNRDA = False
+                        
+                        End If
+                End With
+            ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(8, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$9")
+                   Set c = .Find(What:=(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                        validateUNRDA = False
+                        
+                        End If
+                End With
+            ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(9, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$10")
+                   Set c = .Find(What:=(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                        validateUNRDA = False
+                        
+                        End If
+                End With
+             ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(10, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$11")
+                   Set c = .Find(What:=(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                        validateUNRDA = False
+                                                End If
+                End With
+             ElseIf Sheets("Home").Cells(6, "D").value = Sheets("Master sheet").Cells(11, "D").value Then
+                With Sheets("Master sheet").Range("$E$3:$E$12")
+                   Set c = .Find(What:=(Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).value))
+                        If c Is Nothing Then
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).Interior.ColorIndex = 3
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).ClearComments
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 2).AddComment "Please select a valid year from the dropdown"
+                        Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                        validateUNRDA = False
+                        
+                        End If
+                End With
+            End If
+        End If
+        If Trim(Sheets("4.1 Amend-UNRD").Cells(rowNo, 11).value) <> vbNullString Then
+            With Sheets("Master sheet").Range("$C$3:$C$4")
+               Set c = .Find(What:=(Sheets("4.1 Amend-UNRD").Cells(rowNo, 11).value), LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=True)
+    '
+                    If c Is Nothing Then
+                    Sheets("4.1 Amend-UNRD").Cells(rowNo, 11).Interior.ColorIndex = 3
+                    Sheets("4.1 Amend-UNRD").Cells(rowNo, 11).ClearComments
+                    Sheets("4.1 Amend-UNRD").Cells(rowNo, 11).AddComment "Please select a valid action from the dropdown"
+                    Sheets("4.1 Amend-UNRD").Cells(rowNo, 12).value = "Error in row"
+                    validateUNRDA = False
+                    
+                    End If
+            End With
+        End If
+
+        rowNo = rowNo + 1
+    Loop
+    
+    
+    If validateUNRDA And Not IsEmpty(Sheets("4.1 Amend-UNRD").Cells(7, 2).value) And (source <> "summary") Then
+        MsgBox "Sheet successfully validated. No error(s) found"
+    End If
+    Sheets("4.1 Amend-UNRD").Protect Password:="pass", DrawingObjects:=False, userinterfaceonly:=True
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+    Worksheets("4.1 Amend-UNRD").Activate
+
+End Function
+
+Public Function IsInArray(stringToBeFound As String, arr As Variant) As Long
+Dim i As Long
+  ' default return value if value not found in array
+  IsInArray = -1
+  For i = LBound(arr) To UBound(arr)
+    If StrComp(stringToBeFound, arr(i), vbTextCompare) = 0 Then
+      IsInArray = i
+      Exit For
+    End If
+  Next i
+End Function
+
+-------------------------------------------------------------------------------

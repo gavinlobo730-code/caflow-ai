@@ -1,0 +1,760 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+Public Sub loadINOUTSUPData()
+    Dim allSheetsValid As Boolean: allSheetsValid = True
+    If Not HomeMod.validateGSTINData Then
+        MsgBox ("Please enter the details in 'Home' Sheet."), vbCritical
+        Exit Sub
+     ElseIf MainMod.checkEmpty Then
+        allSheetsValid = False
+        MsgBox "There are no details provided in table 4B, 4C and 4D. Therefore no liability is to be computed."
+        Exit Sub
+    Else
+     ' MsgBox ("Processing may take some time. Please wait..."), vbMsgBoxSetForeground
+    Dim actionCode As Integer: actionCode = MsgBox("Processing may take some time. Please wait...", 1, "Choose options")
+    End If
+        Dim errorSheets As New VBA.Collection
+   
+    
+    If Not HomeMod.validateGSTINData Then
+        allSheetsValid = False
+        errorSheets.Add "Home"
+    End If
+    If Not B2BRCMod.validateB2BRC Then
+        allSheetsValid = False
+        errorSheets.Add "4B. B2BRC"
+    End If
+    If Not URPMod.validateURP Then
+        allSheetsValid = False
+        errorSheets.Add "4C. URP"
+    End If
+    If Not IMPS.validateIMPS Then
+        allSheetsValid = False
+        errorSheets.Add "4D.IMPS"
+    End If
+    
+    If allSheetsValid Then
+        Call InoutsupMod.computeClearData
+        Call InoutsupMod.loadTaxValData
+        Call InoutsupMod.loadIGSTData
+        Call InoutsupMod.loadCGSTData
+        Call InoutsupMod.loadSGSTData
+        Call InoutsupMod.loadCESSData
+     Else
+            MsgBox "There are errors in the sheet(s) : " _
+                & vbNewLine & vbNewLine & Join(CommonUtil.collectionToArray(errorSheets), vbNewLine) _
+                & vbNewLine & vbNewLine & "There are some validation errors in Table 4B, 4C or 4D. Please correct the same before computing liability.", vbCritica
+    End If
+End Sub
+Public Sub validateInoutsupSheet()
+    If Not validateInoutsup Then
+        MsgBox "There are errors in the sheet(highlighted by Red colored cells).You can also filter erroneous items based on the Error(if any) column at the end of the sheet", vbCritical
+     Else
+        MsgBox "Sheet successfully validated. No error(s) found", vbOKOnly
+    End If
+End Sub
+Public Sub clearINOUTSUPData()
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+    With Sheets("6. Inward outward supplies")
+      .Range(.Cells(13, 5), .Cells(25, 9)).ClearContents
+       .Range(.Cells(7, 10), .Cells(25, 11)).ClearContents
+        .Range(.Cells(7, 7), .Cells(13, 8)).ClearContents
+        .Range(.Cells(7, 7), .Cells(13, 8)).ClearComments
+        .Range(.Cells(START_ROW, 5), .Cells(FIXED_END_ROW_TO_CLEAR, 12)).ClearContents
+    End With
+    Application.ScreenUpdating = True
+    Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+End Sub
+Public Sub computeClearData()
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+    With Sheets("6. Inward outward supplies")
+        .Range(.Cells(13, 5), .Cells(25, 9)).ClearContents
+        .Range(.Cells(7, 11), .Cells(25, 12)).ClearContents
+        .Range(.Cells(7, 10), .Cells(25, 10)).ClearComments
+        .Range(.Cells(13, 5), .Cells(25, 9)).ClearComments
+        .Range(.Cells(7, 11), .Cells(25, 12)).ClearComments
+    End With
+    Application.ScreenUpdating = True
+    Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+End Sub
+Public Sub loadTaxValData()
+    Dim ctin As Dictionary
+    Dim d
+    Set d = CreateObject("Scripting.Dictionary")
+    d.Add 0#, 0
+    d.Add 0.1, 0
+    d.Add 0.25, 0
+    d.Add 1#, 0
+    d.Add 1.5, 0
+    d.Add 3#, 0
+    d.Add 5#, 0
+    d.Add 6#, 0
+    d.Add 7.5, 0
+   
+    d.Add 12#, 0
+    d.Add 18#, 0
+    d.Add 28#, 0
+    d.Add 40#, 0
+    
+
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim i As Integer: i = 7
+      Dim temp As Double: temp = 0
+       Do Until Trim(Sheets("4B. B2BRC").Cells(i, 6).Value & vbNullString) = vbNullString
+            If (Sheets("4B. B2BRC").Cells(i, 6) = varKey) And (Sheets("4B. B2BRC").Cells(i, 11) = "Add") Then
+            temp = temp + Sheets("4B. B2BRC").Cells(i, 5).Value
+            'MsgBox d(varKey)
+            End If
+        i = i + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp
+    Next
+ 
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim k As Integer: k = 7
+      Dim temp2 As Double: temp2 = 0
+       Do Until Trim(Sheets("4C. URP").Cells(k, 4).Value & vbNullString) = vbNullString
+            If (Sheets("4C. URP").Cells(k, 7) <> "") Then
+            If (Sheets("4C. URP").Cells(k, 7) = varKey) And (Sheets("4C. URP").Cells(k, 12) = "Add") Then
+            'MsgBox Sheets("4C. URP").Cells(k, 7)
+            temp2 = temp2 + Sheets("4C. URP").Cells(k, 6).Value
+            'MsgBox d(varKey)
+            End If
+            End If
+        k = k + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp2
+    Next
+
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim l As Integer: l = 7
+      Dim temp3 As Double: temp3 = 0
+       Do Until Trim(Sheets("4D. IMPS").Cells(l, 4).Value & vbNullString) = vbNullString
+            If (Sheets("4D. IMPS").Cells(l, 4) = varKey) And (Sheets("4D. IMPS").Cells(l, 7) = "Add") Then
+            temp3 = temp3 + Sheets("4D. IMPS").Cells(l, 3).Value
+            'MsgBox d(varKey)
+            End If
+        l = l + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp3
+    Next
+    
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+    Sheets("6. Inward outward supplies").Cells(13, 5).Value = d(0)
+    Sheets("6. Inward outward supplies").Cells(14, 5).Value = d(0.1)
+    Sheets("6. Inward outward supplies").Cells(15, 5).Value = d(0.25)
+    Sheets("6. Inward outward supplies").Cells(16, 5).Value = d(1#)
+    Sheets("6. Inward outward supplies").Cells(17, 5).Value = d(1.5)
+    Sheets("6. Inward outward supplies").Cells(18, 5).Value = d(3#)
+    Sheets("6. Inward outward supplies").Cells(19, 5).Value = d(5#)
+    Sheets("6. Inward outward supplies").Cells(20, 5).Value = d(6#)
+    Sheets("6. Inward outward supplies").Cells(21, 5).Value = d(7.5)
+    
+    Sheets("6. Inward outward supplies").Cells(22, 5).Value = d(12#)
+    Sheets("6. Inward outward supplies").Cells(23, 5).Value = d(18#)
+    Sheets("6. Inward outward supplies").Cells(24, 5).Value = d(28#)
+    Sheets("6. Inward outward supplies").Cells(25, 5).Value = d(40#)
+    
+    Dim cnt As Integer: cnt = 7
+    For i = 13 To 25
+        If ((Sheets("6. Inward outward supplies").Cells(i, 5).Value = 0#) Or IsNull(Sheets("6. Inward outward supplies").Cells(i, 5).Value)) Then
+            Worksheets("6. Inward outward supplies").Rows(i).Hidden = True
+        Else
+            Worksheets("6. Inward outward supplies").Rows(i).Hidden = False
+            Worksheets("6. Inward outward supplies").Cells(i, 2).Value = cnt
+            cnt = cnt + 1
+        End If
+    Next
+        
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+
+End Sub
+Public Sub loadIGSTData()
+    Dim ctin As Dictionary
+    Dim d
+    Set d = CreateObject("Scripting.Dictionary")
+    d.Add 0, 0
+    d.Add 0.1, 0
+    d.Add 0.25, 0
+    d.Add 1#, 0
+    d.Add 1.5, 0
+    d.Add 3#, 0
+    d.Add 5#, 0
+    d.Add 6#, 0
+    d.Add 7.5, 0
+
+    d.Add 12#, 0
+    d.Add 18#, 0
+    d.Add 28#, 0
+    d.Add 40#, 0
+    
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim i As Integer: i = 6
+      Dim temp As Double: temp = 0
+       Do Until Trim(Sheets("4B. B2BRC").Cells(i, 6).Value & vbNullString) = vbNullString
+            If (Sheets("4B. B2BRC").Cells(i, 6) = varKey) And (Sheets("4B. B2BRC").Cells(i, 11) = "Add") Then
+            temp = temp + Sheets("4B. B2BRC").Cells(i, 7).Value
+            'MsgBox d(varKey)
+            End If
+        i = i + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp
+    Next
+    
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim k As Integer: k = 7
+      Dim temp2 As Double: temp2 = 0
+       Do Until Trim(Sheets("4C. URP").Cells(k, 4).Value & vbNullString) = vbNullString
+            If (Sheets("4C. URP").Cells(k, 7) <> "") Then
+            If (Sheets("4C. URP").Cells(k, 7) = varKey) And (Sheets("4C. URP").Cells(k, 12) = "Add") Then
+            temp2 = temp2 + Sheets("4C. URP").Cells(k, 8).Value
+            'MsgBox d(varKey)
+            End If
+            End If
+        k = k + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp2
+    Next
+
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim l As Integer: l = 7
+      Dim temp3 As Double: temp3 = 0
+       Do Until Trim(Sheets("4D. IMPS").Cells(l, 4).Value & vbNullString) = vbNullString
+            If (Sheets("4D. IMPS").Cells(l, 4) = varKey) And (Sheets("4D. IMPS").Cells(l, 7) = "Add") Then
+            temp3 = temp3 + Sheets("4D. IMPS").Cells(l, 5).Value
+            'MsgBox d(varKey)
+            End If
+        l = l + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp3
+    Next
+    
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+    Sheets("6. Inward outward supplies").Cells(13, 6).Value = d(0)
+    Sheets("6. Inward outward supplies").Cells(14, 6).Value = d(0.1)
+    Sheets("6. Inward outward supplies").Cells(15, 6).Value = d(0.25)
+    Sheets("6. Inward outward supplies").Cells(16, 6).Value = d(1#)
+    Sheets("6. Inward outward supplies").Cells(17, 6).Value = d(1.5)
+    Sheets("6. Inward outward supplies").Cells(18, 6).Value = d(3#)
+    Sheets("6. Inward outward supplies").Cells(19, 6).Value = d(5#)
+    Sheets("6. Inward outward supplies").Cells(20, 6).Value = d(6#)
+    Sheets("6. Inward outward supplies").Cells(21, 6).Value = d(7.5)
+
+    Sheets("6. Inward outward supplies").Cells(22, 6).Value = d(12#)
+    Sheets("6. Inward outward supplies").Cells(23, 6).Value = d(18#)
+    Sheets("6. Inward outward supplies").Cells(24, 6).Value = d(28#)
+    Sheets("6. Inward outward supplies").Cells(25, 6).Value = d(40#)
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+
+
+End Sub
+
+Public Sub loadCGSTData()
+    Dim ctin As Dictionary
+    Dim d
+    Set d = CreateObject("Scripting.Dictionary")
+    d.Add 0, 0
+    d.Add 0.1, 0
+    d.Add 0.25, 0
+    d.Add 1#, 0
+    d.Add 1.5, 0
+    d.Add 3#, 0
+    d.Add 5#, 0
+    d.Add 6#, 0
+    d.Add 7.5, 0
+    
+    d.Add 12#, 0
+    d.Add 18#, 0
+    d.Add 28#, 0
+    d.Add 40#, 0
+
+
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim i As Integer: i = 6
+      Dim temp As Double: temp = 0
+       Do Until Trim(Sheets("4B. B2BRC").Cells(i, 6).Value & vbNullString) = vbNullString
+            If (Sheets("4B. B2BRC").Cells(i, 6) = varKey) And (Sheets("4B. B2BRC").Cells(i, 11) = "Add") Then
+            temp = temp + Sheets("4B. B2BRC").Cells(i, 8).Value
+            'MsgBox d(varKey)
+            End If
+        i = i + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp
+    Next
+    
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim k As Integer: k = 7
+      Dim temp2 As Double: temp2 = 0
+       Do Until Trim(Sheets("4C. URP").Cells(k, 4).Value & vbNullString) = vbNullString
+            If (Sheets("4C. URP").Cells(k, 7) <> "") Then
+            If (Sheets("4C. URP").Cells(k, 7) = varKey) And (Sheets("4C. URP").Cells(k, 12) = "Add") Then
+            temp2 = temp2 + Sheets("4C. URP").Cells(k, 9).Value
+            'MsgBox d(varKey)
+            End If
+            End If
+        k = k + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp2
+    Next
+    
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+    Sheets("6. Inward outward supplies").Cells(13, 7).Value = d(0)
+    Sheets("6. Inward outward supplies").Cells(14, 7).Value = d(0.1)
+    Sheets("6. Inward outward supplies").Cells(15, 7).Value = d(0.25)
+    Sheets("6. Inward outward supplies").Cells(16, 7).Value = d(1#)
+    Sheets("6. Inward outward supplies").Cells(17, 7).Value = d(1.5)
+    Sheets("6. Inward outward supplies").Cells(18, 7).Value = d(3#)
+    Sheets("6. Inward outward supplies").Cells(19, 7).Value = d(5#)
+    Sheets("6. Inward outward supplies").Cells(20, 7).Value = d(6#)
+    Sheets("6. Inward outward supplies").Cells(21, 7).Value = d(7.5)
+    
+    Sheets("6. Inward outward supplies").Cells(22, 7).Value = d(12#)
+    Sheets("6. Inward outward supplies").Cells(23, 7).Value = d(18#)
+    Sheets("6. Inward outward supplies").Cells(24, 7).Value = d(28#)
+    Sheets("6. Inward outward supplies").Cells(25, 7).Value = d(40#)
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+
+
+End Sub
+Public Sub loadSGSTData()
+    Dim ctin As Dictionary
+    Dim d
+    Set d = CreateObject("Scripting.Dictionary")
+    d.Add 0, 0
+    d.Add 0.1, 0
+    d.Add 0.25, 0
+    d.Add 1#, 0
+    d.Add 1.5, 0
+    d.Add 3#, 0
+    d.Add 5#, 0
+    d.Add 6#, 0
+    d.Add 7.5, 0
+   
+    d.Add 12#, 0
+    d.Add 18#, 0
+    d.Add 28#, 0
+    d.Add 40#, 0
+    
+
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim i As Integer: i = 6
+      Dim temp As Double: temp = 0
+       Do Until Trim(Sheets("4B. B2BRC").Cells(i, 6).Value & vbNullString) = vbNullString
+            If (Sheets("4B. B2BRC").Cells(i, 6) = varKey) And (Sheets("4B. B2BRC").Cells(i, 11) = "Add") Then
+            temp = temp + Sheets("4B. B2BRC").Cells(i, 9).Value
+            'MsgBox d(varKey)
+            End If
+        i = i + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp
+    Next
+    
+
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim k As Integer: k = 7
+      Dim temp2 As Double: temp2 = 0
+       Do Until Trim(Sheets("4C. URP").Cells(k, 4).Value & vbNullString) = vbNullString
+            If (Sheets("4C. URP").Cells(k, 7) <> "") Then
+            If (Sheets("4C. URP").Cells(k, 7) = varKey) And (Sheets("4C. URP").Cells(k, 12) = "Add") Then
+            temp2 = temp2 + Sheets("4C. URP").Cells(k, 10).Value
+            'MsgBox d(varKey)
+            End If
+            End If
+        k = k + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp2
+    Next
+    
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+    Sheets("6. Inward outward supplies").Cells(13, 8).Value = d(0)
+    Sheets("6. Inward outward supplies").Cells(14, 8).Value = d(0.1)
+    Sheets("6. Inward outward supplies").Cells(15, 8).Value = d(0.25)
+    Sheets("6. Inward outward supplies").Cells(16, 8).Value = d(1#)
+    Sheets("6. Inward outward supplies").Cells(17, 8).Value = d(1.5)
+    Sheets("6. Inward outward supplies").Cells(18, 8).Value = d(3#)
+    Sheets("6. Inward outward supplies").Cells(19, 8).Value = d(5#)
+    Sheets("6. Inward outward supplies").Cells(20, 8).Value = d(6#)
+    Sheets("6. Inward outward supplies").Cells(21, 8).Value = d(7.5)
+    
+    Sheets("6. Inward outward supplies").Cells(22, 8).Value = d(12#)
+    Sheets("6. Inward outward supplies").Cells(23, 8).Value = d(18#)
+    Sheets("6. Inward outward supplies").Cells(24, 8).Value = d(28#)
+    Sheets("6. Inward outward supplies").Cells(25, 8).Value = d(40#)
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+
+
+End Sub
+
+
+Public Sub loadCESSData()
+    Dim ctin As Dictionary
+    Dim d
+    Set d = CreateObject("Scripting.Dictionary")
+    d.Add 0, 0
+    d.Add 0.1, 0
+    d.Add 0.25, 0
+    d.Add 1#, 0
+    d.Add 1.5, 0
+    d.Add 3#, 0
+    d.Add 5#, 0
+    d.Add 6#, 0
+    d.Add 7.5, 0
+
+
+
+    d.Add 12#, 0
+    d.Add 18#, 0
+    d.Add 28#, 0
+    d.Add 40#, 0
+
+    
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim i As Integer: i = 6
+      Dim temp As Double: temp = 0
+       Do Until Trim(Sheets("4B. B2BRC").Cells(i, 6).Value & vbNullString) = vbNullString
+            If (Sheets("4B. B2BRC").Cells(i, 6) = varKey) And (Sheets("4B. B2BRC").Cells(i, 11) = "Add") Then
+            temp = temp + Sheets("4B. B2BRC").Cells(i, 10).Value
+            'MsgBox d(varKey)
+            End If
+        i = i + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp
+    Next
+    
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim k As Integer: k = 7
+      Dim temp2 As Double: temp2 = 0
+       Do Until Trim(Sheets("4C. URP").Cells(k, 4).Value & vbNullString) = vbNullString
+            If (Sheets("4C. URP").Cells(k, 7) <> "") Then
+            If (Sheets("4C. URP").Cells(k, 7) = varKey) And (Sheets("4C. URP").Cells(k, 12) = "Add") Then
+            temp2 = temp2 + Sheets("4C. URP").Cells(k, 11).Value
+            'MsgBox d(varKey)
+            End If
+            End If
+        k = k + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp2
+    Next
+
+    For Each varKey In d.Keys()
+        'MsgBox varKey
+      Dim l As Integer: l = 7
+      Dim temp3 As Double: temp3 = 0
+       Do Until Trim(Sheets("4D. IMPS").Cells(l, 4).Value & vbNullString) = vbNullString
+            If (Sheets("4D. IMPS").Cells(l, 4) = varKey) And (Sheets("4D. IMPS").Cells(l, 7) = "Add") Then
+            temp3 = temp3 + Sheets("4D. IMPS").Cells(l, 6).Value
+            'MsgBox d(varKey)
+            End If
+        l = l + 1
+        Loop
+        d(varKey) = d.Item(varKey) + temp3
+    Next
+    
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+    Sheets("6. Inward outward supplies").Cells(13, 9).Value = d(0)
+    Sheets("6. Inward outward supplies").Cells(14, 9).Value = d(0.1)
+    Sheets("6. Inward outward supplies").Cells(15, 9).Value = d(0.25)
+    Sheets("6. Inward outward supplies").Cells(16, 9).Value = d(1#)
+    Sheets("6. Inward outward supplies").Cells(17, 9).Value = d(1.5)
+    Sheets("6. Inward outward supplies").Cells(18, 9).Value = d(3#)
+    Sheets("6. Inward outward supplies").Cells(19, 9).Value = d(5#)
+    Sheets("6. Inward outward supplies").Cells(20, 9).Value = d(6#)
+    Sheets("6. Inward outward supplies").Cells(21, 9).Value = d(7.5)
+    
+    
+    Sheets("6. Inward outward supplies").Cells(22, 9).Value = d(12#)
+    Sheets("6. Inward outward supplies").Cells(23, 9).Value = d(18#)
+    Sheets("6. Inward outward supplies").Cells(24, 9).Value = d(28#)
+    Sheets("6. Inward outward supplies").Cells(25, 9).Value = d(40#)
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+
+
+End Sub
+
+Public Function validateInoutsup() As Boolean
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+    Dim i, j As Integer
+    Dim ctinDetails As New Scripting.Dictionary
+    Dim actionDetails As New Scripting.Dictionary
+    Dim actionMap As New Scripting.Dictionary
+    Dim isValidated As Boolean: isValidated = True
+    Dim isSame As Boolean: isSame = True
+    Range(Sheets("6. Inward outward supplies").Cells(7, 5), Sheets("6. Inward outward supplies").Cells(11, 5)).Interior.ColorIndex = 2
+    Range(Sheets("6. Inward outward supplies").Cells(7, 7), Sheets("6. Inward outward supplies").Cells(11, 8)).Interior.ColorIndex = 2
+    Range(Sheets("6. Inward outward supplies").Cells(7, 5), Sheets("6. Inward outward supplies").Cells(11, 10)).ClearComments
+    Range(Sheets("6. Inward outward supplies").Cells(7, 10), Sheets("6. Inward outward supplies").Cells(11, 12)).ClearContents
+    For i = 7 To 12
+                
+                 Dim cgstTax As String: cgstTax = Trim(Sheets("6. Inward outward supplies").Cells(i, 7).Value & vbNullString)
+                 Dim sgstTax As String: sgstTax = Trim(Sheets("6. Inward outward supplies").Cells(i, 8).Value & vbNullString)
+                 If (cgstTax <> sgstTax) Then
+                         Sheets("6. Inward outward supplies").Cells(i, 7).Interior.ColorIndex = 3
+                         Sheets("6. Inward outward supplies").Cells(i, 7).ClearComments
+                         Sheets("6. Inward outward supplies").Cells(i, 7).AddComment "Central and State/UT tax should be equal."
+                         Sheets("6. Inward outward supplies").Cells(i, 8).Interior.ColorIndex = 3
+                         Sheets("6. Inward outward supplies").Cells(i, 8).ClearComments
+                         Sheets("6. Inward outward supplies").Cells(i, 8).AddComment "Central and State/UT tax should be equal."
+                         Sheets("6. Inward outward supplies").Cells(i, 10).Value = "Error found in row."
+                         isValidated = isValidated And False
+                End If
+    Next
+ 
+    validateInoutsup = isValidated
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+End Function
+
+Public Sub loadOutwardData(jsonData As Object)
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+    Dim ctin As Dictionary
+    
+    If jsonData.Exists("outsupply") Then
+        For Each ctin In jsonData("outsupply")
+            If ctin("rt") = 0 Then
+            Sheets("6. Inward outward supplies").Cells(7, 5).Value = ctin("txval")
+            ElseIf ctin("rt") = 1 Then
+            Sheets("6. Inward outward supplies").Cells(8, 5).Value = ctin("txval")
+            ElseIf ctin("rt") = 2 Then
+            Sheets("6. Inward outward supplies").Cells(9, 5).Value = ctin("txval")
+            ElseIf ctin("rt") = 5 Then
+            Sheets("6. Inward outward supplies").Cells(10, 5).Value = ctin("txval")
+            ElseIf ctin("rt") = 6 Then
+            Sheets("6. Inward outward supplies").Cells(11, 5).Value = ctin("txval")
+            ElseIf ctin("rt") = 40 Then
+            Sheets("6. Inward outward supplies").Cells(12, 5).Value = ctin("txval")
+            End If
+        Next
+    End If
+    Application.ScreenUpdating = True
+    Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+End Sub
+Public Sub loadInwardData(jsonData As Object)
+    Application.ScreenUpdating = False
+    Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+    Dim ctin As Dictionary
+    Dim i As Integer: i = START_ROW
+    If jsonData.Exists("insupply") Then
+        For Each ctin In jsonData("insupply")
+            'MsgBox ctin("rt")
+            If ctin("rt") = 0 Then
+            Sheets("6. Inward outward supplies").Cells(13, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(13, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(13, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(13, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(13, 9).Value = ctin("csamt")
+            ElseIf ctin("rt") = 0.1 Then
+            Sheets("6. Inward outward supplies").Cells(14, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(14, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(14, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(14, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(14, 9).Value = ctin("csamt")
+            ElseIf ctin("rt") = 0.25 Then
+            Sheets("6. Inward outward supplies").Cells(15, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(15, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(15, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(15, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(15, 9).Value = ctin("csamt")
+            ElseIf ctin("rt") = 1 Then
+            Sheets("6. Inward outward supplies").Cells(16, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(16, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(16, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(16, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(16, 9).Value = ctin("csamt")
+            ElseIf ctin("rt") = 1.5 Then
+            Sheets("6. Inward outward supplies").Cells(17, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(17, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(17, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(17, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(17, 9).Value = ctin("csamt")
+            ElseIf ctin("rt") = 3 Then
+            Sheets("6. Inward outward supplies").Cells(18, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(18, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(18, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(18, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(18, 9).Value = ctin("csamt")
+            ElseIf ctin("rt") = 5 Then
+            Sheets("6. Inward outward supplies").Cells(19, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(19, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(19, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(19, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(19, 9).Value = ctin("csamt")
+            ElseIf ctin("rt") = 6 Then
+            Sheets("6. Inward outward supplies").Cells(20, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(20, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(20, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(20, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(20, 9).Value = ctin("csamt")
+            ElseIf ctin("rt") = 7.5 Then
+            Sheets("6. Inward outward supplies").Cells(21, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(21, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(21, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(21, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(21, 9).Value = ctin("csamt")
+           
+            ElseIf ctin("rt") = 12 Then
+            Sheets("6. Inward outward supplies").Cells(22, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(22, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(22, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(22, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(22, 9).Value = ctin("csamt")
+            ElseIf ctin("rt") = 18 Then
+            Sheets("6. Inward outward supplies").Cells(23, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(23, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(23, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(23, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(23, 9).Value = ctin("csamt")
+            ElseIf ctin("rt") = 28 Then
+            Sheets("6. Inward outward supplies").Cells(24, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(24, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(24, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(24, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(24, 9).Value = ctin("csamt")
+            ElseIf ctin("rt") = 40 Then
+            Sheets("6. Inward outward supplies").Cells(25, 5).Value = ctin("txval")
+            Sheets("6. Inward outward supplies").Cells(25, 6).Value = ctin("iamt")
+            Sheets("6. Inward outward supplies").Cells(25, 7).Value = ctin("camt")
+            Sheets("6. Inward outward supplies").Cells(25, 8).Value = ctin("samt")
+            Sheets("6. Inward outward supplies").Cells(25, 9).Value = ctin("csamt")
+            End If
+            
+        Next
+    End If
+    
+    Dim cnt As Integer: cnt = 7
+    For i = 13 To 25
+        If (Sheets("6. Inward outward supplies").Cells(i, 5).Value = vbNullString) Then
+            Worksheets("6. Inward outward supplies").Rows(i).Hidden = True
+        Else
+            Worksheets("6. Inward outward supplies").Rows(i).Hidden = False
+            Worksheets("6. Inward outward supplies").Cells(i, 2).Value = cnt
+            cnt = cnt + 1
+        End If
+    Next
+    
+    Application.ScreenUpdating = True
+    Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+End Sub
+
+Public Function createOutwardDataJson() As Variant
+    Dim items As New Collection
+    Dim i As Integer
+    For i = 7 To 12
+        Application.ScreenUpdating = True
+        Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+        Dim txval As Double, rt As Variant
+        Dim d As Object
+        Set d = CreateObject("Scripting.Dictionary")
+        rt = Sheets("6. Inward outward supplies").Cells(i, 4).Value
+        rt = Trim(rt)
+        If InStr(rt, "%") > 0 Then
+            rt = Replace(rt, "%", "")
+            If IsNumeric(rt) Then
+                d.Add "rt", CInt(rt)
+            Else
+                d.Add "rt", 0
+            End If
+        ElseIf IsNumeric(rt) And rt <> "" Then
+            If rt < 1 And rt > 0 Then
+                d.Add "rt", CInt(rt * 100)
+            Else
+                d.Add "rt", CInt(rt)
+            End If
+        Else
+            d.Add "rt", 0
+        End If
+        txval = Sheets("6. Inward outward supplies").Cells(i, 5).Value
+        d.Add "txval", txval
+        items.Add d
+        Set d = Nothing
+        Application.ScreenUpdating = True
+        Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+    Next
+    'MsgBox JsonConverter.ConvertToJson(items, Whitespace:=2)
+    Set createOutwardDataJson = items
+End Function
+'Public Function createInwardDataJson() As Variant
+'    Dim items As New Collection
+'    Dim d As New Dictionary
+'    Dim i As Integer
+'    For i = 7 To 17
+'        Application.ScreenUpdating = True
+'        Sheets("6. Inward outward supplies").Unprotect "Gstr4@321"
+'        Dim txval As Double, rt As String, iamt As Double, camt As Double, samt As Double, csamt As Double
+'         rt = Sheets("6. Inward outward supplies").Cells(i, 4).Value
+'         If Right(rt, 1) = "%" Then
+'                rt = Left(rt, Len(rt) - 1)
+'         End If
+'         'rt = Left((Sheets("6. Inward outward supplies").Cells(i, 4).Value), 1)
+'         txval = Sheets("6. Inward outward supplies").Cells(i, 5).Value
+'         iamt = Sheets("6. Inward outward supplies").Cells(i, 6).Value
+'         camt = Sheets("6. Inward outward supplies").Cells(i, 7).Value
+'         samt = Sheets("6. Inward outward supplies").Cells(i, 8).Value
+'         csamt = Sheets("6. Inward outward supplies").Cells(i, 9).Value
+'            d.Add "rt", CDbl(rt)
+'            d.Add "txval", txval
+'            d.Add "iamt", iamt
+'            d.Add "camt", camt
+'            d.Add "samt", samt
+'            d.Add "csamt", csamt
+'         items.Add d
+'         Set d = Nothing
+'        Application.ScreenUpdating = True
+'        Sheets("6. Inward outward supplies").Protect "Gstr4@321"
+'    Next
+'    'MsgBox JsonConverter.ConvertToJson(items, Whitespace:=2)
+'    Set createInwardDataJson = items
+'End Function
+Public Function loadOutwardErrorData(jsonData As Object, errorSheets As Collection)
+    Dim ctin As Dictionary
+     If jsonData("error_report").Exists("txos") Then
+        errorSheets.Add "6. Inward outward supplies"
+        For Each ctin In jsonData("error_report")("txos")
+            If ctin("rt") = 0 Then
+            Sheets("6. Inward outward supplies").Cells(7, 5).Value = ctin("txval")
+            ElseIf ctin("rt") = 1 Then
+            Sheets("6. Inward outward supplies").Cells(8, 5).Value = ctin("txval")
+            ElseIf ctin("rt") = 2 Then
+            Sheets("6. Inward outward supplies").Cells(9, 5).Value = ctin("txval")
+            ElseIf ctin("rt") = 5 Then
+            Sheets("6. Inward outward supplies").Cells(10, 5).Value = ctin("txval")
+            ElseIf ctin("rt") = 6 Then
+            Sheets("6. Inward outward supplies").Cells(11, 5).Value = ctin("txval")
+            ElseIf ctin("rt") = 40 Then
+            Sheets("6. Inward outward supplies").Cells(12, 5).Value = ctin("txval")
+            End If
+        Next
+    End If
+    Set loadOutwardErrorData = errorSheets
+End Function
+
+
+
+
+
+-------------------------------------------------------------------------------

@@ -1,0 +1,38 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Public Sub loadTDSTCSData(jsonData As Object)
+    Application.ScreenUpdating = False
+    Sheets("7. TDS TCS Credit received").Unprotect "Gstr4@321"
+    Dim ctin As Dictionary
+    Dim i As Integer: i = START_ROW
+    If jsonData.Exists("tdstcs") Then
+     ' If jsonData("tdstcs")("tdstcs") <> Null Then
+        For Each ctin In jsonData("tdstcs")("tdstcs")
+         
+          Sheets("7. TDS TCS Credit received").Cells(i, 2).Value = ctin("ctin")
+          Sheets("7. TDS TCS Credit received").Cells(i, 3).Value = ctin("gross_val")
+          Sheets("7. TDS TCS Credit received").Cells(i, 4).Value = ctin("camt")
+          Sheets("7. TDS TCS Credit received").Cells(i, 5).Value = ctin("samt")
+          i = i + 1
+        
+          Next
+      '   End If
+    End If
+    Application.ScreenUpdating = True
+    Sheets("7. TDS TCS Credit received").Protect "Gstr4@321"
+End Sub
+
+Public Sub clearTDSTCSData()
+    Application.ScreenUpdating = False
+    Sheets("7. TDS TCS Credit received").Unprotect "Gstr4@321"
+    With Sheets("7. TDS TCS Credit received")
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 10)).ClearContents
+        .Range(.Cells(START_ROW, 14), .Cells(FIXED_END_ROW_TO_CLEAR, 18)).ClearContents
+        .Range(.Cells(START_ROW, 2), .Cells(23, 5)).Interior.ColorIndex = 15
+        .Range(.Cells(START_ROW, 2), .Cells(23, 5)).Interior.ColorIndex = 15
+        .Range(.Cells(START_ROW, 2), .Cells(FIXED_END_ROW_TO_CLEAR, 10)).ClearComments
+        .Range(.Cells(START_ROW, 14), .Cells(FIXED_END_ROW_TO_CLEAR, 18)).ClearComments
+    End With
+    Application.ScreenUpdating = True
+    Sheets("7. TDS TCS Credit received").Protect "Gstr4@321"
+End Sub
+-------------------------------------------------------------------------------

@@ -1,0 +1,1850 @@
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+'To Generate JSON
+
+Public selected_FY_year As String
+Public year As String
+
+
+Public Sub Export_JSON()
+   Variable_Initialize.initiali
+    Dim rnge As Range
+    Dim cele As Range
+    Dim selected_fy As String
+    
+    selected_fy = Worksheets(home_sheet).Range("D10").value
+    selected_FY_year = Worksheets(home_sheet).Range("D10").value
+    year = Left(selected_FY_year, 4)
+    'isFY2024OrFuture = (year >= 2024) Or (year = vbNullString)
+    
+    
+    'If selected_fy <> PARTB_RESTRICTED_FY Then
+    '    Worksheets(sheet5_name).Range("c19:i19").ClearContents
+    '    Worksheets(sheet7_name).Range("c15:i15").ClearContents
+    '    Worksheets(sheet13_name).Range("d14:j14").ClearContents
+    'End If
+    
+    'If selected_fy <> PARTB_RESTRICTED_FY Then'
+    If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) = 0 Then
+        Set rnge = Range("ZeroRange")
+        For Each cele In rnge
+        If IsEmpty(cele) Then
+            cele.value = 0
+        End If
+        Next cele
+    Else
+        Set rnge = Range("ZeroRange2021")
+        For Each cele In rnge
+        If IsEmpty(cele) Then
+            cele.value = 0
+        End If
+        Next cele
+    End If
+    
+    Dim rng As Range
+    Dim cel As Range
+    
+    'If selected_fy <> PARTB_RESTRICTED_FY Then'
+    If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) = 0 Then
+        Set rng = Range("ZeroRangeTV")
+        For Each cel In rng
+        If IsEmpty(cel) Then
+            cel.value = 0
+        End If
+        Next cel
+    Else
+        Set rng = Range("ZeroRangeTV2021")
+        For Each cel In rng
+        If IsEmpty(cel) Then
+            cel.value = 0
+        End If
+        Next cel
+    End If
+    
+    Set rng = Range("ZeroRangeSxtn")
+    For Each cel In rng
+    If IsEmpty(cel) Then
+        cel.value = 0
+    End If
+    Next cel
+    If IsEmpty(Sheets(sheet10_name).Cells(24, "H")) Then
+        Sheets(sheet10_name).Cells(24, "H").value = 0
+    End If
+    If IsEmpty(Sheets(sheet1_name).Cells(12, "H")) Then
+        Sheets(sheet1_name).Cells(12, "H").value = 0
+    End If
+    If IsEmpty(Sheets(sheet8_name).Cells(7, "H")) Then
+        Sheets(sheet8_name).Cells(7, "H").value = 0
+    End If
+    If IsEmpty(Sheets(sheet8_name).Cells(8, "H")) Then
+        Sheets(sheet8_name).Cells(8, "H").value = 0
+    End If
+    If (Trim(Sheets(sheet15_name).Cells(34, "D").value) = "") Then
+        Sheets(sheet15_name).Cells(34, "D").value = "DD/MM/YYYY"
+    End If
+    If (Trim(Sheets(sheet15_name).Cells(35, "D").value) = "") Then
+        Sheets(sheet15_name).Cells(35, "D").value = "DD/MM/YYYY"
+    End If
+    Set rnge = Range("HashChkBi")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PartB(i) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkBii")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PartB(ii) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkSix")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PT II(6) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkEgt")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PT II(8) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkTen")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PT III(10) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkTtn")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PT IV(13) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkFtn")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PT IV(15) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkAdrs")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PartB(i) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkAdrss")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PartB(i) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkBsns")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PartB(i) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkBsnss")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PartB(i) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkBsnsB")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PartB(ii) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkBsnssB")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PartB(ii) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkAdrsB")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PartB(ii) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Set rnge = Range("HashChkAdrssB")
+    For Each cele In rnge
+    If Not IsEmpty(cele) Then
+        If Not Common_Module.matchRegex(cele.value, HASH_REGEX) Then
+            MsgBox "Allowed Special Characters are - ( ( ) , ' . + - _ & / = @ ? [ ] ). Please remove any other special characters entered in PartB(ii) and then try again."
+            Exit Sub
+        End If
+    End If
+    Next cele
+    Application.ScreenUpdating = False
+    Dim rowNo As Integer
+    Dim path, json, val As String
+    Dim prev As Boolean: prev = False
+    Dim fs As Object, jsonfile As Variant
+    Dim jsonDictionary As New Dictionary
+    validate = True
+    flag = True
+    
+'    Dim startRowInvA, ENDROWInvA, ENDROWInvNA, startRowInvNA As Integer
+'    startRowInvA = 6
+'    startRowInvNA = 6
+'    startRowInvItms = 6
+'    ENDROWInvA = ExtraMod.getLastRowInvA
+'    ENDROWInvNA = ExtraMod.getLastRowInvNA
+'    ENDROWItms = ExtraMod.getLastRowItms
+    
+    If Not Validate_Functions.ValidateFunc_Home Then
+        MsgBox "Please enter/correct mandatory fields before Generating JSON file(s)."
+        Exit Sub
+    End If
+    Call Validate_Functions.ValidateFunc_Table5
+    If validate = False Then
+        flag = False
+    End If
+    Call Validate_Functions.ValidateFunc_Table7
+    If validate = False Then
+        flag = False
+    End If
+    Call Validate_Functions.ValidateFunc_Table9
+    If validate = False Then
+        flag = False
+    End If
+    Call Validate_Functions.ValidateFunc_Table11
+    If validate = False Then
+        flag = False
+    End If
+    Call Validate_Functions.ValidateFunc_Table12
+    If validate = False Then
+        flag = False
+    End If
+    Call Validate_Functions.ValidateFunc_Table14
+    If validate = False Then
+        flag = False
+    End If
+    Call Validate_Functions.ValidateFunc_Table16
+    If validate = False Then
+        flag = False
+    End If
+    Call Validate_Functions.ValidateFunc_TableFive
+    If validate = False Then
+        flag = False
+    End If
+    'If selected_fy <> PARTB_RESTRICTED_FY Then'
+    If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) = 0 Then
+        If Trim(Sheets(home_sheet).Cells(start_row_home + 5, fixed_col_home).value) = "Yes" Then
+            Call Validate_Functions.ValidateFunc_PB1
+            If validate = False Then
+                flag = False
+            End If
+        ElseIf Trim(Sheets(home_sheet).Cells(start_row_home + 5, fixed_col_home).value) = "No" Then
+            Call Validate_Functions.ValidateFunc_PB2
+            If validate = False Then
+                flag = False
+            End If
+        End If
+    End If
+    Sheets(sheet2_name).Select
+    Call Validate_Functions.ValidateFunc_Reasons
+    If validate = False Then
+        flag = False
+    End If
+    Sheets(sheet4_name).Select
+    Call Validate_Functions.ValidateFunc_Reasons
+    If validate = False Then
+        flag = False
+    End If
+    Sheets(sheet6_name).Select
+    Call Validate_Functions.ValidateFunc_Reasons
+    If validate = False Then
+        flag = False
+    End If
+    Sheets(sheet9_name).Select
+    Call Validate_Functions.ValidateFunc_Reasons
+    If validate = False Then
+        flag = False
+    End If
+    Sheets(sheet11_name).Select
+    Call Validate_Functions.ValidateFunc_Reasons
+    If validate = False Then
+        flag = False
+    End If
+    
+    If flag = False Then
+        MsgBox EM8
+        Sheets(home_sheet).Select
+        Application.ScreenUpdating = True
+        Exit Sub
+    End If
+    
+'
+'    If ExtraMod.getLastRowInvA = 6 And ExtraMod.getLastRowInvNA = 6 And ExtraMod.getLastRowItms Then
+'        MsgBox "All Invoice_available and Inv_ Not_Avail (with GSTIN) and Items_Only sheets are empty. JSON file cannot be generated."
+'        Exit Sub
+'    End If
+'
+'
+'    If Not (ValidateMod.validateInvA("summary") And ValidateMod.validateInvNA("summary") And ValidateMod.validateInvItms("summary")) Then
+'    Worksheets("Home").Activate
+'    MsgBox "There are validation Errors in the other sheets. Clear it first to generate JSON file"
+'    Exit Sub
+'    Else
+        Mydate = Date
+        Mydate = Replace(Mydate, "/", "")
+        fileName = Sheets(home_sheet).Cells(start_row_home, fixed_col_home) & "_" & Mydate & "_R9C_Output_JSON"
+        path = Application.GetSaveAsFilename(fileName)
+        
+        If path <> "False" Then
+            
+            
+            Dim x, i, num As Integer
+            Set fs = CreateObject("Scripting.FileSystemObject")
+        
+            path = path + "json"
+            Set jsonfile = fs.CreateTextFile(path, True)
+            jsonfile.Write ("{""gstr9cdata"":")
+            jsonfile.Write ("{""audited_data"":")
+            col = fixed_col_home
+            irow = start_row_home
+            jsonfile.Write ("{""gstin"":""")
+            jsonfile.Write (Sheets(home_sheet).Cells(irow, col))
+            jsonfile.Write (""",""fp"":""")
+            fy = "0320" & Right(Sheets(home_sheet).Cells(irow + 1, col), 2)
+            jsonfile.Write (fy)
+
+            jsonfile.Write (""",""act_name"":""")
+            jsonfile.Write (Sheets(home_sheet).Cells(irow + 4, col))
+            'If selected_fy <> PARTB_RESTRICTED_FY Then'
+            If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) = 0 Then
+                jsonfile.Write (""",""isauditor"":""")
+                If Sheets(home_sheet).Cells(irow + 5, col) = "Yes" Then
+                    jsonfile.Write ("Y")
+                ElseIf Sheets(home_sheet).Cells(irow + 5, col) = "No" Then
+                    jsonfile.Write ("N")
+                End If
+                'jsonfile.Write (Sheets(home_sheet).Cells(irow + 6, col))
+                
+            End If
+            jsonfile.Write (""",")
+            Call Write_Table5(jsonfile)
+            jsonfile.Write (",")
+            If (Common_Module.Count_Reasons_sheet("PT II (6)", 5, "C") <> 0) Then
+                jsonfile.Write ("""table6"":{")
+                Call Write_Reasons(jsonfile, sheet2_name, start_row_two_six, end_row_two_six, fixed_col_two_six)
+                jsonfile.Write ("},")
+            End If
+            Call Write_Table7(jsonfile)
+            jsonfile.Write (",")
+            If (Common_Module.Count_Reasons_sheet("PT II (8)", 5, "C") <> 0) Then
+                jsonfile.Write ("""table8"":{")
+                Call Write_Reasons(jsonfile, sheet4_name, start_row_two_eight, end_row_two_eight, fixed_col_two_eight)
+                jsonfile.Write ("},")
+            End If
+           
+    If isFY2024OrLater Then
+    If Not ( _
+    WorksheetFunction.CountA(Sheets("PT III (9)").Range("C7:I26")) = 0 And _
+    WorksheetFunction.CountA(Sheets("PT III (9)").Range("E21:I26")) = 0 And _
+    WorksheetFunction.CountA(Sheets("PT III (9)").Range("E27:I27")) = 0 And _
+    WorksheetFunction.CountA(Sheets("PT III (9)").Range("E28:I28")) = 0 _
+) Then
+                Call Write_Table9(jsonfile)
+                jsonfile.Write (",")
+            End If
+            Else
+    If Not ( _
+    WorksheetFunction.CountA(Sheets("PT III (9)").Range("C7:I25")) = 0 And _
+    WorksheetFunction.CountA(Sheets("PT III (9)").Range("E21:I25")) = 0 And _
+    WorksheetFunction.CountA(Sheets("PT III (9)").Range("E26:I26")) = 0 And _
+    WorksheetFunction.CountA(Sheets("PT III (9)").Range("E27:I27")) = 0 _
+) Then
+                Call Write_Table9(jsonfile)
+                jsonfile.Write (",")
+            End If
+            End If
+            If (Common_Module.Count_Reasons_sheet("PT III (10)", 5, "C") <> 0) Then
+                jsonfile.Write ("""table10"":{")
+                Call Write_Reasons(jsonfile, sheet6_name, start_row_three_ten, end_row_three_ten, fixed_col_three_ten)
+                jsonfile.Write ("},")
+            End If
+        
+            If isFY2024OrLater Then
+        If Not ( _
+    WorksheetFunction.CountA(Sheets("PT III (11)").Range("C7:I16")) = 0 And _
+    WorksheetFunction.CountA(Sheets("PT III (11)").Range("E16:I21")) = 0 _
+    ) Then
+                Call Write_Table11(jsonfile)
+                jsonfile.Write (",")
+            End If
+            Else
+    If Not ( _
+    WorksheetFunction.CountA(Sheets("PT III (11)").Range("C7:I15")) = 0 And _
+    WorksheetFunction.CountA(Sheets("PT III (11)").Range("E15:I20")) = 0 _
+) Then
+                Call Write_Table11(jsonfile)
+                jsonfile.Write (",")
+            End If
+            End If
+            
+            Call Write_Table12(jsonfile)
+            jsonfile.Write (",")
+            
+            If (Common_Module.Count_Reasons_sheet("PT IV(13)", 5, "C") <> 0) Then
+                jsonfile.Write ("""table13"":{")
+                Call Write_Reasons(jsonfile, sheet9_name, start_row_four_thirt, end_row_four_thirt, fixed_col_four_thirt)
+                jsonfile.Write ("},")
+            End If
+            
+            If Not (WorksheetFunction.CountA(Sheets("PT IV (14)").Range("D6:I" & CStr(end_row_four_fourt_exp))) = 0 And WorksheetFunction.CountA(Sheets("PT IV (14)").Range("H" & CStr(end_row_four_fourt - 1))) = 0) Then
+                Call Write_Table14(jsonfile)
+                jsonfile.Write (",")
+            End If
+            
+            If (Common_Module.Count_Reasons_sheet("PT IV (15)", 5, "C") <> 0) Then
+                jsonfile.Write ("""table15"":{")
+                Call Write_Reasons(jsonfile, sheet11_name, start_row_four_fift, end_row_four_fift, fixed_col_four_fift)
+                jsonfile.Write ("},")
+            End If
+            If Not (WorksheetFunction.CountA(Sheets("PT IV (16)").Range("C6:G11")) = 0) Then
+                Call Write_Table16(jsonfile)
+                jsonfile.Write (",")
+            End If
+            
+            Call Write_AddLiab(jsonfile)
+                jsonfile.Write ("}")
+            
+            'If selected_fy <> PARTB_RESTRICTED_FY Then'
+            If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) = 0 Then
+                jsonfile.Write (",")
+                If Trim(Sheets(home_sheet).Cells(start_row_home + 5, fixed_col_home).value) = "Yes" Then
+                    Call Write_PB1(jsonfile)
+                ElseIf Trim(Sheets(home_sheet).Cells(start_row_home + 5, fixed_col_home).value) = "No" Then
+                    Call Write_PB2(jsonfile)
+                End If
+                'jsonfile.Write (",")
+    '            msg1 = CStr(jsonfile)
+    '            MsgBox msg1
+                jsonfile.Write (",")
+                
+                
+                Dim strFilename As String: strFilename = path
+                Dim strFileContent As String
+                Dim hashed_str As String
+                Dim hash_Content As String
+                Dim iFile As Integer: iFile = FreeFile
+                Open strFilename For Input As #iFile
+                strFileContent = Input(LOF(iFile), iFile)
+                Close #iFile
+                strFileContent = Left(strFileContent, Len(strFileContent) - 1)
+                strFileContent = strFileContent & "}}"
+                Sheets("Master").Cells(7, 10) = strFileContent
+                'hash_Content = Hashing_JSON.final_string
+                'MsgBox strFileContent
+                
+                sign = Signing_Module.invokeSigning(strFileContent)
+                If sign <> "problem" Then
+                sign = Left(sign, Len(sign) - 1)
+                'sign = Replace(sign, Chr(13), "")
+                'jsonDictionary("audited_sign") = sign
+                
+                jsonfile.Write ("""audited_sign"":""")
+                jsonfile.Write (CStr(sign))
+                
+    '            jsonDictionary("ad_data") = hashed_str
+    '            jsonDictionary("ad_sign") = sign
+    '
+                'jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+                'Set jsonDictionary = Nothing
+                jsonfile.Write ("""}}")
+                jsonfile.Close
+                Sheets("Master").Cells(3, 10) = sign
+                Set fs = Nothing
+                Set jsonfile = Nothing
+                'Close #iFile
+                MsgBox "File has been created and placed in  " & path & "  ! You may now proceed to upload the File in the GST Web Portal", vbInformation
+                'MsgBox hashed_str
+                Else
+                jsonfile.Close
+                fs.DeleteFile (path)
+                Set fs = Nothing
+                Set jsonfile = Nothing
+                End If
+            Else
+                jsonfile.Write ("}}}")
+                jsonfile.Close
+                Set fs = Nothing
+                Set jsonfile = Nothing
+                MsgBox "File has been created and placed in  " & path & "  ! You may now proceed to upload the File in the GST Web Portal", vbInformation
+            End If
+
+            End If
+                   With Sheets(sheet5_name)
+        If isFY2024OrLater Then
+            .Range("E21:I26").Interior.Color = RGB(255, 255, 255)
+        Else
+           .Range("E21:I25").Interior.Color = RGB(255, 255, 255)
+            
+        End If
+    End With
+            Sheets(home_sheet).Select
+            Application.ScreenUpdating = True
+        
+End Sub
+
+
+Public Function Write_Table5(jsonfile)
+    
+    Dim jsonDictionary As New Dictionary
+    sheet_name = sheet1_name
+    col = fixed_col_two_five
+    start_row = start_row_two_five
+    end_row = end_row_two_five
+    
+    
+    
+    jsonfile.Write ("""table5"":")
+    jsonDictionary("turnovr") = Sheets(sheet_name).Cells(start_row, col)
+    jsonDictionary("unbil_rev_beg") = Sheets(sheet_name).Cells(start_row + 1, col)
+    jsonDictionary("unadj_adv_end") = Sheets(sheet_name).Cells(start_row + 2, col)
+    jsonDictionary("dmd_sup") = Sheets(sheet_name).Cells(start_row + 3, col)
+    jsonDictionary("crd_nts_issued") = Sheets(sheet_name).Cells(start_row + 4, col)
+    jsonDictionary("trd_dis") = Sheets(sheet_name).Cells(start_row + 5, col)
+    jsonDictionary("turnovr_apr_jun") = Sheets(sheet_name).Cells(start_row + 6, col)
+    jsonDictionary("unbil_rev_end") = Sheets(sheet_name).Cells(start_row + 7, col)
+    jsonDictionary("unadj_adv_beg") = Sheets(sheet_name).Cells(start_row + 8, col)
+    jsonDictionary("crd_note_acc") = Sheets(sheet_name).Cells(start_row + 9, col)
+    jsonDictionary("adj_dta") = Sheets(sheet_name).Cells(start_row + 10, col)
+    jsonDictionary("turnovr_comp") = Sheets(sheet_name).Cells(start_row + 11, col)
+    jsonDictionary("adj_turn_sec") = Sheets(sheet_name).Cells(start_row + 12, col)
+    jsonDictionary("adj_turn_fef") = Sheets(sheet_name).Cells(start_row + 13, col)
+    jsonDictionary("adj_turn_othrsn") = Sheets(sheet_name).Cells(start_row + 14, col)
+    jsonDictionary("annul_turn_adj") = Sheets(sheet_name).Cells(start_row + 15, col)
+    jsonDictionary("annul_turn_decl") = Sheets(sheet_name).Cells(start_row + 16, col)
+    jsonDictionary("unrec_turnovr") = Sheets(sheet_name).Cells(start_row + 17, col)
+    
+    
+    
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    
+    
+
+End Function
+
+Public Function Write_Reasons(jsonfile, sheet_name, start_row, end_row, fixed_col)
+    Dim jsonItems As New Collection
+    Dim jsonDictionary As New Dictionary
+    jsonfile.Write ("""rsn"":")
+    count = Common_Module.Count_Reasons_sheet(sheet_name, start_row, fixed_col)
+    col = fixed_col
+    Set jsonItems = Nothing
+    i = 1
+    For s = start_row To start_row + count - 1
+        
+        jsonDictionary("number") = "RSN" & CStr(i)
+        jsonDictionary("desc") = Sheets(sheet_name).Cells(s, col)
+        jsonItems.Add jsonDictionary
+        Set jsonDictionary = Nothing
+        i = i + 1
+    Next
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+    Set jsonItems = Nothing
+End Function
+
+Public Function Write_Table7(jsonfile)
+    Dim jsonDictionary As New Dictionary
+    sheet_name = sheet3_name
+    col = fixed_col_two_seven
+    start_row = start_row_two_seven    ' 6
+    end_row = end_row_two_seven        ' 12
+    
+    If isFY2024OrLater Then
+    jsonfile.Write ("""table7"":")
+    jsonDictionary("annul_turn_adj") = Sheets(sheet_name).Cells(start_row, col)
+    jsonDictionary("othr_turnovr") = Sheets(sheet_name).Cells(start_row + 1, col)
+    jsonDictionary("zero_sup") = Sheets(sheet_name).Cells(start_row + 2, col)
+    jsonDictionary("rev_sup") = Sheets(sheet_name).Cells(start_row + 3, col)
+    jsonDictionary("rev_sup_ecom") = Sheets(sheet_name).Cells(start_row + 4, col)
+    jsonDictionary("tax_turn_adj") = Sheets(sheet_name).Cells(start_row + 5, col)
+    jsonDictionary("tax_turn_annul") = Sheets(sheet_name).Cells(start_row + 6, col)
+    jsonDictionary("unrec_tax_turn") = Sheets(sheet_name).Cells(start_row + 7, col)
+    Else
+    jsonfile.Write ("""table7"":")
+    jsonDictionary("annul_turn_adj") = Sheets(sheet_name).Cells(start_row, col)
+    jsonDictionary("othr_turnovr") = Sheets(sheet_name).Cells(start_row + 1, col)
+    jsonDictionary("zero_sup") = Sheets(sheet_name).Cells(start_row + 2, col)
+    jsonDictionary("rev_sup") = Sheets(sheet_name).Cells(start_row + 3, col)
+    jsonDictionary("tax_turn_adj") = Sheets(sheet_name).Cells(start_row + 4, col)
+    jsonDictionary("tax_turn_annul") = Sheets(sheet_name).Cells(start_row + 5, col)
+    jsonDictionary("unrec_tax_turn") = Sheets(sheet_name).Cells(start_row + 6, col)
+    End If
+    
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    
+    
+End Function
+
+Public Function Write_Table12(jsonfile)
+    
+    Dim jsonDictionary As New Dictionary
+    sheet_name = sheet8_name
+    col = fixed_col_four_twelve
+    start_row = start_row_four_twelve
+    end_row = end_row_four_twelve
+    
+    
+    
+    jsonfile.Write ("""table12"":")
+    jsonDictionary("itc_avail") = Sheets(sheet_name).Cells(start_row, col)
+    jsonDictionary("itc_book_earl") = Sheets(sheet_name).Cells(start_row + 1, col)
+    jsonDictionary("itc_book_curr") = Sheets(sheet_name).Cells(start_row + 2, col)
+    jsonDictionary("itc_avail_audited") = Sheets(sheet_name).Cells(start_row + 3, col)
+    jsonDictionary("itc_claim") = Sheets(sheet_name).Cells(start_row + 4, col)
+    jsonDictionary("unrec_itc") = Sheets(sheet_name).Cells(start_row + 5, col)
+    
+    
+    
+    
+    
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+
+End Function
+
+Public Function Write_Table16(jsonfile)
+    
+    Dim jsonDictionary As New Dictionary
+    sheet_name = sheet12_name
+    col = fixed_col_four_sixt
+    start_row = start_row_four_sixt
+    end_row = end_row_four_sixt
+    
+    
+    
+    jsonfile.Write ("""table16"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(start_row, col)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(start_row + 1, col)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(start_row + 2, col)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(start_row + 3, col)
+    jsonDictionary("inter") = Sheets(sheet_name).Cells(start_row + 4, col)
+    jsonDictionary("pen") = Sheets(sheet_name).Cells(start_row + 5, col)
+    
+    
+    
+    
+    
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+
+End Function
+
+Public Function Write_Table9(jsonfile)
+    Dim jsonItems As New Collection
+    Dim jsonDictionary As New Dictionary
+    Dim selected_fy As String
+    selected_fy = Worksheets(home_sheet).Range("D10").value
+    tcol = taxv_col_three_nine
+    ccol = ctax_col_three_nine
+    scol = stax_col_three_nine
+    icol = itax_col_three_nine
+    cecol = cetax_col_three_nine
+    write_flag = False
+    sheet_name = sheet5_name
+    start_row = start_row_three_nine   ' 7
+    end_row = end_row_three_nine       ' 26
+    'And Sheets(sheet_name).Range(ccol & CStr(end_row - 1) & ":" & cecol & CStr(end_row - 1)).Value2 = vbNullString)
+    jsonfile.Write ("""table9"":{")
+    
+    Set jsonItems = Nothing
+    
+    For s = start_row To start_row + 14
+
+        jsonDictionary("tax_val") = Sheets(sheet_name).Cells(s, tcol)
+        jsonDictionary("cgst") = Sheets(sheet_name).Cells(s, ccol)
+        jsonDictionary("sgst") = Sheets(sheet_name).Cells(s, scol)
+        jsonDictionary("igst") = Sheets(sheet_name).Cells(s, icol)
+        jsonDictionary("cess") = Sheets(sheet_name).Cells(s, cecol)
+        If Not (Sheets(sheet_name).Cells(s, tcol) = vbNullString And Sheets(sheet_name).Cells(s, ccol) = vbNullString And Sheets(sheet_name).Cells(s, scol) = vbNullString And Sheets(sheet_name).Cells(s, icol) = vbNullString And Sheets(sheet_name).Cells(s, cecol) = vbNullString) Then
+            desc = Application.VLookup(Sheets(sheet_name).Cells(s, Chr(Asc(tcol) - 1)), Sheets("Master").Range("D14:E28"), 2, False)
+            jsonDictionary("desc") = desc
+            If desc = "Others" Then
+                If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) Then
+                    jsonItems.Add jsonDictionary
+                End If
+            Else
+                jsonItems.Add jsonDictionary
+            End If
+            write_flag = True
+        End If
+        
+        Set jsonDictionary = Nothing
+    Next
+    If write_flag Then
+        jsonfile.Write ("""rate"":")
+        jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+        jsonfile.Write (",")
+    Set jsonItems = Nothing
+    Set jsonDictionary = Nothing
+    End If
+    
+    ' K-2
+    If isFY2024OrLater Then
+    irow = end_row - 7
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write ("""oth_ecom"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+   
+    irow = end_row - 6
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write ("""inter"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write ("""late_fee"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write ("""pen"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write ("""oth"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    irow = irow + 1
+    
+    jsonfile.Write ("""tot_amt_payable"":")
+    
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    irow = irow + 1
+    
+    jsonfile.Write ("""tot_amt_paid"":")
+    
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    irow = irow + 1
+    
+    jsonfile.Write ("""unrec_amt"":")
+   
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write ("}")
+    Set jsonDictionary = Nothing
+    
+    Else
+    
+    irow = end_row - 6
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write ("""inter"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write ("""late_fee"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write ("""pen"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write ("""oth"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    irow = irow + 1
+    
+    jsonfile.Write ("""tot_amt_payable"":")
+    
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    irow = irow + 1
+    
+    jsonfile.Write ("""tot_amt_paid"":")
+    
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    irow = irow + 1
+    
+    jsonfile.Write ("""unrec_amt"":")
+   
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write ("}")
+    Set jsonDictionary = Nothing
+    End If
+
+End Function
+Public Function Write_Table11(jsonfile)
+    Dim jsonItems As New Collection
+    Dim jsonDictionary As New Dictionary
+    Dim selected_fy As String
+    selected_fy = Worksheets(home_sheet).Range("D10").value
+    tcol = taxv_col_three_eleven
+    ccol = ctax_col_three_eleven
+    scol = stax_col_three_eleven
+    icol = itax_col_three_eleven
+    cecol = cetax_col_three_eleven
+    sheet_name = sheet7_name
+    start_row = start_row_three_eleven
+    end_row = end_row_three_eleven
+    jsonfile.Write ("""table11"":{")
+    jsonfile.Write ("""rate"":")
+    Set jsonItems = Nothing
+    
+    For s = start_row To start_row + 9
+
+        jsonDictionary("tax_val") = Sheets(sheet_name).Cells(s, tcol)
+        jsonDictionary("cgst") = Sheets(sheet_name).Cells(s, ccol)
+        jsonDictionary("sgst") = Sheets(sheet_name).Cells(s, scol)
+        jsonDictionary("igst") = Sheets(sheet_name).Cells(s, icol)
+        jsonDictionary("cess") = Sheets(sheet_name).Cells(s, cecol)
+        
+        If Not (Sheets(sheet_name).Cells(s, tcol) = vbNullString And Sheets(sheet_name).Cells(s, ccol) = vbNullString And Sheets(sheet_name).Cells(s, scol) = vbNullString And Sheets(sheet_name).Cells(s, icol) = vbNullString And Sheets(sheet_name).Cells(s, cecol) = vbNullString) Then
+            desc = Application.VLookup(Sheets(sheet_name).Cells(s, Chr(Asc(tcol) - 1)), Sheets("Master").Range("H14:I23"), 2, False)
+            jsonDictionary("desc") = desc
+            If desc = "Others" Then
+                If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) Then
+                    jsonItems.Add jsonDictionary
+                End If
+            Else
+                jsonItems.Add jsonDictionary
+            End If
+        End If
+        
+        
+        
+        Set jsonDictionary = Nothing
+    Next
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+    
+    Set jsonItems = Nothing
+    Set jsonDictionary = Nothing
+    
+    If isFY2024OrLater Then
+       irow = end_row - 4  ' ----------------------------------
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write (",")
+    jsonfile.Write ("""oth_ecom"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    'jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    
+    irow = end_row - 3
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write (",")
+    jsonfile.Write ("""inter"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    'jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write (",")
+    jsonfile.Write ("""late_fee"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    'jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write (",")
+    jsonfile.Write ("""pen"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    'jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write (",")
+    jsonfile.Write ("""oth"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    
+    Set jsonDictionary = Nothing
+    End If
+    jsonfile.Write ("}")
+    
+    Else
+    
+    irow = end_row - 3
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write (",")
+    jsonfile.Write ("""inter"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    'jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write (",")
+    jsonfile.Write ("""late_fee"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    'jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write (",")
+    jsonfile.Write ("""pen"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    'jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    End If
+    irow = irow + 1
+    If Not (Sheets(sheet_name).Cells(irow, ccol) = vbNullString And Sheets(sheet_name).Cells(irow, scol) = vbNullString And Sheets(sheet_name).Cells(irow, icol) = vbNullString And Sheets(sheet_name).Cells(irow, cecol) = vbNullString) Then
+    jsonfile.Write (",")
+    jsonfile.Write ("""oth"":")
+    jsonDictionary("cgst") = Sheets(sheet_name).Cells(irow, ccol)
+    jsonDictionary("sgst") = Sheets(sheet_name).Cells(irow, scol)
+    jsonDictionary("igst") = Sheets(sheet_name).Cells(irow, icol)
+    jsonDictionary("cess") = Sheets(sheet_name).Cells(irow, cecol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    
+    Set jsonDictionary = Nothing
+    End If
+    jsonfile.Write ("}")
+    End If
+End Function
+
+Public Function Write_Table14(jsonfile)
+    Dim jsonItems As New Collection
+    Dim jsonDictionary As New Dictionary
+    tcol = value_col_four_fourt
+    ccol = amt_col_four_fourt
+    scol = amte_col_four_fourt
+    sheet_name = sheet10_name
+    start_row = start_row_four_fourt
+    end_row = end_row_four_fourt
+    jsonfile.Write ("""table14"":{")
+    If Not (WorksheetFunction.CountA(Sheets("PT IV (14)").Range("D6:I" & CStr(end_row_four_fourt_exp))) = 0) Then
+        jsonfile.Write ("""items"":")
+        Set jsonItems = Nothing
+        
+        For s = start_row To end_row - 3
+    
+            jsonDictionary("val") = Sheets(sheet_name).Cells(s, tcol)
+            jsonDictionary("itc_amt") = Sheets(sheet_name).Cells(s, ccol)
+            jsonDictionary("itc_avail") = Sheets(sheet_name).Cells(s, scol)
+            
+            If Not (Sheets(sheet_name).Cells(s, tcol) = vbNullString And Sheets(sheet_name).Cells(s, ccol) = vbNullString And Sheets(sheet_name).Cells(s, scol) = vbNullString) Then
+                desc = Application.VLookup(Sheets(sheet_name).Cells(s, Chr(Asc(tcol) - 2)), Sheets("Master").Range("P14:Q39"), 2, False)
+                jsonDictionary("desc") = desc
+                jsonItems.Add jsonDictionary
+            End If
+            
+            
+            
+            Set jsonDictionary = Nothing
+        Next
+        jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+        jsonfile.Write (",")
+        Set jsonItems = Nothing
+        Set jsonDictionary = Nothing
+    End If
+    irow = end_row - 2
+    jsonfile.Write ("""tot_elig_itc"":")
+    
+    jsonDictionary("itc_avail") = Sheets(sheet_name).Cells(irow, scol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    irow = irow + 1
+    
+    jsonfile.Write ("""itc_claim"":")
+    
+    jsonDictionary("itc_avail") = Sheets(sheet_name).Cells(irow, scol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    irow = irow + 1
+    
+    jsonfile.Write ("""unrec_itc"":")
+    
+    jsonDictionary("itc_avail") = Sheets(sheet_name).Cells(irow, scol)
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write ("}")
+    Set jsonDictionary = Nothing
+    
+    
+    
+
+End Function
+
+Public Function Write_PB1(jsonfile)
+    
+    Dim jsonItems As New Collection
+    Dim jsonDictionary As New Dictionary
+    Dim json As String
+    Dim text_str As String
+    Dim pro As Boolean
+    
+    sheet_name = sheet14_name
+    col = col_pb1
+    irow = start_row_pb1
+    end_row = end_row_pb1
+    If Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 3)).value) = "I" Then
+        pro = True
+    ElseIf Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 3)).value) = "We" Then
+        pro = False
+    End If
+    
+    If (Trim(Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) - 1)).value) = "") Then
+        Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) - 1)).value = "DD/MM/YYYY"
+    End If
+    If (Trim(Sheets(sheet_name).Cells(irow + 10, Chr(Asc(col) - 1)).value) = "") Then
+        Sheets(sheet_name).Cells(irow + 10, Chr(Asc(col) - 1)).value = "DD/MM/YYYY"
+    End If
+    
+    jsonfile.Write ("""certificate"":{")
+    jsonfile.Write ("""cert_data"":{")
+    
+    If Not pro Then
+        text_str = "We have examined the— \r\n?\tbalance sheet as on " & Trim(Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) - 1)).value) & " \r\n?\tthe " & Trim(Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) - 1)).value) & " for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) - 1)).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) - 1)).value) & ", and \r\n?\tthe cash flow statement for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) - 1)).value) & "to ending on " & Trim(Sheets(sheet_name).Cells(irow + 10, Chr(Asc(col) - 1)).value) & ", —\r\nattached herewith, of M/s" & Trim(Sheets(sheet_name).Cells(irow + 14, col).value) & "(Name),"
+    Else
+        text_str = "I have examined the— \r\n?\tbalance sheet as on " & Trim(Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) - 1)).value) & "\r\n?\tthe " & Trim(Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) - 1)).value) & " for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) - 1)).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) - 1)).value) & ", and \r\n?\tthe cash flow statement for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) - 1)).value) & "to ending on " & Trim(Sheets(sheet_name).Cells(irow + 10, Chr(Asc(col) - 1)).value) & ", —\r\nattached herewith, of M/s" & Trim(Sheets(sheet_name).Cells(irow + 14, col).value) & "(Name),"
+    End If
+    json = (("""pronoun"":""") & Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 3)).value))
+    json = json & ((""",""bal_sheet_date"":""") & Trim(Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) - 1)).value))
+    json = json & ((""",""acc_typ"":""") & Trim(Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) - 1)).value))
+    typ1 = Trim(Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) - 1)).value)
+    json = json & ((""",""beg_date"":""") & Trim(Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) - 1)).value))
+    json = json & ((""",""end_date"":""") & Trim(Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) - 1)).value))
+    json = json & ((""",""cash_from_date"":""") & Trim(Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) - 1)).value))
+    json = json & ((""",""cash_to_date"":""") & Trim(Sheets(sheet_name).Cells(irow + 10, Chr(Asc(col) - 1)).value))
+    json = json & ((""",""taxpayer_name"":""") & Trim(Sheets(sheet_name).Cells(irow + 14, col).value))
+    jsonfile.Write json
+    json = ""
+    irow = irow + 16
+    If Not pro Then
+        text_str = text_str & Sheets(sheet_name).Cells(irow, col).value & "," & Sheets(sheet_name).Cells(irow + 1, col).value & "," & Sheets(sheet_name).Cells(irow + 2, col).value & "," & Sheets(sheet_name).Cells(irow + 3, col).value & "," & Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value & "," & Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value & "," & Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value & "," & Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value & "(Address)" & "," & Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) - 1)).value & "(GSTIN)."
+    Else
+        text_str = text_str & Sheets(sheet_name).Cells(irow, col).value & "," & Sheets(sheet_name).Cells(irow + 1, col).value & "," & Sheets(sheet_name).Cells(irow + 2, col).value & "," & Sheets(sheet_name).Cells(irow + 3, col).value & "," & Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value & "," & Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value & "," & Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value & "," & Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value & "(Address)" & "," & Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) - 1)).value & "(GSTIN)."
+    End If
+    jsonfile.Write (""",""addr"":")
+    
+    jsonDictionary("bno") = CStr(Sheets(sheet_name).Cells(irow, col).value)
+    jsonDictionary("building") = CStr(Sheets(sheet_name).Cells(irow + 1, col).value)
+    jsonDictionary("city") = Sheets(sheet_name).Cells(irow + 2, col).value
+    jsonDictionary("state") = Sheets(sheet_name).Cells(irow + 3, col).value
+    jsonDictionary("fno") = CStr(Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value)
+    jsonDictionary("road") = CStr(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value)
+    jsonDictionary("district") = Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value
+    jsonDictionary("pin_code") = Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value
+    
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    srow = irow
+    srow = irow + 8
+    
+    irow = irow + 13
+    Set jsonDictionary = Nothing
+    If Not pro Then
+        text_str = text_str & "\r\n?\tBased on our audit we report that the said registered person—" & Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 3)).value & "as required by the IGST/CGST/<<>>GST Act, 2017 and the rules/notifications made/issued thereunder: \r\n1. \r\n2. \r\n3. \r\n3(a) we report the following observations/ comments / discrepancies / inconsistencies; if any:  \r\n……………………………………. \r\n……………………………………. \r\n3. (b) we further report that, -  \r\n(A)\twe " & Sheets(sheet_name).Cells(47, "D").value & " the information and explanations which, to the best of our knowledge and belief, were necessary for the purpose of the audit.  \r\n(B)\tIn our opinion, proper books of account" _
+    & temp & "our examination of the books.  \r\n"
+    Else
+        text_str = text_str & "\r\n?\tBased on my audit I report that the said registered person—" & Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 3)).value & "as required by the IGST/CGST/<<>>GST Act, 2017 and the rules/notifications made/issued thereunder: \r\n1. \r\n2. \r\n3. \r\n3(a) I report the following observations/ comments / discrepancies / inconsistencies; if any:  \r\n……………………………………. \r\n……………………………………. \r\n3. (b) I further report that, -  \r\n(A)\tI " & Sheets(sheet_name).Cells(47, "D").value & " the information and explanations which, to the best of my knowledge and belief, were necessary for the purpose of the audit.  \r\n(B)\tIn my opinion, proper books of account" _
+    & temp & "our examination of the books.  \r\n"
+    End If
+    irow = irow + 7
+    json = ("""doc_stat"":""" & Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 3)).value))
+
+    jsonfile.Write json
+    json = ""
+    If Not pro Then
+        text_str = text_str & "(c)\twe certify that the balance sheet, the" & typ1 & "and the cash flow Statement are" & Sheets(sheet_name).Cells(irow + 11, Chr(Asc(col) + 4)).value & "with the books of account maintained at the Principal place of business at" & Sheets(sheet_name).Cells(irow + 12, Chr(Asc(col) + 1)).value & "and \r\n" & Sheets(sheet_name).Cells(irow + 13, Chr(Asc(col) - 2)).value & "additional place of business within the State.  \r\n4.\tThe documents required to be furnished under section 35 (5) of the CGST Act and Reconciliation Statement required to be furnished under section 44(2) of the CGST Act is annexed herewith in Form No. GSTR-9C.  \r\n5.\tIn our opinion and to the best of our information and according to explanations given to us, the particulars given in the said Form No.GSTR-9C are true and fair subject to following observations/qualifications, if any:"
+    Else
+        text_str = text_str & "(c)\tI certify that the balance sheet, the" & typ1 & "and the cash flow Statement are" & Sheets(sheet_name).Cells(irow + 11, Chr(Asc(col) + 4)).value & "with the books of account maintained at the Principal place of business at" & Sheets(sheet_name).Cells(irow + 12, Chr(Asc(col) + 1)).value & "and \r\n" & Sheets(sheet_name).Cells(irow + 13, Chr(Asc(col) - 2)).value & "additional place of business within the State.  \r\n4.\tThe documents required to be furnished under section 35 (5) of the CGST Act and Reconciliation Statement required to be furnished under section 44(2) of the CGST Act is annexed herewith in Form No. GSTR-9C.  \r\n5.\tIn my opinion and to the best of my information and according to explanations given to me, the particulars given in the said Form No.GSTR-9C are true and fair subject to following observations/qualifications, if any:"
+    End If
+    jsonfile.Write (""",""cert_textpartb1"":{")
+    jsonfile.Write ("""principal_addr"":")
+    
+    jsonDictionary("bno") = CStr(Sheets(sheet_name).Cells(srow, col).value)
+    jsonDictionary("building") = CStr(Sheets(sheet_name).Cells(srow + 1, col).value)
+    jsonDictionary("city") = Sheets(sheet_name).Cells(srow + 2, col).value
+    jsonDictionary("state") = Sheets(sheet_name).Cells(srow + 3, col).value
+    jsonDictionary("fno") = CStr(Sheets(sheet_name).Cells(srow, Chr(Asc(col) + 2)).value)
+    jsonDictionary("road") = CStr(Sheets(sheet_name).Cells(srow + 1, Chr(Asc(col) + 2)).value)
+    jsonDictionary("district") = Sheets(sheet_name).Cells(srow + 2, Chr(Asc(col) + 2)).value
+    jsonDictionary("pin_code") = Sheets(sheet_name).Cells(srow + 3, Chr(Asc(col) + 2)).value
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    srow = srow + 5
+    jsonfile.Write ("""add_addr"":")
+    
+    jsonDictionary("bno") = CStr(Sheets(sheet_name).Cells(srow, col).value)
+    jsonDictionary("building") = CStr(Sheets(sheet_name).Cells(srow + 1, col).value)
+    jsonDictionary("city") = Sheets(sheet_name).Cells(srow + 2, col).value
+    jsonDictionary("state") = Sheets(sheet_name).Cells(srow + 3, col).value
+    jsonDictionary("fno") = CStr(Sheets(sheet_name).Cells(srow, Chr(Asc(col) + 2)).value)
+    jsonDictionary("road") = CStr(Sheets(sheet_name).Cells(srow + 1, Chr(Asc(col) + 2)).value)
+    jsonDictionary("district") = Sheets(sheet_name).Cells(srow + 2, Chr(Asc(col) + 2)).value
+    jsonDictionary("pin_code") = Sheets(sheet_name).Cells(srow + 3, Chr(Asc(col) + 2)).value
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    'jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    
+    If Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) + 2)).value = "have been" Then
+        ishave = "have been"
+        json = json & (",""ishave"":""" & Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) + 2)).value & """")
+    ElseIf Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) + 2)).value = "have not been" Then
+        ishave = "have not been"
+        json = json & (",""ishave"":""" & Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) + 2)).value & """")
+    End If
+    If Sheets(sheet_name).Cells(irow + 11, Chr(Asc(col) + 4)).value = "in agreement" Then
+        isagree = "in agreement"
+        json = json & (",""isagree"":""" & Sheets(sheet_name).Cells(irow + 11, Chr(Asc(col) + 4)).value & """")
+    ElseIf Sheets(sheet_name).Cells(irow + 11, Chr(Asc(col) + 4)).value = "not in agreement" Then
+        isagree = "not in agreement"
+        json = json & (",""isagree"":""" & Sheets(sheet_name).Cells(irow + 11, Chr(Asc(col) + 4)).value & """")
+    End If
+    json = json & (",""info_stat"":""" & Sheets(sheet_name).Cells(47, "D").value & """")
+    
+    jsonfile.Write json
+    json = ""
+    json = json & (",""gstin"":""" & Sheets(sheet_name).Cells(irow - 14, Chr(Asc(col) - 1)).value & """")
+    jsonfile.Write json
+    json = ""
+    jsonfile.Write (",""qualifications"":")
+    count = Common_Module.Count_qual(sheet_name, start_row_pb1_qual, end_row_pb1_qual, qual_col_pb1)
+    col1 = qual_col_pb1
+    Set jsonItems = Nothing
+    For s = start_row_pb1_qual To start_row_pb1_qual + count - 1
+        text_str = text_str & "\r\n" & CStr(Sheets(sheet_name).Cells(s, Chr(Asc(col1) - 1))) & "." & Sheets(sheet_name).Cells(s, Chr(Asc(col1) + 1))
+        qual = Application.VLookup(Sheets(sheet_name).Cells(s, col1), Sheets("Master").Range("A7:C9"), 3, False)
+        jsonDictionary("qual_type") = qual
+        jsonDictionary("value") = Sheets(sheet_name).Cells(s, Chr(Asc(col1) + 4))
+        jsonItems.Add jsonDictionary
+        Set jsonDictionary = Nothing
+    Next
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+    jsonfile.Write ("}")
+    jsonfile.Write (",")
+    Set jsonItems = Nothing
+    
+    irow = end_row_pb1 - 7
+    text_str = text_str & "**(Signature and stamp/Seal of the Auditor)  \r\nPlace:" & Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 1)).value) & "\r\nName of the signatory " & Trim(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) - 1)).value) & "\r\nMembership No " & Trim(Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) - 1)).value) & "\r\nDate: " & Trim(Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) - 1)).value) & "\r\nFull address "
+    json = (("""place"":""") & Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 1)).value))
+    json = json & ((""",""signatory"":""") & Trim(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) - 1)).value))
+    json = json & ((""",""mem_no"":""") & Trim(Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) - 1)).value))
+    json = json & ((""",""date"":""") & Trim(Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) - 1)).value))
+    jsonfile.Write json
+    json = ""
+    irow = irow + 4
+    text_str = text_str & Sheets(sheet_name).Cells(irow, col).value & "," & Sheets(sheet_name).Cells(irow + 1, col).value & "," & Sheets(sheet_name).Cells(irow + 2, col).value & "," & Sheets(sheet_name).Cells(irow + 3, col).value & "," & Sheets(sheet_name).Cells(irow + 1, col).value & "," & Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value & "," & Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value & "," & Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value & "," & Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value & "\r\n"""
+    jsonfile.Write (""",""audit_addr"":")
+    
+    jsonDictionary("bno") = CStr(Sheets(sheet_name).Cells(irow, col).value)
+    jsonDictionary("building") = CStr(Sheets(sheet_name).Cells(irow + 1, col).value)
+    jsonDictionary("city") = Sheets(sheet_name).Cells(irow + 2, col).value
+    jsonDictionary("state") = Sheets(sheet_name).Cells(irow + 3, col).value
+    jsonDictionary("fno") = CStr(Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value)
+    jsonDictionary("road") = CStr(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value)
+    jsonDictionary("district") = Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value
+    jsonDictionary("pin_code") = Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write ("},")
+    Set jsonDictionary = Nothing
+'    json = (("""cert_text"":""") & text_str)
+'    typ = text_str
+'    jsonfile.Write json
+'    json = ""
+    irow = start_row_pb1
+    jsonfile.Write ("""cert_text"":{")
+    jsonfile.Write ("""cert_text_partb1"":{")
+    jsonfile.Write ("""section1"":")
+    If pro Then
+    jsonDictionary("line0") = "1. I have examined the-"
+    typ = "1. I have examined the-"
+    Else
+    jsonDictionary("line0") = "1. We have examined the-"
+    typ = "1. We have examined the-"
+    End If
+    jsonDictionary("line1") = "(a) balance sheet as on " & Trim(Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) - 1)).value)
+    typ = typ & ",line1=" & "(a) balance sheet as on " & Trim(Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) - 1)).value)
+    jsonDictionary("line2") = "(b) the " & Trim(Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) - 1)).value) & " for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) - 1)).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) - 1)).value) & " and"
+    typ = typ & ",line2=" & "(b) the " & Trim(Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) - 1)).value) & " for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) - 1)).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) - 1)).value) & " and"
+    jsonDictionary("line3") = "(c) the cash flow statement for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) - 1)).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 10, Chr(Asc(col) - 1)).value) & ", attached herewith, of M/s " & Trim(Sheets(sheet_name).Cells(irow + 14, col).value) & " (Name), " & Sheets(sheet_name).Cells(irow + 16, col).value & ", " & Sheets(sheet_name).Cells(irow + 16, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 17, col).value & ", " & Sheets(sheet_name).Cells(irow + 17, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 18, col).value & ", " & Sheets(sheet_name).Cells(irow + 18, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 19, col).value & ", " & Sheets(sheet_name).Cells(irow + 19, Chr(Asc(col) + 2)).value & " (Address)" & ", " & Sheets(sheet_name).Cells(irow + 22, Chr(Asc(col) - 1)).value & " (GSTIN)."
+    typ = typ & ",line3=" & "(c) the cash flow statement for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) - 1)).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 10, Chr(Asc(col) - 1)).value) & ", attached herewith, of M/s " & Trim(Sheets(sheet_name).Cells(irow + 14, col).value) & " (Name), " & Sheets(sheet_name).Cells(irow + 16, col).value & ", " & Sheets(sheet_name).Cells(irow + 16, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 17, col).value & ", " & Sheets(sheet_name).Cells(irow + 17, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 18, col).value & ", " & Sheets(sheet_name).Cells(irow + 18, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 19, col).value & ", " & Sheets(sheet_name).Cells(irow + 19, Chr(Asc(col) + 2)).value & " (Address)" & ", " & Sheets(sheet_name).Cells(irow + 22, Chr(Asc(col) - 1)).value & " (GSTIN)."
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    jsonfile.Write (",")
+    
+    irow = irow + 36
+    jsonfile.Write ("""section2"":")
+    If pro Then
+    jsonDictionary("line0") = "2. Based on my audit I report that the said registered person-"
+    typ = typ & ",section2=line0=2. Based on my audit I report that the said registered person-"
+    Else
+    jsonDictionary("line0") = "2. Based on our audit we report that the said registered person-"
+    typ = typ & ",section2=line0=2. Based on our audit we report that the said registered person-"
+    End If
+    jsonDictionary("line1") = Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 3)).value) & " as required by the IGST/CGST/State/UTGST Act, 2017 and the rules/notifications made/issued thereunder:"
+    typ = typ & ",line1=" & Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 3)).value) & " as required by the IGST/CGST/State/UTGST Act, 2017 and the rules/notifications made/issued thereunder:"
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    jsonfile.Write (",")
+    
+    jsonfile.Write ("""section3"":{")
+    jsonfile.Write ("""sec_3a"":")
+    If pro Then
+    jsonDictionary("line0") = "3.(a) I report the following observations/ comments / discrepancies /inconsistencies; if any:"
+    typ = typ & ",section3=sec_3a=line0=" & "3.(a) I report the following observations/ comments / discrepancies /inconsistencies; if any:"
+    Else
+    jsonDictionary("line0") = "3.(a) We report the following observations/ comments / discrepancies /inconsistencies; if any:"
+    typ = typ & ",section3=sec_3a=line0=" & "3.(a) We report the following observations/ comments / discrepancies /inconsistencies; if any:"
+
+    End If
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    jsonfile.Write (",")
+    
+    jsonfile.Write ("""sec_3b"":")
+    typ = typ & ",sec_3b="
+    If pro Then
+    jsonDictionary("line0") = "3.(b) I further report that, -"
+    jsonDictionary("line1") = "(A) I " & Sheets(sheet_name).Cells(47, "D").value & " the information and explanations which, to the best of my knowledge and belief, were necessary for the purpose of the audit."
+    jsonDictionary("line2") = "(B) In my opinion, proper books of account " & ishave & " kept by the registered person so far as appears from my examination of the books."
+    jsonDictionary("line3") = "(C) I certify that the balance sheet, the " & typ1 & " and the cash flow Statement are " & Sheets(sheet_name).Cells(irow + 11, Chr(Asc(col) + 4)).value & " with the books of account maintained at the Principal place of business at " & Sheets(sheet_name).Cells(irow + 12, Chr(Asc(col) + 1)).value & " and " & Sheets(sheet_name).Cells(irow + 13, Chr(Asc(col) - 2)).value & " additional place of business within the State."
+    typ = typ & "line0=3.(b) I further report that, -" & ",line1=" & "(A) I " & Sheets(sheet_name).Cells(47, "D").value & " the information and explanations which, to the best of my knowledge and belief, were necessary for the purpose of the audit."
+    typ = typ & ",line2=" & "(B) In my opinion, proper books of account " & ishave & " kept by the registered person so far as appears from my examination of the books."
+    typ = typ & ",line3=" & "(C) I certify that the balance sheet, the " & typ1 & " and the cash flow Statement are " & Sheets(sheet_name).Cells(irow + 11, Chr(Asc(col) + 4)).value & " with the books of account maintained at the Principal place of business at " & Sheets(sheet_name).Cells(irow + 12, Chr(Asc(col) + 1)).value & " and " & Sheets(sheet_name).Cells(irow + 13, Chr(Asc(col) - 2)).value & " additional place of business within the State."
+    Else
+    jsonDictionary("line0") = "3.(b) We further report that, -"
+    jsonDictionary("line1") = "(A) We " & Sheets(sheet_name).Cells(47, "D").value & " the information and explanations which, to the best of our knowledge and belief, were necessary for the purpose of the audit."
+    jsonDictionary("line2") = "(B) In our opinion, proper books of account " & ishave & " kept by the registered person so far as appears from our examination of the books."
+    jsonDictionary("line3") = "(C) We certify that the balance sheet, the " & typ1 & " and the cash flow Statement are " & Sheets(sheet_name).Cells(irow + 11, Chr(Asc(col) + 4)).value & " with the books of account maintained at the Principal place of business at " & Sheets(sheet_name).Cells(irow + 12, Chr(Asc(col) + 1)).value & " and " & Sheets(sheet_name).Cells(irow + 13, Chr(Asc(col) - 2)).value & " additional place of business within the State."
+    typ = typ & "line0=3.(b) We further report that, -" & ",line1=" & "(A) We " & Sheets(sheet_name).Cells(47, "D").value & " the information and explanations which, to the best of our knowledge and belief, were necessary for the purpose of the audit."
+    typ = typ & ",line2=" & "(B) In our opinion, proper books of account " & ishave & " kept by the registered person so far as appears from our examination of the books."
+    typ = typ & ",line3=" & "(C) We certify that the balance sheet, the " & typ1 & " and the cash flow Statement are " & Sheets(sheet_name).Cells(irow + 11, Chr(Asc(col) + 4)).value & " with the books of account maintained at the Principal place of business at " & Sheets(sheet_name).Cells(irow + 12, Chr(Asc(col) + 1)).value & " and " & Sheets(sheet_name).Cells(irow + 13, Chr(Asc(col) - 2)).value & " additional place of business within the State."
+    End If
+    
+    
+    
+    
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    jsonfile.Write ("},")
+    
+    jsonfile.Write ("""section4"":")
+    jsonDictionary("line0") = "4. The documents required to be furnished under section 35 (5) of the CGST Act/SGST Act and Reconciliation Statement required to be furnished under section 44(2) of the CGST Act/SGST Act is annexed herewith in Form No. GSTR-9C"
+    typ = typ & ",section4=line0=4. The documents required to be furnished under section 35 (5) of the CGST Act/SGST Act and Reconciliation Statement required to be furnished under section 44(2) of the CGST Act/SGST Act is annexed herewith in Form No. GSTR-9C"
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    jsonfile.Write (",")
+    jsonfile.Write ("""section5"":")
+    If pro Then
+    jsonDictionary("line0") = "5. In my opinion and to the best of my information and according to explanations given to me, the particulars given in the said Form No.GSTR-9C are true and fair subject to following observations/qualifications, if any:"
+    typ = typ & ",section5=line0=5. In my opinion and to the best of my information and according to explanations given to me, the particulars given in the said Form No.GSTR-9C are true and fair subject to following observations/qualifications, if any:"
+    Else
+    jsonDictionary("line0") = "5. In our opinion and to the best of our information and according to explanations given to us, the particulars given in the said Form No.GSTR-9C are true and fair subject to following observations/qualifications, if any:"
+    typ = typ & ",section5=line0=5. In our opinion and to the best of our information and according to explanations given to us, the particulars given in the said Form No.GSTR-9C are true and fair subject to following observations/qualifications, if any:"
+    End If
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    jsonfile.Write (",")
+    jsonfile.Write ("""qualifications"":")
+    count = Common_Module.Count_qual(sheet_name, start_row_pb1_qual, end_row_pb1_qual, qual_col_pb1)
+    col1 = qual_col_pb1
+    Set jsonItems = Nothing
+    For s = start_row_pb1_qual To start_row_pb1_qual + count - 1
+        'text_str = text_str & "\r\n" & CStr(Sheets(sheet_name).Cells(s, Chr(Asc(col1) - 1))) & "." & Sheets(sheet_name).Cells(s, Chr(Asc(col1) + 1))
+        qual = Application.VLookup(Sheets(sheet_name).Cells(s, col1), Sheets("Master").Range("A7:C9"), 3, False)
+        jsonDictionary("qual_type") = qual
+        jsonDictionary("value") = Sheets(sheet_name).Cells(s, Chr(Asc(col1) + 4))
+        jsonItems.Add jsonDictionary
+        Set jsonDictionary = Nothing
+    Next
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+    Set jsonItems = Nothing
+    jsonfile.Write (",")
+    irow = end_row_pb1 - 7
+    jsonfile.Write ("""signature"":")
+    typ = typ & ",signature=" & "date=" & Trim(Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) - 1)).value) & ",fullAddress=" & Sheets(sheet_name).Cells(irow + 4, col).value & ", " & Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 5, col).value & ", " & Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 6, col).value & ", " & Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 7, col).value & ", " & Sheets(sheet_name).Cells(irow + 7, Chr(Asc(col) + 2)).value _
+    & ",line0=(Signature and stamp/Seal of the Auditor)" & ",membershipNo=" & Trim(Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) - 1)).value) & ",nameOfTheSignatory=" & Trim(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) - 1)).value) & ",place=" & Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 1)).value)
+    jsonDictionary("line0") = "(Signature and stamp/Seal of the Auditor)"
+    jsonDictionary("place") = Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 1)).value)
+    jsonDictionary("nameOfTheSignatory") = Trim(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) - 1)).value)
+    jsonDictionary("membershipNo") = Trim(Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) - 1)).value)
+    jsonDictionary("date") = Trim(Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) - 1)).value)
+    irow = irow + 4
+    jsonDictionary("fullAddress") = Sheets(sheet_name).Cells(irow, col).value & ", " & Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 1, col).value & ", " & Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 2, col).value & ", " & Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 3, col).value & ", " & Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value
+    
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    
+    
+    
+    jsonfile.Write ("}}}")
+    'Set jsonDictionary = Nothing
+    
+
+End Function
+
+Public Function Write_PB2(jsonfile)
+    Dim jsonItems As New Collection
+    Dim jsonDictionary As New Dictionary
+    Dim json As String
+    Dim pro As Boolean
+    
+    sheet_name = sheet15_name
+    col = col_pb2
+    irow = start_row_pb2
+    end_row = end_row_pb2
+    If Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 2)).value) = "I" Then
+        pro = True
+    ElseIf Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 2)).value) = "We" Then
+        pro = False
+    End If
+    
+    jsonfile.Write ("""certificate"":{")
+    jsonfile.Write ("""cert_data"":{")
+    If Not pro Then
+        text_str = "we report that the audit of the books of accounts and the financial statements of M/s. \r\n " & Trim(Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) - 1)).value) & " \r\n?\tthe " & Trim(Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) - 1)).value) & " for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) - 1)).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) - 1)).value) & ", and \r\n?\tthe cash flow statement for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) - 1)).value) & "to ending on " & Trim(Sheets(sheet_name).Cells(irow + 10, Chr(Asc(col) - 1)).value) & ", —\r\nattached herewith, of M/s" & Trim(Sheets(sheet_name).Cells(irow + 14, col).value) & "(Name),"
+    Else
+        text_str = "I have examined the— \r\n?\tbalance sheet as on " & Trim(Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) - 1)).value) & "\r\n?\tthe " & Trim(Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) - 1)).value) & " for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) - 1)).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) - 1)).value) & ", and \r\n?\tthe cash flow statement for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 9, Chr(Asc(col) - 1)).value) & "to ending on " & Trim(Sheets(sheet_name).Cells(irow + 10, Chr(Asc(col) - 1)).value) & ", —\r\nattached herewith, of M/s" & Trim(Sheets(sheet_name).Cells(irow + 14, col).value) & "(Name),"
+    End If
+    
+    json = (("""pronoun"":""") & Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 2)).value))
+    json = json & ((""",""taxpayer_name"":""") & Trim(Sheets(sheet_name).Cells(irow + 2, col).value))
+    jsonfile.Write json
+    json = ""
+    irow = irow + 4
+    jsonfile.Write (""",""addr"":")
+    
+    jsonDictionary("bno") = CStr(Sheets(sheet_name).Cells(irow, col).value)
+    jsonDictionary("building") = CStr(Sheets(sheet_name).Cells(irow + 1, col).value)
+    jsonDictionary("city") = Sheets(sheet_name).Cells(irow + 2, col).value
+    jsonDictionary("state") = Sheets(sheet_name).Cells(irow + 3, col).value
+    jsonDictionary("fno") = CStr(Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value)
+    jsonDictionary("road") = CStr(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value)
+    jsonDictionary("district") = Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value
+    jsonDictionary("pin_code") = Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonDictionary = Nothing
+    
+    jsonfile.Write ("""cert_textpartb2"":{")
+    jsonfile.Write ("""conducted_by"":{")
+    json = (("""name"":""") & Trim(Sheets(sheet_name).Cells(irow + 7, col).value))
+    jsonfile.Write json
+    json = ""
+    irow = irow + 9
+    jsonfile.Write (""",""addr"":")
+    
+    jsonDictionary("bno") = CStr(Sheets(sheet_name).Cells(irow, col).value)
+    jsonDictionary("building") = CStr(Sheets(sheet_name).Cells(irow + 1, col).value)
+    jsonDictionary("city") = Sheets(sheet_name).Cells(irow + 2, col).value
+    jsonDictionary("state") = Sheets(sheet_name).Cells(irow + 3, col).value
+    jsonDictionary("fno") = CStr(Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value)
+    jsonDictionary("road") = CStr(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value)
+    jsonDictionary("district") = Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value
+    jsonDictionary("pin_code") = Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    jsonfile.Write ("},")
+    Set jsonDictionary = Nothing
+    json = (("""audit_date"":""") & Trim(Sheets(sheet_name).Cells(irow + 7, col).value))
+    json = json & ((""",""audit_typ"":""") & Trim(Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) + 1)).value))
+    json = json & ((""",""member_no"":""") & Trim(Sheets(sheet_name).Cells(23, 3).value))
+    jsonfile.Write json
+    json = ""
+    jsonfile.Write (""",""qualifications"":")
+    count = Common_Module.Count_qual(sheet_name, start_row_pb2_qual, end_row_pb2_qual, qual_col_pb2)
+    col1 = qual_col_pb2
+    Set jsonItems = Nothing
+    For s = start_row_pb2_qual To start_row_pb2_qual + count - 1
+        qual = Application.VLookup(Sheets(sheet_name).Cells(s, col1), Sheets("Master").Range("B7:D8"), 3, False)
+        jsonDictionary("qual_type") = qual
+        jsonDictionary("value") = Sheets(sheet_name).Cells(s, Chr(Asc(col1) + 4))
+        jsonItems.Add jsonDictionary
+        Set jsonDictionary = Nothing
+    Next
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+    'jsonfile.Write (",")
+    Set jsonItems = Nothing
+    jsonfile.Write ("}")
+    json = json & ((",""bal_sheet_date"":""") & Trim(Sheets(sheet_name).Cells(irow + 9, col).value))
+    json = json & ((""",""acc_typ"":""") & Trim(Sheets(sheet_name).Cells(irow + 11, col).value))
+    json = json & ((""",""beg_date"":""") & Trim(Sheets(sheet_name).Cells(irow + 12, col).value))
+    json = json & ((""",""end_date"":""") & Trim(Sheets(sheet_name).Cells(irow + 13, col).value))
+    json = json & ((""",""cash_from_date"":""") & Trim(Sheets(sheet_name).Cells(irow + 16, col).value))
+    json = json & ((""",""cash_to_date"":""") & Trim(Sheets(sheet_name).Cells(irow + 17, col).value))
+    
+    irow = irow + 23
+    json = json & (""",""doc_stat"":""" & Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 2)).value))
+    jsonfile.Write json
+    json = ""
+
+    irow = end_row_pb2 - 7
+    
+    json = ((""",""place"":""") & Trim(Sheets(sheet_name).Cells(irow, col).value))
+    json = json & ((""",""signatory"":""") & Trim(Sheets(sheet_name).Cells(irow + 1, col).value))
+    json = json & ((""",""mem_no"":""") & Trim(Sheets(sheet_name).Cells(irow + 2, col).value))
+    json = json & ((""",""date"":""") & Trim(Sheets(sheet_name).Cells(irow + 3, col).value))
+    jsonfile.Write json
+    json = ""
+    irow = irow + 4
+    
+    jsonfile.Write (""",""audit_addr"":")
+    
+    jsonDictionary("bno") = CStr(Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 1)).value)
+    jsonDictionary("building") = CStr(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 1)).value)
+    jsonDictionary("city") = Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 1)).value
+    jsonDictionary("state") = Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 1)).value
+    jsonDictionary("fno") = CStr(Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 3)).value)
+    jsonDictionary("road") = CStr(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 3)).value)
+    jsonDictionary("district") = Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 3)).value
+    jsonDictionary("pin_code") = Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 3)).value
+    
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    
+    
+    
+    jsonfile.Write ("},")
+    irow = start_row_pb2
+    jsonfile.Write ("""cert_text"":{")
+    jsonfile.Write ("""cert_text_partb2"":{")
+    jsonfile.Write ("""section1"":")
+    If pro Then
+    str1 = "I report that the audit of the books of accounts and the financial statements of M/s. " & Trim(Sheets(sheet_name).Cells(irow + 2, col).value) & ", " & Sheets(sheet_name).Cells(irow + 4, col).value & ", " & Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 5, col).value & ", " & Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 6, col).value & ", " & Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 7, col).value & ", " & Sheets(sheet_name).Cells(irow + 7, Chr(Asc(col) + 2)).value & " (Name and address of the assessee with GSTIN) was conducted by M/s. " & Trim(Sheets(sheet_name).Cells(irow + 11, col).value) & ", "
+    irow = irow + 13
+    str1 = str1 & Sheets(sheet_name).Cells(irow, col).value & ", " & Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 1, col).value & ", " & Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 2, col).value & ", " & Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 3, col).value & ", " & Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value & " (full name and address of auditor along with status), bearing membership number " & Sheets(sheet_name).Cells(23, 3).value & " in pursuance of the provisions of the " & Trim(Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) + 1)).value) & " Act, and I annex hereto a copy of their audit report dated " & Trim(Sheets(sheet_name).Cells(irow + 7, col).value) & " along with a copy of each of :-"
+    typ = str1
+    jsonDictionary("line0") = str1
+    Else
+    str1 = "We report that the audit of the books of accounts and the financial statements of M/s. " & Trim(Sheets(sheet_name).Cells(irow + 2, col).value) & ", " & Sheets(sheet_name).Cells(irow + 4, col).value & ", " & Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 5, col).value & ", " & Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 6, col).value & ", " & Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 7, col).value & ", " & Sheets(sheet_name).Cells(irow + 7, Chr(Asc(col) + 2)).value & " (Name and address of the assessee with GSTIN) was conducted by M/s. " & Trim(Sheets(sheet_name).Cells(irow + 11, col).value) & ", "
+    irow = irow + 13
+    str1 = str1 & Sheets(sheet_name).Cells(irow, col).value & ", " & Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 1, col).value & ", " & Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 2, col).value & ", " & Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value & ", " & Sheets(sheet_name).Cells(irow + 3, col).value & ", " & Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value & " (full name and address of auditor along with status), bearing membership number " & Sheets(sheet_name).Cells(23, 3).value & " in pursuance of the provisions of the " & Trim(Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) + 1)).value) & " Act, and We annex hereto a copy of their audit report dated " & Trim(Sheets(sheet_name).Cells(irow + 7, col).value) & " along with a copy of each of :-"
+    typ = str1
+    jsonDictionary("line0") = str1
+    End If
+    jsonDictionary("line1") = "(a) balance sheet as on " & Trim(Sheets(sheet_name).Cells(irow + 9, col).value)
+    typ = typ & ",line1=" & "(a) balance sheet as on " & Trim(Sheets(sheet_name).Cells(irow + 9, col).value)
+    jsonDictionary("line2") = "(b) the " & Trim(Sheets(sheet_name).Cells(irow + 11, col).value) & " for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 12, col).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 13, col).value)
+    typ = typ & ",line2=" & "(b) the " & Trim(Sheets(sheet_name).Cells(irow + 11, col).value) & " for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 12, col).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 13, col).value)
+    jsonDictionary("line3") = "(c) the cash flow statement for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 16, col).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 17, col).value) & " and"
+    typ = typ & ",line3=" & "(c) the cash flow statement for the period beginning from " & Trim(Sheets(sheet_name).Cells(irow + 16, col).value) & " to ending on " & Trim(Sheets(sheet_name).Cells(irow + 17, col).value) & " and"
+    jsonDictionary("line4") = "(d) documents declared by the said Act to be part of, or annexed to, the " & Trim(Sheets(sheet_name).Cells(irow + 19, Chr(Asc(col) + 1)).value) & " and balance sheet."
+    typ = typ & ",line4=" & "(d) documents declared by the said Act to be part of, or annexed to, the " & Trim(Sheets(sheet_name).Cells(irow + 19, Chr(Asc(col) + 1)).value) & " and balance sheet."
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    jsonfile.Write (",")
+    
+    jsonfile.Write ("""section2"":")
+    If pro Then
+    jsonDictionary("line0") = "2. I report that the said registered person-"
+    typ = typ & ",section2=line0=2. I report that the said registered person-"
+    Else
+    jsonDictionary("line0") = "2. We report that the said registered person-"
+    typ = typ & ",section2=line0=2. We report that the said registered person-"
+    End If
+    irow = irow + 23
+    jsonDictionary("line1") = Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 2)).value) & " as required by the IGST/CGST/State/UTGST Act, 2017 and the rules/notifications made/issued thereunder"
+    typ = typ & ",line1=" & Trim(Sheets(sheet_name).Cells(irow, Chr(Asc(col) - 2)).value) & " as required by the IGST/CGST/State/UTGST Act, 2017 and the rules/notifications made/issued thereunder"
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    jsonfile.Write (",")
+    
+    jsonfile.Write ("""section3"":")
+    jsonDictionary("line0") = "3. The documents required to be furnished under section 35 (5) of the CGST Act/SGST Act and Reconciliation Statement required to be furnished under section 44(2) of the CGST Act/SGST Act is annexed herewith in Form No.GSTR-9C."
+    typ = typ & ",section3=line0=" & "3. The documents required to be furnished under section 35 (5) of the CGST Act/SGST Act and Reconciliation Statement required to be furnished under section 44(2) of the CGST Act/SGST Act is annexed herewith in Form No.GSTR-9C."
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    jsonfile.Write (",")
+    
+    jsonfile.Write ("""section4"":")
+    If pro Then
+    jsonDictionary("line0") = "4. In my opinion and to the best of my information and according to examination of books of account including other relevant documents and explanations given to me, the particulars given in the said Form No.9C are true and fair subject to the following observations/qualifications, if any:"
+    typ = typ & ",section4=line0=4. In my opinion and to the best of my information and according to examination of books of account including other relevant documents and explanations given to me, the particulars given in the said Form No.9C are true and fair subject to the following observations/qualifications, if any:"
+    Else
+    jsonDictionary("line0") = "4. In our opinion and to the best of our information and according to examination of books of account including other relevant documents and explanations given to us, the particulars given in the said Form No.9C are true and fair subject to the following observations/qualifications, if any:"
+    typ = typ & ",section4=line0=4. In our opinion and to the best of our information and according to examination of books of account including other relevant documents and explanations given to us, the particulars given in the said Form No.9C are true and fair subject to the following observations/qualifications, if any:"
+    End If
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    jsonfile.Write (",")
+    
+    jsonfile.Write ("""qualifications"":")
+    count = Common_Module.Count_qual(sheet_name, start_row_pb2_qual, end_row_pb2_qual, qual_col_pb2)
+    col1 = qual_col_pb2
+    Set jsonItems = Nothing
+    For s = start_row_pb2_qual To start_row_pb2_qual + count - 1
+        qual = Application.VLookup(Sheets(sheet_name).Cells(s, col1), Sheets("Master").Range("B7:D8"), 3, False)
+        jsonDictionary("qual_type") = qual
+        jsonDictionary("value") = Sheets(sheet_name).Cells(s, Chr(Asc(col1) + 4))
+        jsonItems.Add jsonDictionary
+        Set jsonDictionary = Nothing
+    Next
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+    jsonfile.Write (",")
+    Set jsonItems = Nothing
+    
+    irow = end_row_pb2 - 7
+    jsonfile.Write ("""signature"":")
+    typ = typ & ",signature=" & ",date=" & Trim(Sheets(sheet_name).Cells(irow + 3, col).value) & ",fullAddress=" & Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) + 1)).value & ", " & Sheets(sheet_name).Cells(irow + 4, Chr(Asc(col) + 3)).value & ", " & Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) + 1)).value & ", " & Sheets(sheet_name).Cells(irow + 5, Chr(Asc(col) + 3)).value & ", " & Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) + 1)).value & ", " & Sheets(sheet_name).Cells(irow + 6, Chr(Asc(col) + 3)).value & ", " & Sheets(sheet_name).Cells(irow + 7, Chr(Asc(col) + 1)).value & ", " & Sheets(sheet_name).Cells(irow + 7, Chr(Asc(col) + 3)).value _
+    & ",line0=(Signature and stamp/Seal of the Auditor)" & ",membershipNo=" & Trim(Sheets(sheet_name).Cells(irow + 2, col).value) & ",nameOfTheSignatory=" & Trim(Sheets(sheet_name).Cells(irow + 1, col).value) & ",place=" & Trim(Sheets(sheet_name).Cells(irow, col).value)
+    jsonDictionary("line0") = "(Signature and stamp/Seal of the Auditor)"
+    
+    jsonDictionary("line0") = "(Signature and stamp/Seal of the Auditor)"
+    jsonDictionary("place") = Trim(Sheets(sheet_name).Cells(irow, col).value)
+    jsonDictionary("nameOfTheSignatory") = Trim(Sheets(sheet_name).Cells(irow + 1, col).value)
+    jsonDictionary("membershipNo") = Trim(Sheets(sheet_name).Cells(irow + 2, col).value)
+    jsonDictionary("date") = Trim(Sheets(sheet_name).Cells(irow + 3, col).value)
+    
+    irow = irow + 4
+    jsonDictionary("fullAddress") = Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 1)).value & ", " & Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 3)).value & ", " & Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 1)).value & ", " & Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 3)).value & ", " & Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 1)).value & ", " & Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 3)).value & ", " & Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 1)).value & ", " & Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 3)).value
+    jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+    Set jsonDictionary = Nothing
+    
+    
+    
+    jsonfile.Write ("}}}")
+    
+End Function
+
+Public Sub Write_AddLiab(jsonfile)
+    Dim jsonItems As New Collection
+    Dim jsonDictionary As New Dictionary
+    Dim selected_fy As String
+    selected_fy = Worksheets(home_sheet).Range("D10").value
+    tcol = taxv_col_five
+    ccol = ctax_col_five
+    scol = stax_col_five
+    icol = itax_col_five
+    cecol = cetax_col_five
+    col = word_col_five
+    sheet_name = sheet13_name
+    start_row = start_row_five
+    end_row = end_row_five
+    jsonfile.Write ("""add_liab"":{")
+    
+    If isFY2024OrLater Then
+    
+    If Not (WorksheetFunction.CountA(Sheets("PT V").Range("D6:J23")) = 0) Then
+        jsonfile.Write ("""tax_pay"":")
+        Set jsonItems = Nothing
+        
+        For s = start_row To end_row
+    
+            jsonDictionary("val") = Sheets(sheet_name).Cells(s, tcol)
+            jsonDictionary("igst") = Sheets(sheet_name).Cells(s, icol)
+            jsonDictionary("cgst") = Sheets(sheet_name).Cells(s, ccol)
+            jsonDictionary("sgst") = Sheets(sheet_name).Cells(s, scol)
+            jsonDictionary("cess") = Sheets(sheet_name).Cells(s, cecol)
+             
+            If Not (Sheets(sheet_name).Cells(s, tcol) = vbNullString And Sheets(sheet_name).Cells(s, ccol) = vbNullString And Sheets(sheet_name).Cells(s, scol) = vbNullString And Sheets(sheet_name).Cells(s, icol) = vbNullString And Sheets(sheet_name).Cells(s, cecol) = vbNullString) Then
+                desc = Application.VLookup(Sheets(sheet_name).Cells(s, Chr(Asc(tcol) - 1)), Sheets("Master").Range("L14:M32"), 2, False)
+                jsonDictionary("desc") = desc
+                If desc = "Others" Then
+                    If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) Then
+                        jsonItems.Add jsonDictionary
+                    End If
+                Else
+                    jsonItems.Add jsonDictionary
+                End If
+            End If
+            
+            Set jsonDictionary = Nothing
+        Next
+         
+        jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+        
+        Set jsonItems = Nothing
+        Set jsonDictionary = Nothing
+        'If selected_fy <> PARTB_RESTRICTED_FY Then'
+        If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) = 0 Then
+            jsonfile.Write (",")
+        End If
+    End If
+    irow = word_start_row_five
+    
+    'If selected_fy <> PARTB_RESTRICTED_FY Then'
+    If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) = 0 Then
+        
+        json = (("""place"":""") & Trim(Sheets(sheet_name).Cells(irow, col).value))
+        json = json & ((""",""signatory"":""") & Trim(Sheets(sheet_name).Cells(irow + 1, col).value))
+        json = json & ((""",""mem_no"":""") & Trim(Sheets(sheet_name).Cells(irow + 2, col).value))
+        json = json & ((""",""date"":""") & Trim(Sheets(sheet_name).Cells(irow + 3, col).value))
+        json = json & ((""",""pan_no"":""") & Trim(Sheets(sheet_name).Cells(irow + 9, col).value))
+        jsonfile.Write json
+        json = ""
+          
+        irow = irow + 4
+        
+        jsonfile.Write (""",""audit_addr"":")
+        
+        jsonDictionary("bno") = CStr(Sheets(sheet_name).Cells(irow, col).value)
+        jsonDictionary("building") = CStr(Sheets(sheet_name).Cells(irow + 1, col).value)
+        jsonDictionary("city") = Sheets(sheet_name).Cells(irow + 2, col).value
+        jsonDictionary("state") = Sheets(sheet_name).Cells(irow + 3, col).value
+        jsonDictionary("fno") = CStr(Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value)
+        jsonDictionary("road") = CStr(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value)
+        jsonDictionary("district") = Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value
+        jsonDictionary("pin_code") = Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value
+        jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+        
+        
+        
+        
+        jsonfile.Write ("}")
+    End If
+    Set jsonDictionary = Nothing
+    
+    
+    Else
+    
+    If Not (WorksheetFunction.CountA(Sheets("PT V").Range("D6:J22")) = 0) Then
+        jsonfile.Write ("""tax_pay"":")
+        Set jsonItems = Nothing
+        
+        For s = start_row To end_row
+    
+            jsonDictionary("val") = Sheets(sheet_name).Cells(s, tcol)
+            jsonDictionary("igst") = Sheets(sheet_name).Cells(s, icol)
+            jsonDictionary("cgst") = Sheets(sheet_name).Cells(s, ccol)
+            jsonDictionary("sgst") = Sheets(sheet_name).Cells(s, scol)
+            jsonDictionary("cess") = Sheets(sheet_name).Cells(s, cecol)
+             
+            If Not (Sheets(sheet_name).Cells(s, tcol) = vbNullString And Sheets(sheet_name).Cells(s, ccol) = vbNullString And Sheets(sheet_name).Cells(s, scol) = vbNullString And Sheets(sheet_name).Cells(s, icol) = vbNullString And Sheets(sheet_name).Cells(s, cecol) = vbNullString) Then
+                desc = Application.VLookup(Sheets(sheet_name).Cells(s, Chr(Asc(tcol) - 1)), Sheets("Master").Range("L14:M30"), 2, False)
+                jsonDictionary("desc") = desc
+                If desc = "Others" Then
+                    If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) Then
+                        jsonItems.Add jsonDictionary
+                    End If
+                Else
+                    jsonItems.Add jsonDictionary
+                End If
+            End If
+            
+            Set jsonDictionary = Nothing
+        Next
+         
+        jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonItems, Whitespace:=3))
+        
+        Set jsonItems = Nothing
+        Set jsonDictionary = Nothing
+        'If selected_fy <> PARTB_RESTRICTED_FY Then'
+        If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) = 0 Then
+            jsonfile.Write (",")
+        End If
+    End If
+    irow = word_start_row_five
+    
+    'If selected_fy <> PARTB_RESTRICTED_FY Then'
+    If (Len(selected_fy) > 0 And InStr(1, PARTB_RESTRICTED_FY, "|" & selected_fy & "|")) = 0 Then
+        
+        json = (("""place"":""") & Trim(Sheets(sheet_name).Cells(irow, col).value))
+        json = json & ((""",""signatory"":""") & Trim(Sheets(sheet_name).Cells(irow + 1, col).value))
+        json = json & ((""",""mem_no"":""") & Trim(Sheets(sheet_name).Cells(irow + 2, col).value))
+        json = json & ((""",""date"":""") & Trim(Sheets(sheet_name).Cells(irow + 3, col).value))
+        json = json & ((""",""pan_no"":""") & Trim(Sheets(sheet_name).Cells(irow + 9, col).value))
+        jsonfile.Write json
+        json = ""
+          
+        irow = irow + 4
+        
+        jsonfile.Write (""",""audit_addr"":")
+        
+        jsonDictionary("bno") = CStr(Sheets(sheet_name).Cells(irow, col).value)
+        jsonDictionary("building") = CStr(Sheets(sheet_name).Cells(irow + 1, col).value)
+        jsonDictionary("city") = Sheets(sheet_name).Cells(irow + 2, col).value
+        jsonDictionary("state") = Sheets(sheet_name).Cells(irow + 3, col).value
+        jsonDictionary("fno") = CStr(Sheets(sheet_name).Cells(irow, Chr(Asc(col) + 2)).value)
+        jsonDictionary("road") = CStr(Sheets(sheet_name).Cells(irow + 1, Chr(Asc(col) + 2)).value)
+        jsonDictionary("district") = Sheets(sheet_name).Cells(irow + 2, Chr(Asc(col) + 2)).value
+        jsonDictionary("pin_code") = Sheets(sheet_name).Cells(irow + 3, Chr(Asc(col) + 2)).value
+        jsonfile.WriteLine (JsonConverter.ConvertToJson(jsonDictionary, Whitespace:=3))
+        
+        
+        
+        
+        jsonfile.Write ("}")
+    End If
+    Set jsonDictionary = Nothing
+    
+    End If
+    
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+-------------------------------------------------------------------------------
