@@ -89,6 +89,8 @@ from routers import rcm_documents  # PUR-19 — s.31(3)(f) self-invoice, s.31(3)
 from routers import bills_of_entry  # PUR-18 — the customs assessment on an import of goods
 from routers import client_gst_registrations  # GST-20 — a client may hold several GSTINs
 from routers import ecommerce_operator  # GST-25 — GSTR-8, what a seller supplied through it
+from routers import gstr4_annual  # GST-25 — GSTR-4 Annual, a composition dealer's inward supplies
+from routers import gstr9c  # GST-25 — GSTR-9C, the audited-books reconciliation
 from routers import opening_documents  # ACC-14 — the bill-wise breakup of an opening balance
 from routers import sales_cycle  # SALES-21 — quotation, proforma, order, Rule 55 challan
 from routers import purchase_cycle  # PUR-25 — purchase order, goods receipt, three-way match
@@ -405,6 +407,8 @@ app.include_router(rcm_documents.router, dependencies=_CLIENT_GUARD)
 app.include_router(bills_of_entry.router, dependencies=_CLIENT_GUARD)
 app.include_router(client_gst_registrations.router, dependencies=_CLIENT_GUARD)
 app.include_router(ecommerce_operator.router, dependencies=_CLIENT_GUARD)
+app.include_router(gstr4_annual.router, dependencies=_CLIENT_GUARD)
+app.include_router(gstr9c.router, dependencies=_CLIENT_GUARD)
 app.include_router(opening_documents.router, dependencies=_CLIENT_GUARD)
 app.include_router(sales_cycle.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_cycle.router, dependencies=_CLIENT_GUARD)

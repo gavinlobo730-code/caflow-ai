@@ -374,6 +374,44 @@ only — but the preparation path is unchanged: still RPU, still FVU, then uploa
   that in writing — it is the kind of thing that is fine for a desktop product
   and not obviously fine for a hosted one.
 
+**25-09-2026 research pass on item 7 above (TDS-16), and the decision it led
+to.** A dedicated attempt to reach the primary file-format spec found this
+environment's egress broken more broadly than the rest of this document
+records — not only every `.gov.in` domain, but `docs.oracle.com` and
+`en.wikipedia.org` too, all `EGRESS_BLOCKED` at the proxy. Only `WebSearch`
+answered, and its own summaries carry no better than `[S]` grade. What that
+pass DID corroborate, from three independently converging descriptions: the
+file is **caret (`^`)-delimited**, not comma-separated and not fixed-width —
+correcting an earlier working assumption in this document — with a strict
+per-line record hierarchy (File Header, one Batch Header per statement, one
+Challan Detail row per deposit, one Deductee Detail row per deductee under
+its own challan), matching what `domain/tds/challan_mapping.py` had already
+assumed correctly. What it also found, and what settled the decision: **the
+field list itself is confirmed to be under active revision for the current
+filing period** — RPU/FVU version 1.1 (Tax Year 2026-27, Forms 138/140/143/144)
+reportedly REMOVED three Challan Detail fields (Surcharge, Education Cess,
+Penalty/Others) that version 1.2, released weeks later, partially reinstated
+under different names. Writing a byte-exact serialiser against a format
+demonstrably moving under our feet, sourced from nothing better than a search
+engine's summary, is the exact "low-confidence guess dressed up as a
+specification" this codebase's own house style refuses to ship elsewhere — a
+wrong field position gets the WHOLE statement rejected by the FVU.
+
+**Decision: no FVU/RPU file writer is built.** `domain/tds/keying_sheet.py`
+is what TDS-16 became instead — the same posture IT-17's ITR keying sheet
+already takes: it groups the figures `tds_26q_from_books` /
+`tds_27q_from_books` / `tds_24q_from_books` already compute under the RPU's
+own confirmed record hierarchy (so a CA keys them into the real RPU screens
+in the right order), and says so on the sheet in as many words — it is never
+represented as, and never becomes, the government's own upload file. Item 7
+above stays open rather than closed by this: closing it for real needs a
+human to download `tinpan.proteantech.in`'s current XLS/PDF specs for Forms
+138/140/143/144 with an ordinary browser (that domain is not blocked for a
+human, only for this sandbox), after which a real writer could be built and
+round-tripped through an actual FVU run before being trusted — exactly the
+"a human downloads them" posture CLAUDE.md already takes for the ITR JSON
+schemas.
+
 ### ⚠️ The highest-value lead in this whole document
 
 Search results describe a **CPC-TDS developer portal** offering *"OpenAPI 3.0

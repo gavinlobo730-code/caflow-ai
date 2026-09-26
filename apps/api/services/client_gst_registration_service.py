@@ -101,6 +101,9 @@ def listing(db, firm_id: str, client_id: str) -> list[dict]:
             # Same shape again — whether this registration owes GSTR-8, never
             # a "tcs_collector" string comparison in the browser (GST-25).
             "files_gstr8": r.files_gstr8,
+            # Same shape again — GSTR-4 Annual, filed by the same COMPOSITION
+            # registrations that file CMP-08 (GST-25, migration 422).
+            "files_gstr4_annual": r.files_gstr4_annual,
             # The refusal is DATA, so a screen can grey the return out and say
             # which form this registration actually owes.
             "other_return_form": reg.OTHER_RETURN_FORMS.get(r.registration_type),

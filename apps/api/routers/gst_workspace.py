@@ -1170,6 +1170,52 @@ def compute_gstr8(
         raise HTTPException(status_code=422, detail=str(e))
 
 
+@router.get("/gstr4-annual/compute")
+def compute_gstr4_annual(
+    client_id: str = Query(...),
+    # `Annotated[...]`, NOT `FYLabel = Query(...)` — see compute_gstr9's own
+    # comment; FastAPI discards the validator silently in the other form.
+    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    gstin: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """FORM GSTR-4 Annual for one financial year — a COMPOSITION
+    registration's annual return under CGST s.44/Rule 80(3) (GST-25), built
+    from Tables 4A-4D recorded under `/api/gstr4-annual/*` plus Table 5,
+    which is four already-computed CMP-08 statements summed.
+
+    `gstin` selects the registration (GST-20); omitting it means the
+    primary. A registration that is not COMPOSITION, or a GSTIN the client
+    does not hold, is refused with a 422 naming which.
+
+    Reads and writes nothing but this request.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "financial_year": financial_year, "gstin": gstin,
+            "registration_type": None,
+            "b2b_supplies": [], "b2b_rc_supplies": [], "urp_supplies": [],
+            "import_of_services": [],
+            "b2b_total_taxable_paise": 0, "liability_taxable_paise": 0,
+            "liability_tax_paise": 0, "findings": [],
+            "table_5": {"outward_taxable_paise": 0, "outward_tax_paise": 0,
+                       "inward_rcm_taxable_paise": 0, "inward_rcm_tax_paise": 0,
+                       "tax_paid_paise": 0, "interest_paise": 0, "gaps": []},
+            "gaps": [], "gstr4_annual_verified": False,
+        })
+    from core.supabase_client import get_supabase
+    from services import gstr4_annual_service
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    try:
+        return api_response(True, gstr4_annual_service.gstr4_annual_statement(
+            db, firm_id, client_id, financial_year, gstin))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.get("/gstr9/compute")
 def compute_gstr9(
     client_id: str = Query(...),
@@ -1209,6 +1255,70 @@ def compute_gstr9(
     return api_response(True, gstr9_service.build(
         db, firm_id, client_id, financial_year=financial_year,
         gstin=registration.gstin))
+
+
+@router.get("/gstr9c/compute")
+def compute_gstr9c(
+    client_id: str = Query(...),
+    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    gstin: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """FORM GSTR-9C for one financial year — the audited-books reconciliation
+    a registered person above the notified turnover files alongside GSTR-9
+    (CGST s.44, Rule 80(3), GST-25). Built from the CA-recorded reconciling
+    figures under `/api/gstr9c/*` plus the already-built GSTR-9 for the same
+    registration and year.
+
+    `gstin` selects the registration (GST-20); omitting it means the primary.
+
+    `threshold_table` and `self_certification_from_fy` on the response are
+    REFERENCE ONLY — see domain/gst/gstr9c.py — this endpoint never places a
+    client in a band or decides whether the form is required.
+
+    Reads and writes nothing but this request.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "financial_year": financial_year, "gstin": gstin,
+            "registration_type": None, "reconciliation_id": None, "act_name": None,
+            "table5": {"audited_turnover_paise": None, "adjustments_total_paise": None,
+                      "turnover_after_adjustments_paise": None,
+                      "declared_turnover_paise": 0, "unreconciled_paise": None,
+                      "reasons": []},
+            "table7": {"taxable_turnover_after_adjustments_paise": None,
+                      "declared_taxable_turnover_paise": 0, "unreconciled_paise": None,
+                      "reasons": []},
+            "table9": {"lines": [], "total_payable_paise": {}, "declared": {},
+                      "declared_tax_paid_paise": 0},
+            "table11": {"lines": [], "total_paise": {}},
+            "table12": {"itc_per_audited_fs_paise": None,
+                       "booked_earlier_claimed_this_fy_paise": None,
+                       "booked_this_fy_claimed_later_fy_paise": None,
+                       "audited_adjusted_paise": None, "itc_claim_paise": 0,
+                       "itc_claim_alternate_paise": 0, "unreconciled_paise": None,
+                       "reasons": []},
+            "table14": {"lines": [], "total_value_paise": 0, "total_itc_paise": 0,
+                       "total_eligible_itc_availed_paise": 0, "itc_claim_paise": 0,
+                       "unreconciled_paise": 0},
+            "table16": {"tax_igst_paise": None, "tax_cgst_paise": None,
+                       "tax_sgst_paise": None, "tax_cess_paise": None,
+                       "interest_paise": None, "penalty_paise": None, "reasons": []},
+            "part_v": {"lines": [], "total_paise": {}},
+            "gaps": [], "threshold_table": [], "self_certification_from_fy": "2020-21",
+            "gstr9c_verified": False,
+        })
+    from core.supabase_client import get_supabase
+    from services import gstr9c_service
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    try:
+        return api_response(True, gstr9c_service.gstr9c_statement(
+            db, firm_id, client_id, financial_year, gstin))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.post("/gstr9")

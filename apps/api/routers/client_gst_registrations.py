@@ -100,6 +100,9 @@ def list_kinds(current_user: dict = Depends(rbac("gst", "read"))):
                 # Same shape again, for GSTR-8 — never a "tcs_collector"
                 # string comparison in the browser.
                 "files_gstr8": t == reg.TCS_COLLECTOR,
+                # Same shape again, for GSTR-4 Annual — the same COMPOSITION
+                # registrations that file CMP-08 also file this annually.
+                "files_gstr4_annual": t == reg.COMPOSITION,
                 "other_return_form": reg.OTHER_RETURN_FORMS.get(t),
             }
             for t in reg.REGISTRATION_TYPES

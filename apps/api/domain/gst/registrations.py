@@ -137,6 +137,17 @@ class Registration:
         return self.registration_type == TCS_COLLECTOR
 
     @property
+    def files_gstr4_annual(self) -> bool:
+        """Whether this registration owes FORM GSTR-4 Annual (GST-25) — the
+        same COMPOSITION registrations that file CMP-08 quarterly also file
+        this annually (Rule 80(3)), so the value always equals `files_cmp08`.
+        Kept as its own boolean rather than reused under a different name for
+        the same reason `files_gstr8` is not spelled as a string comparison:
+        the browser must never infer one return's eligibility from another's
+        property name coinciding with it today."""
+        return self.registration_type == COMPOSITION
+
+    @property
     def label(self) -> str:
         """What to show in a picker. The GSTIN is the identity; the trade name
         is what a human recognises, and a client with three registrations in one
