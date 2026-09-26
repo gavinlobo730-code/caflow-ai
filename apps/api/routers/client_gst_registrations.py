@@ -97,6 +97,9 @@ def list_kinds(current_user: dict = Depends(rbac("gst", "read"))):
                 # Same boolean shape as files_gstr1_and_3b, so a screen never
                 # has to hardcode the word "composition" to offer CMP-08.
                 "files_cmp08": t == reg.COMPOSITION,
+                # Same shape again, for GSTR-8 — never a "tcs_collector"
+                # string comparison in the browser.
+                "files_gstr8": t == reg.TCS_COLLECTOR,
                 "other_return_form": reg.OTHER_RETURN_FORMS.get(t),
             }
             for t in reg.REGISTRATION_TYPES

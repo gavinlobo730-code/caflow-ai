@@ -130,6 +130,13 @@ class Registration:
         return self.registration_type == COMPOSITION
 
     @property
+    def files_gstr8(self) -> bool:
+        """Whether this registration owes FORM GSTR-8 (GST-25) — a s.52
+        e-commerce operator's TCS statement. Same shape as `files_cmp08`: the
+        browser is never told to compare against the string "tcs_collector"."""
+        return self.registration_type == TCS_COLLECTOR
+
+    @property
     def label(self) -> str:
         """What to show in a picker. The GSTIN is the identity; the trade name
         is what a human recognises, and a client with three registrations in one

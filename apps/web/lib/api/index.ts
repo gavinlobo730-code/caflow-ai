@@ -1949,6 +1949,9 @@ export type ClientGstRegistration = {
    *  owes FORM GST CMP-08 (GST-25). Never derive this from `registration_type`
    *  in a screen; that is the vocabulary this field exists to keep server-side. */
   files_cmp08: boolean;
+  /** Same shape again — whether THIS registration owes FORM GSTR-8, a s.52
+   *  e-commerce operator's TCS statement (GST-25). */
+  files_gstr8: boolean;
   /** Set when this registration owes a DIFFERENT form — a composition dealer
    *  files CMP-08 and GSTR-4, an ISD files GSTR-6, and so on. Offering it a
    *  GSTR-3B screen offers a return it must not file. */
@@ -1987,6 +1990,7 @@ export type GstRegistrationKinds = {
     value: string;
     files_gstr1_and_3b: boolean;
     files_cmp08: boolean;
+    files_gstr8: boolean;
     other_return_form: string | null;
   }[];
   filing_frequencies: string[];
@@ -2028,6 +2032,66 @@ export type Cmp08Working = {
   interest_paise: number;
   gaps: string[];
   composition_rates_verified: boolean;
+};
+
+/** One registered seller's row on FORM GSTR-8 Table 3 (GST-25) — what THAT
+ *  seller supplied through this operator's platform, never this client's own
+ *  sale. `place_of_supply` is only asked from FY 2025-26 (`pos_required`
+ *  on the statement says which periods). */
+export type Gstr8Supply = {
+  id: string;
+  gstin: string;
+  period: string;
+  supplier_gstin: string;
+  place_of_supply: string | null;
+  gross_registered_paise: number;
+  returns_registered_paise: number;
+  gross_unregistered_paise: number;
+  returns_unregistered_paise: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  notes: string | null;
+};
+
+/** A Rule 12(1A) Enrolment-ID seller's row — GSTR-8 Table 3.1. A different
+ *  identifier for a different kind of person, never a nullable GSTIN. */
+export type Gstr8UnregisteredSupply = {
+  id: string;
+  gstin: string;
+  period: string;
+  enrolment_id: string;
+  gross_value_paise: number;
+  returns_paise: number;
+  notes: string | null;
+};
+
+export type Gstr8Finding = {
+  supplier_gstin: string;
+  problems: string[];
+};
+
+/** FORM GSTR-8 for one month — a s.52 e-commerce operator's TCS statement
+ *  (GST-25). CHECKS the IGST/CGST/SGST split recorded against each seller
+ *  rather than deriving it — see `domain/gst/gstr8.py`. Prepare-only. */
+export type Gstr8Working = {
+  period: string;
+  gstin: string;
+  registration_type: string | null;
+  financial_year: string;
+  pos_required: boolean;
+  rate_band_bps: [number, number];
+  total_net_liable_paise: number;
+  total_igst_paise: number;
+  total_cgst_paise: number;
+  total_sgst_paise: number;
+  total_unregistered_net_paise: number;
+  supplier_count: number;
+  unregistered_supplier_count: number;
+  findings: Gstr8Finding[];
+  supplies: Gstr8Supply[];
+  unregistered_supplies: Gstr8UnregisteredSupply[];
+  gstr8_rates_verified: boolean;
 };
 
 export type Vendor = {
@@ -5433,6 +5497,50 @@ export const api = {
       if (interestPaise) q.set("interest_paise", String(interestPaise));
       return request<ApiResp<Cmp08Working>>(`/api/gst-workspace/cmp08/compute?${q}`);
     },
+  },
+
+  /** FORM GSTR-8 for one month — a s.52 e-commerce operator's TCS statement
+   *  (GST-25), built from `ecommerceOperator`'s recorded seller rows. */
+  gstr8: {
+    compute: (clientId: string, period: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, period });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<Gstr8Working>>(`/api/gst-workspace/gstr8/compute?${q}`);
+    },
+  },
+
+  /** What an e-commerce operator's sellers supplied through it — the rows
+   *  GSTR-8 is built from, never this client's own sale (GST-25). */
+  ecommerceOperator: {
+    listSupplies: (clientId: string, period: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, period });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<{ registered: Gstr8Supply[]; unregistered: Gstr8UnregisteredSupply[] }>>(
+        `/api/ecommerce-operator/supplies?${q}`);
+    },
+    recordSupply: (body: {
+      client_id: string; gstin?: string; period: string; supplier_gstin: string;
+      place_of_supply?: string | null; gross_registered_paise?: number;
+      returns_registered_paise?: number; gross_unregistered_paise?: number;
+      returns_unregistered_paise?: number; igst_paise?: number;
+      cgst_paise?: number; sgst_paise?: number; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr8Supply>>("/api/ecommerce-operator/supplies",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteSupply: (supplyId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/ecommerce-operator/supplies/${supplyId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+    recordUnregisteredSupply: (body: {
+      client_id: string; gstin?: string; period: string; enrolment_id: string;
+      gross_value_paise?: number; returns_paise?: number; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr8UnregisteredSupply>>("/api/ecommerce-operator/unregistered-supplies",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteUnregisteredSupply: (supplyId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/ecommerce-operator/unregistered-supplies/${supplyId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
   },
 
   /** The annual return's working (GST-10). */

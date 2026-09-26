@@ -1467,6 +1467,96 @@ def cmp08_statement(db, firm_id: str, client_id: str, period: str,
     }
 
 
+def _gstr8_finding_dict(finding) -> dict:
+    return {"supplier_gstin": finding.supplier_gstin, "problems": finding.problems}
+
+
+def gstr8_statement(db, firm_id: str, client_id: str, period: str,
+                    gstin: Optional[str] = None) -> dict:
+    """FORM GSTR-8 for one month (GST-25) — a s.52 e-commerce operator's TCS
+    statement.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+
+    Unlike `cmp08_statement`, this reads NOTHING from the client's own posted
+    books: Table 3 is what THIRD-PARTY SELLERS supplied through this client's
+    platform, a fact `services.ecommerce_operator_service` fetches from rows a
+    CA records directly (`ecommerce_operator_supplies` /
+    `..._unregistered_supplies`, migration 421) rather than from any document
+    this product's own accounting engine produces. `domain/gst/gstr8.py`
+    checks what was recorded rather than deriving it — see that module's
+    header for why.
+
+    ALWAYS RESOLVED AS A BARE CALENDAR MONTH (Rule 67(1) — GSTR-8 has no QRMP
+    equivalent), so `return_period.resolve` is called with `MONTHLY`
+    unconditionally rather than reading the registration's own
+    `filing_frequency`, which answers a different question (the ordinary
+    GSTR-1/3B QRMP election) this registration never reaches.
+
+    `gstin=None` means the client's primary registration. A `gstin` the
+    client does not hold, or one that is not TCS_COLLECTOR, is refused.
+    """
+    from services.client_gst_registration_service import resolve as _resolve_registration
+    from services import ecommerce_operator_service as eco_svc
+    from domain.gst.registrations import MONTHLY, TCS_COLLECTOR
+    from domain.gst import gstr8
+
+    registration = _resolve_registration(db, firm_id, client_id, gstin)
+    if registration.registration_type != TCS_COLLECTOR:
+        raise ValueError(
+            f"{registration.gstin} is a {registration.registration_type} "
+            f"registration. GSTR-8 is for a s.52 e-commerce operator "
+            f"(TCS_COLLECTOR) only — this one files a different return.")
+
+    window = return_period.resolve(period, MONTHLY)
+
+    supply_rows = eco_svc.list_supplies(db, firm_id, client_id,
+                                        registration.gstin, window.key)
+    unregistered_rows = eco_svc.list_unregistered_supplies(
+        db, firm_id, client_id, registration.gstin, window.key)
+
+    stmt = gstr8.compute_gstr8(
+        period=window.key,
+        supply_rows=[gstr8.SupplyRow(
+            supplier_gstin=r["supplier_gstin"],
+            place_of_supply=r.get("place_of_supply"),
+            gross_registered_paise=int(r.get("gross_registered_paise") or 0),
+            returns_registered_paise=int(r.get("returns_registered_paise") or 0),
+            gross_unregistered_paise=int(r.get("gross_unregistered_paise") or 0),
+            returns_unregistered_paise=int(r.get("returns_unregistered_paise") or 0),
+            igst_paise=int(r.get("igst_paise") or 0),
+            cgst_paise=int(r.get("cgst_paise") or 0),
+            sgst_paise=int(r.get("sgst_paise") or 0),
+        ) for r in supply_rows],
+        unregistered_rows=[gstr8.UnregisteredSupplyRow(
+            enrolment_id=r["enrolment_id"],
+            gross_value_paise=int(r.get("gross_value_paise") or 0),
+            returns_paise=int(r.get("returns_paise") or 0),
+        ) for r in unregistered_rows],
+    )
+
+    return {
+        "period": window.key,
+        "period_window": window.as_dict(),
+        "gstin": registration.gstin,
+        "registration_type": registration.registration_type,
+        "financial_year": stmt.financial_year,
+        "pos_required": stmt.pos_required,
+        "rate_band_bps": list(stmt.rate_band_bps),
+        "total_net_liable_paise": stmt.total_net_liable_paise,
+        "total_igst_paise": stmt.total_igst_paise,
+        "total_cgst_paise": stmt.total_cgst_paise,
+        "total_sgst_paise": stmt.total_sgst_paise,
+        "total_unregistered_net_paise": stmt.total_unregistered_net_paise,
+        "supplier_count": stmt.supplier_count,
+        "unregistered_supplier_count": stmt.unregistered_supplier_count,
+        "findings": [_gstr8_finding_dict(f) for f in stmt.findings],
+        "supplies": supply_rows,
+        "unregistered_supplies": unregistered_rows,
+        "gstr8_rates_verified": gstr8.VERIFIED,
+    }
+
+
 def _table_4a_gaps() -> list[dict]:
     """The 4(A) rows this product cannot derive, each with the reason.
 
