@@ -26,18 +26,33 @@ import {
  * freshly-signed-up account with no firm yet resolves to hasFirm=false so the
  * guard can route it to onboarding instead of dropping it on an empty dashboard.
  */
-async function resolveUserContext(user: User | null): Promise<{ role: UserRole | null; hasFirm: boolean; fullName: string | null }> {
-  if (!user) return { role: null, hasFirm: false, fullName: null };
+interface ResolvedContext {
+  role: UserRole | null;
+  /** null = could not be determined (the read FAILED), which is not "no firm". */
+  hasFirm: boolean | null;
+  fullName: string | null;
+  /** The users-table read failed, so none of the above is authoritative. */
+  failed: boolean;
+}
+
+async function resolveUserContext(user: User | null): Promise<ResolvedContext> {
+  if (!user) return { role: null, hasFirm: false, fullName: null, failed: false };
   try {
-    const { data } = await getSupabaseClient()
+    const { data, error } = await getSupabaseClient()
       .from("users")
       .select("role, firm_id, full_name")
       .eq("auth_user_id", user.id)
       .maybeSingle();
+    // A FAILED read is not an absent row. supabase-js returns the error rather
+    // than throwing, and this used to read `data` straight through it — so a
+    // transient failure (a re-resolution racing a token refresh, a cold API
+    // proxy) answered hasFirm=false, AuthGuard sent the user to /onboarding and
+    // on to Home: the "Audit Log bounces to Home after ~10 seconds" finding.
+    if (error) throw error;
     const raw = (data?.role as string | undefined) ?? (user.user_metadata?.role as string | undefined);
-    return { role: normalizeRole(raw), hasFirm: !!data?.firm_id, fullName: (data?.full_name as string | null) ?? null };
+    return { role: normalizeRole(raw), hasFirm: !!data?.firm_id, fullName: (data?.full_name as string | null) ?? null, failed: false };
   } catch {
-    return { role: normalizeRole(user.user_metadata?.role as string | undefined), hasFirm: false, fullName: null };
+    return { role: normalizeRole(user.user_metadata?.role as string | undefined), hasFirm: null, fullName: null, failed: true };
   }
 }
 
@@ -140,6 +155,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // make every RoleGuard render null for a round trip — unmounting the page and
   // losing whatever the CA had typed. Only a DIFFERENT user makes the role unknown.
   const roleOwner = useRef<string | null | undefined>(undefined);
+  // The user whose role/hasFirm are currently in state from a SUCCESSFUL read.
+  const resolvedFor = useRef<string | null | undefined>(undefined);
   const [mfaPending, setMfaPending] = useState<boolean | null>(null);
   const [hasFirm, setHasFirm] = useState<boolean | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
@@ -148,20 +165,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function applyContext(u: User | null) {
     setHasFirm(null);
     const owner = u?.id ?? null;
-    if (owner !== roleOwner.current) {
+    const newUser = owner !== roleOwner.current;
+    if (newUser) {
       roleOwner.current = owner;
       setRoleLoading(true);
     }
     const request = ++contextRequest.current;
-    resolveUserContext(u).then(({ role, hasFirm, fullName }) => {
+    (async () => {
+      let ctx = await resolveUserContext(u);
+      if (ctx.failed) {
+        // One retry: most failures here are a request racing a token refresh.
+        await new Promise((r) => setTimeout(r, 1500));
+        if (request !== contextRequest.current) return;
+        ctx = await resolveUserContext(u);
+      }
       if (request !== contextRequest.current) return;
-      setUserRole(role);
-      setHasFirm(hasFirm);
-      setFullName(fullName);
+      if (ctx.failed && resolvedFor.current === owner) {
+        // Still failing, for the SAME user we already resolved: keep the last
+        // good answer rather than demoting them mid-session.
+        setRoleLoading(false);
+        return;
+      }
+      setUserRole(ctx.role);
+      setHasFirm(ctx.hasFirm);
+      setFullName(ctx.fullName);
+      if (!ctx.failed) resolvedFor.current = owner;
       setRoleLoading(false);
-    }).catch(() => {
+    })().catch(() => {
       if (request !== contextRequest.current) return;
-      setUserRole(null); setHasFirm(false); setFullName(null);
       setRoleLoading(false);
     });
     // Action-level permissions, resolved independently of the role query above.
@@ -170,9 +201,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // from the API and is the authority on what the API will actually accept.
     // Deliberately NOT awaited — nothing here gates first paint; until it lands,
     // can() answers false and action controls stay hidden.
-    setPermissions(null);
+    // Reset only for a DIFFERENT user: clearing it on every hourly
+    // TOKEN_REFRESHED hid every action control until the API answered again.
+    if (newUser) setPermissions(null);
     if (u) {
-      resolvePermissions().then(setPermissions).catch(() => setPermissions(null));
+      resolvePermissions().then(setPermissions).catch(() => { if (newUser) setPermissions(null); });
     }
   }
 
@@ -232,15 +265,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // so the guard sees hasFirm=true before navigating to the dashboard.
   const refreshUserContext = useCallback(async (): Promise<boolean> => {
     const { data: { session } } = await supabase.auth.getSession();
-    const { role, hasFirm, fullName } = await resolveUserContext(session?.user ?? null);
-    setUserRole(role);
-    setHasFirm(hasFirm);
-    setFullName(fullName);
+    const { role, hasFirm, fullName, failed } = await resolveUserContext(session?.user ?? null);
+    if (!failed) {
+      setUserRole(role);
+      setHasFirm(hasFirm);
+      setFullName(fullName);
+    }
     // Onboarding calls this right after the users row gains a firm_id and a
     // role; without re-resolving here the map stays null for the rest of the
     // session and every action control would remain hidden for a new Partner.
     resolvePermissions().then(setPermissions).catch(() => setPermissions(null));
-    return hasFirm;
+    return hasFirm === true;
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
