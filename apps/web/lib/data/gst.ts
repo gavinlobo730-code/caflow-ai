@@ -841,12 +841,58 @@ export async function saveGSTR3BReturn(
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
   const w = result.working;
+  // Same normalisation the backend's `_existing_return` applies before
+  // matching (routers/gst_workspace.py) — the unique index below is a raw
+  // string compare, so a case mismatch would open a second row instead of
+  // revising the first.
+  const gstinKey = (gstin || "").trim().toUpperCase();
 
-  await sb.from("gstr3b_returns").upsert({
+  // Migration 390 (GST-20) narrowed the unique key from a plain
+  // `UNIQUE (client_id, period)` to an EXPRESSION index —
+  // `(client_id, period, COALESCE(gstin, ''))` — so a client with more than
+  // one GST registration can hold a return per registration for one month.
+  // `.upsert(..., { onConflict })` asks PostgREST to emit
+  // `ON CONFLICT (col, col, ...)` over the RAW column names it is given, and
+  // Postgres's conflict-target inference requires that clause to name an
+  // index verbatim; no index exists on the bare columns
+  // (client_id, period, gstin), only on the COALESCE expression. So
+  // `onConflict: "client_id,period,gstin"` 400s with 42P10 exactly as
+  // `onConflict: "client_id,period"` did — there is no column-list value that
+  // resolves against an expression index. This looks the existing return up
+  // itself — the same shape `routers/gst_workspace._existing_return` uses
+  // server-side — and then conflicts on the PRIMARY KEY, which is a real
+  // constraint on a raw column. `gstin` is always a real, non-empty
+  // registration string by the time this is called — the backend's
+  // from-books resolver refuses to answer otherwise — so matching on it
+  // directly agrees with COALESCE(gstin, '') for every row this path can
+  // produce (confirmed against production: zero `gstr3b_returns` rows
+  // currently hold a NULL gstin).
+  const { data: existing, error: findError } = await sb
+    .from("gstr3b_returns")
+    .select("id")
+    .eq("firm_id", firmId)
+    .eq("client_id", clientId)
+    .eq("period", period)
+    .eq("gstin", gstinKey)
+    .maybeSingle();
+  if (findError) throw new Error(`Failed to save GSTR-3B: ${findError.message}`);
+
+  // ONE write with the payload written out inline, not a named object passed
+  // to an insert-or-update pair: tests/test_frontend_columns_exist_pg.py can
+  // only check the columns of a literal payload against the schema, and a
+  // named one would take these ~30 columns out of that check while the
+  // browser went on writing every one of them.
+  const { error } = await sb.from("gstr3b_returns").upsert({
+    ...(existing ? { id: existing.id } : {}),
     firm_id: firmId,
     client_id: clientId,
     period,
-    // Use string (gstin) not from clients table to avoid stale data
+    // Use string (gstin) not from clients table to avoid stale data. This
+    // was missing entirely — the field never reached the row, so every
+    // GSTR-3B saved by this path stored `gstin` as NULL and a client with
+    // more than one GST registration (GST-20, migration 390) could never
+    // hold more than one month's 3B between them via this screen.
+    gstin: gstinKey,
     outward_taxable_igst_paise: w.outward.taxable_igst_paise,
     outward_taxable_cgst_paise: w.outward.taxable_cgst_paise,
     outward_taxable_sgst_paise: w.outward.taxable_sgst_paise,
@@ -883,7 +929,8 @@ export async function saveGSTR3BReturn(
     validation_errors: result.validation_warnings,
     status: "draft",
     updated_at: new Date().toISOString(),
-  }, { onConflict: "client_id,period" });
+  }, { onConflict: "id" });
+  if (error) throw new Error(`Failed to save GSTR-3B: ${error.message}`);
 }
 
 /** CA approves GSTR-3B — marks as ca_approved, records approver. */
@@ -970,6 +1017,11 @@ export async function saveGSTR1Return(
 ): Promise<void> {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
+  // Same normalisation the backend's `_existing_return` applies before
+  // matching (routers/gst_workspace.py) — the unique index below is a raw
+  // string compare, so a case mismatch would open a second row instead of
+  // revising the first.
+  const gstinKey = (gstin || "").trim().toUpperCase();
 
   // ONE PREDICATE, used for both the status and its timestamp, so they cannot
   // disagree about the same return.
@@ -984,11 +1036,27 @@ export async function saveGSTR1Return(
   const readyToFile =
     result.validation_errors.length === 0 && result.payload_gaps.length === 0;
 
-  await sb.from("gstr1_returns").upsert({
+  // Same 42P10 cause and fix as saveGSTR3BReturn above — migration 390's
+  // unique index is the expression `(client_id, period, COALESCE(gstin, ''))`,
+  // which `.upsert({ onConflict })` cannot target by column list. Look the
+  // existing return up, then conflict on the primary key; the payload stays
+  // inline for the same schema-guard reason given there.
+  const { data: existing, error: findError } = await sb
+    .from("gstr1_returns")
+    .select("id")
+    .eq("firm_id", firmId)
+    .eq("client_id", clientId)
+    .eq("period", period)
+    .eq("gstin", gstinKey)
+    .maybeSingle();
+  if (findError) throw new Error(`Failed to save GSTR-1: ${findError.message}`);
+
+  const { error } = await sb.from("gstr1_returns").upsert({
+    ...(existing ? { id: existing.id } : {}),
     firm_id: firmId,
     client_id: clientId,
     period,
-    gstin,
+    gstin: gstinKey,
     payload_json: result.payload,
     summary_json: result.summary,
     validation_errors: [...result.validation_errors, ...result.validation_warnings],
@@ -1000,7 +1068,8 @@ export async function saveGSTR1Return(
     status: readyToFile ? "validated" : "draft",
     validated_at: readyToFile ? new Date().toISOString() : null,
     updated_at: new Date().toISOString(),
-  }, { onConflict: "client_id,period" });
+  }, { onConflict: "id" });
+  if (error) throw new Error(`Failed to save GSTR-1: ${error.message}`);
 }
 
 /** CA approves GSTR-1 — marks as ca_approved. */

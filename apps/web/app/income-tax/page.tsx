@@ -83,6 +83,21 @@ const ITR_FORMS = ["ITR-1", "ITR-2", "ITR-3", "ITR-4", "ITR-5", "ITR-6", "ITR-7"
 type ITRForm = (typeof ITR_FORMS)[number];
 
 /**
+ * `compliance_calendar.compliance_type` is CHECK-constrained to a fixed
+ * vocabulary (GSTR1/GSTR3B/GSTR9/ITR/TDS24Q/TDS26Q/ADVANCE_TAX/TCS_RETURN/
+ * MCA_AOC4/MCA_MGT7) and holds no per-form ITR value — every insert of
+ * "ITR-1".."ITR-7" violated `compliance_calendar_compliance_type_check` and
+ * 400'd, so no CA could ever add a manual ITR deadline (the tracker stayed
+ * permanently at "0 Total ITRs Due"). The row is always written as the bare
+ * "ITR" the constraint allows; WHICH form it is has no column of its own, so
+ * it travels in `notes` instead — the only place that fact can be recorded
+ * without a migration. `itrFormLabel` is the one place that reads it back.
+ */
+function itrFormLabel(entry: ITREntry): string {
+  return entry.notes?.trim() || "ITR";
+}
+
+/**
  * THE YEAR ON THIS PAGE IS A FINANCIAL YEAR, and it was labelled "Assessment
  * Year" while behaving as one — which was the second half of the same bug.
  *
@@ -332,7 +347,7 @@ function BulkMarkFiledModal({
                         {entry.clients?.client_name ?? "Client"}
                       </p>
                       <p className="text-xs text-ps-hint mt-0.5 font-mono">
-                        {entry.compliance_type} · FY {fyFromPeriodStart(entry.period_start)}
+                        {itrFormLabel(entry)} · FY {fyFromPeriodStart(entry.period_start)}
                       </p>
                     </div>
                     {isDone ? (
@@ -451,7 +466,7 @@ export default function IncomeTaxPage() {
         .from("compliance_calendar")
         .select("*, clients(client_name, pan, entity_type)")
         .eq("firm_id", firmId)
-        .in("compliance_type", ITR_FORMS)
+        .eq("compliance_type", "ITR")
         .order("due_date");
 
       if (dbErr) throw new Error(dbErr.message);
@@ -597,10 +612,15 @@ export default function IncomeTaxPage() {
       const period = FY_PERIOD[fy];
 
       const sb = getSupabaseClient();
+      // compliance_type is CHECK-constrained to the bare "ITR" — there is no
+      // per-form value in the constraint's vocabulary. The form the CA picked
+      // goes in `notes`, the only column that can carry it without a
+      // migration; itrFormLabel() reads it back everywhere it is displayed.
       const { error: insertErr } = await sb.from("compliance_calendar").insert({
         firm_id: firmId,
         client_id: addForm.client_id,
-        compliance_type: addForm.itr_form,
+        compliance_type: "ITR",
+        notes: addForm.itr_form,
         period_start: period.start,
         period_end: period.end,
         due_date: addForm.due_date,
@@ -718,10 +738,10 @@ export default function IncomeTaxPage() {
     },
     {
       key: "itr_form", header: "ITR Form", sortable: true,
-      accessor: (e) => e.compliance_type,
+      accessor: (e) => itrFormLabel(e),
       render: (e) => (
         <span className="text-xs font-semibold text-brand bg-brand-surface px-2 py-0.5 rounded">
-          {e.compliance_type}
+          {itrFormLabel(e)}
         </span>
       ),
     },
@@ -778,9 +798,16 @@ export default function IncomeTaxPage() {
         options: [...FINANCIAL_YEARS].map((fy) => ({ value: fy, label: fy })),
       },
       {
+        // `compliance_type` is always the bare "ITR" now (the CHECK
+        // constraint's only value) — the form the CA picked lives in `notes`
+        // and is read back through itrFormLabel(), so the filter's options
+        // come from what is actually on the rows rather than the static
+        // ITR_FORMS list, which a backend-seeded row with no form recorded
+        // would not match at all.
         key: "itr_form", label: "ITR Form", type: "select",
-        accessor: (e) => e.compliance_type,
-        options: [...ITR_FORMS].map((f) => ({ value: f, label: f })),
+        accessor: (e) => itrFormLabel(e),
+        options: Array.from(new Set(entries.map((e) => itrFormLabel(e)))).sort()
+          .map((f) => ({ value: f, label: f })),
       },
       {
         key: "status", label: "Status", type: "select",
@@ -1369,7 +1396,7 @@ export default function IncomeTaxPage() {
                 </p>
                 <p className="text-xs text-ps-hint mt-0.5 font-mono">
                   {filedModal.entry.clients?.pan ?? ""} ·{" "}
-                  {filedModal.entry.compliance_type}
+                  {itrFormLabel(filedModal.entry)}
                 </p>
               </div>
 

@@ -7,7 +7,7 @@ import {
   ArrowUpRight, ArrowDownRight, ShieldAlert, Clock, Star,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { objectOrNull } from "@/lib/api/shape";
+import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { ATTENTION, BRAND, GOLD, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -159,8 +159,26 @@ export default function ExecutiveDashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = (await api.copilotV2.executiveDashboard()) as { data: ExecutiveDashboard };
-      setData(objectOrNull(res.data));
+      const res = (await api.copilotV2.executiveDashboard()) as { data: unknown };
+      // `get_executive_dashboard` (apps/api/domain/ai_copilot_service.py)
+      // caches its answer for an hour. On a CACHE HIT it returns the raw
+      // `ai_summaries` row — where every field this page reads lives under
+      // `metadata` — and puts them at the top level only on the one
+      // uncached call that computes them fresh (`return cached` vs
+      // `return dashboard_data`). Because the cache outlives a single page
+      // view, "every load" and every "Try again" click land on the cached
+      // shape in practice, which is the one this page's fields were missing
+      // a level for. Prefer `metadata`, fall back to the payload's own top
+      // level so either shape renders, and narrow the two list fields at the
+      // same time — `objectOrNull` alone would leave them `undefined` if
+      // either shape omits them.
+      const payload = objectOrNull<Record<string, unknown>>(res.data);
+      const dashboard = objectWithLists<ExecutiveDashboard>(
+        objectOrNull(payload?.metadata) ?? payload,
+        "churn_signals",
+        "growth_opportunities",
+      );
+      setData(dashboard);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load executive dashboard");
     } finally {
@@ -194,8 +212,25 @@ export default function ExecutiveDashboardPage() {
     );
   }
 
-  const { revenue_insights, capacity_insights, client_risk_insights, churn_signals,
-    growth_opportunities, firm_health_summary, ai_summary } = data;
+  // `objectOrNull` at the setter answers whether `data` is the right KIND of
+  // thing; it does not make each nested object well-formed — `{}` passes
+  // straight through, same as `objectWithLists` for a list field
+  // (lib/api/shape.ts). Every reader below indexes straight into one of
+  // these four, so a payload that arrives without one (a partial cache row,
+  // a future field rename) degrades to zeroes instead of crashing again.
+  const client_risk_insights = objectOrNull<ExecutiveDashboard["client_risk_insights"]>(
+    data.client_risk_insights,
+  ) ?? { critical_clients: 0, at_risk_clients: 0, healthy_clients: 0, compliance_failures: 0 };
+  const revenue_insights = objectOrNull<ExecutiveDashboard["revenue_insights"]>(
+    data.revenue_insights,
+  ) ?? { outstanding_invoices: 0, outstanding_amount_paise: 0, avg_collection_days: 0, billing_trend: "stable" };
+  const capacity_insights = objectOrNull<ExecutiveDashboard["capacity_insights"]>(
+    data.capacity_insights,
+  ) ?? { team_utilisation_percent: 0, overloaded_staff: 0, underutilised_staff: 0, avg_tasks_per_staff: 0 };
+  const firm_health_summary = objectOrNull<ExecutiveDashboard["firm_health_summary"]>(
+    data.firm_health_summary,
+  ) ?? { overall_score: 0, compliance_coverage: 0, active_automations: 0, pending_approvals: 0, ai_recommendations_pending: 0, critical_actions: 0 };
+  const { churn_signals, growth_opportunities, ai_summary } = data;
 
   const totalClients = client_risk_insights.critical_clients + client_risk_insights.at_risk_clients + client_risk_insights.healthy_clients;
 

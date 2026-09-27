@@ -21,7 +21,7 @@ Bank - HDFC Current,1002,250000,0,Asset
 Sundry Debtors,1003,180000,0,Asset
 Capital Account,3001,0,500000,Equity
 Sales Account,4001,0,450000,Revenue
-Purchase Account,5001,300000,0,Expense`;
+Purchase Account,5001,470000,0,Expense`;
 
 export default function TrialBalanceImportPage() {
   // A trial balance belongs to ONE client — it becomes that client's opening
@@ -85,6 +85,22 @@ export default function TrialBalanceImportPage() {
     setAccounts(a => a.map((acc, idx) => idx === i ? { ...acc, typeOverride: t } : acc));
   }
 
+  // The parser and this page's own <select> both work in lowercase
+  // ('asset', 'liability', …) — that is the internal convention the Review
+  // step's pre-selected value depends on (`value={acc.typeOverride ??
+  // acc.account_type}` only matches an <option> if the casing agrees).
+  // `chart_of_accounts.account_type` is CHECKed to Title Case only, so the
+  // mapping happens once, here, at the one place the create payload is
+  // actually built — never inside the parser or the <select>, which stay
+  // lowercase throughout.
+  const ACCOUNT_TYPE_TITLE_CASE: Record<string, string> = {
+    asset: "Asset", liability: "Liability", equity: "Equity",
+    revenue: "Revenue", expense: "Expense",
+  };
+  function toAccountTypeTitleCase(t: string): string {
+    return ACCOUNT_TYPE_TITLE_CASE[t.toLowerCase()] ?? t;
+  }
+
   const totalDr = accounts.reduce((s, a) => s + a.dr_paise, 0);
   const totalCr = accounts.reduce((s, a) => s + a.cr_paise, 0);
   const diff = totalDr - totalCr;
@@ -119,7 +135,7 @@ export default function TrialBalanceImportPage() {
         opening_date: openingDate || null,
         rows: accounts.map(acc => ({
           account_name: acc.account_name,
-          account_type: acc.typeOverride ?? acc.account_type,
+          account_type: toAccountTypeTitleCase(acc.typeOverride ?? acc.account_type),
           debit_paise: acc.dr_paise,
           credit_paise: acc.cr_paise,
           account_code: acc.account_code || null,

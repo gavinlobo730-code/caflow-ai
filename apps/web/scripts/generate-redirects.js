@@ -204,9 +204,79 @@ function bareRules(segments) {
   ];
 }
 
+/** Total order over enumerated rules' "from" paths, segment by segment: a
+ * literal segment sorts before a placeholder (":name") at the same
+ * position, so a more-specific rule is always checked first when two rules
+ * could BOTH match the same concrete request (same length, one more literal
+ * — the exact shape a shadowed leaf collides in). Falls back to a plain
+ * alphabetical compare of that position's literal text, then to length.
+ *
+ * This is a real lexicographic order (map each token to (isDynamic,
+ * literalText), compare tuples pairwise) rather than "compare literally,
+ * with one exception" — which matters because a naive version of this
+ * (segment-length tie -> specificity; else -> raw string compare) is NOT
+ * transitive: it broke silently on real data, because dozens of OTHER,
+ * DEEPER dynamic rules (every /clients/:id/<section> bare rule) sort
+ * alphabetically BETWEEN "/clients/:id" and "/clients/documents" (":" is
+ * ASCII 58, below every lowercase letter) despite differing in length from
+ * both — chaining raw-string ties into a cycle that left "/clients/:id"
+ * sorted first anyway, even though the two rules that actually collide were
+ * ordered correctly in every direct, isolated comparison. Comparing
+ * position-by-position never falls into that trap: two paths of different
+ * length either diverge at a shared position (settled there, independent of
+ * what either path does afterward) or one is a strict prefix of the other
+ * (settled by length) — nothing about a third, unrelated path can flip it.
+ */
+function compareEnumeratedPaths(fromA, fromB) {
+  const a = fromA.split("/");
+  const b = fromB.split("/");
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    if (a[i] === b[i]) continue;
+    const dynA = isDynamicSeg(a[i]);
+    const dynB = isDynamicSeg(b[i]);
+    if (dynA !== dynB) return dynA ? 1 : -1;
+    return a[i] < b[i] ? -1 : 1;
+  }
+  return a.length - b.length;
+}
+
+/** For a route with NO dynamic segment of its own that is nonetheless
+ * structurally shadowed by a deeper dynamic group's placeholder — e.g.
+ * /health/critical vs the sibling dynamic segment /health/:client_id, the
+ * same "new" vs ":invoiceId" collision the shadow-detection above protects
+ * DYNAMIC routes from, except this route was never IN dynamicRoutes at all
+ * (it has no ":" segment anywhere in its own path), so that loop never even
+ * looked at it. Confirmed live: Cloudflare Pages was silently serving
+ * /health/[client_id]'s own bundle for /health/critical/, /health/at-risk/,
+ * /health/alerts/ and /health/overrides/ — four pure-static siblings of the
+ * dynamic [client_id] segment — because /health/:client_id and
+ * /health/:client_id/* both matched first and nothing shadowed them.
+ *
+ * Four PURELY LITERAL rules (no ":" or "*" anywhere) rather than a splat
+ * group: the leaf has no children (nothing nests under /health/critical), so
+ * shapes 2 and 3 need no wildcard to "cover the rest" — there is no rest.
+ * That keeps every rule here OUTSIDE the 100-DYNAMIC-rule cap entirely (see
+ * the module doc's rule-count-budget note and isDynamicRule in the test
+ * file): a wildcard splat per leaf would have cost 4 leaves × 1 rule = 4,
+ * landing on 102 against a hard 100 — these 16 (4 leaves × 4 shapes) cost
+ * nothing against that budget because none of them carry a placeholder.
+ */
+function staticLeafShadowRules(segments) {
+  const bare = "/" + segments.join("/");
+  const slash = `${bare}/`;
+  return [
+    { from: bare, to: slash },
+    { from: `${bare}.txt`, to: `${slash}index.txt` },
+    { from: slash, to: slash },
+    { from: `${slash}index.txt`, to: `${slash}index.txt` },
+  ];
+}
+
 /** Pure — returns the generated file content without touching disk. */
 export function buildRedirectsFile(appDir) {
-  const dynamicRoutes = walkPages(appDir).filter((segments) => segments.some(isDynamicSeg));
+  const allRoutes = walkPages(appDir);
+  const dynamicRoutes = allRoutes.filter((segments) => segments.some(isDynamicSeg));
   const groupOf = new Map(); // route key -> its natural splat-safe-prefix
   for (const segments of dynamicRoutes) groupOf.set(segments.join("/"), splatSafePrefix(segments));
 
@@ -247,9 +317,27 @@ export function buildRedirectsFile(appDir) {
     if (!groupPrefixes.has(routeKey)) groupPrefixes.set(routeKey, routeKey.split("/"));
   }
 
-  const enumerated = dynamicRoutes
-    .flatMap((segments) => bareRules(segments))
-    .sort((a, b) => a.from.localeCompare(b.from));
+  // A STATIC route (no ":" segment anywhere in its own path) can be shadowed
+  // the same way — see staticLeafShadowRules' doc above. Checked against
+  // every group prefix at EQUAL segment length: a static leaf one level
+  // shallower or deeper than a dynamic group's placeholder is a different
+  // route entirely and must not be flagged on a partial, longer-prefix match.
+  const staticRoutes = allRoutes.filter((segments) => !segments.some(isDynamicSeg));
+  const shadowedStaticRoutes = staticRoutes.filter((route) =>
+    [...groupPrefixes.values()].some(
+      (prefix) => route.length === prefix.length && pathMatchesPattern(route, prefix)
+    )
+  );
+
+  const enumerated = [...dynamicRoutes.flatMap((segments) => bareRules(segments)),
+    ...shadowedStaticRoutes.flatMap((segments) => staticLeafShadowRules(segments))]
+    // See compareEnumeratedPaths' doc for why this can't be segment-count-tie
+    // plus a raw alphabetical fallback: that version is not transitive once a
+    // third, unrelated rule's path sorts (by plain string comparison) between
+    // two rules that actually collide, which real data hits immediately
+    // (every /clients/:id/<section> bare rule sorts between "/clients/:id"
+    // and "/clients/documents").
+    .sort((a, b) => compareEnumeratedPaths(a.from, b.from));
 
   const literalCount = (segments) => segments.filter((s) => !isDynamicSeg(s)).length;
   const splats = [...groupPrefixes.values()]

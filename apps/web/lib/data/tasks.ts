@@ -201,8 +201,15 @@ export async function updateTask(id: string, input: Partial<CreateTaskInput>): P
 export async function createTask(input: CreateTaskInput): Promise<Task> {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
+  // assignee_id/assigned_to are UUID columns; an unassigned task must OMIT
+  // them, never send "" (the value the "Unassigned" default writes) —
+  // Postgres has no such thing as an empty UUID, so "" raises 22P02 before
+  // the row is ever built, on every task created with no assignee chosen.
+  const { assignee_id, assigned_to, ...rest } = input;
   const { data, error } = await sb.from("tasks").insert({
-    ...input,
+    ...rest,
+    ...(assignee_id ? { assignee_id } : {}),
+    ...(assigned_to ? { assigned_to } : {}),
     firm_id: firmId,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
