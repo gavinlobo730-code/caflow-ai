@@ -230,7 +230,7 @@ function generateDeadlines(clientIds: string[]): Deadline[] {
     // this calendar could not tell a computed row from an assumed one.
     //
     // mca_companies.last_agm_date has held the real date since migration 038.
-    // These three now come from GET /api/mca/calendar/firm, which counts from
+    // These three now come from GET /api/mca-workspace/calendar/firm, which counts from
     // it and NAMES a company that has none rather than defaulting one.
   }
 

@@ -3454,7 +3454,7 @@ export const api = {
     // an assumed 30 September AGM, a day early on both — see the endpoint's
     // docstring. A company with no AGM date recorded comes back in
     // `without_agm_date` rather than being given a plausible one.
-    firmCalendar: () => request("/api/mca/calendar/firm"),
+    firmCalendar: () => request("/api/mca-workspace/calendar/firm"),
   },
   accounting: {
     accounts: () => request("/api/accounting/accounts"),
