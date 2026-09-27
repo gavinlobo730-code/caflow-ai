@@ -69,8 +69,14 @@ MOCK_JOURNAL_RUNS: list[dict] = []
 
 
 def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    # Every caller reaches here through a rbac()-gated router. get_supabase()
+    # is the RLS-enforced `authenticated` client under USE_USER_JWT, which has
+    # no write grant on journal_entries/journal_lines at all — generating a
+    # draft posts through the same kernel a manual journal does — so
+    # generate/run 500'd with "The server is not permitted to write this
+    # table." Same fix as routers/fixed_assets.py (PR #626).
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
 
 
 def _now_iso() -> str:

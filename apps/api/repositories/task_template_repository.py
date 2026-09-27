@@ -3,8 +3,14 @@ from repositories.base import BaseRepository
 
 
 def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    # Every caller here is already reached through a rbac()-gated router, so
+    # this is the privileged path — get_supabase() would be the RLS-enforced
+    # `authenticated` client under USE_USER_JWT, which has no INSERT/UPDATE/
+    # DELETE grant on task_templates at all, so every write 500'd with
+    # "The server is not permitted to write this table." Same shape as the
+    # fixed_assets.py fix in PR #626.
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
 
 
 class TaskTemplateRepository(BaseRepository[dict]):

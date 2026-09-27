@@ -11,8 +11,17 @@ sub-ledger vs GL), run live.
 
 Partner-only (matching the audit log's own posture — this is
 leadership-visibility financial-integrity data, and RLS on
-reconciliation_runs/reconciliation_findings, migration 244, already enforces
-it at the database layer too).
+reconciliation_runs/reconciliation_findings, migration 244, was meant to
+enforce it at the database layer too).
+
+Every call below now goes through get_service_supabase(), not get_supabase().
+`authenticated` has no INSERT/UPDATE grant on reconciliation_runs at all —
+RLS never got a chance to run, since Postgres checks the table-level GRANT
+first — so every "Verify Books" press 500'd with "The server is not
+permitted to write this table." rbac("accounting", "approve") above is this
+endpoint's real enforcement, the same trade this codebase already made for
+routers/fixed_assets.py (PR #626); the database RLS this docstring describes
+is now bypassed rather than a working second layer.
 """
 from typing import Optional
 
@@ -46,12 +55,12 @@ def verify_books(
     firm_id = current_user["firm_id"]
     assert_client_access(current_user, body.client_id)
 
-    from core.supabase_client import get_supabase
+    from core.supabase_client import get_service_supabase
     from services.reconciliation_service import run_reconciliation
 
     try:
         result = run_reconciliation(
-            get_supabase(), firm_id, body.client_id,
+            get_service_supabase(), firm_id, body.client_id,
             trigger="manual", triggered_by=current_user.get("id"),
         )
     except Exception as e:
@@ -99,11 +108,11 @@ def list_runs(
     firm_id = current_user["firm_id"]
     assert_client_access(current_user, client_id)
 
-    from core.supabase_client import get_supabase
+    from core.supabase_client import get_service_supabase
 
     try:
         runs = (
-            get_supabase().table("reconciliation_runs").select("*")
+            get_service_supabase().table("reconciliation_runs").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .order("started_at", desc=True).limit(limit).execute().data or []
         )
@@ -120,8 +129,8 @@ def get_run(
 ):
     """One run's full detail, including every finding it produced."""
     firm_id = current_user["firm_id"]
-    from core.supabase_client import get_supabase
-    db = get_supabase()
+    from core.supabase_client import get_service_supabase
+    db = get_service_supabase()
 
     try:
         runs = (
@@ -158,8 +167,8 @@ def resolve_finding(
     genuine finding always needs a deliberate, human-reviewed fix, the same
     way this session's own manual corrections did."""
     firm_id = current_user["firm_id"]
-    from core.supabase_client import get_supabase
-    db = get_supabase()
+    from core.supabase_client import get_service_supabase
+    db = get_service_supabase()
 
     from datetime import datetime, timezone
 
