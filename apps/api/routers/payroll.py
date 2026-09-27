@@ -4748,6 +4748,11 @@ def get_statutory_identity(
     })
 
 
+# What put_statutory_identity may record for a client payroll is not switched
+# on for: the TAN serves every TDS statement, and a note is not a registration.
+_NOT_PAYROLL_REGISTRATIONS = frozenset({"tan", "note"})
+
+
 @router.put("/statutory-identity")
 def put_statutory_identity(
     body: StatutoryIdentityIn,
@@ -4781,7 +4786,15 @@ def put_statutory_identity(
 
     db = _db()
     firm_id = current_user["firm_id"]
-    assert_payroll_enabled(db, firm_id, body.client_id)
+    # ONLY THE PAYROLL REGISTRATIONS need payroll switched on. The TAN is the
+    # DEDUCTOR's number for every TDS statement (§203A) — 26Q and 27Q as much
+    # as 24Q — and `domain/tds/deductor.resolve` reads it from this very row for
+    # all of them. Gating it on payroll meant a client that deducts TDS on its
+    # rent and professional fees but runs no payroll could never record its
+    # TAN, so its 26Q could never be computed — and the 422 telling the CA to
+    # record it here sent them to a door that was locked (sweep-tds-mca-05).
+    if set(update) - _NOT_PAYROLL_REGISTRATIONS:
+        assert_payroll_enabled(db, firm_id, body.client_id)
     if not db:
         row = {**_MOCK_IDENTITY.get((firm_id, body.client_id), {}), **update}
         _MOCK_IDENTITY[(firm_id, body.client_id)] = row
