@@ -160,10 +160,15 @@ def generate_from_engagement(
     # Verify the engagement exists and the caller may access its client
     _assert_engagement_scope(current_user, engagement_id)
 
+    from services.invoice_generation_service import PeriodAlreadyBilled
     try:
         invoice_id = generate_invoice_from_engagement(engagement_id, invoice_month)
         invoice = invoice_repo.find_by_id(invoice_id)
         return api_response(True, {"invoice": invoice})
+    except HTTPException:
+        raise
+    except PeriodAlreadyBilled as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
