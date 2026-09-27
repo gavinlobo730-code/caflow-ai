@@ -134,8 +134,16 @@ def _db():
     import os
     if not os.environ.get("SUPABASE_URL"):
         return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    # Migration 245 deliberately REVOKEd INSERT/UPDATE/DELETE on fixed_assets
+    # from `authenticated` — a direct PostgREST write bypasses this router's
+    # own depreciation-schedule and GL-journal-linkage logic, which is exactly
+    # what migration 166 revoked it to stop. Every write below is already
+    # gated by rbac() and assert_client_access(), so it is the privileged path
+    # get_service_supabase()'s own docstring names; get_supabase() would be
+    # silently downgraded to the RLS-enforced, grant-revoked `authenticated`
+    # client under USE_USER_JWT and every write in this router would 500.
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
 
 
 #: The three tiers a correction to an asset falls into. They are three
