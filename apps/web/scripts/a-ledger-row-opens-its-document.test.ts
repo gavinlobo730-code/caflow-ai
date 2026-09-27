@@ -67,7 +67,13 @@ test("every screen a source routes to reads the deep link", () => {
   for (const mod of new Set(modules)) {
     const page = fs.readFileSync(
       path.join(WEB, "app", "clients", "[id]", mod, "page.tsx"), "utf8");
-    assert.match(page, /openedAt\(window\.location\.search\)/,
+    // A raw `window.location.search` read is one valid source for openedAt()
+    // and a reactive one (`useSearchParams()...toString()`) is the other —
+    // the second is what a mount-only read of the first cannot do: catch a
+    // same-route drill-through that arrives while the screen is already
+    // open, which is exactly the shape a ledger row's own link takes when
+    // it points at a tab of the page the CA is already standing on.
+    assert.match(page, /openedAt\((?:window\.location\.search|\w+\.toString\(\))\)/,
       `/clients/[id]/${mod} does not read the ?tab=&doc= deep link`);
     assert.match(page, /TABS\.some\(\(x\) => x\.id === t\)/,
       `/clients/[id]/${mod} trusts the tab in the URL instead of validating it ` +
