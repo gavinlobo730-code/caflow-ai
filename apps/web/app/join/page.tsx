@@ -17,7 +17,19 @@ export default function JoinPage() {
   const [result, setResult] = useState<{ role?: string; full_name?: string } | null>(null);
 
   useEffect(() => {
+    // The magic link signs the browser in a moment AFTER this page loads, so a
+    // missing session is retried — but not for ever. Opened with an invalid,
+    // already-used or expired token (or by an email client's link preview),
+    // no session ever arrives and this page sat on "Verifying your invite…"
+    // indefinitely, with nothing to click. /sign and /auth/reset-password give
+    // up after a few seconds; so does this.
+    const MAX_WAITS = 8; // ~12 s at 1.5 s apart
+    let waits = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+
     async function link() {
+      if (cancelled) return;
       if (!token) {
         setErrorMsg("This invite link is missing its token.");
         setStatus("error");
@@ -28,7 +40,16 @@ export default function JoinPage() {
       const session = sessionData?.session;
       if (!session) {
         // Magic link auth happens automatically — wait a moment and retry
-        setTimeout(() => link(), 1500);
+        if (waits >= MAX_WAITS) {
+          setErrorMsg(
+            "We couldn't sign you in from this link. It may have expired or already " +
+            "been used. Open the most recent invite email and use its link, or ask " +
+            "your firm to send a new invite.");
+          setStatus("error");
+          return;
+        }
+        waits += 1;
+        timer = setTimeout(() => link(), 1500);
         return;
       }
       setStatus("linking");
@@ -47,6 +68,10 @@ export default function JoinPage() {
       }
     }
     link();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
