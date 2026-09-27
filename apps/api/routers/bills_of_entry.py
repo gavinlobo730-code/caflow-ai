@@ -6,6 +6,13 @@ figure is credit and which is cost.
 
 # CA REVIEW REQUIRED — the assessment is confirmed before it is posted.
 # Nothing here transmits anything to any portal.
+
+Every route below uses get_service_supabase(), not get_supabase().
+`authenticated` has no INSERT/UPDATE/DELETE grant on bills_of_entry at all,
+so under USE_USER_JWT every list/create/update/post/delete 500'd with "The
+server is not permitted to write this table." Each is already gated by
+rbac() + assert_client_access() above, so this is the privileged path —
+same fix as routers/fixed_assets.py (PR #626).
 """
 from typing import Optional
 
@@ -117,9 +124,9 @@ def list_bills_of_entry(
     assert_client_access(current_user, client_id)
     if _mock_enabled():
         return api_response(True, [])
-    from core.supabase_client import get_supabase
+    from core.supabase_client import get_service_supabase
     return api_response(True, svc.listing(
-        get_supabase(), firm_id=current_user.get("firm_id"),
+        get_service_supabase(), firm_id=current_user.get("firm_id"),
         client_id=client_id, start=date_from, end=date_to))
 
 
@@ -141,9 +148,9 @@ def create_bill_of_entry(
     if _mock_enabled():
         return api_response(True, {"id": "mock-bill-of-entry", **data.model_dump()})
 
-    from core.supabase_client import get_supabase
+    from core.supabase_client import get_service_supabase
     from services.audit_service import log_event
-    db = get_supabase()
+    db = get_service_supabase()
     # EVERY COLUMN NAMED, rather than `**data.model_dump()`. The spread reads
     # better and is invisible to
     # `tests/test_backend_inserts_supply_every_required_column_pg.py` and to the
@@ -212,8 +219,8 @@ def update_bill_of_entry(
     assert_client_access(current_user, client_id)
     if _mock_enabled():
         return api_response(True, {"id": be_id, **data.model_dump(exclude_none=True)})
-    from core.supabase_client import get_supabase
-    db = get_supabase()
+    from core.supabase_client import get_service_supabase
+    db = get_service_supabase()
     row = svc.get(db, current_user.get("firm_id"), be_id)
     if row.get("status") == "posted":
         raise HTTPException(
@@ -300,9 +307,9 @@ def post_bill_of_entry(
     assert_client_access(current_user, client_id)
     if _mock_enabled():
         return api_response(True, {"id": be_id, "status": "posted"})
-    from core.supabase_client import get_supabase
+    from core.supabase_client import get_service_supabase
     from services.audit_service import log_event
-    row = svc.post(get_supabase(), current_user.get("firm_id"), be_id,
+    row = svc.post(get_service_supabase(), current_user.get("firm_id"), be_id,
                    actor_id=current_user.get("id"))
     log_event(current_user.get("firm_id") or "", "bill_of_entry", be_id, "post",
               actor_id=current_user.get("auth_user_id"),
@@ -322,9 +329,9 @@ def delete_bill_of_entry(
     assert_client_access(current_user, client_id)
     if _mock_enabled():
         return api_response(True, {"id": be_id, "deleted": True})
-    from core.supabase_client import get_supabase
+    from core.supabase_client import get_service_supabase
     from services.audit_service import log_event
-    db = get_supabase()
+    db = get_service_supabase()
     row = svc.get(db, current_user.get("firm_id"), be_id)
     if row.get("status") == "posted":
         raise HTTPException(

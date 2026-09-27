@@ -405,11 +405,20 @@ def create_journal_entry(data: JournalEntryIn, current_user: dict = Depends(rbac
 
 
 def _prod_db():
-    """Production Supabase client, or None in mock/dev (no SUPABASE_URL)."""
+    """Production Supabase client, or None in mock/dev (no SUPABASE_URL).
+
+    Every caller (journal get/edit/discard/post/reverse, the journals queue)
+    is already rbac()-gated, so this is the privileged path. get_supabase()
+    is the RLS-enforced `authenticated` client under USE_USER_JWT, which has
+    no write grant on journal_entries/journal_lines/audit_log at all — by
+    design, so a direct PostgREST write can never bypass the posting kernel —
+    so every edit/post/discard 500'd with "The server is not permitted to
+    write this table." Same fix as routers/fixed_assets.py (PR #626).
+    """
     if not os.environ.get("SUPABASE_URL"):
         return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
 
 
 class OpeningBalancePostIn(BaseModel):

@@ -792,8 +792,14 @@ def _db():
     import os
     if not os.environ.get("SUPABASE_URL"):
         return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    # Shared by both the capital-gains and advance-tax handlers below, all
+    # already rbac()-gated. get_supabase() is the RLS-enforced `authenticated`
+    # client under USE_USER_JWT, which has no INSERT/UPDATE/DELETE grant on
+    # capital_gains or advance_tax_payments, so every save 500'd with "The
+    # server is not permitted to write this table." Same fix as
+    # routers/fixed_assets.py (PR #626).
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
 
 
 @router.get("/capital-gains/cii-table")
