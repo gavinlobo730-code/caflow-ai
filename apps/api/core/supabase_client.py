@@ -71,6 +71,63 @@ def _force_http1(client: Client) -> Client:
         _logger.exception("Could not disable HTTP/2 on the Supabase session; continuing.")
     return client
 
+
+def _maybe_single_execute(self):
+    """`.maybe_single().execute()` as every caller in this codebase reads it.
+
+    WHY
+        postgrest 0.18's SyncMaybeSingleRequestBuilder.execute returns None —
+        not a response carrying `data=None` — when the query matches no row.
+        All 112 call sites were written the other way round
+        (`...maybe_single().execute().data`, then `if not row: 404`), so the
+        first request to meet a genuinely absent row — a firm that never saved
+        its branding, a client with no statutory identity, a month with no
+        payroll run — raised AttributeError: 'NoneType' object has no attribute
+        'data' and surfaced as a bare 500 instead of the 404 or empty state
+        written right beneath it. Confirmed live on 27-09-2026 on
+        assert_payroll_enabled for a client with no client_payroll_settings row.
+
+        The same function had a second defect: any OTHER APIError raised inside
+        it was swallowed and replaced by a generic "Missing response" (code
+        204), so a real refusal — a 42501, a 23505 — reached
+        core.exceptions.document_failure_detail with its SQLSTATE gone. Here
+        the original error is re-raised unchanged.
+
+        Zero rows is recognised the way postgrest itself recognises it (PGRST116
+        with "The result contains 0 rows"); more than one row is still an error,
+        which is what maybe_single promises.
+    """
+    from postgrest._sync.request_builder import SyncSingleRequestBuilder
+    from postgrest.base_request_builder import SingleAPIResponse
+    from postgrest.exceptions import APIError
+
+    try:
+        return SyncSingleRequestBuilder.execute(self)
+    except APIError as exc:
+        if exc.details and "The result contains 0 rows" in exc.details:
+            return SingleAPIResponse(data=None, count=None)
+        raise
+
+
+_library_maybe_single_execute = None
+
+
+def _install_maybe_single_fix() -> None:
+    global _library_maybe_single_execute
+    try:
+        from postgrest._sync.request_builder import SyncMaybeSingleRequestBuilder
+    except Exception:  # pragma: no cover — shape changed under us
+        _logger.warning("postgrest exposes no SyncMaybeSingleRequestBuilder; maybe_single left as-is.")
+        return
+    if SyncMaybeSingleRequestBuilder.execute is _maybe_single_execute:
+        return
+    # Kept so the test can show the library's own behaviour is what this fixes.
+    _library_maybe_single_execute = SyncMaybeSingleRequestBuilder.execute
+    SyncMaybeSingleRequestBuilder.execute = _maybe_single_execute
+
+
+_install_maybe_single_fix()
+
 # Per-request access token (set by middleware from the Authorization header).
 # None for background jobs / unauthenticated paths.
 _request_access_token: ContextVar[str | None] = ContextVar("request_access_token", default=None)
@@ -157,6 +214,17 @@ def get_user_supabase(access_token: str) -> Client:
     # Attach the user's JWT so PostgREST runs as the `authenticated` role and RLS
     # (auth.uid(), get_my_role(), can_access_client(), ...) applies.
     client.postgrest.auth(access_token)
+    # ...and so does STORAGE. supabase-py builds its storage client lazily from
+    # `options.headers`, which create_client filled with the ANON key, and
+    # postgrest.auth() above changes only PostgREST's own session. So every
+    # `get_supabase().storage` call under USE_USER_JWT went out as `anon`, for
+    # which get_my_firm_id() is NULL, and migration 005's Documents policies —
+    # `(storage.foldername(name))[1] = get_my_firm_id()::text` — refused all of
+    # them: debit/credit note uploads, a purchase bill's document link, the
+    # invoice-photo upload, the year-end PDF exports (storage logs showed
+    # role=anon on 27-09-2026). Set here, before `storage` is first read, the
+    # user's own JWT reaches storage and the firm-folder policy is what decides.
+    client.options.headers["Authorization"] = f"Bearer {access_token}"
     return client
 
 

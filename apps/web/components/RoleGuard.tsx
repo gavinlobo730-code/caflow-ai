@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { hasRole, UserRole } from "@/lib/auth/permissions";
+import { roleGuardDecision } from "@/lib/auth/guardDecision";
 
 interface RoleGuardProps {
   /** Roles that are allowed to access the wrapped content. */
@@ -24,22 +25,24 @@ interface RoleGuardProps {
  * Defaults role to "Partner" when null so existing users are never locked out.
  */
 export function RoleGuard({ allowed, children, redirect = true }: RoleGuardProps) {
-  const { userRole, loading } = useAuth();
+  const { userRole, loading, roleLoading } = useAuth();
   const router = useRouter();
 
-  const permitted = hasRole(userRole, allowed);
+  // Not decided until BOTH the session and this user's role are known: with
+  // the role still in flight, userRole is null and hasRole() answers "no".
+  const decision = roleGuardDecision({
+    loading, roleLoading, permitted: hasRole(userRole, allowed),
+  });
 
   useEffect(() => {
-    if (!loading && !permitted && redirect) {
+    if (decision === "deny" && redirect) {
       router.replace("/");
     }
-  }, [loading, permitted, redirect, router]);
+  }, [decision, redirect, router]);
 
-  // While auth is loading, render nothing to avoid flicker.
-  if (loading) return null;
-
-  // If redirect=false (section guard), simply hide the section.
-  if (!permitted) return null;
+  // Waiting renders nothing (no flicker); a refusal hides the section, and
+  // redirects too when this guards a whole page.
+  if (decision !== "allow") return null;
 
   return <>{children}</>;
 }

@@ -59,15 +59,20 @@ def _modules():
         yield p, rel
 
 
+# The pagers, and how many positional arguments each takes. `fetch_all_in`
+# is `fetch_all` over a chunked IN list and shares its first-argument rule.
+_PAGERS = {"fetch_all": 2, "fetch_all_in": 4}
+
+
 def _calls(path: pathlib.Path):
-    """Every `fetch_all(...)` call in the file, with its line number."""
+    """Every `fetch_all(...)` / `fetch_all_in(...)` call in the file."""
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except SyntaxError:                                  # pragma: no cover
         return
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
-                and node.func.id == "fetch_all":
+                and node.func.id in _PAGERS:
             yield node
 
 
@@ -109,9 +114,10 @@ def test_no_fetch_all_passes_more_than_two_positional_arguments():
     TypeError raised before the body runs — which is how `hub_service` came to
     have three permanently dead money tiles."""
     offenders = [
-        f"{rel}:{call.lineno} — {len(call.args)} positional arguments "
-        "(fetch_all takes make_query and key; label and stats are keyword-only)"
-        for rel, call in ALL_CALLS if len(call.args) > 2
+        f"{rel}:{call.lineno} — {len(call.args)} positional arguments to "
+        f"{call.func.id} (fetch_all takes make_query and key, fetch_all_in "
+        "make_query, column, values and key; label and stats are keyword-only)"
+        for rel, call in ALL_CALLS if len(call.args) > _PAGERS[call.func.id]
     ]
     assert not offenders, "\n  ".join(offenders)
 

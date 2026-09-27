@@ -127,7 +127,21 @@ def list_checklist(
                 "created_at": now,
                 "updated_at": now,
             })
-        existing = db.table("year_end_checklist_items").insert(rows_to_insert).execute().data
+        # INSERT-OR-IGNORE on migration 429's (engagement_id, item_code) key,
+        # then re-read: two first reads race (the dashboard and the Checklist
+        # tab both call this), and a plain insert let both seed, leaving 24
+        # items. Whichever loses the race inserts nothing and reads the winner's.
+        db.table("year_end_checklist_items").upsert(
+            rows_to_insert, on_conflict="engagement_id,item_code",
+            ignore_duplicates=True).execute()
+        existing = (
+            db.table("year_end_checklist_items")
+            .select("*")
+            .eq("engagement_id", engagement_id)
+            .order("sequence_no")
+            .execute()
+            .data
+        ) or []
 
     return api_response(True, existing)
 

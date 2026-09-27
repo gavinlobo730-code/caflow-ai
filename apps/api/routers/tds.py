@@ -6,6 +6,8 @@ All monetary amounts in integer paise.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to TRACES or any government portal.
 """
+import os
+
 from domain.tds import vocabulary as tds_vocabulary
 from fastapi import APIRouter, HTTPException, Query, status, Depends
 from pydantic import BaseModel, Field
@@ -19,6 +21,7 @@ from domain.tds.section_rates import tds_rates_for
 from domain.tds.tds_computer import is_company_pan, has_pan as pan_on_file
 from repositories.tds_repository import tds_repo
 from models.fy import FYLabel, OptionalFYLabel
+from models.common import api_response
 
 router = APIRouter(prefix="/api/tds", tags=["tds"])
 computer = TDSComputer()
@@ -170,7 +173,12 @@ def deductor_block(client_id: str = Query(...),
     the moment they press Compute.
     """
     assert_client_access(user, client_id)
-    db = get_supabase()
+    # Mock mode has no database: `_deductor_sources` answers None with the
+    # named gaps, which is what a client with nothing recorded looks like.
+    db = None
+    if os.environ.get("SUPABASE_URL"):
+        from core.supabase_client import get_supabase
+        db = get_supabase()
     identity, client = _deductor_sources(db, user["firm_id"], client_id)
     block, codes = tds_deductor.resolve(identity, client)
     if block is None:

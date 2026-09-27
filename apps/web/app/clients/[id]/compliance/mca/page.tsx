@@ -10,6 +10,9 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
 import { ListSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { formatCroreLakh, type PaiseInput } from "@/lib/money/format";
+import { errorMessage } from "@/lib/api";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
 import { todayLocalISO } from "@/lib/dateMath";
@@ -22,6 +25,11 @@ async function getToken(): Promise<string> {
   return session?.access_token ?? "";
 }
 
+/** A refusal comes back in the envelope every caller already reads. A 422 —
+ *  a malformed date of appointment, say — is `{"detail": [...]}` with no
+ *  `error` key, so `r.error ?? "…"` showed the fallback over the field the
+ *  server named. `errorMessage` reads a string detail, an array of them, and a
+ *  body that is not JSON at all. */
 async function apiFetch(path: string, opts?: RequestInit) {
   const token = await getToken();
   const res = await fetch(`${API}${path}`, {
@@ -32,13 +40,14 @@ async function apiFetch(path: string, opts?: RequestInit) {
       ...(opts?.headers ?? {}),
     },
   });
+  if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
   return res.json();
 }
 
-function crore(paise: number) {
-  const cr = paise / 10000000;
-  return `₹${cr.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Cr`;
-}
+// Capital is `formatCroreLakh` (lib/money/format), the SAME renderer the firm
+// MCA screen uses. This file had its own `crore()`, which divided PAISE by
+// 1,00,00,000 — the crore in RUPEES — so ₹50 lakh of paid-up capital showed as
+// "₹50.00 Cr": every company's capital 100× too large.
 
 type MCATab = "companies" | "directors" | "annual" | "events" | "history";
 
@@ -188,8 +197,8 @@ function CompaniesTab({ clientId }: { clientId: string }) {
               <p className="text-xs text-ps-label font-mono">{c.cin as string}</p>
               {!!c.incorp_date && <p className="text-xs text-ps-label">Incorporated: {c.incorp_date as string}</p>}
               <div className="flex gap-6 text-xs text-ps-label mt-2">
-                <span>Auth. Capital: {crore((c.authorized_capital_paise as number) ?? 0)}</span>
-                <span>Paid-up: {crore((c.paid_up_capital_paise as number) ?? 0)}</span>
+                <span>Auth. Capital: {formatCroreLakh(c.authorized_capital_paise as PaiseInput)}</span>
+                <span>Paid-up: {formatCroreLakh(c.paid_up_capital_paise as PaiseInput)}</span>
               </div>
               {!!c.registered_office && <p className="text-xs text-ps-label mt-1">{c.registered_office as string}</p>}
             </div>
@@ -210,12 +219,16 @@ function DirectorsTab({ clientId }: { clientId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ din: "", name: "", designation: "Director", date_of_appointment: "", pan: "" });
+  // Why the last Save was refused — the server's sentence, or this screen's
+  // own where it can tell before sending. The form stays open with it.
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
     apiFetch(`/api/mca-workspace/directors?client_id=${clientId}`)
       .then((r) => {
-        if (r.success) { setRows(r.data); setLoadError(null); }
+        if (r.success) { setRows(arrayOrEmpty(r.data)); setLoadError(null); }
         else { setRows([]); setLoadError(r.error ?? "Couldn't load directors."); }
       })
       .catch(() => { setRows([]); setLoadError("Couldn't load directors. Please try again."); })
@@ -225,6 +238,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   async function saveNew() {
+    setSaveError(null);
     // Companies Act 2013 §153, through the one browser identifier module,
     // which reproduces `core/validators.validate_din` — including that a BLANK
     // DIN is an error where a blank PAN is not, since a director without one is
@@ -232,7 +246,11 @@ function DirectorsTab({ clientId }: { clientId: string }) {
     // not allot a DIN.
     const dinIssue = dinProblem(form.din);
     if (dinIssue) {
-      alert(dinIssue);
+      setSaveError(dinIssue);
+      return;
+    }
+    if (!form.name.trim()) {
+      setSaveError("Enter the director's full name.");
       return;
     }
     // IT Act §139A, through the one browser rule, which normalises the way
@@ -241,15 +259,36 @@ function DirectorsTab({ clientId }: { clientId: string }) {
     // would have been accepted there.
     const panIssue = panProblem(form.pan);
     if (panIssue) {
-      alert(`${panIssue} IT Act §139A.`);
+      setSaveError(`${panIssue} IT Act §139A.`);
       return;
     }
-    await apiFetch("/api/mca-workspace/directors", {
-      method: "POST",
-      body: JSON.stringify({ ...form, client_id: clientId }),
-    });
-    setShowNew(false);
-    load();
+    setSaving(true);
+    try {
+      // THE RESULT IS READ. It was awaited and dropped, so a refusal closed
+      // the form as though it had saved. And a blank appointment date is sent
+      // as null, never "": the column is a nullable DATE, and "" reached
+      // Postgres as an invalid date that came back as a generic message.
+      const res = await apiFetch("/api/mca-workspace/directors", {
+        method: "POST",
+        body: JSON.stringify({
+          ...form,
+          name: form.name.trim(),
+          date_of_appointment: form.date_of_appointment || null,
+          client_id: clientId,
+        }),
+      });
+      if (!res?.success) {
+        setSaveError(res?.error ?? "The director was not added.");
+        return;
+      }
+      setShowNew(false);
+      setForm({ din: "", name: "", designation: "Director", date_of_appointment: "", pan: "" });
+      load();
+    } catch (e) {
+      setSaveError(e instanceof Error && e.message ? e.message : "The director was not added.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function updateKYC(id: string, kyc_status: string) {
@@ -275,26 +314,40 @@ function DirectorsTab({ clientId }: { clientId: string }) {
           <p className="text-sm font-medium">Add Director</p>
           <div className="grid grid-cols-2 gap-3">
             {(([
-              { key: "din", placeholder: "DIN (8 digits)", maxLength: 8 },
-              { key: "name", placeholder: "Full Name" },
+              { key: "din", placeholder: "DIN (8 digits) *", maxLength: 8, required: true },
+              { key: "name", placeholder: "Full Name *", required: true },
               { key: "pan", placeholder: "PAN (e.g. ABCDE1234F)", maxLength: 10, uppercase: true },
-              { key: "date_of_appointment", placeholder: "Date of Appointment (YYYY-MM-DD)" },
-            ] as { key: string; placeholder: string; maxLength?: number; uppercase?: boolean }[]).map(({ key, placeholder, maxLength, uppercase }) => (
+            ] as { key: string; placeholder: string; maxLength?: number; uppercase?: boolean; required?: boolean }[]).map(({ key, placeholder, maxLength, uppercase, required }) => (
               <input key={key} placeholder={placeholder} maxLength={maxLength}
+                required={required} aria-required={required}
+                aria-label={placeholder.replace(" *", "")}
                 value={(form as Record<string, string>)[key]}
                 onChange={(e) => setForm((f) => ({ ...f, [key]: uppercase ? e.target.value.toUpperCase() : e.target.value }))}
                 className="border rounded px-3 py-1.5 text-sm" />
             )))}
+            {/* A real date control: the column is a DATE, and a typed
+                "15/04/2024" reached the server as a value it could not store. */}
+            <label className="text-xs text-ps-label flex flex-col gap-1">
+              Date of appointment (optional)
+              <input type="date" value={form.date_of_appointment}
+                onChange={(e) => setForm((f) => ({ ...f, date_of_appointment: e.target.value }))}
+                className="border rounded px-3 py-1.5 text-sm text-ps-ink" />
+            </label>
             <select value={form.designation} onChange={(e) => setForm((f) => ({ ...f, designation: e.target.value }))}
+              aria-label="Designation"
               className="border rounded px-3 py-1.5 text-sm">
               {["Managing Director", "Whole-time Director", "Director", "Independent Director", "Nominee Director"].map((d) => (
                 <option key={d}>{d}</option>
               ))}
             </select>
           </div>
+          {saveError && <p role="alert" className="text-xs text-state-problem">{saveError}</p>}
           <div className="flex gap-2">
-            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</button>
-            <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
+            <button onClick={saveNew} disabled={saving || !form.din.trim() || !form.name.trim()}
+              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button onClick={() => { setShowNew(false); setSaveError(null); }} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
       )}

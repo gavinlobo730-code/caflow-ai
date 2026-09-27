@@ -98,10 +98,34 @@ def _db():
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
 
+def _entity_pan(v: Optional[str]) -> Optional[str]:
+    """A PAN is AAAAA9999A or it is absent — never stored as typed.
+
+    Both doors take it, create and PATCH: a validator on one door only is one
+    PATCH from being none. Blank means "not recorded" (an entity may have no
+    PAN on file), and a malformed value is refused rather than kept, because
+    the entity graph matches people ACROSS clients on this field — a typo
+    splits one director into two.
+    """
+    if v is None or not str(v).strip():
+        return None
+    from core.validators import validate_pan
+    normalised = str(v).strip().upper()
+    problem = validate_pan(normalised)
+    if problem:
+        raise ValueError(problem)
+    return normalised
+
+
 class EntityIn(BaseModel):
     full_name: str
     entity_type: str  # Individual | Company | LLP | Partnership | Trust | HUF
     pan: Optional[str] = None
+
+    @field_validator("pan", mode="before")
+    @classmethod
+    def pan_is_a_pan(cls, v):
+        return _entity_pan(v)
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
@@ -113,6 +137,11 @@ class EntityUpdateIn(BaseModel):
     full_name: Optional[str] = None
     entity_type: Optional[str] = None
     pan: Optional[str] = None
+
+    @field_validator("pan", mode="before")
+    @classmethod
+    def pan_is_a_pan(cls, v):
+        return _entity_pan(v)
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None

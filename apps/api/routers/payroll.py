@@ -3944,10 +3944,13 @@ def assert_payroll_enabled(db, firm_id: str, client_id: str) -> None:
     if not row.get("payroll_enabled"):
         raise HTTPException(
             status_code=403,
+            # Names the control that exists: the "Switch on" beside the Payroll
+            # heading on the client's own Payroll page. This used to say
+            # "Payroll → Settings", a screen that has never existed.
             detail=("Payroll is not switched on for this client. A Partner turns "
-                    "it on under Payroll → Settings; until then nothing payroll "
-                    "can be created for them. Existing payroll records stay "
-                    "readable."))
+                    "it on from the client's Payroll page (Switch on, under the "
+                    "Payroll heading); until then nothing payroll can be created "
+                    "for them. Existing payroll records stay readable."))
 
 
 def _client_roster(db, firm_id: str, client_id: str) -> list[dict]:
@@ -7858,6 +7861,7 @@ def put_bonus_declaration(
         scheduled_employment=data.scheduled_employment, notes=data.notes,
         actor_id=current_user.get("id"),
     )
+    from services.audit_service import log_event
     log_event(
         current_user.get("firm_id") or "", "bonus_declaration",
         str(row.get("id") or data.client_id), "update",
@@ -7919,6 +7923,7 @@ def put_bonus_disqualification(
             "notes": data.notes,
         }).execute()
         row = (inserted.data or [{}])[0]
+    from services.audit_service import log_event
     log_event(
         firm_id, "bonus_disqualification", data.employee_id, "update",
         actor_id=current_user.get("auth_user_id"),
@@ -7945,6 +7950,7 @@ def delete_bonus_disqualification(
     firm_id = current_user.get("firm_id") or ""
     db.table("bonus_disqualifications").delete().eq("firm_id", firm_id).eq(
         "employee_id", employee_id).eq("accounting_year", accounting_year).execute()
+    from services.audit_service import log_event
     log_event(
         firm_id, "bonus_disqualification", employee_id, "delete",
         actor_id=current_user.get("auth_user_id"),

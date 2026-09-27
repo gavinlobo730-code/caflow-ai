@@ -33,7 +33,7 @@ import logging
 from datetime import date
 from typing import Optional
 
-from core.db_paging import fetch_all
+from core.db_paging import fetch_all, fetch_all_in
 from domain.accounting import opening_documents as _opening
 from domain.income_tax import msmed_interest as _msmed
 from domain.income_tax import section_43b_h as rule
@@ -120,26 +120,30 @@ def _payments(db, firm_id: str, bill_ids: list) -> dict:
     """
     if not bill_ids:
         return {}
-    allocs = fetch_all(
+    # Every id list below is CHUNKED: a client with hundreds of bills sends
+    # an IN list long enough that the gateway refuses the URL (fetch_all_in).
+    allocs = fetch_all_in(
         lambda: (db.table("purchase_payment_allocations")
                  .select("id, purchase_payment_id, purchase_bill_id, "
-                         "allocated_paise, is_voided")
-                 .in_("purchase_bill_id", bill_ids)),
+                         "allocated_paise, is_voided")),
+        "purchase_bill_id", bill_ids,
         label="msme_43bh.allocations")
     allocs = [a for a in allocs if not a.get("is_voided")]
-    legacy = [p for p in fetch_all(
+    legacy = [p for p in fetch_all_in(
         lambda: (db.table("purchase_payments")
                  .select("id, purchase_bill_id, payment_date, amount_paise, is_reversed")
-                 .eq("firm_id", firm_id).in_("purchase_bill_id", bill_ids)),
+                 .eq("firm_id", firm_id)),
+        "purchase_bill_id", bill_ids,
         label="msme_43bh.single_bill_payments") if not p.get("is_reversed")]
     pay_ids = sorted({str(a.get("purchase_payment_id")) for a in allocs
                       if a.get("purchase_payment_id")})
     dates: dict = {}
     if pay_ids:
-        for p in fetch_all(
+        for p in fetch_all_in(
                 lambda: (db.table("purchase_payments")
                          .select("id, payment_date")
-                         .eq("firm_id", firm_id).in_("id", pay_ids)),
+                         .eq("firm_id", firm_id)),
+                "id", pay_ids,
                 label="msme_43bh.payments"):
             dates[str(p.get("id"))] = _iso(p.get("payment_date"))
     out: dict = {}

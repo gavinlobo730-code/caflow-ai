@@ -35,8 +35,8 @@ _MIN_MONTHS, _MAX_MONTHS, _DEFAULT_MONTHS = 1, 24, 6
 def _service(current_user: dict):
     """A reporting engine scoped to THIS caller's own book (ACC-17), and the
     raw client for the document reads."""
-    from domain.reporting.service import ReportingService
-    from domain.reporting.sources import SupabaseLedgerSource, mock_ledger_source
+    from domain.reporting.service import ReportingService, mock_ledger_source
+    from domain.reporting.sources import SupabaseLedgerSource
 
     allowed = effective_client_ids(current_user)
     if os.environ.get("SUPABASE_URL"):

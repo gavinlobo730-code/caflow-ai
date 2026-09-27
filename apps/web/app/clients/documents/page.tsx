@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Upload, Download, Trash2, AlertTriangle, ArrowLeft, X, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
+import { getFirmId, getUserProfile } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
@@ -47,7 +47,7 @@ interface ClientDocument {
   expiry_date: string | null;
   uploaded_by: string | null;
   created_at: string;
-  public_url?: string;
+  download_url?: string;
 }
 
 function formatBytes(bytes: number): string {
@@ -79,6 +79,16 @@ interface UploadModalProps {
   firmId: string;
 }
 
+// The firm's document store is the private `Documents` bucket (migration 005),
+// and its policies admit an object only when its FIRST folder is the caller's
+// own firm. This page used a bucket called lowercase `documents` — which does
+// not exist; bucket ids are case-sensitive — under a `documents/...` prefix the
+// policy would refuse anyway, and then built PUBLIC urls for a PRIVATE bucket.
+// So nothing uploaded here could be stored, listed or downloaded, and the
+// client portal (which reads client_documents and signs the same file_path
+// in `Documents`) could never offer one.
+const VAULT_BUCKET = "Documents";
+
 function UploadModal({ onClose, onUploaded, clientId, firmId }: UploadModalProps) {
   const [docName, setDocName] = useState("");
   const [category, setCategory] = useState<DocCategory>("Identity");
@@ -94,22 +104,19 @@ function UploadModal({ onClose, onUploaded, clientId, firmId }: UploadModalProps
     try {
       const sb = getSupabaseClient();
 
-      // Get current user for uploaded_by
-      const { data: sessionData } = await sb.auth.getSession();
-      const userId = sessionData?.session?.user?.id ?? null;
+      // uploaded_by FKs public.users(id) — the INTERNAL id, never the auth
+      // session's user.id (the two are never equal; see
+      // tests/test_frontend_never_writes_an_auth_id_into_a_users_fk_pg.py).
+      const { userId } = await getUserProfile();
 
-      const filePath = `documents/${firmId}/${clientId}/${Date.now()}_${file.name}`;
+      const safeName = file.name.replace(/[^a-zA-Z0-9._\-]/g, "_");
+      const filePath = `${firmId}/${clientId}/vault/${Date.now()}_${safeName}`;
 
       const { error: uploadErr } = await sb.storage
-        .from("documents")
+        .from(VAULT_BUCKET)
         .upload(filePath, file, { upsert: false });
 
-      if (uploadErr) {
-        if (uploadErr.message.includes("bucket") || uploadErr.message.includes("not found")) {
-          throw new Error("Storage bucket 'documents' not configured. Please contact support.");
-        }
-        throw new Error(uploadErr.message);
-      }
+      if (uploadErr) throw new Error(uploadErr.message);
 
       const { error: insertErr } = await sb.from("client_documents").insert({
         firm_id: firmId,
@@ -227,13 +234,18 @@ export default function ClientDocumentsPage() {
         throw new Error(err.message);
       }
 
-      // Get public URLs
-      const docs: ClientDocument[] = await Promise.all(
-        (data ?? []).map(async (d: ClientDocument) => {
-          const { data: urlData } = sb.storage.from("documents").getPublicUrl(d.file_path);
-          return { ...d, public_url: urlData?.publicUrl };
-        })
-      );
+      // Signed links, one request for the page: the bucket is private, so a
+      // "public" url is a link that 400s.
+      const rows: ClientDocument[] = data ?? [];
+      const paths = rows.map(d => d.file_path).filter(Boolean);
+      const signed = new Map<string, string>();
+      if (paths.length > 0) {
+        const { data: urls } = await sb.storage.from(VAULT_BUCKET).createSignedUrls(paths, 3600);
+        for (const u of urls ?? []) {
+          if (u.path && u.signedUrl) signed.set(u.path, u.signedUrl);
+        }
+      }
+      const docs: ClientDocument[] = rows.map(d => ({ ...d, download_url: signed.get(d.file_path) }));
 
       setDocuments(docs);
     } catch (e) {
@@ -249,8 +261,13 @@ export default function ClientDocumentsPage() {
     if (!confirm(`Delete "${doc.description ?? doc.file_name}"?`)) return;
     try {
       const sb = getSupabaseClient();
-      await sb.storage.from("documents").remove([doc.file_path]);
-      await sb.from("client_documents").delete().eq("id", doc.id);
+      // Storage first, then the row — the order app/client-portal/page.tsx
+      // records: a row whose file failed to delete can be retried, a file whose
+      // row is gone is orphaned with nothing left referencing it.
+      const { error: fileErr } = await sb.storage.from(VAULT_BUCKET).remove([doc.file_path]);
+      if (fileErr) throw new Error(fileErr.message);
+      const { error: rowErr } = await sb.from("client_documents").delete().eq("id", doc.id);
+      if (rowErr) throw new Error(rowErr.message);
       setDocuments(prev => prev.filter(d => d.id !== doc.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
@@ -374,8 +391,8 @@ export default function ClientDocumentsPage() {
               </div>
 
               <div className="flex gap-2">
-                {doc.public_url && (
-                  <a href={doc.public_url} target="_blank" rel="noopener noreferrer" download
+                {doc.download_url && (
+                  <a href={doc.download_url} target="_blank" rel="noopener noreferrer" download
                     className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 border border-ps-border rounded-lg text-xs text-ps-label hover:bg-ps-bg">
                     <Download size={12} /> Download
                   </a>

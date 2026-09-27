@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { FileText, BarChart3, Package, Download, Loader2, AlertTriangle } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { FileText, BarChart3, Package, Download, Loader2, AlertTriangle, X } from "lucide-react";
 import { yearEndApi, type ExportRecord, type EngagementStatus } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
@@ -80,6 +80,10 @@ export default function ExportsPage() {
   const [engagementStatus, setEngagementStatus] = useState<EngagementStatus | null>(null);
 
   const load = useCallback(async () => {
+    // Right after router.push the id is still "" for one render (the hook
+    // reads window.location, which has not moved yet) — querying with it
+    // sends `engagement_id=eq.` to PostgREST. The effect re-runs with the id.
+    if (!engagementId) return;
     setLoading(true);
     setError(null);
     try {
@@ -111,9 +115,31 @@ export default function ExportsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // A success may go by itself; a FAILURE stays until the CA dismisses it.
+  // Generating a PDF takes several seconds, so a failure that cleared itself
+  // after five was routinely gone before anybody looked — the export simply
+  // appeared to do nothing. One timer, cleared on every new message, so a
+  // success's pending timeout cannot wipe the failure that replaced it.
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, []);
+
   function showToast(msg: string, ok: boolean) {
+    if (toastTimer.current) {
+      clearTimeout(toastTimer.current);
+      toastTimer.current = null;
+    }
     setToast({ msg, ok });
-    setTimeout(() => setToast(null), 5000);
+    if (ok) toastTimer.current = setTimeout(() => setToast(null), 5000);
+  }
+
+  function dismissToast() {
+    if (toastTimer.current) {
+      clearTimeout(toastTimer.current);
+      toastTimer.current = null;
+    }
+    setToast(null);
   }
 
   async function handleGenerate(type: "financial_statements" | "notes" | "complete_pack") {
@@ -175,12 +201,6 @@ export default function ExportsPage() {
 
   return (
     <div className="p-6 space-y-5 max-w-4xl mx-auto">
-      {toast && (
-        <div className={`rounded-lg px-4 py-3 text-xs font-medium border ${toast.ok ? "bg-green-50 border-green-100 text-green-700" : "bg-state-problem-surface border-state-problem-border text-state-problem"}`}>
-          {toast.msg}
-        </div>
-      )}
-
       {/* Draft warning banner */}
       {isDraft && (
         <div className="flex items-center gap-2 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
@@ -252,6 +272,26 @@ export default function ExportsPage() {
           );
         })}
       </div>
+
+      {/* The outcome sits directly under the buttons that caused it, not at
+          the top of the page where it used to render out of sight. */}
+      {toast && (
+        <div
+          role={toast.ok ? "status" : "alert"}
+          className={`rounded-lg px-4 py-3 text-xs font-medium border flex items-start justify-between gap-3 ${toast.ok ? "bg-green-50 border-green-100 text-green-700" : "bg-state-problem-surface border-state-problem-border text-state-problem"}`}
+        >
+          <span className="min-w-0 break-words">{toast.msg}</span>
+          <button
+            type="button"
+            onClick={dismissToast}
+            aria-label="Dismiss message"
+            title="Dismiss"
+            className="shrink-0 opacity-70 hover:opacity-100"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {/* Export history table */}
       {exports.length > 0 && (

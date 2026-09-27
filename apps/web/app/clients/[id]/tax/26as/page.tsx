@@ -8,6 +8,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
+import { errorMessage } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL (TDS-20's first half).
@@ -23,6 +24,13 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // year.
 const FY_OPTIONS = financialYearChoicesAround(null);
 
+/** A refusal comes back in the envelope every caller already reads.
+ *
+ *  The 26AS endpoints refuse with HTTPException — an unreadable file is a 422
+ *  naming the lines it could not read — and that body is `{"detail": "..."}`
+ *  with no `error` key, so this screen said "Parse failed" over the sentence
+ *  telling the CA what was wrong with their file. Normalised ONCE here rather
+ *  than at each call site, through lib/api's `errorMessage`. */
 async function apiFetch(path: string, opts?: RequestInit) {
   const { supabase } = await import("@/lib/supabase/client");
   const { data: { session } } = await supabase.auth.getSession();
@@ -35,6 +43,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
       ...(opts?.headers ?? {}),
     },
   });
+  if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
   return res.json();
 }
 

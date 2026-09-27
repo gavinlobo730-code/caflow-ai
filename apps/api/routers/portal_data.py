@@ -201,9 +201,13 @@ def portal_document_download(document_id: str,
     if _USE_MOCK:
         raise HTTPException(status_code=501, detail="Download not available in mock mode")
 
-    from core.supabase_client import get_supabase
+    # SERVICE ROLE, as the docstring says and as it did not do: a portal
+    # principal has no `users` row, so get_my_firm_id() is NULL for it and
+    # migration 005's firm-folder policy refuses it — the download could
+    # never be signed. Ownership was decided above, by document_in_scope.
+    from core.supabase_client import get_service_supabase
     try:
-        signed = get_supabase().storage.from_("Documents").create_signed_url(
+        signed = get_service_supabase().storage.from_("Documents").create_signed_url(
             doc["file_path"], 60)
     except Exception as e:
         _logger.error("portal_document_download %s: %s", document_id, e)

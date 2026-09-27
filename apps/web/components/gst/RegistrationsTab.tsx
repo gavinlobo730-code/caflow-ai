@@ -57,7 +57,10 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<ClientGstRegistration[]>([]);
   const [kinds, setKinds] = useState<GstRegistrationKinds | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
+  /** Why the list could not be read — the server's sentence — or null. A
+   *  failed read and a client with no GSTIN are opposite facts, so the empty
+   *  state below is withheld while this is set. */
+  const [loadFailed, setLoadFailed] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
@@ -84,12 +87,12 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       const res = await api.clientGstRegistrations.list(clientId);
       if (!res.success || !res.data) throw new Error(res.error ?? "Couldn't read the registrations.");
       setRows(arrayOrEmpty(res.data));
-      setLoadFailed(false);
-    } catch {
+      setLoadFailed(null);
+    } catch (e) {
       // Not swallowed into an empty list: on this tab "none" reads as an
       // invitation to add the primary a second time.
       setRows([]);
-      setLoadFailed(true);
+      setLoadFailed(e instanceof Error && e.message ? e.message : "Couldn't read the registrations.");
     } finally {
       setLoading(false);
     }
@@ -328,15 +331,26 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       </div>
 
       {loadFailed && (
-        <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 text-xs text-amber-900 flex gap-2">
+        <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 text-xs text-state-problem flex gap-2">
           <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-          <span>The registrations could not be read, so this list is not the whole of them. Reload before adding one.</span>
+          <span className="flex-1">
+            The registrations could not be read: {loadFailed} Nothing is listed
+            below because nothing could be read — not because the client holds
+            no GSTIN. Reload before adding one.
+          </span>
+          <button onClick={() => load()} disabled={loading}
+            className="shrink-0 px-2 py-0.5 border border-state-problem-border rounded hover:bg-state-problem-hover disabled:opacity-50">
+            Reload
+          </button>
         </div>
       )}
 
+      {/* THE EMPTY STATE IS A CLAIM ABOUT THE CLIENT, so it is made only when
+          the read succeeded. It used to render on a failed read too, telling
+          the CA to go and record a GSTIN the client already had. */}
       {loading ? (
         <p className="text-xs text-ps-hint">Loading…</p>
-      ) : rows.length === 0 ? (
+      ) : loadFailed ? null : rows.length === 0 ? (
         <p className="text-xs text-ps-hint">
           No GSTIN is recorded for this client. Record it on the client record first —
           a GST return cannot be prepared without one.

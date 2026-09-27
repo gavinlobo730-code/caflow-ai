@@ -1005,7 +1005,7 @@ def get_cash_book(
     figure that means anything.
     """
     assert_client_access(current_user, client_id)
-    db = _db()
+    db = _prod_db()
     firm_id = current_user["firm_id"]
     if not db:
         return api_response(True, {"accounts": [], "negative_days": [], "clean": True})

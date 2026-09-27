@@ -6,12 +6,21 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
-import { assessmentYearChoicesAround, financialYearChoicesAround } from "@/lib/dates/periods";
+import { assessmentYearFor, financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
+import { errorMessage } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+/** A refusal comes back in the envelope every caller already reads.
+ *
+ *  The ITR endpoints refuse with HTTPException, whose body is
+ *  `{"detail": "..."}` with no `error` key — so every `res.error ?? "Failed"`
+ *  below showed the word "Failed" where the server had written the sentence
+ *  naming what to fix (a duplicate original return, a draft that cannot skip
+ *  review). Normalised ONCE here rather than at each call site, through
+ *  lib/api's `errorMessage`, which also reads a 422's array of messages. */
 async function apiFetch(path: string, opts?: RequestInit) {
   const { supabase } = await import("@/lib/supabase/client");
   const { data: { session } } = await supabase.auth.getSession();
@@ -24,6 +33,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
       ...(opts?.headers ?? {}),
     },
   });
+  if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
   return res.json();
 }
 
@@ -57,10 +67,6 @@ const ITR_FORMS_FALLBACK = ["ITR-1", "ITR-2", "ITR-3", "ITR-4", "ITR-5", "ITR-6"
 // helper (lib/dates/periods.ts); see
 // scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
 const FY_OPTIONS = financialYearChoicesAround(null);
-// FROM THE CLOCK, NOT A LITERAL — the same rule as the financial-year list,
-// derived from it so the two cannot disagree about which year is current
-// (IT Act §2(9): the AY is the FY plus one).
-const AY_OPTIONS = assessmentYearChoicesAround(null);
 
 // The three kinds a return can be, and their sections. SERVED by
 // GET /api/itr/return-kinds — this is the fallback for the window where the
@@ -162,7 +168,11 @@ export default function ITRFilingPage() {
 
   // Create form
   const [fy, setFy] = useState(FY_OPTIONS[0]);
-  const [ay, setAy] = useState(AY_OPTIONS[0]);
+  // DERIVED, NEVER CHOSEN. IT Act §2(9) with §3: the assessment year is the
+  // financial year plus one. Two independent pickers let a filing be created
+  // as FY 2025-26 / AY 2027-28 — a row describing two different years — and
+  // the server now refuses the mismatch, so the screen must not offer it.
+  const ay = assessmentYearFor(fy);
   const [form, setForm] = useState("ITR-6");
   const [forms, setForms] = useState<string[]>(ITR_FORMS_FALLBACK);
   const [kind, setKind] = useState("original");
@@ -421,7 +431,9 @@ export default function ITRFilingPage() {
             </div>
             <div>
               <label className="text-3xs text-ps-label mb-1 block">Assessment Year</label>
-              <YearPicker kind="ay" value={ay} onChange={setAy} size="sm" />
+              {/* Read-only: it follows the financial year beside it (§2(9)). */}
+              <YearPicker kind="ay" value={ay} onChange={() => {}} disabled size="sm" />
+              <p className="text-3xs text-ps-hint mt-1">Follows the financial year — IT Act §2(9)</p>
             </div>
           </div>
           <div>

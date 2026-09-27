@@ -51,7 +51,7 @@ def test_list_checklist_cross_firm_is_404(checklist_app):
     eng = db.seed("year_end_engagements", {"firm_id": "F1", "client_id": "C1", "status": "draft"})
     r = _client_for(app, PARTNER_F2).get(f"/year-end/{eng['id']}/checklist")
     assert r.status_code == 404
-    assert db.rows("year_end_checklists") == []  # never auto-initialized for the attacker
+    assert db.rows("year_end_checklist_items") == []  # never auto-initialized for the attacker
 
 
 def test_list_checklist_own_firm_auto_initializes(checklist_app):
@@ -67,11 +67,11 @@ def test_list_checklist_own_firm_auto_initializes(checklist_app):
 def test_update_checklist_item_cross_firm_is_404(checklist_app):
     app, db = checklist_app
     eng = db.seed("year_end_engagements", {"firm_id": "F1", "client_id": "C1", "status": "draft"})
-    item = db.seed("year_end_checklists", {"engagement_id": eng["id"], "firm_id": "F1", "status": "pending"})
+    item = db.seed("year_end_checklist_items", {"engagement_id": eng["id"], "firm_id": "F1", "status": "pending"})
     r = _client_for(app, PARTNER_F2).patch(
         f"/year-end/{eng['id']}/checklist/{item['id']}", json={"status": "complete"})
     assert r.status_code == 404
-    assert db.rows("year_end_checklists")[0]["status"] == "pending"  # untouched
+    assert db.rows("year_end_checklist_items")[0]["status"] == "pending"  # untouched
 
 
 @pytest.fixture

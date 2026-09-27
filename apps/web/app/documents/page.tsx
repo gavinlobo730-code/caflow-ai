@@ -180,8 +180,14 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
         client_id: clientId,
         document_type: docType,
         file_name: file.name,
+        // `file_path` is the NOT NULL column (migration 001) and `storage_path`
+        // the one migration 005 added beside it; routers/documents.py writes
+        // the same value to both. Omitting file_path made every upload fail
+        // with 23502 AFTER the file had been stored, orphaning the blob.
+        file_path: storagePath,
         storage_path: storagePath,
         storage_bucket: STORAGE_BUCKET,
+        mime_type: file.type || null,
         file_size_bytes: file.size,   // the column is file_size_bytes
         financial_year: financialYear,
       });

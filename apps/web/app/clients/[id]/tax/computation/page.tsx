@@ -7,7 +7,8 @@ import { formatWhole } from "@/lib/money/format";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/lib/auth/AuthContext";
-import { assessmentYearChoicesAround } from "@/lib/dates/periods";
+import { assessmentYearFor } from "@/lib/dates/periods";
+import { errorMessage } from "@/lib/api";
 import RegimeElectionPanel from "@/components/tax/RegimeElectionPanel";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
@@ -49,10 +50,6 @@ interface ClaimableCredit {
   caveats?: string[];
   basis?: string;
 }
-// FROM THE CLOCK, NOT A LITERAL — the same rule as the financial-year list,
-// derived from it so the two cannot disagree about which year is current
-// (IT Act §2(9): the AY is the FY plus one).
-const AY_OPTIONS = assessmentYearChoicesAround(null);
 const SECTION_OPTIONS = ["40A(3)", "43B_pf", "43B_gst", "43B_bonus", "43B_leave", "other"];
 
 /** What a snapshot's `regime` means, in words.
@@ -74,6 +71,13 @@ function regimeLabel(regime: string | null | undefined): string {
   }
 }
 
+/** A refusal comes back in the envelope every caller already reads.
+ *
+ *  An HTTPException body is `{"detail": "..."}` with no `error` key, so every
+ *  `res.error ?? "Failed"` on this screen showed the fallback word where the
+ *  server had written the sentence saying what to fix. Normalised ONCE here
+ *  rather than at each call site, through lib/api's `errorMessage`, which also
+ *  reads a 422's array of messages. */
 async function apiFetch(path: string, opts?: RequestInit) {
   const { supabase } = await import("@/lib/supabase/client");
   const { data: { session } } = await supabase.auth.getSession();
@@ -86,6 +90,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
       ...(opts?.headers ?? {}),
     },
   });
+  if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
   return res.json();
 }
 
@@ -282,7 +287,11 @@ export default function TaxComputationPage() {
 
   const [fyOptions, setFyOptions] = useState<SupportedFY[]>([]);
   const [fy, setFy] = useState("");
-  const [ay, setAy] = useState(AY_OPTIONS[0]);
+  // DERIVED, NEVER CHOSEN. IT Act §2(9) with §3: the assessment year is the
+  // financial year plus one. This was a second, independent picker, so a CA
+  // could save a FY 2025-26 snapshot stamped AY 2027-28 — and the engine's
+  // `assessment_year_end` was read off it. The server now refuses a mismatch.
+  const ay = fy ? assessmentYearFor(fy) : "";
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [disallowances, setDisallowances] = useState<Disallowance[]>([]);
   const [bfLosses, setBfLosses] = useState<BFLoss[]>([]);
@@ -433,6 +442,9 @@ export default function TaxComputationPage() {
   const [computing, setComputing] = useState(false);
   const [computeResult, setComputeResult] = useState<ComputeResult | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
+  // A computation that worked and a snapshot that was refused are two facts,
+  // so they are two messages: the figures below are right, the record is not.
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
 
   // Disallowance form
   const [showDisallForm, setShowDisallForm] = useState(false);
@@ -789,6 +801,7 @@ export default function TaxComputationPage() {
     }
     setComputing(true);
     setComputeError(null);
+    setSnapshotError(null);
     const toP = (v: string) => paiseFromRupeeInput(v || "0") as number;
     // Accepted disallowances are an ADD-BACK to business income, so they have
     // to reach the computation — not merely the snapshot. This total used to be
@@ -935,8 +948,13 @@ export default function TaxComputationPage() {
       setComputeResult(objectWithLists<ComputeResult>(computeRes.data, "warnings"));
 
       // 2. Save snapshot
-
-      await apiFetch("/api/itr/snapshots", {
+      //
+      // ITS RESULT IS READ. It used to be awaited and dropped, so a refusal —
+      // every company, firm and LLP snapshot hit the regime CHECK — left the
+      // figures on screen reading as saved while GET /api/itr/snapshots stayed
+      // empty, and the filing had nothing to pin. The computation above did
+      // happen, so it stays on screen; what did NOT happen is said beside it.
+      const snapRes = await apiFetch("/api/itr/snapshots", {
         method: "POST",
         body: JSON.stringify({
           client_id: clientId,
@@ -963,6 +981,10 @@ export default function TaxComputationPage() {
           computation_result: computeRes.data,
         }),
       });
+      if (!snapRes?.success) {
+        setSnapshotError("Computed, but the snapshot was NOT saved: "
+          + (snapRes?.error ?? snapRes?.detail ?? "the server gave no reason."));
+      }
       await load();
     } catch (err) {
       setComputeError(err instanceof Error ? err.message : "Failed");
@@ -1091,7 +1113,10 @@ export default function TaxComputationPage() {
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="text-3xs text-ps-label mb-1 block">Assessment Year</label>
-                <YearPicker kind="ay" value={ay} onChange={setAy} size="sm" />
+                {/* Read-only: it follows the financial year above (§2(9)). */}
+                <YearPicker kind="ay" value={ay} onChange={() => {}} disabled size="sm"
+                  placeholder={ay ? undefined : "Choose a financial year"} />
+                <p className="text-3xs text-ps-hint mt-1">Follows the financial year — IT Act §2(9)</p>
               </div>
               <div className="flex-1">
                 {/* s.115BAC's new/old election reaches an individual or HUF.
@@ -1836,6 +1861,11 @@ export default function TaxComputationPage() {
             )}
 
             {computeError && <p className="text-xs text-red-600">{computeError}</p>}
+            {snapshotError && (
+              <p role="alert" className="text-xs text-state-problem bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2">
+                {snapshotError}
+              </p>
+            )}
 
             <button
               onClick={handleCompute}

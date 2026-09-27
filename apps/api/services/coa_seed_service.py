@@ -73,6 +73,13 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("1504", "Vehicles",                     "Asset", "Fixed Asset"),   # %Vehicles%
     ("1505", "Land & Building",              "Asset", "Fixed Asset"),   # %Land & Building%
     ("1506", "Intangible Assets",            "Asset", "Intangible Asset"),  # %Intangible Assets% — subtype drives Schedule III "Fixed Assets — Intangible" (migration 208)
+    # %Capital Work-in-Progress% — the account every CWIP addition debits
+    # (services/cwip_service). CODE 1507, NOT the 1504 migration 397 chose:
+    # 1504 is Vehicles on this very list, so 397's `ON CONFLICT DO NOTHING`
+    # seed skipped every firm onboarded through here and every CWIP posting
+    # then failed to find its account (migration 425 repairs those firms).
+    # The SUBTYPE is load-bearing — schedule_iii.classify buckets on it.
+    ("1507", "Capital Work-in-Progress",     "Asset", "Capital Work-in-Progress"),
     ("1590", "Accumulated Depreciation",     "Asset", "Fixed Asset"),   # %Accumulated Depreciation%
     # ── Liabilities ──
     ("2001", "Trade Payables",               "Liability", "Payable"),           # %Trade Payable%

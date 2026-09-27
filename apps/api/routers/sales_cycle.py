@@ -10,6 +10,7 @@ either module decides.
 # transmitted or posted; the tax invoice is still raised by hand from the
 # Sales screen, which is the document that declares the supply.
 """
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -29,8 +30,7 @@ router = APIRouter(prefix="/api/sales-cycle", tags=["sales_cycle"])
 
 
 def _mock() -> bool:
-    from core.config import settings as _s
-    return bool(getattr(_s, "USE_MOCK_DATA", False))
+    return not os.environ.get("SUPABASE_URL")
 
 
 def _db():

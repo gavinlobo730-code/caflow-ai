@@ -50,7 +50,7 @@ API_ROOT = Path(__file__).resolve().parents[1]
 # the private copies (it logs and stops rather than raising KeyError) — which
 # is worse for this rule, not better: a KeyError is a 500 somebody reports,
 # and a short read that logs is a wrong answer nobody sees.
-PAGINATORS = {"_paginate_all", "_fetch_all", "fetch_all"}
+PAGINATORS = {"_paginate_all", "_fetch_all", "fetch_all", "fetch_all_in"}
 
 SKIP_DIRS = {"tests", ".venv", "__pycache__", "migrations"}
 

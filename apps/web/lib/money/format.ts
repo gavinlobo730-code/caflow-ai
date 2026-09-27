@@ -126,3 +126,27 @@ export function formatPaiseBare(value: PaiseInput): string {
   const p = toPaise(value);
   return p === null ? NO_FIGURE : PLAIN.format(p / 100);
 }
+
+/** One crore is 1,00,00,000 RUPEES, so 1,00,00,00,000 paise; a lakh is
+ *  1,00,000 rupees, so 1,00,00,000 paise. Named in PAISE because that is what
+ *  every caller holds — the client MCA screen divided a paise figure by the
+ *  RUPEE crore (1e7) and showed every company's capital 100× too large. */
+const PAISE_PER_CRORE = 1_000_000_000;
+const PAISE_PER_LAKH = 10_000_000;
+
+/**
+ * ₹2.50 Cr / ₹50.00 L / ₹12,345.00 — a large figure abbreviated the Indian
+ * way, for a summary where the exact paise are not the point (a company's
+ * authorised and paid-up capital). Below a lakh it is `formatPaise`, because
+ * "₹0.12 L" reads worse than the figure itself. Same rules otherwise: Indian
+ * grouping inside the abbreviation, two decimals, and nothing is not zero.
+ */
+export function formatCroreLakh(value: PaiseInput): string {
+  const p = toPaise(value);
+  if (p === null) return NO_FIGURE;
+  const abs = Math.abs(p);
+  const sign = p < 0 ? "-" : "";
+  if (abs >= PAISE_PER_CRORE) return `${sign}₹${PLAIN.format(abs / PAISE_PER_CRORE)} Cr`;
+  if (abs >= PAISE_PER_LAKH) return `${sign}₹${PLAIN.format(abs / PAISE_PER_LAKH)} L`;
+  return GROUPED.format(p / 100);
+}

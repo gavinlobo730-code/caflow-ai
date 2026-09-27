@@ -491,26 +491,6 @@ def save_gstr1(
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
-@router.get("/gstr1/{return_id}")
-def get_gstr1(return_id: str, current_user: dict = Depends(rbac("gst", "read"))):
-    """Get GSTR-1 return by ID."""
-    try:
-        firm_id = current_user["firm_id"]
-        if _USE_MOCK:
-            rec = _MOCK_GSTR1.get(return_id)
-        else:
-            from core.supabase_client import get_supabase
-            rows = get_supabase().table("gstr1_returns").select("*").eq("id", return_id).eq("firm_id", firm_id).execute().data
-            rec = rows[0] if rows else None
-        rec = _visible_or_none(current_user, rec)
-        if not rec:
-            return api_response(False, None, "Not found")
-
-        return api_response(True, rec)
-    except Exception as e:
-        return api_response(False, None, "Unable to complete GST operation. Please try again.")
-
-
 @router.patch("/gstr1/{return_id}/status")
 def update_gstr1_status(
     return_id: str,
@@ -1687,6 +1667,32 @@ def gstr1_advances(
     from services.gst_advance_service import advances_report
     return api_response(True, advances_report(
         get_supabase(), current_user["firm_id"], client_id, period))
+
+
+# REGISTERED AFTER the static `/gstr1/amendments`, `/gstr1/exceptions` and
+# `/gstr1/advances`, and it has to be: Starlette matches in registration
+# order, and above them this handler answered all three — as a lookup for a
+# return whose id is "advances" (a 400 from PostgREST, reported as the
+# generic failure below), so none of the three screens ever loaded
+# (tests/test_no_route_is_shadowed_by_an_earlier_one.py).
+@router.get("/gstr1/{return_id}")
+def get_gstr1(return_id: str, current_user: dict = Depends(rbac("gst", "read"))):
+    """Get GSTR-1 return by ID."""
+    try:
+        firm_id = current_user["firm_id"]
+        if _USE_MOCK:
+            rec = _MOCK_GSTR1.get(return_id)
+        else:
+            from core.supabase_client import get_supabase
+            rows = get_supabase().table("gstr1_returns").select("*").eq("id", return_id).eq("firm_id", firm_id).execute().data
+            rec = rows[0] if rows else None
+        rec = _visible_or_none(current_user, rec)
+        if not rec:
+            return api_response(False, None, "Not found")
+
+        return api_response(True, rec)
+    except Exception as e:
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.get("/itc/rule-43")

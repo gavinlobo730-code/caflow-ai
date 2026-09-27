@@ -19,15 +19,19 @@ export interface YearEndEngagement {
   updated_at: string;
 }
 
-// Matches the year_end_checklists_status_check CHECK constraint (migration
-// 155) — the router's _VALID_ITEM_STATUSES, not 067's original (unused)
-// 'not_started'/'na' vocabulary.
+// Matches the status CHECK on `year_end_checklist_items` (migration 252) — the
+// table routers/year_end_checklist.py reads and the one production has — and
+// the router's _VALID_ITEM_STATUSES. NOT the older checklist table migrations
+// 067/155 declare: that one exists only in a migration-built database, and
+// reading it from the browser 404'd in production. Read the checklist through
+// `yearEndApi.checklist.list`, which also seeds the standard items.
 export type ChecklistItemStatus = "pending" | "in_progress" | "complete" | "not_applicable";
 
 export interface ChecklistItem {
   id: string;
   engagement_id: string;
   category: string;
+  item_code: string;
   item_label: string;
   status: ChecklistItemStatus;
   notes: string | null;

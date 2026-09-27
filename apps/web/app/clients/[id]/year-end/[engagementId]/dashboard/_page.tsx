@@ -12,7 +12,8 @@ import {
   User,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import type { EngagementStatus, YearEndEvent } from "@/lib/api/yearEnd";
+import { yearEndApi, type ChecklistItem, type EngagementStatus, type YearEndEvent } from "@/lib/api/yearEnd";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { Skeleton, DashboardSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
@@ -87,8 +88,12 @@ interface DashboardData {
     version: number;
     updated_at: string;
   };
-  checklist_total: number;
-  checklist_complete: number;
+  // null with `checklist_error` set when the checklist could not be read: the
+  // widget says so and the rest of the dashboard still renders. A zero here
+  // would read as "nothing done" rather than "nobody could tell".
+  checklist_total: number | null;
+  checklist_complete: number | null;
+  checklist_error: string | null;
   adjustments_count: number;
   adjustments_total_paise: number;
   current_version: number | null;
@@ -109,14 +114,38 @@ export default function YearEndDashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // Right after router.push the id is still "" for one render; the effect
+    // re-runs once it is known. Five `engagement_id=eq.` queries used to fire.
+    if (!engagementId) return;
     setLoading(true);
     setError(null);
     try {
       const supabase = getSupabaseClient();
 
+      // The checklist comes from the backend, not PostgREST: this used to
+      // select from the older checklist table migrations 067/155 declare,
+      // which exists only in a migration-built database (production has
+      // `year_end_checklist_items`), so it 404'd — and because the error was
+      // thrown, the WHOLE dashboard failed with it.
+      // routers/year_end_checklist.py::list_checklist reads the right table,
+      // seeds the standard items on first read and applies the engagement's
+      // assignment scope. Its failure is caught here and confined to the
+      // checklist card.
+      const checklistPromise: Promise<{ items: ChecklistItem[] | null; error: string | null }> =
+        yearEndApi.checklist.list(engagementId).then(
+          (res) =>
+            res.success
+              ? { items: arrayOrEmpty<ChecklistItem>(res.data), error: null }
+              : { items: null, error: res.error ?? "The checklist could not be loaded." },
+          (err: unknown) => ({
+            items: null,
+            error: err instanceof Error ? err.message : "The checklist could not be loaded.",
+          }),
+        );
+
       const [
         { data: engRow, error: engErr },
-        { data: checklistRows, error: checklistErr },
+        checklistResult,
         { data: adjRows, error: adjErr },
         { data: versionRows, error: versionErr },
         { data: eventRows, error: eventErr },
@@ -130,15 +159,7 @@ export default function YearEndDashboardPage() {
           .select("id, financial_year, status, updated_at")
           .eq("id", engagementId)
           .maybeSingle(),
-        // year_end_checklists — same table checklist/_page.tsx's backend call
-        // (routers/year_end_checklist.py) reads from. Only "complete" is used
-        // for the completion count, so the not_started/pending naming drift
-        // between that table's CHECK constraint and yearEnd.ts's
-        // ChecklistItemStatus type doesn't affect this computation.
-        supabase
-          .from("year_end_checklists")
-          .select("id, status")
-          .eq("engagement_id", engagementId),
+        checklistPromise,
         // year_end_adjustments — same table adjustments/_page.tsx's backend call
         // (routers/year_end_adjustments.py) reads from. amount_paise is the one
         // column name that matches the frontend Adjustment type exactly.
@@ -183,12 +204,11 @@ export default function YearEndDashboardPage() {
 
       if (engErr) throw new Error(engErr.message);
       if (!engRow) throw new Error("Engagement not found");
-      if (checklistErr) throw new Error(checklistErr.message);
       if (adjErr) throw new Error(adjErr.message);
       if (versionErr) throw new Error(versionErr.message);
       if (eventErr) throw new Error(eventErr.message);
 
-      const checklist = (checklistRows ?? []) as { id: string; status: string }[];
+      const checklist = checklistResult.items;
       const adjustments = (adjRows ?? []) as { id: string; amount_paise: number }[];
       const latestVersion = ((versionRows ?? []) as { version_number: number; created_at: string }[])[0];
       const events = (eventRows ?? []) as {
@@ -214,8 +234,9 @@ export default function YearEndDashboardPage() {
           version: 1,
           updated_at: engRow.updated_at as string,
         },
-        checklist_total: checklist.length,
-        checklist_complete: checklist.filter((i) => i.status === "complete").length,
+        checklist_total: checklist ? checklist.length : null,
+        checklist_complete: checklist ? checklist.filter((i) => i.status === "complete").length : null,
+        checklist_error: checklistResult.error,
         adjustments_count: adjustments.length,
         adjustments_total_paise: adjustments.reduce((s, a) => s + (a.amount_paise ?? 0), 0),
         current_version: latestVersion?.version_number ?? null,
@@ -274,10 +295,10 @@ export default function YearEndDashboardPage() {
 
   if (!data) return null;
 
-  const { engagement, checklist_total, checklist_complete, adjustments_count,
+  const { engagement, checklist_total, checklist_complete, checklist_error, adjustments_count,
     adjustments_total_paise, current_version, statements_generated_at, recent_events } = data;
 
-  const checklistPct = checklist_total > 0
+  const checklistPct = checklist_total && checklist_complete !== null
     ? Math.round((checklist_complete / checklist_total) * 100)
     : 0;
 
@@ -310,18 +331,30 @@ export default function YearEndDashboardPage() {
             <CheckSquare2 size={15} className="text-ps-label" />
             <p className="text-xs font-semibold text-ps-body">Checklist</p>
           </div>
-          <p className="text-lg font-bold text-ps-ink tabular-nums">
-            {checklist_complete} <span className="text-ps-hint text-sm font-normal">of {checklist_total}</span>
-          </p>
-          <p className="text-3xs text-ps-hint mb-2">items complete</p>
-          {/* Progress bar */}
-          <div className="w-full h-1.5 bg-ps-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-brand rounded-full transition-all"
-              style={{ width: `${checklistPct}%` }}
-            />
-          </div>
-          <p className="text-3xs text-ps-hint mt-1">{checklistPct}%</p>
+          {checklist_total === null || checklist_complete === null ? (
+            <>
+              <p className="text-sm text-state-problem">Checklist unavailable</p>
+              <p className="text-3xs text-ps-hint mt-1 break-words">
+                {checklist_error ?? "The checklist could not be loaded."}
+              </p>
+              <p className="text-3xs text-ps-hint mt-1">Open the Checklist tab to retry.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-lg font-bold text-ps-ink tabular-nums">
+                {checklist_complete} <span className="text-ps-hint text-sm font-normal">of {checklist_total}</span>
+              </p>
+              <p className="text-3xs text-ps-hint mb-2">items complete</p>
+              {/* Progress bar */}
+              <div className="w-full h-1.5 bg-ps-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-brand rounded-full transition-all"
+                  style={{ width: `${checklistPct}%` }}
+                />
+              </div>
+              <p className="text-3xs text-ps-hint mt-1">{checklistPct}%</p>
+            </>
+          )}
         </div>
 
         {/* Adjustments */}

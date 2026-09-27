@@ -8,6 +8,8 @@ these rows into a statement.
 """
 from __future__ import annotations
 
+import os
+
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,8 +24,7 @@ router = APIRouter(prefix="/api/gstr9c", tags=["gstr9c"])
 
 
 def _mock_enabled() -> bool:
-    from core.config import settings as _s
-    return bool(getattr(_s, "USE_MOCK_DATA", False))
+    return not os.environ.get("SUPABASE_URL")
 
 
 def _resolve(db, firm_id, client_id, gstin):

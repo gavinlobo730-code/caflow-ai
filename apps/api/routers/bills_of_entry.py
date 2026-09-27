@@ -14,6 +14,7 @@ server is not permitted to write this table." Each is already gated by
 rbac() + assert_client_access() above, so this is the privileged path —
 same fix as routers/fixed_assets.py (PR #626).
 """
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -94,8 +95,7 @@ class BillOfEntryUpdateIn(BaseModel):
 
 
 def _mock_enabled() -> bool:
-    from core.config import settings as _s
-    return bool(getattr(_s, "USE_MOCK_DATA", False))
+    return not os.environ.get("SUPABASE_URL")
 
 
 @router.get("/authorities")

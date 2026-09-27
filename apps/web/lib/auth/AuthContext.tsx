@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useRef,
   ReactNode,
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
@@ -66,6 +67,15 @@ interface AuthContextValue {
   userRole: UserRole | null;
   loading: boolean;
   /**
+   * True while the role for the CURRENT user is still being resolved.
+   * `loading` clears as soon as the SESSION is known and the role arrives a
+   * round trip later; in between `userRole` is null, which the permission
+   * helpers read as least privilege. A guard that redirects on "not permitted"
+   * must wait for this too, or it bounces a Partner off a Partner-only page on
+   * every hard navigation (the /settings/* pages did exactly that).
+   */
+  roleLoading: boolean;
+  /**
    * MFA challenge state: true = the session is aal1 but the account has a verified
    * factor (must complete the TOTP challenge to reach aal2); false = no challenge
    * needed; null = not yet resolved for the current session.
@@ -120,6 +130,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [roleLoading, setRoleLoading] = useState(true);
+  // applyContext runs from getSession AND onAuthStateChange, so two role
+  // lookups can be in flight; only the LATEST may settle the state, or an
+  // older answer (e.g. the signed-out null) can land after the newer one.
+  const contextRequest = useRef(0);
+  // The user the current role belongs to. applyContext also runs on every
+  // TOKEN_REFRESHED (hourly), and flipping roleLoading back to true there would
+  // make every RoleGuard render null for a round trip — unmounting the page and
+  // losing whatever the CA had typed. Only a DIFFERENT user makes the role unknown.
+  const roleOwner = useRef<string | null | undefined>(undefined);
   const [mfaPending, setMfaPending] = useState<boolean | null>(null);
   const [hasFirm, setHasFirm] = useState<boolean | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
@@ -127,11 +147,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function applyContext(u: User | null) {
     setHasFirm(null);
+    const owner = u?.id ?? null;
+    if (owner !== roleOwner.current) {
+      roleOwner.current = owner;
+      setRoleLoading(true);
+    }
+    const request = ++contextRequest.current;
     resolveUserContext(u).then(({ role, hasFirm, fullName }) => {
+      if (request !== contextRequest.current) return;
       setUserRole(role);
       setHasFirm(hasFirm);
       setFullName(fullName);
-    }).catch(() => { setUserRole(null); setHasFirm(false); setFullName(null); });
+      setRoleLoading(false);
+    }).catch(() => {
+      if (request !== contextRequest.current) return;
+      setUserRole(null); setHasFirm(false); setFullName(null);
+      setRoleLoading(false);
+    });
     // Action-level permissions, resolved independently of the role query above.
     // Kept separate on purpose: the role comes from Supabase directly (used for
     // nav/page gating and available even if the API is asleep), while this comes
@@ -173,6 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       clearTimeout(timeout);
       setLoading(false);
+      setRoleLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -235,7 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ session, user, userRole, loading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, roleLoading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

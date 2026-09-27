@@ -12,8 +12,11 @@ import { isPartnerOnlyAllowed } from "@/lib/auth/permissions";
  * remain the authoritative control — this is the UI layer.
  */
 export function PartnerGuard({ children }: { children: ReactNode }) {
-  const { userRole, loading } = useAuth();
-  if (loading) {
+  const { userRole, loading, roleLoading } = useAuth();
+  // Until the role has resolved, userRole is null and isPartnerOnlyAllowed
+  // answers "no" — which flashed "Partner access only" at a Partner on every
+  // hard load. A role still resolving is not a refusal (lib/auth/guardDecision).
+  if (loading || roleLoading) {
     return <div className="p-8 text-sm text-gray-500">Loading…</div>;
   }
   if (!isPartnerOnlyAllowed(userRole)) {

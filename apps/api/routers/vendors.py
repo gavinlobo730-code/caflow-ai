@@ -589,6 +589,40 @@ def create_vendors_bulk(
         return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
+# REGISTERED BEFORE `/{vendor_id}`, and it has to be: Starlette matches in
+# registration order, so below it `GET /ap-aging` was answered by
+# get_vendor("ap-aging") — a lookup for a vendor with that id — and the
+# payables ageing never ran (tests/test_no_route_is_shadowed_by_an_earlier_one.py).
+@router.get("/ap-aging")
+def ap_aging(
+    client_id: str = Query(..., description="CA client ID — required"),
+    as_of: Optional[str] = Query(None, description="Aging as-of date (YYYY-MM-DD)"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Accounts-payable aging for a client — per-bill outstanding bucketed by age.
+    Derived entirely from posted bills, payments and debit notes (firm-scoped)."""
+    assert_client_access(current_user, client_id)
+    try:
+        if _USE_MOCK:
+            # The AR mirror has always had this branch and this one had not, so
+            # with no database the payables ageing returned a generic failure
+            # while the receivables ageing returned an empty schedule. Two
+            # endpoints that are each other's mirror answering differently is
+            # how a screen ends up showing an error beside a working panel.
+            return api_response(True, {"as_of": as_of, "buckets": {},
+                                       "total_outstanding_paise": 0, "bills": []})
+        from core.supabase_client import get_supabase
+        from services.vendor_statement_service import vendor_statement_service
+        db = get_supabase()
+        data = vendor_statement_service.ap_aging(db, current_user.get("firm_id"), client_id, as_of)
+        return api_response(True, data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("ap_aging: %s", e)
+        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
+
+
 @router.get("/{vendor_id}")
 def get_vendor(
     vendor_id: str,
@@ -847,36 +881,6 @@ def get_vendor_outstanding(
         raise
     except Exception as e:
         _logger.error("get_vendor_outstanding: %s", e)
-        return api_response(False, None, "Unable to complete vendor operation. Please try again.")
-
-
-@router.get("/ap-aging")
-def ap_aging(
-    client_id: str = Query(..., description="CA client ID — required"),
-    as_of: Optional[str] = Query(None, description="Aging as-of date (YYYY-MM-DD)"),
-    current_user: dict = Depends(rbac("accounting", "read")),
-):
-    """Accounts-payable aging for a client — per-bill outstanding bucketed by age.
-    Derived entirely from posted bills, payments and debit notes (firm-scoped)."""
-    assert_client_access(current_user, client_id)
-    try:
-        if _USE_MOCK:
-            # The AR mirror has always had this branch and this one had not, so
-            # with no database the payables ageing returned a generic failure
-            # while the receivables ageing returned an empty schedule. Two
-            # endpoints that are each other's mirror answering differently is
-            # how a screen ends up showing an error beside a working panel.
-            return api_response(True, {"as_of": as_of, "buckets": {},
-                                       "total_outstanding_paise": 0, "bills": []})
-        from core.supabase_client import get_supabase
-        from services.vendor_statement_service import vendor_statement_service
-        db = get_supabase()
-        data = vendor_statement_service.ap_aging(db, current_user.get("firm_id"), client_id, as_of)
-        return api_response(True, data)
-    except HTTPException:
-        raise
-    except Exception as e:
-        _logger.error("ap_aging: %s", e)
         return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 

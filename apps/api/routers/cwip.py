@@ -16,6 +16,7 @@ WHY IT IS ITS OWN ROUTER RATHER THAN PART OF /api/fixed-assets
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
+import os
 from datetime import date
 from typing import Optional
 
@@ -32,13 +33,18 @@ router = APIRouter(prefix="/api/cwip", tags=["cwip"])
 
 
 def _mock_enabled() -> bool:
-    from core.config import settings as _s
-    return bool(getattr(_s, "USE_MOCK_DATA", False))
+    return not os.environ.get("SUPABASE_URL")
 
 
 def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    # SERVICE ROLE, the PR #626 fix. Capitalisation INSERTs the project's
+    # fixed_assets row, and under USE_USER_JWT the `authenticated` role has
+    # SELECT only on fixed_assets, so get_supabase() made every capitalisation
+    # a 42501 after the project had been checked and costed. Every endpoint
+    # below runs rbac() and assert_client_access before reaching this, and
+    # every query in services/cwip_service filters on firm_id.
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
 
 
 def _journal():
