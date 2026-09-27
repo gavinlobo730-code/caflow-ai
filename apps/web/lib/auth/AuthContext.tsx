@@ -278,13 +278,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return hasFirm === true;
   }, []);
 
+  // A sign-in is RECORDED once the session is fully signed in, not at the
+  // password step. POST /api/identity/login-event sits behind mfa_guard, which
+  // refuses an aal1 token for the roles MFA is required of — so recording it
+  // straight after signInWithPassword, before the TOTP challenge, was refused
+  // every time, and from the day MFA was switched on the login history held
+  // logouts only (team-hub-02). The logout still records, because by then
+  // the session is aal2.
+  const loginToRecord = useRef(false);
+  useEffect(() => {
+    if (!loginToRecord.current || !session || mfaPending !== false) return;
+    loginToRecord.current = false;
+    import("@/lib/api")
+      .then(({ api }) => api.identity.recordLoginEvent("login"))
+      .catch(() => {});
+  }, [session, mfaPending]);
+
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (!error) {
-      // M6: record login for admin login-history (best-effort; never blocks sign-in).
-      const { api } = await import("@/lib/api");
-      api.identity.recordLoginEvent("login").catch(() => {});
-    }
+    // M6: login history (best-effort; never blocks sign-in) — recorded by the
+    // effect above once any MFA challenge has been passed.
+    if (!error) loginToRecord.current = true;
     return { error: error?.message ?? null };
   }, []);
 
