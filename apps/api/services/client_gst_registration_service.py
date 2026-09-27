@@ -176,17 +176,28 @@ def create(db, firm_id: str, client_id: str, *, gstin: str,
     return rows[0] if rows else {}
 
 
-def close(db, firm_id: str, registration_id: str, *, effective_to: str) -> dict:
+def close(db, firm_id: str, registration_id: str, *, client_id: str,
+          effective_to: str) -> dict:
     """Record a s.29 cancellation or surrender.
 
     NOT a delete. A cancelled registration still owes the returns for every
     period it was live, and the GSTR-1 and GSTR-3B rows already filed under it
     are keyed on its GSTIN.
+
+    `client_id` is REQUIRED and is part of the match, not decoration. The
+    router writes through the service role (authenticated holds only SELECT on
+    this table), so RLS no longer stands between a caller and another client's
+    row; what does is that the router asserted access to THIS client and the
+    update refuses to touch a row belonging to any other. Matching on id and
+    firm alone let an Executive assigned to one client close a registration
+    of a client they are not assigned to. A mismatch is the same 404 as an
+    absent row, so the answer says nothing about what exists elsewhere.
     """
     rows = (db.table("client_gst_registrations")
             .update({"effective_to": effective_to,
                      "updated_at": datetime.now(timezone.utc).isoformat()})
             .eq("id", registration_id).eq("firm_id", firm_id)
+            .eq("client_id", client_id)
             .execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail="Registration not found.")
@@ -203,18 +214,23 @@ def _refuse_withdraw(form: str, gstin) -> None:
                 f"the returns for the periods it was live are still owed."))
 
 
-def withdraw(db, firm_id: str, registration_id: str) -> dict:
+def withdraw(db, firm_id: str, registration_id: str, *, client_id: str) -> dict:
     """Remove a registration recorded in error.
 
     REFUSED once any return has been prepared under it — those rows are keyed
     on the GSTIN, and removing the registration would leave them pointing at a
     number the client is no longer recorded as holding. A registration that was
     real and has ended is `close`, not this.
+
+    `client_id` is required and matched on both the read and the update, for
+    `close`'s reason: the write runs under the service role, and the client the
+    router asserted access to is the only thing tying the row to the caller.
     """
     row = _first(db.table("client_gst_registrations").select(
         "id, firm_id, client_id, gstin, state_code, registration_type, "
         "filing_frequency, trade_name, effective_from, effective_to, deleted_at")
-        .eq("id", registration_id).eq("firm_id", firm_id).limit(1).execute().data)
+        .eq("id", registration_id).eq("firm_id", firm_id)
+        .eq("client_id", client_id).limit(1).execute().data)
     if not row or row.get("deleted_at"):
         raise HTTPException(status_code=404, detail="Registration not found.")
 
@@ -223,7 +239,9 @@ def withdraw(db, firm_id: str, registration_id: str) -> dict:
     # a computed column, so a loop here would make every filter in it invisible
     # to the check — and these two reads are what decide whether a registration
     # may be removed at all.
-    client_id, gstin = row.get("client_id"), row.get("gstin")
+    # The row was matched on client_id above, so the asserted client IS the
+    # row's own and the two return reads below scope by it directly.
+    gstin = row.get("gstin")
     if (db.table("gstr1_returns").select("id, gstin, client_id")
             .eq("client_id", client_id).eq("gstin", gstin)
             .limit(1).execute().data):
@@ -236,5 +254,6 @@ def withdraw(db, firm_id: str, registration_id: str) -> dict:
     rows = (db.table("client_gst_registrations")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
             .eq("id", registration_id).eq("firm_id", firm_id)
+            .eq("client_id", client_id)
             .execute().data) or []
     return rows[0] if rows else row

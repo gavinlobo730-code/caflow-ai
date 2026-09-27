@@ -31,7 +31,7 @@ from core.ist_clock import ist_today
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from models.common import api_response
 from core.permissions import rbac
@@ -72,10 +72,26 @@ class CreateDirectorRequest(BaseModel):
     din: str = Field(..., description="8-digit Director Identification Number")
     name: str
     designation: str
-    date_of_appointment: str = Field(..., description="YYYY-MM-DD")
+    # OPTIONAL, and a DATE rather than a string. `mca_directors.date_of_appointment`
+    # is a nullable DATE (migration 038), and the Add Director form sends ""
+    # when the box is left empty. As a required `str` that "" was accepted
+    # here and refused by Postgres (22007, invalid date), which this handler
+    # then swallowed into "Unable to complete MCA operation" — so leaving an
+    # optional field blank made the whole director impossible to add, and a
+    # date typed as DD/MM/YYYY failed the same way with the same sentence.
+    # As a `date`, a malformed value is a 422 naming this field.
+    date_of_appointment: Optional[date] = Field(None, description="YYYY-MM-DD")
     pan: Optional[str] = None
     email: Optional[str] = None
     kyc_status: str = Field(default="pending", description="active, pending, expired")
+
+    @field_validator("date_of_appointment", mode="before")
+    @classmethod
+    def _blank_date_is_no_date(cls, value):
+        """An empty box is the absence of a date, not a date to parse."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class UpdateDirectorRequest(BaseModel):
@@ -296,7 +312,9 @@ def create_director(
             # keeps the frontend's "name" field (task #219 schema-drift fix).
             "director_name": body.name,
             "designation": body.designation,
-            "date_of_appointment": body.date_of_appointment,
+            # ISO text for PostgREST — the JSON body cannot carry a date object.
+            "date_of_appointment": (body.date_of_appointment.isoformat()
+                                    if body.date_of_appointment else None),
             "pan": pan,
             "email": body.email,
             "kyc_status": body.kyc_status,
@@ -319,6 +337,21 @@ def create_director(
         # to change.
         raise
     except Exception as e:
+        _logger.exception("Failed to add director")
+        # mca_directors is UNIQUE (client_id, din) (migration 038) — the one
+        # refusal a CA meets in the ordinary course, adding a director twice.
+        # It is the only unique key besides the primary key, so a 23505 here
+        # always means this DIN.
+        from core.exceptions import _sqlstate, unhandled_failure
+        if _sqlstate(e) == "23505":
+            return api_response(False, None,
+                                "This DIN is already recorded for this client.")
+        # Anything else the database refused with a SQLSTATE it names (a
+        # CHECK on kyc_status, say) is said as that sentence rather than as
+        # "please try again", which cannot fix a value the database refuses.
+        spoken = unhandled_failure(e)
+        if spoken:
+            return api_response(False, None, spoken[1])
         return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 

@@ -76,9 +76,18 @@ GAP_ADDRESS_MISSING = "deductor_address_missing"
 
 GAP_MESSAGES: dict[str, str] = {
     GAP_TAN_MISSING:
+        # WHERE, by the labels on screen. This sentence is served to TWO
+        # screens — the client's own TDS Workspace, which has TAN, name, PAN
+        # and address boxes, and the firm-level /tds/returns, which has none —
+        # and "type it on the compute form" sent a CA on the second looking
+        # for a box that is not there. "Statutory Identity" was the
+        # component's name, not a label anybody sees: the tab is Setup and
+        # the section is Statutory registrations.
         "This client has no TAN recorded, and a TDS statement is filed under "
-        "one (IT Act s.203A). Record it in Payroll → Statutory Identity, or "
-        "type it on the compute form. It is not defaulted: a quarter filed "
+        "one (IT Act s.203A). Record it once on the client's Payroll → Setup "
+        "tab, under Statutory registrations, and every quarter reads it — or "
+        "type it for this quarter on the client's Compliance → TDS Workspace "
+        "→ Compute from Books form. It is not defaulted: a quarter filed "
         "under the wrong TAN credits somebody else's deductees.",
     GAP_TAN_MALFORMED:
         "The TAN is not in the form TRACES accepts — four letters, five "

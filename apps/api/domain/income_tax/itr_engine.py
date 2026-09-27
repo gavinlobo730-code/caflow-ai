@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+from core.ist_clock import assessment_year_for
 from domain.reporting.amount_words import indian_rupees
 from domain.income_tax.statutory_rates import (
     FYTaxRates, apply_rebate_87a, apply_surcharge_with_marginal_relief,
@@ -355,15 +356,16 @@ class HRADetails:
 def _assessment_year_for(fy: str | None) -> str | None:
     """The assessment year an FY is assessed in — FY 2025-26 -> AY 2026-27.
 
-    Used only to test whether a brought-forward loss has run out of years; a
-    label this cannot parse gives None, and loss_set_off then falls back to the
-    row's own is_expired flag rather than guessing the loss is still alive.
+    Used here only to test whether a brought-forward loss has run out of years;
+    a label this cannot parse gives None, and loss_set_off then falls back to
+    the row's own is_expired flag rather than guessing the loss is still alive.
+
+    The rule itself (IT Act s.2(9) with s.3, AY = FY + 1) now lives in
+    `core.ist_clock.assessment_year_for`, because the request models that carry
+    both labels ask it too. This name is kept as a delegate — tests import it —
+    rather than as a second implementation.
     """
-    text = str(fy or "").strip()
-    if len(text) < 4 or not text[:4].isdigit():
-        return None
-    start = int(text[:4]) + 1
-    return f"{start}-{str(start + 1)[2:]}"
+    return assessment_year_for(fy)
 
 
 @dataclass

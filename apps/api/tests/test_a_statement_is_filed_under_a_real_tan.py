@@ -77,8 +77,14 @@ def test_no_tan_recorded_is_a_named_refusal_and_not_a_placeholder():
     who, codes = dd.resolve({}, CLIENT)
     assert who is None
     assert codes == [dd.GAP_TAN_MISSING]
-    # And the sentence says where to go, because the CA cannot act on a code.
-    assert "Statutory Identity" in dd.GAP_MESSAGES[dd.GAP_TAN_MISSING]
+    # And the sentence says where to go, because the CA cannot act on a code —
+    # by the labels on screen, both the place it is recorded and the one form
+    # that can take it for a single quarter. The firm-level /tds/returns
+    # screen has no TAN box, so "the compute form" alone sent a CA there
+    # looking for one.
+    said = dd.GAP_MESSAGES[dd.GAP_TAN_MISSING]
+    assert "Statutory registrations" in said
+    assert "Compliance → TDS Workspace → Compute from Books" in said
 
 
 def test_the_literal_the_screen_used_to_send_is_not_produced_by_anything():

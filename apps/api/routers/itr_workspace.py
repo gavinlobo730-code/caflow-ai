@@ -7,11 +7,13 @@ IT Act 1961 — Sections 139, 140, 40A(3), 43B, 72, 74, 80C–80JJAA.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+from core.exceptions import _sqlstate, unhandled_failure
+from core.ist_clock import assessment_year_for
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
@@ -20,6 +22,58 @@ from models.fy import AYLabel, FYLabel, OptionalAYLabel
 
 router = APIRouter(prefix="/api/itr", tags=["itr_workspace"])
 _logger = logging.getLogger("caflow.itr.router")
+
+
+#: What `tax_computation_snapshots.regime` may hold — migration 427's CHECK,
+#: and the vocabulary the computation screen's `regimeLabel()` already renders.
+#:
+#: WHY SEVEN AND NOT TWO. The CHECK migration 319 declared (copied from what
+#: production enforced) allowed only 'new' and 'old', which
+#: are the two answers to s.115BAC and nothing else. A company is taxed at the
+#: normal rate or under s.115BAA/s.115BAB, and a firm or LLP has no regime
+#: choice at all — so every company, firm and LLP snapshot failed the CHECK and
+#: the screen reported success over a snapshot that was never saved.
+#: Recording a company as 'old' was rejected on purpose: it stamps a s.115BAC
+#: election on an assessee who cannot make one.
+#:
+#: A Literal rather than a free string, so a value outside the list is a 422
+#: naming the field instead of a 500 carrying the constraint's name.
+#: tests/test_a_snapshot_records_the_regime_an_entity_is_taxed_under.py pins
+#: this tuple to the migration, so the two cannot drift apart.
+SnapshotRegime = Literal["new", "old", "normal", "115BAA", "115BAB", "firm", "llp"]
+
+
+def _assessment_year_must_follow(financial_year: str, assessment_year: str) -> None:
+    """Refuse a financial year and an assessment year that are not a pair.
+
+    IT Act s.2(9) with s.3: the assessment year is the one AFTER the previous
+    year, so FY 2025-26 is assessed in AY 2026-27 and in no other. Both labels
+    are validated for SHAPE by their own types, and both shapes are fine on
+    '2025-26' beside '2027-28' — so a filing was created for FY 2025-26 / AY
+    2027-28 and nothing noticed. Refused rather than corrected, because which
+    of the two the CA meant is exactly what the request does not say.
+    """
+    expected = assessment_year_for(financial_year)
+    if expected and assessment_year != expected:
+        raise ValueError(
+            f"AY {assessment_year} is not the assessment year of FY "
+            f"{financial_year} (it is AY {expected} — IT Act §2(9)).")
+
+
+def _database_refusal(exc: Exception, *, action: str) -> tuple[int, str]:
+    """A status and a sentence for a write the database refused.
+
+    These handlers used to answer every failure with HTTPException(500,
+    str(e)), which hands the CA a PostgREST payload with a constraint name in
+    it and calls a refused CHECK a server fault. `unhandled_failure` already
+    turns a recognised SQLSTATE into a 4xx and a sentence; anything else is
+    logged by the caller and gets a sentence saying so, never the raw text.
+    """
+    spoken = unhandled_failure(exc)
+    if spoken:
+        return spoken
+    return 500, (f"Could not {action}. The cause has been logged; please try "
+                 f"again, and report it if it keeps failing.")
 
 
 def _assert_snapshot_scope(current_user: dict, snapshot_id: str) -> dict:
@@ -104,6 +158,11 @@ class CreateFilingRequest(BaseModel):
     original_acknowledgement_number: Optional[str] = None
     original_filing_date: Optional[str] = None      # YYYY-MM-DD
 
+    @model_validator(mode="after")
+    def _years_are_a_pair(self):
+        _assessment_year_must_follow(self.financial_year, self.assessment_year)
+        return self
+
 
 class TransitionFilingRequest(BaseModel):
     new_status: str = Field(..., description="draft|review|partner_review|ready_for_filing|filed")
@@ -123,10 +182,17 @@ class SnapshotRequest(BaseModel):
     client_id: str
     financial_year: FYLabel
     assessment_year: AYLabel
-    regime: str = Field(..., description="new|old")
+    regime: SnapshotRegime = Field(
+        ..., description="new|old for an individual/HUF (s.115BAC); "
+                         "normal|115BAA|115BAB for a company; firm|llp")
     income: dict = Field(default_factory=dict)
     computation_result: dict = Field(default_factory=dict)
     notes: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _years_are_a_pair(self):
+        _assessment_year_must_follow(self.financial_year, self.assessment_year)
+        return self
 
 
 class DisallowanceRequest(BaseModel):
@@ -247,9 +313,21 @@ def create_snapshot(
             entity_type="tax_computation_snapshot", entity_id=snap.get("id"),
         )
         return api_response(True, snap)
+    except HTTPException:
+        raise
     except Exception as e:
         _logger.exception("Failed to save snapshot")
-        raise HTTPException(500, detail=str(e))
+        # (firm, client, financial_year, version) is unique and the version is
+        # read-then-written, so two saves at the same moment collide. That is
+        # the one refusal with an obvious next step, so it gets its own words.
+        if _sqlstate(e) == "23505":
+            raise HTTPException(409, detail=(
+                f"Another computation snapshot for FY {req.financial_year} was "
+                f"saved at the same moment, so this one was not. Save again to "
+                f"record it as the next version."))
+        status, sentence = _database_refusal(
+            e, action="save the computation snapshot")
+        raise HTTPException(status, detail=sentence)
 
 
 @router.get("/snapshots")
@@ -344,8 +422,23 @@ def create_filing(
         # `validated_form` refuses an unknown form with a sentence naming the
         # seven. A 500 would hide it behind "something went wrong".
         raise HTTPException(400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        _logger.exception("Failed to create ITR filing")
+        # Migration 381's uq_itr_filings_one_original allows ONE original per
+        # (firm, client, financial_year, itr_form). It is the only unique key
+        # a create can hit — a revised or updated return is deliberately
+        # unconstrained — so a 23505 here always means "that original already
+        # exists", and the CA's next step is to open it or revise it. It used
+        # to reach them as a 500 carrying the index name.
+        if _sqlstate(e) == "23505":
+            form = str(req.itr_form or "").strip().upper() or "ITR"
+            raise HTTPException(409, detail=(
+                f"An original {form} for FY {req.financial_year} already exists "
+                f"for this client — open it, or create a revised return."))
+        status, sentence = _database_refusal(e, action="create the ITR filing")
+        raise HTTPException(status, detail=sentence)
 
 
 @router.get("/forms")

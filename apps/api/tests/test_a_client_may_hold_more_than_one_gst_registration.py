@@ -300,7 +300,7 @@ def test_a_registration_with_a_return_behind_it_cannot_be_WITHDRAWN():
                      "period": "062026"}],
         })
         with pytest.raises(HTTPException) as e:
-            svc.withdraw(db, "F1", "R1")
+            svc.withdraw(db, "F1", "R1", client_id="C1")
         assert e.value.status_code == 409
         assert form in str(e.value.detail)
         assert "cancelled or surrendered" in str(e.value.detail), (
@@ -309,7 +309,7 @@ def test_a_registration_with_a_return_behind_it_cannot_be_WITHDRAWN():
 
     # With no return under it, the registration is removable.
     db = _FakeDB(clients=[_client()], client_gst_registrations=[_row()])
-    svc.withdraw(db, "F1", "R1")
+    svc.withdraw(db, "F1", "R1", client_id="C1")
 
 
 def test_closing_is_not_deleting():
