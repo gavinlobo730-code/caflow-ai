@@ -847,7 +847,43 @@ export async function saveGSTR3BReturn(
   // revising the first.
   const gstinKey = (gstin || "").trim().toUpperCase();
 
-  const record = {
+  // Migration 390 (GST-20) narrowed the unique key from a plain
+  // `UNIQUE (client_id, period)` to an EXPRESSION index —
+  // `(client_id, period, COALESCE(gstin, ''))` — so a client with more than
+  // one GST registration can hold a return per registration for one month.
+  // `.upsert(..., { onConflict })` asks PostgREST to emit
+  // `ON CONFLICT (col, col, ...)` over the RAW column names it is given, and
+  // Postgres's conflict-target inference requires that clause to name an
+  // index verbatim; no index exists on the bare columns
+  // (client_id, period, gstin), only on the COALESCE expression. So
+  // `onConflict: "client_id,period,gstin"` 400s with 42P10 exactly as
+  // `onConflict: "client_id,period"` did — there is no column-list value that
+  // resolves against an expression index. This looks the existing return up
+  // itself — the same shape `routers/gst_workspace._existing_return` uses
+  // server-side — and then conflicts on the PRIMARY KEY, which is a real
+  // constraint on a raw column. `gstin` is always a real, non-empty
+  // registration string by the time this is called — the backend's
+  // from-books resolver refuses to answer otherwise — so matching on it
+  // directly agrees with COALESCE(gstin, '') for every row this path can
+  // produce (confirmed against production: zero `gstr3b_returns` rows
+  // currently hold a NULL gstin).
+  const { data: existing, error: findError } = await sb
+    .from("gstr3b_returns")
+    .select("id")
+    .eq("firm_id", firmId)
+    .eq("client_id", clientId)
+    .eq("period", period)
+    .eq("gstin", gstinKey)
+    .maybeSingle();
+  if (findError) throw new Error(`Failed to save GSTR-3B: ${findError.message}`);
+
+  // ONE write with the payload written out inline, not a named object passed
+  // to an insert-or-update pair: tests/test_frontend_columns_exist_pg.py can
+  // only check the columns of a literal payload against the schema, and a
+  // named one would take these ~30 columns out of that check while the
+  // browser went on writing every one of them.
+  const { error } = await sb.from("gstr3b_returns").upsert({
+    ...(existing ? { id: existing.id } : {}),
     firm_id: firmId,
     client_id: clientId,
     period,
@@ -893,40 +929,7 @@ export async function saveGSTR3BReturn(
     validation_errors: result.validation_warnings,
     status: "draft",
     updated_at: new Date().toISOString(),
-  };
-
-  // Migration 390 (GST-20) narrowed the unique key from a plain
-  // `UNIQUE (client_id, period)` to an EXPRESSION index —
-  // `(client_id, period, COALESCE(gstin, ''))` — so a client with more than
-  // one GST registration can hold a return per registration for one month.
-  // `.upsert(..., { onConflict })` asks PostgREST to emit
-  // `ON CONFLICT (col, col, ...)` over the RAW column names it is given, and
-  // Postgres's conflict-target inference requires that clause to name an
-  // index verbatim; no index exists on the bare columns
-  // (client_id, period, gstin), only on the COALESCE expression. So
-  // `onConflict: "client_id,period,gstin"` 400s with 42P10 exactly as
-  // `onConflict: "client_id,period"` did — there is no column-list value that
-  // resolves against an expression index. This looks the existing return up
-  // itself and revises it by id instead, the same shape
-  // `routers/gst_workspace._existing_return` uses server-side. `gstin` is
-  // always a real, non-empty registration string by the time this is called
-  // — the backend's from-books resolver refuses to answer otherwise — so
-  // matching on it directly agrees with COALESCE(gstin, '') for every row
-  // this path can produce (confirmed against production: zero
-  // `gstr3b_returns` rows currently hold a NULL gstin).
-  const { data: existing, error: findError } = await sb
-    .from("gstr3b_returns")
-    .select("id")
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .eq("period", period)
-    .eq("gstin", gstinKey)
-    .maybeSingle();
-  if (findError) throw new Error(`Failed to save GSTR-3B: ${findError.message}`);
-
-  const { error } = existing
-    ? await sb.from("gstr3b_returns").update(record).eq("id", existing.id)
-    : await sb.from("gstr3b_returns").insert(record);
+  }, { onConflict: "id" });
   if (error) throw new Error(`Failed to save GSTR-3B: ${error.message}`);
 }
 
@@ -1033,7 +1036,23 @@ export async function saveGSTR1Return(
   const readyToFile =
     result.validation_errors.length === 0 && result.payload_gaps.length === 0;
 
-  const record = {
+  // Same 42P10 cause and fix as saveGSTR3BReturn above — migration 390's
+  // unique index is the expression `(client_id, period, COALESCE(gstin, ''))`,
+  // which `.upsert({ onConflict })` cannot target by column list. Look the
+  // existing return up, then conflict on the primary key; the payload stays
+  // inline for the same schema-guard reason given there.
+  const { data: existing, error: findError } = await sb
+    .from("gstr1_returns")
+    .select("id")
+    .eq("firm_id", firmId)
+    .eq("client_id", clientId)
+    .eq("period", period)
+    .eq("gstin", gstinKey)
+    .maybeSingle();
+  if (findError) throw new Error(`Failed to save GSTR-1: ${findError.message}`);
+
+  const { error } = await sb.from("gstr1_returns").upsert({
+    ...(existing ? { id: existing.id } : {}),
     firm_id: firmId,
     client_id: clientId,
     period,
@@ -1049,27 +1068,7 @@ export async function saveGSTR1Return(
     status: readyToFile ? "validated" : "draft",
     validated_at: readyToFile ? new Date().toISOString() : null,
     updated_at: new Date().toISOString(),
-  };
-
-  // Same 42P10 cause and fix as saveGSTR3BReturn above — migration 390's
-  // unique index is the expression `(client_id, period, COALESCE(gstin, ''))`,
-  // which `.upsert({ onConflict })` cannot target (PostgREST emits a plain
-  // `ON CONFLICT (col, col, ...)` over raw columns, and no index exists on
-  // the bare (client_id, period, gstin) triple). Look the existing return up
-  // and revise it by id instead of upserting.
-  const { data: existing, error: findError } = await sb
-    .from("gstr1_returns")
-    .select("id")
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .eq("period", period)
-    .eq("gstin", gstinKey)
-    .maybeSingle();
-  if (findError) throw new Error(`Failed to save GSTR-1: ${findError.message}`);
-
-  const { error } = existing
-    ? await sb.from("gstr1_returns").update(record).eq("id", existing.id)
-    : await sb.from("gstr1_returns").insert(record);
+  }, { onConflict: "id" });
   if (error) throw new Error(`Failed to save GSTR-1: ${error.message}`);
 }
 
