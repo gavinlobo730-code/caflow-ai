@@ -82,6 +82,30 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
   useEffect(() => { void load(); }, [load]);
 
   async function saveDeclaration() {
+    // A BLANK box is null — "not recorded" — and never 0. paiseFromRupeeInput
+    // reads blank as 0 because that is right for a line amount, and here it was
+    // wrong three times: a blank §12 minimum wage was stored as ₹0, which the
+    // engine reads as a figure somebody recorded, so the register printed
+    // "minimum wage ₹0.00 a month" and the gap naming the fallback it had used
+    // never appeared; a blank surplus claimed a surplus of nil; and a cleared
+    // rate asked for 0%. Text that is not an amount is refused, not sent: the
+    // parser's null would otherwise read as blank and be silently dropped.
+    const blank = (s: string) => s.trim() === "";
+    const rateBps = blank(rate) ? null : bpsFromPercentInput(rate);
+    const surplusPaise = blank(surplus) ? null : paiseFromRupeeInput(surplus);
+    const minWagePaise = blank(minWage) ? null : paiseFromRupeeInput(minWage);
+    const unreadable = [
+      !blank(rate) && rateBps === null ? `rate "${rate}"` : null,
+      !blank(surplus) && surplusPaise === null ? `allocable surplus "${surplus}"` : null,
+      !blank(minWage) && minWagePaise === null ? `minimum wage "${minWage}"` : null,
+    ].filter((m): m is string => m !== null);
+    if (unreadable.length > 0) {
+      setError(`Not saved — ${unreadable.join(", ")} is not a plain number `
+        + "(digits and up to two decimals, without commas). Leave a box blank "
+        + "for not recorded.");
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
@@ -91,9 +115,9 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
         // What was typed, or nothing. The server applies the statutory
         // minimum for a null and confines anything else to the §10-§11 band;
         // a fallback here would be a second copy of 8.33%.
-        rate_bps: bpsFromPercentInput(rate),
-        allocable_surplus_paise: paiseFromRupeeInput(surplus),
-        minimum_wage_monthly_paise: paiseFromRupeeInput(minWage),
+        rate_bps: rateBps,
+        allocable_surplus_paise: surplusPaise,
+        minimum_wage_monthly_paise: minWagePaise,
         scheduled_employment: employment || null,
       });
       if (!res.success) {

@@ -228,6 +228,17 @@ export default function AttendancePage() {
   const [earnSaving, setEarnSaving] = useState(false);
   const [earnMsg, setEarnMsg] = useState("");
   const [earnLoading, setEarnLoading] = useState(false);
+  /** Why the month's earnings could not be read, or null. Its own state and
+   *  not `earnMsg`, because a failed READ has consequences a failed save does
+   *  not: `payrollOn[earnClient]` stays unknown (and must not be rendered as
+   *  "not switched on" — that is a decision a Partner makes, not something a
+   *  500 says), and Add/Save stay off, because the endpoint REPLACES per
+   *  employee, so saving over a month nobody could see would overwrite rows
+   *  that exist and were never shown. */
+  const [earnLoadError, setEarnLoadError] = useState<string | null>(null);
+  /** Why the leave-allocation upsert was refused, or null. A refused write
+   *  keeps the editor open with what was typed; closing it would look saved. */
+  const [leaveSaveError, setLeaveSaveError] = useState<string | null>(null);
 
   // ARRIVING FROM A CLIENT'S PAYROLL TAB (PAY-15). `?client=` and `?month=`
   // land the CA on the roster and the month the gap was reported for. Read off
@@ -375,9 +386,10 @@ export default function AttendancePage() {
   // ── One-time and variable earnings ──────────────────────────────────────
 
   const loadEarnings = useCallback(async () => {
-    if (!earnClient) { setEarnings([]); setEarnLocked(false); return; }
+    if (!earnClient) { setEarnings([]); setEarnLocked(false); setEarnLoadError(null); return; }
     const month = `${attYear}-${String(attMonth).padStart(2, "0")}`;
     setEarnLoading(true);
+    setEarnLoadError(null);
     try {
       const res = await api.payroll.getOneTimeEarnings(earnClient, month) as {
         data?: {
@@ -390,7 +402,14 @@ export default function AttendancePage() {
             divergence?: string | null;
           }>;
         };
+        success?: boolean; error?: string | null;
       };
+      // A 200 carrying no payload is a failed read too. Reading it on would
+      // turn the absent `payroll_enabled` into `false` below — exactly the
+      // "not switched on" this screen used to say about a request that failed.
+      if (res?.success === false || !res?.data) {
+        throw new Error(res?.error || "the server returned no earnings for this month");
+      }
       setEarnLocked(Boolean(res?.data?.locked));
       setPayrollOn(prev => ({ ...prev, [earnClient]: Boolean(res?.data?.payroll_enabled) }));
       setEarnings((res?.data?.rows ?? []).map(r => ({
@@ -407,8 +426,16 @@ export default function AttendancePage() {
         payment_interval_months: r.payment_interval_months,
         divergence: r.divergence ?? null,
       })));
-    } catch {
-      setEarnMsg("Could not load this month's earnings.");
+    } catch (e) {
+      // The previous month's rows must not stay on screen under this month's
+      // heading, and `payrollOn` is deliberately left as it was: unknown stays
+      // unknown (the banner is hidden), and an answer an earlier successful
+      // read gave is still the answer — enablement is per client, not per month.
+      setEarnings([]);
+      setEarnLocked(false);
+      // Trailing full stop dropped: the sentence around it supplies its own.
+      setEarnLoadError(e instanceof Error && e.message
+        ? e.message.replace(/[.\s]+$/, "") : "the request failed or timed out");
     } finally {
       setEarnLoading(false);
     }
@@ -663,17 +690,26 @@ export default function AttendancePage() {
       setEditingLeave(null);
       return;
     }
+    setLeaveSaveError(null);
     const sb = getSupabaseClient();
-    await sb.from("leave_balances").upsert({
+    const { error } = await sb.from("leave_balances").upsert({
       firm_id: firmId,
       employee_id: lb.employee_id,
       year: lb.year,
-      // A blank box is 0, not null: the CA opened the row and left this type
-      // out, which for a leave register means none of it.
-      casual_leave_balance: lb.casual_leave_balance ?? 0,
-      sick_leave_balance: lb.sick_leave_balance ?? 0,
-      earned_leave_balance: lb.earned_leave_balance ?? 0,
+      // A blank box is NULL — "not recorded" — and is stored as that
+      // (migration 428). Writing 0 for it asserted an entitlement of none
+      // that nobody gave, and omitting it let migration 027's DEFAULT put
+      // back the 12/12/15 PAY-24 took off this screen.
+      casual_leave_balance: lb.casual_leave_balance ?? null,
+      sick_leave_balance: lb.sick_leave_balance ?? null,
+      earned_leave_balance: lb.earned_leave_balance ?? null,
     }, { onConflict: "employee_id,year" });
+    if (error) {
+      // The editor stays open with what was typed. Closing it on a refused
+      // write is what made a failed save look like a saved one.
+      setLeaveSaveError(`Couldn't save the leave allocation: ${error.message}`);
+      return;
+    }
     setEditingLeave(null);
     loadLeaveBalances();
   }
@@ -950,6 +986,9 @@ export default function AttendancePage() {
                   balance into the next year — the figure is what the employment contract or
                   the firm’s policy says, entered once a year.
                 </p>
+                {leaveSaveError && (
+                  <p role="alert" className="text-xs text-state-problem font-medium mt-2">{leaveSaveError}</p>
+                )}
               </CardHeader>
               <CardContent className="p-0">
                 {leaveLoadFailed ? (
@@ -993,9 +1032,14 @@ export default function AttendancePage() {
                         // the days taken was the invention this replaced.
                         const rem = (allotted: number | null | undefined, used: number | undefined) =>
                           allotted == null ? null : allotted - (used ?? 0);
-                        const clRem = rem(form.casual_leave_balance ?? lb.casual_leave_balance, lb.casual_used);
-                        const slRem = rem(form.sick_leave_balance ?? lb.sick_leave_balance, lb.sick_used);
-                        const elRem = rem(form.earned_leave_balance ?? lb.earned_leave_balance, lb.earned_used);
+                        // `form` alone, with no fallback to the stored row: the
+                        // editor is seeded with all three on opening, so a null
+                        // there is a box the CA CLEARED, and falling back to the
+                        // stored figure showed the old allocation (in the box and
+                        // in "Rem.") for one about to be saved as not recorded.
+                        const clRem = rem(form.casual_leave_balance, lb.casual_used);
+                        const slRem = rem(form.sick_leave_balance, lb.sick_used);
+                        const elRem = rem(form.earned_leave_balance, lb.earned_used);
                         return (
                           <tr key={lb.employee_id} className="border-b hover:bg-ps-bg">
                             <td className="py-3 px-4 font-medium">{emp?.name ?? lb.employee_id}</td>
@@ -1004,7 +1048,7 @@ export default function AttendancePage() {
                               {isEditing ? (
                                 <input
                                   type="number" min={0}
-                                  value={editLeaveForm.casual_leave_balance ?? lb.casual_leave_balance ?? ""}
+                                  value={editLeaveForm.casual_leave_balance ?? ""}
                                   placeholder="not set"
                                   onChange={e => setEditLeaveForm(f => ({ ...f, casual_leave_balance: e.target.value === "" ? null : (parseInt(e.target.value) || 0) }))}
                                   className="w-14 border rounded px-2 py-1 text-center text-xs"
@@ -1024,7 +1068,7 @@ export default function AttendancePage() {
                               {isEditing ? (
                                 <input
                                   type="number" min={0}
-                                  value={editLeaveForm.sick_leave_balance ?? lb.sick_leave_balance ?? ""}
+                                  value={editLeaveForm.sick_leave_balance ?? ""}
                                   placeholder="not set"
                                   onChange={e => setEditLeaveForm(f => ({ ...f, sick_leave_balance: e.target.value === "" ? null : (parseInt(e.target.value) || 0) }))}
                                   className="w-14 border rounded px-2 py-1 text-center text-xs"
@@ -1044,7 +1088,7 @@ export default function AttendancePage() {
                               {isEditing ? (
                                 <input
                                   type="number" min={0}
-                                  value={editLeaveForm.earned_leave_balance ?? lb.earned_leave_balance ?? ""}
+                                  value={editLeaveForm.earned_leave_balance ?? ""}
                                   placeholder="not set"
                                   onChange={e => setEditLeaveForm(f => ({ ...f, earned_leave_balance: e.target.value === "" ? null : (parseInt(e.target.value) || 0) }))}
                                   className="w-14 border rounded px-2 py-1 text-center text-xs"
@@ -1065,7 +1109,7 @@ export default function AttendancePage() {
                                   <Button size="sm" onClick={() => saveLeaveBalance({ ...lb, ...editLeaveForm })} className="h-7 px-2">
                                     <Check size={13} />
                                   </Button>
-                                  <Button size="sm" variant="outline" onClick={() => setEditingLeave(null)} className="h-7 px-2">
+                                  <Button size="sm" variant="outline" onClick={() => { setEditingLeave(null); setLeaveSaveError(null); }} className="h-7 px-2">
                                     <X size={13} />
                                   </Button>
                                 </div>
@@ -1076,6 +1120,7 @@ export default function AttendancePage() {
                                   className="h-7 px-2"
                                   onClick={() => {
                                     setEditingLeave(lb.employee_id);
+                                    setLeaveSaveError(null);
                                     setEditLeaveForm({
                                       casual_leave_balance: lb.casual_leave_balance,
                                       sick_leave_balance: lb.sick_leave_balance,
@@ -1130,13 +1175,14 @@ export default function AttendancePage() {
                     </select>
                   </div>
                   <Button size="sm" variant="outline" onClick={addEarning}
-                          disabled={!earnClient || earnLocked || !payrollOn[earnClient]}
+                          disabled={!earnClient || earnLocked || !payrollOn[earnClient]
+                                    || earnLoadError !== null}
                           className="flex items-center gap-1.5">
                     <Plus size={14} />Add earning
                   </Button>
                   <Button size="sm" onClick={saveEarnings}
                           disabled={!earnClient || earnLocked || earnSaving
-                                    || !payrollOn[earnClient]}
+                                    || !payrollOn[earnClient] || earnLoadError !== null}
                           className="flex items-center gap-1.5">
                     <Save size={14} />{earnSaving ? "Saving…" : "Save"}
                   </Button>
@@ -1147,8 +1193,13 @@ export default function AttendancePage() {
                     client by a Partner, so a firm's cost is bounded by a
                     decision somebody made rather than by how many clients
                     happen to exist — and payroll stays off the screen for the
-                    clients that have none, which is most of them. */}
-                {earnClient && (
+                    clients that have none, which is most of them.
+
+                    Rendered only once the answer is KNOWN. `undefined` is "the
+                    read failed or has not come back", and rendering it through
+                    the falsy branch told a CA that payroll was switched off for
+                    a client whose month had merely failed to load. */}
+                {earnClient && payrollOn[earnClient] !== undefined && (
                   <div className={`mb-4 rounded-lg border px-3 py-2 text-sm flex
                                    items-start justify-between gap-3 ${
                     payrollOn[earnClient]
@@ -1192,6 +1243,18 @@ export default function AttendancePage() {
                   <p className="text-sm text-ps-label">Select a client to record earnings.</p>
                 ) : earnLoading ? (
                   <p className="text-sm text-ps-label">Loading…</p>
+                ) : earnLoadError !== null ? (
+                  // Before the empty state, whose sentence ("that is a real
+                  // answer") would otherwise be said about a month nobody read.
+                  <div className="text-sm">
+                    <p role="alert" className="text-state-problem font-medium mb-2">
+                      Couldn&apos;t load {MONTHS[attMonth - 1]} {attYear} for{" "}
+                      {clientNames[earnClient] ?? earnClient}: {earnLoadError}. Nothing
+                      is shown and Save is off until it loads — saving now would
+                      replace earnings that exist but could not be read.
+                    </p>
+                    <Button size="sm" variant="outline" onClick={() => loadEarnings()}>Retry</Button>
+                  </div>
                 ) : earnings.length === 0 ? (
                   <p className="text-sm text-ps-label">
                     Nothing recorded for this month. That is a real answer, not a blank —
