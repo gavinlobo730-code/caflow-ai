@@ -104,21 +104,54 @@ test("the dynamic-rule count stays under Cloudflare Pages' 100-dynamic-redirect 
   );
 });
 
-test("every rule the generator emits is a dynamic one", () => {
+test("the only rules with no placeholder are the named static-leaf shadow fixes", () => {
   // The cap above is on DYNAMIC rules; Cloudflare's separate static budget
-  // is 2,100 and nothing here approaches it. The two counts coincide today
-  // only because every route this generator touches passes through at least
-  // one [param] segment — which is the filter buildRedirectsFile applies.
-  // If that ever stops being true the guard above starts charging static
-  // rules against the dynamic cap, so the assumption is asserted rather
-  // than left in a comment.
+  // is 2,100 and nothing here approaches it. The two counts used to coincide
+  // because every route this generator touched passed through at least one
+  // [param] segment — until a route with NO dynamic segment of its own
+  // turned out to be structurally shadowed by a SIBLING dynamic segment's
+  // placeholder (":name" matches a literal folder name exactly as readily as
+  // a real id), the same "new" vs ":invoiceId" collision the xbrl test below
+  // protects, except this route was never in dynamicRoutes at all so nothing
+  // ever checked it. Confirmed live: Cloudflare Pages was silently serving
+  // /health/[client_id]'s own bundle for /health/critical/ (and its three
+  // siblings), /relationships/[entity_id]'s for all four of its static
+  // siblings, and /clients/[id]'s for /clients/documents — nine real pages,
+  // each fully built and completely unreachable in production. Each gets
+  // four PURELY LITERAL rules (staticLeafShadowRules) rather than a splat,
+  // because none of the nine has anything nesting under it, so none of the
+  // 36 counts against the 100-DYNAMIC cap (test 4 above stays at 98). This
+  // pins the exact set BY NAME so a tenth one doesn't silently join the list
+  // — or so a maliciously named future dynamic sibling can't quietly turn
+  // this into a growing category. Test 4 is what protects the shared budget
+  // if it ever does.
   const statics = rulesIn(buildRedirectsFile(APP_DIR)).filter((r) => !isDynamicRule(r.from));
-  assert.deepEqual(
-    statics,
-    [],
-    "the generator emitted a rule with no placeholder or splat — the budget " +
-      "test is now counting static rules against the 100-DYNAMIC cap"
-  );
+  const shadowedLeaves = [
+    "/clients/documents",
+    "/health/alerts",
+    "/health/at-risk",
+    "/health/critical",
+    "/health/overrides",
+    "/relationships/cross-client",
+    "/relationships/explorer",
+    "/relationships/intelligence",
+    "/relationships/ownership-map",
+  ];
+  assert.equal(statics.length, shadowedLeaves.length * 4,
+    "expected exactly 4 literal rules (bare / bare-RSC / slash / slash-RSC) per shadowed leaf");
+  for (const leaf of shadowedLeaves) {
+    for (const from of [leaf, `${leaf}.txt`, `${leaf}/`, `${leaf}/index.txt`]) {
+      assert.ok(statics.some((r) => r.from === from), `missing literal shadow rule for ${from}`);
+    }
+  }
+  // Every one of these must be checked BEFORE the shadowing dynamic sibling
+  // it protects against, or it would never win (first-match-wins).
+  const generated = buildRedirectsFile(APP_DIR);
+  const idx = (s: string) => generated.indexOf(s);
+  assert.ok(idx("/health/critical ") < idx("/health/:client_id "));
+  assert.ok(idx("/health/critical/") < idx("/health/:client_id/*"));
+  assert.ok(idx("/relationships/explorer ") < idx("/relationships/:entity_id "));
+  assert.ok(idx("/clients/documents ") < idx("/clients/:id "));
 });
 
 test("the budget is spent in the shape D10 says it is", () => {
@@ -126,8 +159,11 @@ test("the budget is spent in the shape D10 says it is", () => {
   // These three are what D10's argument rests on: shapes 1 and 4 stay one
   // rule per page because no splat can express their transform, and 41 of
   // the 43 sit under /clients/ — which is why the consequence binds on that
-  // subtree specifically rather than on the app in general.
-  const rules = rulesIn(buildRedirectsFile(APP_DIR));
+  // subtree specifically rather than on the app in general. Restricted to
+  // DYNAMIC rules (isDynamicRule) so the static shadow-leaf fixes above,
+  // which reuse the same bare/RSC shapes for an unrelated reason, don't
+  // inflate this count — they have their own pinned count in the test above.
+  const rules = rulesIn(buildRedirectsFile(APP_DIR)).filter((r) => isDynamicRule(r.from));
   const splats = rules.filter((r) => r.from.endsWith("/*"));
   const bare = rules.filter((r) => !r.from.endsWith("/*") && !r.from.endsWith(".txt"));
   const bareRsc = rules.filter((r) => !r.from.endsWith("/*") && r.from.endsWith(".txt"));
