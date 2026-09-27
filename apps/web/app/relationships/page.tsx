@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { errorMessage } from "@/lib/api";
 import { Plus, X } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { DataTable } from "@/components/ui/data-table";
@@ -25,6 +26,9 @@ async function apiFetch(path: string, opts?: RequestInit) {
       ...(opts?.headers ?? {}),
     },
   });
+  // A refusal carries FastAPI's {detail} with no `error` key, so reading only
+  // `.error` showed "Failed to create entity" for a 422 that had a reason.
+  if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
   return res.json();
 }
 import { Badge } from "@/components/ui/badge";
@@ -158,6 +162,8 @@ export default function RelationshipsPage() {
           full_name: form.full_name.trim(),
           entity_type: form.entity_type,
           pan: form.pan.trim().toUpperCase() || null,
+          // The form has always had a GSTIN box; the payload never sent it.
+          gstin: form.gstin.trim().toUpperCase() || null,
           email: form.email.trim() || null,
           phone: form.phone.trim() || null,
         }),

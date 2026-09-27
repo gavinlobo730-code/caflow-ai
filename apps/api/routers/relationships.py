@@ -117,15 +117,39 @@ def _entity_pan(v: Optional[str]) -> Optional[str]:
     return normalised
 
 
+def _entity_gstin(v: Optional[str]) -> Optional[str]:
+    """A GSTIN is a valid GSTIN or it is absent.
+
+    The column has existed since migration 059 and neither model declared it,
+    so Pydantic dropped whatever the form sent — a valid GSTIN and a malformed
+    one alike vanished with no error (relationships-hub-06). Validated through
+    the one authority, check digit included.
+    """
+    if v is None or not str(v).strip():
+        return None
+    from domain.gst.gstin import problem_with
+    normalised = str(v).strip().upper()
+    problem = problem_with(normalised)
+    if problem:
+        raise ValueError(problem)
+    return normalised
+
+
 class EntityIn(BaseModel):
     full_name: str
     entity_type: str  # Individual | Company | LLP | Partnership | Trust | HUF
     pan: Optional[str] = None
+    gstin: Optional[str] = None
 
     @field_validator("pan", mode="before")
     @classmethod
     def pan_is_a_pan(cls, v):
         return _entity_pan(v)
+
+    @field_validator("gstin", mode="before")
+    @classmethod
+    def gstin_is_a_gstin(cls, v):
+        return _entity_gstin(v)
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
@@ -137,11 +161,17 @@ class EntityUpdateIn(BaseModel):
     full_name: Optional[str] = None
     entity_type: Optional[str] = None
     pan: Optional[str] = None
+    gstin: Optional[str] = None
 
     @field_validator("pan", mode="before")
     @classmethod
     def pan_is_a_pan(cls, v):
         return _entity_pan(v)
+
+    @field_validator("gstin", mode="before")
+    @classmethod
+    def gstin_is_a_gstin(cls, v):
+        return _entity_gstin(v)
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
