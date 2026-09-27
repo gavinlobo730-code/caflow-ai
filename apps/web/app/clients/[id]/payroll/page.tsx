@@ -50,7 +50,16 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
       ...(options?.headers ?? {}),
     },
   });
-  return res.json();
+  const body = await res.json().catch(() => null);
+  // FastAPI's own HTTPException body is `{"detail": ...}` with no `success`
+  // key at all — every caller here decides on `res.success === false`, which
+  // is never true for that shape, so a refusal (finalize's 409 gaps payload
+  // included) fell through as if the request had succeeded. `!res.ok` is the
+  // one signal `res.json()` can't lose.
+  if (!res.ok && body && typeof body === "object" && !("success" in body)) {
+    return { ...body, success: false };
+  }
+  return body;
 }
 
 /** THE CLIENT MONTH, IN FOUR VERBS (docs/architecture/10-payroll.md).
