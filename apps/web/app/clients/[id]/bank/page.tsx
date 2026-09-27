@@ -20,6 +20,7 @@
  * Entries and Rules both read it.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -57,11 +58,17 @@ export default function BankPage() {
   // BANK TRANSACTION, so Entries is where they land. Read in an effect: static
   // export, so nothing may touch `window` during render.
   const [openDoc, setOpenDoc] = useState<string | null>(null);
+  // Reactive, not mount-only: a same-route drill-through (e.g. from the
+  // ledger) changes only the query string and does not remount this page, so
+  // reading window.location.search once on mount misses it — the tab stays
+  // wherever it was and the address bar disagrees with the screen.
+  // useSearchParams() re-renders this effect on every URL change, mount or not.
+  const tabDeepLinkParams = useSearchParams();
   useEffect(() => {
-    const { tab: t, doc } = openedAt(window.location.search);
+    const { tab: t, doc } = openedAt(tabDeepLinkParams.toString());
     if (t && TABS.some((x) => x.id === t)) setTab(t as BankTab);
     setOpenDoc(doc);
-  }, []);
+  }, [tabDeepLinkParams]);
 
   const loadAccounts = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;

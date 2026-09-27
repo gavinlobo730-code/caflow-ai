@@ -2,6 +2,7 @@
 
 import { bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Users, Plus, Play, CheckCircle,
   FileText, TrendingUp, IndianRupee, Download, Upload,
@@ -1845,14 +1846,21 @@ export default function PayrollPage() {
   // Register tab is where they land. Declared AFTER TABS so the validation
   // reads the screen's own list rather than a second copy of it; read in an
   // effect because this page is part of a static export.
+  // Reactive, not mount-only: a same-route drill-through (e.g. from the
+  // ledger) changes only the query string and does not remount this page, so
+  // reading window.location.search once on mount misses it — the tab stays
+  // wherever it was and the address bar disagrees with the screen.
+  // useSearchParams() re-renders this effect on every URL change, mount or
+  // not, and TABS is still not a dependency: rebuilt every render with the
+  // same content, it would otherwise re-run this and undo the reader's own
+  // tab click.
+  const tabDeepLinkParams = useSearchParams();
   useEffect(() => {
-    const { tab: t, doc } = openedAt(window.location.search);
+    const { tab: t, doc } = openedAt(tabDeepLinkParams.toString());
     if (t && TABS.some((x) => x.id === t)) setTab(t as Tab);
     setOpenDoc(doc);
-    // TABS is rebuilt every render and its CONTENT never changes; depending on
-    // it would re-run this on every render and undo the reader's own tab click.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tabDeepLinkParams]);
 
   return (
     <div className="flex flex-col h-full bg-ps-bg">

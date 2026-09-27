@@ -203,7 +203,7 @@ export default function OverviewPage() {
                            href={`/clients/${clientId}/health/`} />
             </div>
             <div className="space-y-1.5 mt-1">
-              {Object.entries(health.dimensions).map(([key, dim]) => (
+              {Object.entries(health.dimensions ?? {}).map(([key, dim]) => (
                 <ScoreRow key={key} label={DIMENSION_LABELS[key] ?? key} value={dim.score} />
               ))}
             </div>

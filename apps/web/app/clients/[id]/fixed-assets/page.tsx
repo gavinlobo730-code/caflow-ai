@@ -4,6 +4,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { changedFields, formFor, type CorrectionForm } from "@/lib/fixedAssets/correction";
 import { request } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
@@ -216,11 +217,17 @@ export default function FixedAssetsPage() {
   // ones) name a row on THIS screen, so the tab decides which list and the doc
   // rings the row. Read in an effect: static export, no `window` during render.
   const [openDoc, setOpenDoc] = useState<string | null>(null);
+  // Reactive, not mount-only: a same-route drill-through (e.g. from the
+  // ledger) changes only the query string and does not remount this page, so
+  // reading window.location.search once on mount misses it — the tab stays
+  // wherever it was and the address bar disagrees with the screen.
+  // useSearchParams() re-renders this effect on every URL change, mount or not.
+  const tabDeepLinkParams = useSearchParams();
   useEffect(() => {
-    const { tab: t, doc } = openedAt(window.location.search);
+    const { tab: t, doc } = openedAt(tabDeepLinkParams.toString());
     if (t && TABS.some((x) => x.id === t)) setTab(t as FATab);
     setOpenDoc(doc);
-  }, []);
+  }, [tabDeepLinkParams]);
 
   return (
     <div className="flex flex-col h-full bg-ps-bg">

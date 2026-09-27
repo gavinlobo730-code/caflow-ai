@@ -601,7 +601,7 @@ export default function AdvanceTaxPage() {
                     <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />
                     The due date is not settled on what is recorded for this client, so the
                     earlier of the two was used and the §234A interest above is a floor.
-                    {lateResult.itr_due_date.statutory_gaps.length > 0
+                    {(lateResult.itr_due_date.statutory_gaps ?? []).length > 0
                       && ` ${lateResult.itr_due_date.statutory_gaps.join(" ")}`}
                   </p>
                 )}
@@ -631,7 +631,7 @@ export default function AdvanceTaxPage() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <SaFigure label="Recorded challans"
-                      value={saPosition ? String(saPosition.challans.length) : "—"} />
+                      value={saPosition ? String((saPosition.challans ?? []).length) : "—"} />
             <SaFigure label="Total paid"
                       value={saPosition ? formatPaise(saPosition.total_paid_paise) : "—"} />
             <SaFigure label="§140A tax due"
@@ -731,7 +731,7 @@ export default function AdvanceTaxPage() {
 
           {saError && <p className="text-xs text-state-problem">{saError}</p>}
 
-          {saPosition && saPosition.challans.length > 0 && (
+          {saPosition && (saPosition.challans ?? []).length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
