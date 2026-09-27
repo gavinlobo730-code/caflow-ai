@@ -3913,9 +3913,20 @@ def assert_payroll_enabled(db, firm_id: str, client_id: str) -> None:
     # firm having made a decision it did not make. A CA told payroll is switched
     # off would go looking for a Partner to switch it on, and find it already on.
     try:
-        row = (db.table("client_payroll_settings").select("payroll_enabled")
-               .eq("firm_id", firm_id).eq("client_id", client_id)
-               .maybe_single().execute().data) or {}
+        # NOT `.maybe_single().execute().data` directly: on THIS deployed
+        # postgrest-py version, zero matching rows makes execute() itself
+        # return None (not a response object carrying data=None) — confirmed
+        # live, 'NoneType' object has no attribute 'data', for exactly the
+        # client that has never had a client_payroll_settings row (the
+        # ordinary state for a brand-new payroll client per this function's
+        # own comment above). Every other .maybe_single().execute().data call
+        # in this codebase shares the same assumption and the same exposure;
+        # this is the one confirmed live so it is the one fixed here — see the
+        # audit tracker for the rest.
+        resp = (db.table("client_payroll_settings").select("payroll_enabled")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .maybe_single().execute())
+        row = (resp.data if resp else None) or {}
     except Exception as exc:
         # document_failure_detail tells a caller-fault (a real DB refusal,
         # SQLSTATE-carrying) apart from an infrastructure fault apart from a
