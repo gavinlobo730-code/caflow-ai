@@ -3916,12 +3916,19 @@ def assert_payroll_enabled(db, firm_id: str, client_id: str) -> None:
         row = (db.table("client_payroll_settings").select("payroll_enabled")
                .eq("firm_id", firm_id).eq("client_id", client_id)
                .maybe_single().execute().data) or {}
-    except Exception:
+    except Exception as exc:
+        # document_failure_detail tells a caller-fault (a real DB refusal,
+        # SQLSTATE-carrying) apart from an infrastructure fault apart from a
+        # transient one — see core/exceptions.py. The bare "Try again" this
+        # replaced said the same thing for all three, so a genuine permission
+        # or schema fault here read exactly like a network blip and stayed
+        # unactionable through two rounds of live testing.
+        from core.exceptions import document_failure_detail
         _logger.exception("payroll enablement read failed for client=%s", client_id)
         raise HTTPException(
             status_code=503,
-            detail=("Could not check whether payroll is switched on for this "
-                    "client, so nothing was written. Try again."))
+            detail=document_failure_detail(
+                exc, action="check whether payroll is switched on for this client, so nothing was written"))
 
     if not row.get("payroll_enabled"):
         raise HTTPException(
