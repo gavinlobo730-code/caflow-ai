@@ -37,16 +37,27 @@ interface Obligation {
   period_label?: string; due_date: string; status: string;
   preparer_id?: string | null; reviewer_id?: string | null; approver_id?: string | null;
   risk_score?: number;
+  /** Resolved server-side by `GET /api/compliance/dashboard` — this is the
+   *  FIRM-WIDE queue, so a row without its client is a row nobody can act on.
+   *  Optional because a backend older than the field does not send it. */
+  client_name?: string | null;
 }
 // Mirrors the visible "Compliance queue" table columns (see the <td> cells below).
+// The file falls back to the client ID where the name is absent: a blank cell
+// in an exported file cannot be looked up, an ID can.
 const QUEUE_EXPORT_COLUMNS: { key: string; header: string; accessor: (row: Obligation) => unknown }[] = [
+  { key: "client",      header: "Client",      accessor: (o) => o.client_name ?? o.client_id },
   { key: "obligation",  header: "Obligation",  accessor: (o) => o.period_label ?? o.obligation_type ?? o.compliance_type },
   { key: "type",        header: "Type",        accessor: (o) => o.compliance_type },
   { key: "due_date",    header: "Due Date",    accessor: (o) => o.due_date },
   { key: "status",      header: "Status",      accessor: (o) => o.status },
   { key: "risk_score",  header: "Risk Score",  accessor: (o) => o.risk_score ?? "" },
 ];
-interface WorkloadRow { key: string; obligations: number; overdue: number }
+// `key` is the bucket's ID (a client or staff UUID, or "unassigned") and stays
+// the React key; `label` is the name the server resolved for it. A backend
+// older than `label` sends only the key, which is still rendered rather than
+// dropping the row.
+interface WorkloadRow { key: string; label?: string | null; obligations: number; overdue: number }
 interface Dashboard {
   summary: { total_obligations: number; open_obligations: number; due_this_week: number; due_this_month: number; overdue: number };
   by_staff: WorkloadRow[];
@@ -186,7 +197,8 @@ function ComplianceDashboard() {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-ps-hint border-b border-ps-border">
-                <th className="px-4 py-2.5 text-left font-semibold">Obligation</th>
+                <th className="px-4 py-2.5 text-left font-semibold">Client</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Obligation</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Type</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Due</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Status</th>
@@ -199,7 +211,10 @@ function ComplianceDashboard() {
                 const overdue = o.status !== "Filed" && o.status !== "Completed" && o.due_date < today;
                 return (
                   <tr key={o.id} className="hover:bg-ps-bg">
-                    <td className="px-4 py-2.5 font-medium text-ps-ink">{o.period_label ?? o.obligation_type ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-ps-body truncate max-w-[200px]" title={o.client_name ?? o.client_id}>
+                      {o.client_name ?? "—"}
+                    </td>
+                    <td className="px-3 py-2.5 font-medium text-ps-ink">{o.period_label ?? o.obligation_type ?? "—"}</td>
                     <td className="px-3 py-2.5 text-gray-500">{o.compliance_type}</td>
                     <td className={`px-3 py-2.5 whitespace-nowrap ${overdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
                       {overdue && <AlertTriangle size={11} className="inline mr-1 -mt-0.5" />}{o.due_date}
@@ -249,7 +264,12 @@ function WorkloadCard({ title, rows, emptyLabel }: { title: string; rows: Worklo
           <tbody className="divide-y divide-ps-border">
             {rows.slice(0, 8).map((r) => (
               <tr key={r.key} className="hover:bg-ps-bg">
-                <td className="px-4 py-2.5 text-ps-body font-mono truncate max-w-[260px]">{r.key}</td>
+                <td
+                  className={`px-4 py-2.5 text-ps-body truncate max-w-[260px] ${r.label ? "" : "font-mono"}`}
+                  title={r.label ? r.key : undefined}
+                >
+                  {r.label ?? r.key}
+                </td>
                 <td className="px-3 py-2.5 text-right text-gray-500">{r.obligations} open</td>
                 <td className="px-4 py-2.5 text-right">
                   {r.overdue > 0

@@ -4807,6 +4807,14 @@ export const api = {
   invoices: {
     downloadPdf: (id: string) => downloadFile(`/api/invoices/${id}/pdf`, `invoice-${id}.pdf`),
     runOverdueCheck: () => request("/api/invoices/run-overdue-check", { method: "POST" }),
+    /** A DRAFT fee invoice from one fixed-fee engagement. The server takes the
+     *  fee, the GST, the date (IST today) and the number off the firm's atomic
+     *  sequence (migration 124), and stamps `engagement_id` — the /billing
+     *  screen used to do all four in the browser over PostgREST. A refusal
+     *  arrives as a thrown Error carrying the server's sentence. */
+    fromEngagement: (engagementId: string) =>
+      request<ApiResp<{ invoice: Record<string, unknown> | null }>>(
+        `/api/invoices/from-engagement/${encodeURIComponent(engagementId)}`, { method: "POST" }),
   },
   timeEntries: {
     exportEntries: (params: { fmt: "csv" | "xlsx"; user_id?: string; client_id?: string; date_from?: string; date_to?: string }) => {

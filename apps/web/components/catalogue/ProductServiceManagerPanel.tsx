@@ -14,6 +14,7 @@
  * stops click propagation). Omit it for pure management.
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { Plus, Pencil, Archive, RotateCcw, Trash2, BookMarked, Upload, X } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api/index";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -60,6 +61,10 @@ export function ProductServiceManagerPanel({
   // all, so the button was never disabled and a second click sent it again.
   const [rowBusy, setRowBusy] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set after the first client render; the overlay is portalled to <body>
+  // only then (see the return below).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   function showToast(msg: string, kind: "success" | "error") {
     setToast({ msg, kind });
@@ -302,12 +307,14 @@ export function ProductServiceManagerPanel({
         </div>
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => { setOpeningBalanceDate(""); setImportStep("date"); }}
             className="flex items-center gap-1.5 text-sm border border-ps-border text-ps-label px-3.5 py-2 rounded-lg hover:bg-ps-bg whitespace-nowrap"
           >
             <Upload size={15} /> Import
           </button>
           <button
+            type="button"
             onClick={() => setEditing("new")}
             className="flex items-center gap-1.5 text-sm bg-emerald-600 text-white px-3.5 py-2 rounded-lg hover:bg-emerald-700 whitespace-nowrap"
           >
@@ -342,7 +349,7 @@ export function ProductServiceManagerPanel({
         persistKey="products-services"
         emptyTitle="No products or services yet"
         emptyAction={
-          <button onClick={() => setEditing("new")} className="mt-3 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+          <button type="button" onClick={() => setEditing("new")} className="mt-3 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
             Create the first one
           </button>
         }
@@ -374,17 +381,17 @@ export function ProductServiceManagerPanel({
         rowActions={(s) => (
           <div className="flex items-center justify-end gap-1">
             {onPick && (
-              <button onClick={(e) => { e.stopPropagation(); handlePick(s); }} className="px-2 py-1 text-2xs font-medium text-emerald-700 hover:bg-emerald-50 rounded" aria-label={`Select ${s.name}`}>
+              <button type="button" onClick={(e) => { e.stopPropagation(); handlePick(s); }} className="px-2 py-1 text-2xs font-medium text-emerald-700 hover:bg-emerald-50 rounded" aria-label={`Select ${s.name}`}>
                 Select
               </button>
             )}
-            <button onClick={() => setEditing(s)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
+            <button type="button" onClick={() => setEditing(s)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
             {s.is_active ? (
-              <button disabled={rowBusy} onClick={() => setActive(s, false)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-state-attention-hover rounded" aria-label="Archive"><Archive size={14} /></button>
+              <button type="button" disabled={rowBusy} onClick={() => setActive(s, false)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-state-attention-hover rounded" aria-label="Archive"><Archive size={14} /></button>
             ) : (
-              <button disabled={rowBusy} onClick={() => setActive(s, true)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
+              <button type="button" disabled={rowBusy} onClick={() => setActive(s, true)} className="p-1.5 text-ps-label hover:text-emerald-600 hover:bg-emerald-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
             )}
-            <button disabled={rowBusy} onClick={() => deleteItem(s)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-state-problem-hover rounded" aria-label="Delete"><Trash2 size={14} /></button>
+            <button type="button" disabled={rowBusy} onClick={() => deleteItem(s)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-state-problem-hover rounded" aria-label="Delete"><Trash2 size={14} /></button>
           </div>
         )}
       />
@@ -424,8 +431,8 @@ export function ProductServiceManagerPanel({
           </label>
           <p className="text-xs text-ps-hint">No opening stock in this file? Leave this blank and continue — it&apos;s ignored for rows with no opening quantity/value.</p>
           <div className="flex justify-end gap-2 pt-1">
-            <button onClick={() => setImportStep("closed")} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-            <button onClick={() => setImportStep("csv")} className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Continue</button>
+            <button type="button" onClick={() => setImportStep("closed")} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+            <button type="button" onClick={() => setImportStep("csv")} className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Continue</button>
           </div>
         </Modal>
       )}
@@ -445,13 +452,30 @@ export function ProductServiceManagerPanel({
   // Half-screen slide-over from the right, backdrop closes it — same
   // layering convention (fixed inset-0 backdrop + z-index) as every other
   // modal in the app (ProductServiceFormModal, CsvImportModal, …).
-  return (
+  //
+  // PORTALLED TO <body>, because a host may render this picker INSIDE its own
+  // <form> — /practice/billing does, around the new-schedule fields — and a
+  // button in a form's DOM subtree is that form's submit button unless it
+  // says otherwise. Enter in the create dialog's Name field then submitted
+  // the OUTER form, whose default button was this panel's Close: the panel
+  // vanished and nothing was saved, while clicking Create also submitted the
+  // host's schedule. `type="button"` on every button here is the second half;
+  // the portal is what covers the ones this file does not own (DataTable's
+  // toolbar, the CSV import modal). The nested Modal stays INSIDE this panel
+  // deliberately: portalled on its own at z-70 it would sit under this z-80
+  // overlay. React events still bubble through the React tree, so a host's
+  // onClick handlers see these clicks exactly as before — only native form
+  // submission stops. `mounted` keeps `document` out of the render path: the
+  // app is a static export and nothing may touch it before hydration.
+  if (!mounted) return null;
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex justify-end bg-brand-dark/50" onClick={onClose}>
       <div
         className="relative h-full w-full max-w-3xl overflow-y-auto bg-ps-bg p-6 pt-14 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
+          type="button"
           onClick={onClose}
           aria-label="Close"
           className="absolute right-4 top-4 rounded-lg p-1.5 text-ps-hint hover:bg-white hover:text-ps-body"
@@ -460,6 +484,7 @@ export function ProductServiceManagerPanel({
         </button>
         {body}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

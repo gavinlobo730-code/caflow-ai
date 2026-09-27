@@ -22,12 +22,15 @@ import type { Client } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
 // A payload field is not a list until something has checked.
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { isOwedFeeInvoice, type FeeInvoiceStatus } from "@/lib/constants/feeInvoiceStatus";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ServiceType = "GST Filing" | "ITR Filing" | "Accounting" | "Payroll" | "MCA" | "Audit" | "Advisory";
 type BillingCycle = "Monthly" | "Quarterly" | "Annual";
-type InvoiceStatus = "Draft" | "Issued" | "Paid" | "Overdue";
+// The whole of migration 123's CHECK, not the four this screen used to know —
+// "Sent" and "Cancelled" rows exist and were typed as something they are not.
+type InvoiceStatus = FeeInvoiceStatus;
 type PaymentMode = "NEFT" | "RTGS" | "Cheque" | "Cash" | "UPI";
 
 // `status` is migration 108's CHECK, verbatim. This said `"Active" | "Paused"`
@@ -90,21 +93,12 @@ const SERVICE_TYPES: ServiceType[] = ["GST Filing", "ITR Filing", "Accounting", 
 const BILLING_CYCLES: BillingCycle[] = ["Monthly", "Quarterly", "Annual"];
 const PAYMENT_MODES: PaymentMode[] = ["NEFT", "RTGS", "Cheque", "Cash", "UPI"];
 
-// GST rate on CA services — SAC 998211 — 18%
-const GST_RATE_BPS = 1800; // basis points (18%)
-
 /** Convert paise to ₹ string with 2 decimal places — integer arithmetic only */
 function fmtPaise(paise: number): string {
   const rupees = Math.floor(paise / 100);
   const paiseRemainder = paise % 100;
   const rupeesStr = rupees.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return "₹" + rupeesStr + "." + String(paiseRemainder).padStart(2, "0");
-}
-
-/** Integer paise arithmetic — GST at 18% (basis points calculation) */
-function calcGst(amountPaise: number): number {
-  // 18% = 1800 basis points. Multiply first then divide to stay integer.
-  return Math.round((amountPaise * GST_RATE_BPS) / 10000);
 }
 
 function fmtDate(date: string): string {
@@ -117,8 +111,10 @@ function fmtDate(date: string): string {
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   Draft: "bg-ps-muted text-ps-label",
   Issued: "bg-state-working-surface text-state-working",
+  Sent: "bg-state-working-surface text-state-working",
   Paid: "bg-state-ready-surface text-state-ready",
   Overdue: "bg-state-problem-surface text-state-problem",
+  Cancelled: "bg-state-done-surface text-state-done",
 };
 
 // ─── Modals ───────────────────────────────────────────────────────────────────
@@ -240,7 +236,10 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const unpaid = invoices.filter(i => i.status !== "Paid");
+  // Money is received against what is OWED — never a Draft nobody was sent, a
+  // Cancelled invoice, or one already Paid. Same set as Aged Debtors and the
+  // Outstanding tile, from the one module that decides it.
+  const unpaid = invoices.filter(i => isOwedFeeInvoice(i.status));
   const [invoiceId, setInvoiceId] = useState(unpaid[0]?.id ?? "");
   const [receiptDate, setReceiptDate] = useState(todayLocalISO());
   const [amountRs, setAmountRs] = useState("");
@@ -370,6 +369,9 @@ export default function BillingPage() {
   const [showEngModal, setShowEngModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [raisingInvoice, setRaisingInvoice] = useState(false);
+  // What the last Raise Invoice run did, when it did something. Refusals go
+  // to `error`, beside anything the reload itself reports.
+  const [notice, setNotice] = useState<string | null>(null);
   const [runningOverdueCheck, setRunningOverdueCheck] = useState(false);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
@@ -421,9 +423,12 @@ export default function BillingPage() {
       setInvoices(invs);
       setReceipts(recs);
 
-      // Build aged outstanding from unpaid invoices
+      // Build aged outstanding from OWED invoices. This kept `status !== "Paid"`,
+      // so a Draft — and a Cancelled invoice — aged as a debt and got a
+      // WhatsApp "Remind" link demanding fees nobody had billed, while the
+      // Outstanding tile counted "Issued" alone. Both ask the one set now.
       const today = todayLocalISO();
-      const unpaidInvs = invs.filter(i => i.status !== "Paid");
+      const unpaidInvs = invs.filter(i => isOwedFeeInvoice(i.status));
       const outMap = new Map<string, OutstandingRow>();
       for (const inv of unpaidInvs) {
         const days = daysBetweenLocalISO(inv.invoice_date, today) ?? 0;
@@ -480,43 +485,52 @@ export default function BillingPage() {
     }
   }
 
+  // THROUGH THE API, ONE ENGAGEMENT AT A TIME. This used to build the rows in
+  // the browser and INSERT them into fee_invoices over PostgREST: numbered from
+  // `count(*) + 1` (a collision with UNIQUE(firm_id, invoice_no) after any
+  // deletion, and two tabs racing each other), dated the 1st of the browser's
+  // month, with no engagement_id — so nothing afterwards could tell which
+  // engagement an invoice billed, let alone refuse a second one for the same
+  // period — and rbac() never ran. POST /api/invoices/from-engagement/{id}
+  // does all of it server-side, numbering off the firm's atomic sequence
+  // (migration 124). Sequential rather than Promise.all so the requests do not
+  // contend for that sequence, and so a refusal is attributable to its row.
+  //
+  // WHICH engagements are due this period (the billing cycle) and whether one
+  // was already invoiced are the SERVER's answer to give — a refusal comes
+  // back as a sentence and is shown as sent. This screen decides neither.
   async function handleRaiseInvoice() {
     setRaisingInvoice(true);
+    setError(null);
+    setNotice(null);
     try {
-      const firmId = await getFirmId();
-      const sb = getSupabaseClient();
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, "0");
-
-      const { count } = await sb.from("fee_invoices").select("*", { count: "exact", head: true }).eq("firm_id", firmId);
-      let seq = (count ?? 0) + 1;
-
       const activeEngs = engagements.filter(e => e.status === "Active");
-      if (activeEngs.length === 0) { setRaisingInvoice(false); return; }
-
-      const newInvoices = activeEngs.map(eng => {
-        // Integer arithmetic — GST 18% per SAC 998211
-        const gstPaise = calcGst(eng.fee_paise);
-        const totalPaise = eng.fee_paise + gstPaise;
-        const invoiceNo = `FEE-${year}-${String(seq++).padStart(3, "0")}`;
-        return {
-          firm_id: firmId,
-          client_id: eng.client_id,
-          invoice_no: invoiceNo,
-          invoice_date: `${year}-${month}-01`,
-          amount_paise: eng.fee_paise,
-          gst_paise: gstPaise,
-          total_paise: totalPaise,
-          status: "Draft",
-        };
-      });
-
-      const { error: err } = await sb.from("fee_invoices").insert(newInvoices);
-      if (err) throw new Error(err.message);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to raise invoices");
+      if (activeEngs.length === 0) {
+        setNotice("No Active engagement to invoice.");
+        return;
+      }
+      let raised = 0;
+      const refused: string[] = [];
+      for (const eng of activeEngs) {
+        const who = `${eng.client_name ?? "Unknown client"} — ${eng.service_type}`;
+        try {
+          const res = await api.invoices.fromEngagement(eng.id);
+          // A refusal can arrive as HTTP 200 with `success: false`; check the
+          // envelope, not the transport.
+          if (!res.success) throw new Error(res.error || "The server did not raise this invoice.");
+          raised++;
+        } catch (e) {
+          refused.push(`${who}: ${e instanceof Error ? e.message : "not raised"}`);
+        }
+      }
+      // Reload BEFORE reporting: load() clears `error` as it starts, which
+      // would wipe the refusals if they were set first.
+      if (raised > 0) await load();
+      if (raised > 0) setNotice(`${raised} draft invoice${raised === 1 ? "" : "s"} raised.`);
+      if (refused.length > 0) {
+        const refusal = `${refused.length} not raised — ${refused.join(" · ")}`;
+        setError(prev => (prev ? `${prev} ${refusal}` : refusal));
+      }
     } finally {
       setRaisingInvoice(false);
     }
@@ -546,8 +560,12 @@ export default function BillingPage() {
   }
 
   const _paidInvoices = invoices.filter(i => i.status === "Paid");
-  const _sentInvoices = invoices.filter(i => i.status === "Issued");
-  const _overdueInvoices = invoices.filter(i => i.status === "Overdue");
+  // Outstanding is every OWED invoice — the same set Aged Debtors totals, so
+  // the tile and the report cannot disagree. Overdue is shown beside it as the
+  // part of it that is late, and the pipeline's "Issued" row is the rest.
+  const _owedInvoices = invoices.filter(i => isOwedFeeInvoice(i.status));
+  const _overdueInvoices = _owedInvoices.filter(i => i.status === "Overdue");
+  const _sentInvoices = _owedInvoices.filter(i => i.status !== "Overdue");
   const _draftInvoices = invoices.filter(i => i.status === "Draft");
   const _activeEngs = engagements.filter(e => e.status === "Active");
   const _mPaise = _activeEngs.filter(e => e.billing_cycle === "Monthly").reduce((s, e) => s + e.fee_paise, 0);
@@ -555,7 +573,8 @@ export default function BillingPage() {
   const _aPaise = _activeEngs.filter(e => e.billing_cycle === "Annual").reduce((s, e) => s + e.fee_paise, 0);
   const dash = {
     totalRevenuePaise: _paidInvoices.reduce((s, i) => s + i.total_paise, 0),
-    outstandingPaise: _sentInvoices.reduce((s, i) => s + i.total_paise, 0),
+    outstandingPaise: _owedInvoices.reduce((s, i) => s + i.total_paise, 0),
+    issuedPaise: _sentInvoices.reduce((s, i) => s + i.total_paise, 0),
     overduePaise: _overdueInvoices.reduce((s, i) => s + i.total_paise, 0),
     draftPaise: _draftInvoices.reduce((s, i) => s + i.total_paise, 0),
     monthlyPaise: _mPaise,
@@ -563,6 +582,7 @@ export default function BillingPage() {
     annualPaise: _aPaise,
     annualisedPaise: _mPaise * 12 + _qPaise * 4 + _aPaise,
     paidCount: _paidInvoices.length,
+    owedCount: _owedInvoices.length,
     sentCount: _sentInvoices.length,
     overdueCount: _overdueInvoices.length,
     draftCount: _draftInvoices.length,
@@ -592,6 +612,9 @@ export default function BillingPage() {
       {error && (
         <div className="rounded-lg bg-state-attention-surface border border-state-attention-border px-4 py-3 text-sm text-amber-800">{error}</div>
       )}
+      {notice && (
+        <div className="rounded-lg bg-state-ready-surface border border-ps-border px-4 py-3 text-sm text-state-ready">{notice}</div>
+      )}
 
       <div className="flex gap-1 border-b border-ps-border overflow-x-auto">
         {TABS.map(t => (
@@ -616,7 +639,7 @@ export default function BillingPage() {
             <div className="bg-white border rounded-xl p-4">
               <p className="text-xs text-ps-label">Outstanding</p>
               <p className={`text-xl font-bold mt-1 ${dash.outstandingPaise > 0 ? "text-state-attention" : "text-ps-ink"}`}>{fmtPaise(dash.outstandingPaise)}</p>
-              <p className="text-2xs text-ps-hint mt-0.5">{dash.sentCount} issued invoices</p>
+              <p className="text-2xs text-ps-hint mt-0.5">{dash.owedCount} unpaid invoices, overdue included</p>
             </div>
             <div className={`bg-white border rounded-xl p-4 ${dash.overduePaise > 0 ? "border-state-problem-border" : ""}`}>
               <p className="text-xs text-ps-label">Overdue</p>
@@ -635,7 +658,7 @@ export default function BillingPage() {
               <div className="space-y-2">
                 {[
                   { label: "Draft", paise: dash.draftPaise, count: dash.draftCount, color: "bg-gray-300" },
-                  { label: "Issued", paise: dash.outstandingPaise, count: dash.sentCount, color: "bg-blue-400" },
+                  { label: "Issued", paise: dash.issuedPaise, count: dash.sentCount, color: "bg-blue-400" },
                   { label: "Overdue", paise: dash.overduePaise, count: dash.overdueCount, color: "bg-red-400" },
                   { label: "Paid", paise: dash.totalRevenuePaise, count: dash.paidCount, color: "bg-green-500" },
                 ].map(row => (

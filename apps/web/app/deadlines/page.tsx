@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
 import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
+import { isOverdue } from "@/lib/compliance/overdue";
 import { getComplianceCalendar, markFiled as markObligationFiled } from "@/lib/data/compliance";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { getClients } from "@/lib/data/clients";
@@ -76,7 +77,11 @@ const FILING_STATUS_COLORS: Record<string, string> = {
 // them — three authorities owed money every month, on two different dates,
 // nowhere on this screen.
 const ALL_TYPES = ["GSTR1", "GSTR3B", "GSTR9", "ITR", "TDS24Q", "TDS26Q", "TDS27Q", "ADVANCE_TAX", "MCA_AOC4", "MCA_MGT7", "EPF_DEPOSIT", "ESI_DEPOSIT", "TDS_SALARY_DEPOSIT"];
-const ALL_STATUSES = ["pending", "in_progress", "filed", "overdue", "na"];
+// "overdue" is deliberately NOT a Status option: the stored status is a
+// workflow state nothing sets when a date passes, so filtering on it listed
+// nothing while the Overdue tile read 14. Overdue is its own filter below,
+// asking the same predicate the tile counts with (lib/compliance/overdue).
+const ALL_STATUSES = ["pending", "in_progress", "filed", "na"];
 
 function LoadingSpinner() {
   return (
@@ -184,12 +189,10 @@ function DeadlinesContent() {
     [clients],
   );
 
+  // ONE "today" for the tile, the Overdue filter and the Due Date colour, so a
+  // row cannot be late in one of them and on time in another across midnight.
   const today = todayLocalISO();
   const in7Days = toLocalISO(new Date(Date.now() + 7 * 86400000));
-  // Deliberately separate from `today` above (left as-is — it feeds the Overdue /
-  // Due This Week KPI counts, a business classification out of Phase 4's cosmetic
-  // scope): this is only for the Due Date cell's text color below.
-  const todayForDueDateColor = todayLocalISO();
 
   // Apply URL type filter first (drives the stats cards AND the table dataset)
   const typeRecords = useMemo(
@@ -197,7 +200,7 @@ function DeadlinesContent() {
     [records, urlType],
   );
 
-  const overdue     = typeRecords.filter(r => r.due_date < today && r.filing_status !== "filed" && r.filing_status !== "na").length;
+  const overdue     = typeRecords.filter(r => isOverdue(r, today)).length;
   const dueThisWeek = typeRecords.filter(r => r.due_date >= today && r.due_date <= in7Days && r.filing_status !== "filed").length;
   const inProgress  = typeRecords.filter(r => r.filing_status === "in_progress").length;
   const filed       = typeRecords.filter(r => r.filing_status === "filed").length;
@@ -269,7 +272,7 @@ function DeadlinesContent() {
     {
       key: "due_date", header: "Due Date", sortable: true, accessor: (r) => r.due_date,
       render: (r) => (
-        <span className={`text-xs whitespace-nowrap ${r.due_date < todayForDueDateColor && r.filing_status !== "filed" ? "text-red-600 font-medium" : "text-ps-label"}`}>
+        <span className={`text-xs whitespace-nowrap ${isOverdue(r, today) ? "text-red-600 font-medium" : "text-ps-label"}`}>
           {formatDate(r.due_date)}
         </span>
       ),
@@ -291,7 +294,7 @@ function DeadlinesContent() {
         <span className="text-xs text-ps-label font-mono">{r.arn_number ?? "—"}</span>
       ),
     },
-  ], [clientMap, clientGstinMap, todayForDueDateColor]);
+  ], [clientMap, clientGstinMap, today]);
 
   // ── DataTable filters — status always; type only when URL doesn't set it ────
   // (Matching the original: the Type dropdown is hidden — and not applied — when
@@ -300,6 +303,15 @@ function DeadlinesContent() {
     const defs: FilterDef<ComplianceEntry>[] = [
       { key: "filing_status", label: "Status", type: "select", accessor: (r) => r.filing_status,
         options: ALL_STATUSES.map(s => ({ value: s, label: s })) },
+      // A second fact about the row, not a status — see ALL_STATUSES above.
+      // Same predicate and same `today` as the Overdue tile, so picking
+      // "Overdue" lists exactly the rows the tile counts.
+      { key: "overdue", label: "Overdue", type: "select",
+        accessor: (r) => (isOverdue(r, today) ? "overdue" : "not_overdue"),
+        options: [
+          { value: "overdue", label: "Overdue" },
+          { value: "not_overdue", label: "Not overdue" },
+        ] },
       { key: "due_date", label: "Due Date", type: "dateRange", accessor: (r) => r.due_date },
     ];
     if (!urlType) {
@@ -309,7 +321,7 @@ function DeadlinesContent() {
       });
     }
     return defs;
-  }, [urlType]);
+  }, [urlType, today]);
 
   // ── DataTable bulk actions — mark filed (skips rows already filed/na) + export ─
   const bulkActions: BulkAction<ComplianceEntry>[] = useMemo(() => [
