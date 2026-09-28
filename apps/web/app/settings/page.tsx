@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Building2, AlertTriangle, Calendar, LogOut, ShieldCheck, ChevronLeft, User, Palette, Hash, FileText, Mail, Globe2, Scale, Coins } from "lucide-react";
+import { Building2, Calendar, ShieldCheck, ChevronLeft, User, Palette, Hash, FileText, Mail, Globe2, Scale, Coins } from "lucide-react";
 import { FormSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { useRouter } from "next/navigation";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type FirmProfile } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
@@ -206,8 +205,7 @@ function Field({
 
 // ─── Main page ──────────────────────────────────────────────────────────────
 export default function SettingsPage() {
-  const { user, signOut, fullName, refreshUserContext } = useAuth();
-  const router = useRouter();
+  const { user, fullName, refreshUserContext } = useAuth();
   const supabase = getSupabaseClient();
 
   const [personalName, setPersonalName] = useState(fullName ?? "");
@@ -397,12 +395,6 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  }
-
-  // ─── Sign out handler ────────────────────────────────────────────────────
-  async function handleSignOut() {
-    await signOut();
-    router.push("/login");
   }
 
   return (
@@ -677,7 +669,7 @@ export default function SettingsPage() {
                 href="/settings/branding"
                 className="px-4 py-1.5 border border-violet-200 text-violet-700 text-sm font-medium rounded-lg hover:bg-violet-50 transition-colors whitespace-nowrap"
               >
-                Customize →
+                Manage →
               </Link>
             </div>
 
@@ -693,7 +685,7 @@ export default function SettingsPage() {
                 href="/settings/invoice-settings"
                 className="px-4 py-1.5 border border-blue-200 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
               >
-                Configure →
+                Manage →
               </Link>
             </div>
 
@@ -789,35 +781,12 @@ export default function SettingsPage() {
                 href="/settings/email-templates"
                 className="px-4 py-1.5 border border-teal-200 text-teal-700 text-sm font-medium rounded-lg hover:bg-teal-50 transition-colors whitespace-nowrap"
               >
-                Edit →
+                Manage →
               </Link>
             </div>
           </div>
         </div>
       </RoleGuard>
-
-      {/* ── Danger Zone ──────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-red-100 overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-red-50">
-          <AlertTriangle size={15} className="text-state-problem" />
-          <h2 className="text-sm font-semibold text-state-problem">Danger Zone</h2>
-        </div>
-        <div className="px-5 py-4 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-ps-ink">Sign Out</p>
-            <p className="text-xs text-ps-hint mt-0.5">
-              You will be redirected to the login page.
-            </p>
-          </div>
-          <button
-            onClick={handleSignOut}
-            className="flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors"
-          >
-            <LogOut size={14} />
-            Sign Out
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

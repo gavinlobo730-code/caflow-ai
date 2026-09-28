@@ -775,7 +775,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
         </p>
       )}
 
-      {loading ? <TableSkeleton cols={5} bare /> : (
+      {loading && returns.length === 0 ? <TableSkeleton cols={5} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-ps-bg text-left">
@@ -1368,7 +1368,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading ? <TableSkeleton cols={6} bare /> : (
+      {loading && returns.length === 0 ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-ps-bg text-left">
