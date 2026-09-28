@@ -91,6 +91,20 @@ LAYOUT_NEVER_CHANGES_PARTICULARS = (
 )
 
 
+#: What happens when NO template is marked default — the state a firm is in
+#: before it opens the screen, and the state it returns to when it deletes or
+#: un-marks its default (sweep-settings-hub-1-06). `get_default_invoice_template`
+#: answers None and `layout_from_row(None)` is `DEFAULT_LAYOUT`, so this is a
+#: supported state and not a gap: the screen used to hide Delete on the default
+#: card and offer no way to un-mark it, which left a firm with one template
+#: permanently bound to it, as if "no default" could not exist.
+NO_DEFAULT_TEMPLATE_NOTE = (
+    "No template is marked default, so your invoices use the built-in layout: "
+    "Classic, logo on the left, standard header and footer, signature on the "
+    "right."
+)
+
+
 @dataclass(frozen=True)
 class InvoiceLayout:
     """One firm's chosen layout, normalised.

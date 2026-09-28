@@ -63,8 +63,15 @@ def reset_mock_stores() -> None:  # test helper
 
 
 def _db():
-    from core.database import get_db
-    return get_db()
+    # SERVICE ROLE, as in portal_access_service. There is no `core.database`
+    # module, so the import this replaced raised on every production call and
+    # no employee could ever be invited, activated or revoked. Service role is
+    # also what acceptance NEEDS: the accepting employee has no `users` row, so
+    # the RLS-enforced client would see nothing. Every staff path through here
+    # has already run rbac() and assert_client_access, and acceptance is scoped
+    # by the sha256 of a single-use token.
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
 
 
 def _now() -> str:

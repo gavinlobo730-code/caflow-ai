@@ -35,8 +35,6 @@ const ALLOWED: Record<string, string> = {
     "a page load.",
   "app/clients/[id]/documents/page.tsx":
     "Same storage-then-row delete as app/client-portal/page.tsx.",
-  "app/clients/documents/page.tsx":
-    "Same storage-then-row delete as app/client-portal/page.tsx.",
 };
 
 // ─── the analysis itself ────────────────────────────────────────────────────

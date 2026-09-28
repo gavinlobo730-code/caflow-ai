@@ -196,8 +196,32 @@ _FROM = re.compile(r'\.from\("([a-z_0-9]+)"\)')
 API_NAMESPACE_TABLES: dict[str, set[str]] = {
     # G2 — routers/engagements.py, which writes fee_engagements.
     "engagements": {"fee_engagements"},
+    # routers/year_end_checklist.py reads and writes year_end_checklist_items
+    # (migration 252's CHECK: pending | in_progress | complete |
+    # not_applicable). The year-end dashboard counted `complete` items off a
+    # browser read of `year_end_checklists` — an older table production does
+    # not have — and on 27-09-2026 moved to `yearEndApi.checklist.list`, which
+    # also seeds the standard items. Without this entry the guard kept
+    # measuring the dashboard against the tables it still reads in the browser
+    # and reported `complete`, a correct value, as one no table allows.
+    "yearEndApi.checklist": {"year_end_checklist_items"},
 }
-_API_NS = re.compile(r'\bapi\.([a-zA-Z][a-zA-Z0-9]*)\.')
+#: `api.<ns>.` is the shared client; a module that exports its own
+#: `<name>Api` object (lib/api/yearEnd.ts's `yearEndApi`) is keyed
+#: `<name>Api.<ns>` so its namespaces cannot collide with the shared one's.
+_API_NS_RAW = re.compile(r'\b(api|[a-z][a-zA-Z0-9]*Api)\.([a-zA-Z][a-zA-Z0-9]*)\.')
+
+
+class _Namespaces:
+    """`findall` over both client shapes, returning the map's own keys."""
+
+    @staticmethod
+    def findall(src: str) -> list[str]:
+        return [ns if obj == "api" else f"{obj}.{ns}"
+                for obj, ns in _API_NS_RAW.findall(src)]
+
+
+_API_NS = _Namespaces()
 _COMPARE = re.compile(r'\.status\s*(?:===|!==)\s*"([^"]+)"')
 #: `status: "submitted"` in an OBJECT LITERAL — a value the browser sends.
 #:

@@ -99,13 +99,23 @@ export const SCREENS: Screen[] = [
   firm("/accounting/loans", "Loans", "Accounting", ["borrowings", "related party loans"]),
   firm("/accounting/lock-year", "Lock financial year", "Accounting", ["close year", "freeze", "year end lock"]),
   firm("/accounting/msme-tracker", "MSME payments", "Accounting", ["43b(h)", "43bh", "micro small", "msmed", "section 43b"]),
-  firm("/accounting/receivables", "Receivables", "Accounting", ["debtors", "ar", "outstanding", "ageing"]),
-  // The four firm-level WORKLISTS (D22, G3) — which clients need work in a
-  // module whose register lives only in the client workspace. Named with the
-  // words a CA would type for the QUESTION, not for the module: somebody
-  // looking for "which clients" is not looking for the register.
+  // The PRACTICE's own fee receivables — what clients owe the CA firm, read
+  // off `fee_invoices`. NOT "Receivables" with "debtors" and "ar" beside it:
+  // that name sent the Sales hub tile here for a client's CUSTOMER
+  // receivables, and a client owed ₹19.9 crore showed ₹0 (accounting-hub-2-05).
+  // A CA typing "debtors" wants the Sales worklist below.
+  firm("/accounting/receivables", "Fee receivables (practice)", "Accounting",
+    ["unpaid fees", "fee invoices", "practice billing", "owed to the firm", "fee ageing"]),
+  // The firm-level WORKLISTS (D22, G3) — which clients need work in a module
+  // whose register lives only in the client workspace. Named with the words a
+  // CA would type for the QUESTION, not for the module: somebody looking for
+  // "which clients" is not looking for the register.
   firm("/accounting/banking", "Banking worklist", "Accounting",
     ["bank lines", "unpassed", "which clients", "reconcile", "statement queue"]),
+  // `/accounting/invoices` was the Sales TOMBSTONE and is the Sales worklist
+  // now (migration 432) — what each client's customers still owe it.
+  firm("/accounting/invoices", "Sales worklist", "Accounting",
+    ["debtors", "ar", "receivables", "owed by customers", "which clients"]),
   firm("/accounting/purchases", "Purchases worklist", "Accounting",
     ["creditors", "ap", "overdue to suppliers", "which clients", "payables"]),
   firm("/accounting/fixed-assets", "Fixed assets worklist", "Accounting",
@@ -269,11 +279,12 @@ export const ALL_SCREENS: Screen[] = [...SCREENS, ...CLIENT_SUBSCREENS];
  * A route in neither list fails the guard, so silence is never the reason.
  */
 export const UNLISTED: Record<string, string> = {
-  // `/accounting/fixed-assets` LEFT THIS LIST ON 24-09 (D22). It was the
-  // tombstone this entry describes; it is the fixed-asset WORKLIST now and is
-  // named above. `/accounting/invoices` is still one.
-  "/accounting/invoices":
-    "a MovedToClientWorkspace TOMBSTONE, the Sales half of the pair. Naming\n     it would let a CA type \"invoices\" and land on a page whose whole content\n     is \"this moved\" — worse than a dead link, because the name says it\n     works. Its worklist question is already answered by\n     /accounting/receivables, which is the Sales tile's own firm href, so it\n     did not get a worklist of its own; see D22 and question G3",
+  // `/accounting/fixed-assets` LEFT THIS LIST ON 24-09 (D22) and
+  // `/accounting/invoices` on 27-09 (migration 432). Both were
+  // `MovedToClientWorkspace` tombstones and both are WORKLISTS now, named
+  // above. The reason this list gave for leaving `/accounting/invoices`
+  // without one — that `/accounting/receivables` already answered the Sales
+  // tile — was false: that screen is the practice's own FEE receivables.
   "/login": "signed-out — a palette is for somebody already inside the product",
   "/login/forgot-password": "signed-out",
   "/signup": "signed-out",

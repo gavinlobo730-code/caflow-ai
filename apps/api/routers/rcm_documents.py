@@ -8,6 +8,7 @@ module's answers, and this router serves them.
 # CA REVIEW REQUIRED — the preview is confirmed before a document is issued.
 # Nothing here transmits anything to any portal.
 """
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -50,8 +51,7 @@ class IssueRcmDocumentIn(BaseModel):
 
 
 def _mock_enabled() -> bool:
-    from core.config import settings as _s
-    return bool(getattr(_s, "USE_MOCK_DATA", False))
+    return not os.environ.get("SUPABASE_URL")
 
 
 @router.get("/kinds")

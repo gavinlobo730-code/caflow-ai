@@ -1,7 +1,7 @@
 "use client";
 
 import { bpsFromPercentInput } from "@/lib/money/rupeeInput";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Users, Plus, Play, CheckCircle,
@@ -32,7 +32,7 @@ import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
-import { objectOrNull, objectWithLists } from "@/lib/api/shape";
+import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -60,6 +60,28 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
     return { ...body, success: false };
   }
   return body;
+}
+
+/** The server's own sentence out of a refusal apiFetch handed back.
+ *
+ *  apiFetch turns FastAPI's `{"detail": …}` into `{detail, success: false}`
+ *  with NO `error` key, so a caller reading only `res.error` always fell to
+ *  its generic fallback — and the two refusals a CA can act on come in two
+ *  shapes: a string (403 "Payroll is not switched on…", 409 a duplicate run,
+ *  503 a failed read) and Pydantic's 422 array of `{msg}`. Formatting only;
+ *  lib/api's errorMessage does the same for a raw Response, which this
+ *  page no longer has by the time it reads the body. */
+function refusalText(res: unknown): string | null {
+  const r = (res && typeof res === "object") ? res as { detail?: unknown; error?: unknown } : {};
+  if (typeof r.detail === "string" && r.detail.trim()) return r.detail.trim();
+  if (Array.isArray(r.detail)) {
+    const msgs = r.detail
+      .map((d) => (d && typeof d === "object" ? (d as { msg?: unknown }).msg : null))
+      .filter((m): m is string => typeof m === "string" && m.trim() !== "");
+    if (msgs.length) return msgs.join(" · ");
+  }
+  if (typeof r.error === "string" && r.error.trim()) return r.error.trim();
+  return null;
 }
 
 /** THE CLIENT MONTH, IN FOUR VERBS (docs/architecture/10-payroll.md).
@@ -253,7 +275,7 @@ function DashboardTab({ clientId }: { clientId: string }) {
       <div className="bg-white rounded-xl border border-ps-border p-4">
         <p className="text-2xs font-semibold uppercase tracking-widest text-ps-hint mb-3">Payroll History</p>
         {runs.length === 0 ? (
-          <p className="text-sm text-ps-hint">No payroll runs yet. Create your first run from the Payroll Runs tab.</p>
+          <p className="text-sm text-ps-hint">No payroll runs yet. Create your first run from the Register tab.</p>
         ) : (
           <div className="space-y-2">
             {runs.slice(0, 6).map(r => (
@@ -569,7 +591,7 @@ function RunsTab({ clientId, firmId, openDoc }:
     // rejection produced silent no-op with zero explanation of why nothing
     // happened.
     if (!res || res.success === false) {
-      setCreateError(res?.error ?? "Could not create the payroll run — the request failed.");
+      setCreateError(refusalText(res) ?? "Could not create the payroll run — the request failed.");
       return;
     }
     // The run has ALWAYS come back with statutory_gaps and this page has always
@@ -1824,6 +1846,138 @@ function Field({ label, value, onChange, placeholder, type = "text" }: { label: 
   );
 }
 
+// ─── Payroll switch (migration 332) ──────────────────────────────────────────
+
+/** Whether this firm runs payroll for this client, and — for whoever may
+ *  change that — the one control that does.
+ *
+ *  THIS IS WHERE THE SWITCH HAS TO LIVE. The only other one is on the firm
+ *  rail's One-time Earnings tab, whose client picker lists clients that
+ *  already have an EMPLOYEE — and POST /employees refuses until payroll is
+ *  switched on. So a client with no employees could never be switched on from
+ *  any screen: a deadlock, not an inconvenience. This page opens for every
+ *  client, which is why the backend's "not switched on" refusal and the firm
+ *  hub both point here.
+ *
+ *  THE STATE IS THE SERVER'S, from GET /client-states, and a client that
+ *  endpoint does not list is OFF — the same rule assert_payroll_enabled
+ *  applies ("no row means not enabled"). A read that FAILED is a third state
+ *  and says so: reporting it as "off" would send a CA looking for a Partner
+ *  to switch on something that may already be on.
+ *
+ *  WHO SEES THE BUTTON is `can("payroll", "enable")` — the caller's resolved
+ *  permission, per person since migration 403, and exactly what rbac() will
+ *  decide on the PUT (Partner-only by role). A role check would offer the
+ *  button to a Partner whose access has been narrowed and hide it from anyone
+ *  granted it. Everyone else is told who can. A refusal is still reported as
+ *  itself, never as "payroll is off". */
+function PayrollEnablementLine({ clientId }: { clientId: string }) {
+  const { can, resolved } = usePermissions();
+  const mayEnable = can("payroll", "enable");
+  /** null while unknown — not yet read, or the read failed. */
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [enableSaving, setEnableSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  // A client switch in the workspace changes clientId without remounting, so
+  // an answer that arrives for the previous client must not land on this one.
+  const asked = useRef(clientId);
+
+  const load = useCallback(async () => {
+    if (!clientId) return;
+    asked.current = clientId;
+    setEnabled(null);
+    setReadError(null);
+    setMsg(null);
+    try {
+      const res = await api.payroll.payrollClientStates() as {
+        success?: boolean; error?: string | null; data?: unknown;
+      };
+      if (asked.current !== clientId) return;
+      if (res?.success === false) throw new Error(res.error || "the server refused the read");
+      const payload = objectOrNull<{ clients?: unknown }>(res?.data);
+      // A payload with no client LIST is a failed read, not an empty one: an
+      // empty list would make every client "off", which is the false answer
+      // this line exists to stop giving.
+      if (!payload || !Array.isArray(payload.clients)) {
+        throw new Error("the answer carried no client list");
+      }
+      const row = arrayOrEmpty<{ client_id?: string; payroll_enabled?: boolean }>(payload.clients)
+        .find((c) => c?.client_id === clientId);
+      setEnabled(Boolean(row?.payroll_enabled));
+    } catch (e) {
+      if (asked.current !== clientId) return;
+      // Trailing full stop dropped: the sentence around it supplies its own.
+      setReadError(e instanceof Error && e.message
+        ? e.message.replace(/[.\s]+$/, "") : "the request failed or timed out");
+    }
+  }, [clientId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function switchOn() {
+    setEnableSaving(true);
+    setMsg(null);
+    try {
+      const res = await api.payroll.setPayrollEnabled({ client_id: clientId, enabled: true }) as {
+        success?: boolean; error?: string | null; detail?: string;
+      };
+      if (res?.success === false) {
+        setMsg(res.error || res.detail || "Only a Partner can switch payroll on for a client.");
+        return;
+      }
+      setEnabled(true);
+      setMsg("Payroll switched on for this client.");
+    } catch (e) {
+      // lib/api throws with the server's own sentence, so a 403 from rbac()
+      // reads as the permission refusal it is — not as "payroll is off",
+      // which would send the CA in a circle.
+      setMsg(e instanceof Error ? e.message : "Could not switch payroll on for this client.");
+    } finally {
+      // In a finally so a thrown request cannot leave the button disabled —
+      // scripts/loading-flags.test.ts checks exactly this.
+      setEnableSaving(false);
+    }
+  }
+
+  if (!clientId) return null;
+
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      {readError !== null ? (
+        <>
+          <span className="text-state-problem">
+            Couldn&apos;t check whether payroll is switched on for this client: {readError}.
+          </span>
+          <button onClick={() => void load()}
+            className="px-2 py-0.5 border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
+            Retry
+          </button>
+        </>
+      ) : enabled === null ? (
+        <span className="text-ps-hint">Checking whether payroll is switched on…</span>
+      ) : enabled ? (
+        <span className="text-ps-body">Payroll is <strong>on</strong> for this client.</span>
+      ) : (
+        <>
+          <span className="text-ps-body">
+            Payroll is <strong>off</strong> for this client — nothing payroll can be
+            created for them until it is switched on. Anything already recorded stays readable.
+            {resolved && !mayEnable && " A Partner switches it on here."}
+          </span>
+          {mayEnable && (
+            <button onClick={() => void switchOn()} disabled={enableSaving}
+              className="px-2.5 py-1 rounded-lg bg-brand text-white font-medium disabled:opacity-50">
+              {enableSaving ? "Switching on…" : "Switch on"}
+            </button>
+          )}
+        </>
+      )}
+      {msg && <span role="status" className="text-ps-body">{msg}</span>}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PayrollPage() {
@@ -1879,6 +2033,7 @@ export default function PayrollPage() {
           <Users size={16} className="text-blue-600" />
           <h1 className="text-base font-semibold text-ps-ink">Payroll</h1>
         </div>
+        <PayrollEnablementLine clientId={clientId} />
         <div className="flex items-center gap-0.5">
           {TABS.map(t => (
             <button
@@ -1992,7 +2147,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
       // task #229: previously discarded — a rejected structure looked identical
       // to a saved one, and the modal closed as if it had worked.
       if (!res || res.success === false) {
-        setSaveError(res?.error ?? "Could not save the salary structure — the request failed.");
+        setSaveError(refusalText(res) ?? "Could not save the salary structure — the request failed.");
         return;
       }
       await load();

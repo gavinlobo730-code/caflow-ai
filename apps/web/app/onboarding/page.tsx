@@ -11,7 +11,7 @@ import { api, type ApiResp } from "@/lib/api";
 import CsvImportModal, { type ImportRow, type ImportResult } from "@/components/CsvImportModal";
 import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
 import { Callout } from "@/components/ui/callout";
-import { isValidGstin } from "@/lib/gst/gstin";
+import { gstinProblem } from "@/lib/gst/gstin";
 import { isValidPan } from "@/lib/identifiers/pan";
 
 interface SignupStash { firmName?: string; fullName?: string }
@@ -61,10 +61,9 @@ const INDIAN_STATES = [
 // CGST Act §25, THROUGH THE ONE BROWSER AUTHORITY — see the same function in
 // app/settings/page.tsx. This is where a firm first types its own GSTIN, so
 // getting it wrong here is the value every later screen reads back. Blank
-// stays valid: unregistered is not wrong.
-function validateGSTIN(gstin: string): boolean {
-  return isValidGstin(gstin);
-}
+// stays valid: unregistered is not wrong. The message is `gstinProblem`'s own
+// sentence rather than "Invalid GSTIN", which called a check-digit mismatch a
+// format error and named no character (sweep-settings-hub-1-07).
 
 // IT Act Section 139A — PAN format: 5 uppercase letters + 4 digits + 1 uppercase letter
 // IT Act §139A, THROUGH THE ONE BROWSER RULE — see the same function in
@@ -531,7 +530,8 @@ export default function OnboardingPage() {
     // IT Act Section 139A — PAN validation
     if (firmForm.pan && !validatePAN(firmForm.pan)) errs.pan = "Invalid PAN (e.g. AABCU9603R)";
     // CGST Act Section 25 — GSTIN validation
-    if (firmForm.gstin && !validateGSTIN(firmForm.gstin)) errs.gstin = "Invalid GSTIN (e.g. 27AABCU9603R1ZN)";
+    const gstinIssue = gstinProblem(firmForm.gstin);
+    if (gstinIssue) errs.gstin = gstinIssue;
     if (firmForm.pincode && !/^[1-9][0-9]{5}$/.test(firmForm.pincode)) errs.pincode = "Pincode must be 6 digits starting with a non-zero digit";
     setFirmErrors(errs);
     return Object.keys(errs).length === 0;

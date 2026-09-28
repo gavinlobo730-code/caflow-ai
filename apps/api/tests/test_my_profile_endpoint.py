@@ -36,7 +36,9 @@ def captured(monkeypatch):
     """Record what reaches user_repo.update without touching a database."""
     calls = []
 
-    def fake_update(user_id, patch):
+    def fake_update(user_id, patch, *, firm_id):
+        # firm_id is required on the real repository and must be the CALLER's.
+        assert firm_id == FIRM
         calls.append((user_id, patch))
         return {"id": user_id, **patch}
 

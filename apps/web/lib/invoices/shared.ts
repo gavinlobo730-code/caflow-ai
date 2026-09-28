@@ -8,6 +8,7 @@
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatPaise } from "@/lib/services/formatting";
+import { errorMessage } from "@/lib/api";
 
 export * from "./gst";
 
@@ -50,26 +51,34 @@ export async function apiCall(
     const newToken = await refreshedAuthToken();
     if (newToken && newToken !== token) res = await doFetch(newToken);
   }
-  if (!res.ok && res.status !== 200) {
-    // Try to parse as JSON first (FastAPI returns structured errors)
-    const text = await res.text().catch(() => "Request failed");
-    let errorMsg = text;
-    try {
-      const json = JSON.parse(text);
-      // FastAPI validation error: { detail: [{msg, loc, type}] }
-      if (json.detail && Array.isArray(json.detail)) {
-        errorMsg = json.detail.map((e: { msg?: string }) => e.msg ?? String(e)).join("; ");
-      } else if (typeof json.detail === "string") {
-        errorMsg = json.detail;
-      } else if (json.error) {
-        errorMsg = json.error;
-      }
-    } catch {
-      // text is not JSON — use as-is
-    }
-    return { success: false, data: null, error: errorMsg };
+  if (!res.ok) {
+    return { success: false, data: null, error: await refusalSentence(res) };
   }
   return res.json();
+}
+
+/**
+ * The sentence a CA is shown for a non-OK response, never the body itself.
+ *
+ * `apiGet` used to hand back the raw body as `error`, so a 500 reached the
+ * screen as `{"success":false,"data":null,"error":"Internal server error"}` —
+ * the Cash Book rendered exactly that. One reader for both helpers here: the
+ * sentence is pulled out by lib/api's `errorMessage` (FastAPI's `detail` as a
+ * string, a validation array or `{message, problems}`, else the envelope's
+ * `error`), which is the one parser every `request()` caller already gets.
+ *
+ * Where it finds no sentence it falls back to the raw body, prefixed
+ * `API error <status>` — an HTML page from the proxy, or an envelope whose
+ * `error` is null. That prefix is the signal it found nothing, and a plain
+ * sentence is shown instead: a status code is worth keeping, a page of markup
+ * or JSON is not.
+ */
+async function refusalSentence(res: Response): Promise<string> {
+  const message = await errorMessage(res);
+  if (message.startsWith(`API error ${res.status}`)) {
+    return `The server could not complete this request (HTTP ${res.status}). Please try again in a moment.`;
+  }
+  return message;
 }
 
 export async function getAuthToken(): Promise<string> {
@@ -95,8 +104,7 @@ export async function apiGet(
     if (newToken && newToken !== token) res = await doFetch(newToken);
   }
   if (!res.ok) {
-    const text = await res.text().catch(() => "Request failed");
-    return { success: false, data: null, error: text };
+    return { success: false, data: null, error: await refusalSentence(res) };
   }
   return res.json();
 }

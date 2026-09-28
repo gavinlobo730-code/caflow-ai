@@ -34,6 +34,10 @@ import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
+// The totals are a RENDERING, not an input: Indian grouping (D6) from the one
+// authority, the same one the Journal list reads. `rupeeInputFromPaise` is the
+// form an <input> takes back, so it groups nothing (₹100000.00).
+import { formatPaise } from "@/lib/money/format";
 import { todayLocalISO } from "@/lib/dateMath";
 import type { JournalEntryDetail, JournalLineIO } from "@/lib/api";
 
@@ -406,16 +410,16 @@ export function JournalEditor({
               <tr className="border-t border-ps-border text-xs font-semibold">
                 <td className="pt-2 text-ps-label">Total</td>
                 <td className="pt-2 text-right text-ps-body px-2">
-                  {totalDebit > 0 ? `₹${rupeeInputFromPaise(totalDebit)}` : "—"}
+                  {totalDebit > 0 ? formatPaise(totalDebit) : "—"}
                 </td>
                 <td className="pt-2 text-right text-ps-body px-2">
-                  {totalCredit > 0 ? `₹${rupeeInputFromPaise(totalCredit)}` : "—"}
+                  {totalCredit > 0 ? formatPaise(totalCredit) : "—"}
                 </td>
                 <td colSpan={2} className="pt-2 pl-3">
                   {hasUnparseable && <span className="text-state-problem text-3xs">Check the highlighted amounts</span>}
                   {!hasUnparseable && totalDebit > 0 && totalDebit !== totalCredit && (
                     <span className="text-state-problem text-3xs">
-                      Difference: ₹{rupeeInputFromPaise(Math.abs(totalDebit - totalCredit))}
+                      Difference: {formatPaise(Math.abs(totalDebit - totalCredit))}
                     </span>
                   )}
                   {isBalanced && <span className="text-green-600 text-3xs">✓ Balanced</span>}

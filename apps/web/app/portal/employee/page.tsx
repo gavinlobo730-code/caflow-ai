@@ -46,15 +46,22 @@ interface SalarySlip {
 // Nothing records days taken, so "Total" and "Used" cannot be shown without
 // inventing them. The table below shows the balance, which is the number the
 // employee is actually asking for.
+//
+// Each balance is NULLABLE (migration 428): the CA records the three
+// separately, and one they have not recorded is not a balance of zero. It is
+// rendered "Not recorded" — a red 0 would tell the employee they have no leave
+// left, which nobody decided.
 interface LeaveBalance {
   id: string;
   year: number;
-  casual_leave_balance: number;
-  sick_leave_balance: number;
-  earned_leave_balance: number;
+  casual_leave_balance: number | null;
+  sick_leave_balance: number | null;
+  earned_leave_balance: number | null;
 }
 
-const LEAVE_TYPES: ReadonlyArray<{ label: string; key: keyof LeaveBalance }> = [
+type LeaveBalanceKey = "casual_leave_balance" | "sick_leave_balance" | "earned_leave_balance";
+
+const LEAVE_TYPES: ReadonlyArray<{ label: string; key: LeaveBalanceKey }> = [
   { label: "Casual", key: "casual_leave_balance" },
   { label: "Sick", key: "sick_leave_balance" },
   { label: "Earned", key: "earned_leave_balance" },
@@ -420,13 +427,21 @@ export default function EmployeePortalPage() {
                         recorded anywhere, so there is no Used column to fill. */}
                     {leaveBalances.flatMap(lb =>
                       LEAVE_TYPES.map(({ label, key }) => {
-                        const days = Number(lb[key] ?? 0);
+                        const stored = lb[key];
+                        const days = stored == null ? null : Number(stored);
                         return (
                           <tr key={`${lb.id}-${key}`} className="hover:bg-ps-bg">
                             <td className="px-5 py-3 font-medium text-ps-ink">{label}</td>
-                            <td className={`px-4 py-3 text-right font-semibold ${days > 0 ? "text-state-ready" : "text-state-problem"}`}>
-                              {days}
-                            </td>
+                            {days == null ? (
+                              <td className="px-4 py-3 text-right text-ps-hint"
+                                  title="Your employer has not recorded this allocation for the year">
+                                Not recorded
+                              </td>
+                            ) : (
+                              <td className={`px-4 py-3 text-right font-semibold ${days > 0 ? "text-state-ready" : "text-state-problem"}`}>
+                                {days}
+                              </td>
+                            )}
                           </tr>
                         );
                       })

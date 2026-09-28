@@ -117,9 +117,15 @@ def test_the_money_tiles_sum_a_column_the_schema_generates():
     assert "total_paise" not in src, "the hub is re-deriving what 278 generates"
     # And TDS asks what is NOT deposited, not every deduction ever made.
     assert 'extra_is_null="challan_no"' in src
+    # And the two document tiles ask about LIVE documents: the generated
+    # column counts a cancelled bill's face value as outstanding
+    # (accounting-hub-1-02).
+    assert src.count("live_documents_only=True") == 2
 
 
 def test_these_guards_are_not_vacuous():
     assert len(_signal_keys()) == 12, f"_signals builds {len(_signal_keys())} figures"
     assert BY_ID["inventory"].no_firm_signal_because
-    assert len(svc._ALL) == 6
+    # Six outstanding vocabularies, plus the two document CHECKs that
+    # `_DEAD_DOCUMENT` is held against (migration 432).
+    assert len(svc._ALL) == 8

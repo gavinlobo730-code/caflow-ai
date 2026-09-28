@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { CheckCircle2, Circle, Clock, Ban, Loader2, ChevronRight } from "lucide-react";
 import { yearEndApi, type ChecklistItem, type ChecklistItemStatus } from "@/lib/api/yearEnd";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { Skeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 
@@ -51,32 +51,24 @@ export default function ChecklistPage() {
   const [submitMsg, setSubmitMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // Right after router.push the id is still "" for one render; the effect
+    // re-runs once it is known. Never ask for the checklist of no engagement.
+    if (!engagementId) return;
     setLoading(true);
     setError(null);
     try {
-      // Plain filtered select (year_end_checklists, RLS-scoped to the firm) —
-      // no server-side computation for an existing list, so read directly
-      // instead of round-tripping through the FastAPI backend. Mirrors
-      // routers/year_end_checklist.py::list_checklist's own query (same
-      // table, engagement_id filter, sequence_no ordering).
-      const supabase = getSupabaseClient();
-      const { data, error: sbError } = await supabase
-        .from("year_end_checklists")
-        .select("*")
-        .eq("engagement_id", engagementId)
-        .order("sequence_no");
-      if (sbError) throw sbError;
-      if (data && data.length > 0) {
-        setItems(data as unknown as ChecklistItem[]);
-      } else {
-        // A brand-new engagement has no checklist rows yet. The backend
-        // auto-initializes the 12 standard items on first read (a real
-        // write — see list_checklist's "if not existing: insert…" branch),
-        // so that seeding stays backend-routed; only fall back to it here.
-        const res = await yearEndApi.checklist.list(engagementId);
-        if (!res.success) throw new Error(res.error ?? "Failed to load checklist");
-        setItems(res.data ?? []);
-      }
+      // Through the backend, not PostgREST. This tab used to select from the
+      // older checklist table migrations 067/155 declare, which exists only in
+      // a migration-built database — production has `year_end_checklist_items`
+      // — so every read came back 404 and the tab errored before its API
+      // fallback could run.
+      // routers/year_end_checklist.py::list_checklist reads the right table,
+      // seeds the 12 standard items on an engagement's first read, and applies
+      // _assert_engagement_scope, which the table's firm-only RLS cannot (it
+      // has no client_id to scope an assignment on).
+      const res = await yearEndApi.checklist.list(engagementId);
+      if (!res.success) throw new Error(res.error ?? "Failed to load checklist");
+      setItems(arrayOrEmpty<ChecklistItem>(res.data));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {

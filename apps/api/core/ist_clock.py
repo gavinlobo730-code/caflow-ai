@@ -121,6 +121,37 @@ def preceding_fy(fy_label: str) -> str:
     return f"{start_year}-{str(start_year + 1)[2:]}"
 
 
+def assessment_year_for(fy_label) -> "str | None":
+    """The assessment year a financial year is assessed in: '2026-27' for FY
+    '2025-26'.
+
+    IT Act s.2(9) defines the assessment year as the twelve months starting
+    1 April each year, and s.3 makes the previous year the financial year
+    immediately preceding it — so AY = FY + 1, always. The two are written the
+    same way ('2026-27'), which is exactly why a pair of them can disagree
+    without either looking wrong: FY 2025-26 beside AY 2027-28 passes every
+    shape check there is, and a return prepared on it is filed for the wrong
+    year.
+
+    WHY IT LIVES HERE AND NOT IN THE ITR ENGINE. It began as
+    `itr_engine._assessment_year_for`, used only to age brought-forward losses.
+    The request models that carry BOTH labels (a filing, a computation
+    snapshot) need the same answer to refuse a mismatched pair, and a second
+    copy of "+1" at the API boundary is a second place for it to drift — so it
+    sits beside `normalise_fy_label`, which is the other half of that boundary.
+
+    Deliberately as lenient as `fy_bounds`: it reads the first four digits and
+    ignores the rest, because its callers have already validated the label
+    (or, in the engine, want None rather than an exception). A label it cannot
+    read at all gives None, never a guess.
+    """
+    text = str(fy_label or "").strip()
+    if len(text) < 4 or not text[:4].isdigit():
+        return None
+    start = int(text[:4]) + 1
+    return f"{start}-{str(start + 1)[2:]}"
+
+
 def _as_ist_date(d=None) -> date:
     """A date, a datetime, an ISO date string, or None for today in IST.
 

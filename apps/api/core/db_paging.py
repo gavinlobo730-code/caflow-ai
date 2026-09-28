@@ -126,3 +126,45 @@ def fetch_all(
         stats["pages"] = pages
         stats["rows"] = len(out)
     return out
+
+
+# How many values one `IN (...)` list carries. A PostgREST filter travels in
+# the URL, and a uuid is ~37 characters once quoted and comma-separated, so 150
+# is ~5.5 KB — well inside every proxy's limit.
+IN_CHUNK = 150
+
+
+def fetch_all_in(
+    make_query: Callable[[], Any],
+    column: str,
+    values,
+    key: str = "id",
+    *,
+    label: str = "",
+    chunk: int = IN_CHUNK,
+) -> list[dict]:
+    """`fetch_all` over `column IN values`, however many values there are.
+
+    WHY
+        A PostgREST `.in_()` filter is part of the URL. Sent whole, an id list
+        proportional to the ledger stops being a query and becomes a 400 from
+        the gateway, BEFORE PostgREST sees it — which the client reports as an
+        APIError, so the whole endpoint 500s. Measured on 28-09-2026: the
+        §43B(h) report sent every one of a client's 755 purchase bill ids in
+        one list, a 29,651-character URL, and failed for every financial year
+        (and with it Form 3CD clauses 22/26 and the book-to-tax add-back, which
+        both read it). A client with 40 bills was fine, which is why no test
+        and no small demo client ever saw it.
+
+    `make_query` returns a FRESH builder WITHOUT the IN filter; this adds it
+    per chunk. The chunks are disjoint value sets on one column, so no row can
+    come back twice. Values are de-duplicated and sorted first so the same set
+    always produces the same requests.
+    """
+    wanted = sorted({str(v) for v in (values or []) if v is not None})
+    out: list[dict] = []
+    for i in range(0, len(wanted), chunk):
+        part = wanted[i:i + chunk]
+        out.extend(fetch_all(lambda part=part: make_query().in_(column, part),
+                             key, label=label))
+    return out

@@ -10,6 +10,7 @@ WHY `accounting.write` AND NOT `sales.write` / `purchase.write`
     Balances screen beside the master opening figures it breaks up, and the
     same role that may set those should be able to break them up.
 """
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -64,8 +65,7 @@ def list_documents(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     assert_client_access(current_user, client_id)
-    from core.config import settings as _s
-    if getattr(_s, "USE_MOCK_DATA", False):
+    if not os.environ.get("SUPABASE_URL"):
         return api_response(True, {"kind": kind, "documents": [],
                                    "documents_paise": 0,
                                    "opening_balance_paise": 0,
@@ -82,8 +82,7 @@ def add_document(
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     assert_client_access(current_user, data.client_id)
-    from core.config import settings as _s
-    if getattr(_s, "USE_MOCK_DATA", False):
+    if not os.environ.get("SUPABASE_URL"):
         return api_response(True, {"id": "mock-opening-document",
                                    **data.model_dump()})
     from core.supabase_client import get_supabase
@@ -109,8 +108,7 @@ def remove_document(
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     assert_client_access(current_user, client_id)
-    from core.config import settings as _s
-    if getattr(_s, "USE_MOCK_DATA", False):
+    if not os.environ.get("SUPABASE_URL"):
         return api_response(True, {"id": document_id, "deleted": True})
     from core.supabase_client import get_supabase
     from services.audit_service import log_event
@@ -132,8 +130,7 @@ def reconciliation(
     against the documents behind it. A difference means the ageing schedule
     does not foot to its own control account, which is why it is named."""
     assert_client_access(current_user, client_id)
-    from core.config import settings as _s
-    if getattr(_s, "USE_MOCK_DATA", False):
+    if not os.environ.get("SUPABASE_URL"):
         return api_response(True, {})
     from core.supabase_client import get_supabase
     return api_response(True, svc.reconciliation(

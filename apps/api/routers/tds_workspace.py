@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import uuid
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -971,12 +971,200 @@ def list_returns(
         return api_response(False, None, str(e))
 
 
+#: The statement KIND each stored routing key is, so a sentence about a return
+#: can name the form the period's own Act uses (Form 140 for a FY 2026-27 26Q)
+#: rather than the routing key — translate at the boundary, never rekey a store.
+_KIND_BY_ROUTING_KEY = {"24Q": "salary", "26Q": "resident_non_salary",
+                        "27Q": "non_resident", "27EQ": "tcs"}
+
+#: A return in one of these states has been furnished. Recomputing it would
+#: overwrite the figures a filed statement was accepted on; the only lawful
+#: change after filing is a correction statement, which is a TRACES process
+#: this product does not prepare.
+_TDS_RETURN_FURNISHED = ("filed", "revised")
+
+
+def _statement_label(return_type: str, financial_year: str) -> str:
+    """'Form 140 (26Q)' for a FY 2026-27 26Q, 'Form 26Q' for FY 2025-26."""
+    from domain.tds import vocabulary
+    kind = _KIND_BY_ROUTING_KEY.get(return_type)
+    form = return_type
+    if kind:
+        try:
+            form = vocabulary.statement_form(kind, fy_label=financial_year)
+        except (ValueError, KeyError):
+            # A label the vocabulary cannot place — the stored key is still a
+            # true name for the statement, just not the period's own number.
+            form = return_type
+    return f"Form {form}" if form == return_type else f"Form {form} ({return_type})"
+
+
+def _existing_tds_return(firm_id: str, body: CreateReturnRequest) -> Optional[dict]:
+    """The row already saved for this client, statement and quarter, or None.
+
+    `tds_returns` is UNIQUE (client_id, return_type, financial_year, quarter)
+    (migration 037) — one statement per quarter, which is what the Act asks
+    for. So "save" on a period that already has a row must REVISE that row,
+    and this is how create_return finds it.
+    """
+    if _USE_MOCK:
+        for rec in _MOCK_RETURNS.values():
+            if (rec.get("firm_id") == firm_id
+                    and rec.get("client_id") == body.client_id
+                    and rec.get("return_type") == body.return_type
+                    and rec.get("financial_year") == body.financial_year
+                    and rec.get("quarter") == body.quarter):
+                return rec
+        return None
+    from core.supabase_client import get_supabase
+    rows = (get_supabase().table("tds_returns")
+            .select("id, firm_id, client_id, return_type, financial_year, "
+                    "quarter, status, prn, ack_number, filed_at, "
+                    "ca_approved_by, ca_approved_at, total_deductions_paise, "
+                    "total_deposits_paise, deductee_count, validation_errors")
+            .eq("firm_id", firm_id).eq("client_id", body.client_id)
+            .eq("return_type", body.return_type)
+            .eq("financial_year", body.financial_year)
+            .eq("quarter", body.quarter)
+            .limit(1).execute().data) or []
+    return rows[0] if rows else None
+
+
+def _carries_computed_figures(body: CreateReturnRequest) -> bool:
+    """Whether the request is a "Compute from Books" save rather than the
+    quick-create form, which sends only the client, statement and quarter."""
+    return bool(body.deductee_details) or any(
+        v is not None for v in (body.total_deductions_paise,
+                                body.total_deposits_paise,
+                                body.deductee_count,
+                                body.validation_errors))
+
+
+def _revise_tds_return(existing: dict, body: CreateReturnRequest,
+                       firm_id: str, current_user: dict) -> dict:
+    """Recompute a saved-but-unfiled return IN PLACE, keeping its id.
+
+    WHAT WAS WRONG. create_return always INSERTed a new id, so the second
+    "Compute from Books" save for a quarter hit the table's unique key and the
+    handler handed the raw 23505 payload back as an HTTP 200 — while the older
+    version (lib/data/tds.ts: saveTDSReturn "upserted tds_returns") had revised
+    the row. The GST saves already work this way
+    (`gst_workspace._existing_return`: revise a draft, refuse once filed).
+
+    WHY THE SAME ID. `tds_deductions.tds_return_id` references this row
+    (migration 037), and the screen holds the id it was given; a new row would
+    orphan both.
+
+    A FURNISHED RETURN IS REFUSED. Once filed, the figures are what TRACES
+    accepted; a correction is a correction statement there, not a recompute
+    here.
+
+    A RECOMPUTE RESETS THE APPROVAL (owner decision, 27-09-2026). Changed
+    figures under a `ca_approved` flag would say a CA approved numbers they
+    never saw — the one outcome that is wrong whichever way the rest is
+    decided. So the row goes back to `pending` with the approver cleared, and
+    is approved again through /returns/{id}/status like any other.
+
+    A REQUEST WITH NO FIGURES CHANGES NOTHING. The quick-create form sends
+    only the period; on a period that already has a return it is "open this
+    quarter's return", and answering with the row as it stands neither erases
+    a computed statement nor resets an approval over figures that did not
+    move.
+    """
+    status = existing.get("status")
+    if status in _TDS_RETURN_FURNISHED:
+        prn = existing.get("prn")
+        raise HTTPException(status_code=409, detail=(
+            f"{_statement_label(body.return_type, body.financial_year)} for "
+            f"{body.quarter} FY {body.financial_year} has already been filed"
+            + (f" (PRN {prn})" if prn else "")
+            + ". A correction is a correction statement on TRACES, not a "
+              "recompute here."))
+
+    if not _carries_computed_figures(body):
+        return existing
+
+    # Every column the revision writes, resolved ONCE. A figure the request
+    # does not carry keeps the row's own value, the same "only what was sent"
+    # rule the insert applies. `fvu_json` is the exception and is ALWAYS
+    # written, empty list included: a quarter that now has no deductees must
+    # not keep the last computation's lines beside this computation's totals.
+    # The quarter end and due date are re-derived exactly as on create, so a
+    # row saved before a fix to either rule is corrected by the next recompute.
+    def _sent_or_kept(sent, column, default):
+        return sent if sent is not None else existing.get(column, default)
+
+    quarter_end = _tds_quarter_end(body.quarter, body.financial_year)
+    due_date = _tds_return_due_date(body.quarter, body.financial_year)
+    fvu_json = {"deductees": body.deductee_details}
+    deductions = _sent_or_kept(body.total_deductions_paise, "total_deductions_paise", 0)
+    deposits = _sent_or_kept(body.total_deposits_paise, "total_deposits_paise", 0)
+    deductees = _sent_or_kept(body.deductee_count, "deductee_count", 0)
+    errors = _sent_or_kept(body.validation_errors, "validation_errors", [])
+    # An aware UTC instant: a naive one only reads as UTC by convention.
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    return_id = existing["id"]
+    # The payload is written out as a LITERAL at the database call rather than
+    # passed by name: tests/test_backend_columns_exist_pg.py checks every
+    # column an .update() names against the real schema, and a dict reached
+    # through a variable is invisible to it. The mock branch mirrors it.
+    if _USE_MOCK:
+        _MOCK_RETURNS[return_id].update({
+            "status": "pending", "ca_approved_by": None, "ca_approved_at": None,
+            "quarter_end": quarter_end, "due_date": due_date,
+            "fvu_json": fvu_json, "total_deductions_paise": deductions,
+            "total_deposits_paise": deposits, "deductee_count": deductees,
+            "validation_errors": errors, "updated_at": now_iso,
+        })
+        rec = dict(_MOCK_RETURNS[return_id])
+    else:
+        from core.supabase_client import get_supabase
+        rows = (get_supabase().table("tds_returns").update({
+            # Back to pending with the approver cleared: see the docstring.
+            "status": "pending",
+            "ca_approved_by": None,
+            "ca_approved_at": None,
+            "quarter_end": quarter_end,
+            "due_date": due_date,
+            "fvu_json": fvu_json,
+            "total_deductions_paise": deductions,
+            "total_deposits_paise": deposits,
+            "deductee_count": deductees,
+            "validation_errors": errors,
+            "updated_at": now_iso,
+        }).eq("id", return_id).eq("firm_id", firm_id).execute().data) or []
+        if not rows:
+            # The row was read a moment ago in this request; an update that
+            # matched nothing means it is gone or not writable by this caller.
+            # Answering success with the OLD figures would report a revision
+            # that did not happen.
+            raise HTTPException(status_code=404, detail=(
+                f"{_statement_label(body.return_type, body.financial_year)} "
+                f"for {body.quarter} FY {body.financial_year} could not be "
+                f"revised — it is no longer on file. Reload the returns."))
+        rec = rows[0]
+
+    log_event(firm_id, "tds_return", return_id, "revise",
+              actor_id=current_user.get("auth_user_id"),
+              old_data={k: existing.get(k) for k in (
+                  "status", "ca_approved_by", "total_deductions_paise",
+                  "total_deposits_paise", "deductee_count")},
+              new_data={"status": "pending", "ca_approved_by": None,
+                        "total_deductions_paise": deductions,
+                        "total_deposits_paise": deposits,
+                        "deductee_count": deductees})
+    return rec
+
+
 @router.post("/returns")
 def create_return(
     body: CreateReturnRequest,
     current_user: dict = Depends(rbac("tds", "compute")),
 ):
-    """Create/save TDS return (24Q/26Q). IT Act §200."""
+    """Create, or revise in place, the quarter's TDS return (24Q/26Q/27Q/27EQ).
+    IT Act §200. One row per client, statement and quarter — see
+    `_revise_tds_return` for what a second save does."""
     try:
         assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
@@ -994,6 +1182,10 @@ def create_return(
                 raise HTTPException(status_code=422,
                                     detail=f"Invalid deductee PAN format: '{pan}'. "
                                            "Expected: AAAAA9999A, or PANNOTAVBL/PANAPPLIED if unavailable.")
+        existing = _existing_tds_return(firm_id, body)
+        if existing:
+            return api_response(True, _revise_tds_return(
+                existing, body, firm_id, current_user))
         record = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
@@ -1040,7 +1232,24 @@ def create_return(
     except HTTPException:
         raise
     except Exception as e:
-        return api_response(False, None, str(e))
+        _logger.exception("Failed to save TDS return")
+        # The unique key is (client_id, return_type, financial_year, quarter).
+        # The lookup above revises an existing row, so reaching this means a
+        # second save for the same quarter landed between the read and the
+        # insert — a backstop, worded for the CA rather than as the index.
+        # It used to come back as str(e): a PostgREST dict in an HTTP 200.
+        from core.exceptions import _sqlstate, unhandled_failure
+        label = _statement_label(body.return_type, body.financial_year)
+        if _sqlstate(e) == "23505":
+            raise HTTPException(status_code=409, detail=(
+                f"{label} for {body.quarter} FY {body.financial_year} was saved "
+                f"by another request at the same moment. Reload the returns "
+                f"and save again to revise it."))
+        spoken = unhandled_failure(e)
+        return api_response(False, None, spoken[1] if spoken else (
+            f"Could not save {label} for {body.quarter} FY "
+            f"{body.financial_year}. The cause has been logged; please try "
+            f"again, and report it if it keeps failing."))
 
 
 @router.patch("/returns/{return_id}/status")

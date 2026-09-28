@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useRef,
   ReactNode,
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
@@ -25,18 +26,33 @@ import {
  * freshly-signed-up account with no firm yet resolves to hasFirm=false so the
  * guard can route it to onboarding instead of dropping it on an empty dashboard.
  */
-async function resolveUserContext(user: User | null): Promise<{ role: UserRole | null; hasFirm: boolean; fullName: string | null }> {
-  if (!user) return { role: null, hasFirm: false, fullName: null };
+interface ResolvedContext {
+  role: UserRole | null;
+  /** null = could not be determined (the read FAILED), which is not "no firm". */
+  hasFirm: boolean | null;
+  fullName: string | null;
+  /** The users-table read failed, so none of the above is authoritative. */
+  failed: boolean;
+}
+
+async function resolveUserContext(user: User | null): Promise<ResolvedContext> {
+  if (!user) return { role: null, hasFirm: false, fullName: null, failed: false };
   try {
-    const { data } = await getSupabaseClient()
+    const { data, error } = await getSupabaseClient()
       .from("users")
       .select("role, firm_id, full_name")
       .eq("auth_user_id", user.id)
       .maybeSingle();
+    // A FAILED read is not an absent row. supabase-js returns the error rather
+    // than throwing, and this used to read `data` straight through it — so a
+    // transient failure (a re-resolution racing a token refresh, a cold API
+    // proxy) answered hasFirm=false, AuthGuard sent the user to /onboarding and
+    // on to Home: the "Audit Log bounces to Home after ~10 seconds" finding.
+    if (error) throw error;
     const raw = (data?.role as string | undefined) ?? (user.user_metadata?.role as string | undefined);
-    return { role: normalizeRole(raw), hasFirm: !!data?.firm_id, fullName: (data?.full_name as string | null) ?? null };
+    return { role: normalizeRole(raw), hasFirm: !!data?.firm_id, fullName: (data?.full_name as string | null) ?? null, failed: false };
   } catch {
-    return { role: normalizeRole(user.user_metadata?.role as string | undefined), hasFirm: false, fullName: null };
+    return { role: normalizeRole(user.user_metadata?.role as string | undefined), hasFirm: null, fullName: null, failed: true };
   }
 }
 
@@ -65,6 +81,15 @@ interface AuthContextValue {
   user: User | null;
   userRole: UserRole | null;
   loading: boolean;
+  /**
+   * True while the role for the CURRENT user is still being resolved.
+   * `loading` clears as soon as the SESSION is known and the role arrives a
+   * round trip later; in between `userRole` is null, which the permission
+   * helpers read as least privilege. A guard that redirects on "not permitted"
+   * must wait for this too, or it bounces a Partner off a Partner-only page on
+   * every hard navigation (the /settings/* pages did exactly that).
+   */
+  roleLoading: boolean;
   /**
    * MFA challenge state: true = the session is aal1 but the account has a verified
    * factor (must complete the TOTP challenge to reach aal2); false = no challenge
@@ -120,6 +145,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [roleLoading, setRoleLoading] = useState(true);
+  // applyContext runs from getSession AND onAuthStateChange, so two role
+  // lookups can be in flight; only the LATEST may settle the state, or an
+  // older answer (e.g. the signed-out null) can land after the newer one.
+  const contextRequest = useRef(0);
+  // The user the current role belongs to. applyContext also runs on every
+  // TOKEN_REFRESHED (hourly), and flipping roleLoading back to true there would
+  // make every RoleGuard render null for a round trip — unmounting the page and
+  // losing whatever the CA had typed. Only a DIFFERENT user makes the role unknown.
+  const roleOwner = useRef<string | null | undefined>(undefined);
+  // The user whose role/hasFirm are currently in state from a SUCCESSFUL read.
+  const resolvedFor = useRef<string | null | undefined>(undefined);
   const [mfaPending, setMfaPending] = useState<boolean | null>(null);
   const [hasFirm, setHasFirm] = useState<boolean | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
@@ -127,20 +164,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function applyContext(u: User | null) {
     setHasFirm(null);
-    resolveUserContext(u).then(({ role, hasFirm, fullName }) => {
-      setUserRole(role);
-      setHasFirm(hasFirm);
-      setFullName(fullName);
-    }).catch(() => { setUserRole(null); setHasFirm(false); setFullName(null); });
+    const owner = u?.id ?? null;
+    const newUser = owner !== roleOwner.current;
+    if (newUser) {
+      roleOwner.current = owner;
+      setRoleLoading(true);
+    }
+    const request = ++contextRequest.current;
+    (async () => {
+      let ctx = await resolveUserContext(u);
+      if (ctx.failed) {
+        // One retry: most failures here are a request racing a token refresh.
+        await new Promise((r) => setTimeout(r, 1500));
+        if (request !== contextRequest.current) return;
+        ctx = await resolveUserContext(u);
+      }
+      if (request !== contextRequest.current) return;
+      if (ctx.failed && resolvedFor.current === owner) {
+        // Still failing, for the SAME user we already resolved: keep the last
+        // good answer rather than demoting them mid-session.
+        setRoleLoading(false);
+        return;
+      }
+      setUserRole(ctx.role);
+      setHasFirm(ctx.hasFirm);
+      setFullName(ctx.fullName);
+      if (!ctx.failed) resolvedFor.current = owner;
+      setRoleLoading(false);
+    })().catch(() => {
+      if (request !== contextRequest.current) return;
+      setRoleLoading(false);
+    });
     // Action-level permissions, resolved independently of the role query above.
     // Kept separate on purpose: the role comes from Supabase directly (used for
     // nav/page gating and available even if the API is asleep), while this comes
     // from the API and is the authority on what the API will actually accept.
     // Deliberately NOT awaited — nothing here gates first paint; until it lands,
     // can() answers false and action controls stay hidden.
-    setPermissions(null);
+    // Reset only for a DIFFERENT user: clearing it on every hourly
+    // TOKEN_REFRESHED hid every action control until the API answered again.
+    if (newUser) setPermissions(null);
     if (u) {
-      resolvePermissions().then(setPermissions).catch(() => setPermissions(null));
+      resolvePermissions().then(setPermissions).catch(() => { if (newUser) setPermissions(null); });
     }
   }
 
@@ -173,6 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       clearTimeout(timeout);
       setLoading(false);
+      setRoleLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -199,24 +265,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // so the guard sees hasFirm=true before navigating to the dashboard.
   const refreshUserContext = useCallback(async (): Promise<boolean> => {
     const { data: { session } } = await supabase.auth.getSession();
-    const { role, hasFirm, fullName } = await resolveUserContext(session?.user ?? null);
-    setUserRole(role);
-    setHasFirm(hasFirm);
-    setFullName(fullName);
+    const { role, hasFirm, fullName, failed } = await resolveUserContext(session?.user ?? null);
+    if (!failed) {
+      setUserRole(role);
+      setHasFirm(hasFirm);
+      setFullName(fullName);
+    }
     // Onboarding calls this right after the users row gains a firm_id and a
     // role; without re-resolving here the map stays null for the rest of the
     // session and every action control would remain hidden for a new Partner.
     resolvePermissions().then(setPermissions).catch(() => setPermissions(null));
-    return hasFirm;
+    return hasFirm === true;
   }, []);
+
+  // A sign-in is RECORDED once the session is fully signed in, not at the
+  // password step. POST /api/identity/login-event sits behind mfa_guard, which
+  // refuses an aal1 token for the roles MFA is required of — so recording it
+  // straight after signInWithPassword, before the TOTP challenge, was refused
+  // every time, and from the day MFA was switched on the login history held
+  // logouts only (team-hub-02). The logout still records, because by then
+  // the session is aal2.
+  const loginToRecord = useRef(false);
+  useEffect(() => {
+    if (!loginToRecord.current || !session || mfaPending !== false) return;
+    loginToRecord.current = false;
+    import("@/lib/api")
+      .then(({ api }) => api.identity.recordLoginEvent("login"))
+      .catch(() => {});
+  }, [session, mfaPending]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (!error) {
-      // M6: record login for admin login-history (best-effort; never blocks sign-in).
-      const { api } = await import("@/lib/api");
-      api.identity.recordLoginEvent("login").catch(() => {});
-    }
+    // M6: login history (best-effort; never blocks sign-in) — recorded by the
+    // effect above once any MFA challenge has been passed.
+    if (!error) loginToRecord.current = true;
     return { error: error?.message ?? null };
   }, []);
 
@@ -235,7 +317,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ session, user, userRole, loading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, roleLoading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

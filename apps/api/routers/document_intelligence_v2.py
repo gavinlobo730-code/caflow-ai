@@ -32,6 +32,15 @@ _logger = logging.getLogger("caflow.doc_intel_v2")
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
+# The model is read from the same variable document_intelligence_v1 reads,
+# with the same default. This path hardcoded the literal, so the one knob
+# CLAUDE.md names for a retired or renamed Groq model ("the next retirement is
+# a config change") would have moved invoice extraction and left notice
+# extraction asking for the old name — and a model Groq no longer serves
+# surfaces here only as the endpoint's generic 502. Whether that is what the
+# live 502 of 27-09-2026 was is not known from here: the logged
+# "Groq notice extraction failed: ..." line on Render says.
+_GROQ_TEXT_MODEL = os.environ.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
 
 # ── Mock stores ───────────────────────────────────────────────────────────────
 _MOCK_NOTICES: dict[str, dict] = {}
@@ -68,12 +77,12 @@ class UpdateNoticeStatusRequest(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _extract_with_groq(document_text: str) -> dict:
-    """Call Groq llama-3.3-70b-versatile to extract notice fields."""
+    """Call Groq's text model (GROQ_TEXT_MODEL) to extract notice fields."""
     from groq import Groq
 
     client = Groq(api_key=_GROQ_KEY)
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model=_GROQ_TEXT_MODEL,
         messages=[{"role": "user", "content": _NOTICE_EXTRACTION_PROMPT + document_text[:6000]}],
         temperature=0.0,
         max_tokens=512,

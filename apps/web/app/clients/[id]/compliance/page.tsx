@@ -19,9 +19,14 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
 import { useClientEntityType, offerWhenKnown } from "@/lib/clients/useClientEntityType";
 import { hasMcaObligations, mcaRegime } from "@/lib/entityObligations";
+import { errorMessage } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/** A refusal comes back in the envelope a caller reads. The notice extractor
+ *  refuses with HTTPException (a 502 when the AI read fails, a 503 when it is
+ *  not configured), whose body is `{"detail": "..."}` with no `error` key —
+ *  and a gateway's 502 may not be JSON at all. `errorMessage` reads both. */
 async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
@@ -33,6 +38,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
       ...(opts?.headers ?? {}),
     },
   });
+  if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
   return res.json();
 }
 
@@ -60,6 +66,9 @@ function NoticesSection({ clientId }: { clientId: string }) {
   const [showExtract, setShowExtract] = useState(false);
   const [noticeText, setNoticeText] = useState("");
   const [extracting, setExtracting] = useState(false);
+  // The server's sentence when an extraction is refused. The panel and the
+  // pasted text stay put so the CA can retry or enter the notice by hand.
+  const [extractError, setExtractError] = useState<string | null>(null);
 
   const loadNotices = useCallback(async () => {
     // Direct Supabase (RLS-scoped: government_notices carries firm-isolation +
@@ -83,16 +92,32 @@ function NoticesSection({ clientId }: { clientId: string }) {
 
   useEffect(() => { loadNotices(); }, [loadNotices]);
 
+  // THE RESULT IS READ, AND ONLY SUCCESS CLOSES THE PANEL. This used to await
+  // the POST, ignore what came back, and then close the panel, clear the text
+  // and reload an unchanged list — so a refused extraction looked exactly like
+  // "nothing happened", and the pasted notice was gone. With no finally, a
+  // network throw also left "Extracting…" on the button for good.
   async function extract() {
     setExtracting(true);
-    await apiFetch("/api/document-intelligence-v2/notices/extract", {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId, document_text: noticeText }),
-    });
-    setShowExtract(false);
-    setNoticeText("");
-    setExtracting(false);
-    loadNotices();
+    setExtractError(null);
+    try {
+      const res = await apiFetch("/api/document-intelligence-v2/notices/extract", {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, document_text: noticeText }),
+      });
+      if (!res?.success) {
+        setExtractError(res?.error ?? "The notice could not be extracted. Nothing was saved.");
+        return;
+      }
+      setShowExtract(false);
+      setNoticeText("");
+      await loadNotices();
+    } catch (e) {
+      setExtractError(e instanceof Error && e.message
+        ? e.message : "The notice could not be extracted. Nothing was saved.");
+    } finally {
+      setExtracting(false);
+    }
   }
 
   async function approveNotice(id: string) {
@@ -125,12 +150,15 @@ function NoticesSection({ clientId }: { clientId: string }) {
             <textarea placeholder="Paste government notice text here…"
               value={noticeText} onChange={(e) => setNoticeText(e.target.value)}
               rows={6} className="w-full border rounded px-3 py-2 text-sm" />
+            {extractError && (
+              <p role="alert" className="text-xs text-state-problem">{extractError}</p>
+            )}
             <div className="flex gap-2">
               <button onClick={extract} disabled={extracting || !noticeText}
                 className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
                 {extracting ? "Extracting…" : "Extract"}
               </button>
-              <button onClick={() => setShowExtract(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
+              <button onClick={() => { setShowExtract(false); setExtractError(null); }} className="px-3 py-1 border rounded text-sm">Cancel</button>
             </div>
           </div>
         )}

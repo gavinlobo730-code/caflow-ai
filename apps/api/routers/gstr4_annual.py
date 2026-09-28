@@ -7,6 +7,8 @@ is the only reader that turns these rows into a statement.
 """
 from __future__ import annotations
 
+import os
+
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,8 +24,7 @@ router = APIRouter(prefix="/api/gstr4-annual", tags=["gstr4_annual"])
 
 
 def _mock_enabled() -> bool:
-    from core.config import settings as _s
-    return bool(getattr(_s, "USE_MOCK_DATA", False))
+    return not os.environ.get("SUPABASE_URL")
 
 
 def _check_state(place_of_supply: str) -> None:

@@ -18,6 +18,7 @@ import { gstinProblem } from "@/lib/gst/gstin";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Callout } from "@/components/ui/callout";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import {
   apiCall, getAuthToken, type Customer,
@@ -109,6 +110,8 @@ export function CustomerFormModal({
   // PUR-32 — set together: the created customer, and what it resembles.
   const [resemblances, setResemblances] = useState<PossibleDuplicate[]>([]);
   const [saved, setSaved] = useState<Customer | null>(null);
+  // The existing customer a create was answered with, and the server's reason.
+  const [duplicateOf, setDuplicateOf] = useState<{ customer: Customer; reason: string } | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   const termValue = termCustom ? CUSTOM_TERM : termLabelForDays(parseInt(creditDays, 10));
@@ -202,6 +205,20 @@ export function CustomerFormModal({
             credit_limit_paise: creditLimitPaise,
           }, token);
       if (!result.success || !result.data) throw new Error(result.error ?? "Failed to save customer");
+      // A create that matched an active customer by GSTIN (or PAN) RETURNED
+      // that customer and saved nothing typed here — it used to close as
+      // "Customer added" (sweep-client-purchases-04). Hold the dialog on the
+      // server's sentence; the CA may still use the existing customer, which
+      // is what an import resolver wants, but knowingly.
+      const dup = result.data as { duplicate?: boolean; duplicate_reason?: string };
+      if (!existing && dup.duplicate) {
+        setDuplicateOf({
+          customer: result.data as Customer,
+          reason: dup.duplicate_reason
+            ?? "Not added — a customer with this GSTIN or PAN already exists for this client. Nothing was changed.",
+        });
+        return;
+      }
       // The backend may have auto-posted/updated the opening-balance journal, so
       // invalidate cached accounting reports for this client.
       clearReports(clientId);
@@ -224,6 +241,24 @@ export function CustomerFormModal({
     } finally {
       setSaving(false);
     }
+  }
+
+  if (duplicateOf) {
+    return (
+      <Modal title="Customer already exists" onClose={onClose} maxWidthClass="max-w-2xl">
+        <Callout tone="attention">{duplicateOf.reason}</Callout>
+        <div className="flex justify-end gap-2 mt-3">
+          <button onClick={() => setDuplicateOf(null)}
+            className="text-xs px-4 py-2 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">
+            Back to the form
+          </button>
+          <button onClick={() => onSaved(duplicateOf.customer)}
+            className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark">
+            Use the existing customer
+          </button>
+        </div>
+      </Modal>
+    );
   }
 
   if (saved && resemblances.length) {

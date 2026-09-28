@@ -17,6 +17,7 @@ reach those screens.
 
 Nothing here transmits anything to any portal.
 """
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -69,8 +70,7 @@ class CloseRegistrationIn(BaseModel):
 
 
 def _mock_enabled() -> bool:
-    from core.config import settings as _s
-    return bool(getattr(_s, "USE_MOCK_DATA", False))
+    return not os.environ.get("SUPABASE_URL")
 
 
 @router.get("/kinds")
@@ -138,10 +138,18 @@ def add_registration(
     assert_client_access(current_user, data.client_id)
     if _mock_enabled():
         return api_response(True, {"id": "mock-registration", **data.model_dump()})
-    from core.supabase_client import get_supabase
+    # THE SERVICE ROLE, for all three writes (add, close, withdraw). Under
+    # USE_USER_JWT the request runs as `authenticated`, which holds only SELECT
+    # on client_gst_registrations and whose one permissive policy is a SELECT —
+    # so every write here failed as 42501. The authorisation is the two lines
+    # above, not RLS: rbac("client", "write") and assert_client_access. The
+    # service stamps firm_id on the insert and filters on firm_id AND client_id
+    # on every update, which is what stands in for the policy that is bypassed.
+    # Same shape as routers/bills_of_entry.py and routers/fixed_assets.py.
+    from core.supabase_client import get_service_supabase
     from services.audit_service import log_event
     row = svc.create(
-        get_supabase(), current_user.get("firm_id"), data.client_id,
+        get_service_supabase(), current_user.get("firm_id"), data.client_id,
         gstin=data.gstin, state_code=data.state_code,
         registration_type=data.registration_type,
         filing_frequency=data.filing_frequency, trade_name=data.trade_name,
@@ -172,10 +180,16 @@ def close_registration(
     if _mock_enabled():
         return api_response(True, {"id": registration_id,
                                    "effective_to": data.effective_to})
-    from core.supabase_client import get_supabase
+    # The service role — see add_registration. And the CLIENT the caller was
+    # just authorised for travels into the update: under the service role the
+    # row is found by id and firm alone otherwise, so an Executive assigned to
+    # one client could close a registration belonging to another in the firm
+    # by sending their own client_id beside somebody else's registration id.
+    from core.supabase_client import get_service_supabase
     from services.audit_service import log_event
-    row = svc.close(get_supabase(), current_user.get("firm_id"),
-                    registration_id, effective_to=data.effective_to)
+    row = svc.close(get_service_supabase(), current_user.get("firm_id"),
+                    registration_id, client_id=data.client_id,
+                    effective_to=data.effective_to)
     log_event(current_user.get("firm_id") or "", "client_gst_registration",
               registration_id, "close",
               actor_id=current_user.get("auth_user_id"),
@@ -195,9 +209,12 @@ def withdraw_registration(
     assert_client_access(current_user, client_id)
     if _mock_enabled():
         return api_response(True, {"id": registration_id, "deleted": True})
-    from core.supabase_client import get_supabase
+    # The service role and the asserted client, for close_registration's
+    # reasons.
+    from core.supabase_client import get_service_supabase
     from services.audit_service import log_event
-    row = svc.withdraw(get_supabase(), current_user.get("firm_id"), registration_id)
+    row = svc.withdraw(get_service_supabase(), current_user.get("firm_id"),
+                       registration_id, client_id=client_id)
     log_event(current_user.get("firm_id") or "", "client_gst_registration",
               registration_id, "delete",
               actor_id=current_user.get("auth_user_id"),

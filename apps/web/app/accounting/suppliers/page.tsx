@@ -322,9 +322,13 @@ export default function SuppliersPage() {
         ? await api.vendors.update(editingId, body)
         : await api.vendors.create({ ...body, client_id: selectedClientId });
       if (!res.success) throw new Error(res.error ?? "Couldn't save the supplier.");
-      if (!editingId && (res.data as { duplicate?: boolean })?.duplicate) {
-        setError("A supplier with that GSTIN or PAN already exists for this client — "
-                 + "the existing record was kept.");
+      const dup = res.data as { duplicate?: boolean; duplicate_reason?: string } | null;
+      if (!editingId && dup?.duplicate) {
+        // The server's sentence names WHICH supplier matched and on which
+        // identifier (sweep-client-purchases-04); the fallback is for a
+        // backend deployed behind this screen.
+        setError(dup.duplicate_reason
+          ?? "A supplier with that GSTIN or PAN already exists for this client — the existing record was kept.");
       }
       // PUR-32. The supplier WAS created; this names what it resembles. Kept
       // out of setError deliberately — an error reads as "this did not save".

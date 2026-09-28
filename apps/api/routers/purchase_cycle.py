@@ -11,6 +11,7 @@ settles: CGST s.16(2)(b) and MSMED s.15 with s.2(b)).
 # existing purchase path, which is what creates the expense, the input credit
 # and the payable.
 """
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -30,8 +31,7 @@ router = APIRouter(prefix="/api/purchase-cycle", tags=["purchase_cycle"])
 
 
 def _mock() -> bool:
-    from core.config import settings as _s
-    return bool(getattr(_s, "USE_MOCK_DATA", False))
+    return not os.environ.get("SUPABASE_URL")
 
 
 def _db():

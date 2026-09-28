@@ -10,6 +10,10 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import {
+  HEALTH_DIMENSIONS, dimensionLabel, gradeOf, weightLabel,
+  type HealthDimensionKey, type HealthGrade,
+} from "@/lib/health/vocabulary";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -27,28 +31,27 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 
-type Grade = "A" | "B" | "C" | "D" | "F";
-
+// The row as `health_scores` stores it. The grade is a WORD from the engine's
+// five bands (`domain/health/scoring.GRADE_BANDS`) — this used to be typed as
+// a letter A–F that nothing has ever written, so every grade chip fell through
+// to the grey default.
 interface HealthScore {
   client_id: string;
   overall_score: number;
-  health_grade: Grade;
-  compliance_score: number;
-  accounting_score: number;
-  documents_score: number;
-  responsiveness_score: number;
-  relationship_risk_score: number;
-  financial_risk_score: number;
-  engagement_health_score: number;
+  grade?: string | null;
+  health_grade?: string | null;
+  /** Product Bible Chapter 16's seven, as the engine computed them. */
+  dimensions?: Partial<Record<HealthDimensionKey, { score?: number }>> | null;
   last_calculated_at: string;
   is_critical: boolean;
   is_at_risk: boolean;
+  [column: string]: unknown;
 }
 
 interface HistoryRecord {
   id: string;
   overall_score: number;
-  health_grade: Grade;
+  health_grade: string | null;
   recorded_at: string;
 }
 
@@ -84,38 +87,32 @@ interface ApiResponse<T> {
   error: string | null;
 }
 
-const DIMENSION_LABELS: Record<string, string> = {
-  compliance_score:        "Compliance",
-  accounting_score:        "Accounting",
-  documents_score:         "Documents",
-  responsiveness_score:    "Responsiveness",
-  relationship_risk_score: "Relationship Risk",
-  financial_risk_score:    "Financial Risk",
-  engagement_health_score: "Engagement Health",
-};
+// ONE VOCABULARY FOR THE CARDS AND THE PICKER (sweep-client-misc-04).
+//
+// The cards used to read the LEGACY flat columns on `health_scores` —
+// "Compliance, Accounting, Documents, Responsiveness, Relationship Risk,
+// Financial Risk, Engagement Health" — while the Add Override picker below
+// offered the model's own seven under different words. Three of the seven
+// cards shared no word with any picker entry, and one of them was not a
+// measurement at all: `relationship_risk_score` is written as a constant 100.
+// So a CA wanting to override the "Financial Risk" card (which is Open Notices
+// under another name) found no such entry to choose.
+//
+// Both now come from `lib/health/vocabulary.ts`, the same list the firm-level
+// detail page and the Overview card render, pinned to the engine from the
+// Python side. An override names a dimension the engine has, and the card it
+// replaces carries the same name.
+const DIMENSIONS = HEALTH_DIMENSIONS;
 
-const DIMENSION_KEYS = Object.keys(DIMENSION_LABELS);
-
-// ⚠️ AN OVERRIDE NAMES A DIMENSION OF THE MODEL, AND `DIMENSION_LABELS` ABOVE
-// IS NOT THAT LIST. Those seven are the legacy FLAT COLUMNS on `health_scores`
-// (`compliance_score`, `relationship_risk_score`, …), kept because the cards
-// below read them straight off the score row. Product Bible Chapter 16's model
-// has seven DIFFERENT dimensions, which is what `health_overrides.dimension`
-// is matched against — so this picker used to offer "Relationship Risk", the
-// CA chose it, the row was stored, and it could not replace anything because
-// the engine has no such dimension. Now that overrides actually apply, an
-// unknown one comes back NAMED as not in force; offering it at all would be
-// inviting a CA to record something the server will not honour.
-const OVERRIDE_DIMENSIONS: Record<string, string> = {
-  compliance_health:     "Compliance Health",
-  accounting_quality:    "Accounting Quality",
-  work_progress:         "Work Progress",
-  document_health:       "Document Health",
-  ai_risk_signals:       "AI Risk Signals",
-  open_notices:          "Open Notices",
-  client_responsiveness: "Client Responsiveness",
-};
-const OVERRIDE_DIMENSION_KEYS = Object.keys(OVERRIDE_DIMENSIONS);
+/** A dimension's score off the stored row: the engine's `dimensions` jsonb,
+ *  or the per-dimension column the same calculation writes beside it. A
+ *  dimension absent from both is shown as absent, never as a guessed 0. */
+function dimensionScore(row: HealthScore, key: HealthDimensionKey): number | null {
+  const fromJson = row.dimensions?.[key]?.score;
+  if (typeof fromJson === "number") return fromJson;
+  const fromColumn = row[`${key}_score`];
+  return typeof fromColumn === "number" ? fromColumn : null;
+}
 
 const SEVERITY_COLORS: Record<string, string> = {
   info:     "bg-sev-low-surface text-sev-low",
@@ -135,15 +132,15 @@ function scoreBarColor(s: number) {
   return "bg-red-500";
 }
 
-function gradeBadge(g: Grade) {
-  const map: Record<Grade, string> = {
-    A: "bg-sev-ok-surface text-sev-ok",
-    B: "bg-sev-low-surface text-sev-low",
-    C: "bg-sev-medium-surface text-sev-medium",
-    D: "bg-sev-high-surface text-sev-high",
-    F: "bg-sev-critical-surface text-sev-critical",
+function gradeBadge(g: HealthGrade) {
+  const map: Record<HealthGrade, string> = {
+    "Healthy":         "bg-sev-ok-surface text-sev-ok",
+    "Good":            "bg-sev-low-surface text-sev-low",
+    "Needs Attention": "bg-sev-medium-surface text-sev-medium",
+    "At Risk":         "bg-sev-high-surface text-sev-high",
+    "Critical":        "bg-sev-critical-surface text-sev-critical",
   };
-  return map[g] ?? "bg-gray-100 text-gray-600";
+  return map[g];
 }
 
 function formatDate(d?: string | null) {
@@ -379,7 +376,10 @@ export default function ClientHealthPage() {
             <div className="w-px h-16 bg-gray-200" />
             <div>
               <p className="text-xs text-gray-500 mb-1">Grade</p>
-              <Badge className={`text-lg px-3 py-1 ${gradeBadge(score.health_grade)}`}>{score.health_grade}</Badge>
+              {(() => {
+                const g = gradeOf(score.grade ?? score.health_grade, score.overall_score);
+                return <Badge className={`text-lg px-3 py-1 ${gradeBadge(g)}`}>{g}</Badge>;
+              })()}
             </div>
             <div className="w-px h-16 bg-gray-200" />
             <div className="space-y-1">
@@ -395,17 +395,23 @@ export default function ClientHealthPage() {
       <div>
         <h2 className="text-sm font-semibold text-brand mb-3">Dimension Scores</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {DIMENSION_KEYS.map((key) => {
-            const val = (score as unknown as Record<string, number>)[key] ?? 0;
+          {DIMENSIONS.map((d) => {
+            const val = dimensionScore(score, d.key);
             return (
-              <Card key={key} className="bg-white border border-gray-200">
+              <Card key={d.key} className="bg-white border border-gray-200">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs text-gray-500">{DIMENSION_LABELS[key]}</p>
-                    <span className={`text-sm font-bold ${scoreColor(val)}`}>{val}</span>
+                    <p className="text-xs text-gray-500" title={d.description}>
+                      {d.label} <span className="text-ps-hint">· {weightLabel(d.weightBp)}</span>
+                    </p>
+                    {val === null
+                      ? <span className="text-sm text-ps-hint">—</span>
+                      : <span className={`text-sm font-bold ${scoreColor(val)}`}>{val}</span>}
                   </div>
                   <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${scoreBarColor(val)}`} style={{ width: `${val}%` }} />
+                    {val !== null && (
+                      <div className={`h-full rounded-full ${scoreBarColor(val)}`} style={{ width: `${val}%` }} />
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -460,7 +466,10 @@ export default function ClientHealthPage() {
                         <span className="text-xs text-gray-400">/100</span>
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={`text-2xs ${gradeBadge(h.health_grade)}`}>{h.health_grade}</Badge>
+                        {(() => {
+                          const g = gradeOf(h.health_grade, h.overall_score);
+                          return <Badge className={`text-2xs ${gradeBadge(g)}`}>{g}</Badge>;
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -510,7 +519,7 @@ export default function ClientHealthPage() {
                         <Badge className={live
                           ? "bg-state-ready-surface text-state-ready text-3xs"
                           : "bg-ps-muted text-ps-hint text-3xs"}>
-                          {OVERRIDE_DIMENSIONS[o.dimension ?? ""] ?? o.dimension ?? "Overall"}
+                          {dimensionLabel(o.dimension)}
                         </Badge>
                         {!live && (
                           <p className="text-3xs text-ps-hint mt-1 max-w-xs">
@@ -569,8 +578,8 @@ export default function ClientHealthPage() {
                   onChange={(e) => setOverrideForm({ ...overrideForm, dimension: e.target.value })}
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 >
-                  {OVERRIDE_DIMENSION_KEYS.map((k) => (
-                    <option key={k} value={k}>{OVERRIDE_DIMENSIONS[k]}</option>
+                  {DIMENSIONS.map((d) => (
+                    <option key={d.key} value={d.key}>{d.label} ({weightLabel(d.weightBp)})</option>
                   ))}
                 </select>
               </div>

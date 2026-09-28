@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   BookOpen, Shield, Users, FileText, FolderOpen,
   Briefcase, Sparkles, Globe, UserCheck, Pin, RefreshCw,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/services/timeline";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { TimelineSkeleton } from "@/components/ui/skeleton";
+import { arrayOrEmpty } from "@/lib/api/shape";
 
 const CATEGORY_ICONS: Record<EventCategory, React.ElementType> = {
   accounting:  BookOpen,
@@ -85,15 +86,26 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<EventCategory | "all">("all");
   const [sevFilter, setSevFilter] = useState("all");
-  const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
   const [pinning, setPinning] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped whenever the feed is reset, so a page that arrives after the year
+  // or category changed is dropped instead of appended to the wrong feed.
+  const generation = useRef(0);
 
-  const load = useCallback(async (silent = false, resetPage = true) => {
+  // The FIRST page, replacing whatever is shown. "Load more" is `loadMore`
+  // below: it used to call this with a page number read from a stale closure,
+  // so every click asked for offset 0 again — and because the page number was
+  // a dependency here, the effect then re-ran and reset to page 0 anyway.
+  const load = useCallback(async (silent = false) => {
+    const gen = ++generation.current;
     if (!silent) setLoading(true); else setRefreshing(true);
-    const offset = resetPage ? 0 : page * PAGE_SIZE;
-    if (resetPage) setPage(0);
+    // A "Load more" still in flight belongs to the feed being replaced; its
+    // answer is dropped by the generation check, so its spinner goes too.
+    setLoadingMore(false);
+    setMoreError(null);
 
     try {
       const result = await getClientTimeline({
@@ -101,30 +113,71 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
         financialYear,
         category: catFilter !== "all" ? catFilter : undefined,
         limit: PAGE_SIZE + 1,
-        offset,
       });
+      if (gen !== generation.current) return;
 
       if (!result.success) {
         setLoadError(result.error ?? "Couldn't load timeline events.");
         setEvents([]);
         setHasMore(false);
       } else {
-        const data = result.data;
+        const rows = arrayOrEmpty<TimelineEvent>(result.data);
         setLoadError(null);
-        setHasMore(data.length > PAGE_SIZE);
-        setEvents(data.slice(0, PAGE_SIZE));
+        setHasMore(rows.length > PAGE_SIZE);
+        setEvents(rows.slice(0, PAGE_SIZE));
       }
     } catch (e) {
+      if (gen !== generation.current) return;
       setLoadError(e instanceof Error ? e.message : "Couldn't load timeline events.");
       setEvents([]);
       setHasMore(false);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (gen === generation.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [clientId, financialYear, catFilter, page]);
+  }, [clientId, financialYear, catFilter]);
 
-  useEffect(() => { load(false, true); }, [clientId, financialYear, catFilter, load]);
+  useEffect(() => { load(false); }, [load]);
+
+  // The NEXT page, appended. It starts strictly after the last event already
+  // shown — a cursor on (created_at, id), not an offset — so an event written
+  // in the meantime cannot make a row appear twice.
+  async function loadMore() {
+    const last = events[events.length - 1];
+    if (!last || loadingMore) return;
+    const gen = generation.current;
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const result = await getClientTimeline({
+        clientId,
+        financialYear,
+        category: catFilter !== "all" ? catFilter : undefined,
+        limit: PAGE_SIZE + 1,
+        before: { created_at: last.created_at, id: last.id },
+      });
+      if (gen !== generation.current) return;
+      if (!result.success) {
+        // What is already on screen stays; only the extra page failed.
+        setMoreError(result.error ?? "Couldn't load more events.");
+        return;
+      }
+      const rows = arrayOrEmpty<TimelineEvent>(result.data);
+      setHasMore(rows.length > PAGE_SIZE);
+      const next = rows.slice(0, PAGE_SIZE);
+      setEvents((prev) => {
+        const seen = new Set(prev.map((e) => e.id));
+        return [...prev, ...next.filter((e) => !seen.has(e.id))];
+      });
+    } catch (e) {
+      if (gen !== generation.current) return;
+      setMoreError(e instanceof Error ? e.message : "Couldn't load more events.");
+    } finally {
+      if (gen === generation.current) setLoadingMore(false);
+    }
+  }
 
   async function togglePin(event: TimelineEvent) {
     setPinning(event.id);
@@ -220,7 +273,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           </div>
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
           <button
-            onClick={() => load(false, true)}
+            onClick={() => load(false)}
             className="text-2xs text-ps-label px-3 py-1 rounded border border-ps-border hover:border-blue-300"
           >
             Retry
@@ -265,25 +318,17 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
         </div>
       )}
 
-      {/* Pagination */}
-      {(hasMore || page > 0) && (
-        <div className="flex items-center gap-2 justify-center pt-1">
-          {page > 0 && (
-            <button
-              onClick={() => { setPage((p) => p - 1); load(false, false); }}
-              className="text-2xs text-ps-hint hover:text-ps-label px-3 py-1 rounded border border-ps-border hover:border-blue-300"
-            >
-              ← Previous
-            </button>
-          )}
-          {hasMore && (
-            <button
-              onClick={() => { setPage((p) => p + 1); load(false, false); }}
-              className="text-2xs text-ps-hint hover:text-ps-label px-3 py-1 rounded border border-ps-border hover:border-blue-300"
-            >
-              Load more →
-            </button>
-          )}
+      {/* Pagination — appends the next page; absent once there is no more. */}
+      {!loadError && hasMore && (
+        <div className="flex flex-col items-center gap-1 pt-1">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore || refreshing}
+            className="text-2xs text-ps-hint hover:text-ps-label px-3 py-1 rounded border border-ps-border hover:border-blue-300 disabled:opacity-50"
+          >
+            {loadingMore ? "Loading…" : "Load more →"}
+          </button>
+          {moreError && <p className="text-2xs text-red-600">{moreError}</p>}
         </div>
       )}
     </div>

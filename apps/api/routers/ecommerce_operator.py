@@ -8,6 +8,8 @@ transmits anything to any portal; `services.gst_return_service
 """
 from __future__ import annotations
 
+import os
+
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,8 +24,7 @@ router = APIRouter(prefix="/api/ecommerce-operator", tags=["ecommerce_operator"]
 
 
 def _mock_enabled() -> bool:
-    from core.config import settings as _s
-    return bool(getattr(_s, "USE_MOCK_DATA", False))
+    return not os.environ.get("SUPABASE_URL")
 
 
 class SupplyIn(BaseModel):

@@ -7,6 +7,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 // The year picker comes from the clock, never a literal list (CLAUDE.md).
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getUserProfile } from "@/lib/data/getFirmId";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
@@ -201,14 +202,21 @@ function DeductionsTab({ clientId }: { clientId: string }) {
             </tr>
           </thead>
           <tbody>
+            {/* The COLUMNS OF `tds_deductions` (migration 014), which is what
+                GET /api/tds-workspace/deductions returns with select("*").
+                This read `deduction_date`, `taxable_amount_paise` and
+                `tds_amount_paise`, none of which exist, so every row showed a
+                blank date and ₹0.00 twice — a register of real deductions
+                reading as a register of nothing. PostgREST returns a bigint as
+                a string, hence Number(). */}
             {rows.map((r, i) => (
               <tr key={(r.id as string) ?? i} className="border-b hover:bg-ps-bg">
-                <td className="px-3 py-2">{r.deduction_date as string ?? "—"}</td>
-                <td className="px-3 py-2">{r.deductee_name as string ?? "—"}</td>
+                <td className="px-3 py-2">{(r.transaction_date as string | null | undefined) ?? "—"}</td>
+                <td className="px-3 py-2">{(r.deductee_name as string | null | undefined) ?? "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">§{r.section as string}</td>
-                <td className="px-3 py-2">{rupees((r.taxable_amount_paise as number) ?? 0)}</td>
-                <td className="px-3 py-2">{rupees((r.tds_amount_paise as number) ?? 0)}</td>
-                <td className="px-3 py-2">{r.quarter as string ?? "—"}</td>
+                <td className="px-3 py-2">{rupees(Number(r.payment_amount_paise ?? 0))}</td>
+                <td className="px-3 py-2">{rupees(Number(r.tds_paise ?? 0))}</td>
+                <td className="px-3 py-2">{(r.quarter as string | null | undefined) ?? "—"}</td>
               </tr>
             ))}
             {loadError ? (
@@ -1190,8 +1198,17 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
     try {
       // The role-guarded write policies of migration 359 are the only check on
       // this path: PostgREST reaches the table directly and rbac() never runs.
+      //
+      // `firm_id` IS SENT BECAUSE NOTHING ELSE WILL: the column is NOT NULL
+      // with no default and no trigger, and the table's one permissive policy
+      // checks `firm_id = get_my_firm_id()` — which is NULL without it, so
+      // every certificate was refused as "new row violates row-level security
+      // policy" (the RLS check runs before the NOT NULL one). `created_by` is
+      // the INTERNAL users.id, which is what its FK names.
+      const me = await getUserProfile();
       const { error } = await getSupabaseClient()
         .from("tds_lower_deduction_certificates").insert({
+          firm_id: me.firmId, created_by: me.userId,
           client_id: clientId, vendor_id: form.vendor_id,
           section: form.section, certificate_no: form.certificate_no.trim(),
           rate_bps: rateBps, valid_from: form.valid_from, valid_to: form.valid_to,

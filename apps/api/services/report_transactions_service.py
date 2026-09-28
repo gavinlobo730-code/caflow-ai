@@ -18,7 +18,7 @@ WHY THIS EXISTS
 
 WHAT COUNTS AS A TRANSACTION
     * A sales invoice that is not a draft and not cancelled.
-    * A purchase bill that is not cancelled.
+    * A purchase bill that is not a draft and not cancelled.
     * Never a soft-deleted row (deleted_at IS NULL) on either side.
 
     Drafts are excluded because an unissued invoice is not yet a transaction with
@@ -27,42 +27,84 @@ WHAT COUNTS AS A TRANSACTION
     in reverse. Both are decisions, not facts — they are stated here, asserted in
     tests, and easy to change in one place.
 
+    ⚠️ The sets below used to hold ONLY the unpaid status ("issued" /
+    "received"), which contradicted the rule written above them: a PART-paid
+    invoice vanished from the Outstanding Invoices report although money was
+    still owed on it, and a PAID one vanished from the P&L although a paid sale
+    is still turnover. Both CHECKs (client_sales_invoices_status_check,
+    purchase_bills_status_check) allow exactly draft / issued-or-received /
+    partially_paid / paid / cancelled, so every non-draft, non-cancelled
+    status is now listed.
+
 MONEY
     Every amount stays in integer paise, end to end (CLAUDE.md). Nothing here
     divides by 100; formatting is the caller's job.
+
+WHAT IS STILL OWED IS `outstanding_paise`, READ, NOT RE-SUBTRACTED
+    Migration 278 made it a GENERATED column on both tables precisely so the
+    formula lives once (CLAUDE.md, "What a document still has OPEN"). `total −
+    paid` is a different figure: it omits the CGST §34 note terms, and on a
+    purchase bill it starts from the GROSS total where the column starts from
+    `net_payable_paise` — so it overstated every bill carrying TDS by the tax
+    withheld, and a sales invoice reduced by a credit note by the note.
+
+EVERY ROW, PAGED (reports-documents-04)
+    Both reads were a bare `.execute()`, and PostgREST caps a response at ~1000
+    rows and says nothing when it does: a firm holding 5,656 issued invoices
+    was shown 1,000 of them on the Outstanding Invoices report, confidently
+    totalled. Both reads now go through `core.db_paging.fetch_all`, and the
+    party-name lookup through `fetch_all_in`, because an `in.()` list of
+    several hundred ids becomes a URL the gateway refuses before PostgREST
+    sees it.
+
+    ⚠️ PAGING IS NOT BOUNDING. This read is still proportional to the ledger —
+    every counted document in the window crosses the wire so the browser can
+    total or filter it — which the reporting-performance rule forbids for a
+    REPORT. It is the stop-gap that makes the figures complete; the proper
+    shape is a server-side answer per report: the outstanding report filtered
+    in the query on `outstanding_paise > 0` (the `ar_aging` shape migration 278
+    enabled), and the P&L off `account_period_balances`.
 """
 from typing import Any, Optional
+
+from core.db_paging import fetch_all, fetch_all_in
 
 
 # Statuses that represent a real transaction, per source table. Kept as explicit
 # sets rather than "not draft" so that a NEW status added to either table fails
 # closed — it is excluded until someone decides where it belongs.
-_SALES_COUNTED = {"issued"}
-_PURCHASE_COUNTED = {"received"}
+_SALES_COUNTED = {"issued", "partially_paid", "paid"}
+_PURCHASE_COUNTED = {"received", "partially_paid", "paid"}
 
 
 def _party_names(db, table: str, ids: set[str], firm_id: str) -> dict[str, str]:
-    """id -> display name for customers/vendors, fetched in one round trip.
+    """id -> display name for customers/vendors, in chunks of ids.
 
     Firm-scoped even though the ids came from firm-scoped rows: a stray id from
-    another firm must not turn into a name.
+    another firm must not turn into a name. Chunked (`fetch_all_in`) because a
+    firm-wide report names hundreds of parties, and one `in.()` list that long
+    is a 400 from the gateway rather than a query.
     """
     if not ids:
         return {}
-    rows = (db.table(table).select("id, name")
-            .eq("firm_id", firm_id)
-            .in_("id", list(ids)).execute().data) or []
+
+    def one_page():
+        return db.table(table).select("id, name").eq("firm_id", firm_id)
+
+    rows = fetch_all_in(one_page, "id", ids, label=f"reports.transactions.{table}")
     return {str(r["id"]): (r.get("name") or "") for r in rows}
 
 
-def _outstanding(total: int, paid: int) -> int:
-    """What is still owed on a row, floored at zero.
+def _outstanding(row: dict) -> int:
+    """What is still owed on a document: its generated `outstanding_paise`,
+    floored at zero.
 
-    Floored because an overpayment (paid > total, which happens with advances
-    applied against a smaller invoice) must not appear as a NEGATIVE outstanding
-    amount that then cancels out someone else's genuine debt in a total.
+    Read, never re-derived (see the module docstring). Floored because an
+    overpayment (advances applied against a smaller invoice) must not appear
+    as a NEGATIVE outstanding amount that then cancels out someone else's
+    genuine debt in a total.
     """
-    return max(0, int(total or 0) - int(paid or 0))
+    return max(0, int(row.get("outstanding_paise") or 0))
 
 
 def list_transactions(db, firm_id: str, *, client_ids: Optional[list[str]] = None,
@@ -81,31 +123,44 @@ def list_transactions(db, firm_id: str, *, client_ids: Optional[list[str]] = Non
     if client_ids is not None and not client_ids:
         return []
 
-    sales_q = (db.table("client_sales_invoices")
-               .select("id, client_id, customer_id, invoice_no, reference_no, invoice_date, "
-                       "is_interstate, supply_state_code, taxable_amount_paise, cgst_paise, "
-                       "sgst_paise, igst_paise, total_paise, paid_paise, status")
-               .eq("firm_id", firm_id).is_("deleted_at", "null")
-               .in_("status", sorted(_SALES_COUNTED)))
-    bills_q = (db.table("purchase_bills")
-               .select("id, client_id, vendor_id, bill_no, our_reference, bill_date, "
-                       "is_interstate, taxable_amount_paise, cgst_paise, sgst_paise, "
-                       "igst_paise, total_paise, paid_paise, tds_paise, tds_section, status")
-               .eq("firm_id", firm_id).is_("deleted_at", "null")
-               .in_("status", sorted(_PURCHASE_COUNTED)))
+    # Each page is a FRESH builder carrying every filter — fetch_all calls
+    # this once per page and adds its own `id > cursor ORDER BY id`, so reusing
+    # one builder would stack each page's cursor on the last. `id` is in both
+    # projections because the next cursor is read off the last row.
+    def sales_page():
+        q = (db.table("client_sales_invoices")
+             .select("id, client_id, customer_id, invoice_no, reference_no, invoice_date, "
+                     "is_interstate, supply_state_code, taxable_amount_paise, cgst_paise, "
+                     "sgst_paise, igst_paise, total_paise, paid_paise, outstanding_paise, "
+                     "status")
+             .eq("firm_id", firm_id).is_("deleted_at", "null")
+             .in_("status", sorted(_SALES_COUNTED)))
+        if client_ids is not None:
+            q = q.in_("client_id", client_ids)
+        if date_from:
+            q = q.gte("invoice_date", date_from)
+        if date_to:
+            q = q.lte("invoice_date", date_to)
+        return q
 
-    if client_ids is not None:
-        sales_q = sales_q.in_("client_id", client_ids)
-        bills_q = bills_q.in_("client_id", client_ids)
-    if date_from:
-        sales_q = sales_q.gte("invoice_date", date_from)
-        bills_q = bills_q.gte("bill_date", date_from)
-    if date_to:
-        sales_q = sales_q.lte("invoice_date", date_to)
-        bills_q = bills_q.lte("bill_date", date_to)
+    def bills_page():
+        q = (db.table("purchase_bills")
+             .select("id, client_id, vendor_id, bill_no, our_reference, bill_date, "
+                     "is_interstate, taxable_amount_paise, cgst_paise, sgst_paise, "
+                     "igst_paise, total_paise, paid_paise, outstanding_paise, tds_paise, "
+                     "tds_section, status")
+             .eq("firm_id", firm_id).is_("deleted_at", "null")
+             .in_("status", sorted(_PURCHASE_COUNTED)))
+        if client_ids is not None:
+            q = q.in_("client_id", client_ids)
+        if date_from:
+            q = q.gte("bill_date", date_from)
+        if date_to:
+            q = q.lte("bill_date", date_to)
+        return q
 
-    sales = sales_q.execute().data or []
-    bills = bills_q.execute().data or []
+    sales = fetch_all(sales_page, key="id", label="reports.transactions.sales")
+    bills = fetch_all(bills_page, key="id", label="reports.transactions.bills")
 
     customers = _party_names(db, "customers",
                              {str(r["customer_id"]) for r in sales if r.get("customer_id")},
@@ -136,7 +191,7 @@ def list_transactions(db, firm_id: str, *, client_ids: Optional[list[str]] = Non
             "tds_paise": 0,
             "total_paise": total,
             "paid_paise": paid,
-            "outstanding_paise": _outstanding(total, paid),
+            "outstanding_paise": _outstanding(r),
             "is_interstate": bool(r.get("is_interstate")),
             "place_of_supply": r.get("supply_state_code"),
             "status": r.get("status"),
@@ -158,7 +213,7 @@ def list_transactions(db, firm_id: str, *, client_ids: Optional[list[str]] = Non
             "tds_section": r.get("tds_section"),
             "total_paise": total,
             "paid_paise": paid,
-            "outstanding_paise": _outstanding(total, paid),
+            "outstanding_paise": _outstanding(r),
             "is_interstate": bool(r.get("is_interstate")),
             "place_of_supply": None,
             "status": r.get("status"),

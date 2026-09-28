@@ -195,6 +195,11 @@ _SHAPE = {
 #: more prettily would have been redundant writes on every document a client
 #: ever raises, for a message.
 _DUPLICATE_DOCUMENT = {
+    # A person, not a document, but the same refusal: the relationship graph
+    # matches people across clients on the PAN, so one PAN is one entity.
+    "entities_pan_unique":
+        "An entity with this PAN is already recorded in this firm. Open it "
+        "instead of adding it again.",
     "client_sales_invoices_firm_client_invoice_no_live_key":
         "An invoice with this number already exists for this client. Use a "
         "different number, or delete the existing invoice first.",

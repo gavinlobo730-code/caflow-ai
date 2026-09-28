@@ -54,16 +54,9 @@ export type HealthDimension =
   | "document"
   | "financial";
 
-export function scoreToLabel(score: number): string {
-  if (score >= 80) return "Healthy";
-  if (score >= 60) return "Fair";
-  if (score >= 40) return "At Risk";
-  return "Critical";
-}
-
-export function scoreToColor(score: number): string {
-  if (score >= 80) return "text-emerald-400";
-  if (score >= 60) return "text-yellow-400";
-  if (score >= 40) return "text-orange-400";
-  return "text-red-400";
-}
+// `scoreToLabel` and `scoreToColor` lived here and are DELETED, not moved
+// (sweep-client-purchases-05). They graded on an 80/60/40 ladder of four words
+// that the engine has never used — the engine's is 80/65/50/35 with five — so
+// the header badge said "Fair" at 73 while the Health page it links to said
+// "Good". The one band table in the browser is `lib/health/vocabulary.ts`,
+// pinned to `domain/health/scoring.GRADE_BANDS` from the Python side.

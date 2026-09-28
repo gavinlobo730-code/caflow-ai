@@ -60,3 +60,26 @@ test("a resolving firm lookup is not treated as no firm", () => {
   // onboarding. Unlike MFA, this one is not a security gate.
   assert.equal(at({ hasFirm: null }), true);
 });
+
+// ── RoleGuard ────────────────────────────────────────────────────────────────
+// NEGATIVE CONTROL: dropping the `roleLoading` term (the old
+// `!loading && !permitted`) fails "a role still resolving is not a refusal".
+
+import { roleGuardDecision } from "./guardDecision.ts";
+
+test("a role still resolving is not a refusal — the guard waits", () => {
+  // The bug: session known, role not yet, userRole null => hasRole false.
+  assert.equal(roleGuardDecision({ loading: false, roleLoading: true, permitted: false }), "wait");
+});
+
+test("a session still restoring waits too", () => {
+  assert.equal(roleGuardDecision({ loading: true, roleLoading: true, permitted: false }), "wait");
+});
+
+test("a decided role that is allowed renders", () => {
+  assert.equal(roleGuardDecision({ loading: false, roleLoading: false, permitted: true }), "allow");
+});
+
+test("a decided role that is not allowed is refused", () => {
+  assert.equal(roleGuardDecision({ loading: false, roleLoading: false, permitted: false }), "deny");
+});

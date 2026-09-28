@@ -140,8 +140,15 @@ BUDGET: dict[str, int] = {
     # left are `GET /dashboard` and `GET /scores/{id}/history`, both of which
     # ARE the recorded read-over-PostgREST convention.
     "/api/firm-hsn-rate-history": 4, "/api/gst": 4, "/api/health": 2,
-    "/api/mca-workspace": 4, "/api/recurring-invoices": 4, "/api/xbrl": 4,
-    "/api/ai-copilot": 3, "/api/invoices": 3, "/api/purchase-cycle": 3,
+    # /api/mca-workspace 4 -> 2 on 28-09-2026: the Compliance Calendar asked
+    # /api/mca/calendar/firm, a route nothing serves, so the firm calendar
+    # was counted unreached while its screen 404'd on every load. It asks
+    # /api/mca-workspace/calendar/firm now.
+    "/api/mca-workspace": 2, "/api/recurring-invoices": 4, "/api/xbrl": 4,
+    # /api/invoices 3 -> 2 on 28-09-2026: the engagement screen's Raise
+    # Invoice now asks POST /from-engagement/{id}, which carries the
+    # once-per-billing-period refusal a hand-built invoice never did.
+    "/api/ai-copilot": 3, "/api/invoices": 2, "/api/purchase-cycle": 3,
     # /api/accounting 2 -> 1 on 25-09-2026 (Phase 3a-3): the client
     # Reports tab renders `GET /statement-analysis`, whose method
     # `lib/api.accounting.statementAnalysis` had carried with no caller

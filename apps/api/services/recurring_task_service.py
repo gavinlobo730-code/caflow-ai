@@ -207,7 +207,7 @@ def generate_due_recurring_tasks(firm_id: Optional[str] = None,
                 if assignee_id:
                     try:
                         from services.notification_service import notification_service
-                        assignee = user_repo.find_by_id(assignee_id)
+                        assignee = user_repo.find_by_id(assignee_id, firm_id=config["firm_id"])
                         if assignee:
                             template_name = config.get("title") or title
                             notification_service.notify_recurring_generated(

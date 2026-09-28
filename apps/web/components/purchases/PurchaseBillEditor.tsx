@@ -29,7 +29,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import {
   isValidBillLine, previewBillTotals, validateBillEditor, findBlockedCreditHits,
   BLOCKED_CREDIT_REASONS, ineligibleGstPaise, buildLinePayload,
-  lineIsItcEligible, reasonForHintLabel,
+  lineIsItcEligible, reasonForHintLabel, supplySplitPreview,
   type PurchaseBillLine,
 } from "@/lib/purchases/billEditor";
 import { Callout } from "@/components/ui/callout";
@@ -413,8 +413,10 @@ export function PurchaseBillEditor({
   const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
 
   // ── Interstate preview (CGST Act §8) — server recomputes independently ──
-  const isInterstate = !!(clientStateCode && selectedVendor?.state_code && clientStateCode !== selectedVendor.state_code);
-  const gstAuto = !!(clientStateCode && selectedVendor?.state_code);
+  // `supplySplit.caption` says which side's state is unknown when the split is
+  // a default rather than a decision (sweep-client-purchases-03).
+  const supplySplit = supplySplitPreview(clientStateCode, selectedVendor);
+  const isInterstate = supplySplit.isInterstate;
 
   // ── Live preview totals + validation ────────────────────────────────────
   const totals = previewBillTotals(lines, isInterstate);
@@ -748,8 +750,9 @@ export function PurchaseBillEditor({
       {totals.cess_paise > 0 && (
         <Row label="Compensation cess" value={fmtAmt(totals.cess_paise)} />
       )}
-      <p className="text-3xs text-ps-hint">
-        {gstAuto ? `${isInterstate ? "Interstate" : "Intra-state"} — ${isInterstate ? "IGST" : "CGST + SGST"} (CGST Act §8)` : "Pick a vendor to preview CGST/SGST vs IGST."}
+      <p className={`text-3xs ${supplySplit.basis === "client_state_unknown" || supplySplit.basis === "vendor_state_unknown"
+        ? "text-state-attention" : "text-ps-hint"}`}>
+        {supplySplit.caption}
       </p>
       {isReverseCharge && (
         <p className="text-3xs text-state-attention">

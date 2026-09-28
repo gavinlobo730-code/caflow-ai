@@ -3454,7 +3454,7 @@ export const api = {
     // an assumed 30 September AGM, a day early on both — see the endpoint's
     // docstring. A company with no AGM date recorded comes back in
     // `without_agm_date` rather than being given a plausible one.
-    firmCalendar: () => request("/api/mca/calendar/firm"),
+    firmCalendar: () => request("/api/mca-workspace/calendar/firm"),
   },
   accounting: {
     accounts: () => request("/api/accounting/accounts"),
@@ -4807,6 +4807,14 @@ export const api = {
   invoices: {
     downloadPdf: (id: string) => downloadFile(`/api/invoices/${id}/pdf`, `invoice-${id}.pdf`),
     runOverdueCheck: () => request("/api/invoices/run-overdue-check", { method: "POST" }),
+    /** A DRAFT fee invoice from one fixed-fee engagement. The server takes the
+     *  fee, the GST, the date (IST today) and the number off the firm's atomic
+     *  sequence (migration 124), and stamps `engagement_id` — the /billing
+     *  screen used to do all four in the browser over PostgREST. A refusal
+     *  arrives as a thrown Error carrying the server's sentence. */
+    fromEngagement: (engagementId: string) =>
+      request<ApiResp<{ invoice: Record<string, unknown> | null }>>(
+        `/api/invoices/from-engagement/${encodeURIComponent(engagementId)}`, { method: "POST" }),
   },
   timeEntries: {
     exportEntries: (params: { fmt: "csv" | "xlsx"; user_id?: string; client_id?: string; date_from?: string; date_to?: string }) => {
@@ -5592,6 +5600,10 @@ export const api = {
       request(`/api/settings/invoice-templates/${id}`, { method: "DELETE" }),
     setDefault: (id: string) =>
       request(`/api/settings/invoice-templates/${id}/set-default`, { method: "POST" }),
+    /** Stop using this template as the default — invoices go back to the
+     *  built-in layout (sweep-settings-hub-1-06). */
+    unsetDefault: (id: string) =>
+      request(`/api/settings/invoice-templates/${id}/unset-default`, { method: "POST" }),
   },
   emailTemplates: {
     list: () => request("/api/settings/email-templates"),

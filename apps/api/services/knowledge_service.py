@@ -262,8 +262,12 @@ def list_client_instructions(current_user: dict, client_id: str) -> list[dict]:
     _assert_client_access(current_user, client_id, write=False)
     if _USE_MOCK:
         return []
+    # Live instructions only. An archived one is kept (migration 430 added the
+    # column the archive endpoint had been writing without it existing) and is
+    # hidden here, or archiving would change nothing anybody can see.
     return (_db().table("client_instructions").select("*")
             .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id)
+            .eq("is_archived", False)
             .order("is_pinned", desc=True).order("created_at", desc=True).execute().data or [])
 
 

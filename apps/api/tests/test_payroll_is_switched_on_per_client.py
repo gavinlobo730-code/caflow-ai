@@ -108,11 +108,34 @@ def test_recording_a_one_time_earning_is_refused(db):
     assert e.value.status_code == 403
 
 
-def test_recording_the_statutory_identity_is_refused(db):
+def test_recording_a_payroll_registration_is_refused(db):
     from models.payroll import StatutoryIdentityIn
     with pytest.raises(HTTPException) as e:
         payroll_mod.put_statutory_identity(
-            StatutoryIdentityIn(client_id="CLI", tan="MUMA12345B"), PARTNER)
+            StatutoryIdentityIn(client_id="CLI", epf_establishment_code="MHBAN0012345000"),
+            PARTNER)
+    assert e.value.status_code == 403
+
+
+def test_a_tan_is_recorded_whether_or_not_payroll_is_on(db):
+    """The TAN is the deductor's number for EVERY TDS statement — a client that
+    deducts on rent and fees but runs no payroll still files a 26Q under it,
+    and domain/tds/deductor reads it from this row (sweep-tds-mca-05)."""
+    from models.payroll import StatutoryIdentityIn
+    res = payroll_mod.put_statutory_identity(
+        StatutoryIdentityIn(client_id="CLI", tan="MUMA12345B"), PARTNER)
+    assert res["success"] is True
+    assert res["data"]["identity"]["tan"] == "MUMA12345B"
+
+
+def test_a_tan_sent_with_a_payroll_registration_is_still_refused_whole(db):
+    """Nothing is written partially: the EPF code needs payroll on, so the
+    request is refused rather than half-applied."""
+    from models.payroll import StatutoryIdentityIn
+    with pytest.raises(HTTPException) as e:
+        payroll_mod.put_statutory_identity(
+            StatutoryIdentityIn(client_id="CLI", tan="MUMA12345B",
+                                esic_employer_code="31000123450001001"), PARTNER)
     assert e.value.status_code == 403
 
 

@@ -1,12 +1,12 @@
 import logging
 import os
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 from models.common import api_response
 from core.permissions import rbac
+from domain.ai import groq_text
 from domain.money_text import whole_rupees
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
@@ -198,8 +198,9 @@ the IT Act". A general answer with no section is not useful to a CA.
 confidently is worse than no answer.
 - End with the Source: line described in the output contract above."""
 
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+# No URL and no model name here any more. Both lived here as literals — the
+# model hardcoded while GROQ_TEXT_MODEL existed for exactly this — and the
+# copilot carried its own copy of each. domain/ai/groq_text is the one call.
 
 
 def split_source(full_answer: str) -> tuple[str, str]:
@@ -290,7 +291,11 @@ def _client_brief(client_id: str, current_user: dict) -> Optional[str]:
 async def assistant(request: AssistantRequest, current_user: dict = Depends(rbac("ai", "read"))):
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="AI assistant is not configured on the server")
+        # 503 and the variable's name: a missing key is a deployment setting,
+        # not an internal fault, and saying which setting is the whole remedy.
+        raise HTTPException(status_code=503, detail=(
+            "The AI assistant is not configured on this server: GROQ_API_KEY is "
+            "not set."))
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
@@ -312,18 +317,18 @@ async def assistant(request: AssistantRequest, current_user: dict = Depends(rbac
     messages += [{"role": m.role, "content": m.content} for m in (request.conversation_history or [])]
     messages.append({"role": "user", "content": request.question})
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            GROQ_API_URL,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": GROQ_MODEL, "messages": messages, "max_tokens": 1024},
-            timeout=30,
-        )
-
-    if response.status_code != 200:
-        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
-
-    full_answer: str = response.json()["choices"][0]["message"]["content"]
+    # ⚠️ THIS USED TO ANSWER EVERY FAILURE WITH "AI service error. Please try
+    # again." and discard Groq's status and body — so a revoked key or a
+    # retired model, the two failures that make EVERY attempt fail, were
+    # reported as something a retry might fix, and nobody could tell which it
+    # was (sweep-misc-tools-02: 4 of 4 attempts). A timeout was worse: it was
+    # not caught at all and came back as a bare 500. groq_text logs what Groq
+    # said and hands back a sentence saying what is wrong and whether retrying
+    # can help; /ai-assistant renders the `detail` as given.
+    try:
+        full_answer, _tokens = await groq_text.chat(messages, api_key=api_key, max_tokens=1024)
+    except groq_text.ProviderFailed as exc:
+        raise HTTPException(status_code=exc.http_status, detail=exc.sentence) from exc
 
     answer, source = split_source(full_answer)
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { StickyNote, Plus, Pin, Archive, RefreshCw } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, type ApiResp } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 
@@ -15,10 +15,14 @@ export interface Instruction {
  * Client standing instructions (Amendment v1.1 FR-KB-02). Display + actions only;
  * visibility/authoring is enforced by the backend (assignment-gated). When
  * `pinnedOnly` is set, renders a read-only pinned-card list (for the Overview).
+ *
+ * `title` exists because one host is not a client: /practice/instructions
+ * renders the PRACTICE's own internal client (the firm's books), and headed
+ * "Client Instructions" it read as though it listed every client's.
  */
 export function ClientInstructions({
-  clientId, pinnedOnly = false, canWrite = true,
-}: { clientId: string; pinnedOnly?: boolean; canWrite?: boolean }) {
+  clientId, pinnedOnly = false, canWrite = true, title = "Client Instructions",
+}: { clientId: string; pinnedOnly?: boolean; canWrite?: boolean; title?: string }) {
   const [items, setItems] = useState<Instruction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,17 +37,31 @@ export function ClientInstructions({
   // the backend's _assert_client_access + G1 gate) — avoids a FastAPI
   // cold-start for a plain filtered select. Mirrors kb.list_client_instructions'
   // ordering (pinned first, then newest).
+  //
+  // ARCHIVED ROWS ARE FILTERED HERE AS WELL AS IN THE BACKEND'S LIST: archive
+  // is a PATCH setting `is_archived` (migration 430), not a delete, so a read
+  // without the predicate shows an archived instruction straight back — and a
+  // standing instruction somebody withdrew is exactly the one that must not
+  // be followed. `.order("id")` last is the unique tiebreaker selectAll's
+  // OFFSET paging needs; the two keys before it are not unique.
+  //
+  // The PostgREST `error` is CHECKED: selectAll reports a failure there rather
+  // than throwing, so reading only `data` rendered an RLS denial or a timeout
+  // as "No instructions yet".
   const load = useCallback(async () => {
     if (!clientId) return;
     setLoading(true); setError(null);
     try {
       const supabase = getSupabaseClient();
-      const { data } = await selectAll(() =>
+      const { data, error: readError } = await selectAll(() =>
         supabase.from("client_instructions")
           .select("id, client_id, title, body, is_pinned, created_at")
           .eq("client_id", clientId)
+          .eq("is_archived", false)
           .order("is_pinned", { ascending: false })
-          .order("created_at", { ascending: false }));
+          .order("created_at", { ascending: false })
+          .order("id"));
+      if (readError) throw new Error(readError.message);
       setItems((data as Instruction[]) ?? []);
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to load instructions"); }
     finally { setLoading(false); }
@@ -55,22 +73,38 @@ export function ClientInstructions({
     try { await api.instructions.create(clientId, form); setShowForm(false); setForm({ title: "", body: "", is_pinned: false }); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : "Create failed"); }
   }
-  async function togglePin(i: Instruction) {
-    setRowBusy(true);
+  // Both actions SAY when they fail. They used to `catch {}` with a comment
+  // that the backend enforces — which it does, by refusing; swallowing the
+  // refusal left the CA clicking Archive on an instruction that stayed put
+  // (it 500'd on every client until `is_archived` existed) with nothing on
+  // screen. The envelope is checked as well as the transport: a refusal can
+  // arrive as HTTP 200 with `success: false`.
+  async function runRowAction(fn: () => Promise<unknown>, failed: string) {
+    setRowBusy(true); setError(null);
     try {
-    try { await api.instructions.update(clientId, i.id, { is_pinned: !i.is_pinned }); await load(); } catch { /* backend enforces */ }
-  } finally { setRowBusy(false); }
+      const res = (await fn()) as ApiResp<unknown> | undefined;
+      if (res && res.success === false) throw new Error(res.error || failed);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : failed);
+    } finally { setRowBusy(false); }
   }
-  async function archive(i: Instruction) {
-    setRowBusy(true);
-    try {
-    try { await api.instructions.archive(clientId, i.id); await load(); } catch { /* backend enforces */ }
-  } finally { setRowBusy(false); }
+  function togglePin(i: Instruction) {
+    return runRowAction(
+      () => api.instructions.update(clientId, i.id, { is_pinned: !i.is_pinned }),
+      i.is_pinned ? "Couldn't unpin this instruction." : "Couldn't pin this instruction.");
+  }
+  function archive(i: Instruction) {
+    return runRowAction(
+      () => api.instructions.archive(clientId, i.id),
+      "Couldn't archive this instruction.");
   }
 
   const visible = pinnedOnly ? items.filter((i) => i.is_pinned) : items;
   if (loading) return <div className="text-xs text-gray-400">Loading instructions…</div>;
-  if (pinnedOnly && visible.length === 0) return null;
+  // A pinned-only card with nothing to show renders nothing — but a FAILED
+  // read is not "nothing pinned", so the error still shows.
+  if (pinnedOnly && visible.length === 0 && !error) return null;
 
   return (
     <div>
@@ -78,7 +112,7 @@ export function ClientInstructions({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <StickyNote size={16} className="text-brand" />
-            <h2 className="text-sm font-semibold text-brand">Client Instructions</h2>
+            <h2 className="text-sm font-semibold text-brand">{title}</h2>
           </div>
           <div className="flex items-center gap-3">
             {canWrite && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-brand text-white"><Plus size={12} /> Add</button>}

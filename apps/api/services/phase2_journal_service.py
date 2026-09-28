@@ -18,6 +18,7 @@ from fastapi import HTTPException
 # Light imports only (policy + rate-type vocabulary); the ExchangeRateService and
 # providers are imported lazily in exchange_rate_service() to keep the hot path light.
 from core.ist_clock import month_end_date
+from core.observability import capture_posting_failure
 from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
 from domain.accounting import journal_source as JS
 from domain.currency.rate_types import DEFAULT_RATE_TYPE, is_valid_rate_type

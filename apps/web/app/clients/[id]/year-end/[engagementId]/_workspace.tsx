@@ -140,6 +140,12 @@ function YearEndWorkspaceInner() {
   }, [engagementId]);
 
   const ActiveStage = (STAGES.find((s) => s.id === stage) ?? STAGES[0]).Component;
+  // Same test as the header's: a stage mounts only once the id is real.
+  // Right after router.push from the engagement list, useEngagementId() is
+  // still "" for a render (window.location has not moved yet), and every
+  // stage's load fired on mount — five `engagement_id=eq.` queries per new
+  // engagement. The static-export shell's "_placeholder" is no id either.
+  const hasEngagementId = !!engagementId && engagementId !== "_placeholder";
 
   return (
     <div className="flex h-full min-h-screen bg-ps-bg">
@@ -198,7 +204,27 @@ function YearEndWorkspaceInner() {
         </header>
 
         <main className="flex-1 overflow-auto">
-          <ActiveStage />
+          {hasEngagementId ? (
+            <ActiveStage />
+          ) : engagementId === "_placeholder" ? (
+            // Not transient: the address itself names no engagement. Say so
+            // rather than animate a skeleton that will never fill.
+            <div className="p-6 max-w-4xl mx-auto text-sm text-ps-label">
+              This address does not name a year-end engagement.{" "}
+              <button
+                type="button"
+                onClick={() => router.push(`/clients/${clientId}/year-end/`)}
+                className="underline text-brand"
+              >
+                Open the Year End list
+              </button>
+            </div>
+          ) : (
+            <div className="p-6 space-y-4 max-w-4xl mx-auto">
+              <Skeleton className="h-16 rounded-xl" />
+              <Skeleton className="h-32 rounded-xl" />
+            </div>
+          )}
         </main>
       </div>
     </div>

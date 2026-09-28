@@ -91,6 +91,7 @@ export function Modal({
         <div className="flex items-center justify-between gap-3">
           <h3 id={titleId} className="text-sm font-semibold text-ps-ink">{title}</h3>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close dialog"
             className="text-ps-hint hover:text-ps-label rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"

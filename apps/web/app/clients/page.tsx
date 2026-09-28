@@ -408,6 +408,56 @@ export default function ClientsPage() {
     setSelected(new Set());
   }
 
+  // Bulk RESTORE — the other direction (sweep-clients-admin-05). The bulk bar
+  // used to offer Archive alone, so on the Archived tab selecting a client and
+  // pressing the only button reported "already archived" and wrote nothing;
+  // the per-row Restore sits in a menu that only appears on hover. Same
+  // partial-failure discipline as bulkArchive: report, then clear.
+  async function bulkRestore() {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    setBulkError(null);
+    setBulkMessage(null);
+
+    const targets = Array.from(selected).filter(
+      (id) => clients.find((c) => c.id === id)?.status === "archived");
+    const results = await Promise.all(
+      targets.map((id) =>
+        restoreClient(id).then(
+          () => ({ id, error: null as string | null }),
+          (e) => ({ id, error: e instanceof Error ? e.message : "Restore failed" }),
+        ),
+      ),
+    );
+    const failed = results.filter((r) => r.error !== null);
+    const succeeded = targets.length - failed.length;
+
+    try {
+      if (succeeded > 0) await load();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "Restored, but the client list could not be refreshed.");
+      return;
+    } finally {
+      setBulkBusy(false);
+    }
+
+    if (failed.length > 0) {
+      setBulkError(
+        `Restored ${succeeded} of ${targets.length} client${targets.length === 1 ? "" : "s"}` +
+        `. Failed: ${failed.length} — ${failed[0].error}${failed.length > 1 ? ` (+${failed.length - 1} more)` : ""}.`
+      );
+    } else {
+      setBulkMessage(`Restored ${succeeded} client${succeeded === 1 ? "" : "s"} to the active list.`);
+    }
+    setSelected(new Set());
+  }
+
+  // Which way each action would move the selection. A button is offered only
+  // when it has something to act on, so the Archived tab offers Restore and
+  // the Active tab offers Archive, and "All" offers whichever applies.
+  const selectedArchived = clients.filter((c) => selected.has(c.id) && c.status === "archived").length;
+  const selectedActive = selected.size - selectedArchived;
+
   async function handleClientImport(rows: ImportRow[]) {
     const sb = getSupabaseClient();
     const firmId = await getFirmId();
@@ -571,7 +621,7 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {/* Bulk select — Archive only (Manager+). Selection is over `filtered`. */}
+      {/* Bulk select — Archive / Restore (Manager+). Selection is over `filtered`. */}
       {!loading && filtered.length > 0 && canArchive && (
         <div className="flex items-center gap-2 px-1">
           <input
@@ -590,14 +640,26 @@ export default function ClientsPage() {
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-light bg-brand-surface px-3 py-2 text-xs">
           <span className="font-semibold text-brand-dark">{selected.size} selected</span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <button
-              onClick={bulkArchive}
-              disabled={actionInFlight}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-light bg-white px-2.5 py-1.5 font-medium text-brand hover:bg-ps-hover disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Archive size={12} />
-              {bulkBusy ? "Archiving…" : "Archive"}
-            </button>
+            {selectedActive > 0 && (
+              <button
+                onClick={bulkArchive}
+                disabled={actionInFlight}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-brand-light bg-white px-2.5 py-1.5 font-medium text-brand hover:bg-ps-hover disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Archive size={12} />
+                {bulkBusy ? "Working…" : selectedArchived > 0 ? `Archive ${selectedActive}` : "Archive"}
+              </button>
+            )}
+            {selectedArchived > 0 && (
+              <button
+                onClick={bulkRestore}
+                disabled={actionInFlight}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-brand-light bg-white px-2.5 py-1.5 font-medium text-brand hover:bg-ps-hover disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RotateCcw size={12} />
+                {bulkBusy ? "Working…" : selectedActive > 0 ? `Restore ${selectedArchived}` : "Restore"}
+              </button>
+            )}
             <button onClick={clearSelection} disabled={bulkBusy} className="text-ps-label hover:text-brand disabled:opacity-50" aria-label="Clear selection">
               <X size={14} />
             </button>
@@ -698,7 +760,7 @@ export default function ClientsPage() {
                           e.stopPropagation();
                           setMenuOpenId(menuOpenId === c.id ? null : c.id);
                         }}
-                        className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-ps-muted text-ps-label transition-all"
+                        className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-ps-muted text-ps-label transition-all"
                         title="More actions"
                       >
                         <MoreVertical size={13} />

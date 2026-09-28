@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useState, useEffect } from "react";
 import {
   Plus,
@@ -965,6 +966,17 @@ export default function PipelinePage() {
   }
 
   async function handleDelete(id: string) {
+    // Ask first. The delete is one click on a small unlabelled X beside Edit and
+    // there is no undo screen, while the Engagements step of this same workflow
+    // confirms its own delete (sweep-clients-admin-03).
+    const lead = leads.find((l) => l.id === id);
+    const ok = await confirmDialog({
+      title: "Delete this lead?",
+      message: `${lead?.name ?? "This lead"}${lead?.businessName ? ` (${lead.businessName})` : ""} will be removed from the pipeline.`,
+      confirmLabel: "Delete lead",
+      danger: true,
+    });
+    if (!ok) return;
     // Optimistic remove — restore on failure so the UI never lies about state.
     const snapshot = leads;
     setLeads((prev) => prev.filter((l) => l.id !== id));

@@ -11,7 +11,7 @@ from typing import Optional
 from domain.gst.gstin import problem_with as gstin_problem
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
-from domain.party_duplicates import possible_duplicates
+from domain.party_duplicates import possible_duplicates, same_party_sentence
 from models.common import api_response
 from models.parties import CustomerIn, CustomerUpdateIn
 from core.authz import assert_client_access, can_access_client
@@ -281,7 +281,8 @@ def create_customer(
             ]
             existing = _match_existing(candidates, gstin, pan)
             if existing:
-                return api_response(True, {**existing, "duplicate": True})
+                return api_response(True, {**existing, "duplicate": True,
+                                  "duplicate_reason": same_party_sentence("customer", existing, gstin, pan)})
             # PUR-32. Read BEFORE the append, or the customer reports itself.
             resemblances = possible_duplicates(data.get("name"), candidates)
             data["id"] = str(uuid.uuid4())
@@ -307,7 +308,8 @@ def create_customer(
         if gstin or pan:
             existing = _match_existing(active_customers, gstin, pan)
             if existing:
-                return api_response(True, {**existing, "duplicate": True})
+                return api_response(True, {**existing, "duplicate": True,
+                                  "duplicate_reason": same_party_sentence("customer", existing, gstin, pan)})
         # PUR-32. The customer is created exactly as asked; a name is not an
         # identifier — see domain/party_duplicates.
         resemblances = possible_duplicates(data.get("name"), active_customers)

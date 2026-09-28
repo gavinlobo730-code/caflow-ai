@@ -12,6 +12,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { CardGridSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -124,7 +125,11 @@ export default function ClientLifecyclePage() {
         // tasks, scoped to this client, newest first.
         db
           .from("onboarding_workflows")
-          .select("*, onboarding_tasks(*)")
+          // ALIASED to `tasks`, the key this page (and the create endpoint's
+          // response) read. Unaliased, PostgREST returns the embed as
+          // `onboarding_tasks`, so every workflow rendered "0/0 tasks" with no
+          // task list — its ten tasks existed and could not be seen or ticked.
+          .select("*, tasks:onboarding_tasks(*)")
           .eq("client_id", clientId)
           .order("created_at", { ascending: false }),
         // FIX: list_renewals has no client_id filter at all — it fetches up to
@@ -158,6 +163,14 @@ export default function ClientLifecyclePage() {
   }, [loadAll]);
 
   async function handleCreateWorkflow() {
+    // A workflow cannot be deleted from here, so a stray (or double) click
+    // leaves a permanent row — every other create on this platform asks first.
+    const ok = await confirmDialog({
+      title: "Start a new onboarding workflow?",
+      message: "This creates the standard 10-step onboarding checklist for this client. It can't be removed afterwards.",
+      confirmLabel: "Start onboarding",
+    });
+    if (!ok) return;
     setCreatingWorkflow(true);
     try {
       const json: ApiResponse<OnboardingWorkflow> = await apiFetch("/api/lifecycle/onboarding", {

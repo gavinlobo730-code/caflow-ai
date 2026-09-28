@@ -27,6 +27,43 @@ def _get_db():
     return get_supabase()
 
 
+class PeriodAlreadyBilled(Exception):
+    """This engagement already has a live fee invoice for the billing period
+    the new invoice's date falls in. The router answers it with a 409."""
+
+
+def _assert_period_not_billed(engagement: dict, invoice_date: str) -> None:
+    """Refuse a second fee invoice for the same engagement and billing period.
+
+    'Raise Invoice' used to mint one per click, so a Monthly retainer clicked
+    twice was billed twice and a Quarterly or Annual one on every click
+    (misc-tools-06). The period is domain/billing/period's answer for the
+    engagement's own cycle; a CANCELLED invoice does not count, because
+    cancelling and re-raising is exactly how a wrong invoice is corrected.
+    The read is one engagement's invoices inside one period — a handful.
+    """
+    from datetime import date as _date
+    from domain.billing.period import billing_period, describe
+    from repositories.invoice_repository import invoice_repo
+
+    cycle = engagement.get("billing_cycle") or "Monthly"
+    start, end = billing_period(cycle, _date.fromisoformat(invoice_date[:10]))
+    existing = [
+        inv for inv in invoice_repo.find_all(
+            firm_id=engagement.get("firm_id"),
+            engagement_id=engagement.get("id"),
+            date_from=start.isoformat() if start else None,
+            date_to=end.isoformat() if end else None)
+        if inv.get("status") != "Cancelled"
+    ]
+    if existing:
+        first = existing[0]
+        raise PeriodAlreadyBilled(
+            f"This {cycle.lower()} engagement is already billed for "
+            f"{describe(cycle, start, end)} — invoice {first.get('invoice_no') or first.get('id')} "
+            f"({first.get('status')}). Cancel it first if it needs raising again.")
+
+
 def generate_invoice_from_engagement(
     engagement_id: str,
     invoice_month: Optional[str] = None,
@@ -61,6 +98,9 @@ def generate_invoice_from_engagement(
 
     if invoice_month is None:
         invoice_month = ist_today().isoformat()
+
+    _assert_period_not_billed({**engagement, "id": engagement.get("id") or engagement_id},
+                              invoice_month)
 
     amount_paise = engagement["fee_paise"]
 

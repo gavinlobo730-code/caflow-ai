@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, Building2, ChevronDown, LayoutGrid } from "lucide-react";
+import { ArrowLeft, Building2, ChevronDown, LayoutGrid, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClientNav, CLIENT_SECTIONS } from "@/lib/workspace/ClientNavContext";
 import { getLatestHealthScore } from "@/lib/services/health-score-compute";
@@ -11,6 +11,8 @@ import { HealthBadge } from "@/components/HealthBadge";
 import { ClientSwitcher } from "@/components/ClientSwitcher";
 import { UtilityCluster } from "@/components/shell/UtilityCluster";
 import { ClientModuleGrid } from "@/components/client/ClientModuleGrid";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { restoreClient } from "@/lib/data/clients";
 
 /**
  * The client workspace's whole chrome, in one 48px bar.
@@ -52,7 +54,8 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
   // could find out, which is how forty screens came to spin for ever on a dead
   // link. `ClientNavProvider` resolves it once; `ClientResolutionGate` and this
   // bar read the same answer. Two lookups would be two answers.
-  const { clientId, client, resolution } = useClientNav();
+  const { clientId, client, resolution, reloadClient } = useClientNav();
+  const { can } = usePermissions();
   const pathname = usePathname();
   // Three states, three sentences. The bar used to say "Couldn't load client"
   // for a client that does not exist, which sends a CA to check their
@@ -61,7 +64,33 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
     resolution === "absent" ? "No such client"
     : resolution === "unavailable" ? "Couldn't load client"
     : null;
-  const [health, setHealth] = useState<{ overall_score: number; trend: "improving" | "stable" | "declining" | null } | null>(null);
+  // `grade` is the SERVER's band, carried so the pill says the same word as
+  // the Health page it links to (sweep-client-purchases-05).
+  const [health, setHealth] = useState<{ overall_score: number; grade: string | null; trend: "improving" | "stable" | "declining" | null } | null>(null);
+  // An archived client's workspace opens exactly like an active one, and until
+  // this nothing on it said so — nor did anything anywhere offer the way back:
+  // the client list's bulk bar only archived, and its per-row Restore sits in
+  // a menu that appears on hover (sweep-clients-admin-05). The endpoint,
+  // POST /api/clients/{id}/restore, has existed all along.
+  const isArchived = client?.status === "archived";
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  useEffect(() => { setRestoreError(null); }, [clientId]);
+
+  async function handleRestore() {
+    setRestoring(true);
+    setRestoreError(null);
+    try {
+      await restoreClient(clientId);
+      // Re-resolve rather than patching the row locally: the bar and the
+      // resolution gate read one answer, and a second copy is how they drift.
+      reloadClient();
+    } catch (e) {
+      setRestoreError(e instanceof Error ? e.message : "Restore failed");
+    } finally {
+      setRestoring(false);
+    }
+  }
   const [gridOpen, setGridOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -95,7 +124,7 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
     setHealth(null);
     if (!clientId || clientId === "_placeholder") return;
     getLatestHealthScore(clientId)
-      .then((h) => { if (h) setHealth({ overall_score: h.overall_score, trend: h.trend }); })
+      .then((h) => { if (h) setHealth({ overall_score: h.overall_score, grade: h.grade ?? null, trend: h.trend }); })
       .catch((e) => console.error("ClientTopBar: failed to load health score", e));
   }, [clientId]);
 
@@ -159,7 +188,33 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
               {client.gstin}
             </span>
           )}
+          {isArchived && (
+            <span className="text-3xs font-semibold px-1.5 py-0.5 rounded bg-state-attention-surface text-state-attention shrink-0"
+                  title="Archived clients are hidden from the active list. All data and history are kept.">
+              Archived
+            </span>
+          )}
         </div>
+
+        {/* Restore lives where the archived client IS, not only in a hover
+            menu on another screen. Manager+ (`client` write), the same guard
+            the endpoint's rbac() applies. */}
+        {isArchived && can("client", "write") && (
+          <button
+            onClick={handleRestore}
+            disabled={restoring}
+            title={restoreError ?? "Restore this client to the active list"}
+            className={cn(
+              "flex items-center gap-1 h-7 px-2 rounded-lg border text-3xs font-medium shrink-0 transition-colors disabled:opacity-50",
+              restoreError
+                ? "border-state-problem-border text-state-problem"
+                : "border-ps-border text-ps-label hover:text-ps-ink hover:border-brand hover:bg-ps-bg",
+            )}
+          >
+            <RotateCcw size={12} />
+            {restoring ? "Restoring…" : restoreError ? "Restore failed — retry" : "Restore"}
+          </button>
+        )}
 
         {/* The module switcher. A chevron rather than a label change when open:
             the button is the anchor the grid flies from, so it stays put. */}
@@ -182,7 +237,7 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
 
         {health && (
           <HealthBadge score={health.overall_score} size="sm" showLabel trend={health.trend}
-                       href={`/clients/${clientId}/health/`} />
+                       grade={health.grade} href={`/clients/${clientId}/health/`} />
         )}
 
         {/* The search MODAL is AppShell's — one instance, one open state, one

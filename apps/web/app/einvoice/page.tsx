@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, Loader2, AlertTriangle, Zap } from "lucide-react";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
+import { arrayOrEmpty } from "@/lib/api/shape";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -45,6 +46,11 @@ export default function EInvoicePage() {
   // Distinguishes "fetch failed" from "no e-invoice records yet" — a masked
   // failure previously rendered an empty list with no indication of failure.
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The client whose records are on screen. `null` means nothing has been
+  // loaded yet, which is a different thing from "loaded, and there are none":
+  // the first renders the prompt to load, the second says so in words rather
+  // than leaving the panel blank.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showIRN, setShowIRN] = useState<string | null>(null);
 
@@ -69,17 +75,18 @@ export default function EInvoicePage() {
     setLoading(true);
     try {
       const res = await apiFetch(`/api/einvoice/records?client_id=${cid}`);
-      if (res.success) {
-        setRecords(res.data ?? []);
+      if (res?.success) {
+        setRecords(arrayOrEmpty<EInvoice>(res.data));
         setLoadError(null);
       } else {
         setRecords([]);
-        setLoadError(res.error ?? "Couldn't load e-invoice records.");
+        setLoadError(res?.error ?? "Couldn't load e-invoice records.");
       }
     } catch {
       setRecords([]);
       setLoadError("Couldn't load e-invoice records. Please try again.");
     } finally {
+      setLoadedFor(cid);
       setLoading(false);
     }
   }
@@ -194,6 +201,17 @@ export default function EInvoicePage() {
         <div className="bg-white rounded-xl border border-state-problem-border text-center py-10 space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
           <button disabled={actionInFlight} onClick={() => load(clientId)} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
+        </div>
+      ) : loadedFor === null ? (
+        <div className="bg-white rounded-xl border border-ps-border text-center py-10">
+          <p className="text-xs text-ps-hint">Enter a client ID and press Load to see its e-invoice records.</p>
+        </div>
+      ) : records.length === 0 ? (
+        <div className="bg-white rounded-xl border border-ps-border text-center py-10 space-y-1">
+          <p className="text-sm text-ps-body font-medium">No e-invoice records found</p>
+          <p className="text-xs text-ps-hint">
+            No IRN has been recorded for this client yet. Use New E-Invoice to prepare one.
+          </p>
         </div>
       ) : (
         <div className="space-y-2">

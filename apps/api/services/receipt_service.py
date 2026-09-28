@@ -25,6 +25,7 @@ from services import period_lock_service
 from services.timeline_service import timeline_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
+from core.observability import capture_soft_failure
 from domain.money_text import whole_rupees
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")

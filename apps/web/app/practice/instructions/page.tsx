@@ -32,9 +32,15 @@ function PracticeInstructions() {
   if (loading) return <PageLoader />;
   if (loadError) return <div className="p-8 text-sm text-red-600">{loadError}</div>;
   if (!internalId) return <div className="p-8 text-sm text-gray-500">Set up the Practice first (Overview).</div>;
+  // The internal client is the PRACTICE's own books, not a client of it, so the
+  // component's default "Client Instructions" heading misdescribed this list.
+  // A client's instructions live on that client's own Instructions tab.
   return (
     <div className="p-6 max-w-3xl">
-      <ClientInstructions clientId={internalId} />
+      <ClientInstructions
+        clientId={internalId}
+        title="Practice standing instructions (the firm's own books)"
+      />
     </div>
   );
 }

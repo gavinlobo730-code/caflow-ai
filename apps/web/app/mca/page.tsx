@@ -26,6 +26,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO, toLocalISO, computeOverdueStatus } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
+import { formatCroreLakh } from "@/lib/money/format";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -163,12 +164,10 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function fmtLakhs(paise: number) {
-  const rupees = paise / 100;
-  if (rupees >= 10000000) return `₹${(rupees / 10000000).toFixed(2)} Cr`;
-  if (rupees >= 100000) return `₹${(rupees / 100000).toFixed(2)} L`;
-  return `₹${rupees.toLocaleString("en-IN")}`;
-}
+// Capital is rendered by `formatCroreLakh` in lib/money/format — MOVED there
+// from this file so the client MCA screen could share it. That screen had its
+// own `crore()`, which divided PAISE by the rupee crore and showed every
+// company's capital 100× too large.
 
 // ─── Add Filing Modal ────────────────────────────────────────────────────────
 
@@ -641,12 +640,12 @@ export default function MCAPage() {
     {
       key: "auth_capital_paise", header: "Auth. Capital", accessor: (c) => c.auth_capital_paise,
       sortable: true, align: "right", exportValue: (c) => c.auth_capital_paise / 100,
-      render: (c) => <span className="text-ps-ink">{fmtLakhs(c.auth_capital_paise)}</span>,
+      render: (c) => <span className="text-ps-ink">{formatCroreLakh(c.auth_capital_paise)}</span>,
     },
     {
       key: "paidup_capital_paise", header: "Paid-up Capital", accessor: (c) => c.paidup_capital_paise,
       sortable: true, align: "right", exportValue: (c) => c.paidup_capital_paise / 100,
-      render: (c) => <span className="text-ps-ink">{fmtLakhs(c.paidup_capital_paise)}</span>,
+      render: (c) => <span className="text-ps-ink">{formatCroreLakh(c.paidup_capital_paise)}</span>,
     },
     {
       key: "regd_office", header: "Regd. Office", accessor: (c) => c.regd_office,

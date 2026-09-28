@@ -859,17 +859,20 @@ def _trigger_26as_ai_insight(
                    f"books that 26AS does not report")
     try:
         from services.timeline_service import timeline_service
+        # Was `action=..., metadata=...` — parameters log() does not have — so
+        # this raised TypeError into the except below on every call and the
+        # mismatch note never reached the timeline, silently.
         timeline_service.log(
             client_id=client_id,
+            firm_id=firm_id,
+            financial_year=financial_year,
             category="tax",
-            action="26as_reconciliation_mismatch",
+            title="26AS reconciliation mismatch",
             description=f"26AS reconciliation FY {financial_year}: {detail} — review before filing",
             severity="warning",
-            metadata={
-                "recon_id": recon_id,
-                "variance_paise": variance_paise,
-                "unsupported_credit_paise": unsupported_credit_paise,
-            },
+            entity_type="form_26as_reconciliation",
+            entity_id=recon_id or None,
+            amount_paise=variance_paise,
         )
     except Exception:
         _logger.warning("Failed to log 26AS mismatch timeline event", exc_info=True)

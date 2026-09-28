@@ -9,6 +9,7 @@
  */
 import { api } from "@/lib/api";
 import type { ApiResp } from "@/lib/api";
+import { HEALTH_DIMENSIONS } from "@/lib/health/vocabulary";
 
 export interface HealthDimension {
   score: number;
@@ -36,15 +37,13 @@ export interface HealthAlert {
   message: string;
 }
 
-export const DIMENSION_LABELS: Record<string, string> = {
-  compliance_health: "Compliance",
-  accounting_quality: "Accounting",
-  work_progress: "Work Progress",
-  document_health: "Documents",
-  ai_risk_signals: "AI Risk Signals",
-  open_notices: "Notices",
-  client_responsiveness: "Responsiveness",
-};
+/** The dimensions' ONE set of names (sweep-client-misc-04). This was a fourth
+ *  spelling — "Documents", "Notices", "Responsiveness" — beside the Health
+ *  tab's cards, its override picker and the firm-level detail page, so the
+ *  Overview card named a dimension the Health tab called something else. */
+export const DIMENSION_LABELS: Record<string, string> = Object.fromEntries(
+  HEALTH_DIMENSIONS.map((d) => [d.key, d.label]),
+);
 
 /** The backend's trend is a signed integer delta string ("+15"/"-5"/"+0").
  * Converted to the word-label the existing HealthBadge components render,

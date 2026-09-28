@@ -135,19 +135,26 @@ def validate_package(
     Validate XBRL package against MCA taxonomy.
     Checks mandatory tags, data types, and balancing equations.
     """
-    _assert_package_scope(current_user, package_id)
+    pkg = _assert_package_scope(current_user, package_id)
     from domain.income_tax.xbrl_service import validate_xbrl_package
     try:
         result = validate_xbrl_package(current_user["firm_id"], package_id)
         has_errors = bool(result.get("validation_errors") or result.get("missing_tags"))
         if not has_errors:
+            # Was `action=..., metadata=...` — parameters log() does not have —
+            # so a CLEAN package raised TypeError here and came back as a 500,
+            # i.e. only a package WITH errors could be validated. The client is
+            # the scope-checked package's (NOT NULL, migration 156), and firm_id
+            # is passed because client_timeline_events.firm_id is NOT NULL.
             timeline_service.log(
-                client_id=result.get("client_id", ""),
+                client_id=pkg["client_id"],
+                firm_id=current_user["firm_id"],
                 category="tax",
-                action="xbrl_generated",
+                title="XBRL package validated",
                 description=f"XBRL package validated for FY {result.get('financial_year')}",
                 severity="success",
-                metadata={"package_id": package_id},
+                entity_type="xbrl_package",
+                entity_id=package_id,
             )
         return api_response(True, result)
     except Exception as e:
@@ -190,7 +197,7 @@ def review_package(
     current_user: dict = Depends(rbac("year_end", "approve")),
 ):
     """Mark XBRL package as CA-reviewed."""
-    _assert_package_scope(current_user, package_id)
+    pkg = _assert_package_scope(current_user, package_id)
     from domain.income_tax.xbrl_service import _supabase, _USE_MOCK, _MOCK_PACKAGES
     from datetime import datetime, timezone
     update = {
@@ -210,13 +217,18 @@ def review_package(
         ).eq("firm_id", current_user["firm_id"]).execute()
         result = res.data[0] if res.data else {}
 
+    # Was `action=..., metadata=...`: the review had already been written by
+    # the UPDATE above, and this line then raised TypeError, so every review
+    # SUCCEEDED and was reported to the CA as a 500.
     timeline_service.log(
-        client_id=result.get("client_id", ""),
+        client_id=pkg["client_id"],
+        firm_id=current_user["firm_id"],
         category="tax",
-        action="xbrl_reviewed",
+        title="XBRL package reviewed",
         description="XBRL package reviewed by partner",
         severity="success",
-        metadata={"package_id": package_id},
+        entity_type="xbrl_package",
+        entity_id=package_id,
     )
     return api_response(True, result)
 

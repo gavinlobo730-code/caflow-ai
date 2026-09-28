@@ -9,6 +9,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { HEALTH_GRADE_BANDS, gradeForScore, gradeOf } from "@/lib/health/vocabulary";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -36,7 +37,9 @@ function normalizeScore(raw: Record<string, unknown>): ClientHealth {
     client_id: String(raw.client_id ?? ""),
     client_name: String(raw.client_name ?? "—"),
     overall_score: Number(raw.overall_score ?? 0),
-    grade: (raw.grade ?? raw.health_grade ?? "Critical") as Grade,
+    // The server's word where it is one of the five bands; a legacy letter or
+    // an absent grade reads as the band of the score rather than "Critical".
+    grade: gradeOf(raw.grade ?? raw.health_grade, Number(raw.overall_score ?? 0)),
     dimensions: {
       compliance_health:     Number(dims?.compliance_health?.score     ?? raw.compliance_score        ?? 0),
       accounting_quality:    Number(dims?.accounting_quality?.score    ?? raw.accounting_score        ?? 0),
@@ -304,17 +307,14 @@ export default function HealthPage() {
       key: "band",
       label: "Band",
       type: "select",
-      accessor: (c) =>
-        c.overall_score >= 80 ? "Healthy"
-          : c.overall_score >= 50 ? "Good"
-          : c.overall_score >= 35 ? "At Risk"
-          : "Critical",
-      options: [
-        { value: "Healthy", label: "Healthy (80–100)" },
-        { value: "Good", label: "Good (50–79)" },
-        { value: "At Risk", label: "At Risk (35–49)" },
-        { value: "Critical", label: "Critical (0–34)" },
-      ],
+      // The score's band on the ENGINE's table (`lib/health/vocabulary`). This
+      // was a four-rung ladder of its own that called 50–79 "Good" beside a
+      // Grade column calling 50–64 "Needs Attention" — two words for one row.
+      accessor: (c) => gradeForScore(c.overall_score),
+      options: HEALTH_GRADE_BANDS.map((b, i) => ({
+        value: b.grade,
+        label: `${b.grade} (${b.min}–${i === 0 ? 100 : HEALTH_GRADE_BANDS[i - 1].min - 1})`,
+      })),
     },
   ], []);
 

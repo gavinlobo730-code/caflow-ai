@@ -262,3 +262,29 @@ def possible_duplicates(
     # Exact matches first: the stronger signal is the one to read.
     out.sort(key=lambda d: (d.reason != SAME_NAME, d.name.lower()))
     return out
+
+
+def same_party_sentence(noun: str, existing: dict, gstin: str, pan: str) -> str:
+    """What a create path says when it returned an EXISTING party instead.
+
+    The GSTIN/PAN guard (see the module docstring) answers a create that
+    matches an active party with THAT party and `duplicate: True` — no insert,
+    nothing the caller typed saved. The Vendors tab ignored the flag and said
+    "Vendor added.", so a CA believed they had added a second vendor when they
+    had touched nothing (sweep-client-purchases-04). The flag alone left every
+    screen to compose its own explanation, and only one of four did.
+
+    So the sentence is the server's, and it says three things a screen would
+    otherwise have to guess: WHICH identifier matched (a GSTIN is a
+    registration, a PAN the entity — they send the CA to different records),
+    WHICH party it matched, and that nothing was created or changed.
+
+    `gstin` and `pan` are the NORMALISED identifiers the guard matched on; the
+    guard asks GSTIN first and PAN only where no GSTIN was given, and so does
+    this.
+    """
+    name = str(existing.get("name") or "").strip() or f"an existing {noun}"
+    by = f"GSTIN {gstin}" if gstin else f"PAN {pan}"
+    return (f"Not added — a {noun} with {by} already exists for this client: "
+            f"{name}. Nothing new was created and {name} was not changed; "
+            f"edit that {noun} if its details need updating.")

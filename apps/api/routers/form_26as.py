@@ -186,10 +186,18 @@ def run_reconciliation(
             financial_year=req.financial_year,
             created_by=current_user["id"],
         )
+        # Was `action=..., metadata=result` — parameters log() does not have.
+        # The reconciliation above had ALREADY been written, and this call then
+        # raised TypeError into the except below, so every successful
+        # reconciliation was reported to the CA as a 500 carrying Python's
+        # "unexpected keyword argument" text.
         timeline_service.log(
             client_id=req.client_id,
+            firm_id=current_user["firm_id"],
             category="tax",
-            action="26as_reconciled",
+            title="26AS reconciled",
+            entity_type="form_26as_reconciliation",
+            entity_id=result.get("id") or None,
             description=(
                 f"26AS reconciliation completed for FY {req.financial_year}: "
                 f"{result.get('matched_count', 0)} matched, "
@@ -205,7 +213,6 @@ def run_reconciliation(
                 and result.get("missing_in_books_count", 0) == 0
                 and result.get("not_in_26as_count", 0) == 0
             ) else "warning",
-            metadata=result,
         )
         return api_response(True, {**result, "ca_review_required": True})
     except Exception as e:
@@ -268,12 +275,16 @@ def mark_26as_uploaded(
     # One resolver for both modes — the old mock branch read _MOCK_UPLOADS
     # directly and enforced neither firm nor assignment.
     upload = _assert_upload_scope(upload_id, current_user)
+    # Was `action=..., metadata=...` — parameters log() does not have — so this
+    # endpoint raised TypeError on EVERY call and has never once answered 200.
     timeline_service.log(
         client_id=upload.get("client_id", ""),
+        firm_id=current_user["firm_id"],
         category="tax",
-        action="26as_uploaded",
+        title="Form 26AS uploaded",
         description=f"Form 26AS uploaded for FY {upload.get('financial_year')}",
         severity="info",
-        metadata={"upload_id": upload_id},
+        entity_type="form_26as_upload",
+        entity_id=upload_id,
     )
     return api_response(True, upload)

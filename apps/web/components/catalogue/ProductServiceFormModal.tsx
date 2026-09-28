@@ -241,8 +241,8 @@ export function ProductServiceFormModal({
         {saveError && <Callout tone="problem">{saveError}</Callout>}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-          <button onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+          <button type="button" onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
+          <button type="button" onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-1.5">
             {saving && <Loader2 size={14} className="animate-spin" />} {existing ? "Save changes" : "Create"}
           </button>
         </div>

@@ -184,6 +184,68 @@ export function previewBillTotals(lines: PurchaseBillLine[], isInterstate: boole
            gst_paise, cess_paise: cess, grand_total_paise: taxable + gst_paise + cess };
 }
 
+// ── Which tax heads the preview is using, and on what basis ─────────────────
+// sweep-client-purchases-03. The preview split was decided by
+// `clientStateCode && vendor.state_code`, and the caption beneath it said "Pick
+// a vendor to preview CGST/SGST vs IGST." whenever either was missing — so a
+// CA who HAD picked a vendor (one with no state or GSTIN recorded) saw real
+// CGST and SGST figures under a sentence saying nothing had been chosen, and
+// could read the numbers as settled when the head was a default.
+//
+// The default is not the browser's invention: `_resolve_vendor_and_interstate`
+// in routers/purchase_bills.py books the bill intra-state whenever either
+// side's state is unknown (`vendor_state and client_state and …`), so the
+// figures ARE what the save will write. What was wrong was the sentence. It
+// now says which side is unknown and what that means.
+//
+// The vendor side reads `state_code` and then the GSTIN's first two characters
+// — the server's own order for the VENDOR (the client side is resolved by the
+// caller, GSTIN first, as `place_of_supply.supplier_state_code` does). The
+// preview used to read `state_code` alone, so a vendor with a GSTIN and no
+// state column previewed CGST + SGST and saved IGST.
+
+export type SupplySplitBasis =
+  | "no_vendor"             // nothing picked yet
+  | "both_known"            // both states known; the split is decided
+  | "client_state_unknown"  // this client has no GSTIN or state recorded
+  | "vendor_state_unknown"; // the vendor has no state or GSTIN recorded
+
+export interface SupplySplitPreview {
+  isInterstate: boolean;
+  basis: SupplySplitBasis;
+  /** One line for under the Summary figures. */
+  caption: string;
+}
+
+export function supplySplitPreview(
+  clientStateCode: string,
+  vendor: { state_code?: string | null; gstin?: string | null } | null,
+): SupplySplitPreview {
+  if (!vendor) {
+    return { isInterstate: false, basis: "no_vendor",
+             caption: "Pick a vendor to preview CGST/SGST vs IGST." };
+  }
+  const gstin = (vendor.gstin ?? "").trim();
+  const vendorState = (vendor.state_code ?? "").trim() || (gstin.length >= 2 ? gstin.slice(0, 2) : "");
+  const clientState = (clientStateCode ?? "").trim();
+  if (!clientState) {
+    return { isInterstate: false, basis: "client_state_unknown",
+             caption: "This client has no GSTIN or state recorded, so the bill is treated as "
+               + "intra-state and saved with CGST + SGST, as shown. Record the client's state "
+               + "on the client profile if the vendor is in another state — that purchase is IGST." };
+  }
+  if (!vendorState) {
+    return { isInterstate: false, basis: "vendor_state_unknown",
+             caption: "This vendor has no state or GSTIN recorded, so the bill is treated as "
+               + "intra-state and saved with CGST + SGST, as shown. If the vendor is in another "
+               + "state, record their state on the vendor first — that purchase is IGST." };
+  }
+  const isInterstate = vendorState !== clientState;
+  return { isInterstate, basis: "both_known",
+           caption: `${isInterstate ? "Interstate" : "Intra-state"} — `
+             + `${isInterstate ? "IGST" : "CGST + SGST"} (CGST Act §8)` };
+}
+
 // ── Editor validation ────────────────────────────────────────────────────────
 // Mirrors the minimums the backend enforces so the UI can block + explain
 // BEFORE calling the API. The server remains authoritative.
