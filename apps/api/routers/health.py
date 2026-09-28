@@ -1208,7 +1208,11 @@ def recalculate_all(
         return api_response(True, {"updated": 0, "message": "No DB — mock mode"})
 
     # Guardrail G2: the internal practice client is never health-scored / triaged.
-    clients_res = db.table("clients").select("id").eq("firm_id", firm_id).eq("is_internal", False).execute()
+    # client_name is selected and saved because the health list renders it
+    # straight off health_scores: a row first created here used to carry NULL
+    # and read "—" until somebody recalculated that one client by hand
+    # (calculate_score has always stamped it).
+    clients_res = db.table("clients").select("id, client_name").eq("firm_id", firm_id).eq("is_internal", False).execute()
     clients = clients_res.data or []
     eff = effective_client_ids(current_user)
     if eff is not None:
@@ -1224,7 +1228,9 @@ def recalculate_all(
             score_id = str(uuid.uuid4())
             upsert_payload = {
                 "id": score_id, "client_id": client["id"], "firm_id": firm_id,
-                "last_calculated_at": now, **_columns_only(scores),
+                "last_calculated_at": now,
+                "client_name": client.get("client_name") or "",
+                **_columns_only(scores),
             }
             db.table("health_scores").upsert(upsert_payload, on_conflict="client_id,firm_id").execute()
             db.table("health_score_history").insert({

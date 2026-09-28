@@ -1162,7 +1162,75 @@ def dashboard(firm_id: str, today: Optional[date] = None, allowed_client_ids: Op
     if allowed_client_ids is not None:
         records = [r for r in records if str(r.get("client_id")) in allowed_client_ids]
     agg = aggregate_dashboard(records, today)
-    return {**agg, "queue": records}
+
+    # NAMES, RESOLVED ONCE, AND ADDITIVE (practice-hub-05). The buckets are keyed
+    # on raw ids — `key` stays the id so any consumer grouping on it keeps
+    # working — and the screen rendered that key, so "Workload by client" read
+    # as a column of UUIDs and the queue had no client at all. Each workload row
+    # now carries `label` and each queue row `client_name`, ALWAYS PRESENT and
+    # null where the id resolves to nobody: an absent key and a null one read
+    # the same to `label ?? key` and are different bugs.
+    client_names, staff_names = _dashboard_names(
+        firm_id,
+        {str(r["client_id"]) for r in records if r.get("client_id")},
+        {str(s["key"]) for s in agg["by_staff"] if s["key"] != "unassigned"},
+    )
+    by_client = [{**s, "label": ("Unknown client" if s["key"] == "unknown"
+                                 else client_names.get(str(s["key"])))}
+                 for s in agg["by_client"]]
+    by_staff = [{**s, "label": ("Unassigned" if s["key"] == "unassigned"
+                                else staff_names.get(str(s["key"])))}
+                for s in agg["by_staff"]]
+    queue = [{**r, "client_name": client_names.get(str(r.get("client_id") or ""))}
+             for r in records]
+    return {**agg, "by_client": by_client, "by_staff": by_staff, "queue": queue}
+
+
+def _dashboard_names(firm_id: str, client_ids: set, user_ids: set) -> tuple[dict, dict]:
+    """id -> display name for the dashboard's clients and staff, one read each.
+
+    Clients are read over exactly the ids the answer names (`fetch_all_in`, so
+    a long list is chunked rather than refused by the gateway), firm-scoped.
+    Staff come from `user_repo.find_all`, which reads as the service role and
+    is firm-scoped in the query: through the caller's own client the
+    `users_own_row_select` policy shows nobody but the caller, so every other
+    preparer would stay an id.
+
+    A lookup that fails leaves the names null — the dashboard still answers,
+    with ids, exactly as it did before — and is logged rather than swallowed.
+    """
+    clients: dict = {}
+    staff: dict = {}
+    if client_ids:
+        try:
+            if _USE_MOCK:
+                rows = [c for c in client_repo.find_all(firm_id=firm_id, include_internal=True,
+                                                        include_archived=True)
+                        if str(c.get("id")) in client_ids]
+            else:
+                from core.db_paging import fetch_all_in
+                from core.supabase_client import get_supabase
+
+                def one_page():
+                    return (get_supabase().table("clients")
+                            .select("id, client_name, legal_name")
+                            .eq("firm_id", firm_id))
+
+                rows = fetch_all_in(one_page, "id", client_ids,
+                                    label="compliance.dashboard.clients")
+            clients = {str(c["id"]): (c.get("client_name") or c.get("legal_name") or None)
+                       for c in rows}
+        except Exception:
+            _logger.exception("compliance dashboard: client names could not be read")
+    if user_ids:
+        try:
+            from repositories.user_repository import user_repo
+            staff = {str(u["id"]): (u.get("full_name") or u.get("name") or u.get("email") or None)
+                     for u in user_repo.find_all(firm_id=firm_id)
+                     if str(u.get("id")) in user_ids}
+        except Exception:
+            _logger.exception("compliance dashboard: staff names could not be read")
+    return clients, staff
 
 
 def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date] = None) -> dict:
