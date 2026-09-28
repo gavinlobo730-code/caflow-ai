@@ -31,6 +31,23 @@ export function isInvalidNonceError(err: Pick<AuthError, "message"> | null | und
 }
 
 /**
+ * True when an auth error means there is no session to act on at all — the
+ * visitor is not signed in (an already-used or expired magic link, a
+ * signed-out tab left open on /onboarding). Supabase's own SDK error is the
+ * literal "Auth session missing!" (AuthSessionMissingError), which
+ * updateUser() surfaced verbatim to the CA before this existed
+ * (sweep-auth-and-public-04).
+ */
+export function isSessionMissingError(err: Pick<AuthError, "message"> | null | undefined): boolean {
+  if (!err?.message) return false;
+  return /auth session missing/i.test(err.message);
+}
+
+/** The one message shown wherever a step 1 auth call finds no session. */
+export const SESSION_EXPIRED_MESSAGE =
+  "This sign-up link has expired or you are not signed in. Please request a new sign-up link or sign in.";
+
+/**
  * Finalize a password change using the reauthentication nonce emailed by
  * supabase.auth.reauthenticate(). The nonce is sent VERBATIM (only trimmed) —
  * never truncated, sliced, or parsed — so the exact code the user typed is the
