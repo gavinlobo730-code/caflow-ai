@@ -25,7 +25,7 @@ const NAV_ITEMS = [
   { label: "Compliance Workload", href: "/practice/compliance", icon: ShieldCheck },
   // Knowledge Base intentionally omitted here — it lives in the dedicated,
   // all-staff Knowledge workspace (/knowledge), not under Partner-only Practice.
-  { label: "Instructions", href: "/practice/instructions", icon: StickyNote },
+  { label: "Practice instructions", href: "/practice/instructions", icon: StickyNote },
 ];
 
 export function PracticePanel() {
