@@ -310,6 +310,9 @@ def list_invoice_templates(current_user: dict = Depends(rbac("branding", "read")
             "signature_placement": list(_il.SIGNATURE_PLACEMENTS),
         },
         "layout_never_changes_particulars": _il.LAYOUT_NEVER_CHANGES_PARTICULARS,
+        # What applies when none is default — served so the screen can say it
+        # in the renderer's own terms rather than composing its own.
+        "no_default_note": _il.NO_DEFAULT_TEMPLATE_NOTE,
     })
 
 
@@ -376,19 +379,62 @@ def set_default_template(template_id: str, current_user: dict = Depends(rbac("br
     return api_response(True, {"template_id": template_id, "is_default": True})
 
 
-@router.delete("/invoice-templates/{template_id}")
-def delete_invoice_template(template_id: str, current_user: dict = Depends(rbac("branding", "write"))):
+@router.post("/invoice-templates/{template_id}/unset-default")
+def unset_default_template(template_id: str, current_user: dict = Depends(rbac("branding", "write"))):
+    """Stop using this template as the default; invoices go back to the
+    built-in layout (sweep-settings-hub-1-06).
+
+    `set-default` could only MOVE the default, never remove it, so the one way
+    back to the built-in layout was to create a second template, make it
+    default, and delete the first. "No default" is a state the renderer has
+    always supported — `layout_from_row(None)` — so it gets a door.
+
+    Idempotent: un-marking a template that is not the default changes nothing
+    and says so, rather than 409-ing a CA whose screen was a moment stale.
+    """
     firm_id = current_user["firm_id"]
     existing = branding_repo.get_invoice_template(template_id)
     if not existing or existing.get("firm_id") != firm_id:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    if existing.get("is_default"):
-        raise HTTPException(status_code=409, detail="Cannot delete the default template. Set another template as default first.")
+    was_default = bool(existing.get("is_default"))
+    if was_default:
+        branding_repo.update_invoice_template(template_id, {"is_default": False})
+        _audit(firm_id, template_id, "update", current_user,
+               old_data={"is_default": True}, new_data={"is_default": False})
+    return api_response(True, {
+        "template_id": template_id, "is_default": False,
+        "was_default": was_default,
+        "layout_now": _il.NO_DEFAULT_TEMPLATE_NOTE if was_default else None,
+    })
 
+
+@router.delete("/invoice-templates/{template_id}")
+def delete_invoice_template(template_id: str, current_user: dict = Depends(rbac("branding", "write"))):
+    """Delete a template — the default included (sweep-settings-hub-1-06).
+
+    This used to refuse the default with "Set another template as default
+    first", on the premise that a firm must always have one. It need not: with
+    none marked default the practice's invoices render with migration 126's
+    built-in layout, which is what every firm had before opening this screen.
+    The refusal, together with the screen hiding Delete on the default card,
+    left a firm with a single template unable to delete it or stop using it.
+    The answer says when the default went with it, so the screen can tell the
+    CA which layout now applies.
+    """
+    firm_id = current_user["firm_id"]
+    existing = branding_repo.get_invoice_template(template_id)
+    if not existing or existing.get("firm_id") != firm_id:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    was_default = bool(existing.get("is_default"))
     branding_repo.delete_invoice_template(template_id)
     _audit(firm_id, template_id, "delete", current_user, old_data=existing)
-    return api_response(True, {"deleted": True})
+    return api_response(True, {
+        "deleted": True,
+        "was_default": was_default,
+        "layout_now": _il.NO_DEFAULT_TEMPLATE_NOTE if was_default else None,
+    })
 
 
 # ── Email Templates endpoints ─────────────────────────────────────────────────

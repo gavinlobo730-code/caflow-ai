@@ -5600,6 +5600,10 @@ export const api = {
       request(`/api/settings/invoice-templates/${id}`, { method: "DELETE" }),
     setDefault: (id: string) =>
       request(`/api/settings/invoice-templates/${id}/set-default`, { method: "POST" }),
+    /** Stop using this template as the default — invoices go back to the
+     *  built-in layout (sweep-settings-hub-1-06). */
+    unsetDefault: (id: string) =>
+      request(`/api/settings/invoice-templates/${id}/unset-default`, { method: "POST" }),
   },
   emailTemplates: {
     list: () => request("/api/settings/email-templates"),

@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import { Callout } from "@/components/ui/callout";
+import { arrayOrEmpty } from "@/lib/api/shape";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface InvoiceTemplate {
@@ -158,10 +159,12 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 function TemplateCard({
   template,
   onSetDefault,
+  onUnsetDefault,
   onDelete,
 }: {
   template: InvoiceTemplate;
   onSetDefault: () => void;
+  onUnsetDefault: () => void;
   onDelete: () => void;
 }) {
   const info = TEMPLATE_DESCRIPTIONS[template.template_type];
@@ -208,17 +211,24 @@ function TemplateCard({
         </div>
       )}
 
+      {/* The DEFAULT card offers both ways out too (sweep-settings-hub-1-06).
+          Delete used to be hidden here and nothing could un-mark a default, so
+          a firm with one template was bound to it for good. With none marked
+          default the invoices use the built-in layout, which the server says
+          in `no_default_note`. */}
       <div className="px-5 py-3 border-t border-ps-border flex items-center gap-2">
-        {!template.is_default && (
+        {template.is_default ? (
+          <button onClick={onUnsetDefault} className="flex items-center gap-1.5 px-3 py-1 text-xs text-ps-label border border-ps-border rounded-lg hover:bg-ps-bg transition-colors">
+            <Star size={11} /> Use built-in layout instead
+          </button>
+        ) : (
           <button onClick={onSetDefault} className="flex items-center gap-1.5 px-3 py-1 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
             <Star size={11} /> Set as Default
           </button>
         )}
-        {!template.is_default && (
-          <button onClick={onDelete} className="flex items-center gap-1.5 px-3 py-1 text-xs text-state-problem border border-state-problem-border rounded-lg hover:bg-state-problem-hover transition-colors ml-auto">
-            <Trash2 size={11} /> Delete
-          </button>
-        )}
+        <button onClick={onDelete} className="flex items-center gap-1.5 px-3 py-1 text-xs text-state-problem border border-state-problem-border rounded-lg hover:bg-state-problem-hover transition-colors ml-auto">
+          <Trash2 size={11} /> Delete
+        </button>
       </div>
     </div>
   );
@@ -230,6 +240,8 @@ export default function InvoiceTemplatesPage() {
   const [templates, setTemplates] = useState<InvoiceTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The server's sentence for what applies when no template is default.
+  const [noDefaultNote, setNoDefaultNote] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -239,8 +251,11 @@ export default function InvoiceTemplatesPage() {
     if (!user) return;
     setLoading(true);
     try {
-      const res = await api.invoiceTemplates.list() as ApiResp<{ templates: InvoiceTemplate[] }>;
-      if (res.success) setTemplates(res.data.templates ?? []);
+      const res = await api.invoiceTemplates.list() as ApiResp<{ templates: InvoiceTemplate[]; no_default_note?: string }>;
+      if (res.success) {
+        setTemplates(arrayOrEmpty<InvoiceTemplate>(res.data?.templates));
+        setNoDefaultNote(typeof res.data?.no_default_note === "string" ? res.data.no_default_note : null);
+      }
       setLoadError(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load templates";
@@ -263,11 +278,28 @@ export default function InvoiceTemplatesPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this template? This cannot be undone.")) return;
+  async function handleUnsetDefault(id: string) {
     try {
-      await api.invoiceTemplates.delete(id);
-      showToast("Template deleted", "success");
+      const res = await api.invoiceTemplates.unsetDefault(id) as ApiResp<{ layout_now?: string | null }>;
+      if (!res.success) throw new Error(res.error ?? "Failed to update default");
+      showToast(res.data?.layout_now ?? "Default template cleared", "success");
+      await load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to update default", "error");
+    }
+  }
+
+  async function handleDelete(t: InvoiceTemplate) {
+    // Deleting the default is allowed — it returns the invoices to the
+    // built-in layout — so the question says so rather than surprising anyone.
+    const question = t.is_default
+      ? "Delete your default template? Invoices will use the built-in layout until you mark another template default. This cannot be undone."
+      : "Delete this template? This cannot be undone.";
+    if (!confirm(question)) return;
+    try {
+      const res = await api.invoiceTemplates.delete(t.id) as ApiResp<{ layout_now?: string | null }>;
+      if (!res.success) throw new Error(res.error ?? "Failed to delete");
+      showToast(res.data?.layout_now ?? "Template deleted", "success");
       await load();
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Failed to delete", "error");
@@ -322,12 +354,16 @@ export default function InvoiceTemplatesPage() {
           </div>
         ) : (
           <div className="space-y-3">
+            {noDefaultNote && !templates.some((t) => t.is_default) && (
+              <Callout tone="note">{noDefaultNote}</Callout>
+            )}
             {templates.map((t) => (
               <TemplateCard
                 key={t.id}
                 template={t}
                 onSetDefault={() => handleSetDefault(t.id)}
-                onDelete={() => handleDelete(t.id)}
+                onUnsetDefault={() => handleUnsetDefault(t.id)}
+                onDelete={() => handleDelete(t)}
               />
             ))}
           </div>

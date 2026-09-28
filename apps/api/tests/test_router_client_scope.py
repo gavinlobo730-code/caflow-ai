@@ -1372,6 +1372,9 @@ EXEMPT: dict[str, str] = {
         "same table, addressed by id. Covers PATCH (update) and DELETE.",
     "/api/settings/invoice-templates/{template_id}/set-default":
         "same table, the set-default operation.",
+    "/api/settings/invoice-templates/{template_id}/unset-default":
+        "same table, the unset-default operation (sweep-settings-hub-1-06) — "
+        "a firm returning its own invoices to the built-in layout.",
     "/api/settings/email-templates":
         "firm-level email template DEFINITIONS (subject/body per "
         "template_type), reused across every client's correspondence — no "
