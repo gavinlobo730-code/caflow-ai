@@ -20,6 +20,21 @@ BANK-29 — a row that carries a BALANCE and no movement became a transaction.
     transaction's movement — a wrong number on the statement header traded for
     a tidier list.
 
+    (2026-09-28, second-client walkthrough, Apex Trading Solutions): a marker
+    row is the ONE case where the earliest row's raw `balance_paise` is
+    already correct, because it carries zero on both legs. Every OTHER
+    statement — no marker row printed, the earliest row is a real transaction
+    — was still wrong: that row's `balance_paise` is the bank's own running
+    balance AFTER its own movement, and storing it as-is double-counts that
+    row's own credit or debit as if it had already been sitting in the
+    account. `_opening_closing_balance` now backs out the earliest row's own
+    credit/debit before returning it as the opening balance (see
+    `_balance_before_own_movement`), which is a no-op for a marker row (zero
+    on both legs) and the correction everywhere else. See
+    `test_a_statement_with_no_balance_row_backs_out_the_first_rows_own_movement`
+    below and `TestOpeningClosingBalanceBacksOutTheFirstRowsOwnMovement` in
+    `test_r2_11_bank_parser_hardening.py`.
+
 BANK-12 — deleting a bank rule erased why lines posted.
     The docstring said a rule "has never written anything to the ledger". That
     stopped being true when migration 322 made a rule TRUSTABLE: a trusted rule
@@ -110,8 +125,15 @@ def test_the_header_totals_are_the_real_transactions_and_the_count_agrees():
     assert len(db.store["bank_transactions"]) == 2
 
 
-def test_a_statement_with_no_balance_row_is_unchanged():
-    # The whole change must be invisible to the ordinary case.
+def test_a_statement_with_no_balance_row_backs_out_the_first_rows_own_movement():
+    # Confirmed production defect (second-client walkthrough, Apex Trading
+    # Solutions, 2026-09-28 fix): with no printed "Opening Balance" row, the
+    # earliest REAL transaction's `balance_paise` is the bank's own running
+    # total AFTER that row's own movement — here the first row's credit of
+    # Rs 50,000 IS its own balance, because nothing preceded it. Storing that
+    # figure as the opening balance credited the account with its own first
+    # receipt twice. The true opening is zero, which is what actually foots:
+    # 0 + credits(50,000) - debits(20,000) = 30,000 = the closing balance.
     db = FakeDB()
     csv = ("Date,Description,Debit,Credit,Balance\n"
            "05/04/2026,NEFT IN,,50000.00,50000.00\n"
@@ -119,7 +141,9 @@ def test_a_statement_with_no_balance_row_is_unchanged():
     res = banking_service.import_normalized(db, FIRM, CLIENT, "Generic", "123", parse_csv(csv))
     assert res["imported"] == 2 and res["balance_rows_skipped"] == 0
     stmt = db.store["bank_statements"][0]
-    assert stmt["opening_balance_paise"] == 50_00_000
+    assert stmt["opening_balance_paise"] == 0
+    assert (stmt["opening_balance_paise"] + stmt["total_credits_paise"]
+            - stmt["total_debits_paise"]) == stmt["closing_balance_paise"]
 
 
 def test_the_tie_out_still_foots_with_the_marker_present():

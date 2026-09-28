@@ -49,6 +49,38 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _balance_before_own_movement(row: dict) -> int:
+    """The balance a row's `balance_paise` implies BEFORE that row's own
+    credit/debit was applied to it.
+
+    `balance_paise` is the bank's own RUNNING balance — the figure printed on
+    that line is already AFTER that line's own transaction. Confirmed against
+    production (second-client walkthrough, Apex Trading Solutions, 2026-09):
+    a statement's earliest row was a credit of exactly 14,254,324 paise with
+    `balance_paise` also 14,254,324 (the two happened to be equal, because
+    nothing preceded it), and the OPENING balance was stored as that same
+    14,254,324 — the row's own credit, counted as if it had already been
+    sitting in the account before the statement began. The true opening was
+    ₹0, which is the only figure that makes the statement foot: opening +
+    credits − debits − closing = 0. A second statement (Cosmos) showed the
+    mirror case, a leading DEBIT, and backing it out foots to zero the same
+    way.
+
+    So the opening balance is never a row's raw `balance_paise` — it is that
+    figure with the row's OWN movement undone. A row with no movement at all
+    (BANK-29's balance marker — "Opening Balance", "B/F": zero on both legs by
+    construction) is unaffected: subtracting and adding zero leaves it exactly
+    as printed, which is what keeps that invariant intact.
+
+    The CLOSING balance needs no equivalent treatment and none is applied here
+    — the last row's `balance_paise` already reflects that row's own movement
+    fully applied, which is what "closing" means.
+    """
+    credit = int(row.get("credit_paise") or 0)
+    debit = int(row.get("debit_paise") or 0)
+    return row["balance_paise"] - credit + debit
+
+
 def _opening_closing_balance(rows: list[dict]) -> tuple[int, int]:
     """Return (opening_balance_paise, closing_balance_paise) derived from the
     rows' transaction_date order, not raw file position.
@@ -75,16 +107,22 @@ def _opening_closing_balance(rows: list[dict]) -> tuple[int, int]:
     at all and falls back to file order — a residual limitation of date-only
     (no timestamp) granularity. An exact ascending/descending tie (e.g. only
     two rows total) defaults to ascending, the more common convention.
+
+    Every "opening" value returned below is the EARLIEST row's own
+    `_balance_before_own_movement` — see that function's docstring for why the
+    raw `balance_paise` is the wrong figure whenever the earliest row is a real
+    transaction rather than a printed balance marker. "Closing" is always the
+    latest row's raw `balance_paise`, unchanged.
     """
     if not rows:
         return 0, 0
     if len(rows) == 1:
-        return rows[0]["balance_paise"], rows[0]["balance_paise"]
+        return _balance_before_own_movement(rows[0]), rows[0]["balance_paise"]
 
     dates = [r["transaction_date"] for r in rows]
     min_date, max_date = min(dates), max(dates)
     if min_date == max_date:
-        return rows[0]["balance_paise"], rows[-1]["balance_paise"]
+        return _balance_before_own_movement(rows[0]), rows[-1]["balance_paise"]
 
     ascending_votes = sum(1 for a, b in zip(dates, dates[1:]) if a <= b)
     descending_votes = sum(1 for a, b in zip(dates, dates[1:]) if a >= b)
@@ -96,8 +134,8 @@ def _opening_closing_balance(rows: list[dict]) -> tuple[int, int]:
     last_at_max = next(r for r in reversed(rows) if r["transaction_date"] == max_date)
 
     if is_descending:
-        return last_at_min["balance_paise"], first_at_max["balance_paise"]
-    return first_at_min["balance_paise"], last_at_max["balance_paise"]
+        return _balance_before_own_movement(last_at_min), first_at_max["balance_paise"]
+    return _balance_before_own_movement(first_at_min), last_at_max["balance_paise"]
 
 
 # ── The one unit the bank path can post in ───────────────────────────────────
