@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, RefreshCw, AlertTriangle, Info, Loader2, ChevronDown, Check,
@@ -16,6 +16,8 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { todayLocalISO } from "@/lib/dateMath";
 import { objectOrNull } from "@/lib/api/shape";
 import { Callout, GapList } from "@/components/ui/callout";
+import { DataTable } from "@/components/ui/data-table";
+import type { Column } from "@/lib/table/types";
 /**
  * Trade Receivables and Trade Payables ageing schedules — the notes to the
  * balance sheet required by Schedule III to the Companies Act 2013 as amended
@@ -713,6 +715,18 @@ function AdvancesPanel({ kind, section }: {
  * note needs. Its buckets are the OPERATIONAL ones the collections view uses
  * (0-30 / 31-60 / 61-90 / 90+ days), not the statutory ones — a different
  * question, deliberately answered differently.
+ *
+ * THROUGH THE SHARED DataTable, not a hand-rolled `rows.map` (apex-accounting-
+ * reports-05). A real book has thousands of open documents — 5,655 for one
+ * Apex client — and the old table built a row and up to two MarkToggle
+ * buttons for every single one on every render, unpaged and unsorted (server
+ * order: 147, 508, 506, 250… days overdue, no pattern). The fetch alone was
+ * 8.8s and a single click took 27.1s to register because the main thread was
+ * replaying all 5,655 rows. DataTable's own `page.rows.map`
+ * (lib/table/useDataTable → lib/table/process.ts) slices to one page BEFORE
+ * building cells, so a column's `render` — MarkToggle included — is only ever
+ * constructed for the 50-100 rows on screen, never the whole set; search and
+ * sort still run over the full array, which is cheap, and the DOM is not.
  */
 function DocumentList({ kind, rows, saving, onClassify, clientId }: {
   kind: "receivables" | "payables";
@@ -722,20 +736,111 @@ function DocumentList({ kind, rows, saving, onClassify, clientId }: {
   clientId: string;
 }) {
   const isAr = kind === "receivables";
-  if (rows === null) {
-    return (
-      <div className="flex items-center gap-2 text-2xs text-ps-hint py-8">
-        <Loader2 size={14} className="animate-spin" /> Loading open documents…
-      </div>
-    );
-  }
-  if (rows.length === 0) {
-    return (
-      <div className="text-2xs text-ps-hint py-8 text-center bg-white rounded-xl border border-ps-border">
-        Nothing outstanding.
-      </div>
-    );
-  }
+
+  const columns = useMemo<Column<AgeingDocument>[]>(() => {
+    const cols: Column<AgeingDocument>[] = [
+      {
+        key: "document_no",
+        header: isAr ? "Invoice" : "Bill",
+        sortable: true,
+        searchable: true,
+        accessor: (d) => (isAr ? d.invoice_no : d.bill_no) ?? "",
+        render: (d) => (isAr ? d.invoice_no : d.bill_no) || "—",
+      },
+      {
+        key: "party_name",
+        header: isAr ? "Customer" : "Vendor",
+        sortable: true,
+        searchable: true,
+        accessor: (d) => (isAr ? d.customer_name : d.vendor_name) ?? "",
+        render: (d) => (
+          <span className="block max-w-[180px] truncate">
+            {(isAr ? d.customer_name : d.vendor_name) || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "document_date",
+        header: "Date",
+        sortable: true,
+        accessor: (d) => (isAr ? d.invoice_date : d.bill_date) ?? "",
+        render: (d) => (isAr ? d.invoice_date : d.bill_date) || "—",
+      },
+      {
+        key: "outstanding_paise",
+        header: "Outstanding",
+        align: "right",
+        sortable: true,
+        accessor: (d) => d.outstanding_paise,
+        exportValue: (d) => d.outstanding_paise / 100,
+        render: (d) => <Amount paise={d.outstanding_paise} />,
+      },
+      {
+        // The default sort, DESCENDING (apex-accounting-reports-05): how long a
+        // document has been open is what a CA works this list by, and the
+        // un-paged screen served it in whatever order the server happened to
+        // return it in.
+        key: "days_overdue",
+        header: "Days",
+        align: "right",
+        sortable: true,
+        accessor: (d) => d.days_overdue,
+        render: (d) => <span className="tabular-nums text-ps-label">{d.days_overdue}</span>,
+      },
+      {
+        key: "aging_bucket",
+        header: "Bucket",
+        sortable: true,
+        accessor: (d) => d.aging_bucket,
+        render: (d) => <span className="text-ps-hint">{d.aging_bucket}</span>,
+      },
+      {
+        key: "is_disputed",
+        header: "Disputed",
+        hideable: false,
+        accessor: (d) => !!d.is_disputed,
+        render: (d) => {
+          const id = (isAr ? d.invoice_id : d.bill_id) ?? "";
+          const key = `${isAr ? "invoice" : "bill"}:${id}`;
+          return (
+            <MarkToggle
+              on={!!d.is_disputed}
+              busy={saving === key}
+              onClick={() => onClassify(key, {
+                client_id: clientId,
+                target: isAr ? "invoice" : "bill",
+                target_id: id, is_disputed: !d.is_disputed,
+              })}
+            />
+          );
+        },
+      },
+    ];
+    if (isAr) {
+      cols.push({
+        key: "considered_doubtful",
+        header: "Doubtful",
+        hideable: false,
+        accessor: (d) => !!d.considered_doubtful,
+        render: (d) => {
+          const id = d.invoice_id ?? "";
+          const key = `invoice:${id}`;
+          return (
+            <MarkToggle
+              on={!!d.considered_doubtful}
+              busy={saving === key}
+              onClick={() => onClassify(key, {
+                client_id: clientId, target: "invoice",
+                target_id: id, considered_doubtful: !d.considered_doubtful,
+              })}
+            />
+          );
+        },
+      });
+    }
+    return cols;
+  }, [isAr, saving, onClassify, clientId]);
+
   return (
     <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className="px-4 py-3 border-b border-ps-border">
@@ -747,64 +852,17 @@ function DocumentList({ kind, rows, saving, onClassify, clientId }: {
           the Schedule III note. Nothing is marked until somebody marks it.
         </p>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-2xs">
-          <thead>
-            <tr className="border-b border-ps-border text-left text-ps-label">
-              <th className="font-medium px-4 py-2">{isAr ? "Invoice" : "Bill"}</th>
-              <th className="font-medium px-3 py-2">{isAr ? "Customer" : "Vendor"}</th>
-              <th className="font-medium px-3 py-2">Date</th>
-              <th className="font-medium px-3 py-2 text-right">Outstanding</th>
-              <th className="font-medium px-3 py-2 text-right">Days</th>
-              <th className="font-medium px-3 py-2">Bucket</th>
-              <th className="font-medium px-3 py-2">Disputed</th>
-              {isAr && <th className="font-medium px-4 py-2">Doubtful</th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-ps-border">
-            {rows.map((d) => {
-              const id = (isAr ? d.invoice_id : d.bill_id) ?? "";
-              const key = `${isAr ? "invoice" : "bill"}:${id}`;
-              return (
-                <tr key={id} className="hover:bg-ps-bg">
-                  <td className="px-4 py-2 text-ps-body">{(isAr ? d.invoice_no : d.bill_no) || "—"}</td>
-                  <td className="px-3 py-2 text-ps-label truncate max-w-[180px]">
-                    {(isAr ? d.customer_name : d.vendor_name) || "—"}
-                  </td>
-                  <td className="px-3 py-2 text-ps-label">{(isAr ? d.invoice_date : d.bill_date) || "—"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-ps-ink">
-                    {formatPaise(d.outstanding_paise)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-ps-label">{d.days_overdue}</td>
-                  <td className="px-3 py-2 text-ps-hint">{d.aging_bucket}</td>
-                  <td className="px-3 py-2">
-                    <MarkToggle
-                      on={!!d.is_disputed}
-                      busy={saving === key}
-                      onClick={() => onClassify(key, {
-                        client_id: clientId,
-                        target: isAr ? "invoice" : "bill",
-                        target_id: id, is_disputed: !d.is_disputed,
-                      })}
-                    />
-                  </td>
-                  {isAr && (
-                    <td className="px-4 py-2">
-                      <MarkToggle
-                        on={!!d.considered_doubtful}
-                        busy={saving === key}
-                        onClick={() => onClassify(key, {
-                          client_id: clientId, target: "invoice",
-                          target_id: id, considered_doubtful: !d.considered_doubtful,
-                        })}
-                      />
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="p-3">
+        <DataTable
+          data={rows ?? []}
+          columns={columns}
+          getRowId={(d) => (isAr ? d.invoice_id : d.bill_id) ?? ""}
+          loading={rows === null}
+          searchPlaceholder={isAr ? "Search invoices or customers…" : "Search bills or vendors…"}
+          initialSort={{ key: "days_overdue", dir: "desc" }}
+          persistKey={isAr ? "ageing.detail.receivables" : "ageing.detail.payables"}
+          emptyTitle="Nothing outstanding"
+        />
       </div>
     </div>
   );
