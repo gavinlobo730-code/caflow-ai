@@ -16,11 +16,18 @@ EXEC = {"id": "e", "firm_id": "F1", "role": "Executive", "email": "e@f"}
 class _FakeUserRepo:
     def __init__(self):
         self.users = {"t1": {"id": "t1", "firm_id": "F1", "role": "Executive", "email": "t@f", "is_active": True}}
-    def find_by_id(self, uid):
-        return self.users.get(uid)
-    def update(self, uid, data):
-        self.users.setdefault(uid, {"id": uid}).update(data)
-        return self.users[uid]
+    # firm_id is a required keyword on the real repository (it reads as the
+    # service role, so the firm filter is the tenant boundary); the fake
+    # honours it the same way — another firm's id matches nothing.
+    def find_by_id(self, uid, *, firm_id):
+        u = self.users.get(uid)
+        return u if u and u.get("firm_id") == firm_id else None
+    def update(self, uid, data, *, firm_id):
+        u = self.find_by_id(uid, firm_id=firm_id)
+        if u is None:
+            return None
+        u.update(data)
+        return u
     def create(self, data):
         uid = "new1"; self.users[uid] = {"id": uid, **data}; return self.users[uid]
     def find_all(self, firm_id=None):

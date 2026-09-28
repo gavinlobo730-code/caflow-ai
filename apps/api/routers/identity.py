@@ -48,7 +48,9 @@ class RoleBody(BaseModel):
 
 
 def _get_member(user_id: str, firm_id: str) -> dict:
-    member = user_repo.find_by_id(user_id)
+    # Scoped in the query (the repository reads as the service role) AND
+    # re-checked here, so a fake or a future repository change cannot widen it.
+    member = user_repo.find_by_id(user_id, firm_id=firm_id)
     if not member or member.get("firm_id") != firm_id:
         raise HTTPException(404, "User not found in firm")
     return member
@@ -56,7 +58,12 @@ def _get_member(user_id: str, firm_id: str) -> dict:
 
 @router.get("/users")
 def list_users(current_user: dict = Depends(rbac("team", "read"))):
-    return api_response(True, {"users": user_repo.find_all(firm_id=current_user["firm_id"])})
+    # The list now carries every member of the firm (the repository reads as
+    # the service role), so a pending invitee's bearer secret is stripped: it
+    # is returned once, to the Partner who created it, by POST /users.
+    users = [{k: v for k, v in u.items() if k != "invite_token"}
+             for u in user_repo.find_all(firm_id=current_user["firm_id"])]
+    return api_response(True, {"users": users})
 
 
 @router.post("/users")
@@ -115,7 +122,7 @@ def accept_invite(body: AcceptInviteBody, jwt_user: dict = Depends(get_jwt_user)
         "is_active": True,
         "invite_token": None,
         "invite_expires_at": None,
-    })
+    }, firm_id=invite["firm_id"])
     log_event(invite["firm_id"], "user", str(invite["id"]), "invite_accepted",
               actor_id=jwt_user.get("auth_user_id"), actor_email=jwt_user.get("email"))
     return api_response(True, {
@@ -129,7 +136,7 @@ def change_role(user_id: str, body: RoleBody, current_user: dict = Depends(rbac(
         raise HTTPException(400, f"Invalid role. Must be one of: {', '.join(sorted(_CANONICAL))}")
     member = _get_member(user_id, current_user["firm_id"])
     old = member.get("role")
-    updated = user_repo.update(user_id, {"role": body.role})
+    updated = user_repo.update(user_id, {"role": body.role}, firm_id=current_user["firm_id"])
     log_event(current_user["firm_id"], "user_role", user_id, "update",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               old_data={"role": old}, new_data={"role": body.role})
@@ -140,7 +147,8 @@ def change_role(user_id: str, body: RoleBody, current_user: dict = Depends(rbac(
 def suspend_user(user_id: str, current_user: dict = Depends(rbac("team", "write"))):
     member = _get_member(user_id, current_user["firm_id"])
     # Disable AND revoke sessions so any existing JWT is rejected immediately.
-    updated = user_repo.update(user_id, {"is_active": False, "sessions_revoked_at": _now()})
+    updated = user_repo.update(user_id, {"is_active": False, "sessions_revoked_at": _now()},
+                               firm_id=current_user["firm_id"])
     log_event(current_user["firm_id"], "user", user_id, "suspend",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
     login_events_repo.record(current_user["firm_id"], user_id, member.get("email"), "suspended")
@@ -150,7 +158,7 @@ def suspend_user(user_id: str, current_user: dict = Depends(rbac("team", "write"
 @router.post("/users/{user_id}/reactivate")
 def reactivate_user(user_id: str, current_user: dict = Depends(rbac("team", "write"))):
     _get_member(user_id, current_user["firm_id"])
-    updated = user_repo.update(user_id, {"is_active": True})
+    updated = user_repo.update(user_id, {"is_active": True}, firm_id=current_user["firm_id"])
     log_event(current_user["firm_id"], "user", user_id, "reactivate",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
     return api_response(True, updated)
@@ -159,7 +167,7 @@ def reactivate_user(user_id: str, current_user: dict = Depends(rbac("team", "wri
 @router.post("/users/{user_id}/force-logout")
 def force_logout(user_id: str, current_user: dict = Depends(rbac("team", "write"))):
     member = _get_member(user_id, current_user["firm_id"])
-    updated = user_repo.update(user_id, {"sessions_revoked_at": _now()})
+    updated = user_repo.update(user_id, {"sessions_revoked_at": _now()}, firm_id=current_user["firm_id"])
     log_event(current_user["firm_id"], "user", user_id, "force_logout",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
     login_events_repo.record(current_user["firm_id"], user_id, member.get("email"), "forced_logout")
@@ -173,7 +181,7 @@ def force_logout_all(current_user: dict = Depends(rbac("team", "write"))):
     now = _now()
     count = 0
     for m in user_repo.find_all(firm_id=firm_id):
-        user_repo.update(m["id"], {"sessions_revoked_at": now})
+        user_repo.update(m["id"], {"sessions_revoked_at": now}, firm_id=firm_id)
         count += 1
     log_event(firm_id, "firm", firm_id, "force_logout_all",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
@@ -378,7 +386,7 @@ def update_my_profile(body: MyProfileBody,
     if len(name) > 120:
         raise HTTPException(400, "full_name must be 120 characters or fewer")
 
-    updated = user_repo.update(current_user["id"], {"full_name": name})
+    updated = user_repo.update(current_user["id"], {"full_name": name}, firm_id=current_user["firm_id"])
     # Audited like every other mutation in this router: a display name is how a
     # person is identified in approvals and audit trails, so a change to it is
     # worth a record.

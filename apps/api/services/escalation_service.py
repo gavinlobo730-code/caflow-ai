@@ -179,7 +179,7 @@ class EscalationService:
         """
         # If task is assigned, find their manager
         if task.get("assigned_to"):
-            assignee = user_repo.find_by_id(task["assigned_to"])
+            assignee = user_repo.find_by_id(task["assigned_to"], firm_id=firm_id)
             if assignee:
                 # Find manager with explicit lookup
                 managers = user_repo.find_all(firm_id=firm_id, role="Manager")

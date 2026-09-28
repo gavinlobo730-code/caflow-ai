@@ -83,7 +83,7 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
     # C4: verify assignee belongs to the same firm before creating the task.
     if body.assigned_to:
         from repositories.user_repository import user_repo
-        assignee = user_repo.find_by_id(body.assigned_to)
+        assignee = user_repo.find_by_id(body.assigned_to, firm_id=current_user.get("firm_id"))
         if not assignee or assignee.get("firm_id") != current_user.get("firm_id"):
             raise HTTPException(status_code=422, detail="Assignee not found in this firm")
     now = datetime.now(timezone.utc).isoformat()
@@ -146,7 +146,7 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
         try:
             from services.notification_service import notification_service
             from repositories.user_repository import user_repo
-            assignee = user_repo.find_by_id(body.assigned_to)
+            assignee = user_repo.find_by_id(body.assigned_to, firm_id=current_user.get("firm_id"))
             if assignee:
                 notification_service.notify_task_assigned(task, assignee, current_user)
         except Exception:
@@ -173,7 +173,7 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
     # C4: verify assignee belongs to the same firm before applying the update.
     if "assigned_to" in updates and updates["assigned_to"] is not None:
         from repositories.user_repository import user_repo
-        assignee = user_repo.find_by_id(updates["assigned_to"])
+        assignee = user_repo.find_by_id(updates["assigned_to"], firm_id=firm_id)
         if not assignee or assignee.get("firm_id") != firm_id:
             raise HTTPException(status_code=422, detail="Assignee not found in this firm")
 
@@ -271,11 +271,11 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
             old_assignee_id = task.get("assigned_to")
 
             if new_assignee_id:
-                new_assignee = user_repo.find_by_id(new_assignee_id)
+                new_assignee = user_repo.find_by_id(new_assignee_id, firm_id=firm_id)
                 if new_assignee:
                     if old_assignee_id:
                         # This is a reassignment
-                        old_assignee = user_repo.find_by_id(old_assignee_id)
+                        old_assignee = user_repo.find_by_id(old_assignee_id, firm_id=firm_id)
                         if old_assignee:
                             reason = "Task load rebalancing"
                             notification_service.notify_task_reassigned(updated, old_assignee, new_assignee, reason)

@@ -604,7 +604,7 @@ class WorkflowEngineV2:
             user_id = params.get("user_id")
             if user_id:
                 from repositories.user_repository import user_repo
-                target_user = user_repo.find_by_id(user_id)
+                target_user = user_repo.find_by_id(user_id, firm_id=firm_id)
                 if not target_user or target_user.get("firm_id") != firm_id:
                     raise WorkflowStepValidationError(
                         f"send_notification: user {user_id} not found in firm {firm_id}"

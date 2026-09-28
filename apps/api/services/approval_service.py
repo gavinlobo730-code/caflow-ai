@@ -35,14 +35,16 @@ def _h_user_create(firm_id: str, p: dict) -> dict:
 
 def _h_user_activation(firm_id: str, p: dict) -> dict:
     from repositories.user_repository import user_repo
-    return user_repo.update(p["user_id"], {"is_active": bool(p["is_active"])}) or {}
+    # firm_id scopes the write: p["user_id"] comes off a request payload, and a
+    # Partner approving it must not be able to (de)activate another firm's user.
+    return user_repo.update(p["user_id"], {"is_active": bool(p["is_active"])}, firm_id=firm_id) or {}
 
 
 def _h_role_change(firm_id: str, p: dict) -> dict:
     from repositories.user_repository import user_repo
     if p.get("role") not in _CANONICAL_ROLES:
         raise HTTPException(400, "Invalid role")
-    return user_repo.update(p["user_id"], {"role": p["role"]}) or {}
+    return user_repo.update(p["user_id"], {"role": p["role"]}, firm_id=firm_id) or {}
 
 
 def _h_assignment_create(firm_id: str, p: dict) -> dict:
