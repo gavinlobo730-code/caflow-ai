@@ -14,6 +14,29 @@ FakeDB in e2e_harness.py) because this function issues PostgREST embedded-
 resource queries (journal_lines select with a `journal_entries!inner(...)`
 join filtered via dotted keys like "journal_entries.entry_date") that FakeDB
 does not implement.
+
+PERFORMANCE FIX, 2026-09: the four aggregation windows (cumulative / this
+year / prior year / prior cumulative) used to come from keyset-paging EVERY
+posted journal_lines row up to fy_end — a read proportional to a client's
+WHOLE posted history, ~34 round trips for a client with ~33,000 lines,
+100+ seconds and a client-side timeout. They are now read from
+account_period_balances, the pre-aggregated per-account-per-month table
+routers/year_end_statements.py's schedules endpoint already reads (migrations
+227/228) — bounded by accounts x months, never by transaction count.
+`StubSupabase` below DERIVES its account_period_balances rows from the same
+`journal_lines` fixture every existing test already supplies (bucketed by
+firm/client/account/calendar-month over POSTED, non-deleted lines only,
+exactly as migration 228's triggers maintain the real table) rather than
+requiring every call site to be updated with a second fixture — which is
+also what proves the fix: the totals produced from the derived monthly
+buckets are asserted to match a straight per-line sum of the very same
+fixture (test_a_monthly_preaggregate_matches_the_per_line_replay_it_replaces).
+
+Closing-entry detection (_closing_entries_in) still needs entry-level lines,
+which a monthly total cannot supply, and still reads journal_lines — but only
+for entries that touch an EQUITY account inside the current year's window
+(bounded by how often equity accounts are posted to, not by ledger volume);
+see generate_financial_statements' own "3b" comment.
 """
 import pytest
 
@@ -65,9 +88,15 @@ class _Query:
         f[("is_", key)] = val
         return _Query(self._rows, f)
 
+    def in_(self, key, values):
+        f = dict(self._filters)
+        f[("in_", key)] = set(values)
+        return _Query(self._rows, f)
+
     def order(self, *_a, **_k):
-        # No-op — _fetch_lines' keyset pagination only needs .order()/.limit()
-        # not to crash; this fixture's row count never exceeds a single page.
+        # No-op — the shared keyset pager (core.db_paging.fetch_all) only
+        # needs .order()/.limit() not to crash; this fixture's row count
+        # never exceeds a single page.
         return self
 
     def limit(self, *_a, **_k):
@@ -94,27 +123,75 @@ class _Query:
                 out = [r for r in out if self._get(r, key) > val]
             elif kind == "is_":
                 out = [r for r in out if self._get(r, key) is None]
+            elif kind == "in_":
+                out = [r for r in out if self._get(r, key) in val]
         return type("Result", (), {"data": out})()
 
 
+def _monthly_balances(journal_lines: list) -> list:
+    """account_period_balances, DERIVED from the fixture's own journal_lines —
+    mirrors migration 228's triggers exactly: only POSTED, non-deleted lines
+    contribute, bucketed by (firm, client, account, calendar month). This is
+    what lets every existing fixture below exercise the real aggregation path
+    with no change to its own call site, and it is also the "per-line replay"
+    test_a_monthly_preaggregate_matches_the_per_line_replay_it_replaces checks
+    the buckets against."""
+    buckets: dict = {}
+    for line in journal_lines:
+        entry = line.get("journal_entries") or {}
+        if not entry.get("is_posted") or entry.get("deleted_at"):
+            continue
+        entry_date = str(entry.get("entry_date") or "")
+        month = entry_date[:7] + "-01" if len(entry_date) >= 7 else entry_date
+        key = (entry.get("firm_id"), entry.get("client_id"), line["account_id"], month)
+        b = buckets.setdefault(key, {"debit_paise": 0, "credit_paise": 0})
+        b["debit_paise"]  += int(line.get("debit_paise") or 0)
+        b["credit_paise"] += int(line.get("credit_paise") or 0)
+    return [
+        {
+            "id": f"apb-{i}",
+            "firm_id": firm_id, "client_id": client_id,
+            "account_id": account_id, "period_month": month,
+            "debit_paise": b["debit_paise"], "credit_paise": b["credit_paise"],
+        }
+        for i, ((firm_id, client_id, account_id, month), b)
+        in enumerate(sorted(buckets.items(), key=lambda kv: kv[0]))
+    ]
+
+
 class StubSupabase:
-    """journal_lines + account_group_mappings only — everything this service touches."""
+    """journal_lines + account_group_mappings + account_period_balances —
+    everything this service touches. account_period_balances is DERIVED from
+    journal_lines (see _monthly_balances) rather than supplied separately, so
+    no existing fixture below needs to change."""
 
     def __init__(self, journal_lines, mappings):
         self._journal_lines = journal_lines
         self._mappings = mappings
+        self._balances = _monthly_balances(journal_lines)
 
     def table(self, name):
         if name == "journal_lines":
             return _Query(self._journal_lines)
         if name == "account_group_mappings":
             return _Query(self._mappings)
+        if name == "account_period_balances":
+            return _Query(self._balances)
         raise AssertionError(f"unexpected table: {name}")
 
 
 def _line(account_id, debit, credit, entry_date, client_id=CLIENT, firm_id=FIRM, posted=True):
     return {
         "account_id": account_id,
+        # A synthetic entry id. Every fixture in this file groups a journal
+        # entry's legs by giving them the same entry_date and no two distinct
+        # entries in one fixture ever share a date, so using the date itself
+        # reproduces exactly what _closing_entries_in's own
+        # (entry_date, journal_entry_id) grouping already did when every
+        # line's real id was simply absent -- and it gives the closing-entry
+        # candidate re-fetch (which joins ON journal_entry_id, as every real
+        # posted line has one) something non-null to join on.
+        "journal_entry_id": entry_date,
         "debit_paise": debit,
         "credit_paise": credit,
         "journal_entries": {
@@ -496,9 +573,17 @@ def test_the_comparative_reports_whether_it_balanced_rather_than_refusing():
 
 def test_one_ledger_read_serves_both_periods():
     """The comparative must not cost a second pass over the ledger. CLAUDE.md:
-    no report may fetch rows proportional to transaction volume — and this
-    function used to make TWO fetches for one year, so adding a whole extra
-    year while going down to one is the point."""
+    no report may fetch rows proportional to transaction volume.
+
+    The main aggregation now costs no journal_lines read at all (see
+    test_the_aggregation_reads_the_monthly_table_not_the_ledger below) — the
+    single journal_lines call this fixture makes is the closing-entry
+    candidate search (3b), which finds no candidate here (the only entry
+    touching the equity account "capital" is dated before this FY's window)
+    and so never issues its second, full-entry-refetch query either. This is
+    still worth pinning: a regression that made the candidate search ALWAYS
+    fall through to the second query would double this count for every client,
+    most of whom have no closing entries at all."""
     lines = [
         _line("bank", 10_000_00, 0, "2023-06-01"),
         _line("capital", 0, 10_000_00, "2023-06-01"),
@@ -516,8 +601,86 @@ def test_one_ledger_read_serves_both_periods():
     generate_financial_statements(stub, CLIENT, FIRM,
                                   fy_start="2024-04-01", fy_end="2025-03-31")
     assert calls["journal_lines"] == 1, (
-        f"the ledger was read {calls['journal_lines']} times for two periods"
+        f"journal_lines was read {calls['journal_lines']} times "
+        f"(expected exactly one: the closing-entry candidate search)"
     )
+
+
+def test_the_aggregation_reads_the_monthly_table_not_the_ledger():
+    """THE FIX. This used to keyset-page journal_lines proportional to the
+    client's whole posted history — ~34 round trips and 100+ seconds for a
+    client with ~33,000 lines. The four aggregation windows now read
+    account_period_balances once, bounded by accounts x months: 250 lines
+    landing in one (account, month) bucket must still cost exactly one read,
+    never one per line and never one per page of lines.
+
+    The capital contribution is dated BEFORE this FY (so the balance sheet
+    still balances, and there is a prior period to compute too) rather than
+    inside it, so it is not also found as a closing-entry candidate (3b) —
+    that mechanism is bounded on its own terms and is exercised by the
+    closing-entry tests above; this test isolates the aggregation fix."""
+    ledger = [_line("bank", 1_000_00, 0, "2024-06-01") for _ in range(250)]
+    ledger.append(_line("capital", 0, 250_000_00, "2022-01-01"))
+    stub = StubSupabase(ledger, _MAPPINGS)
+    calls = {"account_period_balances": 0, "journal_lines": 0}
+    original = stub.table
+
+    def counting_table(name):
+        if name in calls:
+            calls[name] += 1
+        return original(name)
+
+    stub.table = counting_table
+    stmts = generate_financial_statements(
+        stub, CLIENT, FIRM, fy_start="2024-04-01", fy_end="2025-03-31")
+
+    assert stmts["balance_sheet"]["assets"]["cash_and_bank"] == 250_000_00
+    assert stmts["balance_sheet"]["is_balanced"] is True
+    assert calls["account_period_balances"] == 1, (
+        f"account_period_balances was read {calls['account_period_balances']} "
+        f"times for 250 posted lines — the read must be bounded by accounts "
+        f"x months, not by line count"
+    )
+    # The capital contribution falls outside this FY's window, so the
+    # closing-entry candidate search (3b) finds nothing and never issues its
+    # second, full-entry-refetch query.
+    assert calls["journal_lines"] == 1
+
+
+def test_a_monthly_preaggregate_matches_the_per_line_replay_it_replaces():
+    """The negative control for this fix. A monthly pre-aggregate must
+    produce IDENTICAL totals to the per-line replay it replaces, because
+    account_period_balances is a maintained-by-trigger mirror of the same
+    ledger (migration 228) and summing it is associative with summing the
+    lines directly. Several lines to the SAME account in the SAME month (so
+    bucketing genuinely combines rows rather than passing single rows
+    through unchanged) plus one in a different month and one in the prior
+    FY, straddling the window boundary this fix's period_month comparisons
+    replaced entry_date comparisons with."""
+    ledger = [
+        _line("bank",    50_000_00, 0,         "2024-04-03"),
+        _line("bank",    25_000_00, 0,         "2024-04-19"),   # same month as above
+        _line("capital", 0,         75_000_00, "2024-04-03"),
+        _line("bank",    10_000_00, 0,         "2024-11-01"),   # a different month
+        _line("revenue", 0,         10_000_00, "2024-11-01"),
+        _line("bank",    5_000_00,  0,         "2023-09-01"),   # prior FY
+        _line("capital", 0,         5_000_00,  "2023-09-01"),
+    ]
+
+    # The per-line replay this replaces: sum debit/credit straight off the
+    # raw lines for the SAME cumulative-to-fy_end window.
+    def _replay(account_id: str) -> int:
+        dr = sum(l["debit_paise"] for l in ledger if l["account_id"] == account_id)
+        cr = sum(l["credit_paise"] for l in ledger if l["account_id"] == account_id)
+        return dr - cr
+
+    stmts = generate_financial_statements(
+        StubSupabase(ledger, _MAPPINGS), CLIENT, FIRM,
+        fy_start="2024-04-01", fy_end="2025-03-31")
+
+    assert stmts["balance_sheet"]["assets"]["cash_and_bank"] == _replay("bank")
+    assert stmts["balance_sheet"]["equity_and_liabilities"]["share_capital"] == -_replay("capital")
+    assert stmts["profit_loss"]["income"]["revenue_from_operations"] == 10_000_00
 
 
 def test_the_prior_period_helper_shifts_both_ends_by_a_year():

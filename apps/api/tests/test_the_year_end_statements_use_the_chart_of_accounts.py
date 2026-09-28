@@ -64,6 +64,26 @@ _LINES = [
 ]
 
 
+def _monthly_balances_from(lines_spec) -> list:
+    """account_period_balances, derived from the same _LINES this fake's
+    journal_lines branch serves — the aggregation windows read this table
+    now (see year_end_financial_service's "1." comment), and this fake
+    otherwise ignores every filter it is given, so a fixed bucketing of the
+    module-level fixture is exactly as faithful as the journal_lines branch
+    already was."""
+    buckets: dict = {}
+    for _lid, acct, dr, cr, d in lines_spec:
+        month = d[:7] + "-01"
+        b = buckets.setdefault((acct, month), {"debit_paise": 0, "credit_paise": 0})
+        b["debit_paise"] += dr
+        b["credit_paise"] += cr
+    return [
+        {"id": f"apb-{i}", "account_id": acct, "period_month": month,
+         "debit_paise": b["debit_paise"], "credit_paise": b["credit_paise"]}
+        for i, ((acct, month), b) in enumerate(sorted(buckets.items()))
+    ]
+
+
 class _Books:
     """Answers the three tables generate_financial_statements reads.
 
@@ -105,6 +125,8 @@ class _Books:
             return type("R", (), {"data": list(self.mappings)})()
         if self._t == "chart_of_accounts":
             return type("R", (), {"data": list(self.accounts)})()
+        if self._t == "account_period_balances":
+            return type("R", (), {"data": _monthly_balances_from(_LINES)})()
         return type("R", (), {"data": []})()
 
 
