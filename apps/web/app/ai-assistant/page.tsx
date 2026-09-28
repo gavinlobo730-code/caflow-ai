@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Sparkles, Plus } from "lucide-react";
-import Link from "next/link";
 import { api } from "@/lib/api";
 
 interface Message {
@@ -173,14 +172,10 @@ export default function AIAssistantPage() {
   return (
     <div className="flex flex-col h-screen max-h-screen bg-white">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
+      {/* No page-level "← Dashboard" breadcrumb here — the shell rail already
+          provides navigation (the one-shell decision), and /copilot, this
+          page's sibling in the AI section, has never had one either. */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-ps-border shrink-0">
-        <Link
-          href="/"
-          className="text-xs text-ps-hint hover:text-ps-label transition-colors mr-1"
-        >
-          &larr; Dashboard
-        </Link>
-        <div className="h-4 w-px bg-white/[0.08]" />
         <div className="flex items-center gap-2">
           <Sparkles size={15} className="text-blue-500" />
           <h1 className="text-sm font-semibold text-ps-ink">AI Assistant</h1>

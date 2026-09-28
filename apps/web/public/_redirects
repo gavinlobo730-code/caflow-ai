@@ -16,6 +16,10 @@
 /clients/documents/                                  /clients/documents/  200
 /clients/documents/index.txt                         /clients/documents/index.txt  200
 /clients/documents.txt                               /clients/documents/index.txt  200
+/clients/onboarding                                  /clients/onboarding/  200
+/clients/onboarding/                                 /clients/onboarding/  200
+/clients/onboarding/index.txt                        /clients/onboarding/index.txt  200
+/clients/onboarding.txt                              /clients/onboarding/index.txt  200
 /clients/:id                                         /clients/_placeholder/  200
 /clients/:id/accounting                              /clients/_placeholder/accounting/  200
 /clients/:id/accounting/journal/:entryId/edit        /clients/_placeholder/accounting/journal/_placeholder/edit/  200

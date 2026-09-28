@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Building2, RefreshCw, IndianRupee, AlertTriangle, Wallet, ReceiptText, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Building2, RefreshCw, Loader2 } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
@@ -157,20 +158,6 @@ interface DashboardData {
   collected_cash_paise: number;
 }
 
-function KpiCard({ label, value, icon: Icon, tone }: {
-  label: string; value: string; icon: typeof IndianRupee; tone?: string;
-}) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <div className="flex items-center justify-between">
-        <p className="text-2xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-        <Icon size={15} className={tone ?? "text-gray-400"} />
-      </div>
-      <p className="text-xl font-semibold text-brand mt-2 tabular-nums">{value}</p>
-    </div>
-  );
-}
-
 function PracticeOverview() {
   const [provisioned, setProvisioned] = useState<boolean | null>(null);
   const [identity, setIdentity] = useState<PracticeIdentity | null>(null);
@@ -229,22 +216,38 @@ function PracticeOverview() {
     );
   }
 
+  // The four Total Receivable / Overdue / TDS Receivable / Collected tiles
+  // used to be repeated here in full — identical to the ones on the Revenue
+  // page (/practice/revenue), reading the same api.billing.dashboard() call.
+  // This screen's own job is Practice SETUP and tax identity; the figures
+  // belong on Revenue, so here they are one summary line with a link across.
+  const overdueCount = dash?.overdue_count ?? 0;
   return (
     <div className="p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
           <Building2 size={18} className="text-brand" />
-          <h1 className="text-lg font-semibold text-brand">Practice — Revenue Overview</h1>
+          <h1 className="text-lg font-semibold text-brand">Practice Overview</h1>
         </div>
         <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
           <RefreshCw size={13} /> Refresh
         </button>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <KpiCard label="Total Receivable" value={formatPaise(dash?.total_receivable_paise ?? 0)} icon={IndianRupee} tone="text-blue-500" />
-        <KpiCard label="Overdue" value={`${formatPaise(dash?.overdue_paise ?? 0)} (${dash?.overdue_count ?? 0})`} icon={AlertTriangle} tone="text-state-problem" />
-        <KpiCard label="TDS Receivable" value={formatPaise(dash?.tds_receivable_paise ?? 0)} icon={ReceiptText} tone="text-amber-500" />
-        <KpiCard label="Collected (cash)" value={formatPaise(dash?.collected_cash_paise ?? 0)} icon={Wallet} tone="text-green-600" />
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-ps-border bg-white p-4 mb-5">
+        <p className="text-sm text-ps-body">
+          Total receivable{" "}
+          <span className="font-semibold text-ps-ink tabular-nums">
+            {formatPaise(dash?.total_receivable_paise ?? 0)}
+          </span>
+          {overdueCount > 0 && (
+            <span className="text-state-problem">
+              {" "}· {overdueCount} overdue ({formatPaise(dash?.overdue_paise ?? 0)})
+            </span>
+          )}
+        </p>
+        <Link href="/practice/revenue" className="text-sm font-medium text-brand hover:underline shrink-0">
+          Revenue dashboard →
+        </Link>
       </div>
       <TaxIdentity identity={identity} onSaved={load} />
       <p className="text-2xs text-gray-400 mt-4">

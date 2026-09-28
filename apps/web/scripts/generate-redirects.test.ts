@@ -128,6 +128,11 @@ test("the only rules with no placeholder are the named static-leaf shadow fixes"
   const statics = rulesIn(buildRedirectsFile(APP_DIR)).filter((r) => !isDynamicRule(r.from));
   const shadowedLeaves = [
     "/clients/documents",
+    // The client-onboarding tracker moved here from /onboarding/checklist
+    // (sweep-auth-and-public-05) — another pure-static leaf sibling of the
+    // dynamic /clients/:id segment, shadowed the same way /clients/documents
+    // already was.
+    "/clients/onboarding",
     "/health/alerts",
     "/health/at-risk",
     "/health/critical",

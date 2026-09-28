@@ -91,7 +91,9 @@ const NO_BROWSE_SURFACE: Record<string, string> = {
   "/onboarding":
     "the firm SIGNUP wizard, which runs before a firm exists and so renders " +
     "with no shell at all (AppShell's NO_SHELL_EXACT). Its ONE sub-route, " +
-    "/onboarding/checklist, is a staff screen and is in ClientsPanel",
+    "/onboarding/checklist, is now a redirect stub to /clients/onboarding " +
+    "(UNLISTED there) — the real client-onboarding screen moved into " +
+    "ClientsPanel under that path",
 };
 
 /**
@@ -192,9 +194,11 @@ test("every NO_BROWSE_SURFACE entry names a screen that exists", () => {
 test("the two screens that had no browse surface at all now have one", () => {
   // Negative control with teeth: these are the exact pair the sweep that wrote
   // this guard found in NEITHER a panel nor any landing page, so a rewrite that
-  // made `sweep()` vacuous would still have to keep them listed.
+  // made `sweep()` vacuous would still have to keep them listed. The client-
+  // onboarding tracker moved from /onboarding/checklist to /clients/onboarding
+  // (sweep-auth-and-public-05); the pair is still the same TWO screens.
   assert.match(panelSource("TeamPanel"), /"\/team\/workload"/);
-  assert.match(panelSource("ClientsPanel"), /"\/onboarding\/checklist"/);
+  assert.match(panelSource("ClientsPanel"), /"\/clients\/onboarding"/);
 });
 
 /**
