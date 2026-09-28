@@ -2,6 +2,7 @@ import os
 import uuid
 from datetime import date
 from typing import Optional
+from core.db_paging import fetch_all
 from repositories.base import BaseRepository
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -45,19 +46,32 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
                 records = [r for r in records if r.get("status") not in exclude_statuses]
             return records
 
-        query = _get_db().table("compliance_records").select("*").is_("deleted_at", "null")
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        if client_id:
-            query = query.eq("client_id", client_id)
-        if status:
-            query = query.eq("status", status)
-        if compliance_type:
-            query = query.eq("compliance_type", compliance_type)
-        if exclude_statuses:
-            query = query.not_.in_("status", exclude_statuses)
-        result = query.order("due_date").execute()
-        return result.data or []
+        def make_query():
+            q = _get_db().table("compliance_records").select("*").is_("deleted_at", "null")
+            if firm_id:
+                q = q.eq("firm_id", firm_id)
+            if client_id:
+                q = q.eq("client_id", client_id)
+            if status:
+                q = q.eq("status", status)
+            if compliance_type:
+                q = q.eq("compliance_type", compliance_type)
+            if exclude_statuses:
+                q = q.not_.in_("status", exclude_statuses)
+            return q
+
+        # PostgREST caps an unpaged read at ~1000 rows with no signal that it
+        # did — a firm-wide read (no client_id) crosses that silently once a
+        # practice's compliance_records history is large enough, and every
+        # caller (the firm GST/compliance tracker, risk scoring, the AI
+        # copilot's own reads) would then work from a truncated set with no
+        # indication anything was missing. core.db_paging.fetch_all reads every
+        # matching row in keyset pages instead. It orders by `key` internally,
+        # so the caller's own `due_date` ordering is restored here, over the
+        # complete result rather than inside the paged query.
+        rows = fetch_all(make_query, key="id", label="compliance_records.find_all")
+        rows.sort(key=lambda r: (str(r.get("due_date") or ""), r.get("id") or ""))
+        return rows
 
     def count_all(self, firm_id: Optional[str] = None, client_id: Optional[str] = None) -> int:
         """Lightweight row count (no full-row fetch) — for metrics that need a
