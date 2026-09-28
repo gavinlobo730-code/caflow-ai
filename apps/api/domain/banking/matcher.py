@@ -19,6 +19,12 @@ Confidence methodology (0–100):
 Labels: high ≥ 80, medium ≥ 50, else low. A non-exact amount is capped below the
 "high" threshold, so "high confidence" continues to mean the amounts agree.
 
+A HARD GATE COMES BEFORE ANY OF THAT: a sales invoice or purchase bill dated
+AFTER the bank transaction is refused outright, never merely scored down — see
+`_entity_dated_after_txn`. A payment cannot settle a document that did not
+exist yet, and no amount of amount-band or date-proximity agreement changes
+that.
+
 WHY SHORT AMOUNTS ARE RANKED, NOT FILTERED
     This used to be an exact-amount GATE: `if c.amount_paise != txn_amount_paise:
     continue`. That is wrong for the single most common receipt in Indian
@@ -192,6 +198,36 @@ def _days_between(a: Optional[str], b: Optional[str]) -> Optional[int]:
         return None
 
 
+# Only these two carry a date that is a statement about the WORLD — when the
+# document was raised — rather than about this product's own records. A
+# receipt, a purchase payment and a journal entry are dated when THEY were
+# recorded, which is not a constraint on what a bank line may settle.
+_DATED_SETTLEMENT_DOCUMENTS = ("sales_invoice", "purchase_bill")
+
+
+def _entity_dated_after_txn(entity_date: Optional[str], txn_date: Optional[str]) -> bool:
+    """True only when both dates parse AND the candidate is dated strictly
+    LATER than the bank transaction.
+
+    A payment cannot settle an invoice or bill that did not exist yet —
+    confirmed against production (Apex Trading Solutions) data: a salary
+    payment dated 2026-04-18 drafted against a bill dated 2026-04-21, a
+    self-transfer dated 2026-04-22 drafted against a bill dated 2026-05-11.
+    This is a hard "cannot be true" gate, not a proximity score, so a missing
+    or unparseable date answers False rather than manufacturing a rejection
+    out of absent data — the ordinary date-proximity bonus below already
+    handles that generously.
+
+    Strictly later only: the ordinary, correct case this ranker exists for is
+    a bank line dated well AFTER a much older outstanding document, and a
+    same-day invoice-and-payment is unremarkable too. Neither is touched."""
+    try:
+        return (date.fromisoformat(str(entity_date)[:10])
+                > date.fromisoformat(str(txn_date)[:10]))
+    except Exception:
+        return False
+
+
 def _confidence_label(score: int) -> str:
     return "high" if score >= 80 else "medium" if score >= 50 else "low"
 
@@ -252,6 +288,15 @@ def rank_suggestions(
     parsed = parse_narration(narration)
     out: list[Suggestion] = []
     for c in candidates:
+        # A sales invoice or purchase bill dated AFTER this bank line is a
+        # document that did not exist yet when the money moved, and cannot be
+        # what it settles — a hard refusal, never a scoring penalty, and
+        # asked before the amount band so a wrongly-dated document is never
+        # offered regardless of how well the amount happens to line up.
+        if (c.entity_type in _DATED_SETTLEMENT_DOCUMENTS
+                and _entity_dated_after_txn(c.entity_date, txn_date)):
+            continue
+
         # MEASURED AGAINST WHAT IS STILL OPEN, not the face value (BANK-10) —
         # the band, the TDS shape and the difference the CA is shown all read
         # the same figure, so they cannot disagree about what this bank line

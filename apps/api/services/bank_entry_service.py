@@ -484,6 +484,12 @@ class BankEntryService:
         payee history, the candidate pools, the transfer pairs — never per
         row. That is the whole reason this is a service and not a loop over
         the per-row endpoints.
+
+        A document drafted as one row's own top pick is excluded from every
+        LATER row's candidates in the same chunk — see the note beside
+        `claimed_documents` below. Scoped to this one call's `rows`: a
+        document already drafted in an earlier chunk, or already on a line
+        outside this pick, is not tracked here.
         """
         limit = max(1, min(int(limit), MAX_CHUNK))
         rows = self._pick_for_redraft(db, firm_id, client_id, limit=limit,
@@ -501,8 +507,31 @@ class BankEntryService:
             bank_names = self._bank_account_names(db, firm_id, client_id)
             account_names = self._account_names(db, firm_id, rules, index)
             now = _now()
+            # A document already chosen as an EARLIER row's own draft in this
+            # same chunk cannot also be top pick for a later one — confirmed
+            # against production (Apex Trading Solutions): one ₹489.55
+            # purchase bill was the draft target of 28 unrelated bank lines at
+            # once, summing to ₹11,971.74. `suggestions_for_many` deliberately
+            # ranks every row against the SAME shared pool (its own docstring:
+            # "same candidates, same ranking") — right for display, and right
+            # for the FIRST row of a chunk, but nothing removed a document
+            # from later rows' candidates once an earlier row had already
+            # claimed it. Filtering the already-ranked list here — rather than
+            # re-invoking rank_suggestions — is enough: the ranker scores each
+            # candidate independently of its neighbours, so dropping a claimed
+            # one changes nothing else about the remaining order.
+            claimed_documents: set[tuple[str, Optional[str]]] = set()
             for t in rows:
+                key = str(t.get("id"))
+                if claimed_documents and key in candidates:
+                    candidates[key] = [
+                        s for s in candidates[key]
+                        if (s.get("matched_entity_type"), str(s.get("matched_entity_id")))
+                        not in claimed_documents
+                    ]
                 draft = self._draft_for(t, rules, index, candidates, pairs, bank_names, account_names)
+                if draft is not None and draft.source == E.SOURCE_DOCUMENT and draft.entity_id:
+                    claimed_documents.add((draft.entity_type, str(draft.entity_id)))
                 # Column names written out at the call, not spread from a dict:
                 # tests/test_backend_columns_exist_pg.py reads literal keys and
                 # counts anything else as a blind spot.
