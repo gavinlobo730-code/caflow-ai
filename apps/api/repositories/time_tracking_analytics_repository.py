@@ -42,7 +42,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
                 .eq("firm_id", firm_id)
                 .gte("started_at", f"{date_from}T00:00:00Z")
                 .lte("started_at", f"{date_to}T23:59:59Z")
-                .not_("ended_at", "is", None)
+                .not_.is_("ended_at", "null")
             )
             result = query.execute()
             entries = result.data or []
@@ -92,7 +92,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
                 .eq("firm_id", firm_id)
                 .gte("started_at", f"{date_from}T00:00:00Z")
                 .lte("started_at", f"{date_to}T23:59:59Z")
-                .not_("ended_at", "is", None)
+                .not_.is_("ended_at", "null")
             )
             result = query.execute()
             entries = result.data or []
@@ -142,7 +142,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
                 .eq("firm_id", firm_id)
                 .gte("started_at", f"{date_from}T00:00:00Z")
                 .lte("started_at", f"{date_to}T23:59:59Z")
-                .not_("ended_at", "is", None)
+                .not_.is_("ended_at", "null")
             )
             result = query.execute()
             entries = result.data or []
@@ -190,7 +190,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
                 .eq("firm_id", firm_id)
                 .gte("started_at", f"{date_from}T00:00:00Z")
                 .lte("started_at", f"{date_to}T23:59:59Z")
-                .not_("ended_at", "is", None)
+                .not_.is_("ended_at", "null")
             )
             result = query.execute()
             entries = result.data or []
@@ -254,7 +254,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
                 .eq("firm_id", firm_id)
                 .gte("started_at", f"{date_from}T00:00:00Z")
                 .lte("started_at", f"{date_to}T23:59:59Z")
-                .not_("ended_at", "is", None)
+                .not_.is_("ended_at", "null")
             )
             result = query.execute()
             entries = result.data or []
@@ -306,7 +306,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
                 .eq("firm_id", firm_id)
                 .gte("started_at", f"{date_from}T00:00:00Z")
                 .lte("started_at", f"{date_to}T23:59:59Z")
-                .not_("ended_at", "is", None)
+                .not_.is_("ended_at", "null")
             )
             result = query.execute()
             entries = result.data or []
@@ -350,7 +350,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
                 .eq("firm_id", firm_id)
                 .gte("started_at", f"{date_from}T00:00:00Z")
                 .lte("started_at", f"{date_to}T23:59:59Z")
-                .not_("ended_at", "is", None)
+                .not_.is_("ended_at", "null")
             )
             result = query.execute()
             entries = result.data or []
