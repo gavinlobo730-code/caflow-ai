@@ -46,7 +46,7 @@ interface CashLine {
   reference_no?: string | null;
   debit_paise: number;
   credit_paise: number;
-  balance_paise?: number | null;
+  running_balance_paise?: number | null;
 }
 
 interface CashAccount {
@@ -194,8 +194,8 @@ export function CashRegister({ clientId }: { clientId: string }) {
                         {l.credit_paise ? rupees(l.credit_paise) : ""}
                       </td>
                       <td className={`px-4 py-1.5 text-right font-mono ${
-                        (l.balance_paise ?? 0) < 0 ? "text-state-problem font-semibold" : ""}`}>
-                        {rupees(l.balance_paise)}
+                        (l.running_balance_paise ?? 0) < 0 ? "text-state-problem font-semibold" : ""}`}>
+                        {rupees(l.running_balance_paise)}
                       </td>
                     </tr>
                   ))}
