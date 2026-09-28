@@ -6,6 +6,7 @@ import { yearEndApi, type ChecklistItem, type ChecklistItemStatus } from "@/lib/
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { Skeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
+import { useRefreshEngagement } from "../_engagementRefresh";
 
 // ── Status cycle: pending → in_progress → complete ─────────────────────────
 const STATUS_CYCLE: Record<ChecklistItemStatus, ChecklistItemStatus> = {
@@ -40,6 +41,10 @@ export default function ChecklistPage() {
   // window.location, not useParams(): on the deployed static export every
   // dynamic segment is "_placeholder" (see ../_engagementId.ts).
   const engagementId = useEngagementId();
+  // Submitting flips the engagement's own status from draft to in_review; the
+  // workspace header's status chip only picks that up if it is told to
+  // re-fetch (sweep-client-inventory-docs-reports-05).
+  const refreshEngagement = useRefreshEngagement();
 
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,6 +139,7 @@ export default function ChecklistPage() {
       const res = await yearEndApi.checklist.submitForReview(engagementId);
       if (!res.success) throw new Error(res.error ?? "Failed to submit");
       setSubmitMsg("Submitted for review successfully.");
+      refreshEngagement();
     } catch (err) {
       setSubmitMsg(err instanceof Error ? err.message : "Failed to submit");
     } finally {
