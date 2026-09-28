@@ -17,16 +17,12 @@ from core.permissions import rbac
 from core.authz import assert_client_access, effective_client_ids
 from repositories.assignment_repository import assignment_repo
 from repositories.client_repository import client_repo
+from repositories.user_repository import user_repo
 from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
-
-
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
 
 
 class AssignmentBody(BaseModel):
@@ -40,12 +36,17 @@ class BulkAssignmentBody(BaseModel):
 
 
 def _validate_user_in_firm(user_id: str, firm_id: str) -> None:
-    """User must exist in the caller's firm (real DB only)."""
+    """User must exist in the caller's firm (real DB only).
+
+    Reads through `user_repo`, which is service-role scoped by firm_id.
+    Reading `public.users` on the caller's own JWT instead hits
+    `users_own_row_select` (migration 153), which shows a Partner only
+    their OWN row — so this 404'd on every staff member but the caller,
+    which meant a Partner could never assign a client to anybody else.
+    """
     if _USE_MOCK:
         return
-    res = (_db().table("users").select("id, firm_id, role")
-           .eq("id", user_id).eq("firm_id", firm_id).limit(1).execute())
-    if not res.data:
+    if not user_repo.find_by_id(user_id, firm_id=firm_id):
         raise HTTPException(status_code=404, detail="User not found in firm")
 
 

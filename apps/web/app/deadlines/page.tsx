@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
 import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
@@ -412,33 +413,36 @@ function DeadlinesContent() {
         </p>
       </div>
 
+      {/* Rendered in the shared Modal (components/ui/modal.tsx) rather than as
+          a static block above the table — on a 33+ row table a card pinned to
+          the top of the page opened off-screen above whatever row the CA had
+          just clicked "Mark Filed" on. The Modal centres itself, traps focus
+          and closes on Escape, so the prompt now appears where the click
+          happened regardless of the row's position in the table. */}
       {markFiled && (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm font-medium text-blue-900 mb-3">Mark as Filed</p>
-            <div className="flex gap-3 items-center">
-              <input
-                value={markFiled.arn}
-                onChange={e => setMarkFiled({ ...markFiled, arn: e.target.value })}
-                placeholder="ARN Number (optional)"
-                className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand bg-white"
-              />
-              <button
-                onClick={handleMarkFiled}
-                disabled={filingLoading}
-                className="text-xs px-3 py-1.5 bg-brand text-white rounded-md hover:bg-brand-dark disabled:opacity-50"
-              >
-                {filingLoading ? "Saving…" : "Confirm Filed"}
-              </button>
-              <button
-                onClick={() => setMarkFiled(null)}
-                className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white"
-              >
-                Cancel
-              </button>
-            </div>
-          </CardContent>
-        </Card>
+        <Modal title="Mark as Filed" onClose={() => setMarkFiled(null)} maxWidthClass="max-w-md">
+          <div className="flex gap-3 items-center">
+            <input
+              value={markFiled.arn}
+              onChange={e => setMarkFiled({ ...markFiled, arn: e.target.value })}
+              placeholder="ARN Number (optional)"
+              className="flex-1 px-3 py-1.5 text-sm border border-state-working-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand bg-white"
+            />
+            <button
+              onClick={handleMarkFiled}
+              disabled={filingLoading}
+              className="text-xs px-3 py-1.5 bg-brand text-white rounded-md hover:bg-brand-dark disabled:opacity-50"
+            >
+              {filingLoading ? "Saving…" : "Confirm Filed"}
+            </button>
+            <button
+              onClick={() => setMarkFiled(null)}
+              className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white"
+            >
+              Cancel
+            </button>
+          </div>
+        </Modal>
       )}
 
       {/* E-WAY BILLS EXPIRING (SALES-28) — deliberately ABOVE the table and
