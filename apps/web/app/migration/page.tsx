@@ -44,6 +44,11 @@ function sentenceOf(e: unknown, fallback: string): string {
  *  `previewing` are not: the live import runs in the background after the
  *  request returns, so the first look at the job may still say `previewing`. */
 const SETTLED = new Set(["completed", "error", "rolled_back"]);
+/** DELETE /api/tally-migration/jobs/{id} refuses these two — the mirror of
+ *  domain/tally/migration_service._NOT_DISCARDABLE. 'completed' already wrote
+ *  real customer/vendor rows (Roll back undoes those, not Discard) and
+ *  'importing' is being written to by the server right now. */
+const NOT_DISCARDABLE = new Set(["completed", "importing"]);
 const FOLLOW_EVERY_MS = 2_000;
 /** How long this screen watches. The import itself does not stop when the
  *  screen does — it runs on the server — so this only decides when to hand
@@ -249,6 +254,113 @@ export default function MigrationPage() {
     } finally {
       setBusyJob(null);
     }
+  }
+
+  /** DISCARD AN UNFINISHED JOB (sweep-clients-admin-04).
+   *
+   *  Once a CA left the New Import wizard, a job's id lived only in this
+   *  page's own React state — there was no DELETE on the server to wire a
+   *  button to, and no way back into the job either (see resumeJob below).
+   *  The server refuses this once the job is `completed` or `importing`
+   *  (NOT_DISCARDABLE), so the button is offered only where it would be
+   *  honoured; destructive otherwise, so it is confirmed. */
+  async function discard(j: MigrationJob) {
+    const ok = await confirmDialog({
+      title: `Discard ${j.name}?`,
+      message:
+        "This deletes the job and everything staged for it. Nothing from " +
+        "it has been imported, so nothing else is affected. It cannot be undone.",
+      confirmLabel: "Discard job",
+      danger: true,
+    });
+    if (!ok) return;
+    setBusyJob(j.id);
+    setError(null);
+    try {
+      await call(`/api/tally-migration/jobs/${j.id}`, { method: "DELETE" });
+      if (jobId === j.id) {
+        setShowCreate(false);
+        setJobId(null);
+      }
+      await load();
+    } catch (e) {
+      setError(sentenceOf(e, "Couldn't discard the job."));
+    } finally {
+      setBusyJob(null);
+    }
+  }
+
+  /** RESUME A JOB FROM THE LIST (sweep-clients-admin-04).
+   *
+   *  jobId, parseResult and preview lived only in this component's state, so
+   *  leaving the wizard — closing the tab, navigating away, or just this
+   *  page's own "Done" button — stranded the job: the list showed it, but
+   *  clicking it did nothing, and the only doors back in
+   *  (GET /jobs/{id} and GET /jobs/{id}/preview) already existed on the
+   *  server with nothing on this screen calling them for a job already in
+   *  flight. Which step to reopen on comes from the job's own status: a
+   *  `previewing` job has items already saved, so its preview is fetched
+   *  and shown directly rather than asking the CA to re-paste the export;
+   *  an `importing` job resumes the same follow-loop handleImport starts; a
+   *  SETTLED job (completed/error/rolled_back) shows the report built from
+   *  the job row itself, the same shape followImport builds it in; anything
+   *  earlier (uploaded/parsing/parsed/mapping/validating) has no preview to
+   *  show yet, so it reopens at the parse step. */
+  async function resumeJob(j: MigrationJob) {
+    setError(null);
+    setJobId(j.id);
+    setShowCreate(true);
+    setIsDryRun(j.is_dry_run);
+    setParseResult(null);
+    setPreview(null);
+    setImportResult(null);
+    setProgress(null);
+
+    if (j.status === "previewing") {
+      setStep("preview");
+      setWorking(true);
+      try {
+        setPreview(objectWithLists<MigrationPreview>(
+          await call(`/api/tally-migration/jobs/${j.id}/preview`),
+          "withheld_identifiers",
+        ));
+      } catch (e) {
+        setError(sentenceOf(e, "Couldn't load the saved preview."));
+      } finally {
+        setWorking(false);
+      }
+      return;
+    }
+
+    if (j.status === "importing") {
+      setStep("import");
+      setWorking(true);
+      try {
+        await followImport(j.id);
+      } catch (e) {
+        setError(sentenceOf(e, "Couldn't follow the import."));
+      } finally {
+        setWorking(false);
+      }
+      await load();
+      return;
+    }
+
+    if (SETTLED.has(j.status)) {
+      setStep("import");
+      setImportResult({
+        is_dry_run: j.is_dry_run,
+        status: j.status,
+        imported: j.imported_items ?? 0,
+        failed: j.failed_items ?? 0,
+        message: j.run_message ?? null,
+      });
+      return;
+    }
+
+    // uploaded / parsing / parsed / mapping / validating — nothing saved to
+    // preview yet.
+    setStep("parse");
   }
 
   useEffect(() => { load(); }, []);
@@ -648,7 +760,10 @@ export default function MigrationPage() {
       ) : (
         <div className="space-y-2">
           {jobs.map(j => (
-            <div key={j.id} className="bg-white border border-ps-border rounded-xl px-4 py-3 flex items-center gap-3">
+            <div key={j.id} role="button" tabIndex={0}
+              onClick={() => resumeJob(j)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); resumeJob(j); } }}
+              className="bg-white border border-ps-border rounded-xl px-4 py-3 flex items-center gap-3 cursor-pointer hover:border-brand/40 focus:outline-none focus:ring-2 focus:ring-brand">
               <Database size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-ps-ink">{j.name}</p>
@@ -674,9 +789,19 @@ export default function MigrationPage() {
                   this button was never shown and the rollback it wraps could
                   not be reached. */}
               {j.status === "completed" && !j.is_dry_run && j.imported_items > 0 && (
-                <button onClick={() => rollback(j)} disabled={busyJob === j.id}
+                <button onClick={(e) => { e.stopPropagation(); rollback(j); }} disabled={busyJob === j.id}
                   className="text-3xs px-2 py-1 rounded-lg border border-ps-border text-red-600 hover:bg-red-50 disabled:opacity-40 flex-shrink-0">
                   {busyJob === j.id ? "Rolling back…" : "Roll back"}
+                </button>
+              )}
+              {/* Offered wherever the server would honour it — the mirror of
+                  DELETE /jobs/{id}'s own refusal (NOT_DISCARDABLE). A
+                  'completed' job already has real rows to roll back instead;
+                  an 'importing' one is being written to right now. */}
+              {canStartImport && !NOT_DISCARDABLE.has(j.status) && (
+                <button onClick={(e) => { e.stopPropagation(); discard(j); }} disabled={busyJob === j.id}
+                  className="text-3xs px-2 py-1 rounded-lg border border-ps-border text-ps-label hover:bg-ps-bg disabled:opacity-40 flex-shrink-0">
+                  {busyJob === j.id ? "Discarding…" : "Discard"}
                 </button>
               )}
             </div>
