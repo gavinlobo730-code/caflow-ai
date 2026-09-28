@@ -300,6 +300,10 @@ def test_an_account_can_be_unmarked():
         def table(self, _t): return self
         def update(self, p): self.payload = p; return self
         def eq(self, *_a): return self
+        # A firm-level account (client_id IS NULL) is markable too — see
+        # test_unbilled_dues_marking_reaches_firm_level_accounts.py — so the
+        # "account" branch reaches an `.or_(...)` this fake must accept.
+        def or_(self, *_a): return self
         def execute(self): return type("R", (), {"data": [{"id": "a1"}]})()
 
     db = _DB()

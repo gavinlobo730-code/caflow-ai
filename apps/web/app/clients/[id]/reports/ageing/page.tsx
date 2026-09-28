@@ -244,7 +244,10 @@ export default function ClientAgeingSchedulePage() {
       const { data, error: err } = await sb
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type, unbilled_dues_side")
-        .eq("client_id", clientId)
+        // A firm-level account (client_id IS NULL) is allowed on any of the
+        // firm's entries and is just as markable as one scoped to this
+        // client — see CLAUDE.md on chart_of_accounts tenancy.
+        .or(`client_id.eq.${clientId},client_id.is.null`)
         .in("account_type", ["Asset", "Liability"])
         .eq("is_active", true)
         .order("account_code");

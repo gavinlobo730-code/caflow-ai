@@ -291,9 +291,18 @@ def _write(db, target: str, target_id: str, firm_id: str, client_id: str, update
                 .execute())
 
     if target == "account":
+        # A firm-level account (client_id IS NULL) is allowed on any of the
+        # firm's entries, so marking one is inherently a firm-wide act — the
+        # row this writes lives on the shared chart_of_accounts, not a
+        # client-owned copy of it. `.eq("client_id", client_id)` would match
+        # neither that row nor any row (Postgres NULL never equals a value),
+        # so the update silently touched zero rows for a client whose whole
+        # chart is firm-level. Scoped instead to this client's own accounts
+        # OR the firm's shared ones — never another client's.
         return (db.table("chart_of_accounts")
                 .update({"unbilled_dues_side": update["unbilled_dues_side"]})
-                .eq("id", target_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("id", target_id).eq("firm_id", firm_id)
+                .or_(f"client_id.eq.{client_id},client_id.is.null")
                 .execute())
 
     if target == "bill":
