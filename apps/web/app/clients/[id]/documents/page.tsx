@@ -241,7 +241,7 @@ export default function DocumentsPage() {
         <div className="bg-white rounded-xl border border-ps-border px-5 py-12 text-center space-y-2">
           <FolderOpen className="w-8 h-8 text-gray-200 mx-auto" />
           <p className="text-sm text-ps-hint">No documents uploaded yet</p>
-          <p className="text-xs text-ps-disabled">Upload returns, notices, Form 16, and other files for this client</p>
+          <p className="text-xs text-ps-hint">Upload returns, notices, Form 16, and other files for this client</p>
         </div>
       ) : (
         <Card>

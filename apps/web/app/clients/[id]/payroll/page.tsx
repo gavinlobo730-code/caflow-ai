@@ -820,7 +820,7 @@ function RunsTab({ clientId, firmId, openDoc }:
                         || finalizing === blockedRun.runId}
               className="text-2xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40"
             >
-              {finalizing === blockedRun.runId ? "Finalizing…" : "Finalize anyway"}
+              {finalizing === blockedRun.runId ? "Finalising…" : "Finalise anyway"}
             </button>
             <button
               onClick={() => { setBlockedRun(null); setOverrideReason(""); }}
@@ -862,11 +862,11 @@ function RunsTab({ clientId, firmId, openDoc }:
                 {r.status !== "finalized" && r.status !== "paid" && (
                   <button onClick={() => finalizeRun(r.id)} disabled={finalizing === r.id}
                     className="flex items-center gap-1 text-2xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
-                    <CheckCircle size={11} /> {finalizing === r.id ? "Finalizing…" : "Finalize"}
+                    <CheckCircle size={11} /> {finalizing === r.id ? "Finalising…" : "Finalise"}
                   </button>
                 )}
                 {(r.status === "finalized" || r.status === "paid") && (
-                  <span className="text-2xs text-emerald-600 flex items-center gap-1"><CheckCircle size={11} /> {r.status === "paid" ? "Paid" : "Finalized"}</span>
+                  <span className="text-2xs text-emerald-600 flex items-center gap-1"><CheckCircle size={11} /> {r.status === "paid" ? "Paid" : "Finalised"}</span>
                 )}
                 {/* A DRAFT CAN BE FIXED (PAY-21). Recompute rebuilds the month
                     from the master data as it stands now — the attendance just
@@ -954,7 +954,14 @@ function RunsTab({ clientId, firmId, openDoc }:
                       <tr className="border-t-2 border-ps-border font-semibold">
                         <td className="py-1.5 px-2 text-ps-ink text-3xs">TOTAL</td>
                         <td className="py-1.5 px-2 font-mono text-ps-ink">{fmt(r.total_gross_paise)}</td>
-                        <td colSpan={4} />
+                        {/* Summed from the slips already on screen, the same
+                            way Gross and Net are — PF/ESI/PT/TDS used to be a
+                            blank colSpan here although every row above it
+                            carries a figure. */}
+                        <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(slips.reduce((sum, s) => sum + s.pf_employee_paise, 0))}</td>
+                        <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(slips.reduce((sum, s) => sum + s.esi_employee_paise, 0))}</td>
+                        <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(slips.reduce((sum, s) => sum + s.pt_paise, 0))}</td>
+                        <td className="py-1.5 px-2 font-mono text-amber-600">{fmt(slips.reduce((sum, s) => sum + s.tds_paise, 0))}</td>
                         <td className="py-1.5 px-2 font-mono text-emerald-600">{fmt(r.total_net_paise)}</td>
                       </tr>
                     </tfoot>

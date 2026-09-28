@@ -115,9 +115,20 @@ function figure(tile: HubTile): string {
   return tile.unit === "paise" ? formatPaise(tile.signal) : String(tile.signal);
 }
 
+// A crore figure ("₹19,91,50,407.00") runs to 16+ characters with not one
+// space in it — a comma is not a break point a browser will wrap on — so at
+// the grid's narrowest column (`xl:grid-cols-5`) it overflows the card rather
+// than wrapping onto a second line. Above this many characters the value
+// steps down a size instead of clipping: a truncated rupee figure would show
+// a smaller, wrong number as though it were the real one, which is worse than
+// a card that has to shrink its type to fit.
+const LONG_FIGURE_CHARS = 13;
+
 function HubCard({ tile }: { tile: HubTile }) {
   const nothingToDo = tile.answerable && tile.signal === 0;
   const unreadable = tile.answerable && tile.signal === null;
+  const displayValue = tile.answerable ? figure(tile) : "—";
+  const isLongFigure = displayValue.length >= LONG_FIGURE_CHARS;
 
   const body = (
     <>
@@ -126,7 +137,8 @@ function HubCard({ tile }: { tile: HubTile }) {
       </div>
       <div
         className={cn(
-          "mt-1 text-2xl font-semibold tabular-nums",
+          "mt-1 font-semibold tabular-nums",
+          isLongFigure ? "text-lg" : "text-2xl",
           // Zero is the FINISHED state on every tile, not a small number — the
           // whole grid reads lower-is-better, so it is drawn as calm rather
           // than as an absence.
@@ -134,7 +146,7 @@ function HubCard({ tile }: { tile: HubTile }) {
           !tile.answerable || unreadable ? "text-ps-hint" : null,
         )}
       >
-        {tile.answerable ? figure(tile) : "—"}
+        {displayValue}
       </div>
       <p className="mt-1 text-2xs leading-snug text-ps-label">{tile.question}</p>
       {!tile.answerable && tile.no_signal_because && (

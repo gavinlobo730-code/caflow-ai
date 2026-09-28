@@ -11,6 +11,7 @@ import { useClientEntityType, offerWhenKnown } from "@/lib/clients/useClientEnti
 import { isCompaniesActCompany, usesScheduleIII } from "@/lib/entityObligations";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
+import { formatDate } from "@/lib/services/formatting";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -206,7 +207,7 @@ export default function YearEndPage() {
                   {eng.engagement_name ?? `FY ${eng.financial_year}`}
                 </p>
                 <p className="text-3xs text-ps-hint">
-                  Created {new Date(eng.created_at).toLocaleDateString("en-IN")}
+                  Created {formatDate(eng.created_at)}
                 </p>
               </div>
               <span className={`text-3xs font-medium px-2 py-0.5 rounded-full capitalize ${STATUS_BADGE[eng.status] ?? "bg-ps-muted text-ps-label"}`}>

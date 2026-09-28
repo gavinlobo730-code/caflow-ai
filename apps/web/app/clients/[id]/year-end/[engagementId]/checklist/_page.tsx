@@ -272,7 +272,7 @@ export default function ChecklistPage() {
                       ) : (
                         <button
                           onClick={() => setEditingNotes((prev) => ({ ...prev, [item.id]: "" }))}
-                          className="text-3xs text-ps-disabled hover:text-ps-hint mt-1"
+                          className="text-3xs text-ps-hint hover:text-ps-label mt-1"
                         >
                           + Add note
                         </button>
@@ -292,7 +292,7 @@ export default function ChecklistPage() {
                       <button
                         onClick={() => markNA(item)}
                         disabled={!!updatingId}
-                        className="text-3xs text-ps-disabled hover:text-ps-hint flex-shrink-0 disabled:opacity-50"
+                        className="text-3xs text-ps-hint hover:text-ps-label flex-shrink-0 disabled:opacity-50"
                         title="Mark N/A"
                       >
                         N/A

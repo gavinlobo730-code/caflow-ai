@@ -1409,6 +1409,24 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
   const grandCredit = totals.credit;
   const isBalanced = totals.balanced;
 
+  // The Opening and This-period columns have no backend-authoritative grand
+  // total of their own — the server sends only the CLOSING pair above — so the
+  // footer used to leave both blank, under a single wide "Total" cell that
+  // spanned straight over them. They are summed here from `rows`, which is
+  // already the whole (small, one-row-per-account) trial balance the screen
+  // has just rendered — not a read proportional to transaction volume, and
+  // nothing the closing pair's own single-source-of-truth note above applies
+  // to, since that note is about not RECOMPUTING the closing figures the
+  // server already gives.
+  const openingTotals = useMemo(() => rows.reduce((acc, r) => ({
+    debit: acc.debit + (r.opening_debit_paise ?? 0),
+    credit: acc.credit + (r.opening_credit_paise ?? 0),
+  }), { debit: 0, credit: 0 }), [rows]);
+  const periodTotals = useMemo(() => rows.reduce((acc, r) => ({
+    debit: acc.debit + (r.period_debit_paise ?? 0),
+    credit: acc.credit + (r.period_credit_paise ?? 0),
+  }), { debit: 0, credit: 0 }), [rows]);
+
   return (
     <div className="space-y-4 mx-auto max-w-ps-data">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1492,7 +1510,11 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-ps-border font-semibold">
-                <td colSpan={periodic ? 7 : 3} className="px-4 py-3 text-ps-body text-sm">Total</td>
+                <td colSpan={3} className="px-4 py-3 text-ps-body text-sm">Total</td>
+                {periodic && <td className="px-3 py-3 text-right font-mono text-ps-ink text-sm">{formatPaise(openingTotals.debit)}</td>}
+                {periodic && <td className="px-3 py-3 text-right font-mono text-ps-ink text-sm">{formatPaise(openingTotals.credit)}</td>}
+                {periodic && <td className="px-3 py-3 text-right font-mono text-ps-ink text-sm">{formatPaise(periodTotals.debit)}</td>}
+                {periodic && <td className="px-3 py-3 text-right font-mono text-ps-ink text-sm">{formatPaise(periodTotals.credit)}</td>}
                 <td className="px-3 py-3 text-right font-mono text-ps-ink text-sm">{formatPaise(grandDebit)}</td>
                 <td className="px-4 py-3 text-right font-mono text-ps-ink text-sm">{formatPaise(grandCredit)}</td>
               </tr>

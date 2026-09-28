@@ -146,7 +146,7 @@ export default function AiInsightsPage() {
             <div className="text-center py-12 space-y-2">
               <Sparkles className="w-8 h-8 text-ps-disabled mx-auto" />
               <p className="text-sm text-ps-hint">No AI insights yet</p>
-              <p className="text-xs text-ps-disabled max-w-sm mx-auto">
+              <p className="text-xs text-ps-hint max-w-sm mx-auto">
                 {mayGenerate
                   ? "Nothing generates these on its own — press Generate to read this client's books, compliance and activity and record what it finds."
                   : "Nothing generates these on its own. Someone with report-write permission can generate them from this screen."}

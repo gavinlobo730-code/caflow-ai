@@ -27,6 +27,7 @@ import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { formatDate } from "@/lib/services/formatting";
 
 function rupees(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN", {
@@ -184,7 +185,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
                   )}
                 </p>
                 <p className="text-2xs text-ps-label">
-                  Due {data.due_date}
+                  Due {formatDate(data.due_date)}
                   {data.minimum_wage_monthly_paise != null && (
                     <> · §12 minimum wage {rupees(data.minimum_wage_monthly_paise)} a month
                       {data.scheduled_employment ? ` (${data.scheduled_employment})` : ""}</>

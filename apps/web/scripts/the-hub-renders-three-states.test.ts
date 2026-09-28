@@ -112,3 +112,24 @@ test("the money tiles do not print two rupee signs", () => {
       `never converted or rounded here`);
   }
 });
+
+test("a crore-length figure shrinks rather than overflowing or being clipped", () => {
+  // A firm-wide tile can read ₹19,91,50,407.00 — sixteen characters with no
+  // space in it, so a browser will not wrap it — and at the grid's narrowest
+  // column (`xl:grid-cols-5`) that ran past the card's edge. The fix is a
+  // smaller type size past a measured length, never `truncate`/ellipsis:
+  // clipping a rupee figure shows a SMALLER, WRONG number as if it were real.
+  assert.match(SRC, /LONG_FIGURE_CHARS\s*=\s*\d+/,
+    "no named threshold for when a figure is long enough to need a smaller size");
+  assert.match(SRC, /isLongFigure[\s\S]{0,40}"text-lg"[\s\S]{0,40}"text-2xl"/,
+    "the value does not step down from text-2xl to a smaller size once it is long");
+  // The value div must never carry `truncate` — that is the label's own
+  // treatment (asserted below), and on a money figure it would hide digits
+  // rather than shrink them into view.
+  const valueBlock = SRC.slice(SRC.indexOf("mt-1 font-semibold tabular-nums") - 40,
+    SRC.indexOf("mt-1 font-semibold tabular-nums") + 200);
+  assert.ok(!valueBlock.includes("truncate"),
+    "the figure is truncated rather than shrunk — a clipped rupee amount reads as a smaller real one");
+  assert.ok(SRC.includes('<span className="text-sm font-semibold text-ps-ink truncate">{tile.label}</span>'),
+    "the label's own truncate rule moved — this test's slice of the value block assumed it stayed put");
+});
