@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   bpsFromPercentInput, paiseFromRupeeInput, parseQuantity, rupeeInputFromPaise,
+  sumRupeeInputs,
 } from "./rupeeInput.ts";
 
 test("whole rupees become paise", () => {
@@ -103,4 +104,33 @@ test("a blank quantity is a question, not a one", () => {
   // The call sites defaulted a blank to 1, which invents a line nobody typed.
   assert.equal(parseQuantity(""), null);
   assert.equal(parseQuantity("   "), null);
+});
+
+test("several rupee boxes sum into one, exactly", () => {
+  // sweep-income-tax-hub-06: the §140A challan's "Total paid" box used to be
+  // typed separately from Tax/Surcharge/Cess/Interest/Fee, so a CA who filled
+  // in only "Tax" saved a challan reading "Total ₹0.00". This is what keeps
+  // it in step while those boxes are still being typed into.
+  assert.equal(sumRupeeInputs(["100", "0", "0", "0", "0"]), "100.00");
+  assert.equal(sumRupeeInputs(["1200.50", "60.03", "24.01", "", "0"]), "1284.54");
+});
+
+test("a blank sum reads as blank, not ₹0.00", () => {
+  // Blank is how every amount column in this app already shows a zero — a
+  // sum box showing "0.00" before the CA has typed anything would look like a
+  // recorded figure rather than an absence of one.
+  assert.equal(sumRupeeInputs(["", "", "", "", ""]), "");
+  assert.equal(sumRupeeInputs(["0", "0.00", ""]), "");
+});
+
+test("a box that is not an amount yet contributes nothing to the running sum", () => {
+  // The sibling boxes are validated for real (refused, not coerced) only at
+  // submit time. While the CA is mid-keystroke on one, the running total must
+  // not stall or throw on the others.
+  assert.equal(sumRupeeInputs(["100", "12abc", "50"]), "150.00");
+  assert.equal(sumRupeeInputs(["12abc", "1e3"]), "");
+});
+
+test("a negative box still counts, so the sum can be negative", () => {
+  assert.equal(sumRupeeInputs(["-100", "40"]), "-60.00");
 });
