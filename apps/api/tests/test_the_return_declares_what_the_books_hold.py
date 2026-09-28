@@ -313,6 +313,12 @@ def test_the_authority_is_still_one_module():
     authority runs, and `firms_gstin_format` (migrations 112/316) is a shape
     regex that accepts a transposition. That GSTIN goes on every fee invoice
     the practice raises (CGST Rule 46(a)) and nothing downstream re-checks it.
+
+    `relationships.py` joined it on 28-09-2026: a relationship entity (a
+    group company, a family member's firm) records its GSTIN, and the entity
+    form accepted any string — including the screen's own example — so a
+    transposed GSTIN sat on the relationship map as though it named the
+    right registration. It delegates to the authority like the others.
     """
     # MATCHED ON THE AUTHORITY, NOT ON THE WORD `problem_with`.
     #
@@ -329,7 +335,7 @@ def test_the_authority_is_still_one_module():
         if "domain.gst.gstin" in text or "gstin_problem" in text:
             hits.add(path.name)
     assert hits == {"customers.py", "vendors.py", "onboarding.py",
-                    "inventory.py", "firms.py"}, hits
+                    "inventory.py", "firms.py", "relationships.py"}, hits
     for name in sorted(hits):
         src = (API / "routers" / name).read_text()
         assert "from domain.gst.gstin import" in src, (
