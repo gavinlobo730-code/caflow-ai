@@ -283,6 +283,51 @@ def execute_import(
         raise HTTPException(500, detail=str(e))
 
 
+# A job in either status has written something a discard must not silently
+# orphan: 'completed' already created real customer/vendor rows (the CA's
+# remedy there is /rollback, not discard), and 'importing' is a background
+# task (run_import_detached) writing to this very row and to
+# tally_migration_items right now — deleting under it races that write.
+_NOT_DISCARDABLE = ("completed", "importing")
+
+
+@router.delete("/jobs/{job_id}")
+def discard_job(
+    job_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Discard a migration job that has not (yet) imported anything real.
+
+    Refused once the job is 'completed' (real customer/vendor rows already
+    exist — rollback is the way to undo those, not discard) or 'importing'
+    (a background task is writing to this row and to its items right now).
+    Every other status (uploaded/parsing/parsed/mapping/validating/
+    previewing/error/rolled_back) has written nothing outside
+    tally_migration_items, so this deletes the job's staged items and the
+    job row — a clean discard, nothing else to undo.
+    """
+    from domain.tally.migration_service import _USE_MOCK, _MOCK_JOBS, _MOCK_ITEMS, _supabase
+    job = _assert_job_scope(current_user, job_id)
+    if job.get("status") in _NOT_DISCARDABLE:
+        raise HTTPException(409, detail=(
+            f"A job that is {job['status']} cannot be discarded — "
+            "roll it back instead."))
+
+    if _USE_MOCK:
+        _MOCK_JOBS.pop(job_id, None)
+        _MOCK_ITEMS.pop(job_id, None)
+        return api_response(True, {"deleted": True})
+
+    sb = _supabase()
+    sb.table("tally_migration_items").delete().eq("job_id", job_id).eq(
+        "firm_id", current_user["firm_id"]
+    ).execute()
+    sb.table("tally_migration_jobs").delete().eq("id", job_id).eq(
+        "firm_id", current_user["firm_id"]
+    ).execute()
+    return api_response(True, {"deleted": True})
+
+
 @router.post("/jobs/{job_id}/rollback")
 def rollback_import(
     job_id: str,

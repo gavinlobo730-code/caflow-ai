@@ -12,9 +12,10 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   Building2, FileText, CheckCircle, AlertTriangle, Clock,
-  Plus, X, AlertCircle, Users, Calendar,
+  Plus, X, AlertCircle, Users, Calendar, ArrowRight,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -835,7 +836,15 @@ export default function MCAPage() {
             exportFilename="mca-companies"
             persistKey="mca.companies"
             emptyTitle="No company clients yet"
-            emptyDescription="Company records appear here once added for your firm."
+            emptyDescription="This firm-wide view has no client picker of its own — add a company from a client's Compliance → MCA workspace tab."
+            emptyAction={
+              <Link
+                href="/clients"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-xs font-semibold rounded-lg hover:bg-brand-dark transition-colors"
+              >
+                Go to Clients <ArrowRight size={13} />
+              </Link>
+            }
           />
         </div>
       )}
@@ -892,7 +901,15 @@ export default function MCAPage() {
             exportFilename="mca-directors"
             persistKey="mca.directors"
             emptyTitle="No directors yet"
-            emptyDescription="Director records appear here once added for your firm."
+            emptyDescription="This firm-wide view has no client picker of its own — add a director from a client's Compliance → MCA workspace tab."
+            emptyAction={
+              <Link
+                href="/clients"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-xs font-semibold rounded-lg hover:bg-brand-dark transition-colors"
+              >
+                Go to Clients <ArrowRight size={13} />
+              </Link>
+            }
           />
         </div>
       )}

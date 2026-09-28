@@ -13,13 +13,22 @@ from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from middleware.rate_limit import check_rate_limit
+from domain.ai import groq_text
 
 _logger = logging.getLogger("caflow.ai_copilot")
 
 router = APIRouter(prefix="/api/ai-copilot", tags=["ai-copilot"])
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+# No hardcoded model here any more (sweep-misc-tools-02). This endpoint still
+# calls Groq directly with its own httpx client rather than going through
+# domain/ai/groq_text.chat — it is declared as its own network caller in
+# tests/test_the_never_do_list.py's OUTBOUND_MODULES and that stays accurate —
+# but the MODEL and the FAILURE CLASSIFICATION are read from that one module
+# so there is still only one place either can drift: groq_text.text_model()
+# reads GROQ_TEXT_MODEL with the same default document_intelligence_v1/v2 use,
+# and groq_text.failure_sentence() is the same classifier assistant.py and
+# ai_copilot_service.py already answer a CA with.
 
 COPILOT_SYSTEM_PROMPT = """You are PracticeSync AI Copilot — an intelligent assistant for Indian Chartered Accountants.
 
@@ -245,16 +254,31 @@ async def copilot_chat(request: Request, body: CopilotRequest, current_user: dic
         messages += [{"role": msg.role, "content": msg.content} for msg in body.conversation_history]
         messages.append({"role": "user", "content": body.message})
 
+        model = groq_text.text_model()
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 GROQ_API_URL,
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"model": GROQ_MODEL, "messages": messages, "max_tokens": 1024},
+                json={"model": model, "messages": messages, "max_tokens": 1024},
                 timeout=30,
             )
 
         if response.status_code != 200:
-            return api_response(False, None, f"AI service error: {response.status_code}")
+            # ⚠️ THIS USED TO DISCARD Groq's OWN STATUS AND BODY and answer
+            # "AI service error: {status_code}" — indistinguishable whether the
+            # key was revoked, the model was retired, or the account was
+            # rate-limited (sweep-misc-tools-02). Groq's own words are LOGGED
+            # (never the key) and the CA gets the same classified sentence
+            # domain/ai/groq_text gives the assistant and the copilot's domain
+            # layer, so all three name the same cause the same way.
+            try:
+                error_body = response.json()
+            except ValueError:
+                error_body = response.text
+            _logger.error("AI Copilot (firm) Groq refused: HTTP %s model=%s body=%.800s",
+                          response.status_code, model, error_body)
+            sentence, _code = groq_text.failure_sentence(response.status_code, error_body, model)
+            return api_response(False, None, sentence)
 
         answer: str = response.json()["choices"][0]["message"]["content"]
 

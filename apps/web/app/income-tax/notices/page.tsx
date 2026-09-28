@@ -91,12 +91,17 @@ const BLANK: AddFormState = {
   notes: "",
 };
 
-function AddModal({ clients, onClose, onAdded }: {
+function AddModal({ clients, presetClientId, onClose, onAdded }: {
   clients: Client[];
+  presetClientId: string;
   onClose: () => void;
   onAdded: () => void;
 }) {
-  const [form, setForm] = useState<AddFormState>({ ...BLANK, clientId: clients[0]?.id ?? "" });
+  // sweep-income-tax-hub-05: no more silently defaulting to clients[0] — a
+  // notice saved against the first client in the list, never chosen by the
+  // CA, is exactly the defect this closes. Only a validated ?client_id= from
+  // the client workspace link (sweep-income-tax-hub-04) preselects.
+  const [form, setForm] = useState<AddFormState>({ ...BLANK, clientId: presetClientId });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -290,6 +295,15 @@ export default function ITNoticesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  // sweep-income-tax-hub-04: preselect from ?client_id= when arriving from a
+  // client's own workspace — filters the table to that client and is the
+  // default for a new notice, instead of the CA re-picking the same client.
+  const [queryClientId, setQueryClientId] = useState("");
+  useEffect(() => {
+    const cid = new URLSearchParams(window.location.search).get("client_id");
+    if (cid) setQueryClientId(cid);
+  }, []);
+  const presetClientId = clients.some(c => c.id === queryClientId) ? queryClientId : "";
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -314,6 +328,11 @@ export default function ITNoticesPage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (presetClientId) setClientFilter(presetClientId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetClientId]);
 
   async function updateStatus(id: string, status: NoticeStatus) {
     const sb = getSupabaseClient();
@@ -495,7 +514,7 @@ export default function ITNoticesPage() {
       </Card>
 
       {showAdd && clients.length > 0 && (
-        <AddModal clients={clients} onClose={() => setShowAdd(false)} onAdded={loadData} />
+        <AddModal clients={clients} presetClientId={presetClientId} onClose={() => setShowAdd(false)} onAdded={loadData} />
       )}
     </div>
   );

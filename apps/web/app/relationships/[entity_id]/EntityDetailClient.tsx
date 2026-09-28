@@ -1,14 +1,56 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type Dispatch, type SetStateAction } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, CheckCircle, XCircle } from "lucide-react";
+import { ChevronLeft, CheckCircle, XCircle, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Callout } from "@/components/ui/callout";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { errorMessage } from "@/lib/api";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
+
+// Same shape and field set as the "Add Entity" form on the Entity Registry
+// list (apps/web/app/relationships/page.tsx) — kept as its own copy here
+// rather than imported, because a Next.js `page.tsx` may only export the
+// framework's own reserved names (see the note beside EntityFormModal there).
+type EntityType =
+  | "Individual"
+  | "Proprietorship"
+  | "Partnership"
+  | "LLP"
+  | "Private Limited"
+  | "Public Limited"
+  | "Trust"
+  | "Society"
+  | "HUF"
+  | "Other";
+
+const ENTITY_TYPES: EntityType[] = [
+  "Individual",
+  "Proprietorship",
+  "Partnership",
+  "LLP",
+  "Private Limited",
+  "Public Limited",
+  "Trust",
+  "Society",
+  "HUF",
+  "Other",
+];
+
+interface EntityFormValues {
+  full_name: string;
+  entity_type: EntityType;
+  pan: string;
+  gstin: string;
+  email: string;
+  phone: string;
+}
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -23,7 +65,150 @@ async function apiFetch(path: string, opts?: RequestInit) {
       ...(opts?.headers ?? {}),
     },
   });
+  // A refusal carries FastAPI's {detail} with no `error` key, so reading only
+  // `.error` showed a bare "Failed to ..." for a 422 that had a reason — the
+  // same fix the Add Entity form already carries.
+  if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
   return res.json();
+}
+
+const EMPTY_EDIT_FORM: EntityFormValues = {
+  full_name: "",
+  entity_type: "Individual",
+  pan: "",
+  gstin: "",
+  email: "",
+  phone: "",
+};
+
+// ─── Edit Entity form ───────────────────────────────────────────────────────
+//
+// Same field set and layout as the Entity Registry's "Add Entity" form
+// (apps/web/app/relationships/page.tsx) so the two never look or behave like
+// two different products.
+
+function EntityFormModal({
+  title,
+  form,
+  setForm,
+  onCancel,
+  onSave,
+  saving,
+  saveError,
+  saveLabel,
+  savingLabel,
+  saveDisabled,
+}: {
+  title: string;
+  form: EntityFormValues;
+  setForm: Dispatch<SetStateAction<EntityFormValues>>;
+  onCancel: () => void;
+  onSave: () => void;
+  saving: boolean;
+  saveError: string | null;
+  saveLabel: string;
+  savingLabel: string;
+  saveDisabled?: boolean;
+}) {
+  const inputClass =
+    "w-full mt-1 px-3 py-2 text-sm bg-ps-surface border border-ps-border-strong rounded-md text-ps-ink placeholder-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand";
+  return (
+    <div className="fixed inset-0 bg-brand/60 flex items-center justify-center z-50 px-4">
+      <div className="bg-ps-surface border border-ps-border rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-sm font-semibold text-brand">{title}</h2>
+          <button onClick={onCancel} className="text-ps-hint hover:text-ps-body">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-ps-label font-medium">Full Name *</label>
+            <input
+              value={form.full_name}
+              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+              className={inputClass}
+              placeholder="Individual or entity name"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-ps-label font-medium">Entity Type</label>
+            <select
+              value={form.entity_type}
+              onChange={(e) => setForm((f) => ({ ...f, entity_type: e.target.value as EntityType }))}
+              className={inputClass}
+            >
+              {ENTITY_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-ps-label font-medium">PAN</label>
+              <input
+                value={form.pan}
+                onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
+                className={`${inputClass} font-mono`}
+                placeholder="AAAAA9999A"
+                maxLength={10}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-ps-label font-medium">GSTIN</label>
+              <input
+                value={form.gstin}
+                onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
+                className={`${inputClass} font-mono`}
+                placeholder="22AAAAA0000A1ZC"
+                maxLength={15}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-ps-label font-medium">Email</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                className={inputClass}
+                placeholder="contact@example.com"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-ps-label font-medium">Phone</label>
+              <input
+                type="tel"
+                value={form.phone}
+                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                className={inputClass}
+                placeholder="+91 98765 43210"
+              />
+            </div>
+          </div>
+        </div>
+        {saveError && <Callout tone="problem">{saveError}</Callout>}
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onCancel}
+            className="flex-1 text-sm text-ps-label border border-ps-border-strong py-2 rounded-md hover:bg-ps-hover"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving || !!saveDisabled || !form.full_name.trim()}
+            className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
+          >
+            {saving ? savingLabel : saveLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -37,6 +222,9 @@ interface Entity {
   email: string | null;
   phone: string | null;
   created_at: string;
+  // Defaults to true in the schema; treated as active unless the server says
+  // otherwise so an older cached row with no such key still renders as active.
+  is_active?: boolean | null;
 }
 
 interface EntityRole {
@@ -109,11 +297,21 @@ export default function EntityDetailPage() {
   // shouldn't hide the whole (successfully-loaded) entity page behind the
   // "Entity not found" error screen — only the Matches tab needs to know.
   const [matchesError, setMatchesError] = useState<string | null>(null);
+  // Scoped to the Cross-Client Matches tab/count only — see loadAll below.
+  const [matchesLoading, setMatchesLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [processingMatchId, setProcessingMatchId] = useState<string | null>(null);
   const [matchActionError, setMatchActionError] = useState<string | null>(null);
 
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState<EntityFormValues>(EMPTY_EDIT_FORM);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editSaveError, setEditSaveError] = useState<string | null>(null);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusSaveError, setStatusSaveError] = useState<string | null>(null);
+
   const loadMatches = useCallback(async () => {
+    setMatchesLoading(true);
     try {
       const matchesJson: ApiResponse<CrossClientMatch[]> = await apiFetch(
         `/api/relationships/cross-client-matches?entity_id=${entityId}`
@@ -124,6 +322,8 @@ export default function EntityDetailPage() {
     } catch (e) {
       setMatches([]);
       setMatchesError(e instanceof Error ? e.message : "Failed to load cross-client matches");
+    } finally {
+      setMatchesLoading(false);
     }
   }, [entityId]);
 
@@ -140,8 +340,12 @@ export default function EntityDetailPage() {
       setRelationships(entityJson.data.relationships ?? []);
 
       // Cross-client matches filtered for this entity — a failure here must
-      // not masquerade as "no cross-client matches detected".
-      await loadMatches();
+      // not masquerade as "no cross-client matches detected", and must not
+      // hold up the rest of the page either: not awaited, so the `finally`
+      // below (and the skeleton it clears) does not wait on it. Matches load
+      // independently under their own `matchesLoading`, scoped to the
+      // Matches tab/count.
+      void loadMatches();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -178,6 +382,77 @@ export default function EntityDetailPage() {
       setMatchActionError(e instanceof Error ? e.message : "Action failed. Please retry.");
     } finally {
       setProcessingMatchId(null);
+    }
+  }
+
+  function openEditModal() {
+    if (!entity) return;
+    setEditForm({
+      full_name: entity.full_name,
+      entity_type: (entity.entity_type as EntityType) || "Individual",
+      pan: entity.pan ?? "",
+      gstin: entity.gstin ?? "",
+      email: entity.email ?? "",
+      phone: entity.phone ?? "",
+    });
+    setEditSaveError(null);
+    setEditModalOpen(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!editForm.full_name.trim()) return;
+    setEditSaving(true);
+    setEditSaveError(null);
+    try {
+      const json: ApiResponse<Entity> = await apiFetch(`/api/relationships/entities/${entityId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          full_name: editForm.full_name.trim(),
+          entity_type: editForm.entity_type,
+          pan: editForm.pan.trim().toUpperCase() || null,
+          gstin: editForm.gstin.trim().toUpperCase() || null,
+          email: editForm.email.trim() || null,
+          phone: editForm.phone.trim() || null,
+        }),
+      });
+      if (!json.success) throw new Error(json.error ?? "Failed to update entity");
+      // Trust what the server actually stored rather than the values just
+      // typed — the entity graph matches people across clients on these
+      // fields, so the screen must show what was saved, not what was sent.
+      setEntity((prev) => (prev ? { ...prev, ...json.data } : json.data));
+      setEditModalOpen(false);
+    } catch (e) {
+      setEditSaveError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function handleToggleActive() {
+    if (!entity) return;
+    const reactivating = entity.is_active === false;
+    const ok = await confirmDialog({
+      title: reactivating ? "Reactivate entity?" : "Deactivate entity?",
+      message: reactivating
+        ? `${entity.full_name} will appear in the Entity Registry again.`
+        : `${entity.full_name} will be hidden from the Entity Registry. Its roles, relationships and history are kept.`,
+      confirmLabel: reactivating ? "Reactivate" : "Deactivate",
+      danger: !reactivating,
+    });
+    if (!ok) return;
+    setStatusSaving(true);
+    setStatusSaveError(null);
+    try {
+      const json: ApiResponse<Entity> = await apiFetch(`/api/relationships/entities/${entityId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: reactivating }),
+      });
+      if (!json.success) throw new Error(json.error ?? "Failed to update entity");
+      setEntity((prev) => (prev ? { ...prev, ...json.data } : json.data));
+    } catch (e) {
+      setStatusSaveError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setStatusSaving(false);
     }
   }
 
@@ -234,8 +509,11 @@ export default function EntityDetailPage() {
     { id: "overview", label: "Overview" },
     { id: "roles", label: "Roles", count: roles.length },
     { id: "relationships", label: "Relationships", count: relationships.length },
-    { id: "matches", label: "Cross-Client Matches", count: matches.length },
+    // No count while the request is still in flight, so the tab doesn't flash
+    // "(0)" before the real figure arrives.
+    { id: "matches", label: "Cross-Client Matches", count: matchesLoading ? undefined : matches.length },
   ];
+  const isInactive = entity.is_active === false;
 
   return (
     <div className="p-6 space-y-5">
@@ -246,7 +524,10 @@ export default function EntityDetailPage() {
 
       {/* Entity header */}
       <div>
-        <h1 className="text-xl font-semibold text-white">{entity.full_name}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-white">{entity.full_name}</h1>
+          {isInactive && <Badge variant="secondary" className="text-2xs">Inactive</Badge>}
+        </div>
         <p className="text-xs text-slate-400 mt-0.5">{entity.entity_type}</p>
       </div>
 
@@ -272,26 +553,49 @@ export default function EntityDetailPage() {
 
       {/* Overview tab */}
       {activeTab === "overview" && (
-        <Card className="bg-gray-800 border-gray-700">
-          <CardContent className="p-5">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              {[
-                { label: "Full Name", value: entity.full_name },
-                { label: "Entity Type", value: entity.entity_type },
-                { label: "PAN", value: entity.pan, mono: true },
-                { label: "GSTIN", value: entity.gstin, mono: true },
-                { label: "Email", value: entity.email },
-                { label: "Phone", value: entity.phone },
-                { label: "Created", value: formatDate(entity.created_at) },
-              ].map(({ label, value, mono }) => (
-                <div key={label} className="space-y-0.5">
-                  <p className="text-xs text-slate-500">{label}</p>
-                  <p className={`text-white ${mono ? "font-mono" : ""}`}>{value || "—"}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-3">
+          <div className="flex items-center justify-end gap-3">
+            {statusSaveError && <span className="text-xs text-destructive">{statusSaveError}</span>}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={openEditModal}
+              disabled={statusSaving}
+              className="h-auto text-xs font-medium px-3 py-1.5"
+            >
+              Edit
+            </Button>
+            <Button
+              size="sm"
+              variant={isInactive ? "secondary" : "destructive"}
+              onClick={handleToggleActive}
+              disabled={statusSaving}
+              className="h-auto text-xs font-medium px-3 py-1.5"
+            >
+              {statusSaving ? "Saving…" : isInactive ? "Reactivate" : "Deactivate"}
+            </Button>
+          </div>
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-5">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                {[
+                  { label: "Full Name", value: entity.full_name },
+                  { label: "Entity Type", value: entity.entity_type },
+                  { label: "PAN", value: entity.pan, mono: true },
+                  { label: "GSTIN", value: entity.gstin, mono: true },
+                  { label: "Email", value: entity.email },
+                  { label: "Phone", value: entity.phone },
+                  { label: "Created", value: formatDate(entity.created_at) },
+                ].map(({ label, value, mono }) => (
+                  <div key={label} className="space-y-0.5">
+                    <p className="text-xs text-slate-500">{label}</p>
+                    <p className={`text-white ${mono ? "font-mono" : ""}`}>{value || "—"}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Roles tab */}
@@ -384,7 +688,11 @@ export default function EntityDetailPage() {
             {matchActionError && (
               <div className="px-5 py-2.5 border-b border-gray-700 text-xs text-red-400">{matchActionError}</div>
             )}
-            {matchesError ? (
+            {matchesLoading ? (
+              <div className="text-center py-12">
+                <p className="text-sm text-slate-500">Loading cross-client matches…</p>
+              </div>
+            ) : matchesError ? (
               <div className="text-center py-12 space-y-2">
                 <p className="text-sm text-red-400 font-medium">{matchesError}</p>
                 <button
@@ -476,6 +784,22 @@ export default function EntityDetailPage() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Edit Entity Modal — same field set and layout as the registry's Add Entity form */}
+      {editModalOpen && (
+        <EntityFormModal
+          title="Edit Entity"
+          form={editForm}
+          setForm={setEditForm}
+          onCancel={() => setEditModalOpen(false)}
+          onSave={handleSaveEdit}
+          saving={editSaving}
+          saveError={editSaveError}
+          saveLabel="Save"
+          savingLabel="Saving…"
+          saveDisabled={statusSaving}
+        />
       )}
     </div>
   );

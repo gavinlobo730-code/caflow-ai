@@ -100,7 +100,16 @@ export default function BookToTaxBridgePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { getClients().then(setClients).catch(() => setClients([])); }, []);
+  useEffect(() => {
+    getClients().then(c => {
+      setClients(c);
+      // sweep-income-tax-hub-04: preselect from ?client_id= when arriving
+      // from a client's own workspace. This page already starts on "Select
+      // a client…" otherwise, and that stays unchanged.
+      const presetId = new URLSearchParams(window.location.search).get("client_id");
+      if (presetId && c.some(x => x.id === presetId)) setClientId(presetId);
+    }).catch(() => setClients([]));
+  }, []);
 
   const load = useCallback(async () => {
     if (!clientId || !fy) { setBridge(null); return; }

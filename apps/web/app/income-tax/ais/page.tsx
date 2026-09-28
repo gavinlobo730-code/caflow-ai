@@ -114,6 +114,18 @@ export default function AISPage() {
 
   const client = clients.find((c) => c.id === clientId);
 
+  // sweep-income-tax-hub-04: preselect from ?client_id= when arriving from a
+  // client's own workspace. This page already starts on "Select a client…"
+  // otherwise (useClientPicker does not auto-select), and that stays
+  // unchanged. Keyed on `clients` rather than run-once, since the list
+  // arrives asynchronously after this effect would first run.
+  useEffect(() => {
+    if (clients.length === 0) return;
+    const presetId = new URLSearchParams(window.location.search).get("client_id");
+    if (presetId && clients.some((c) => c.id === presetId)) setClientId(presetId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clients]);
+
   useEffect(() => {
     api.ais.meta()
       .then((r) => setTypes(r.data?.transaction_types ?? []))

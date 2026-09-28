@@ -275,11 +275,31 @@ function GrandTotal({ label, paise, prior, showPrior }: {
   );
 }
 
-function LoadingSpinner() {
+/**
+ * `allClients` names the slow case rather than leaving the skeleton to speak
+ * for itself (sweep-accounting-hub-2-06). "All Clients" consolidates every
+ * client the caller may read into one Balance Sheet and P&L (current AND
+ * prior period — four reports), and even with the backend's bounded
+ * account_period_balances read (domain/reporting/service.py), a firm with a
+ * large book can still take real time. A bare skeleton gives no sign the wait
+ * is expected rather than stuck, which is what made the old full-ledger-replay
+ * timeout read as a frozen screen instead of a slow one.
+ */
+function LoadingSpinner({ allClients }: { allClients: boolean }) {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
       <div className="h-6 bg-white/[0.08] rounded w-64 animate-pulse" />
       <div className="h-10 bg-ps-muted rounded w-64 animate-pulse" />
+      {allClients && (
+        <div className="flex items-start gap-2 px-4 py-2.5 rounded-lg text-xs bg-ps-bg border border-ps-border text-ps-label">
+          <AlertTriangle size={13} className="text-ps-hint flex-shrink-0 mt-0.5" />
+          <span>
+            Consolidating financial statements across every client in the firm
+            — for a large practice this can take noticeably longer than a
+            single client&apos;s statements.
+          </span>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-6">
         <StatementSkeleton sections={2} rowsPerSection={3} />
         <StatementSkeleton sections={2} rowsPerSection={3} />
@@ -350,7 +370,7 @@ export default function ScheduleIIIPage() {
     ? `As at 31 Mar ${data.comparatives.period.fy_end.slice(0, 4)}`
     : null;
 
-  if (loading) return <LoadingSpinner />;
+  if (loading) return <LoadingSpinner allClients={clientId === "all"} />;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6 print:p-2 print:space-y-4">
@@ -469,7 +489,24 @@ export default function ScheduleIIIPage() {
         </button>
       </div>
 
-      {error && <Callout tone="problem">{error}</Callout>}
+      {/* A failed fetch (a timed-out "All Clients" read among them) used to
+          leave the CA with nothing but the message — no way back to a fresh
+          attempt short of touching a control that happens to re-trigger
+          loadData. The button calls the same loadData this screen already
+          re-runs on every filter change, so a retry is not a special path. */}
+      {error && (
+        <Callout tone="problem">
+          <div className="flex items-center justify-between gap-3">
+            <span>{error}</span>
+            <button
+              onClick={loadData}
+              className="shrink-0 px-3 py-1 text-xs font-semibold border border-current rounded-md hover:bg-white/50 transition-colors"
+            >
+              Try again
+            </button>
+          </div>
+        </Callout>
+      )}
 
       {data && (
         <>

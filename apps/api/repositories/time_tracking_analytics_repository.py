@@ -53,7 +53,11 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
             if not user_id:
                 continue
 
-            duration = entry.get("duration_minutes", 0)
+            # entry.get(key, 0) only substitutes the default when the KEY IS
+            # ABSENT, not when its stored VALUE IS NULL -- and duration_minutes
+            # can be NULL (an entry PATCHed with only ended_at, not started_at,
+            # never recomputes it). `or 0` coalesces the None too.
+            duration = entry.get("duration_minutes") or 0
             is_billable = entry.get("is_billable", False)
 
             if user_id not in by_user:
@@ -103,7 +107,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
             if not client_id:
                 continue
 
-            duration = entry.get("duration_minutes", 0)
+            duration = entry.get("duration_minutes") or 0
             is_billable = entry.get("is_billable", False)
 
             if client_id not in by_client:
@@ -151,7 +155,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         billable_minutes = 0
 
         for entry in entries:
-            duration = entry.get("duration_minutes", 0)
+            duration = entry.get("duration_minutes") or 0
             is_billable = entry.get("is_billable", False)
 
             total_minutes += duration
@@ -201,9 +205,13 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
             if not engagement_id:
                 continue
 
-            duration = entry.get("duration_minutes", 0)
+            # `.get(key, 0)` only defaults an ABSENT key, not a stored NULL --
+            # hourly_rate_paise is NULL on every timer-started entry (start_timer
+            # never writes it) and on any manual entry with no rate typed on the
+            # form, so `hourly_rate_paise > 0` below would raise on None.
+            duration = entry.get("duration_minutes") or 0
             is_billable = entry.get("is_billable", False)
-            hourly_rate_paise = entry.get("hourly_rate_paise", 0)
+            hourly_rate_paise = entry.get("hourly_rate_paise") or 0
 
             if engagement_id not in by_engagement:
                 by_engagement[engagement_id] = {
@@ -265,8 +273,13 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
             if not client_id:
                 continue
 
-            duration_minutes = entry.get("duration_minutes", 0)
-            hourly_rate_paise = entry.get("hourly_rate_paise", 0)
+            # `.get(key, 0)` only defaults an ABSENT key, not a stored NULL --
+            # hourly_rate_paise is NULL on every timer-started entry (start_timer
+            # never writes it) and on a manual entry with no rate typed on the
+            # form, so `duration_minutes * hourly_rate_paise` below would raise
+            # on None * int.
+            duration_minutes = entry.get("duration_minutes") or 0
+            hourly_rate_paise = entry.get("hourly_rate_paise") or 0
 
             # Cost = (duration_minutes / 60) * hourly_rate_paise (integer arithmetic)
             cost_paise = (duration_minutes * hourly_rate_paise) // 60
@@ -317,8 +330,8 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
             if not engagement_id:
                 continue
 
-            duration_minutes = entry.get("duration_minutes", 0)
-            hourly_rate_paise = entry.get("hourly_rate_paise", 0)
+            duration_minutes = entry.get("duration_minutes") or 0
+            hourly_rate_paise = entry.get("hourly_rate_paise") or 0
 
             # Cost = (duration_minutes / 60) * hourly_rate_paise (integer arithmetic)
             cost_paise = (duration_minutes * hourly_rate_paise) // 60
@@ -368,8 +381,8 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
                     "cost_paise": 0,
                 }
 
-            duration_minutes = entry.get("duration_minutes", 0)
-            hourly_rate_paise = entry.get("hourly_rate_paise", 0)
+            duration_minutes = entry.get("duration_minutes") or 0
+            hourly_rate_paise = entry.get("hourly_rate_paise") or 0
             is_billable = entry.get("is_billable", False)
 
             cost_paise = (duration_minutes * hourly_rate_paise) // 60

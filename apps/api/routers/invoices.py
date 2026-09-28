@@ -11,16 +11,37 @@ Endpoints:
   PATCH  /api/invoices/{invoice_id}/status       - transition status
   DELETE /api/invoices/{invoice_id}              - delete (Draft only)
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 from models.common import api_response
+from core.exceptions import unhandled_failure
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
 from repositories.invoice_repository import invoice_repo
 from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
+_logger = logging.getLogger("caflow.invoices.router")
+
+
+def _database_refusal(exc: Exception, *, action: str) -> tuple[int, str]:
+    """A status and a sentence for a write the database refused.
+
+    Was a bare `except Exception as e: raise HTTPException(400, str(e))`
+    around invoice-number generation (sweep-misc-tools-06), so a
+    permission-denied APIError — the RAW Postgres/PostgREST payload — went
+    straight to the CA as the reason "Raise Invoice" failed. unhandled_failure
+    already turns a recognised SQLSTATE into a 4xx and a sentence; anything
+    else is logged by the caller and gets a sentence saying so, never the
+    raw text.
+    """
+    spoken = unhandled_failure(exc)
+    if spoken:
+        return spoken
+    return 500, (f"Could not {action}. The cause has been logged; please try "
+                 f"again, and report it if it keeps failing.")
 
 
 def _assert_invoice_scope(current_user: dict, invoice_id: str) -> dict:
@@ -170,7 +191,9 @@ def generate_from_engagement(
     except PeriodAlreadyBilled as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        _logger.exception("Failed to raise invoice for engagement %s", engagement_id)
+        status, sentence = _database_refusal(e, action="raise the invoice")
+        raise HTTPException(status_code=status, detail=sentence)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

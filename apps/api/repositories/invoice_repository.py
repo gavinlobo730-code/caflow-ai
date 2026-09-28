@@ -174,8 +174,21 @@ class InvoiceRepository(BaseRepository[dict]):
                         pass
             return _format(max_seq + 1)
 
-        # Atomic DB sequence — prevents race conditions under concurrent invoice generation
-        result = _get_db().rpc("next_invoice_number", {"p_firm_id": firm_id}).execute()
+        # Atomic DB sequence — prevents race conditions under concurrent invoice generation.
+        #
+        # SERVICE ROLE, deliberately not _get_db(). Migration 124 REVOKEs EXECUTE on
+        # this SECURITY DEFINER function from `authenticated` and grants it only to
+        # `service_role` (it mutates another firm's counter row, so it must not be
+        # callable by an end user directly) — so under USE_USER_JWT (render.yaml's
+        # production default), _get_db()'s per-user client got a permission-denied
+        # APIError on every single invoice-number request, which the router's generic
+        # except turned into a 400 naming a Postgres error the CA cannot act on.
+        # Every caller of this method already sits behind rbac('invoice', 'write') and
+        # its own engagement-scope check, so raising privilege for this one RPC is safe.
+        from core.supabase_client import get_service_supabase
+        result = get_service_supabase().rpc(
+            "next_invoice_number", {"p_firm_id": firm_id}
+        ).execute()
         next_seq = result.data if isinstance(result.data, int) else 1
         return _format(next_seq)
 

@@ -119,6 +119,12 @@ class CapacityRisk:
     #: them, since it still has to be done on top of whatever arrives — so it
     #: is stated once, apart, rather than piled onto the first bar.
     overdue_items: int
+    #: `overdue_items`, SPLIT BY SOURCE — the two always sum to it. Work
+    #: Allocation shows tasks (by assignee) and never a compliance obligation,
+    #: so a partner reading one combined "N already overdue" figure there had
+    #: no way to tell how much of it could ever appear on that screen.
+    overdue_tasks: int
+    overdue_compliance: int
     #: With no due date at all. Counted, never placed.
     undated_items: int
     #: Folded because a compliance obligation named a task: one piece of work,
@@ -169,6 +175,8 @@ def forecast(items: Iterable[DueItem],
 
     buckets: dict[str, list[DueItem]] = {s: [] for s in starts}
     overdue = 0
+    overdue_tasks = 0
+    overdue_compliance = 0
     undated = 0
     for item in items:
         if not item.due_date:
@@ -176,6 +184,10 @@ def forecast(items: Iterable[DueItem],
             continue
         if item.due_date < today_iso:
             overdue += 1
+            if item.source == "compliance":
+                overdue_compliance += 1
+            else:
+                overdue_tasks += 1
             continue
         if item.due_date >= window_end:
             continue
@@ -212,6 +224,8 @@ def forecast(items: Iterable[DueItem],
     return CapacityRisk(
         weeks=tuple(weeks),
         overdue_items=overdue,
+        overdue_tasks=overdue_tasks,
+        overdue_compliance=overdue_compliance,
         undated_items=undated,
         obligations_folded_into_tasks=obligations_folded_into_tasks,
         median_week_items=median,

@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from datetime import date, timedelta
 from typing import Iterator, Optional
 
+from core.db_paging import fetch_all
 from core.ist_clock import fy_bounds, ist_today
 
 from . import balance_cache
@@ -138,6 +139,13 @@ def _bank_total(lines, bank_ids) -> int:
 class ReportingService:
     def __init__(self, source: LedgerSource):
         self.source = source
+        # Per-instance memo for the "All Clients" passbook path (see
+        # _firm_wide_accounts_and_buckets): a fresh ReportingService is built
+        # per request, and schedule_iii() alone calls profit_loss/balance_sheet
+        # up to FOUR times (current + prior period) for the same firm, so this
+        # keeps the client-scope resolution and bucket sum to one read per
+        # request rather than one per call.
+        self._firm_wide_cache: dict[str, tuple[dict, dict]] = {}
 
     def _lines(self, snapshot, basis: str) -> list[ProjectedLine]:
         if basis == "cash":
@@ -194,6 +202,83 @@ class ReportingService:
         accounts = self.source._accounts(firm_id, client_id)
         buckets = self.source.fetch_buckets(firm_id, client_id)
         return accounts, self._passbook_lines(firm_id, client_id, start, end, buckets)
+
+    # ── Passbook, "All Clients" (sweep-accounting-hub-2-06) ─────────────────────
+    def _firm_wide_passbook_applicable(self, basis: str) -> bool:
+        """Whether an 'All Clients' accrual report (client_id=None) may sum
+        account_period_balances across every client the caller may read,
+        instead of the legacy path replaying every one of those clients' whole
+        posted history — the read CLAUDE.md's Reporting Performance section
+        forbids, and the one the Schedule III 'All Clients' view hit directly:
+        FOUR full-history replays (P&L, Balance Sheet, and their prior-period
+        comparatives), one per every client in the firm, on every load.
+
+        Deliberately a SEPARATE gate from _passbook_applicable rather than
+        relaxing its `client_id is not None` requirement: that gate is read by
+        trial_balance, period_net_by_account, cash_flow and multi_year_trend
+        too, and those still call fetch_buckets/`_accounts` with a single
+        concrete client_id — teaching THEM client_id=None would ask
+        fetch_buckets to filter `.eq("client_id", None)`, which is the exact
+        bug test_passbook_firm_wide_scope.py exists to keep closed. Only
+        profit_loss/balance_sheet gained the firm-wide aggregate, because
+        schedule_iii is the only caller asking for one."""
+        return (basis == "accrual" and _passbook_mode() != "off"
+                and isinstance(self.source, SupabaseLedgerSource))
+
+    def _firm_wide_buckets(self, firm_id: str) -> dict[tuple[str, str], tuple[int, int]]:
+        """Every account_period_balances row for this firm, restricted to the
+        caller's own assignment scope where the source carries one
+        (`self.source.allowed_client_ids` — an Executive or Manager) and left
+        unrestricted where it does not (a firm-wide role, e.g. a Partner — see
+        core.authz.effective_client_ids and LedgerSource's own docstring),
+        summed per (account_id, period_month) — ONE bounded, paged read
+        (core.db_paging.fetch_all, never a private re-implementation) rather
+        than one query per client, because account_period_balances.client_id
+        is NOT NULL (migration 227) and every one of the firm's own buckets a
+        Partner may see is exactly the buckets matching `firm_id` alone.
+
+        SUMMED rather than merged on (account_id, period_month) alone:
+        chart_of_accounts allows a firm-level account (client_id IS NULL
+        there) that several of the firm's clients post to, so two clients can
+        each hold their own bucket for the same account and the same month —
+        two real amounts of activity, not a collision to resolve one way."""
+        db = self.source.db
+        allowed = self.source.allowed_client_ids
+
+        def make_query():
+            q = (db.table("account_period_balances")
+                 .select("id, account_id, period_month, debit_paise, credit_paise")
+                 .eq("firm_id", firm_id))
+            if allowed is not None:
+                q = q.in_("client_id", sorted(allowed))
+            return q
+
+        rows = fetch_all(make_query, label="reporting.schedule_iii_all_clients")
+        out: dict[tuple[str, str], tuple[int, int]] = {}
+        for r in rows:
+            key = (r["account_id"], str(r["period_month"])[:10])
+            d, c = out.get(key, (0, 0))
+            out[key] = (d + int(r.get("debit_paise", 0) or 0),
+                       c + int(r.get("credit_paise", 0) or 0))
+        return out
+
+    def _firm_wide_accounts_and_buckets(self, firm_id: str) -> tuple[dict, dict]:
+        """Accounts + summed buckets for every client this caller may read,
+        memoized per firm for the life of this ReportingService instance — see
+        the memo's own docstring on __init__ for why that matters here."""
+        cached = self._firm_wide_cache.get(firm_id)
+        if cached is not None:
+            return cached
+        result = (self.source._accounts(firm_id, None), self._firm_wide_buckets(firm_id))
+        self._firm_wide_cache[firm_id] = result
+        return result
+
+    def _firm_wide_passbook_lines(self, firm_id: str, start: Optional[str], end: str):
+        """Accounts + ProjectedLines for [start, end], summed across every
+        client this caller may read, from the passbook — the firm-wide twin of
+        _passbook_accrual_lines."""
+        accounts, buckets = self._firm_wide_accounts_and_buckets(firm_id)
+        return accounts, self._passbook_lines(firm_id, None, start, end, buckets)
 
     def _serve(self, ctx: tuple, fast, legacy):
         """Route a report through the passbook according to the rollout mode.
@@ -437,6 +522,21 @@ class ReportingService:
             snap = self.source.snapshot(firm_id, client_id, start, end)
             return builders.profit_loss(self._lines(snap, basis), snap.accounts, start, end, basis)
 
+        if client_id is None:
+            # "All Clients" — sweep-accounting-hub-2-06. Summed buckets, not a
+            # full-history replay of every client in the firm. See
+            # _firm_wide_passbook_applicable for why this is not simply
+            # `_passbook_applicable` with its client_id check relaxed.
+            if not self._firm_wide_passbook_applicable(basis):
+                return legacy()
+
+            def fast_all_clients():
+                accounts, lines = self._firm_wide_passbook_lines(firm_id, start, end)
+                return builders.profit_loss(lines, accounts, start, end, "accrual")
+
+            return self._serve(("profit_loss_all_clients", firm_id, start, end),
+                               fast_all_clients, legacy)
+
         if not self._passbook_applicable(basis, client_id):
             return legacy()
 
@@ -454,6 +554,18 @@ class ReportingService:
             snap = self.source.snapshot(firm_id, client_id, None, as_of)
             return builders.balance_sheet(self._lines(snap, basis), snap.accounts, as_of, basis)
 
+        if client_id is None:
+            # "All Clients" — see profit_loss's own comment above.
+            if not self._firm_wide_passbook_applicable(basis):
+                return legacy()
+
+            def fast_all_clients():
+                accounts, lines = self._firm_wide_passbook_lines(firm_id, None, as_of)
+                return builders.balance_sheet(lines, accounts, as_of, "accrual")
+
+            return self._serve(("balance_sheet_all_clients", firm_id, as_of),
+                               fast_all_clients, legacy)
+
         if not self._passbook_applicable(basis, client_id):
             return legacy()
 
@@ -470,7 +582,18 @@ class ReportingService:
         must use accrual (Companies Act §128), so basis is fixed to accrual — the
         cash-basis management view is intentionally not offered here. The P&L and
         BS amounts come from the same reporting engine as every other report;
-        schedule_iii only groups them into the statutory captions."""
+        schedule_iii only groups them into the statutory captions.
+
+        `client_id=None` is "All Clients" (a firm-wide role's own screen
+        control — see _reporting_service in routers/accounting.py). Below,
+        profit_loss/balance_sheet each run FOUR TIMES for it (current period,
+        prior period, both statements) — sweep-accounting-hub-2-06 found this
+        replaying every client's ENTIRE posted history four times over, which
+        both breaches CLAUDE.md's Reporting Performance rule and routinely
+        exceeded the frontend's request timeout. Both methods now sum
+        account_period_balances across the caller's own client scope instead
+        (see _firm_wide_passbook_applicable); nothing here changed to make
+        that happen — it lives entirely in profit_loss/balance_sheet."""
         start = fy_start or _fy_start()
         end = fy_end or ist_today().isoformat()
         pl = self.profit_loss(firm_id, client_id, start, end, basis="accrual")

@@ -186,6 +186,20 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
 }
 
 /**
+ * `CapacityRiskPayload` plus the overdue split by source, served since
+ * sweep-team-hub-04 (`domain/practice/capacity_risk.overdue_tasks` /
+ * `.overdue_compliance` — the two always sum to `overdue_items`). Declared
+ * here rather than in `lib/api` so this file's own type doesn't have to wait
+ * on that module: Work Allocation shows tasks and never a filing, so the
+ * headline below needs to say how much of "already overdue" it could ever
+ * show a CA there.
+ */
+type CapacityRiskWithOverdueSplit = CapacityRiskPayload & {
+  overdue_tasks: number;
+  overdue_compliance: number;
+};
+
+/**
  * The next thirteen weeks, and which of them the practice is about to be short
  * for.
  *
@@ -203,7 +217,7 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
  * count of those is shown beside the figure rather than hidden behind it.
  */
 function CapacityRiskPanel() {
-  const [risk, setRisk] = useState<CapacityRiskPayload | null>(null);
+  const [risk, setRisk] = useState<CapacityRiskWithOverdueSplit | null>(null);
   const [showGaps, setShowGaps] = useState(false);
 
   useEffect(() => {
@@ -211,7 +225,7 @@ function CapacityRiskPanel() {
     api.workload.capacityRisk()
       .then((res) => {
         if (!live || !res?.success) return;
-        setRisk(objectWithLists<CapacityRiskPayload>(
+        setRisk(objectWithLists<CapacityRiskWithOverdueSplit>(
           res.data, "weeks", "peak_weeks", "not_forecast"));
       })
       .catch(() => { /* the panel simply does not appear */ });
@@ -244,7 +258,22 @@ function CapacityRiskPanel() {
             </p>
             {risk.overdue_items > 0 && (
               <p className="text-xs text-state-problem mt-0.5">
-                {risk.overdue_items} already overdue, on top of all of it
+                {/* sweep-team-hub-04: this used to be one combined figure, and
+                    Work Allocation only ever shows the task half of it — a
+                    filing has no assignee and no row there. Split so each
+                    number links to the screen that can actually show it. */}
+                {risk.overdue_tasks > 0 && (
+                  <Link href="/team/work-allocation" className="underline hover:no-underline">
+                    {risk.overdue_tasks} {risk.overdue_tasks === 1 ? "task" : "tasks"}
+                  </Link>
+                )}
+                {risk.overdue_tasks > 0 && risk.overdue_compliance > 0 && ", "}
+                {risk.overdue_compliance > 0 && (
+                  <Link href="/deadlines" className="underline hover:no-underline">
+                    {risk.overdue_compliance} {risk.overdue_compliance === 1 ? "filing" : "filings"}
+                  </Link>
+                )}
+                {" already overdue, on top of all of it"}
               </p>
             )}
           </div>
@@ -385,7 +414,10 @@ export default function WorkloadPage() {
 
       {unassigned && (
         <Link
-          href="/team/work-allocation"
+          // sweep-team-hub-04: Work Allocation used to have no "Unassigned"
+          // group at all, so this link landed on a page where the backlog it
+          // names was invisible. It now scrolls straight to that section.
+          href="/team/work-allocation#unassigned-tasks"
           className="flex items-center justify-between gap-3 rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3 hover:border-state-attention transition-colors"
         >
           <span className="flex items-center gap-2 text-sm text-state-attention">

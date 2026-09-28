@@ -117,14 +117,19 @@ const BLANK: AuditFormState = {
   totalPaymentsRs: "",
 };
 
-function AuditModal({ clients, editAudit, onClose, onSaved }: {
+function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
   clients: Client[];
   editAudit: TaxAudit | null;
+  presetClientId: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [form, setForm] = useState<AuditFormState>(() => {
-    if (!editAudit) return { ...BLANK, clientId: clients[0]?.id ?? "" };
+    // sweep-income-tax-hub-05: no more silently defaulting to clients[0] — a
+    // record saved against the first client in the list, never chosen by the
+    // CA, is exactly the defect this closes. Only a validated ?client_id=
+    // from the client workspace link (sweep-income-tax-hub-04) preselects.
+    if (!editAudit) return { ...BLANK, clientId: presetClientId };
     return {
       clientId: editAudit.client_id,
       financialYear: editAudit.financial_year,
@@ -432,6 +437,16 @@ export default function TaxAuditPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editAudit, setEditAudit] = useState<TaxAudit | null>(null);
+  // sweep-income-tax-hub-04: the client to preselect in the Add Audit modal
+  // when this page was opened from a client's own workspace. This tracker
+  // lists every client's audits (no per-client filter of its own), so the
+  // one place a client selection matters is the Add form.
+  const [queryClientId, setQueryClientId] = useState("");
+  useEffect(() => {
+    const cid = new URLSearchParams(window.location.search).get("client_id");
+    if (cid) setQueryClientId(cid);
+  }, []);
+  const presetClientId = clients.some(c => c.id === queryClientId) ? queryClientId : "";
   // IT-12. The header used to read "Due: 30 November" as a hardcoded string —
   // wrong by two months against the report and by one against the return, and
   // unfixable by any backend change because no backend was involved. Both
@@ -594,6 +609,7 @@ export default function TaxAuditPage() {
         <AuditModal
           clients={clients}
           editAudit={editAudit}
+          presetClientId={presetClientId}
           onClose={() => { setShowAdd(false); setEditAudit(null); }}
           onSaved={loadData}
         />

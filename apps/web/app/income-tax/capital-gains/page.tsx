@@ -274,7 +274,15 @@ export default function CapitalGainsPage() {
     api.clients.list().then(res => {
       const cl = res.data?.clients ?? [];
       setClients(cl);
-      if (cl.length > 0) setSelectedClientId(cl[0].id);
+      // sweep-income-tax-hub-04/05: preselect from ?client_id= when arriving
+      // from a client's own workspace, and jump straight to the Register tab
+      // (the Calculator has no client of its own) — otherwise start on
+      // "Select client…" rather than silently defaulting to the first client.
+      const presetId = new URLSearchParams(window.location.search).get("client_id");
+      if (presetId && cl.some(c => c.id === presetId)) {
+        setSelectedClientId(presetId);
+        setActiveTab("register");
+      }
       setClientsError(null);
     }).catch((e) => {
       setClientsError(e instanceof Error ? e.message : "Couldn't load clients.");

@@ -282,8 +282,8 @@ export default function WorkflowsPage() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-16">
               <Zap size={40} className="mx-auto text-ps-disabled mb-3" />
-              <p className="text-ps-label">No workflows found</p>
-              <p className="text-sm text-ps-hint mt-1">Create a workflow to start automating</p>
+              <p className="text-ps-label">No workflow templates are configured yet</p>
+              <p className="text-sm text-ps-hint mt-1">Templates for common firm workflows are planned; none exist to run yet</p>
             </div>
           ) : (
             <div className="grid gap-4">

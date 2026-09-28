@@ -37,14 +37,21 @@ interface Document {
   financial_year?: string | null;
 }
 
+// Must match the DB CHECK constraint exactly (migration 001,
+// documents_document_type_check) — these are the only nine values the
+// documents table will accept. Offering a value the constraint does not
+// allow lets the upload modal store the file in Supabase Storage and THEN
+// fail the documents-table insert with a raw 23514 check-violation, leaving
+// an orphaned, untracked blob with no DB row (sweep-reports-documents-02).
 const DOCUMENT_TYPES = [
-  { value: "GST_RETURN", label: "GST Return" },
-  { value: "ITR", label: "ITR" },
-  { value: "TDS_CERTIFICATE", label: "TDS Certificate" },
+  { value: "FORM16", label: "Form 16" },
+  { value: "GST_INVOICE", label: "GST Invoice" },
   { value: "BANK_STATEMENT", label: "Bank Statement" },
-  { value: "INVOICE", label: "Invoice" },
-  { value: "AUDIT_REPORT", label: "Audit Report" },
-  { value: "AGREEMENT", label: "Agreement" },
+  { value: "AIS", label: "AIS" },
+  { value: "FORM26AS", label: "Form 26AS" },
+  { value: "TDS_CERTIFICATE", label: "TDS Certificate" },
+  { value: "RENTAL_AGREEMENT", label: "Rental Agreement" },
+  { value: "CAPITAL_GAINS_STATEMENT", label: "Capital Gains Statement" },
   { value: "OTHER", label: "Other" },
 ] as const;
 
@@ -52,11 +59,14 @@ type DocTypeValue = (typeof DOCUMENT_TYPES)[number]["value"];
 
 const FILTER_TYPES = [
   { value: "ALL", label: "All" },
-  { value: "GST_RETURN", label: "GST Returns" },
-  { value: "ITR", label: "ITR" },
-  { value: "TDS_CERTIFICATE", label: "TDS" },
-  { value: "BANK_STATEMENT", label: "Bank Statements" },
-  { value: "INVOICE", label: "Invoices" },
+  { value: "FORM16", label: "Form 16" },
+  { value: "GST_INVOICE", label: "GST Invoice" },
+  { value: "BANK_STATEMENT", label: "Bank Statement" },
+  { value: "AIS", label: "AIS" },
+  { value: "FORM26AS", label: "Form 26AS" },
+  { value: "TDS_CERTIFICATE", label: "TDS Certificate" },
+  { value: "RENTAL_AGREEMENT", label: "Rental Agreement" },
+  { value: "CAPITAL_GAINS_STATEMENT", label: "Capital Gains Statement" },
   { value: "OTHER", label: "Other" },
 ] as const;
 
@@ -109,13 +119,14 @@ function docTypeLabel(value: string): string {
 
 function docTypeBadgeColor(value: string): string {
   const map: Record<string, string> = {
-    GST_RETURN: "bg-green-100 text-green-700",
-    ITR: "bg-blue-100 text-blue-700",
-    TDS_CERTIFICATE: "bg-purple-100 text-purple-700",
+    FORM16: "bg-blue-100 text-blue-700",
+    GST_INVOICE: "bg-green-100 text-green-700",
     BANK_STATEMENT: "bg-yellow-100 text-yellow-700",
-    INVOICE: "bg-orange-100 text-orange-700",
-    AUDIT_REPORT: "bg-state-problem-surface text-state-problem",
-    AGREEMENT: "bg-blue-50 text-blue-600",
+    AIS: "bg-purple-100 text-purple-700",
+    FORM26AS: "bg-blue-50 text-blue-600",
+    TDS_CERTIFICATE: "bg-purple-100 text-purple-700",
+    RENTAL_AGREEMENT: "bg-state-attention-surface text-state-attention",
+    CAPITAL_GAINS_STATEMENT: "bg-state-problem-surface text-state-problem",
     OTHER: "bg-ps-muted text-ps-label",
   };
   return map[value] ?? "bg-ps-muted text-ps-label";
@@ -132,7 +143,10 @@ interface UploadModalProps {
 function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
   const [clientId, setClientId] = useState("");
   const [docType, setDocType] = useState<DocTypeValue>("OTHER");
-  const [financialYear, setFinancialYear] = useState<FinancialYear>("2025-26");
+  // FROM THE CLOCK, NOT A LITERAL — FINANCIAL_YEARS[0] is the current FY
+  // (financialYearChoicesAround sorts newest first); a hardcoded year goes
+  // stale every 1 April with nothing saying so.
+  const [financialYear, setFinancialYear] = useState<FinancialYear>(FINANCIAL_YEARS[0]);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,7 +206,13 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
         financial_year: financialYear,
       });
 
-      if (dbErr) throw new Error(dbErr.message);
+      if (dbErr) {
+        // The storage upload above already succeeded — a failed insert here
+        // must not leave an orphaned, untracked blob in storage with no DB
+        // row behind it (sweep-reports-documents-02).
+        await sb.storage.from(STORAGE_BUCKET).remove([storagePath]);
+        throw new Error(dbErr.message);
+      }
 
       onUploaded();
       onClose();
@@ -365,6 +385,7 @@ export default function DocumentsPage() {
         .from("documents")
         .select("*")
         .eq("firm_id", firmId)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
       if (error) throw new Error(error.message);
