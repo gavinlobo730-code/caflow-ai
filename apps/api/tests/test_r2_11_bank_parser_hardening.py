@@ -17,6 +17,13 @@ services/banking_service.py, all pure/DB-agnostic and unit-testable directly:
   3. services/banking_service.py derived a statement's opening/closing
      balance from raw file position (new_rows[0] / new_rows[-1]), which
      inverts on a newest-first (descending) bank export.
+  4. (2026-09-28, confirmed by SQL against production data, second-client
+     walkthrough) `_opening_closing_balance` took the earliest row's raw
+     `balance_paise` — the bank's own running balance AFTER that row's own
+     movement — and stored it as-is as the opening balance, double-counting
+     that row's own credit or debit. It now backs the row's own movement out
+     before returning it as "opening"; "closing" is unaffected, since the
+     latest row's `balance_paise` already reflects its own movement in full.
 
 Runs everywhere — pure parsing/derivation logic, no database.
 """
@@ -26,7 +33,7 @@ from domain.banking.normalizer import (
     _to_paise, detect_format, _validate_adapter, _rows_to_txns, parse_csv,
     StatementParseError,
 )
-from services.banking_service import _opening_closing_balance
+from services.banking_service import _opening_closing_balance, _balance_before_own_movement
 
 
 # ─── 1. _to_paise: case-insensitive Dr/Cr suffix + correct sign ─────────────
@@ -261,3 +268,105 @@ class TestOpeningClosingBalanceDateOrder:
         opening, closing = _opening_closing_balance(rows)
         assert opening == 100000
         assert closing == 2050000
+
+
+# ─── 4. The earliest row's OWN movement must be backed out of "opening" ─────
+#
+# Confirmed by SQL against production data, second-client walkthrough (Apex
+# Trading Solutions, 2026-09-28). `balance_paise` is the bank's own RUNNING
+# balance, already AFTER the row's own transaction — so treating it as the
+# opening balance double-counts that row's own credit or debit as if it were
+# already sitting in the account before the statement began. Every fixture
+# above predates this fix and carries no `credit_paise`/`debit_paise` keys at
+# all, which is exactly why it stayed invisible to them: `.get(...) or 0`
+# reads a missing key as zero movement, so those assertions are unaffected by
+# the fix (see TestOpeningClosingBalanceBacksOutTheFirstRowsOwnMovement's own
+# "unaffected" case below for the one scenario that is genuinely a no-op).
+
+class TestOpeningClosingBalanceBacksOutTheFirstRowsOwnMovement:
+    def test_a_leading_credit_foots_to_zero(self):
+        """The exact production shape: one statement's first-ever row was a
+        credit of 14,254,324 paise with `balance_paise` ALSO 14,254,324
+        (nothing preceded it, so the two coincide). Storing that figure as the
+        opening balance is wrong; backing out the row's own credit gives the
+        true opening of zero — the only figure that foots against the file's
+        own totals and closing balance."""
+        rows = [
+            {"transaction_date": "2026-04-01", "credit_paise": 14_254_324,
+             "debit_paise": 0, "balance_paise": 14_254_324},
+            {"transaction_date": "2026-04-05", "credit_paise": 0,
+             "debit_paise": 2_000_000, "balance_paise": 12_254_324},
+        ]
+        opening, closing = _opening_closing_balance(rows)
+        assert opening == 0
+        total_credits = sum(r["credit_paise"] for r in rows)
+        total_debits = sum(r["debit_paise"] for r in rows)
+        assert opening + total_credits - total_debits == closing == 12_254_324
+
+    def test_a_leading_debit_foots_to_zero(self):
+        """The mirror-image production shape (the second statement, Cosmos):
+        the first row is a DEBIT rather than a credit. A running balance is
+        always the OPENING plus that row's own movement, so an account
+        starting at the true opening of zero and immediately debited shows a
+        NEGATIVE `balance_paise` on that first line, matching the debit's
+        magnitude — backing that debit back out foots to the same zero
+        opening the credit-first case does."""
+        rows = [
+            {"transaction_date": "2026-04-01", "credit_paise": 0,
+             "debit_paise": 500_000, "balance_paise": -500_000},
+            {"transaction_date": "2026-04-05", "credit_paise": 1_500_000,
+             "debit_paise": 0, "balance_paise": 1_000_000},
+        ]
+        opening, closing = _opening_closing_balance(rows)
+        assert opening == 0
+        total_credits = sum(r["credit_paise"] for r in rows)
+        total_debits = sum(r["debit_paise"] for r in rows)
+        assert opening + total_credits - total_debits == closing == 1_000_000
+
+    def test_a_leading_credit_on_a_descending_newest_first_file_also_foots(self):
+        """The same defect, on a newest-first export — the row supplying the
+        opening balance is `last_at_min`, a different return point in
+        `_opening_closing_balance` from the ascending case above, and it needs
+        the identical correction."""
+        rows = [
+            {"transaction_date": "2026-04-05", "credit_paise": 0,
+             "debit_paise": 2_000_000, "balance_paise": 12_254_324},
+            {"transaction_date": "2026-04-01", "credit_paise": 14_254_324,
+             "debit_paise": 0, "balance_paise": 14_254_324},
+        ]
+        opening, closing = _opening_closing_balance(rows)
+        assert opening == 0
+        total_credits = sum(r["credit_paise"] for r in rows)
+        total_debits = sum(r["debit_paise"] for r in rows)
+        assert opening + total_credits - total_debits == closing == 12_254_324
+
+    def test_a_single_row_statement_backs_out_its_own_movement_for_opening_only(self):
+        """The single-row return point sets BOTH opening and closing from the
+        same row. Closing is right as printed (it already reflects the row's
+        own movement); opening must still back that movement out."""
+        row = {"transaction_date": "2026-04-01", "credit_paise": 500_000,
+               "debit_paise": 0, "balance_paise": 500_000}
+        opening, closing = _opening_closing_balance([row])
+        assert opening == 0
+        assert closing == 500_000       # the closing side is unchanged
+
+    def test_a_balance_marker_row_is_unaffected(self):
+        """A row with zero on both legs (BANK-29's printed 'Opening Balance'
+        row) is the one case where the fix is a no-op by construction:
+        subtracting a zero credit and adding a zero debit leaves the printed
+        figure exactly as it was, which is what the marker is for."""
+        rows = [
+            {"transaction_date": "2026-04-01", "credit_paise": 0,
+             "debit_paise": 0, "balance_paise": 1_000_000},
+            {"transaction_date": "2026-04-05", "credit_paise": 500_000,
+             "debit_paise": 0, "balance_paise": 1_500_000},
+        ]
+        opening, closing = _opening_closing_balance(rows)
+        assert opening == 1_000_000
+        assert closing == 1_500_000
+
+    def test_the_helper_matches_the_functions_own_adjustment(self):
+        row = {"credit_paise": 14_254_324, "debit_paise": 0, "balance_paise": 14_254_324}
+        assert _balance_before_own_movement(row) == 0
+        row2 = {"credit_paise": 0, "debit_paise": 500_000, "balance_paise": -500_000}
+        assert _balance_before_own_movement(row2) == 0

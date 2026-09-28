@@ -311,6 +311,99 @@ def test_redraft_clears_a_standing_error():
     assert _row(db, "t1")["draft_error"] is None
 
 
+# ── document-drafting: overallocation exclusivity & the date-inversion gate ──
+# Confirmed by SQL against production (Apex Trading Solutions): 29 documents
+# were each the draft target of MORE THAN ONE bank line at once — one ₹489.55
+# purchase bill was drafted onto 28 unrelated lines summing to ₹11,971.74 —
+# and separately, documents were drafted against payments made BEFORE the
+# document existed.
+
+def _seed_bill(db, bill_id, net_payable, bill_date="2026-04-01", vendor="Om Stationers"):
+    db.store.setdefault("vendors", [])
+    v = next((x for x in db.store["vendors"] if x.get("name") == vendor), None)
+    if not v:
+        v = {"id": f"v-{len(db.store['vendors']) + 1}", "firm_id": FIRM, "client_id": CLIENT,
+             "name": vendor}
+        db.store["vendors"].append(v)
+    db.store.setdefault("purchase_bills", []).append({
+        "id": bill_id, "firm_id": FIRM, "client_id": CLIENT, "bill_no": bill_id,
+        "bill_date": bill_date, "total_paise": net_payable, "net_payable_paise": net_payable,
+        "vendor_id": v["id"], "status": "unpaid", "deleted_at": None,
+    })
+
+
+def test_redraft_never_drafts_the_same_document_onto_more_than_one_line():
+    """Four unrelated debits, none carrying the vendor's name and none a rule,
+    history or transfer match, all fall within the ONE bill's near-match band
+    (BANK-10's 25%) — exactly the amount-band-only shape the production
+    overallocation was. Only one of them may claim the bill as its draft."""
+    db = _db()
+    _seed_bill(db, "bill-1", 50_000)
+    for i, amt in enumerate((40_000, 41_000, 42_000, 43_000)):
+        _line(db, f"d{i}", "SALARY TRANSFER", debit=amt, credit=0,
+              transaction_date=f"2026-04-1{i}")
+    svc.redraft(db, FIRM, CLIENT)
+    claimants = [tid for tid in ("d0", "d1", "d2", "d3")
+                 if _row(db, tid).get("draft_entity_id") == "bill-1"]
+    assert len(claimants) == 1, f"the same bill was drafted onto more than one line: {claimants}"
+    # The lines that lost the claim propose nothing else here — there is no
+    # rule, history or transfer for them to fall back to — rather than a
+    # second, equally wrong document standing in for the first.
+    losers = [tid for tid in ("d0", "d1", "d2", "d3") if tid not in claimants]
+    assert all(_row(db, tid).get("draft_entity_id") is None for tid in losers), losers
+
+
+def test_the_first_row_of_a_redraft_chunk_is_unaffected_by_exclusivity():
+    """The exclusivity walk must change nothing about the FIRST row of a
+    chunk — it has no earlier claim to filter against, so it is exactly what
+    `suggestions_for_many` itself ranked, same candidates, same ranking."""
+    db = _db()
+    _seed_bill(db, "bill-1", 50_000)
+    _line(db, "only", "SALARY TRANSFER", debit=40_000, credit=0)
+    svc.redraft(db, FIRM, CLIENT)
+    assert _row(db, "only")["draft_entity_id"] == "bill-1"
+
+
+def test_a_single_row_suggestions_call_is_unaffected_by_redrafts_exclusivity():
+    """The per-row (non-batch) caller — get_entry's own suggestions — must
+    keep seeing the full, unfiltered candidate list. Exclusivity lives only
+    inside redraft's chunk loop."""
+    db = _db()
+    _seed_bill(db, "bill-1", 50_000)
+    _line(db, "d0", "SALARY TRANSFER", debit=40_000, credit=0, transaction_date="2026-04-10")
+    _line(db, "d1", "SALARY TRANSFER", debit=41_000, credit=0, transaction_date="2026-04-11")
+    svc.redraft(db, FIRM, CLIENT)  # claims bill-1 for d0, leaves d1 empty
+    entry = svc.get_entry(db, FIRM, "d1")
+    assert entry["suggestions"] and entry["suggestions"][0]["matched_entity_id"] == "bill-1"
+
+
+def test_redraft_never_proposes_a_bill_dated_after_the_payment():
+    """SQL against production: a salary payment dated 2026-04-18 drafted
+    against a bill dated 2026-04-21 — three days after the money moved."""
+    db = _db()
+    _seed_bill(db, "bill-1", 45_000, bill_date="2026-04-21")
+    _line(db, "salary", "SALARY", debit=45_000, credit=0, transaction_date="2026-04-18")
+    svc.redraft(db, FIRM, CLIENT)
+    row = _row(db, "salary")
+    assert row.get("draft_entity_id") != "bill-1"
+    assert row.get("draft_entity_type") is None
+
+
+def test_redraft_still_proposes_a_bill_dated_before_the_payment():
+    """The ordinary case this ranker exists for: paying an old outstanding
+    bill. The date gate must reject only a candidate dated AFTER the
+    transaction and must not have swallowed this along with the inverted
+    case above."""
+    db = _db()
+    _seed_bill(db, "bill-1", 45_000, bill_date="2026-01-05")
+    _line(db, "payment", "OM STATIONERS", debit=45_000, credit=0,
+          transaction_date="2026-04-18")
+    svc.redraft(db, FIRM, CLIENT)
+    row = _row(db, "payment")
+    assert row.get("draft_entity_type") == "purchase_bill"
+    assert row.get("draft_entity_id") == "bill-1"
+
+
 # ── 3. counts and list ───────────────────────────────────────────────────────
 
 def test_counts_read_the_stored_state_and_to_do_is_the_open_three():

@@ -274,3 +274,86 @@ def schedule_line_for_account(account_type: str, account_subtype: Optional[str],
             "falling back to the account type. Add it to "
             "CAPTION_TO_SCHEDULE_LINE.", caption)
     return DEFAULT_ACCOUNT_TYPE_MAP.get(typ.lower(), "other_current_assets")
+
+
+# ── GST / TDS statutory-liability control accounts ─────────────────────────
+#
+# GST Output Tax Payable, Compensation Cess Payable, TDS Payable, TDS Payable
+# - Salary, PF Payable, ESI Payable, PT Payable, Net Salary Payable and Income
+# Tax Payable all share `account_subtype = 'Current Liability'` (their asset-
+# side counterparts — GST Input Tax Credit, Compensation Cess Input Credit,
+# TDS Receivable — all share subtype 'Tax'). schedule_line_for_account has no
+# finer bucket to give any of them, because Schedule III itself has none: the
+# Companies Act's Balance Sheet captions know "Other Current Liabilities", not
+# "GST" or "TDS". So the year-end GST, TDS and Payables SCHEDULE TABS — which
+# are sub-ledgers of that one coarse line, not Schedule III captions — need a
+# second, finer signal on top of it, or all three render the identical set of
+# accounts (confirmed on Apex Trading Solutions production data: the GST and
+# TDS tabs were byte-for-byte identical, and Payables silently included both).
+#
+# system_account_key is that signal where it exists, and it is NOT enough on
+# its own. Migrations 092/098/374/389 stamp it on the accounts THEY seeded or
+# backfilled, but the path every firm is actually onboarded through —
+# services.coa_seed_service.seed_firm_coa, inserting STANDARD_COA — sets no
+# system_account_key at all (see that module). A firm onboarded after those
+# migrations ran, Apex among them, has system_account_key NULL on every
+# account, GST Output Tax Payable and TDS Payable included. Keying on
+# system_account_key alone would not fix the finding it exists to fix — it
+# would leave the GST and TDS tabs both empty for the exact client the defect
+# was found on. And system_account_key has no vocabulary at all for the
+# payroll-statutory accounts (PF/ESI/PT/Net Salary/TDS-Salary): they have
+# never been keyed by any migration, only resolved by name at posting time.
+#
+# So this resolves the account the same two-step way
+# services.gst_return_service._gl_gst_movements and
+# services.itc_register_service._gst_input_credit_on already do for the same
+# reason: system_account_key first (covers a chart migrations have stamped),
+# the account's NAME second. The name substrings are not invented for this —
+# they are the identical ILIKE patterns services.phase2_journal_service.
+# _find_account and services.coa_seed_service.STANDARD_COA's own comments
+# already commit this codebase to using for POSTING money. An account the
+# posting engine already finds this way is not a new heuristic risk to also
+# GROUP this way for a screen.
+_GST_SYSTEM_KEYS = frozenset({
+    "gst_output", "gst_input", "gst_cgst", "gst_sgst", "gst_igst",
+    "gst_cess_input", "gst_cess_output",
+})
+_TDS_SYSTEM_KEYS = frozenset({"tds_payable", "tds_receivable"})
+
+# Checked only once system_account_key has nothing to say. "tds payable" is
+# deliberately a substring of "TDS Payable - Salary" too — both belong in the
+# TDS schedule, so the ambiguity tds_return_service.py's
+# _find_account_by_exact_name warns about (which ONE account a posting should
+# credit) does not apply here: grouping does not need to pick one.
+_GST_NAME_SUBSTRINGS = (
+    "gst output", "gst input", "compensation cess", "cgst", "sgst", "igst",
+)
+_TDS_NAME_SUBSTRINGS = (
+    "tds payable", "tds receivable", "pf payable", "esi payable",
+    "pt payable", "net salary payable",
+)
+
+
+def statutory_schedule_bucket(system_account_key: Optional[str],
+                              account_name: Optional[str]) -> Optional[str]:
+    """Returns "gst", "tds", or None — which year-end statutory SCHEDULE TAB
+    this control account belongs on, a finer question than
+    schedule_line_for_account's coarse Balance Sheet line.
+
+    None covers both an ordinary account (Trade Payables, a bank account) AND
+    a statutory one this taxonomy does not split further — "Income Tax
+    Payable" is deliberately in neither name list: it is not GST and it is
+    not TDS, so it is left where a firm's `other_current_liabilities` land by
+    default, on the Payables tab, which is the only tab Schedule III gives it.
+    """
+    key = (system_account_key or "").strip().lower()
+    if key in _GST_SYSTEM_KEYS:
+        return "gst"
+    if key in _TDS_SYSTEM_KEYS:
+        return "tds"
+    name = (account_name or "").strip().lower()
+    if any(s in name for s in _GST_NAME_SUBSTRINGS):
+        return "gst"
+    if any(s in name for s in _TDS_NAME_SUBSTRINGS):
+        return "tds"
+    return None

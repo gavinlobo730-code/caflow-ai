@@ -37,17 +37,20 @@ def test_bank_line_larger_than_document_is_excluded():
 
 
 def test_near_date_scores_below_same_day():
+    # Dated ON or BEFORE the transaction — a document dated after it is a
+    # different, harder rule now (see the date-inversion gate tests below),
+    # not a scoring question.
     same = rank_suggestions(118000, "2026-04-10", "x", [_cand(entity_date="2026-04-10")])[0]
-    near = rank_suggestions(118000, "2026-04-10", "x", [_cand(entity_date="2026-04-13")])[0]
-    far = rank_suggestions(118000, "2026-04-10", "x", [_cand(entity_date="2026-06-10")])[0]
+    near = rank_suggestions(118000, "2026-04-10", "x", [_cand(entity_date="2026-04-07")])[0]
+    far = rank_suggestions(118000, "2026-04-10", "x", [_cand(entity_date="2026-02-10")])[0]
     assert same.confidence > near.confidence > far.confidence
 
 
 def test_multiple_candidates_ranked_by_confidence():
     cands = [
-        _cand(entity_id="far", entity_date="2026-06-10"),
+        _cand(entity_id="far", entity_date="2026-02-10"),
         _cand(entity_id="party", entity_date="2026-04-10", party_name="Acme", outstanding_paise=118000),
-        _cand(entity_id="mid", entity_date="2026-04-12"),
+        _cand(entity_id="mid", entity_date="2026-04-08"),
     ]
     out = rank_suggestions(118000, "2026-04-10", "payment from ACME ltd", cands)
     assert out[0].entity_id == "party"          # same-day + party + outstanding → highest
@@ -69,6 +72,85 @@ def test_invoice_outranks_journal_on_tie():
     ]
     out = rank_suggestions(5000, "2026-04-10", "x", cands)
     assert out[0].entity_type == "sales_invoice"  # settlement doc ahead of journal
+
+
+# ── the date-inversion gate ─────────────────────────────────────────────────
+# Confirmed by SQL against production (Apex Trading Solutions): a salary
+# payment dated 2026-04-18 was drafted against a bill dated 2026-04-21, and a
+# self-transfer dated 2026-04-22 against a bill dated 2026-05-11 — a payment
+# cannot settle a document that did not exist yet.
+
+def test_a_bill_dated_after_the_payment_is_excluded():
+    cands = [_cand(entity_type="purchase_bill", entity_id="future", entity_date="2026-04-21"),
+             _cand(entity_type="purchase_bill", entity_id="past", entity_date="2026-04-05")]
+    out = rank_suggestions(118000, "2026-04-18", "SALARY", cands)
+    assert [s.entity_id for s in out] == ["past"], (
+        "a bill dated after the transaction must never be offered as a settlement")
+
+
+def test_an_invoice_dated_after_the_receipt_is_excluded():
+    cands = [_cand(entity_type="sales_invoice", entity_id="future", entity_date="2026-05-11")]
+    out = rank_suggestions(118000, "2026-04-22", "SELF TRANSFER", cands)
+    assert out == []
+
+
+def test_a_document_dated_the_same_day_is_not_excluded():
+    """Strictly LATER only — an invoice raised and paid the same day is
+    unremarkable and must not be refused."""
+    out = rank_suggestions(118000, "2026-04-18", "x",
+                           [_cand(entity_type="purchase_bill", entity_id="i1", entity_date="2026-04-18")])
+    assert [s.entity_id for s in out] == ["i1"]
+
+
+def test_the_ordinary_case_of_a_much_older_invoice_survives_the_gate():
+    """The ranker's normal case: a bank line long after an old outstanding
+    invoice. The gate must reject only a candidate dated AFTER the
+    transaction, never one dated long before it — however far."""
+    out = rank_suggestions(118000, "2026-09-28", "x",
+                           [_cand(entity_type="sales_invoice", entity_id="old", entity_date="2026-01-05")])
+    assert [s.entity_id for s in out] == ["old"]
+
+
+def test_the_date_inversion_gate_is_scoped_to_settlement_documents():
+    """A receipt / purchase payment / journal entry's own date is when it was
+    RECORDED here, not a constraint on the bank line — only a sales invoice or
+    purchase bill is gated."""
+    cands = [Candidate("journal_entry", "j1", "JE", 118000, "2026-04-21"),
+             Candidate("receipt", "r1", "Receipt", 118000, "2026-04-21"),
+             Candidate("purchase_payment", "p1", "Payment", 118000, "2026-04-21")]
+    out = rank_suggestions(118000, "2026-04-18", "x", cands)
+    assert {s.entity_id for s in out} == {"j1", "r1", "p1"}
+
+
+def test_an_unparseable_or_missing_date_is_not_gated():
+    """A hard 'cannot be true' rule must never manufacture a rejection out of
+    absent data — that is what the ordinary proximity score already handles."""
+    out = rank_suggestions(118000, "2026-04-18", "x",
+                           [_cand(entity_type="purchase_bill", entity_id="i1", entity_date=None)])
+    assert [s.entity_id for s in out] == ["i1"]
+    out2 = rank_suggestions(118000, None, "x",
+                            [_cand(entity_type="purchase_bill", entity_id="i2", entity_date="2026-04-21")])
+    assert [s.entity_id for s in out2] == ["i2"]
+
+
+def test_an_exact_amount_match_cannot_reach_ready_without_some_corroboration():
+    """Investigated as part of the redraft-overallocation fix: should an
+    amount-only match with zero party/narration corroboration be capped below
+    'ready'/trusted-auto-pass confidence (entry.DOCUMENT_READY_CONFIDENCE=90)?
+
+    It already is, by construction — this pins the arithmetic rather than
+    guessing at a new threshold. The best an exact-amount, same-day,
+    invoice/bill candidate can score with NO party match is 50 (exact) + 30
+    (same day) + 5 (settlement document) = 85, still short of 90. Reaching 90
+    requires the +15 party-name bonus. If a future change to the point values
+    lets an amount-only match cross 90, this test is what catches it."""
+    best = rank_suggestions(118000, "2026-04-10", "no matching name in here",
+                            [_cand(entity_date="2026-04-10")])[0]  # exact + same-day, no party
+    assert best.confidence == 85
+    assert best.confidence < 90, (
+        "an amount-only match now reaches DOCUMENT_READY_CONFIDENCE — "
+        "from_documents() would grade it READY, eligible for bulk auto-pass, "
+        "with no corroboration beyond the amount")
 
 
 # ── B.2.3 rule engine (pure) ──────────────────────────────────────────────────

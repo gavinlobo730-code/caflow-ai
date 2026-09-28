@@ -29,6 +29,11 @@ from domain.reporting.year_end_lines import (        # noqa: E402
     normal_balance_for,
     schedule_line_for_account,
 )
+# CLAUDE.md's reporting rule: no report may fetch rows proportional to
+# transaction volume. fetch_all/fetch_all_in are the shared keyset pager —
+# see their own module docstring for why keyset and why a short page is the
+# only honest end-of-data signal.
+from core.db_paging import fetch_all, fetch_all_in          # noqa: E402
 
 
 def _mock_statements(client_id: str, firm_id: str, fy_start: str, fy_end: str) -> Dict[str, Any]:
@@ -341,8 +346,10 @@ def generate_financial_statements(
     (within 1 paise tolerance for rounding guards).
 
     Steps:
-    1. Fetch posted journal_lines for this client+firm in FY date range.
-    2. Aggregate balance per account_id (integer paise).
+    1. Read account_period_balances (pre-aggregated per account per month) for
+       this client+firm, bounded by accounts x months, never by transaction
+       count.
+    2. Aggregate balance per account_id (integer paise), per window.
     3. Apply account_group_mappings (firm_id + account_id → schedule_line).
     4. Aggregate by schedule_line.
     5. Validate: total_assets == total_equity_and_liabilities (1 paise tolerance).
@@ -350,108 +357,104 @@ def generate_financial_statements(
     if _USE_MOCK:
         return _mock_statements(client_id, firm_id, fy_start, fy_end)
 
-    # ── 1. Fetch posted journal lines ─────────────────────────────────────────
-    # F10 fix: Balance Sheet accounts (assets/liabilities/equity) carry a
-    # CUMULATIVE balance that must include every prior year's postings, not
-    # just the current FY's movement -- unlike P&L accounts (income/expense),
-    # which correctly reset each FY. The previous version applied the FY
-    # window uniformly to every account, silently dropping all prior-year
-    # carry-forward for any client with more than one year of ledger history.
-    # Fetch both windows; §4 below picks the correct one per account by its
-    # schedule_line classification.
-    # KEYSET-paginated: an un-paged .execute() is silently capped at PostgREST's
-    # ~1000-row limit, so for any client with >1000 posted journal lines the
-    # year-end statements were computed from a fraction of the ledger (wrong
-    # figures, no error). Page by journal_lines.id until a short page. Also filter
-    # deleted_at IS NULL — soft-deleted entries must be excluded, exactly as the
-    # authoritative reporting engine (domain/reporting) does.
-    _LINE_PAGE = 1000
-
-    def _fetch_lines(gte_date: str | None) -> list:
-        out: list = []
-        cursor: str | None = None
-        while True:
-            q = (
-                supabase
-                .table("journal_lines")
-                .select(
-                    "id, journal_entry_id, account_id, debit_paise, credit_paise, "
-                    "journal_entries!inner(client_id, firm_id, entry_date, is_posted, deleted_at)"
-                )
-                .eq("journal_entries.client_id", client_id)
-                .eq("journal_entries.firm_id", firm_id)
-                .eq("journal_entries.is_posted", True)
-                .is_("journal_entries.deleted_at", "null")
-                .lte("journal_entries.entry_date", fy_end)
-                .order("id")
-                .limit(_LINE_PAGE)
-            )
-            if gte_date:
-                q = q.gte("journal_entries.entry_date", gte_date)
-            if cursor is not None:
-                q = q.gt("id", cursor)
-            page = q.execute().data or []
-            out.extend(page)
-            if len(page) < _LINE_PAGE:
-                break
-            cursor = page[-1]["id"]
-        return out
-
-    # ONE fetch serves BOTH reporting periods.
+    # ── 1. Read pre-aggregated monthly balances, not the ledger's own lines ──
     #
-    # Schedule III General Instructions para 5 requires the corresponding
-    # amounts for the immediately preceding period, so this computes two
-    # years — without reading the ledger twice to do it. _fetch_lines(None)
-    # already returns every posted line up to fy_end, a superset of what
-    # either year needs, so the periods are separated by DATE below rather
-    # than by more round trips. That also retires the second fetch this
-    # function used to make: it now costs ONE ledger read where it previously
-    # cost two, while producing a whole extra year.
-    cumulative_lines = _fetch_lines(None)        # every posted line <= fy_end
+    # This used to keyset-page EVERY posted journal_lines row up to fy_end,
+    # with an embedded journal_entries!inner(...) join, then aggregate the
+    # four windows below in Python — a read proportional to the CLIENT'S
+    # WHOLE POSTED HISTORY, not to the size of the handful of totals this
+    # step produces. Measured against a client with ~33,000 posted lines:
+    # ~34 sequential Singapore-to-Mumbai round trips and 100+ seconds,
+    # aborted client-side with no retry — exactly the CLAUDE.md rule this
+    # broke: "No report may fetch rows proportional to transaction volume."
+    # generate_financial_statements is the ONLY implementation behind the
+    # live statements screen, the snapshot, notes auto-generate, all three
+    # exports and the MCA filing demo, so this one function blocked every
+    # year-end output for any client with real volume.
+    #
+    # account_period_balances (migrations 227/228) is the same pre-aggregated
+    # per-account, per-CALENDAR-MONTH table routers/year_end_statements.py's
+    # schedules endpoint already reads for exactly this reason — read that
+    # code first, it is the established pattern this follows. One query,
+    # bounded by ACCOUNTS x MONTHS rather than by transaction count, filtered
+    # to firm+client and everything posted on or before fy_end; the four
+    # windows below split that single result by period_month in Python
+    # rather than by four more round trips. Its triggers are additive-only
+    # over POSTED, non-deleted lines — the same is_posted/deleted_at filter
+    # the deleted per-line fetch applied — and a manual journal's edit or
+    # discard REBUILDS it and asserts no drift (migrations 266/275/276), so
+    # it is exact for the same reason the schedules endpoint already trusts
+    # it, not an approximation.
+    #
+    # period_month is entry_date truncated to the CALENDAR month, so summing
+    # it against fy_start/fy_end by simple comparison is only exact when both
+    # fall on month boundaries. Every real caller's fy_start/fy_end come from
+    # routers/year_end.py's _parse_financial_year, which always returns
+    # 1 April / 31 March — so that holds for every engagement this function
+    # is ever actually called for.
+    def _fetch_balances() -> list:
+        def make_query():
+            return (
+                supabase
+                .table("account_period_balances")
+                .select("id, account_id, period_month, debit_paise, credit_paise")
+                .eq("firm_id", firm_id)
+                .eq("client_id", client_id)
+                .lte("period_month", fy_end)
+            )
+        return fetch_all(
+            make_query, key="id",
+            label="year_end_financial_service.account_period_balances")
+
+    all_balances = _fetch_balances()          # every bucket <= fy_end
 
     prior_fy_start, prior_fy_end = _prior_period(fy_start, fy_end)
 
-    def _entry_date(line: dict) -> str:
-        return (line.get("journal_entries") or {}).get("entry_date") or ""
+    def _bucket_month(row: dict) -> str:
+        return str(row.get("period_month") or "")[:10]
 
     # Four windows, two per period. A Balance Sheet is CUMULATIVE to its
-    # period end; a P&L is WINDOWED to its own year. Pairing those wrongly is
-    # the F10 bug noted above, and the preceding period obeys the same rule.
-    fy_window_lines = [ln for ln in cumulative_lines if _entry_date(ln) >= fy_start]
-    prior_window_lines = [ln for ln in cumulative_lines
-                          if prior_fy_start <= _entry_date(ln) <= prior_fy_end]
-    prior_cumulative_lines = [ln for ln in cumulative_lines
-                              if _entry_date(ln) <= prior_fy_end]
+    # period end; a P&L is WINDOWED to its own year — the F10 rule, made on
+    # the monthly buckets now rather than on the ledger's own rows.
+    fy_window_balances = [r for r in all_balances if _bucket_month(r) >= fy_start]
+    prior_window_balances = [r for r in all_balances
+                             if prior_fy_start <= _bucket_month(r) <= prior_fy_end]
+    prior_cumulative_balances = [r for r in all_balances
+                                 if _bucket_month(r) <= prior_fy_end]
 
     # Schedule III excepts "the first Financial Statements laid before the
-    # Company after incorporation". With no posted line on or before the
+    # Company after incorporation". With no bucket on or before the
     # preceding period's end there IS no such period, and a column of zeros
     # would assert one that was nil — a different and false claim. The
     # comparatives are omitted instead.
-    has_prior_period = bool(prior_cumulative_lines)
+    has_prior_period = bool(prior_cumulative_balances)
 
-    def _totals(raw_lines: list) -> tuple[Dict[str, int], Dict[str, int]]:
+    def _totals(rows: list) -> tuple[Dict[str, int], Dict[str, int]]:
         debit_totals: Dict[str, int] = {}
         credit_totals: Dict[str, int] = {}
-        for line in raw_lines:
-            acct = line["account_id"]
-            debit_totals[acct] = debit_totals.get(acct, 0) + int(line["debit_paise"])
-            credit_totals[acct] = credit_totals.get(acct, 0) + int(line["credit_paise"])
+        for row in rows:
+            acct = row["account_id"]
+            debit_totals[acct] = debit_totals.get(acct, 0) + int(row["debit_paise"] or 0)
+            credit_totals[acct] = credit_totals.get(acct, 0) + int(row["credit_paise"] or 0)
         return debit_totals, credit_totals
 
     # ── 2. Aggregate integer paise balance per account_id, per window ───────
-    # All arithmetic in integer paise — never float.
-    fy_debit_totals, fy_credit_totals = _totals(fy_window_lines)
-    cum_debit_totals, cum_credit_totals = _totals(cumulative_lines)
-    pr_fy_debit, pr_fy_credit = _totals(prior_window_lines)
-    pr_cum_debit, pr_cum_credit = _totals(prior_cumulative_lines)
+    # All arithmetic in integer paise — never float. account_period_balances
+    # is itself a sum of the posted lines, so summing it here is associative
+    # with summing the lines directly: these totals are identical to what the
+    # deleted per-line replay produced — pinned by
+    # test_a_monthly_preaggregate_matches_the_per_line_replay_it_replaces.
+    fy_debit_totals, fy_credit_totals = _totals(fy_window_balances)
+    cum_debit_totals, cum_credit_totals = _totals(all_balances)
+    pr_fy_debit, pr_fy_credit = _totals(prior_window_balances)
+    pr_cum_debit, pr_cum_credit = _totals(prior_cumulative_balances)
 
-    all_account_ids = (
-        set(fy_debit_totals) | set(fy_credit_totals)
-        | set(cum_debit_totals) | set(cum_credit_totals)
-        | set(pr_fy_debit) | set(pr_fy_credit)
-        | set(pr_cum_debit) | set(pr_cum_credit)
-    )
+    # Every account with ANY posted activity <= fy_end is a key of the
+    # cumulative totals (_totals sets both dicts' keys even where one side is
+    # zero), and every other window is a date-bounded SUBSET of that same
+    # range — so the cumulative pair alone already carries every account id
+    # any window could contribute.
+    all_account_ids = set(cum_debit_totals) | set(cum_credit_totals)
 
     # ── 3. Decide each account's schedule line ───────────────────────────────
     #
@@ -520,6 +523,81 @@ def generate_financial_statements(
                 "normal_balance": normal_balance_for(line),
                 "derived":        True,
             }
+
+    # ── 3b. Closing-entry candidates — the one place this still needs LINES ──
+    #
+    # account_period_balances is a per-account, per-month total; it cannot
+    # say which ENTRY a rupee came from, and _closing_entries_in needs entry
+    # groupings (every line on one journal_entry_id) to tell a hand-posted
+    # close from an ordinary transaction. It does NOT need the whole year's
+    # lines to do that: by _closing_entries_in's own test, a close must carry
+    # at least one EQUITY leg (reserves_and_surplus or share_capital), so
+    # every entry that could possibly qualify is found by asking only for
+    # lines on an equity account dated inside this year — bounded by how
+    # often a client's equity accounts are posted to (a capital contribution,
+    # a hand-posted close), never by the ledger's transaction count — and
+    # only THOSE entries' full lines are then re-fetched to run the
+    # heuristic. Two small, answer-sized reads stand in for the one that used
+    # to replay the whole year to find a handful of dates.
+    equity_account_ids = sorted({
+        acct_id for acct_id in all_account_ids
+        if (mapping_lookup.get(acct_id) or {}).get("schedule_line")
+           in ("reserves_and_surplus", "share_capital")
+    })
+
+    def _closing_candidate_lines() -> list:
+        if not equity_account_ids:
+            return []
+
+        def _candidates_query():
+            return (
+                supabase
+                .table("journal_lines")
+                .select(
+                    "id, journal_entry_id, account_id, "
+                    "journal_entries!inner(client_id, firm_id, entry_date, "
+                    "is_posted, deleted_at)"
+                )
+                .eq("journal_entries.client_id", client_id)
+                .eq("journal_entries.firm_id", firm_id)
+                .eq("journal_entries.is_posted", True)
+                .is_("journal_entries.deleted_at", "null")
+                .gte("journal_entries.entry_date", fy_start)
+                .lte("journal_entries.entry_date", fy_end)
+            )
+
+        candidate_rows = fetch_all_in(
+            _candidates_query, "account_id", equity_account_ids, key="id",
+            label="year_end_financial_service.closing_candidates")
+        entry_ids = {r["journal_entry_id"] for r in candidate_rows}
+        if not entry_ids:
+            return []
+
+        # Re-fetch the CANDIDATE entries' full lines — every account they
+        # touch, not only the equity leg that found them — because
+        # _closing_entries_in has to see the whole entry to tell a close
+        # (every leg is P&L or equity) from an entry that merely touches
+        # equity alongside an asset or liability.
+        def _full_lines_query():
+            return (
+                supabase
+                .table("journal_lines")
+                .select(
+                    "id, journal_entry_id, account_id, "
+                    "journal_entries!inner(client_id, firm_id, entry_date, "
+                    "is_posted, deleted_at)"
+                )
+                .eq("journal_entries.client_id", client_id)
+                .eq("journal_entries.firm_id", firm_id)
+                .eq("journal_entries.is_posted", True)
+                .is_("journal_entries.deleted_at", "null")
+            )
+
+        return fetch_all_in(
+            _full_lines_query, "journal_entry_id", entry_ids, key="id",
+            label="year_end_financial_service.closing_candidate_lines")
+
+    closing_candidate_lines = _closing_candidate_lines()
 
     # ── 4. Aggregate by schedule_line (integer paise) ────────────────────────
     # One period's aggregation, so the PRECEDING period is computed by the
@@ -700,7 +778,7 @@ def generate_financial_statements(
         if cum_debit_totals.get(acct, 0) == cum_credit_totals.get(acct, 0)
     }
     closing_dates = _closing_entries_in(
-        fy_window_lines, mapping_lookup, settled_pl_accounts)
+        closing_candidate_lines, mapping_lookup, settled_pl_accounts)
 
     cur = _statement(schedule_balances, cumulative_balances)
     bs_eq_lib, bs_assets = cur["bs_eq_lib"], cur["bs_assets"]
