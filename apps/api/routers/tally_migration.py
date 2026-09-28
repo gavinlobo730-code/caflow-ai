@@ -82,6 +82,21 @@ def create_job(
     # no-op, so a firm-level (no client_id) job is unaffected.
     assert_client_access(current_user, req.client_id)
 
+    # Customers and vendors are a CLIENT's own masters (client_id is NOT NULL
+    # on both tables), so a job that imports them without naming the client
+    # can only fail — and it used to fail item by item, at the very end, after
+    # the CA had pasted the export, parsed it, reviewed the preview and run the
+    # dry run, with a sentence telling them to do something the screen offered
+    # no way to do. Refused here, at the one door where it can still be fixed.
+    from domain.tally.migration_service import client_required_for
+    needing = client_required_for(req.import_types)
+    if needing and not req.client_id:
+        raise HTTPException(422, detail=(
+            f"Choose the client whose books these are: {' and '.join(needing)} "
+            "are a client's own masters, so an import that includes them must "
+            "name the client."
+        ))
+
     try:
         job = create_migration_job(
             firm_id=current_user["firm_id"],
@@ -196,7 +211,7 @@ def execute_import(
     from domain.tally.migration_service import (
         execute_import as _execute, run_import_detached,
     )
-    _assert_job_scope(current_user, job_id)
+    job = _assert_job_scope(current_user, job_id)
 
     if not req.is_dry_run:
         # Queued AFTER the scope check above, so an unauthorized caller never
@@ -208,14 +223,33 @@ def execute_import(
             job_id=job_id,
             actor_id=current_user["id"],
         )
-        timeline_service.log(
-            client_id="",
-            category="accounting",
-            action="tally_import_started",
-            description="Tally migration started",
-            severity="info",
-            metadata={"job_id": job_id},
-        )
+        # ⚠️ NOTHING BETWEEN add_task AND return MAY RAISE. A background task
+        # is attached to the RESPONSE, so an exception here means the task is
+        # never run at all: the caller gets a 500 and the job sits at
+        # `previewing` for ever. That is exactly what shipped — this call was
+        # written `action=..., metadata=...` against a function whose
+        # parameters are `title` and no metadata, so every live import raised
+        # TypeError here while every dry run (which never reaches this line)
+        # returned 200.
+        #
+        # The timeline is a CLIENT's (client_timeline_events.client_id and
+        # firm_id are both NOT NULL uuid), so a firm-level job has nowhere to
+        # record the note and is not given one. The note is bookkeeping about
+        # the import, never a precondition of it, hence the guard.
+        if job.get("client_id"):
+            try:
+                timeline_service.log(
+                    client_id=job["client_id"],
+                    firm_id=current_user["firm_id"],
+                    category="accounting",
+                    title="Tally import started",
+                    description=f"Tally migration '{job.get('name') or job_id}' started",
+                    severity="info",
+                    entity_type="tally_migration_job",
+                    entity_id=job_id,
+                )
+            except Exception:                                   # noqa: BLE001
+                _logger.exception("Timeline note for Tally import %s failed", job_id)
         return api_response(True, {
             "job_id": job_id,
             "status": "importing",

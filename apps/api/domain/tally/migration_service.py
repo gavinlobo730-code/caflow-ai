@@ -36,6 +36,79 @@ def _supabase():
     return get_supabase()
 
 
+def _service_supabase():
+    """The SERVICE-ROLE client, for the one write that must land whoever the
+    caller was: marking a detached import `error`. See run_import_detached."""
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
+
+
+# ── What this importer actually writes ───────────────────────────────────────
+#
+# The parser recognises six kinds of Tally item and validates all of them, but
+# _import_single_item WRITES exactly two: customer and vendor masters. Every
+# other kind used to fall through to `return None, None` and was then marked
+# `imported` and counted in `imported_items` — so a job of one plain ledger
+# finished `completed · 1 imported` with nothing created anywhere, which a CA
+# reads as "my ledger is in". It is counted as NOT WRITTEN now, and the job
+# says so in words.
+WRITTEN_ITEM_TYPES = frozenset({"customer", "vendor"})
+
+# The job's import_types are plural and the items' item_type singular; these
+# two are the per-CLIENT masters (client_id is NOT NULL on both tables).
+_CLIENT_SCOPED_IMPORT_TYPES = {"customers": "customer", "vendors": "vendor"}
+
+
+def client_required_for(import_types: list[str] | None) -> list[str]:
+    """The import types in this list that cannot be imported without a target
+    client, in the order given. Empty means a firm-level job is fine."""
+    return [t for t in (import_types or []) if t in _CLIENT_SCOPED_IMPORT_TYPES]
+
+
+def _summary_entry(status: str, message: str | None) -> list[dict]:
+    """The run's sentence, as the LAST entry of the job's audit log.
+
+    ⚠️ WHY NOT `tally_migration_jobs.error_message`. Production has that column
+    and nothing ever wrote it — but the migrations do not declare it (156
+    creates the table without it), so a query naming it fails
+    tests/test_backend_columns_exist_pg on the migration-built schema, and a
+    database rebuilt from the migrations would refuse the write. Declaring the
+    production columns (`error_message`, `started_at`) in a migration is the
+    right end state; until then the sentence rides in `import_audit_log`, a
+    LIST both sides declare, and `run_message` reads it back."""
+    return [{"run_summary": message, "status": status}] if message else []
+
+
+def run_message(job: dict | None) -> str | None:
+    """What the job's last run said about itself, or None. The summary is the
+    audit log's LAST entry, so this reads one element whatever the log's size."""
+    log = (job or {}).get("import_audit_log")
+    if isinstance(log, list) and log:
+        last = log[-1]
+        if isinstance(last, dict) and isinstance(last.get("run_summary"), str):
+            return last["run_summary"]
+    return None
+
+
+def _with_run_message(job: dict | None) -> dict | None:
+    if job is not None:
+        job["run_message"] = run_message(job)
+    return job
+
+
+def _not_written_sentence(by_type: dict[str, int]) -> str:
+    total = sum(by_type.values())
+    kinds = ", ".join(f"{n} {t.replace('_', ' ')}{'' if n == 1 else 's'}"
+                      for t, n in sorted(by_type.items()))
+    return (
+        f"{total} item{'' if total == 1 else 's'} ({kinds}) "
+        f"{'was' if total == 1 else 'were'} not written: this importer creates "
+        "customer and vendor masters only, and does not post Tally ledgers, "
+        "journals or opening balances into the books. Record those through the "
+        "chart of accounts, a journal or the opening-balance screens."
+    )
+
+
 # PostgREST caps a response at ~1000 rows and says nothing about it. Every read
 # of tally_migration_items below goes through _all_items for that reason — see
 # its docstring for what the unpaged versions were doing.
@@ -162,23 +235,23 @@ def create_migration_job(
 
 def list_migration_jobs(firm_id: str) -> list[dict]:
     if _USE_MOCK:
-        return [j for j in _MOCK_JOBS.values() if j["firm_id"] == firm_id]
+        return [_with_run_message(j) for j in _MOCK_JOBS.values() if j["firm_id"] == firm_id]
     sb = _supabase()
     res = sb.table("tally_migration_jobs").select("*").eq("firm_id", firm_id).order(
         "created_at", desc=True
     ).execute()
-    return res.data or []
+    return [_with_run_message(j) for j in (res.data or [])]
 
 
 def get_migration_job(firm_id: str, job_id: str) -> dict | None:
     if _USE_MOCK:
         j = _MOCK_JOBS.get(job_id)
-        return j if j and j["firm_id"] == firm_id else None
+        return _with_run_message(j) if j and j["firm_id"] == firm_id else None
     sb = _supabase()
     res = sb.table("tally_migration_jobs").select("*").eq("id", job_id).eq(
         "firm_id", firm_id
     ).single().execute()
-    return res.data
+    return _with_run_message(res.data)
 
 
 # ── Tally XML Parsing ─────────────────────────────────────────────────────────
@@ -458,16 +531,30 @@ def execute_import(
         job = _MOCK_JOBS.get(job_id, {})
         items = _MOCK_ITEMS.get(job_id, [])
         total = len(items)
+        # The same WRITTEN_ITEM_TYPES rule as the real branch, so a dev run of
+        # a ledger-only job does not claim to have imported it either.
+        failed = sum(1 for i in items if i.get("status") == "failed")
+        not_written: dict[str, int] = {}
+        for i in items:
+            if i.get("status") != "failed" and i.get("item_type") not in WRITTEN_ITEM_TYPES:
+                t = i.get("item_type") or "item"
+                not_written[t] = not_written.get(t, 0) + 1
+        writable = total - failed - sum(not_written.values())
+        message = _not_written_sentence(not_written) if not_written else None
         report = {
             "total": total,
-            "imported": total if not is_dry_run else 0,
-            "failed": 0,
-            "skipped": 0,
+            "imported": writable if not is_dry_run else 0,
+            "failed": failed,
+            "skipped": (total - failed) if is_dry_run else sum(not_written.values()),
+            "not_written": sum(not_written.values()),
             "is_dry_run": is_dry_run,
-            "message": "Dry run completed" if is_dry_run else "Import completed",
+            "message": message,
         }
         job["status"] = "completed" if not is_dry_run else "previewing"
         job["imported_items"] = report["imported"]
+        job["failed_items"] = failed
+        job["is_dry_run"] = is_dry_run
+        job["import_audit_log"] = _summary_entry(job["status"], message)
         job["dry_run_report"] = report if is_dry_run else None
         return report
 
@@ -483,23 +570,44 @@ def execute_import(
 
     items = _all_items(sb, job_id, firm_id)
 
+    from core.exceptions import document_failure_detail
+
     imported = 0
     failed = 0
     skipped = 0
+    # Failures THIS RUN, as opposed to items that failed validation at parse
+    # time and were never attempted — the two are different sentences.
+    failed_now = 0
+    first_failure: str | None = None
+    not_written: dict[str, int] = {}
     audit_log = []
 
     if not is_dry_run:
         # Mark the job running BEFORE the first write, so a caller polling the
         # job can tell "in progress" from "never started" — and so a crash
-        # leaves evidence rather than a job stuck looking pending.
+        # leaves evidence rather than a job stuck looking pending. The audit
+        # log is a PER-RUN record (the final update replaces it), so it is
+        # emptied here too: a re-run that is going fine must not keep showing
+        # the sentence about why the last one did not. The items keep their
+        # own statuses, which is what makes the run resumable.
         sb.table("tally_migration_jobs").update({
             "status": "importing",
+            "import_audit_log": [],
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", job_id).eq("firm_id", firm_id).execute()
 
     for processed, item in enumerate(items, start=1):
         if item["status"] == "failed":
             failed += 1
+            continue
+
+        # Counted in BOTH modes: the dry run is where the CA decides, so it is
+        # where they most need to learn that part of the export goes nowhere.
+        # No write for it — it is a fact about the importer, not the item.
+        if item.get("item_type") not in WRITTEN_ITEM_TYPES:
+            t = item.get("item_type") or "item"
+            not_written[t] = not_written.get(t, 0) + 1
+            skipped += 1
             continue
 
         if is_dry_run:
@@ -529,12 +637,20 @@ def execute_import(
             imported += 1
             audit_log.append({"item_id": item["id"], "status": "imported", "record_id": created_id})
         except Exception as e:
+            # A sentence, not str(e): for a database refusal str() is the whole
+            # APIError payload with the reason buried inside a dict repr.
+            reason = document_failure_detail(
+                e, action=f"import this {item.get('item_type') or 'item'}")
             sb.table("tally_migration_items").update({
                 "status": "failed",
-                "error_message": str(e),
+                "error_message": reason,
             }).eq("id", item["id"]).eq("firm_id", firm_id).execute()
             failed += 1
-            audit_log.append({"item_id": item["id"], "status": "failed", "error": str(e)})
+            failed_now += 1
+            if first_failure is None:
+                name = (item.get("tally_data") or {}).get("name") or item.get("tally_id")
+                first_failure = f"{name}: {reason}" if name else reason
+            audit_log.append({"item_id": item["id"], "status": "failed", "error": reason})
 
         # Heartbeat. A long import is otherwise indistinguishable from a hung
         # one — the CA watching the screen sees the same thing either way, and
@@ -550,12 +666,43 @@ def execute_import(
             except Exception as e:  # progress is not the job — never fail on it
                 _logger.warning("Import progress update failed (job %s): %s", job_id, e)
 
-    final_status = "completed" if not is_dry_run else "previewing"
+    # What the CA is told about this run, in words. The counts alone cannot
+    # say WHY, and "3 failed" with no reason sends somebody to the logs they
+    # cannot read. Each part is a different fact with a different remedy.
+    parts: list[str] = []
+    if failed_now:
+        parts.append(
+            f"{failed_now} item{'' if failed_now == 1 else 's'} could not be "
+            f"imported. The first — {first_failure}")
+    invalid = failed - failed_now
+    if invalid:
+        parts.append(
+            f"{invalid} item{'' if invalid == 1 else 's'} failed validation when "
+            "the export was parsed and "
+            f"{'was' if invalid == 1 else 'were'} not attempted.")
+    if not_written:
+        parts.append(_not_written_sentence(not_written))
+    message = " ".join(parts) or None
+
+    if is_dry_run:
+        final_status = "previewing"
+    else:
+        # `error` only where the run achieved nothing and something went wrong
+        # — a job with imported records is `completed` (and can be rolled
+        # back) even if some items failed; the message names those.
+        final_status = "error" if (failed_now and not imported) else "completed"
+
+    # The payload stays a LITERAL: tests/test_backend_columns_exist_pg counts a
+    # payload reached through a name as unreadable, against an exact budget.
     sb.table("tally_migration_jobs").update({
         "status": final_status,
         "imported_items": imported,
         "failed_items": failed,
-        "import_audit_log": audit_log,
+        # The run's sentence goes LAST (see _summary_entry). Written on a dry
+        # run too: it describes the job as it now stands (what a live run
+        # would leave unwritten), and a stale sentence from an earlier run must
+        # not outlive the run it was about.
+        "import_audit_log": audit_log + _summary_entry(final_status, message),
         "is_dry_run": is_dry_run,
         "completed_at": datetime.now(timezone.utc).isoformat() if not is_dry_run else None,
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -566,6 +713,8 @@ def execute_import(
         "imported": imported,
         "failed": failed,
         "skipped": skipped,
+        "not_written": sum(not_written.values()),
+        "message": message,
         "is_dry_run": is_dry_run,
         "audit_log": audit_log,
     }
@@ -588,33 +737,54 @@ def run_import_detached(firm_id: str, job_id: str, actor_id: str) -> None:
         unresponsive to everyone else while one person imported.
 
     WHICH DATABASE ROLE THIS RUNS AS
-        `service_role`, deliberately. A background task outlives the request, so
-        the caller's JWT is gone by the time this runs (core.supabase_client's
-        request token is reset when the response completes) and get_supabase()
-        falls back to the service client. That is the correct role here — there
-        is no user session to act on behalf of — and it is safe for THIS work
-        specifically: customers, vendors, tally_migration_jobs and
-        tally_migration_items all grant service_role full access. Many tables do
-        NOT (they are granted to `authenticated` only), so a future background
-        job touching anything else must check before assuming.
+        ⚠️ This used to say `service_role`, "because the caller's JWT is gone by
+        the time this runs". It is NOT gone. A FastAPI background task is run
+        by the response inside the request's own context, so the ContextVar
+        core.supabase_client reads is still set — measured, not assumed — and
+        under USE_USER_JWT the import runs as the CALLER (`authenticated`, RLS
+        enforced). That is kept deliberately: customers and vendors carry
+        RESTRICTIVE role policies (`client:write`) that the endpoint's own
+        `accounting:approve` does not imply once per-person overrides exist, and
+        service_role would skip them. All four tables grant `authenticated`
+        the writes this needs.
 
-        Authorization is not weakened by this. The endpoint has already run
+        The one consequence to know: a JWT lives about an hour, and an import
+        long enough to outlive it starts failing mid-run. Nothing is lost —
+        every item is marked as it lands, so re-running resumes — and the
+        failure mark below does not depend on that JWT.
+
+        Authorization is not weakened either way. The endpoint has already run
         rbac("accounting", "approve") and _assert_job_scope, and every query
         below is still filtered by firm_id.
 
     FAILURE
-        Any exception marks the job `failed` with the reason, because the
-        alternative is a job that sits at `importing` forever and tells nobody
-        why. The items already imported keep their own `imported` status, so
-        re-running resumes rather than duplicating.
+        Any exception marks the job `error` with a SENTENCE (the audit log's
+        summary entry — see _summary_entry for why not `error_message`),
+        because the alternative is a job that sits at `importing` for ever and
+        tells nobody why. That write goes through the SERVICE client on purpose:
+        if the caller's client is what failed (an expired JWT, a refused grant),
+        marking the failure through the same client fails the same way and the
+        job is stuck again. It is one UPDATE of one job row, by id AND firm_id,
+        after the endpoint's checks — nothing a caller can widen. The items
+        already imported keep their own `imported` status, so re-running
+        resumes rather than duplicating.
     """
     try:
         execute_import(firm_id=firm_id, job_id=job_id, actor_id=actor_id,
                        is_dry_run=False)
     except Exception as e:
         _logger.exception("Detached import failed (job %s)", job_id)
+        from core.exceptions import document_failure_detail
+        reason = document_failure_detail(e, action="finish the Tally import")
+        now = datetime.now(timezone.utc).isoformat()
+        if _USE_MOCK:
+            job = _MOCK_JOBS.get(job_id)
+            if job and job.get("firm_id") == firm_id:
+                job.update({"status": "error", "updated_at": now,
+                            "import_audit_log": _summary_entry("error", reason)})
+            return
         try:
-            _supabase().table("tally_migration_jobs").update({
+            _service_supabase().table("tally_migration_jobs").update({
                 # 'error', not 'failed'. Production's status CHECK admits ten
                 # values and 'failed' is not among them, so this UPDATE was
                 # refused there and the refusal swallowed by the except below —
@@ -623,8 +793,13 @@ def run_import_detached(firm_id: str, job_id: str, actor_id: str) -> None:
                 # (apps/web/app/migration/page.tsx) has no 'failed' branch
                 # either; 'error' is the value both it and production speak.
                 "status": "error",
-                "import_audit_log": {"error": str(e)},
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                # A LIST with the sentence as its summary entry. It used to be
+                # `{"error": str(e)}` — a DICT in a column that holds a per-run
+                # list, carrying the raw exception, read by no screen. The
+                # run's own per-item entries are not lost: every item records
+                # its status on its own row, which is what a re-run resumes from.
+                "import_audit_log": _summary_entry("error", reason),
+                "updated_at": now,
             }).eq("id", job_id).eq("firm_id", firm_id).execute()
         except Exception:
             _logger.exception("Could not even mark job %s failed", job_id)
@@ -691,7 +866,10 @@ def _import_single_item(
         }).execute()
         return (res.data[0]["id"] if res.data else None), "vendors"
 
-    return None, None  # Other types require more complex mapping
+    # Not reached from execute_import for these: WRITTEN_ITEM_TYPES keeps every
+    # other type out of this function and reports it as NOT WRITTEN, because a
+    # (None, None) here used to be counted as a successful import.
+    return None, None
 
 
 def rollback_migration(firm_id: str, job_id: str, actor_id: str) -> dict:
