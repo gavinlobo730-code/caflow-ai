@@ -234,7 +234,14 @@ export default function DeductionsPage() {
   const [computeError, setComputeError] = useState<string | null>(null);
 
   useEffect(() => {
-    getClients().then(c => { setClients(c); if (c.length > 0) setClientId(c[0].id); }).catch(() => {});
+    getClients().then(c => {
+      setClients(c);
+      // sweep-income-tax-hub-04/05: preselect from ?client_id= when arriving
+      // from a client's own workspace; otherwise start on "Select client…"
+      // rather than silently defaulting to the first client in the list.
+      const presetId = new URLSearchParams(window.location.search).get("client_id");
+      if (presetId && c.some(x => x.id === presetId)) setClientId(presetId);
+    }).catch(() => {});
   }, []);
 
   const upd = useCallback((patch: Partial<DeductionState>) => setState(s => ({ ...s, ...patch })), []);
