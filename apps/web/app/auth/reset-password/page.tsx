@@ -14,6 +14,17 @@
  * after a short grace period it shows an "invalid or expired" state instead
  * of hanging on the loading spinner forever.
  *
+ * The "already-established session" fallback is trusted only when the URL
+ * this page was loaded with actually carried a recovery marker — the
+ * implicit flow's `#...&type=recovery` hash, or the PKCE flow's `?code=`
+ * (captured once at first render, before Supabase's own URL cleanup can run).
+ * Without that check, ANY existing session — someone simply signed in,
+ * revisiting this bookmarked URL — would reach the form, letting them set a
+ * new password with no old password and no recovery link, which is not what
+ * "waits for a genuine recovery signal" above is supposed to mean. A visit
+ * with no recovery marker and no PASSWORD_RECOVERY event falls through to the
+ * same "invalid or expired" state as a bad link.
+ *
  * Same reauthentication fallback as onboarding's "set your password" step
  * (lib/auth/reauth.ts): if "Secure password change" is enabled and Supabase
  * still asks for reauthentication on this fresh session, email a nonce and
@@ -25,6 +36,7 @@ import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api, type ApiResp } from "@/lib/api";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
+import { hasRecoveryMarkerInUrl } from "@/lib/auth/recoveryLink";
 import { ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
 
 const MIN_LENGTH = 10;
@@ -52,6 +64,9 @@ async function resolveRedirectPath(): Promise<string> {
 export default function ResetPasswordPage() {
   const supabase = getSupabaseClient();
   const router = useRouter();
+  // Captured once, at first render, before Supabase can clean the address bar.
+  const [hadRecoveryMarker] = useState(() =>
+    typeof window !== "undefined" ? hasRecoveryMarkerInUrl(window.location) : false);
   const [stage, setStage] = useState<Stage>("verifying");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
@@ -71,15 +86,20 @@ export default function ResetPasswordPage() {
       }
     });
     // The event may have already fired before this listener attached — an
-    // active session at mount is just as valid a signal to proceed.
-    supabase.auth.getSession().then(({ data }) => {
-      if (!settled && data.session) { settled = true; setStage("form"); }
-    });
+    // active session at mount is just as valid a signal to proceed, but only
+    // when the URL that opened this page actually carried a recovery marker.
+    // Without that check, any ordinary signed-in visit (no recovery token at
+    // all) would reach the form too.
+    if (hadRecoveryMarker) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (!settled && data.session) { settled = true; setStage("form"); }
+      });
+    }
     const timeout = setTimeout(() => {
       if (!settled) { settled = true; setStage("invalid"); }
     }, LINK_WAIT_MS);
     return () => { sub.subscription.unsubscribe(); clearTimeout(timeout); };
-  }, [supabase]);
+  }, [supabase, hadRecoveryMarker]);
 
   function validate(): string | null {
     if (pw.length < MIN_LENGTH) return `Use at least ${MIN_LENGTH} characters.`;
