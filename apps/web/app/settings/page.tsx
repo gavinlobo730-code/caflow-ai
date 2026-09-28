@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type FirmProfile } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
-import { isValidGstin } from "@/lib/gst/gstin";
+import { gstinProblem } from "@/lib/gst/gstin";
 import { isValidPan } from "@/lib/identifiers/pan";
 
 // ─── Indian states list ────────────────────────────────────────────────────
@@ -58,9 +58,14 @@ const INDIAN_STATES = [
 // refused — after the CA had filled in the rest of the form, with a server
 // error rather than a message naming the character. Blank stays valid: the
 // field is optional and unregistered is not wrong.
-function validateGSTIN(gstin: string): boolean {
-  return isValidGstin(gstin);
-}
+//
+// THE SENTENCE IS THE AUTHORITY'S, NOT "Invalid GSTIN format" (sweep-settings-
+// hub-1-07). The fixed message called a check-digit mismatch a FORMAT error and
+// named no character, and it appeared only after Save with no toast saying the
+// save had not been sent — so a CA watching the network saw a later PATCH and
+// read the flagged value as saved. `gstinProblem` says what is wrong (length,
+// shape, state code, or which check digit the first fourteen compute to),
+// shown as soon as fifteen characters are typed, and a refused Save says so.
 
 // IT Act Section 139A — PAN format: 5 uppercase letters + 4 digits + 1 uppercase letter
 // IT Act §139A, THROUGH THE ONE BROWSER RULE. This tested the RAW field value
@@ -314,6 +319,13 @@ export default function SettingsPage() {
   // ─── Field change handler ────────────────────────────────────────────────
   function handleChange(field: keyof FirmForm, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
+    // A complete GSTIN is checked at the keystroke — the reason the browser
+    // mirror exists — and a partial one is left alone until Save, because
+    // "this one is 9 characters" while still typing is noise.
+    if (field === "gstin" && value.trim().length >= 15) {
+      setErrors((prev) => ({ ...prev, gstin: gstinProblem(value) ?? undefined }));
+      return;
+    }
     // Clear error on change
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
@@ -327,10 +339,9 @@ export default function SettingsPage() {
     if (!form.name.trim()) {
       newErrors.name = "Firm name is required";
     }
-    if (form.gstin && !validateGSTIN(form.gstin)) {
-      // CGST Act Section 25 — GSTIN format validation
-      newErrors.gstin = "Invalid GSTIN format (e.g. 27AABCU9603R1ZN)";
-    }
+    // CGST Act §25 — shape AND check digit, in the authority's own words.
+    const gstinIssue = gstinProblem(form.gstin);
+    if (gstinIssue) newErrors.gstin = gstinIssue;
     if (form.pan && !validatePAN(form.pan)) {
       // IT Act Section 139A — PAN format validation
       newErrors.pan = "Invalid PAN format (e.g. AABCU9603R)";
@@ -348,7 +359,12 @@ export default function SettingsPage() {
 
   // ─── Save handler ────────────────────────────────────────────────────────
   async function handleSave() {
-    if (!validate()) return;
+    if (!validate()) {
+      // Say that NOTHING was sent. A red line under one field reads, to a CA
+      // who pressed Save, like a warning on something that saved anyway.
+      setToast({ message: "Not saved — correct the highlighted field first.", type: "error" });
+      return;
+    }
     if (!firmId) {
       setToast({ message: "No firm found for your account", type: "error" });
       return;
