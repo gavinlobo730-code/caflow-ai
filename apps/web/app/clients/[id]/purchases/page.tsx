@@ -1557,6 +1557,16 @@ function Vendors({ clientId }: { clientId: string }) {
         token
       );
       if (!result.success) throw new Error(result.error ?? "Failed to add vendor");
+      // A vendor already holding this GSTIN (or, with no GSTIN, this PAN) was
+      // RETURNED rather than created — nothing typed here was saved. This used
+      // to fall through to "Vendor added." (sweep-client-purchases-04). The
+      // form stays open with what was typed, and the sentence is the server's.
+      const dup = result.data as { duplicate?: boolean; duplicate_reason?: string } | null;
+      if (dup?.duplicate) {
+        setMsg({ type: "err", text: dup.duplicate_reason
+          ?? "Not added — a vendor with this GSTIN or PAN already exists for this client. Nothing was changed." });
+        return;
+      }
       // PUR-32. The vendor WAS created; this names what it resembles, and is
       // deliberately not a msg of type "err" — the save succeeded.
       setResemblances(

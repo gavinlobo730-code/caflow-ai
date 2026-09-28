@@ -13,7 +13,7 @@ from domain.gst.gstin import problem_with as gstin_problem
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ValidationError
 from models.common import api_response
-from domain.party_duplicates import possible_duplicates
+from domain.party_duplicates import possible_duplicates, same_party_sentence
 from models.parties import VendorIn, VendorUpdateIn
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
@@ -250,7 +250,8 @@ def create_vendor(
             if gstin or pan:
                 existing = _match_existing_vendor(candidates, gstin, pan)
                 if existing:
-                    return api_response(True, {**existing, "duplicate": True})
+                    return api_response(True, {**existing, "duplicate": True,
+                                  "duplicate_reason": same_party_sentence("vendor", existing, gstin, pan)})
             # PUR-32. Read BEFORE the append, or the vendor reports itself.
             resemblances = possible_duplicates(payload.get("name"), candidates)
             payload["id"] = str(uuid.uuid4())
@@ -279,7 +280,8 @@ def create_vendor(
         if gstin or pan:
             existing = _match_existing_vendor(active_vendors, gstin, pan)
             if existing:
-                return api_response(True, {**existing, "duplicate": True})
+                return api_response(True, {**existing, "duplicate": True,
+                                  "duplicate_reason": same_party_sentence("vendor", existing, gstin, pan)})
         # PUR-32. A name is not an identifier, so this REPORTS and the vendor
         # is created exactly as asked — see domain/party_duplicates.
         resemblances = possible_duplicates(payload.get("name"), active_vendors)
