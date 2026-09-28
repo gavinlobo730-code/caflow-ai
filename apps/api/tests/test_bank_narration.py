@@ -147,6 +147,21 @@ def test_routing_words_are_not_counterparties():
     assert p.counterparty is None
 
 
+@pytest.mark.parametrize("fragment", ["Oth", "O th", "Ot h"])
+def test_a_cosmos_style_truncated_other_fragment_is_not_a_counterparty(fragment):
+    """Cosmos Bank's export fixed-width-truncates its purpose field at a
+    different column on every row, so the one word OTHERS turns up as "Oth",
+    "O th" or "Ot h" depending on where the cut landed. `_is_noise` tested
+    each WORD against `_NOISE`, and for "O th" the words are "O" and "th" —
+    neither matches on its own, so the fragment survived as a "real"
+    counterparty and beat the VPA handle fallback below it
+    (apex-bank-assets-inventory-04)."""
+    p = parse_narration(f"UPI/CR/412345678901/ramesh@okaxis/{fragment}")
+    assert p.counterparty == "ramesh", (
+        f"{fragment!r} must collapse to noise and fall through to the VPA "
+        f"handle, not be read as the counterparty (got {p.counterparty!r})")
+
+
 def test_a_thirteen_digit_number_is_not_a_utr():
     """Exactly twelve digits, or it is an account number or an amount."""
     assert parse_narration("UPI/DR/4123456789012/RAMESH").utr is None

@@ -107,6 +107,16 @@ _NOISE = frozenset({
     "SETTLEMENT", "TXN", "TRANSACTION", "ONLINE", "MOBILE", "BANK", "LTD",
 })
 
+# Cosmos-Bank-style exports fixed-width-truncate their purpose field at a
+# different column on every row, so the one word "OTHERS" arrives as "Oth",
+# "O th" or "Ot h" depending on where the cut landed — the bank's own field
+# padding turns into an internal space. `_is_noise` tested each WORD of a
+# token against `_NOISE`, and split on that internal space neither "O" nor
+# "th" matches anything there, so the fragment survived as a "real"
+# counterparty and beat the VPA handle fallback (apex-bank-assets-inventory-04).
+# Compared with whitespace stripped, all three collapse to the one word below.
+_NOISE_FRAGMENTS = frozenset({"OTH"})
+
 # Four-letter bank identifiers that appear as bare tokens. Kept deliberately
 # short — the IFSC pattern catches the full codes, and this only exists so a
 # bare "HDFC" beside a name is not itself read as the name.
@@ -197,7 +207,16 @@ def _is_noise_word(word: str) -> bool:
 
 def _is_noise(token: str) -> bool:
     """A token is noise when EVERY word in it is. 'RAMESH KUMAR' survives;
-    'NEFT DR' and 'TO TRANSFER' do not."""
+    'NEFT DR' and 'TO TRANSFER' do not.
+
+    Checked FIRST, whole and whitespace-stripped, against `_NOISE_FRAGMENTS`:
+    a fixed-width export can cut one noise word into two fragments that pass
+    the word-by-word test individually (see `_NOISE_FRAGMENTS` above), so the
+    token has to be collapsed back to what the bank actually meant before it
+    is split apart and tested word by word.
+    """
+    if re.sub(r"\s+", "", token).upper() in _NOISE_FRAGMENTS:
+        return True
     words = _words(token)
     return not words or all(_is_noise_word(w) for w in words)
 
