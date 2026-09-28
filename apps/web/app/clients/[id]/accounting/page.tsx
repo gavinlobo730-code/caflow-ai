@@ -321,7 +321,7 @@ export default function AccountingPage() {
           <AccountingDashboard clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} accounts={accounts} onNavigate={setTab} />
         )}
         {tab === "coa" && (
-          <ChartOfAccounts accounts={accounts} loading={accsLoading} error={accountsError} onRefresh={loadAccounts} />
+          <ChartOfAccounts accounts={accounts} loading={accsLoading} error={accountsError} onRefresh={loadAccounts} onDrillDown={openDrillDown} />
         )}
         {tab === "journal" && (
           <JournalList clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
@@ -590,7 +590,7 @@ function DashCard({ label, value, accent, action }: { label: string; value: stri
 
 // ── Chart of Accounts ──────────────────────────────────────────────────────
 
-function ChartOfAccounts({ accounts, loading, error, onRefresh }: { accounts: Account[]; loading: boolean; error?: string | null; onRefresh: () => void }) {
+function ChartOfAccounts({ accounts, loading, error, onRefresh, onDrillDown }: { accounts: Account[]; loading: boolean; error?: string | null; onRefresh: () => void; onDrillDown: (accountId: string) => void }) {
   const TYPE_ORDER = ["Asset", "Liability", "Equity", "Revenue", "Expense"];
 
   // Type-grouping context preserved as a colored badge in the Type column (flat,
@@ -640,6 +640,7 @@ function ChartOfAccounts({ accounts, loading, error, onRefresh }: { accounts: Ac
         persistKey="accounting.coa"
         emptyTitle="No accounts found"
         emptyDescription="Accounts are seeded from the firm-level chart of accounts."
+        onRowClick={(a) => onDrillDown(a.id)}
       />
     </div>
   );
@@ -927,6 +928,11 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       label: "Reverse posted",
       icon: <Undo2 size={13} />,
       variant: "danger",
+      // A selection of drafts alone has nothing this action can do to it —
+      // reversal only ever touches a POSTED entry — so the button must not be
+      // offered at all, the same reasoning every other appliesTo in this
+      // codebase follows (see BulkAction.appliesTo).
+      appliesTo: (rows) => rows.some((e) => e.is_posted),
       confirm: "Reverse the selected POSTED entries? Each gets an equal-and-opposite entry dated today; the originals stay on the books. Drafts in the selection are left untouched.",
       run: (rows) => runBulk(
         rows,
