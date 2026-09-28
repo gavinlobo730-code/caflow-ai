@@ -40,7 +40,7 @@ import {
 } from "@/lib/imports/mappers";
 import { clearReports } from "@/lib/accounting/reportCache";
 import PeriodPicker from "@/components/PeriodPicker";
-import { resolvePeriodRange, type PeriodMode } from "@/lib/dates/periods";
+import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 import { InvoiceViewDrawer } from "@/components/invoices/InvoiceViewDrawer";
 import { SalesDebitNoteViewDrawer } from "@/components/sales/SalesDebitNoteViewDrawer";
 import type { SalesDebitNoteDetail } from "@/components/sales/SalesDebitNoteEditor";
@@ -158,6 +158,35 @@ function fyRange(fy: string): { start: string; end: string } {
   return { start: `${yr}-04-01`, end: `${yr + 1}-03-31` };
 }
 
+/** apex-sales-purchases-10: Credit Notes and Debit Notes used to load the
+ * client's WHOLE invoice register on every mount of the tab, purely so an
+ * import's invoice_no column could be resolved — for a client with thousands
+ * of invoices, opening an empty note tab paged the entire invoice table.
+ * Resolves only the invoice numbers the uploaded rows actually reference,
+ * right before building the notes, chunked so the .in() filter stays within
+ * a reasonable URL length on a large CSV. */
+async function lookupOriginalInvoices(clientId: string, rows: ImportRow[]): Promise<OriginalDocRef[]> {
+  const invoiceNos = Array.from(new Set(
+    rows.map((r) => (r.invoice_no ?? "").trim()).filter(Boolean)
+  ));
+  if (invoiceNos.length === 0) return [];
+  const supabase = getSupabaseClient();
+  const out: OriginalDocRef[] = [];
+  const CHUNK = 200;
+  for (let i = 0; i < invoiceNos.length; i += CHUNK) {
+    const { data } = await supabase
+      .from("client_sales_invoices")
+      .select("id, invoice_no, customer_id, is_interstate")
+      .eq("client_id", clientId)
+      .is("deleted_at", null)
+      .in("invoice_no", invoiceNos.slice(i, i + CHUNK));
+    for (const r of (data ?? []) as Array<{ id: string; invoice_no: string; customer_id: string; is_interstate: boolean }>) {
+      out.push({ id: r.id, no: r.invoice_no, partyId: r.customer_id, isInterstate: r.is_interstate });
+    }
+  }
+  return out;
+}
+
 /** Format an ISO timestamp for display, or "—" when absent (shared formatter). */
 const fmtDateTime = formatDateTime;
 
@@ -256,23 +285,37 @@ export default function SalesPage() {
   // ledger) changes only the query string and does not remount this page, so
   // reading window.location.search once on mount misses it — the tab stays
   // wherever it was and the address bar disagrees with the screen.
-  // useSearchParams() re-renders this effect on every URL change, mount or not.
+  // apex-sales-purchases-09: this used to depend on the whole useSearchParams()
+  // OBJECT, whose reference changes on EVERY query-string write in this page —
+  // opening a document, changing a filter, a cross-tab navigation — not only a
+  // change to ?tab=. So any of those unrelated writes re-ran this effect, read
+  // whatever ?tab= happened to still say (often stale — see navigateTo below)
+  // and snapped the visible tab back to it. Depending on the PARAMETER VALUES
+  // instead means the effect only re-fires when tab or doc actually changes.
   const tabDeepLinkParams = useSearchParams();
+  const tabParam = tabDeepLinkParams.get("tab");
+  const docParam = tabDeepLinkParams.get("doc");
   useEffect(() => {
     const { tab: t, doc } = openedAt(tabDeepLinkParams.toString());
     if (t && TABS.some((x) => x.id === t)) setTab(t as SalesTab);
     setOpenDoc(doc);
-  }, [tabDeepLinkParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam, docParam]);
 
   // Cross-tab navigation (e.g. Customers → "View Invoices" / "View Ledger").
   // The target customer is stashed in the URL (?cust=) and the tab switches;
   // the destination tab hydrates its customer filter from that param on mount.
+  // The ?tab= param is set/deleted here too (matching selectTab below) so the
+  // address bar never drifts from the visible tab — a stale ?tab= is exactly
+  // what the effect above used to snap back to. ?doc= is transient to the tab
+  // that opened it and is dropped on any navigation away from it.
   function navigateTo(target: SalesTab, custId?: string) {
-    if (custId) {
-      const p = new URLSearchParams(window.location.search);
-      p.set("cust", custId);
-      window.history.replaceState(null, "", `${window.location.pathname}?${p.toString()}`);
-    }
+    const p = new URLSearchParams(window.location.search);
+    if (custId) p.set("cust", custId);
+    if (target === "invoices") p.delete("tab"); else p.set("tab", target);
+    p.delete("doc");
+    const qs = p.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
     setTab(target);
   }
 
@@ -290,6 +333,7 @@ export default function SalesPage() {
     const p = new URLSearchParams(window.location.search);
     if (target === "invoices") p.delete("tab");
     else p.set("tab", target);
+    p.delete("doc");
     const qs = p.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
     setTab(target);
@@ -1527,13 +1571,17 @@ function SalesInvoices({
       // credited — so it cannot drift from its parts the way a subtraction in
       // the browser did.
       //
-      // Issued and Paid stay GROSS on purpose: they are "what was billed" and
-      // "what was settled" for the period, which is what those words mean.
+      // Issued stays GROSS on purpose: it is "what was billed" for the
+      // period, which is what the word means. Paid used to sum only the
+      // GROSS total of FULLY paid invoices (apex-sales-purchases-08), so a
+      // partially-paid invoice — real cash the client actually collected —
+      // contributed nothing at all; it now sums the cash actually received
+      // (`paid_paise`) across both paid and partially-paid invoices.
       let outstanding = 0, issued = 0, paid = 0;
       for (const inv of mapped) {
         if (inv.status === "issued" || inv.status === "partially_paid") outstanding += outstandingOf(inv);
         if (inv.status === "issued" || inv.status === "partially_paid" || inv.status === "paid") issued += inv.total_paise;
-        if (inv.status === "paid") paid += inv.total_paise;
+        if (inv.status === "paid" || inv.status === "partially_paid") paid += inv.paid_paise ?? 0;
       }
       setStats({ outstanding, issued, paid });
     } catch {
@@ -2023,14 +2071,16 @@ function SalesInvoices({
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-3">
-        {/* "This FY" like its neighbours: the query is scoped to the selected
-            period (invoice_date between range.from and range.to), so this is
-            the period's unpaid balance and not the client's whole receivable.
-            Unlabelled it read as the latter, which is a second way to be
-            wrong about the same tile. */}
-        <SummaryCard label="Outstanding This FY" value={loadFailed ? "—" : fmt(stats.outstanding)} color="amber" />
-        <SummaryCard label="Issued This FY" value={loadFailed ? "—" : fmt(stats.issued)} color="blue" />
-        <SummaryCard label="Paid This FY" value={loadFailed ? "—" : fmt(stats.paid)} color="green" />
+        {/* The query is scoped to the selected period (invoice_date between
+            range.from and range.to), so these tiles are the PERIOD's figures
+            and not the client's whole receivable/turnover. The label used to
+            say "This FY" unconditionally (apex-sales-purchases-08), so
+            picking "All Time" or "Last FY" still showed a tile headed "This
+            FY" over the figure for whatever period was actually selected —
+            wrong twice, once by omission and once by name. */}
+        <SummaryCard label={`Outstanding — ${periodOptionLabel(periodMode, financialYear)}`} value={loadFailed ? "—" : fmt(stats.outstanding)} color="amber" />
+        <SummaryCard label={`Issued — ${periodOptionLabel(periodMode, financialYear)}`} value={loadFailed ? "—" : fmt(stats.issued)} color="blue" />
+        <SummaryCard label={`Paid — ${periodOptionLabel(periodMode, financialYear)}`} value={loadFailed ? "—" : fmt(stats.paid)} color="green" />
       </div>
 
       {/* Header */}
@@ -4127,12 +4177,14 @@ function CreditNotes({
   const router = useRouter();
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  // Client's own Product/Service catalogue + full (not FY-scoped — a note can
-  // link to an invoice from an earlier FY) invoice list, needed only for the
-  // CSV import's product_service resolver and invoice_no linking/is_interstate
-  // derivation. Mirrors the Sales Invoices tab's own identical-purpose fetch.
+  // Client's own Product/Service catalogue, needed only for the CSV import's
+  // product_service resolver. apex-sales-purchases-10: this used to ALSO load
+  // the full (unpaged-in-spirit, not-FY-scoped) invoice list on every mount of
+  // this tab purely to resolve an import's invoice_no column — for a client
+  // with thousands of invoices, opening an empty Credit Notes tab paged the
+  // whole invoice table. handleImport below fetches only the numbers the
+  // uploaded rows actually reference, right before building the notes.
   const [services, setServices] = useState<ServiceCatalogueItem[]>([]);
-  const [originalInvoices, setOriginalInvoices] = useState<OriginalDocRef[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [loading, setLoading] = useState(true);
   // True when the LAST credit-note fetch failed (thrown OR a non-null PostgREST
@@ -4151,7 +4203,7 @@ function CreditNotes({
     const { start, end } = fyRange(financialYear);
 
     try {
-      const [{ data: cnData, error: cnError }, { data: custData }, { data: servicesData }, { data: invData }] = await Promise.all([
+      const [{ data: cnData, error: cnError }, { data: custData }, { data: servicesData }] = await Promise.all([
         selectAll(() => supabase
           .from("credit_notes")
           .select(
@@ -4176,22 +4228,11 @@ function CreditNotes({
           .eq("is_active", true)
           .order("name")
           .order("id")),
-        selectAll(() => supabase
-          .from("client_sales_invoices")
-          .select("id, invoice_no, customer_id, is_interstate")
-          .eq("client_id", clientId)
-          .is("deleted_at", null)
-          .order("invoice_date", { ascending: false })
-          .order("id")),
       ]);
       // selectAll returns the PostgREST error without throwing — surface it so
       // a failed fetch isn't rendered as an empty FY (audit M17).
       if (cnError) throw cnError;
       setServices((servicesData as ServiceCatalogueItem[]) ?? []);
-      setOriginalInvoices(
-        ((invData ?? []) as Array<{ id: string; invoice_no: string; customer_id: string; is_interstate: boolean }>)
-          .map((r) => ({ id: r.id, no: r.invoice_no, partyId: r.customer_id, isInterstate: r.is_interstate }))
-      );
 
       const mapped: CreditNote[] = ((cnData ?? []) as unknown as Array<
         { id: string; credit_note_no: string; credit_note_date: string; customer_id: string;
@@ -4236,6 +4277,7 @@ function CreditNotes({
    * through the existing create endpoint — same draft-then-issue path as a
    * manually created note; nothing is auto-issued. */
   async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    const originalInvoices = await lookupOriginalInvoices(clientId, rows);
     const { notes, errors } = buildSalesCreditNotes(rows, clientId, customers, originalInvoices, services as SalesServiceRef[]);
     if (notes.length === 0) return { imported: 0, errors };
     const token = await getAuthToken();
@@ -4571,9 +4613,10 @@ function SalesDebitNotes({
   const router = useRouter();
   const [debitNotes, setDebitNotes] = useState<SalesDebitNote[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  // See CreditNotes' identical fetch above — same import-only purpose.
+  // See CreditNotes' identical fetch above — same import-only purpose. The
+  // invoice register itself is resolved lazily in handleImport, not loaded
+  // here — see lookupOriginalInvoices.
   const [services, setServices] = useState<ServiceCatalogueItem[]>([]);
-  const [originalInvoices, setOriginalInvoices] = useState<OriginalDocRef[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [loading, setLoading] = useState(true);
   // True when the LAST debit-note fetch failed (thrown OR a non-null PostgREST
@@ -4592,7 +4635,7 @@ function SalesDebitNotes({
     const { start, end } = fyRange(financialYear);
 
     try {
-      const [{ data: dnData, error: dnError }, { data: custData }, { data: servicesData }, { data: invData }] = await Promise.all([
+      const [{ data: dnData, error: dnError }, { data: custData }, { data: servicesData }] = await Promise.all([
         selectAll(() => supabase
           .from("sales_debit_notes")
           .select(
@@ -4617,22 +4660,11 @@ function SalesDebitNotes({
           .eq("is_active", true)
           .order("name")
           .order("id")),
-        selectAll(() => supabase
-          .from("client_sales_invoices")
-          .select("id, invoice_no, customer_id, is_interstate")
-          .eq("client_id", clientId)
-          .is("deleted_at", null)
-          .order("invoice_date", { ascending: false })
-          .order("id")),
       ]);
       // selectAll returns the PostgREST error without throwing — surface it so
       // a failed fetch isn't rendered as an empty FY (audit M17).
       if (dnError) throw dnError;
       setServices((servicesData as ServiceCatalogueItem[]) ?? []);
-      setOriginalInvoices(
-        ((invData ?? []) as Array<{ id: string; invoice_no: string; customer_id: string; is_interstate: boolean }>)
-          .map((r) => ({ id: r.id, no: r.invoice_no, partyId: r.customer_id, isInterstate: r.is_interstate }))
-      );
 
       const mapped: SalesDebitNote[] = ((dnData ?? []) as unknown as Array<
         { id: string; debit_note_no: string; debit_note_date: string; customer_id: string;
@@ -4675,6 +4707,7 @@ function SalesDebitNotes({
   /** Bulk-import handler — mirrors CreditNotes.handleImport, pointed at Sales
    * Debit Notes (POST /api/sales-debit-notes/). */
   async function handleImport(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    const originalInvoices = await lookupOriginalInvoices(clientId, rows);
     const { notes, errors } = buildSalesDebitNotes(rows, clientId, customers, originalInvoices, services as SalesServiceRef[]);
     if (notes.length === 0) return { imported: 0, errors };
     const token = await getAuthToken();
