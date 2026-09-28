@@ -452,6 +452,43 @@ def test_an_empty_godown_closes():
     assert db.rows("godowns")[1]["is_active"] is False
 
 
+def test_a_closed_godown_reopens():
+    """Closing a godown is not final — the reverse of `close_godown`, and a
+    CA who closed one by mistake (sweep-client-inventory-docs-reports-06)
+    needs a way back that does not go through the database."""
+    db = FakeDB()
+    _seed(db)
+    svc.close_godown(db, firm_id=FIRM, client_id=CLIENT, godown_id="g2")
+    assert db.rows("godowns")[1]["is_active"] is False
+
+    out = svc.reopen_godown(db, firm_id=FIRM, client_id=CLIENT, godown_id="g2")
+    assert out["ok"] is True
+    assert db.rows("godowns")[1]["is_active"] is True
+
+
+def test_reopening_does_not_restore_the_default():
+    """Which godown a movement defaults to is a decision the CA makes again,
+    not one a reopen should reinstate quietly behind it. g2 rather than g1,
+    because g1 holds stock and `close_godown` refuses that."""
+    db = FakeDB()
+    _seed(db)
+    db.rows("godowns")[1]["is_default"] = True
+    svc.close_godown(db, firm_id=FIRM, client_id=CLIENT, godown_id="g2")
+    assert db.rows("godowns")[1]["is_default"] is False
+
+    svc.reopen_godown(db, firm_id=FIRM, client_id=CLIENT, godown_id="g2")
+    assert db.rows("godowns")[1]["is_active"] is True
+    assert db.rows("godowns")[1]["is_default"] is False
+
+
+def test_reopening_a_godown_from_another_client_is_refused():
+    db = FakeDB()
+    _seed(db)
+    out = svc.reopen_godown(db, firm_id=FIRM, client_id="somebody-elses",
+                            godown_id="g2")
+    assert out["ok"] is False
+
+
 def test_marking_a_new_default_clears_the_old_one():
     """Migration 398's partial unique index enforces one; clearing it here
     means a CA marking a new warehouse gets that one rather than a constraint

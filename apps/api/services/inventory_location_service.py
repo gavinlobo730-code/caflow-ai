@@ -131,6 +131,22 @@ def close_godown(db, *, firm_id: str, client_id: str, godown_id: str) -> dict:
     return {"ok": True, "closed": True}
 
 
+def reopen_godown(db, *, firm_id: str, client_id: str, godown_id: str) -> dict:
+    """The reverse of `close_godown`. Does NOT restore `is_default` — which
+    godown a movement defaults to is a decision the CA makes again, not one a
+    reopen should reinstate quietly behind it."""
+    rows = (db.table("godowns").select("id, name, is_active")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("id", godown_id).limit(1).execute().data) or []
+    if not rows:
+        return {"ok": False, "refusal": "That godown is not this client's."}
+    db.table("godowns").update({
+        "is_active": True,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("firm_id", firm_id).eq("client_id", client_id).eq("id", godown_id).execute()
+    return {"ok": True, "reopened": True}
+
+
 def _held_at(db, *, firm_id: str, client_id: str, godown_id: str) -> list:
     """Items with a non-zero position at one godown, as at today."""
     detail = position_detail(db, firm_id=firm_id, client_id=client_id,
