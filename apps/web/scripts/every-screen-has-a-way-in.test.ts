@@ -51,11 +51,9 @@ const WEB = path.join(__dirname, "..");
  * a review; removing one when a screen gets a real link is the ratchet.
  */
 const UNLINKED: Record<string, string> = {
-  "/accounting/invoices":
-    "the same stub, for the Sales tab",
-
-
-
+  // `/accounting/invoices` LEFT THIS LIST on 27-09: it was a tombstone for the
+  // Sales tab and is the Sales worklist now, named in lib/navigation/screens.ts
+  // and linked from the Accounting panel's "Across clients" group.
   "/portal/employee/activate":
     "the landing page for the invite link emailed by " +
     "services/employee_portal_service.py::_send_invite_email — nothing in " +

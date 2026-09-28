@@ -123,8 +123,9 @@ class Tile:
         linking to a `MovedToClientWorkspace` TOMBSTONE — a page whose whole
         content is "this moved". Sending a CA there from a tile showing a real
         number is worse than a dead link: the number says the tile works.
-        `/accounting/fixed-assets` WAS one of those and is now the fixed-asset
-        worklist; `inventory` is the one tile still answering None here, with
+        `/accounting/fixed-assets` and `/accounting/invoices` WERE the two
+        tombstones and are now the fixed-asset and sales worklists; `inventory`
+        is the one tile still answering None here, with
         `worklist.NO_WORKLIST_BECAUSE` giving the reason.
         """
         if client_id is None:
@@ -193,7 +194,14 @@ TILES: tuple[Tile, ...] = (
     Tile(
         id="sales",
         label="Sales",
-        firm_href="/accounting/receivables",
+        # ⚠️ WAS `/accounting/receivables`, WHICH IS THE PRACTICE'S OWN FEES.
+        # That screen reads `fee_invoices` — what the clients owe the CA firm —
+        # while this tile sums `client_sales_invoices`, what the clients'
+        # customers owe THEM, so a client owed ₹19.9 crore showed ₹0 on the
+        # page the number sent a CA to (accounting-hub-2-05). The Sales
+        # worklist replaced the tombstone at this path; see
+        # `domain/hub/worklist.py`.
+        firm_href="/accounting/invoices",
         client_section="sales",
         question="Overdue from customers",
         unit=Unit.PAISE,

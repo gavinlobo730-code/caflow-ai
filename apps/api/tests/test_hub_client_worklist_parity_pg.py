@@ -1,5 +1,5 @@
 """
-Migration 416 — the SQL worklist must equal the Python one, exactly.
+Migrations 416 and 432 — the SQL worklist must equal the Python one, exactly.
 
 WHY THIS FILE IS THE POINT OF THE CHANGE
     `public.hub_client_worklist` aggregates where the rows already are: the
@@ -23,6 +23,11 @@ WHAT ONLY POSTGRES CAN PROVE
         net payable, credit notes, paid, debited — and lets the database
         derive it, which is the only way to find out that the two halves agree
         about a bill settled by a credit note rather than by cash.
+      * `status NOT IN ('draft', 'cancelled')` is three-valued in SQL and a
+        `not.in` filter in the twin; a cancelled bill and a soft-deleted one
+        still carry a balance in that same generated column (migration 432,
+        accounting-hub-1-02), so only rows the database itself holds can show
+        the two halves exclude the same documents.
       * `SUM(...)::bigint` over an empty group and `COUNT(*)` over one are SQL
         semantics, not Python ones.
       * the function is SECURITY DEFINER with the firm check restated in its
@@ -60,6 +65,9 @@ B = "c4160000-0000-0000-0000-00000000000b"
 C = "c4160000-0000-0000-0000-00000000000c"
 USER = "e4160000-0000-0000-0000-000000000001"
 VENDOR = "74160000-0000-0000-0000-000000000001"
+CUSTOMER = {A: "84160000-0000-0000-0000-00000000000a",
+            B: "84160000-0000-0000-0000-00000000000b",
+            C: "84160000-0000-0000-0000-00000000000c"}
 STMT = "54160000-0000-0000-0000-000000000001"
 ACCT = "b4160000-0000-0000-0000-000000000001"
 
@@ -113,17 +121,65 @@ BANK = [
 # derives it. The second bill is settled by a CREDIT NOTE rather than by cash,
 # which is the case a hand-written `total - paid` would get wrong (migration
 # 210 made the note columns' signs differ between the two tables).
+#
+# ⚠️ `status` IS STATED ON EVERY ROW. It is NOT NULL DEFAULT 'draft', and this
+# file's first draft left it out — so every bill here was a DRAFT, which is
+# exactly the document migration 432 stops counting. The old SQL counted them
+# anyway, which is the defect; the new SQL would have turned this whole
+# scenario into an empty queue that the two halves agreed about.
 BILLS = [
     {"id": "24160000-0000-0000-0000-000000000001", "firm_id": FIRM, "client_id": A,
      "net_payable_paise": 118000, "credit_note_paise": 0, "paid_paise": 0,
-     "debited_paise": 0},
+     "debited_paise": 0, "status": "received", "deleted": False},
     {"id": "24160000-0000-0000-0000-000000000002", "firm_id": FIRM, "client_id": A,
      "net_payable_paise": 100000, "credit_note_paise": 0, "paid_paise": 40000,
-     "debited_paise": 0},
+     "debited_paise": 0, "status": "partially_paid", "deleted": False},
     # Fully settled by a debit note: outstanding is nil, so no row for B.
     {"id": "24160000-0000-0000-0000-000000000003", "firm_id": FIRM, "client_id": B,
      "net_payable_paise": 50000, "credit_note_paise": 0, "paid_paise": 0,
-     "debited_paise": 50000},
+     "debited_paise": 50000, "status": "received", "deleted": False},
+    # Owed by NOBODY, and each still carries a balance in the generated column
+    # (accounting-hub-1-02). Client C has no other bill, so C appearing on the
+    # purchases queue at all is the defect.
+    {"id": "24160000-0000-0000-0000-000000000004", "firm_id": FIRM, "client_id": C,
+     "net_payable_paise": 720000, "credit_note_paise": 0, "paid_paise": 0,
+     "debited_paise": 0, "status": "cancelled", "deleted": False},
+    {"id": "24160000-0000-0000-0000-000000000005", "firm_id": FIRM, "client_id": C,
+     "net_payable_paise": 71000, "credit_note_paise": 0, "paid_paise": 0,
+     "debited_paise": 0, "status": "draft", "deleted": False},
+    # Soft-deleted and NOT a draft. The application only discards drafts, but
+    # no constraint says so, and a `deleted_at` filter whose only test row is
+    # also a draft is a filter nothing has tested.
+    {"id": "24160000-0000-0000-0000-000000000006", "firm_id": FIRM, "client_id": C,
+     "net_payable_paise": 9000, "credit_note_paise": 0, "paid_paise": 0,
+     "debited_paise": 0, "status": "received", "deleted": True},
+]
+
+# What each client's CUSTOMERS owe it — the Sales tile's own population
+# (accounting-hub-2-05), and the same dead-document rule as the bills.
+INVOICES = [
+    {"id": "64160000-0000-0000-0000-000000000001", "firm_id": FIRM, "client_id": B,
+     "total_paise": 250000, "paid_paise": 0, "credited_paise": 0,
+     "status": "issued", "deleted": False},
+    {"id": "64160000-0000-0000-0000-000000000002", "firm_id": FIRM, "client_id": B,
+     "total_paise": 100000, "paid_paise": 40000, "credited_paise": 0,
+     "status": "partially_paid", "deleted": False},
+    # Settled by a CREDIT note rather than by cash — `credited_paise`
+    # SUBTRACTS on this table where `credit_note_paise` ADDS on bills
+    # (migration 210), so a hand-written formula shared with the bills would
+    # get it backwards. Nil outstanding, so no row for A.
+    {"id": "64160000-0000-0000-0000-000000000003", "firm_id": FIRM, "client_id": A,
+     "total_paise": 50000, "paid_paise": 0, "credited_paise": 50000,
+     "status": "issued", "deleted": False},
+    {"id": "64160000-0000-0000-0000-000000000004", "firm_id": FIRM, "client_id": C,
+     "total_paise": 11800, "paid_paise": 0, "credited_paise": 0,
+     "status": "cancelled", "deleted": False},
+    {"id": "64160000-0000-0000-0000-000000000005", "firm_id": FIRM, "client_id": C,
+     "total_paise": 78000, "paid_paise": 0, "credited_paise": 0,
+     "status": "draft", "deleted": True},
+    {"id": "64160000-0000-0000-0000-000000000006", "firm_id": FIRM, "client_id": C,
+     "total_paise": 9000, "paid_paise": 0, "credited_paise": 0,
+     "status": "issued", "deleted": True},
 ]
 
 ASSETS = [
@@ -166,6 +222,10 @@ INSERT INTO users (id, firm_id, email, full_name, role)
   VALUES ('{USER}', '{FIRM}', 'p@parity.in', 'Partner', 'Partner');
 INSERT INTO vendors (id, firm_id, client_id, name)
   VALUES ('{VENDOR}', '{FIRM}', '{A}', 'A Supplier');
+INSERT INTO customers (id, firm_id, client_id, name) VALUES
+  ('{CUSTOMER[A]}', '{FIRM}', '{A}', 'A Buyer'),
+  ('{CUSTOMER[B]}', '{FIRM}', '{B}', 'B Buyer'),
+  ('{CUSTOMER[C]}', '{FIRM}', '{C}', 'C Buyer');
 INSERT INTO bank_accounts (id, firm_id, client_id, bank_name, account_no)
   VALUES ('{ACCT}', '{FIRM}', '{A}', 'Cosmos', '000111222');
 INSERT INTO bank_statements
@@ -184,13 +244,25 @@ INSERT INTO bank_transactions
 VALUES ('{r["id"]}', '{r["firm_id"]}', '{r["client_id"]}', '{STMT}',
         DATE '2026-06-01', 'line'{extra_v});""")
     for r in BILLS:
+        deleted = "now()" if r["deleted"] else "NULL"
         out.append(f"""
 INSERT INTO purchase_bills
   (id, firm_id, client_id, vendor_id, bill_date,
-   net_payable_paise, credit_note_paise, paid_paise, debited_paise)
+   net_payable_paise, credit_note_paise, paid_paise, debited_paise,
+   status, deleted_at)
 VALUES ('{r["id"]}', '{r["firm_id"]}', '{r["client_id"]}', '{VENDOR}', DATE '2026-05-01',
         {r["net_payable_paise"]}, {r["credit_note_paise"]},
-        {r["paid_paise"]}, {r["debited_paise"]});""")
+        {r["paid_paise"]}, {r["debited_paise"]}, '{r["status"]}', {deleted});""")
+    for n, r in enumerate(INVOICES, start=1):
+        deleted = "now()" if r["deleted"] else "NULL"
+        out.append(f"""
+INSERT INTO client_sales_invoices
+  (id, firm_id, client_id, customer_id, invoice_no, invoice_date,
+   total_paise, paid_paise, credited_paise, status, deleted_at)
+VALUES ('{r["id"]}', '{r["firm_id"]}', '{r["client_id"]}', '{CUSTOMER[r["client_id"]]}',
+        'INV/{n:04d}', DATE '2026-05-01',
+        {r["total_paise"]}, {r["paid_paise"]}, {r["credited_paise"]},
+        '{r["status"]}', {deleted});""")
     for r in ASSETS:
         through = "NULL" if r["depreciation_posted_through"] is None \
             else f"DATE '{r['depreciation_posted_through']}'"
@@ -217,7 +289,8 @@ VALUES ('{r["id"]}', '{r["firm_id"]}', '{r["client_id"]}', '{USER}', '{r["fy"]}'
 #: both disagree with the database.
 _READ_BACK = {
     "bank_transactions": "id, firm_id, client_id, entry_state",
-    "purchase_bills": "id, firm_id, client_id, outstanding_paise",
+    "purchase_bills": "id, firm_id, client_id, outstanding_paise, status, deleted_at",
+    "client_sales_invoices": "id, firm_id, client_id, outstanding_paise, status, deleted_at",
     "fixed_assets": "id, firm_id, client_id, depreciation_posted_through",
     "year_end_engagements": "id, firm_id, client_id, status",
     "clients": "id, firm_id, client_name, legal_name, entity_type",
@@ -254,13 +327,14 @@ def db(pg_template):
 
     Every test here is READ-ONLY — it calls the function, reads the rows back
     and compares — so there is no state for one to leak into the next, and a
-    per-test fixture would clone the migrated template FOURTEEN TIMES for one
-    seed. On a CI runner a clone of a 416-migration template is not free, and
-    the real-Postgres job is already the long pole of the backend workflow.
-    One clone, one seed, fourteen assertions.
+    per-test fixture would clone the migrated template once per TEST — twenty
+    of them since migration 432 — for one seed. On a CI runner a clone of a
+    400-odd-migration template is not free, and the real-Postgres job is
+    already the long pole of the backend workflow. One clone, one seed, every
+    assertion.
 
     If a test here ever WRITES, it takes its own function-scoped database
-    rather than quietly making this one dirty for the thirteen after it.
+    rather than quietly making this one dirty for every test after it.
     """
     admin = _ADMIN.strip()
     name = f"hubwl_{uuid.uuid4().hex[:12]}"
@@ -301,13 +375,24 @@ def _twin(dsn, monkeypatch, tile: str, firm: str = FIRM,
                   key=lambda t: (-t[1], t[0]))
 
 
-@pytest.mark.parametrize("tile", ["banking", "purchases", "fixed_assets", "year_end"])
+TILES = ["banking", "sales", "purchases", "fixed_assets", "year_end"]
+
+
+def test_every_worklist_tile_is_exercised():
+    """A tile added to `domain/hub/worklist` and not to TILES would be a branch
+    of the function no parity assertion ever reached."""
+    from domain.hub import worklist
+
+    assert set(TILES) == set(worklist.BY_TILE)
+
+
+@pytest.mark.parametrize("tile", TILES)
 def test_the_sql_and_the_python_twin_agree(db, monkeypatch, tile):
     assert _sql(db, tile) == _twin(db, monkeypatch, tile), (
-        f"{tile}: migration 416 and hub_worklist_service._python_twin disagree")
+        f"{tile}: the SQL function and hub_worklist_service._python_twin disagree")
 
 
-@pytest.mark.parametrize("tile", ["banking", "purchases", "fixed_assets", "year_end"])
+@pytest.mark.parametrize("tile", TILES)
 def test_they_agree_when_the_caller_is_assignment_scoped(db, monkeypatch, tile):
     """An Executive's own book. `p_client_ids` is the whole scope mechanism and
     a filter applied in one half only is a cross-client read in the other."""
@@ -331,6 +416,34 @@ def test_the_generated_outstanding_column_is_what_is_summed(db, monkeypatch):
     rows = dict(_sql(db, "purchases"))
     assert rows == {A: 178000}
     assert dict(_twin(db, monkeypatch, "purchases")) == rows
+
+
+def test_the_sales_queue_is_what_customers_owe_the_client(db, monkeypatch):
+    """accounting-hub-2-05. `client_sales_invoices`, not the practice's
+    `fee_invoices`; B's issued and part-paid invoices, and nothing of C's."""
+    rows = dict(_sql(db, "sales"))
+    assert rows == {B: 250000 + 60000}
+    assert dict(_twin(db, monkeypatch, "sales")) == rows
+
+
+@pytest.mark.parametrize("tile,table", [
+    ("purchases", "purchase_bills"), ("sales", "client_sales_invoices"),
+])
+def test_a_dead_document_is_owed_by_nobody(db, tile, table):
+    """accounting-hub-1-02. The PREMISE first: the generated column really does
+    carry a balance on C's cancelled, draft and soft-deleted documents — a
+    test whose dead rows had nothing outstanding would pass against the old
+    SQL too. Then the rule: C, whose only documents are those, has no row."""
+    r = _psql(db, f"""
+        SELECT count(*) || '|' || COALESCE(SUM(outstanding_paise), 0)
+          FROM public.{table}
+         WHERE client_id = '{C}' AND outstanding_paise > 0
+           AND (status IN ('draft', 'cancelled') OR deleted_at IS NOT NULL);
+    """, tuples=True)
+    assert r.returncode == 0, r.stderr
+    n, total = (int(x) for x in r.stdout.strip().split("|"))
+    assert n == 3 and total > 0, f"premise: C's dead {table} carry no balance ({n}, {total})"
+    assert C not in {cid for cid, _ in _sql(db, tile)}
 
 
 def test_another_firms_rows_are_never_counted(db):

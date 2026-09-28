@@ -1,10 +1,19 @@
 "use client";
 
 /**
- * Receivables Aging Report
- * Groups outstanding invoices by aging bucket per standard accounting practice.
+ * Fee Receivables — what the practice's CLIENTS owe the PRACTICE.
+ * Groups the firm's own unpaid fee invoices by aging bucket.
  * Uses fee_invoices table (CGST Act Section 31 — Tax Invoice).
  * All amounts in integer paise.
+ *
+ * ⚠️ THIS IS NOT A CLIENT'S CUSTOMER RECEIVABLES, and it was read as one. The
+ * page was titled "Receivables Aging" and the firm hub's Sales tile ("Overdue
+ * from customers", summed over `client_sales_invoices`) linked here — so a
+ * client whose customers owed it ₹19.9 crore showed ₹0 on the page the number
+ * opened (accounting-hub-2-05). The tile now opens the Sales worklist at
+ * `/accounting/invoices`; this page keeps its behaviour and says whose
+ * receivables it holds. The "Client" column is right as it stands: here the
+ * client IS the debtor.
  */
 
 import { useState, useEffect } from "react";
@@ -188,7 +197,7 @@ export default function ReceivablesAgingPage() {
     // Every field used to be wrapped in quotes WITHOUT doubling the ones
     // inside it, so a customer name or narration carrying a quote ended its
     // field early and every parser disagreed about where the row ended.
-    downloadCsv(`receivables-aging-${todayLocalISO()}.csv`,
+    downloadCsv(`fee-receivables-aging-${todayLocalISO()}.csv`,
                 toCsvRows([headers, ...csvRows]));
   }
 
@@ -206,8 +215,15 @@ export default function ReceivablesAgingPage() {
           <ChevronLeft className="w-4 h-4" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">Receivables Aging</h1>
-          <p className="text-sm text-ps-label mt-0.5">Outstanding invoices by age bucket</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Fee Receivables</h1>
+          <p className="text-sm text-ps-label mt-0.5">
+            What your clients owe the practice — your own unpaid fee invoices, by age.
+            For what a client&apos;s own customers owe it, open the{" "}
+            <Link href="/accounting/invoices" className="text-brand hover:underline">
+              Sales worklist
+            </Link>
+            .
+          </p>
         </div>
         {generated && (
           <Button variant="outline" size="sm" onClick={exportExcel} className="flex items-center gap-1">
@@ -271,7 +287,7 @@ export default function ReceivablesAgingPage() {
       {generated && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Invoice Aging Detail</CardTitle>
+            <CardTitle className="text-sm">Fee Invoice Aging Detail</CardTitle>
           </CardHeader>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -313,7 +329,7 @@ export default function ReceivablesAgingPage() {
                   </tr>
                 ))}
                 {rows.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-ps-hint text-sm">No outstanding invoices found.</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-ps-hint text-sm">No unpaid fee invoices found.</td></tr>
                 )}
               </tbody>
             </table>
@@ -324,7 +340,7 @@ export default function ReceivablesAgingPage() {
       {!generated && !loading && (
         <div className="bg-white rounded-xl border border-ps-border p-12 text-center">
           <RefreshCw className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-ps-hint">Select a client and click &quot;Generate Aging&quot; to see outstanding invoices</p>
+          <p className="text-sm text-ps-hint">Select a client and click &quot;Generate Aging&quot; to see the practice&apos;s unpaid fee invoices</p>
         </div>
       )}
     </div>

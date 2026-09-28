@@ -73,12 +73,36 @@ def _seed(db: FakeDB) -> None:
     # tables (migration 278), so the harness computes it from the components
     # rather than letting a test state it directly — which is also what makes
     # the zero-balance row genuinely filtered out by `.gt(column, 0)`.
-    row("client_sales_invoices", CLIENT_A, total_paise=118_000_00, paid_paise=0)
-    row("client_sales_invoices", CLIENT_A, total_paise=50_000_00, paid_paise=50_000_00)
-    row("client_sales_invoices", CLIENT_B, total_paise=2_000_00, paid_paise=0)
+    #
+    # `status` is NOT NULL DEFAULT 'draft' on both tables and `seed()` applies
+    # no defaults, so every row states one — a row left without it would be a
+    # DRAFT in Postgres and something else here.
+    row("client_sales_invoices", CLIENT_A, total_paise=118_000_00, paid_paise=0,
+        status="issued")
+    row("client_sales_invoices", CLIENT_A, total_paise=50_000_00, paid_paise=50_000_00,
+        status="paid")
+    row("client_sales_invoices", CLIENT_B, total_paise=2_000_00, paid_paise=0,
+        status="issued")
 
-    row("purchase_bills", CLIENT_A, net_payable_paise=45_000_00, paid_paise=0)
-    row("purchase_bills", CLIENT_A, net_payable_paise=10_000_00, paid_paise=10_000_00)
+    row("purchase_bills", CLIENT_A, net_payable_paise=45_000_00, paid_paise=0,
+        status="received")
+    row("purchase_bills", CLIENT_A, net_payable_paise=10_000_00, paid_paise=10_000_00,
+        status="paid")
+
+    # Documents NOBODY owes, each still carrying a balance in the generated
+    # column, which knows nothing about `status` or `deleted_at`
+    # (accounting-hub-1-02). Counted, they would add 7,20,725 + 71,036 +
+    # 9,000 to Purchases and 118 + 78,054 to Sales.
+    row("purchase_bills", CLIENT_A, net_payable_paise=7_20_725_35, paid_paise=0,
+        status="cancelled")
+    row("purchase_bills", CLIENT_A, net_payable_paise=71_036_00, paid_paise=0,
+        status="draft")
+    row("purchase_bills", CLIENT_A, net_payable_paise=9_000_00, paid_paise=0,
+        status="received", deleted_at="2026-09-01T00:00:00+00:00")
+    row("client_sales_invoices", CLIENT_A, total_paise=118_00, paid_paise=0,
+        status="cancelled")
+    row("client_sales_invoices", CLIENT_A, total_paise=78_054_64, paid_paise=0,
+        status="draft", deleted_at="2026-09-01T00:00:00+00:00")
 
     # TDS: deposited means a challan number, so the row carrying one is out.
     row("tds_deductions", CLIENT_A, tds_paise=10_000_00, challan_no=None)
@@ -146,6 +170,30 @@ def test_no_answerable_tile_comes_back_with_a_null_signal_at_client_scope(db):
 ])
 def test_a_money_tile_sums_what_is_open(db, tile_id, expected):
     assert _by_id(hub_service.hub(PARTNER))[tile_id]["signal"] == expected
+
+
+def test_a_cancelled_draft_or_deleted_document_is_owed_by_nobody(db):
+    """accounting-hub-1-02. The generated `outstanding_paise` still carries a
+    cancelled bill's face value, so the rule has to be a FILTER — the one AP
+    and AR ageing apply — or the tile reports lakhs nobody owes. The seed's
+    dead documents would each move the figure; none does."""
+    tiles = _by_id(hub_service.hub(PARTNER))
+    assert tiles["purchases"]["signal"] == 45_000_00
+    assert tiles["sales"]["signal"] == 118_000_00 + 2_000_00
+
+
+def test_the_tile_and_the_worklist_it_opens_agree(db, monkeypatch):
+    """A CA who clicks 7 and counts 5 stops trusting both. The money tiles'
+    figure and the sum of their worklist's rows are computed by two modules,
+    and over the same rows they must be one number — dead documents
+    included, which is exactly where they disagreed before."""
+    from services import hub_worklist_service
+
+    monkeypatch.setattr(hub_worklist_service, "_db", lambda: db)
+    tiles = _by_id(hub_service.hub(PARTNER))
+    for tile_id in ("sales", "purchases"):
+        rows = hub_worklist_service.worklist(PARTNER, tile_id)["rows"]
+        assert sum(r["signal"] for r in rows) == tiles[tile_id]["signal"], tile_id
 
 
 def test_a_money_tile_is_in_paise_not_rupees(db):

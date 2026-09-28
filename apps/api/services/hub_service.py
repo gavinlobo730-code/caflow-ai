@@ -70,6 +70,26 @@ _ITR_DONE = ("filed",)
 _COMPLIANCE_DONE = ("Filed", "Completed")
 _YEAR_END_DONE = ("locked",)
 
+# ── The two MONEY tiles ask a different question of their documents ─────────
+#
+# Not "which are unfinished" but "which are REAL": a document that was never
+# issued (a draft) or was withdrawn (cancelled) is owed by nobody, and a
+# soft-deleted row is one created by mistake. `outstanding_paise` is GENERATED
+# (migration 278) from the money columns alone and knows nothing about either,
+# so a cancelled ₹7 lakh bill kept its whole face value as "outstanding" and
+# the Purchases tile counted it (accounting-hub-1-02). These are the ageing
+# screens' own words — `vendor_statement_service._DEAD_BILL` and
+# `customer_statement_service._DEAD_INVOICE` — so the tile and the screen a CA
+# checks it against agree about which documents exist.
+#
+# NAMED AND EXCLUDED rather than listing the live ones, `_outstanding()`'s
+# rule turned round: a status added to either CHECK is almost always a new
+# LIVE state (a disputed bill is still owed), and it then joins the figure
+# rather than silently leaving it. `status` is NOT NULL on both tables, so the
+# SQL `NOT IN` cannot drop a row either. Migration 432 transcribes this and
+# `tests/test_the_firm_hub_tiles_land_somewhere.py` holds the transcription.
+_DEAD_DOCUMENT = ("draft", "cancelled")
+
 _ALL = {
     "journal_entries": ("draft", "posted", "void"),
     "payroll_runs": ("draft", "review", "finalized", "paid"),
@@ -79,6 +99,10 @@ _ALL = {
                            "Ready For Review", "Ready To File", "Filed",
                            "Completed", "Overdue"),
     "year_end_engagements": ("draft", "in_review", "approved", "locked"),
+    # Held so the `_pg` guard can prove `_DEAD_DOCUMENT` names real states of
+    # BOTH checks — a dead state spelled wrong would exclude nothing, silently.
+    "client_sales_invoices": ("draft", "issued", "partially_paid", "paid", "cancelled"),
+    "purchase_bills": ("draft", "received", "partially_paid", "paid", "cancelled"),
 }
 
 
@@ -132,7 +156,8 @@ def _count(table: str, firm_id: str, client_ids: Optional[list[str]],
 
 def _sum_paise(table: str, column: str, firm_id: str,
                client_ids: Optional[list[str]], *, gt_zero: bool = True,
-               extra_is_null: Optional[str] = None) -> int:
+               extra_is_null: Optional[str] = None,
+               live_documents_only: bool = False) -> int:
     """A total in paise.
 
     PostgREST has no SUM, so this reads the column for the rows that carry a
@@ -141,6 +166,11 @@ def _sum_paise(table: str, column: str, firm_id: str,
     a generated column precisely so the filter could move into the query — and
     it is bounded by `core.db_paging.fetch_all`'s page size through the same
     keyset rule every other reader uses.
+
+    `live_documents_only` is the sales and purchase document rule — not a
+    draft, not cancelled, not soft-deleted; see `_DEAD_DOCUMENT`. Both are
+    FILTERS, so the projection stays `id,<column>`: a tile reads the one column
+    it sums and nothing else.
     """
     from core.db_paging import fetch_all
 
@@ -154,6 +184,10 @@ def _sum_paise(table: str, column: str, firm_id: str,
             q = q.in_("client_id", client_ids)
         if extra_is_null:
             q = q.is_(extra_is_null, "null")
+        if live_documents_only:
+            # `.not_` is a PROPERTY on the builder, never a call — see
+            # tests/test_not_is_a_property_of_a_query_and_is_never_called.py.
+            q = q.is_("deleted_at", "null").not_.in_("status", list(_DEAD_DOCUMENT))
         return q.gt(column, 0) if gt_zero else q
 
     rows = fetch_all(one_page, label=f"hub:{table}.{column}")
@@ -221,10 +255,18 @@ def _signals(firm_id: str, scope: Optional[list[str]],
         "accounting": _safely("accounting", lambda: _count(
             "journal_entries", firm_id, scope,
             in_=("status", _outstanding("journal_entries", _JOURNAL_DONE)))),
+        # What the clients' CUSTOMERS owe them and what they owe their
+        # SUPPLIERS — over live documents only, the ageing screens' rule.
+        # ⚠️ Both questions say "Overdue" and both figures are everything
+        # still OUTSTANDING, due or not; whether to filter on `due_date` or
+        # reword the question is an open owner decision, deliberately not
+        # taken here.
         "sales": _safely("sales", lambda: _sum_paise(
-            "client_sales_invoices", "outstanding_paise", firm_id, scope)),
+            "client_sales_invoices", "outstanding_paise", firm_id, scope,
+            live_documents_only=True)),
         "purchases": _safely("purchases", lambda: _sum_paise(
-            "purchase_bills", "outstanding_paise", firm_id, scope)),
+            "purchase_bills", "outstanding_paise", firm_id, scope,
+            live_documents_only=True)),
         # Deducted and NOT YET DEPOSITED. `challan_no` is what a deposit
         # records, so its absence is the outstanding half — summing every
         # deduction would report a deductor who has paid everything over as

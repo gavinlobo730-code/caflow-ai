@@ -35,6 +35,18 @@ come to disagree about the number in between them, and a CA who clicks 7 and
 counts 5 stops trusting both. `tests/test_the_firm_hub_tiles_land_somewhere.py`
 holds the transcription against `services/hub_service`'s own vocabulary.
 
+── AND A SIXTH THAT HAD A DESTINATION, WHICH WAS THE WRONG ONE ──────────────
+
+`sales` was left out on the belief that `/accounting/receivables` already
+answered it. It did not (accounting-hub-2-05): that screen reads
+`fee_invoices` — what the clients owe the PRACTICE — while the tile sums
+`client_sales_invoices`, what the clients' CUSTOMERS owe THEM. A client whose
+customers owed it ₹19.9 crore showed ₹0 on the screen the tile's number sent
+the CA to. So Sales gets the same queue Purchases has, at
+`/accounting/invoices`, replacing the last `MovedToClientWorkspace` tombstone
+the way the fixed-asset worklist replaced the other; `/accounting/receivables`
+keeps its behaviour and now says whose receivables it holds (migration 432).
+
 ── FOUR OF THE FIVE, AND THE FIFTH IS REFUSED WITH ITS REASON ───────────────
 
 `inventory` gets no worklist. Its tile already carries
@@ -44,11 +56,11 @@ no firm-wide figure — so a worklist for it would be a list of client names wit
 a dash beside each, which is `/clients` with extra steps. A screen that cannot
 carry the figure it exists to rank by is not a worklist.
 
-The nine tiles that already HAVE a firm screen get no worklist either, and that
-is a scope decision rather than a judgement that one would be useless: `/gst`,
-`/tds`, `/deadlines` and the rest are real destinations, and giving each a
-second one is a navigation change nobody asked for. G3 is about the five with
-none.
+The eight tiles that already HAVE a real firm screen get no worklist either,
+and that is a scope decision rather than a judgement that one would be
+useless: `/gst`, `/tds`, `/deadlines` and the rest are real destinations, and
+giving each a second one is a navigation change nobody asked for. G3 is about
+the five with none, and Sales is here because its one was the wrong screen.
 """
 from __future__ import annotations
 
@@ -69,12 +81,13 @@ class Worklist:
 
     tile_id: str
     #: The static firm-level route. Under `/accounting/` deliberately: that is
-    #: where `/accounting/receivables` — the Sales tile's own firm href — has
-    #: always lived, and a static route costs NONE of D10's dynamic redirect
-    #: budget, which is the fact that made G3 cheap.
+    #: where the firm-level accounting screens have always lived, and a static
+    #: route costs NONE of D10's dynamic redirect budget, which is the fact that
+    #: made G3 cheap.
     href: str
     #: The column heading over the figure. Short, because the tile's own
-    #: `question` is the subtitle and repeating it in the column is noise.
+    #: `question` is the subtitle and repeating it in the column is noise. It
+    #: names what the figure IS — see the note on the Sales entry.
     column: str
     #: Which section of the client workspace a row opens — the tile's
     #: `client_section`, restated here only so this module can be read on its
@@ -104,6 +117,21 @@ WORKLISTS: tuple[Worklist, ...] = (
         href="/accounting/banking",
         column="Lines to pass",
         opens_section="bank",
+    ),
+    Worklist(
+        tile_id="sales",
+        # REPLACES the `MovedToClientWorkspace` tombstone at this path, the
+        # Sales half of the pair `fixed-assets` was the other half of — see the
+        # module docstring for why the tile no longer opens
+        # `/accounting/receivables`, which is the PRACTICE's fee receivables.
+        href="/accounting/invoices",
+        # ⚠️ "Outstanding", NOT "Overdue", although the tile's question says
+        # overdue: the figure is every live invoice with a balance, due or not,
+        # and a column heads a number. Purchases carries the same figure under
+        # "Overdue"; which of the two words the tiles should use — or whether
+        # they should filter on `due_date` — is an open owner decision.
+        column="Outstanding",
+        opens_section="sales",
     ),
     Worklist(
         tile_id="purchases",
@@ -153,9 +181,9 @@ def firm_href_for(tile_id: str) -> Optional[str]:
     """Where this tile's FIRM hub sends a CA, worklist or otherwise.
 
     Asked by nothing today — `Tile.firm_href` is still the one field the hub
-    reads, and the four worklists are written into it directly so the payload
+    reads, and the five worklists are written into it directly so the payload
     has one source. This exists so a caller wanting the worklist's own route
-    does not reach for `BY_TILE[...]` and get a KeyError on the eleven tiles
+    does not reach for `BY_TILE[...]` and get a KeyError on the ten tiles
     that have none.
     """
     w = BY_TILE.get(tile_id)

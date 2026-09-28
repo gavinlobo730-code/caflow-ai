@@ -17,7 +17,10 @@ const ADMIN_CARDS: {
   icon: typeof Users; notShared?: boolean;
 }[] = [
   { label: "Supplier Master", description: "Manage supplier TDS sections, credit limits and payment terms", href: "/accounting/suppliers", icon: Users },
-  { label: "Receivables Aging", description: "Outstanding invoices grouped by aging bucket", href: "/accounting/receivables", icon: Clock },
+  // The PRACTICE's fee invoices, not a client's customers — the Sales hub tile
+  // once linked here for those (accounting-hub-2-05); they are the Sales
+  // worklist at /accounting/invoices.
+  { label: "Fee Receivables", description: "What clients owe the practice — your own unpaid fee invoices, by age", href: "/accounting/receivables", icon: Clock },
   { label: "Loans & FD", description: "Loans, EMI schedules and FD investments with maturity & TDS flags", href: "/accounting/loans", icon: Landmark },
   // ACC-06 is closed. All three of these kept the CA's work in this browser's
   // localStorage; all three are on the database now — recurring journals on

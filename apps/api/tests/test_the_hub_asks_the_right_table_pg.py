@@ -43,6 +43,11 @@ SOURCE = {
     # One key, two tables — GSTR-1 and GSTR-3B carry the same four, and the
     # tile counts both. If they ever diverge this test is where it shows.
     "gst_returns": ("gstr1_returns", "status"),
+    # The two money tiles' documents. These are held so `_DEAD_DOCUMENT` is
+    # proven to name real states of both CHECKs — a dead state spelled wrong
+    # would exclude nothing and say nothing (migration 432).
+    "client_sales_invoices": ("client_sales_invoices", "status"),
+    "purchase_bills": ("purchase_bills", "status"),
 }
 
 
@@ -99,6 +104,9 @@ def test_every_column_the_hub_filters_on_exists(dsn):
         ("gstr3b_returns", "status"), ("bank_transactions", "entry_state"),
         ("journal_entries", "status"), ("client_sales_invoices", "outstanding_paise"),
         ("purchase_bills", "outstanding_paise"), ("tds_deductions", "tds_paise"),
+        # The live-document filter on both money tiles (migration 432).
+        ("client_sales_invoices", "status"), ("client_sales_invoices", "deleted_at"),
+        ("purchase_bills", "status"), ("purchase_bills", "deleted_at"),
         ("tds_deductions", "challan_no"), ("payroll_runs", "status"),
         ("itr_filings", "status"), ("fixed_assets", "depreciation_posted_through"),
         ("year_end_engagements", "status"), ("documents", "review_status"),
@@ -113,6 +121,16 @@ def test_every_column_the_hub_filters_on_exists(dsn):
         if r.stdout.strip() != "1":
             missing.append(f"{table}.{column}")
     assert not missing, f"the hub filters on columns that do not exist: {missing}"
+
+
+def test_the_dead_document_states_are_real_states_of_both_checks(dsn):
+    """`status NOT IN ('draft', 'cancelled')` with a misspelt state excludes
+    nothing and raises nothing — the cancelled bill is counted exactly as
+    before. So the dead states are asserted against each CHECK, not only
+    against the service's own copy of it."""
+    for table in ("client_sales_invoices", "purchase_bills"):
+        live = _allowed_values(dsn, table, "status")
+        assert set(svc._DEAD_DOCUMENT) <= live, (table, sorted(live))
 
 
 def test_this_guard_is_not_vacuous(dsn):

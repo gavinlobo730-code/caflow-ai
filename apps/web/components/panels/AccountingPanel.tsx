@@ -25,6 +25,7 @@ import {
   ShoppingCart,
   Building2,
   CalendarRange,
+  TrendingUp,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
 import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
@@ -102,7 +103,11 @@ const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
       // vendors.py list_vendors → rbac("client", "read").
       { label: "Supplier Master", href: "/accounting/suppliers", icon: Users,
         requires: ["client", "read"] },
-      { label: "Receivables Ageing", href: "/accounting/receivables", icon: Clock },
+      // The PRACTICE's own fee receivables (`fee_invoices`) — what clients owe
+      // the firm. Named so, because "Receivables Ageing" read as the clients'
+      // own customer receivables, and the Sales hub tile linked here for them
+      // (accounting-hub-2-05). Those are the Sales worklist below.
+      { label: "Fee Receivables", href: "/accounting/receivables", icon: Clock },
       { label: "Loans & FD", href: "/accounting/loans", icon: Landmark },
       // income_tax.py msme_section_43bh → rbac("income_tax", "compute").
       { label: "MSME §43B(h)", href: "/accounting/msme-tracker", icon: FileText,
@@ -125,13 +130,17 @@ const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
     // tombstone; these are their worklists — one row per client that needs
     // work, opening that client's own section. The REGISTER still lives only
     // in the client workspace, which is what the tombstones' retirement
-    // decision settled; this is the queue in front of it.
+    // decision settled; this is the queue in front of it. Sales joined on
+    // 27-09 (migration 432): its tile had linked to the practice's own FEE
+    // receivables, which is a different question.
     heading: "Across clients",
     items: [
       // hub.py get_hub_worklist → rbac("client", "read"), the same guard the
       // hub itself takes: a worklist is a breakdown of a figure that endpoint
       // already serves to this caller.
       { label: "Banking", href: "/accounting/banking", icon: LandmarkIcon,
+        requires: ["client", "read"] },
+      { label: "Sales", href: "/accounting/invoices", icon: TrendingUp,
         requires: ["client", "read"] },
       { label: "Purchases", href: "/accounting/purchases", icon: ShoppingCart,
         requires: ["client", "read"] },

@@ -1,9 +1,9 @@
 """Which clients need work on one hub tile — the fetch, and the client names.
 
 `domain/hub/worklist.py` is the authority for WHICH tiles have a firm-level
-worklist and what a row means; `public.hub_client_worklist` (migration 416) is
-the only place that knows which table answers it. This module is the fetch, the
-scope resolution and the join to a client's name.
+worklist and what a row means; `public.hub_client_worklist` (migration 416,
+last redefined by 432) is the only place that knows which table answers it.
+This module is the fetch, the scope resolution and the join to a client's name.
 
 ── TWO PATHS, ONE RULE ──────────────────────────────────────────────────────
 
@@ -48,23 +48,39 @@ from core.supabase_client import get_service_supabase
 from domain.banking import entry as bank_entry
 from domain.hub import worklist as worklist_rules
 from domain.hub.tiles import Unit
+from services.hub_service import _DEAD_DOCUMENT
 
 logger = logging.getLogger("caflow.hub.worklist")
 
 #: What each tile's outstanding population is, for the Python twin ONLY. The
 #: SQL function transcribes the same predicates and
 #: `tests/test_the_firm_hub_tiles_land_somewhere.py` holds all three —
-#: `hub_service._signals`, this, and migration 416 — to one vocabulary.
+#: `hub_service._signals`, this, and the last migration defining
+#: `hub_client_worklist` — to one vocabulary.
+#:
+#: The two MONEY tiles count a live document only — not a draft, not
+#: cancelled, not soft-deleted — because `outstanding_paise` is generated from
+#: the money columns and knows nothing about either (migration 432). The dead
+#: states are `hub_service._DEAD_DOCUMENT`, the one vocabulary, never restated.
 _POPULATION: dict[str, dict] = {
     "banking": {
         "table": "bank_transactions",
         "column": None,                       # a COUNT
         "in_": ("entry_state", list(bank_entry.OPEN_STATES)),
     },
+    "sales": {
+        "table": "client_sales_invoices",
+        "column": "outstanding_paise",        # a SUM of what is > 0
+        "gt": ("outstanding_paise", 0),
+        "not_in": ("status", list(_DEAD_DOCUMENT)),
+        "is_null": "deleted_at",
+    },
     "purchases": {
         "table": "purchase_bills",
         "column": "outstanding_paise",        # a SUM of what is > 0
         "gt": ("outstanding_paise", 0),
+        "not_in": ("status", list(_DEAD_DOCUMENT)),
+        "is_null": "deleted_at",
     },
     "fixed_assets": {
         "table": "fixed_assets",
@@ -173,12 +189,12 @@ def _python_twin(db, firm_id: str, tile_id: str,
 
     def one_page():
         # ⚠️ THE TABLE AND THE PROJECTION ARE WRITTEN OUT PER TILE RATHER THAN
-        # TAKEN FROM `_POPULATION`, and the four near-identical lines are the
+        # TAKEN FROM `_POPULATION`, and the five near-identical lines are the
         # price of something real: `tests/test_backend_columns_exist_pg.py`
         # parses every `.select()` in `apps/api` as a STRING, so a projection
         # reached through a name — `spec["table"]`, an f-string — is invisible
         # to it and counts against the "unreadable" budget instead. Of all the
-        # reads to leave unchecked, four feeding a queue a CA works from is a
+        # reads to leave unchecked, five feeding a queue a CA works from is a
         # poor choice, and the budget's own message invites a raise where the
         # coverage is recoverable. It is recoverable, so this is the fix.
         # `domain/tally/party_identifiers`'s note records the same trade.
@@ -186,6 +202,8 @@ def _python_twin(db, firm_id: str, tile_id: str,
         # `id` is the keyset cursor, so it has to be in every projection.
         if tile_id == "banking":
             q = db.table("bank_transactions").select("id,client_id,entry_state")
+        elif tile_id == "sales":
+            q = db.table("client_sales_invoices").select("id,client_id,outstanding_paise")
         elif tile_id == "purchases":
             q = db.table("purchase_bills").select("id,client_id,outstanding_paise")
         elif tile_id == "fixed_assets":
@@ -194,13 +212,19 @@ def _python_twin(db, firm_id: str, tile_id: str,
             q = db.table("year_end_engagements").select("id,client_id,status")
 
         # The PREDICATES still come from `_POPULATION`, which is what the
-        # parity guard holds against migration 416 — only the projection is
+        # parity guard holds against the SQL function — only the projection is
         # spelled out, because only the projection is what that scan reads.
+        # `status` and `deleted_at` are FILTERS on the money tiles, so they
+        # need no place in the projection: PostgREST filters on the whole row.
         q = q.eq("firm_id", firm_id)
         if scope is not None:
             q = q.in_("client_id", scope)
         if spec.get("in_"):
             q = q.in_(spec["in_"][0], spec["in_"][1])
+        if spec.get("not_in"):
+            # `.not_` is a PROPERTY on the builder, never a call — see
+            # tests/test_not_is_a_property_of_a_query_and_is_never_called.py.
+            q = q.not_.in_(spec["not_in"][0], spec["not_in"][1])
         if spec.get("gt"):
             q = q.gt(spec["gt"][0], spec["gt"][1])
         if spec.get("is_null"):

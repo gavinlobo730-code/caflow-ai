@@ -1,7 +1,7 @@
 """A PostgREST double just wide enough to RUN `hub_worklist_service`.
 
 Not a general fake. It supports exactly the calls that module makes — the
-`_python_twin` chain (`select`/`eq`/`in_`/`gt`/`is_`, then `fetch_all`'s
+`_python_twin` chain (`select`/`eq`/`in_`/`not_.in_`/`gt`/`is_`, then `fetch_all`'s
 `gt`/`order`/`limit`/`execute`), the bounded name lookup and the client COUNT —
 and nothing else, so it cannot quietly accept a filter the real client would
 refuse.
@@ -43,21 +43,42 @@ class _Query:
         self._project = project
         self._limit: Optional[int] = None
         self._order: Optional[str] = None
+        self._negate = False
 
     # ── filters ─────────────────────────────────────────────────────────────
+    @property
+    def not_(self) -> "_Query":
+        """A PROPERTY, as postgrest's is — calling it fails here as it would in
+        production. Only `.not_.in_` is supported: that is the one negated
+        filter the service asks, and a negation this double silently ignored
+        would return every row, which is the dangerous direction."""
+        q = self._with(self._rows)
+        q._negate = True
+        return q
+
     def eq(self, col: str, val: Any) -> "_Query":
+        assert not self._negate, "the double only knows .not_.in_"
         return self._with([r for r in self._rows if r.get(col) == val])
 
     def in_(self, col: str, vals: list) -> "_Query":
         wanted = set(vals)
+        if self._negate:
+            # PostgREST's `not.in` is SQL's `NOT (col IN (...))`, under which a
+            # NULL is neither in nor out — so a row with no value is dropped,
+            # not kept. Every column this is asked of is NOT NULL today; the
+            # rule is written for the day one is not.
+            return self._with([r for r in self._rows
+                               if r.get(col) is not None and r.get(col) not in wanted])
         return self._with([r for r in self._rows if r.get(col) in wanted])
 
     def gt(self, col: str, val: Any) -> "_Query":
+        assert not self._negate, "the double only knows .not_.in_"
         return self._with([r for r in self._rows
                            if r.get(col) is not None and _cmp(r[col], val) > 0])
 
     def is_(self, col: str, what: str) -> "_Query":
         assert what == "null", f"the double only knows is_(col, 'null'), got {what!r}"
+        assert not self._negate, "the double only knows .not_.in_"
         return self._with([r for r in self._rows if r.get(col) is None])
 
     # ── paging ──────────────────────────────────────────────────────────────

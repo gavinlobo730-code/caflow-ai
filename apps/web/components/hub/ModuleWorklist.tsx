@@ -26,10 +26,11 @@ import { formatPaise } from "@/lib/money/format";
  * register. Every row opens that client's own section, which is the model the
  * retirement decision set, reached in one click.
  *
- * ONE COMPONENT, FOUR ROUTES. `/accounting/banking`, `/accounting/purchases`,
- * `/accounting/fixed-assets` and `/accounting/year-end` are four thin pages
- * over this, because four copies of a table would be four places for the
- * figure's meaning to drift from the tile it breaks down.
+ * ONE COMPONENT, FIVE ROUTES. `/accounting/banking`, `/accounting/invoices`
+ * (Sales), `/accounting/purchases`, `/accounting/fixed-assets` and
+ * `/accounting/year-end` are five thin pages over this, because five copies of
+ * a table would be five places for the figure's meaning to drift from the tile
+ * it breaks down.
  *
  * NOTHING IS COMPUTED HERE. The figure, its unit, the column heading and the
  * question all come from `GET /api/hub/worklist`, which reads
