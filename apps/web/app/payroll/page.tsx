@@ -10,7 +10,7 @@ import Link from "next/link";
 import {
   X, AlertCircle, Users,
   Download, CheckCircle, Clock, AlertTriangle, BarChart2,
-  Receipt, CalendarDays, ArrowRight,
+  Receipt, CalendarDays, ArrowRight, CalendarCheck, ShieldCheck,
 } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
@@ -269,8 +269,8 @@ function monthState(c: ClientMonthState): {
            needsWork: true };
 }
 
-function MonthQueueTab({ month, onMonthChange }: {
-  month: string; onMonthChange: (m: string) => void;
+function MonthQueueTab({ month, onMonthChange, clients }: {
+  month: string; onMonthChange: (m: string) => void; clients: Client[];
 }) {
   const [rows, setRows] = useState<ClientMonthState[]>([]);
   const [loading, setLoading] = useState(true);
@@ -300,96 +300,144 @@ function MonthQueueTab({ month, onMonthChange }: {
   const outstanding = rows.filter(r => monthState(r).needsWork).length;
   const running = rows.filter(r => r.payroll_enabled).length;
 
+  // A client with NO client_payroll_settings row and NO run this month is
+  // absent from `rows` entirely (client-states builds its set as
+  // `enabled | runs`) — so a brand-new payroll client never appeared on this
+  // queue at all, with nothing here hinting they exist (sweep-payroll-hub-06).
+  // `clients` is the firm's full, assignment-scoped list (the same one the
+  // Statutory Returns tab below already fetches), so the gap is just the
+  // clients this queue's own rows do not name.
+  const knownIds = new Set(rows.map(r => r.client_id));
+  const notStarted = !loading && !error
+    ? clients.filter(c => !knownIds.has(c.id))
+    : [];
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-row items-start justify-between flex-wrap gap-3">
-          <div>
-            <CardTitle className="text-base">The payroll month</CardTitle>
-            <p className="text-xs text-ps-label mt-0.5">
-              Every client you run payroll for, and what each still needs. Open a
-              client to do the work.
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-row items-start justify-between flex-wrap gap-3">
+            <div>
+              <CardTitle className="text-base">The payroll month</CardTitle>
+              <p className="text-xs text-ps-label mt-0.5">
+                Every client you run payroll for, and what each still needs. Open a
+                client to do the work.
+              </p>
+            </div>
+            <input
+              type="month" value={month} onChange={e => onMonthChange(e.target.value)}
+              className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-brand"
+            />
+          </div>
+          {!loading && !error && rows.length > 0 && (
+            <p className="text-xs text-ps-label mt-3">
+              {outstanding === 0
+                ? `All ${running} payroll client(s) are done for this month.`
+                : `${outstanding} of ${running} payroll client(s) still need work.`}
             </p>
-          </div>
-          <input
-            type="month" value={month} onChange={e => onMonthChange(e.target.value)}
-            className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-brand"
-          />
-        </div>
-        {!loading && !error && rows.length > 0 && (
-          <p className="text-xs text-ps-label mt-3">
-            {outstanding === 0
-              ? `All ${running} payroll client(s) are done for this month.`
-              : `${outstanding} of ${running} payroll client(s) still need work.`}
-          </p>
-        )}
-      </CardHeader>
-      <CardContent className="p-0">
-        {loading ? (
-          <p className="text-center text-ps-hint py-12 text-sm">Loading the month…</p>
-        ) : error ? (
-          <div className="p-8 text-center">
-            <p className="text-sm text-red-600 font-medium mb-2">{error}</p>
-            <Button size="sm" variant="outline" onClick={load}>Retry</Button>
-          </div>
-        ) : rows.length === 0 ? (
-          <p className="text-center text-ps-hint py-12 text-sm">
-            No client has payroll switched on. A Partner turns it on from a
-            client&apos;s Payroll page (Switch on, under the Payroll heading).
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-xs font-medium text-ps-label uppercase tracking-wide bg-ps-bg">
-                  <th className="text-left py-3 px-4">Client</th>
-                  <th className="text-left py-3 px-4">State</th>
-                  <th className="text-right py-3 px-4">Employees</th>
-                  <th className="text-right py-3 px-4">Net pay</th>
-                  <th className="text-left py-3 px-4">Inputs due</th>
-                  <th className="py-3 px-4"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(c => {
-                  const st = monthState(c);
-                  return (
-                    <tr key={c.client_id} className="border-b hover:bg-ps-bg">
+          )}
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <p className="text-center text-ps-hint py-12 text-sm">Loading the month…</p>
+          ) : error ? (
+            <div className="p-8 text-center">
+              <p className="text-sm text-red-600 font-medium mb-2">{error}</p>
+              <Button size="sm" variant="outline" onClick={load}>Retry</Button>
+            </div>
+          ) : rows.length === 0 ? (
+            <p className="text-center text-ps-hint py-12 text-sm">
+              No client has payroll switched on. A Partner turns it on from a
+              client&apos;s Payroll page (Switch on, under the Payroll heading).
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs font-medium text-ps-label uppercase tracking-wide bg-ps-bg">
+                    <th className="text-left py-3 px-4">Client</th>
+                    <th className="text-left py-3 px-4">State</th>
+                    <th className="text-right py-3 px-4">Employees</th>
+                    <th className="text-right py-3 px-4">Net pay</th>
+                    <th className="text-left py-3 px-4">Inputs due</th>
+                    <th className="py-3 px-4"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(c => {
+                    const st = monthState(c);
+                    return (
+                      <tr key={c.client_id} className="border-b hover:bg-ps-bg">
+                        <td className="py-3 px-4 font-medium text-ps-ink">{c.client_name}</td>
+                        <td className="py-3 px-4">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs ${st.className}`} title={st.note}>
+                            {st.label}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-ps-label">
+                          {c.headcount ?? <span className="text-ps-disabled">—</span>}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono">
+                          {c.total_net_paise != null
+                            ? fmtRs(c.total_net_paise)
+                            : <span className="text-ps-disabled">—</span>}
+                        </td>
+                        <td className="py-3 px-4 text-ps-label text-xs">
+                          {c.inputs_due_day ? `Day ${c.inputs_due_day}` : "—"}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {/* The link IS the point: this screen finds the work, the
+                              client workspace does it. */}
+                          <Link href={`/clients/${c.client_id}/payroll`}>
+                            <Button size="sm" variant="outline" className="flex items-center gap-1.5">
+                              Open<ArrowRight size={13} />
+                            </Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {notStarted.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Not yet started</CardTitle>
+            <p className="text-xs text-ps-label mt-0.5">
+              Payroll has never been switched on for these clients, so they
+              carry no settings and no run and the queue above has nothing to
+              show for them. Open a client to switch it on from its own
+              Payroll page.
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <tbody>
+                  {notStarted.map(c => (
+                    <tr key={c.id} className="border-b last:border-0 hover:bg-ps-bg">
                       <td className="py-3 px-4 font-medium text-ps-ink">{c.client_name}</td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs ${st.className}`} title={st.note}>
-                          {st.label}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono text-ps-label">
-                        {c.headcount ?? <span className="text-ps-disabled">—</span>}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono">
-                        {c.total_net_paise != null
-                          ? fmtRs(c.total_net_paise)
-                          : <span className="text-ps-disabled">—</span>}
-                      </td>
-                      <td className="py-3 px-4 text-ps-label text-xs">
-                        {c.inputs_due_day ? `Day ${c.inputs_due_day}` : "—"}
-                      </td>
                       <td className="py-3 px-4 text-right">
-                        {/* The link IS the point: this screen finds the work, the
-                            client workspace does it. */}
-                        <Link href={`/clients/${c.client_id}/payroll`}>
+                        <Link href={`/clients/${c.id}/payroll`}>
                           <Button size="sm" variant="outline" className="flex items-center gap-1.5">
-                            Open<ArrowRight size={13} />
+                            Switch on<ArrowRight size={13} />
                           </Button>
                         </Link>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 
@@ -993,7 +1041,21 @@ export default function PayrollPage() {
             <h1 className="text-2xl font-bold text-ps-ink">Payroll</h1>
             <p className="text-sm text-ps-label mt-0.5">IT Act Section 192 &middot; EPF Act &middot; ESI Act</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* These five match the sidebar's "This month" / "Roster" /
+                "Statutory" groups (components/panels/PayrollPanel.tsx) —
+                the header used to show only three of them, which looked
+                arbitrary next to the fuller rail. */}
+            <Link href="/payroll/attendance">
+              <Button variant="outline" className="flex items-center gap-1.5">
+                <CalendarCheck size={15} />Attendance
+              </Button>
+            </Link>
+            <Link href="/payroll/declarations">
+              <Button variant="outline" className="flex items-center gap-1.5">
+                <Receipt size={15} />Declarations
+              </Button>
+            </Link>
             {/* IT Act §192 / Rule 26C — what each employee declared, and what
                 their proofs support. Its own page rather than a tab: it is a
                 per-client, per-financial-year review, not part of a run. */}
@@ -1002,9 +1064,9 @@ export default function PayrollPage() {
                 <Users size={15} />People
               </Button>
             </Link>
-            <Link href="/payroll/declarations">
+            <Link href="/payroll/statutory">
               <Button variant="outline" className="flex items-center gap-1.5">
-                <Receipt size={15} />Declarations
+                <ShieldCheck size={15} />Deposits &amp; Filings
               </Button>
             </Link>
             <Link href="/payroll/reports">
@@ -1030,7 +1092,7 @@ export default function PayrollPage() {
 
           {/* MONTH TAB — the queue, and the way into the client workspace. */}
           <TabsContent value="month">
-            <MonthQueueTab month={queueMonth} onMonthChange={setQueueMonth} />
+            <MonthQueueTab month={queueMonth} onMonthChange={setQueueMonth} clients={clients} />
           </TabsContent>
 
           {/* MONTHLY RUN TAB */}
