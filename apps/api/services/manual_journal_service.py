@@ -215,7 +215,8 @@ class ManualJournalService:
                 .select("id, client_id, entry_date, reference_no, narration, entry_type, "
                         "is_posted, is_reversed, source_type, created_at, "
                         "lines:journal_lines(id, account_id, debit_paise, credit_paise, "
-                        "narration, line_order, created_at)")
+                        "narration, line_order, created_at, "
+                        "account:chart_of_accounts(account_name, account_code))")
                 .eq("id", entry_id).eq("firm_id", firm_id)
                 .is_("deleted_at", None).limit(1).execute().data) or []
         if not rows:
@@ -227,6 +228,21 @@ class ManualJournalService:
         # before credits" as an ORDER BY (no expression ordering, no boolean
         # column), so the sort happens here, in the one rule both sides share.
         lines = line_order.in_display_order(entry.get("lines") or [])
+        # The account is embedded as a nested object (one query, not a second
+        # round trip) — flattened here so the response stays the same flat line
+        # shape every other field already has, rather than a screen that reads
+        # `line.account_name` having to know one field is nested and the rest
+        # are not. `account_id` carries a NOT NULL FK to chart_of_accounts, so
+        # the embed is always present; `.pop(..., None) or {}` still renders
+        # the line with both names absent rather than raising if it ever is not
+        # (apex-sales-purchases-01 — this is what let the six document-view
+        # drawers' journal drill-through show an account name instead of a raw
+        # account_id, once they read this endpoint instead of the mock-backed
+        # journal LIST route).
+        for ln in lines:
+            acc = ln.pop("account", None) or {}
+            ln["account_name"] = acc.get("account_name")
+            ln["account_code"] = acc.get("account_code")
         entry["lines"] = lines
         entry["total_debit_paise"] = sum(int(l.get("debit_paise") or 0) for l in lines)
         entry["total_credit_paise"] = sum(int(l.get("credit_paise") or 0) for l in lines)

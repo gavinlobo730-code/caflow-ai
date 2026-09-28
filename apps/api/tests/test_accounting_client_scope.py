@@ -4,9 +4,13 @@ Entries, Ledger, Trial Balance, P&L, Balance Sheet.
 
 chart_of_accounts.client_id is NULLABLE (migration 003: NULL = firm-level
 template); journal_entries.client_id is NOT NULL (every journal belongs to
-exactly one client). list_journal_entries/create_journal_entry/
-post_opening_balances_endpoint/list_journals_queue took client_id from the
-query/body and never checked it. update_account and post_journal_entry (the
+exactly one client). create_journal_entry/post_opening_balances_endpoint/
+list_journals_queue took client_id from the query/body and never checked it.
+(list_journal_entries — GET /journal, a date-windowed list — had the same gap
+and is no longer here to test: it read MOCK_JOURNAL_ENTRIES only in every
+deployment and was retired, apex-sales-purchases-01, once its one real
+caller — the six document-view drawers' journal drill-through — was moved
+onto GET /journal/{entry_id} instead.) update_account and post_journal_entry (the
 row-addressed PATCH /journal/{entry_id}/post, backed by the legacy in-memory
 engine that is never Supabase-backed regardless of SUPABASE_URL — see the
 module note above create_journal_entry) had NO check at all, not even
@@ -84,24 +88,6 @@ def _account(client_id, **extra):
     })
 
 
-def _entry(entry_id, client_id, firm_id=FIRM, status="posted"):
-    row = {
-        "id": entry_id, "client_id": client_id, "firm_id": firm_id,
-        "entry_date": "2025-04-01", "reference_no": None, "narration": "test",
-        "entry_type": "Journal", "status": status,
-        "created_by": "x", "created_at": "2025-04-01T00:00:00",
-        "lines": [
-            {"id": f"{entry_id}-l1", "account_id": "acc-001", "account_name": "x",
-             "debit_paise": 100, "credit_paise": 0, "narration": ""},
-            {"id": f"{entry_id}-l2", "account_id": "acc-002", "account_name": "x",
-             "debit_paise": 0, "credit_paise": 100, "narration": ""},
-        ],
-    }
-    acct_svc.MOCK_JOURNAL_ENTRIES.append(row)
-    acct_svc.JOURNAL_INDEX[entry_id] = row
-    return row
-
-
 def _journal_in(client_id, **overrides):
     body = {
         "client_id": client_id, "entry_date": "2025-04-01",
@@ -151,28 +137,14 @@ def test_missing_and_hidden_account_errors_match(deny):
     assert missing.value.detail == hidden.value.detail == "Account not found."
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# list_journal_entries — optional client_id query param, else firm-wide
-# ══════════════════════════════════════════════════════════════════════════
-
-def test_listing_journal_entries_with_a_hidden_client_id_is_refused(deny):
-    with pytest.raises(HTTPException) as exc:
-        acct.list_journal_entries(client_id=THEIRS, start_date=None, end_date=None, current_user=EXEC_USER)
-    assert exc.value.status_code == 404
-
-
-def test_listing_journal_entries_with_an_own_client_id_is_allowed(deny):
-    _entry("JE-MINE", MINE)
-    resp = acct.list_journal_entries(client_id=MINE, start_date=None, end_date=None, current_user=EXEC_USER)
-    assert [e["id"] for e in resp["data"]] == ["JE-MINE"]
-
-
-def test_listing_journal_entries_without_a_client_id_narrows_to_assigned_clients(deny):
-    _entry("JE-MINE", MINE)
-    _entry("JE-THEIRS", THEIRS)
-    resp = acct.list_journal_entries(client_id=None, start_date=None, end_date=None, current_user=EXEC_USER)
-    ids = {e["id"] for e in resp["data"]}
-    assert ids == {"JE-MINE"}
+# list_journal_entries (GET /journal, a date-windowed list) was tested here —
+# refused-if-hidden, allowed-if-own, narrowed-if-omitted, the same shape as
+# create_journal_entry below. It is retired (apex-sales-purchases-01): it
+# answered from MOCK_JOURNAL_ENTRIES only, in every deployment, never the real
+# database, and its one real caller — the six document-view drawers' journal
+# drill-through — now calls GET /journal/{entry_id} with the document's own
+# journal_entry_id instead of searching a date window. See
+# routers/accounting.py's comment where the route used to be.
 
 
 # ══════════════════════════════════════════════════════════════════════════

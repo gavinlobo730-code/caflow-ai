@@ -19,6 +19,11 @@ from core.exceptions import (NotFoundError, ValidationError, postgres_message,
                              document_failure_detail)
 from core.observability import capture_posting_failure, capture_soft_failure
 from core.permissions import rbac
+# filter_by_client is not called by anything below any more (its one call site
+# was the retired GET /journal list route, apex-sales-purchases-01) but stays
+# imported: tests/test_accounting_client_scope.py's shared `deny` fixture
+# monkeypatches `acct.filter_by_client` for the whole file, and
+# monkeypatch.setattr raises if the attribute is not already there.
 from core.authz import assert_client_access, can_access_client, filter_by_client, effective_client_ids
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -308,26 +313,27 @@ def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = 
     return api_response(True, res.data[0])
 
 
-@router.get("/journal")
-def list_journal_entries(
-    client_id: Optional[str] = Query(None),
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("accounting", "read")),
-):
-    if client_id:
-        assert_client_access(current_user, client_id)
-    entries = accounting_service.list_journal_entries(
-        client_id=client_id,
-        start_date=start_date,
-        end_date=end_date,
-        firm_id=current_user["firm_id"],
-    )
-    # journal_entries.client_id is NOT NULL (migration 003) — every row names a
-    # client, so an omitted client_id must be narrowed to the caller's own
-    # assigned book rather than returned firm-wide (the tally_migration.py
-    # list_jobs shape).
-    return api_response(True, filter_by_client(current_user, entries))
+# GET /journal (a date-windowed LIST across every entry) is RETIRED
+# (apex-sales-purchases-01). It answered from `accounting_service.
+# list_journal_entries`, which reads MOCK_JOURNAL_ENTRIES only and never the
+# real database, in every deployment — so six document-view drawers'
+# journal-drill-through (Sales Invoice, Purchase Bill, Debit Note, Purchase
+# Credit Note, Sales Credit Note, Sales Debit Note) searched a result that was
+# always empty and rendered "line detail unavailable here" for a posting that,
+# read the right way (GET /journal/{entry_id} below), was right there. Those
+# six now call that endpoint directly with the document's own
+# `journal_entry_id` — no list, no date window, no search. Nothing else in
+# `apps/web` called this route (the Journal tab reads `journal_entries`
+# straight over PostgREST, and `lib/api/index.ts`'s own `accounting.journal()`
+# helper had no caller either — deleted alongside this).
+#
+# The underlying domain function is NOT deleted: `services/intelligence_
+# service.compute_journal_suggestions` (GET /api/intelligence/journal-
+# suggestions) still calls `accounting_service.list_journal_entries` directly
+# in Python, and removing it would break that endpoint outright. That endpoint
+# carries the identical defect — it too never sees a posted database entry —
+# but that is a separate, unfixed finding and out of scope here; fixing it
+# needs its own date-windowed, DB-backed read and is not a one-line change.
 
 
 @router.post("/journal")
