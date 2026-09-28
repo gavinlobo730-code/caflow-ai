@@ -80,6 +80,11 @@ export const SCREENS: Screen[] = [
 
   // ── Clients and relationships ─────────────────────────────────────────────
   firm("/clients", "Clients", "Clients", ["client list", "all clients"]),
+  // Moved from /onboarding/checklist (sweep-auth-and-public-05) — it tracks a
+  // CLIENT's own onboarding and shared no relation with the firm signup
+  // wizard at /onboarding beyond a path prefix. See ClientsPanel.tsx.
+  firm("/clients/onboarding", "Client onboarding", "Clients",
+       ["onboarding checklist", "10-step checklist", "go live"]),
   firm("/clients/documents", "Client documents", "Clients", ["client files"]),
   firm("/pipeline", "Pipeline", "Clients", ["leads", "prospects", "sales pipeline"]),
   firm("/relationships", "Relationships", "Clients", ["group", "related parties"]),
@@ -187,7 +192,7 @@ export const SCREENS: Screen[] = [
   firm("/practice/benchmark", "Client benchmark", "Practice",
        ["effective tax rate", "ITC to purchases", "GST to turnover",
         "compare clients", "where does this client sit", "peer", "ratios"]),
-  firm("/billing", "Billing", "Practice", ["fees", "client invoices"]),
+  firm("/billing", "Fee Billing", "Practice", ["fees", "client invoices"]),
   firm("/team", "Team", "Practice", ["staff", "users", "permissions"]),
   firm("/team/assignments", "Client assignments", "Practice", ["who handles which client"]),
   firm("/team/login-history", "Login history", "Practice", ["sign ins", "access log"]),
@@ -223,8 +228,9 @@ export const SCREENS: Screen[] = [
   firm("/settings/treaty-rates", "DTAA treaty rates", "Settings", ["dtaa", "treaty", "90(2)", "trc"]),
 
   // ── Onboarding, migration, platform ───────────────────────────────────────
+  // The client-onboarding checklist itself is filed under Clients now — see
+  // "/clients/onboarding" above. This is only the firm SIGNUP wizard.
   firm("/onboarding", "Onboarding", "Setup", ["setup", "get started"]),
-  firm("/onboarding/checklist", "Onboarding checklist", "Setup", ["setup steps"]),
   firm("/migration", "Tally migration", "Setup", ["import from tally", "migrate"]),
   firm("/platform", "Platform admin", "Setup", ["superadmin", "firms"]),
 
@@ -297,6 +303,9 @@ export const UNLISTED: Record<string, string> = {
   "/portal/dashboard": "the client's own screen, not staff navigation",
   "/portal/employee": "the EMPLOYEE portal — a different principal entirely",
   "/portal/employee/activate": "reached from an invitation link",
+  "/onboarding/checklist":
+    "a pure redirect to /clients/onboarding/ (sweep-auth-and-public-05) — kept " +
+    "for old bookmarks; naming it would give ONE destination two palette entries",
   "/clients/[id]":
     "a pure redirect to /clients/:id/overview/ — naming it would give ONE\n     destination two palette entries, and \"Overview\" is the one a CA means",
   "/health/[client_id]": "a RECORD, which is what entity search already finds",

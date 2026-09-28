@@ -276,6 +276,25 @@ export default function SalesPage() {
     setTab(target);
   }
 
+  // A manual tab click, unlike navigateTo above, never touched the URL, so a
+  // refresh always landed back on the default tab even though the effect
+  // above already restores ?tab= on load. Same window.history.replaceState
+  // pattern as navigateTo — this page is a static export, so a real
+  // navigation (router.push) would be a full reload rather than a state
+  // change, and this only needs the address bar to agree with the screen.
+  // "invoices" is the initial state (the tab a bare URL lands on), so it's
+  // left off the URL rather than written as ?tab=invoices — the mount effect
+  // above already falls back to it when no (or an unrecognised) tab param
+  // is present.
+  function selectTab(target: SalesTab) {
+    const p = new URLSearchParams(window.location.search);
+    if (target === "invoices") p.delete("tab");
+    else p.set("tab", target);
+    const qs = p.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+    setTab(target);
+  }
+
   if (!clientId || clientId === "_placeholder") return <LoadingSkeleton />;
 
   return (
@@ -286,7 +305,7 @@ export default function SalesPage() {
           {TABS.map((t) => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => selectTab(t.id)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
                 tab === t.id
                   ? "bg-white text-ps-ink shadow-sm"

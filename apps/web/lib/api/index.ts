@@ -2499,9 +2499,32 @@ async function fetchWithTimeout(path: string, options: RequestInit | undefined, 
   }
 }
 
+// getSession() has no timeout of its own — nothing bounds
+// `await this.initializePromise` inside auth-js — so a stalled auth client
+// (lock contention across many concurrent tabs on one session is the
+// observed case) left every call to request() awaiting forever before it
+// ever reached fetchWithTimeout's own 45s budget: no request issued, no
+// error thrown, and the caller's try/finally never ran because nothing had
+// settled. Racing it against a bounded wait means this always resolves or
+// rejects with a readable error.
+const SESSION_TIMEOUT_MS = 10_000;
+
+async function sessionTokenWithTimeout(): Promise<string | undefined> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(
+      "Could not verify your session — please retry.")), SESSION_TIMEOUT_MS);
+  });
+  try {
+    const { data: { session } } = await Promise.race([supabase.auth.getSession(), timeout]);
+    return session?.access_token;
+  } finally {
+    clearTimeout(timeoutId!);
+  }
+}
+
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
+  const token = await sessionTokenWithTimeout();
 
   let res: Response;
   try {

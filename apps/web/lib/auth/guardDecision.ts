@@ -69,3 +69,55 @@ export function roleGuardDecision(state: RoleGuardState): RoleGuardDecision {
   if (state.loading || state.roleLoading) return "wait";
   return state.permitted ? "allow" : "deny";
 }
+
+// ── /signup ──────────────────────────────────────────────────────────────────
+//
+// AuthGuard already bounces a fully authenticated /login visitor to "/" (the
+// `mfaPending === false && onLogin` branch in the effect). /signup had no
+// mirror: it is a PUBLIC_PREFIXES entry with no session check of its own, so
+// a signed-in Partner with an existing firm got the live "Create your firm"
+// form and could fire signInWithOtp while already onboarded.
+//
+// Same rule as the login bounce, with one extra term: a firm-less session —
+// mid-signup, before the firm bootstrap has run — is left alone, since
+// /signup is where that person finishes.
+
+export interface SignupBounceState {
+  hasSession: boolean;
+  mfaPending: MfaPending;
+  hasFirm: boolean | null;
+  onSignup: boolean;
+}
+
+/** Whether AuthGuard should replace the URL with "/" from /signup. */
+export function shouldBounceFromSignup(state: SignupBounceState): boolean {
+  const { hasSession, mfaPending, hasFirm, onSignup } = state;
+  return hasSession && onSignup && mfaPending === false && hasFirm === true;
+}
+
+// ── /onboarding ──────────────────────────────────────────────────────────────
+//
+// /onboarding is PUBLIC_EXACT (it has to run before a firm exists — see
+// public-paths.ts), so `mayRenderProtected` above never gets a chance to
+// refuse it: `!hasSession` there returns `isPublic`, which is `true` here by
+// design. That is right for the case this page exists for (a fresh magic-link
+// session) and wrong for every other one — a link already used, one opened in
+// a browser that never completed the exchange, a bookmark from before sign-out
+// — because the wizard itself never checked session or loading before
+// rendering Step 1. It called supabase.auth.updateUser() with no session and
+// surfaced the SDK's raw "Auth session missing!", and its greeting
+// interpolated a blank `user?.email` (sweep-auth-and-public-04).
+//
+// `loading` keeps this from flashing the expired-link screen while the
+// session is still being restored — though in practice AuthGuard's own
+// loading gate has already resolved by the time this page mounts, since it
+// renders nothing else while `loading` is true.
+export interface OnboardingGuardState {
+  loading: boolean;
+  hasSession: boolean;
+}
+
+/** Whether the onboarding wizard (Step 1 onward) may render. */
+export function mayRenderOnboardingWizard(state: OnboardingGuardState): boolean {
+  return state.loading || state.hasSession;
+}

@@ -52,6 +52,25 @@ export function paiseFromRupeeInput(raw: string): number | null {
 }
 
 /**
+ * Several rupee-input strings, summed into the rupee string an amount field
+ * shows — or "" when the sum is nil, since blank is how this app already
+ * reads a zero amount column.
+ *
+ * Anything that does not parse as an amount contributes nothing to the sum
+ * rather than stopping it: this exists to keep a "Total" box in step with the
+ * boxes that make it up WHILE they are still being typed into, and those
+ * boxes are validated for real (refused, not coerced) at submit time by
+ * paiseFromRupeeInput itself.
+ */
+export function sumRupeeInputs(values: readonly string[]): string {
+  const totalPaise = values.reduce((sum, v) => {
+    const paise = paiseFromRupeeInput(v || "0");
+    return paise === null ? sum : sum + paise;
+  }, 0);
+  return totalPaise === 0 ? "" : rupeeInputFromPaise(totalPaise);
+}
+
+/**
  * Integer paise → the string an amount field shows. Integer arithmetic only,
  * so it round-trips with paiseFromRupeeInput exactly.
  */

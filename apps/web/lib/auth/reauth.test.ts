@@ -5,7 +5,13 @@
 // reauth.ts has only a type-import, so it strips to dependency-free JS.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { setPasswordWithReauthNonce, isInvalidNonceError, type ReauthCapableAuth } from "./reauth.ts";
+import {
+  setPasswordWithReauthNonce,
+  isInvalidNonceError,
+  isSessionMissingError,
+  SESSION_EXPIRED_MESSAGE,
+  type ReauthCapableAuth,
+} from "./reauth.ts";
 
 /** A mock that records every auth method call so we can assert the call shape. */
 function makeMockAuth(result: { error: unknown } = { error: null }) {
@@ -65,4 +71,20 @@ test("isInvalidNonceError detects expired/invalid nonce messages", () => {
   assert.equal(isInvalidNonceError({ message: "otp_expired" }), true);
   assert.equal(isInvalidNonceError({ message: "Network unreachable" }), false);
   assert.equal(isInvalidNonceError(null), false);
+});
+
+// sweep-auth-and-public-04: with no session at all, updateUser() rejects with
+// the SDK's raw "Auth session missing!" and that string used to reach the CA
+// verbatim.
+test("isSessionMissingError detects the SDK's no-session error", () => {
+  assert.equal(isSessionMissingError({ message: "Auth session missing!" }), true);
+  assert.equal(isSessionMissingError({ message: "auth session missing" }), true);
+  assert.equal(isSessionMissingError({ message: "Invalid nonce" }), false);
+  assert.equal(isSessionMissingError({ message: "Network unreachable" }), false);
+  assert.equal(isSessionMissingError(null), false);
+});
+
+test("SESSION_EXPIRED_MESSAGE names the reason and both ways forward", () => {
+  assert.match(SESSION_EXPIRED_MESSAGE, /expired|not signed in/i);
+  assert.doesNotMatch(SESSION_EXPIRED_MESSAGE, /auth session missing/i);
 });

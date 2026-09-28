@@ -301,6 +301,22 @@ class BankingService:
         # other and with what the CA will see in the entries list.
         markers = sum(1 for r in new_rows if r.get("is_balance_marker"))
         new_rows = [r for r in new_rows if not r.get("is_balance_marker")]
+
+        # A marker is never stored as a bank_transaction (see above), so its
+        # hash can never appear in `existing` and it reads as "new" on every
+        # re-import — including one where every REAL row in the file already
+        # exists. Without this check that left `new_rows` non-empty at the
+        # first guard (it still held the marker) and fell all the way through
+        # to the insert below with nothing left to store: a bank_statements
+        # header got created anyway, one day wide (the marker's own date),
+        # 0 debits, 0 credits, row_count 0 — a stray entry in the statements
+        # list for an import that added nothing.
+        if not new_rows:
+            return {"statement_id": None, "imported": 0,
+                    "duplicates_skipped": duplicates, "total_rows": total_rows,
+                    "repeated_in_file": repeated_in_file,
+                    "balance_rows_skipped": markers}
+
         stmt_payload.update({
             "row_count": len(new_rows), "import_status": "pending",
             "imported_count": len(new_rows), "duplicate_count": duplicates,

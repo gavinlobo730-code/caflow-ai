@@ -405,6 +405,9 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
                 the year&apos;s total for this payee has not reached it either.
               </p>
             )}
+            {quote?.explain.rate_basis && (
+              <p className="text-2xs text-blue-800">{quote.explain.rate_basis}</p>
+            )}
             {quote && quote.explain.fy_prior_tds_paise > 0 && (
               <p className="text-2xs text-blue-800">
                 Charged on the year&apos;s aggregate for this payee, crediting the{" "}
@@ -1015,6 +1018,20 @@ export default function TDSPage() {
           </button>
         ))}
       </div>
+
+      {/* This firm-wide workspace holds only Deductions/Challans/Returns/
+          Certificates. 26AS Reconciliation and §197 Lower-Deduction
+          Certificates live on the client's own Compliance → TDS workspace —
+          not duplicated here, just pointed to, once a client is selected. */}
+      {selectedClientId && (
+        <Callout tone="note">
+          26AS Reconciliation and §197 Lower-Deduction Certificates are on{" "}
+          <Link href={`/clients/${selectedClientId}/compliance/tds`} className="underline font-medium">
+            this client&apos;s Compliance → TDS workspace
+          </Link>
+          , not here.
+        </Callout>
+      )}
 
       {/* Tab: Deductions — shared DataTable (search, filters, sort, pagination, export, prefs) */}
       {activeTab === 0 && (

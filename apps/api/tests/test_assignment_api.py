@@ -79,6 +79,36 @@ def test_internal_client_cannot_be_assigned():
     assert r.status_code == 400
 
 
+# ── _validate_user_in_firm reads the SERVICE-scoped repo, not the caller's JWT ──
+# (sweep-team-hub-06). In real-DB mode this used to run `.table("users")` on
+# get_supabase() — the caller's own `authenticated` client under USE_USER_JWT —
+# which `users_own_row_select` (migration 153) restricts to exactly the
+# caller's own row. So a Partner assigning a client to anybody but themselves
+# always 404'd. user_repo.find_by_id reads as the service role, scoped by
+# firm_id, and sees every member of the firm.
+
+def test_validate_user_in_firm_reads_the_service_scoped_repo(monkeypatch):
+    monkeypatch.setattr(amod, "_USE_MOCK", False)
+    calls = []
+
+    def fake_find_by_id(user_id, *, firm_id):
+        calls.append((user_id, firm_id))
+        return {"id": user_id, "firm_id": firm_id} if user_id == "e" else None
+
+    monkeypatch.setattr(amod.user_repo, "find_by_id", fake_find_by_id)
+    r = _client(PARTNER).post("/api/assignments", json={"user_id": "e", "client_id": "C1"})
+    assert r.status_code == 200
+    assert calls == [("e", "F1")]
+
+
+def test_validate_user_in_firm_404s_for_a_user_the_repo_does_not_return(monkeypatch):
+    monkeypatch.setattr(amod, "_USE_MOCK", False)
+    monkeypatch.setattr(amod.user_repo, "find_by_id", lambda user_id, *, firm_id: None)
+    r = _client(PARTNER).post("/api/assignments", json={"user_id": "nope", "client_id": "C1"})
+    assert r.status_code == 404
+    assert r.json()["detail"] == "User not found in firm"
+
+
 # ── Audit ─────────────────────────────────────────────────────────────────────
 
 def test_create_and_remove_are_audited(_setup):

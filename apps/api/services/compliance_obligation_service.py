@@ -314,6 +314,42 @@ def has_non_resident_vendors(client_id: str, firm_id: Optional[str] = None) -> b
         return False
 
 
+def has_gstin(client_id: str, firm_id: Optional[str] = None) -> bool:
+    """Whether this client has a GST registration recorded at all.
+
+    A GSTIN is only issued to a person registered under CGST Act s.25, and
+    only a registered person owes GSTR-1 (s.37), GSTR-3B (s.39) or GSTR-9
+    (s.44) — so a client with no GSTIN recorded owes none of them, and
+    generating those obligations anyway tells an unregistered client it owes
+    GST returns.
+
+    True where the client cannot be read at all — a read failure, or no row
+    for this client_id — the SAME direction gst_profile_for already takes for
+    an unreadable filing frequency: an engagement's own client_id should
+    always resolve to a real client, so a broken read is treated as "cannot
+    tell", not as "definitely unregistered", and generation proceeds rather
+    than silently dropping a real client's whole year of GST obligations.
+    False only where the client WAS found and its `gstin` field is empty —
+    which is the actual fact this function exists to answer, and the direction
+    that stops an unregistered client being told it owes GST returns.
+
+    Reads the PRIMARY registration only (`clients.gstin`, the same column
+    `gst_profile_for` already reads for frequency and state) — not the
+    additional `client_gst_registrations` rows GST-20 added. A client holding
+    only an additional registration and no primary is not modelled anywhere
+    else in this module either.
+    """
+    try:
+        c = client_repo.find_by_id(client_id, firm_id=firm_id)
+    except Exception:  # noqa: BLE001 - a client read must not stop generation
+        _logger.warning("has_gstin: could not read client %s — GST obligations "
+                        "will be generated as though registered", client_id)
+        return True
+    if c is None:
+        return True
+    return bool((c.get("gstin") or "").strip())
+
+
 def _names(service_type: str, abbreviation: str) -> bool:
     """Does this service name MENTION a statutory abbreviation, rather than
     merely contain its letters?
@@ -743,7 +779,8 @@ def obligations_for_service(service_type: str, financial_year: str,
                             gst_state_code: Optional[str] = None,
                             client_has_non_resident_vendors: bool = False,
                             entity_type: Optional[str] = None,
-                            client_has_tax_audit_engagement: bool = False) -> list[dict]:
+                            client_has_tax_audit_engagement: bool = False,
+                            client_has_gstin: bool = True) -> list[dict]:
     """Deterministic, pure: the statutory obligations a service engagement implies for
     one FY. Keyword-matched on service_type. Accounting and bookkeeping imply no
     filing obligations and return [].
@@ -771,10 +808,18 @@ def obligations_for_service(service_type: str, financial_year: str,
     31 October under Explanation 2(a)(ii) to §139(1). Reading it off
     `service_type` alone would give the same client two different answers
     depending on which engagement generation happened to be running.
+
+    client_has_gstin is the same shape again — has_gstin() does the reading —
+    but defaults to True rather than False, because generating the GST specs
+    is the PRE-EXISTING behaviour: a caller that does not pass it (there was
+    only one, before this) keeps generating exactly the obligations it
+    generated before. Only a caller that has actually checked and found no
+    GSTIN recorded should pass False, since only a registered person owes
+    GSTR-1/3B/9 at all.
     """
     s = (service_type or "").lower()
     specs: list[dict] = []
-    if _names(s, "gst"):
+    if _names(s, "gst") and client_has_gstin:
         specs += _gst_obligations(financial_year, gst_frequency, gst_state_code)
     if _names(s, "tds"):
         specs += _tds_obligations(financial_year, client_has_non_resident_vendors)
@@ -896,10 +941,15 @@ def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
     # which one is a fact about the CLIENT — its entity type, and whether its
     # accounts are audited — not about this engagement. Read once, here.
     entity_type, tax_audit_engagement = itr_profile_for(client_id, firm_id)
+    # Only a registered person owes GSTR-1/3B/9 (CGST Act ss.25, 37, 39, 44),
+    # so a GST leg of this engagement is generated only for a client who has
+    # a GSTIN recorded — never for the mere fact of a "GST" service type.
+    gstin_recorded = has_gstin(client_id, firm_id)
     specs = obligations_for_service(engagement.get("service_type", ""), financial_year,
                                     agm_date, freq, state_code, non_resident,
                                     entity_type=entity_type,
-                                    client_has_tax_audit_engagement=tax_audit_engagement)
+                                    client_has_tax_audit_engagement=tax_audit_engagement,
+                                    client_has_gstin=gstin_recorded)
     existing = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
     seen = {(r.get("obligation_type"), str(r.get("period_start"))[:10])
             for r in existing if r.get("obligation_type")}
@@ -953,7 +1003,15 @@ def generate_default_for_client(firm_id: str, client_id: str, financial_year: st
     ITR/TDS/MCA/tax-audit obligations remain engagement-scoped (a client whose
     engagement genuinely excludes GST should not receive it as a side effect of
     this fallback; see generate_due, which only applies this to clients with no
-    ACTIVE engagement at all). Idempotent via the same dedup as generate_for_engagement."""
+    ACTIVE engagement at all). Idempotent via the same dedup as generate_for_engagement.
+
+    NO GSTIN RECORDED MEANS NO GST OBLIGATIONS. Only a person registered under
+    CGST Act s.25 owes GSTR-1/3B/9, so this fallback — which exists precisely
+    to generate GST obligations with no engagement to read a service_type
+    from — must not hand every unregistered client a full year of returns it
+    does not owe."""
+    if not has_gstin(client_id, firm_id):
+        return {"generated": 0, "skipped": 0, "generated_ids": []}
     freq, state_code = gst_profile_for(client_id, firm_id)
     specs = _gst_obligations(financial_year, freq, state_code)
     existing = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)

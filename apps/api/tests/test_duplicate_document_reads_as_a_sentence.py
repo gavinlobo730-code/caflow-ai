@@ -38,6 +38,7 @@ def _dup(index: str) -> _PgError:
     ("purchase_payments_firm_payment_no_key", "payment"),
     ("debit_notes_firm_client_debit_note_no_key", "debit note"),
     ("uq_client_sales_invoices_recurring", "recurring"),
+    ("bank_accounts_client_id_account_no_key", "bank account"),
 ])
 def test_each_index_has_its_own_sentence(index, must_say):
     said = duplicate_document(_dup(index))

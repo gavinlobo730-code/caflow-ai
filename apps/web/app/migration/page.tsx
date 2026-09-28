@@ -40,6 +40,22 @@ function sentenceOf(e: unknown, fallback: string): string {
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
+/** A category the Tally export carried that the job's own Import Types did
+ *  not select (sweep-clients-admin-06). `validate_migration_data` only
+ *  builds items for the selected types, so a Sundry Creditors ledger parsed
+ *  while only "ledgers" and "journals" were picked is never queued or saved
+ *  — and the preview grid must not show it as though it will be imported.
+ *  `parsedCounts` is keyed by the same plural names as `selectedTypes`
+ *  ("customers", "ledgers", …), so no translation is needed. */
+function notSelectedForImport(
+  parsedCounts: Record<string, number> | undefined,
+  selectedTypes: string[],
+): Array<{ type: string; count: number }> {
+  return Object.entries(parsedCounts ?? {})
+    .filter(([type, count]) => count > 0 && !selectedTypes.includes(type))
+    .map(([type, count]) => ({ type, count }));
+}
+
 /** A job the server has finished with, one way or the other. `importing` and
  *  `previewing` are not: the live import runs in the background after the
  *  request returns, so the first look at the job may still say `previewing`. */
@@ -110,8 +126,16 @@ interface WithheldIdentifier {
   reasons: string[];
 }
 
+interface MigrationPreviewCount {
+  count: number;
+}
+
 interface MigrationPreview {
   error_count: number;
+  /** What will actually be SAVED and imported, per item type — built from the
+   *  validated items (`get_migration_preview`'s own `by_type`), never from a
+   *  parse-time count of every category the export happened to contain. */
+  by_type?: Record<string, MigrationPreviewCount>;
   withheld_identifiers?: WithheldIdentifier[];
   [key: string]: unknown;
 }
@@ -405,6 +429,10 @@ export default function MigrationPage() {
         "withheld_identifiers",
       ));
       setStep("preview");
+      // save_migration_items just updated the job's own total_items — reload
+      // so the card in the list below stops showing the 0 it was created
+      // with (sweep-clients-admin-06).
+      await load();
     } catch (e) {
       setError(sentenceOf(e, "Couldn't read the Tally export."));
     } finally {
@@ -489,6 +517,13 @@ export default function MigrationPage() {
   function toggleType(t: string) {
     setSelectedTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
   }
+
+  // What will actually be imported — the SAVED, VALIDATED items
+  // (`preview.by_type`), never `parseResult.parsed_counts`, which counts
+  // every category the parser found whether or not this job selected it
+  // (sweep-clients-admin-06).
+  const previewByType = objectOrNull<Record<string, MigrationPreviewCount>>(preview?.by_type) ?? {};
+  const notImportedCategories = notSelectedForImport(parseResult?.parsed_counts, selectedTypes);
 
   return (
     <div className="p-6 max-w-4xl space-y-4">
@@ -596,13 +631,28 @@ export default function MigrationPage() {
           {step === "preview" && preview && (
             <div className="space-y-3">
               <p className="text-xs font-medium text-ps-body">Import Preview</p>
-              {parseResult && (
+              {/* What will be imported — the saved, validated items, never
+                  the parser's raw per-category count (sweep-clients-admin-06):
+                  a category the job did not select never reaches here. */}
+              {Object.keys(previewByType).length > 0 && (
                 <div className="grid grid-cols-3 gap-3">
-                  {Object.entries(parseResult.parsed_counts ?? {}).map(([k, v]) => (
+                  {Object.entries(previewByType).map(([k, v]) => (
                     <div key={k} className="bg-ps-bg rounded-lg p-3 text-center">
-                      <p className="text-sm font-bold text-ps-ink">{v as number}</p>
-                      <p className="text-3xs text-ps-label capitalize">{k}</p>
+                      <p className="text-sm font-bold text-ps-ink">{v.count}</p>
+                      <p className="text-3xs text-ps-label capitalize">{k.replace(/_/g, " ")}</p>
                     </div>
+                  ))}
+                </div>
+              )}
+              {/* Named rather than left to look imported: the export carried
+                  these, but this job's own Import Types did not select them,
+                  so they were never queued or saved. */}
+              {notImportedCategories.length > 0 && (
+                <div className="space-y-0.5">
+                  {notImportedCategories.map(({ type, count }) => (
+                    <p key={type} className="text-3xs text-ps-hint">
+                      {count} {type.replace(/_/g, " ")} found — not selected for import
+                    </p>
                   ))}
                 </div>
               )}

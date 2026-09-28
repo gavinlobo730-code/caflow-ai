@@ -26,7 +26,7 @@
  *   in-app links that used them have been updated.
  */
 
-import { useEffect, useState, Suspense } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
@@ -42,6 +42,7 @@ import { yearEndApi, type YearEndEngagement, type EngagementStatus } from "@/lib
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "./_engagementId";
+import { EngagementRefreshProvider } from "./_engagementRefresh";
 
 import DashboardStage from "./dashboard/_page";
 import ChecklistStage from "./checklist/_page";
@@ -129,15 +130,16 @@ function YearEndWorkspaceInner() {
   // otherwise the header keeps the exact permanent-skeleton defect this whole
   // change set exists to remove, just in a smaller box.
   const [headerResolved, setHeaderResolved] = useState(false);
-  useEffect(() => {
+  const loadEngagement = useCallback(() => {
     // Never query the static-export placeholder id.
     if (!engagementId || engagementId === "_placeholder") { setHeaderResolved(true); return; }
-    yearEndApi.engagements
+    return yearEndApi.engagements
       .get(engagementId)
       .then((res) => { if (res.success) setEngagement(res.data); })
       .catch(() => { /* header degrades to its plain title below */ })
       .finally(() => setHeaderResolved(true));
   }, [engagementId]);
+  useEffect(() => { loadEngagement(); }, [loadEngagement]);
 
   const ActiveStage = (STAGES.find((s) => s.id === stage) ?? STAGES[0]).Component;
   // Same test as the header's: a stage mounts only once the id is real.
@@ -205,7 +207,9 @@ function YearEndWorkspaceInner() {
 
         <main className="flex-1 overflow-auto">
           {hasEngagementId ? (
-            <ActiveStage />
+            <EngagementRefreshProvider value={loadEngagement}>
+              <ActiveStage />
+            </EngagementRefreshProvider>
           ) : engagementId === "_placeholder" ? (
             // Not transient: the address itself names no engagement. Say so
             // rather than animate a skeleton that will never fill.

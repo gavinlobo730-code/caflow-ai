@@ -165,6 +165,25 @@ export default function ClientsPage() {
 
   // A selection may only name rows still on screen (see lib/table/pruneSelection).
   useEffect(() => { setSelected((s) => pruneSelection(s, clients.map((c) => c.id))); }, [clients]);
+
+  // Escape closes whichever lifecycle confirmation is open, matching the
+  // shared Modal (components/ui/modal.tsx) these hand-rolled overlays don't
+  // use — guarded on actionBusy so an archive/restore/delete in flight can't
+  // be abandoned mid-request.
+  useEffect(() => {
+    if (!archiveTarget && !restoreTarget && !deleteTarget) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape" || actionBusy) return;
+      setArchiveTarget(null);
+      setRestoreTarget(null);
+      setDeleteTarget(null);
+      setDeleteConfirmName("");
+      setDeleteBlockers(null);
+      setActionError(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [archiveTarget, restoreTarget, deleteTarget, actionBusy]);
   const [bulkBusy, setBulkBusy]   = useState(false);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at

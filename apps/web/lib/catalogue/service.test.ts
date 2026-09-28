@@ -4,8 +4,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  serviceToLine, formatServiceRate, formatServicePrice, formatServiceKind, serviceSecondaryLine,
-  validateServiceForm, serviceFormToPayload, serviceToForm,
+  serviceToLine, purchaseServiceToLine, formatServiceRate, formatServicePrice, formatServiceKind,
+  serviceSecondaryLine, validateServiceForm, serviceFormToPayload, serviceToForm,
   type ServiceCatalogueItem, type ServiceFormInput,
 } from "./service.ts";
 
@@ -32,6 +32,24 @@ test("serviceToLine drops a fully pre-priced line (description never falls back 
   assert.equal(serviceToLine(item({ description: null })).description, "");
   assert.equal(serviceToLine(item({ default_rate_paise: 0 })).rate, "");
   assert.equal(serviceToLine(item({ gst_rate_bps: null })).gst_rate, 0);
+});
+
+// sweep-client-purchases-07: shared by both purchase-side pickers
+// (PurchaseBillEditor's New Purchase Bill line and RecurringBills' template
+// line) so a catalogue pick prefills identically on either form.
+test("purchaseServiceToLine reads purchase_price_paise, never default_rate_paise (the sell price)", () => {
+  assert.deepEqual(purchaseServiceToLine(item({ purchase_price_paise: 3500000 })), {
+    description: "Statutory audit FY 2025-26", hsn_sac: "998221", rate: "35000", gst_rate: 18, unit: "OTH",
+  });
+  // The fixture's default_rate_paise (₹50,000) must never leak into the rate
+  // when purchase_price_paise is unset — that was the original PUR defect
+  // this function exists to keep fixed.
+  assert.equal(purchaseServiceToLine(item({ purchase_price_paise: null })).rate, "");
+  assert.equal(purchaseServiceToLine(item({ description: "  " })).description, "");
+  assert.equal(purchaseServiceToLine(item({ gst_rate_bps: null })).gst_rate, 0);
+  // Unlike serviceToLine, an unrecorded unit defaults to NOS rather than "" —
+  // PurchaseBillEditor's own prior behaviour, preserved by the move.
+  assert.equal(purchaseServiceToLine(item({ unit: null })).unit, "NOS");
 });
 
 test("formatServiceKind: good reads as Product, matching the modal's own naming", () => {

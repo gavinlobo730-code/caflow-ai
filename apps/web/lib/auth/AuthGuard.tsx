@@ -5,13 +5,14 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "./AuthContext";
 import { LogoIcon } from "@/components/LogoIcon";
 import { isPublicPath } from "./public-paths";
-import { mayRenderProtected } from "./guardDecision";
+import { mayRenderProtected, shouldBounceFromSignup } from "./guardDecision";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, loading, mfaPending, hasFirm } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const onLogin = pathname === "/login" || pathname.startsWith("/login/");
+  const onSignup = pathname === "/signup" || pathname.startsWith("/signup/");
 
   useEffect(() => {
     if (loading) return;
@@ -39,8 +40,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     // session mid-challenge is never mistaken for fully authenticated.
     if (mfaPending === false && onLogin) {
       router.replace("/");
+      return;
     }
-  }, [session, loading, mfaPending, hasFirm, onLogin, pathname, router]);
+    // Same rule, mirrored for /signup: a fully authenticated session with an
+    // existing firm has nothing left to do on the "Create your firm" form.
+    // A firm-less session (mid-signup, before the firm bootstrap has run) is
+    // left alone — shouldBounceFromSignup answers false for it.
+    if (shouldBounceFromSignup({ hasSession: !!session, mfaPending, hasFirm, onSignup })) {
+      router.replace("/");
+    }
+  }, [session, loading, mfaPending, hasFirm, onLogin, onSignup, pathname, router]);
 
   if (loading) {
     return (

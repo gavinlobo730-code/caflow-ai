@@ -841,7 +841,14 @@ def get_client_health(
 
     raw = db.table("health_scores").select("*").eq("client_id", client_id).eq("firm_id", effective_firm).limit(1).execute().data or []
     if not raw:
-        raise HTTPException(status_code=404, detail="Health score not found — run /calculate first")
+        # No score YET is not the same as no such client — assert_client_access
+        # above already 404s a client this caller cannot see. A client that
+        # exists but has never been calculated (every brand-new client, and the
+        # internal practice client, which Guardrail G2 refuses to score at all)
+        # answers 200 with data: null, so ClientTopBar's health-badge fetch on
+        # every single client-workspace page load is not a 404 by construction
+        # (sweep-accounting-hub-1-03, sweep-tds-mca-11).
+        return api_response(True, None)
     row = raw[0]
 
     # Reconstruct dimension dict if not stored (backward compat)

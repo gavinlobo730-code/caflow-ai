@@ -16,7 +16,7 @@
  * All monetary calculations use integer paise arithmetic (never floating point).
  */
 
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, sumRupeeInputs } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Save, AlertTriangle, CheckCircle, Clock, Plus, Trash2 } from "lucide-react";
@@ -120,6 +120,14 @@ export default function AdvanceTaxPage() {
     tax_rs: "", surcharge_rs: "", cess_rs: "", interest_rs: "", fee_rs: "",
     total_rs: "", major_head: "0021", minor_head: "300",
   });
+  // sweep-income-tax-hub-06: "Total paid" tracks Tax+Surcharge+Cess+Interest+
+  // Fee until the CA types into it directly — otherwise a CA who fills in only
+  // "Tax" got a challan saved with "Total ₹0.00" beside a correct Tax figure,
+  // because a blank box parses as nil. Once the CA has typed a total of their
+  // own (the challan's counterfoil may not foot to the sum, e.g. a rounding),
+  // that value is never overwritten.
+  const [saTotalEdited, setSaTotalEdited] = useState(false);
+  const SA_SUM_KEYS = ["tax_rs", "surcharge_rs", "cess_rs", "interest_rs", "fee_rs"] as const;
 
   useEffect(() => {
     getClients().then(c => {
@@ -271,6 +279,26 @@ export default function AdvanceTaxPage() {
 
   useEffect(() => { loadSelfAssessment(); }, [loadSelfAssessment]);
 
+  // One handler for all six amount boxes. The five that make up the total
+  // keep "Total paid" in step, by re-summing on every keystroke, until the CA
+  // edits "Total paid" itself — from then on the CA's own figure is the one
+  // that is recorded, since a real challan need not foot to the sum exactly.
+  function handleSaAmountChange(
+    key: "tax_rs" | "surcharge_rs" | "cess_rs" | "interest_rs" | "fee_rs" | "total_rs",
+    value: string,
+  ) {
+    if (key === "total_rs") {
+      setSaTotalEdited(true);
+      setSaForm(prev => ({ ...prev, total_rs: value }));
+      return;
+    }
+    setSaForm(prev => {
+      const next = { ...prev, [key]: value };
+      if (saTotalEdited) return next;
+      return { ...next, total_rs: sumRupeeInputs(SA_SUM_KEYS.map(k => next[k])) };
+    });
+  }
+
   async function handleAddChallan() {
     if (!clientId) { setSaError("Select a client first."); return; }
     // Every amount through the one parser. A blank box is nil, and anything
@@ -315,6 +343,7 @@ export default function AdvanceTaxPage() {
         tax_rs: "", surcharge_rs: "", cess_rs: "", interest_rs: "", fee_rs: "",
         total_rs: "", major_head: "0021", minor_head: "300",
       });
+      setSaTotalEdited(false);
       await loadSelfAssessment();
     } catch (e) {
       setSaError(e instanceof Error ? e.message : "Failed to record the challan");
@@ -706,9 +735,15 @@ export default function AdvanceTaxPage() {
             ] as const).map(([key, label]) => (
               <label key={key} className="text-xs text-ps-label">{label}
                 <input type="text" inputMode="decimal" value={saForm[key]}
-                  onChange={e => setSaForm({ ...saForm, [key]: e.target.value })}
+                  onChange={e => handleSaAmountChange(key, e.target.value)}
                   className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                   placeholder="0.00" />
+                {key === "total_rs" && !saTotalEdited && (
+                  <span className="block mt-1 text-2xs text-ps-hint">
+                    Sum of the figures above — edit if the challan shows a
+                    different total.
+                  </span>
+                )}
               </label>
             ))}
           </div>

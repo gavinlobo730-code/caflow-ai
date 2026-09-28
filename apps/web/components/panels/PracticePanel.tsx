@@ -19,7 +19,7 @@ const NAV_ITEMS = [
   // Profitability deliberately: the two are the fee and tax halves of "where
   // does this client sit", and a reader who has opened one wants the other.
   { label: "Client benchmark", href: "/practice/benchmark", icon: BarChart3 },
-  { label: "Billing",      href: "/practice/billing",     icon: Receipt },
+  { label: "Billing Schedules", href: "/practice/billing", icon: Receipt },
   { label: "Collections",  href: "/practice/collections", icon: Wallet },
   { label: "AR Aging",     href: "/practice/ar",          icon: ClipboardList },
   { label: "Compliance Workload", href: "/practice/compliance", icon: ShieldCheck },

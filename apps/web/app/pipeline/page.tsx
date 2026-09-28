@@ -734,7 +734,7 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
         ) : lead.stage === "Lead" ? (
           <>
             <Link
-              href={`/engagements?new=1&lead_id=${lead.id}&name=${encodeURIComponent(lead.businessName || lead.name || "")}`}
+              href={`/engagements?new=1&lead_id=${lead.id}&name=${encodeURIComponent(lead.businessName || lead.name || "")}&fee_paise=${lead.estimatedMonthlyFee}&email=${encodeURIComponent(lead.email || "")}`}
               className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-100 transition-colors border border-violet-200"
             >
               <FileText size={12} />

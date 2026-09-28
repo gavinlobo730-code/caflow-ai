@@ -12,6 +12,7 @@ import type {
 import { objectWithLists } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/services/formatting";
 import { cn } from "@/lib/utils";
+import { recommendationHref, recommendationLabel } from "@/lib/insights/recommendationActions";
 
 /**
  * Insights — Phase 3a-5, and the destination D1's `insights` tile has been
@@ -195,30 +196,33 @@ export default function InsightsPage() {
             </p>
           ) : (
             <div className="divide-y divide-ps-border">
-              {recRows.map((r, i) => (
-                <div key={`${r.title}-${i}`} className="px-5 py-3 flex items-start gap-3">
-                  <span className={cn(
-                    "shrink-0 text-3xs font-semibold px-2 py-0.5 rounded-full border uppercase tracking-wide",
-                    PRIORITY_CHIP[r.priority] ?? PRIORITY_CHIP.low,
-                  )}>
-                    {r.priority}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-ps-ink">{r.title}</p>
-                    {r.detail && <p className="text-3xs text-ps-hint mt-0.5">{r.detail}</p>}
-                    {r.action && <p className="text-3xs text-ps-label mt-0.5">{r.action}</p>}
+              {recRows.map((r, i) => {
+                const label = recommendationLabel(r.action);
+                return (
+                  <div key={`${r.title}-${i}`} className="px-5 py-3 flex items-start gap-3">
+                    <span className={cn(
+                      "shrink-0 text-3xs font-semibold px-2 py-0.5 rounded-full border uppercase tracking-wide",
+                      PRIORITY_CHIP[r.priority] ?? PRIORITY_CHIP.low,
+                    )}>
+                      {r.priority}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-ps-ink">{r.title}</p>
+                      {r.detail && <p className="text-3xs text-ps-hint mt-0.5">{r.detail}</p>}
+                      {label && <p className="text-3xs text-ps-label mt-0.5">{label}</p>}
+                    </div>
+                    {r.client_id && (
+                      <Link
+                        href={recommendationHref(r.action, r.client_id)}
+                        className="shrink-0 text-ps-hint hover:text-brand"
+                        aria-label="Open the client"
+                      >
+                        <ArrowRight size={13} />
+                      </Link>
+                    )}
                   </div>
-                  {r.client_id && (
-                    <Link
-                      href={`/clients/${r.client_id}/overview`}
-                      className="shrink-0 text-ps-hint hover:text-brand"
-                      aria-label="Open the client"
-                    >
-                      <ArrowRight size={13} />
-                    </Link>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Section>

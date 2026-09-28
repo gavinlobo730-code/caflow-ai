@@ -3,10 +3,17 @@ import { LogoIcon } from "@/components/LogoIcon";
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Building2, CheckCircle, ChevronRight, ChevronLeft, KeyRound, Eye, EyeOff, Hash, Plus, Upload, ExternalLink } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
+import {
+  setPasswordWithReauthNonce,
+  isInvalidNonceError,
+  isSessionMissingError,
+  SESSION_EXPIRED_MESSAGE,
+} from "@/lib/auth/reauth";
+import { mayRenderOnboardingWizard } from "@/lib/auth/guardDecision";
 import { api, type ApiResp } from "@/lib/api";
 import CsvImportModal, { type ImportRow, type ImportResult } from "@/components/CsvImportModal";
 import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
@@ -272,7 +279,7 @@ function ProgressBar({ step }: { step: number }) {
 
 // ─── Main page ─────────────────────────────────────────────────────────────
 export default function OnboardingPage() {
-  const { user, refreshUserContext } = useAuth();
+  const { user, session, loading: authLoading, refreshUserContext } = useAuth();
   const router = useRouter();
   const supabase = getSupabaseClient();
 
@@ -442,6 +449,11 @@ export default function OnboardingPage() {
           setNeedsReauth(true);
           return;
         }
+        // No session to act on at all — an expired/already-used magic link, or
+        // a bookmark from before sign-out. Supabase's own message is the raw
+        // SDK string "Auth session missing!"; show the CA something they can
+        // act on instead (sweep-auth-and-public-04).
+        if (isSessionMissingError(upErr)) throw new Error(SESSION_EXPIRED_MESSAGE);
         throw new Error(upErr.message);
       }
       otpTrace("step 1 response: password set without reauthentication");
@@ -482,10 +494,15 @@ export default function OnboardingPage() {
           code: upErr.code, status: upErr.status, message: upErr.message,
         });
         // Surface the real reason so the user knows whether to request a new code.
+        // Checked before isInvalidNonceError: "Auth session missing!" means
+        // there is no session to reauthenticate at all, a different problem
+        // from a wrong/expired code (sweep-auth-and-public-04).
         throw new Error(
-          isInvalidNonceError(upErr)
-            ? "That code is incorrect or has expired. Request a new code and try again."
-            : upErr.message,
+          isSessionMissingError(upErr)
+            ? SESSION_EXPIRED_MESSAGE
+            : isInvalidNonceError(upErr)
+              ? "That code is incorrect or has expired. Request a new code and try again."
+              : upErr.message,
         );
       }
       otpTrace("verify response: password updated — reauthentication accepted");
@@ -598,6 +615,43 @@ export default function OnboardingPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // ─── No session: nothing here to continue ──────────────────────────────
+  // /onboarding is public (it has to run before a firm exists), so nothing
+  // above redirected a session-less visitor away — the wizard rendered Step 1
+  // regardless, submitting it surfaced the SDK's raw "Auth session missing!",
+  // and the greeting interpolated a blank `user?.email` (sweep-auth-and-public-04).
+  if (!mayRenderOnboardingWizard({ loading: authLoading, hasSession: !!session })) {
+    return (
+      <div className="min-h-screen bg-ps-bg flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-ps-border p-8 text-center">
+          <div className="flex items-center gap-2 justify-center mb-4">
+            <LogoIcon size="sm" />
+            <span className="text-sm font-semibold text-ps-body">PracticeSync AI</span>
+          </div>
+          <h1 className="text-xl font-bold text-ps-ink mb-2">This sign-up link has expired</h1>
+          <p className="text-sm text-ps-label mb-6">
+            You are not signed in, so this setup page cannot continue. Request a new
+            sign-up link, or sign in if you already have a password.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Link
+              href="/signup"
+              className="flex items-center justify-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
+            >
+              Start a new sign-up
+            </Link>
+            <Link
+              href="/login"
+              className="flex items-center justify-center gap-2 px-5 py-2 border border-ps-border text-ps-body text-sm font-medium rounded-lg hover:bg-ps-bg transition-colors"
+            >
+              Sign in
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // ─── Render ────────────────────────────────────────────────────────────

@@ -224,6 +224,9 @@ _DUPLICATE_DOCUMENT = {
         "This recurring invoice has already been raised for that period.",
     "uq_client_sales_invoices_billing_run":
         "This billing run has already produced an invoice for that period.",
+    "bank_accounts_client_id_account_no_key":
+        "A bank account with this account number is already recorded for "
+        "this client.",
 }
 
 

@@ -83,3 +83,74 @@ test("a decided role that is allowed renders", () => {
 test("a decided role that is not allowed is refused", () => {
   assert.equal(roleGuardDecision({ loading: false, roleLoading: false, permitted: false }), "deny");
 });
+
+// ── /signup bounce ───────────────────────────────────────────────────────────
+// sweep-auth-and-public-02: /signup had no mirror of the onLogin bounce, so a
+// fully authenticated Partner with an existing firm still got the live
+// "Create your firm" form.
+//
+// NEGATIVE CONTROLS — each applied, then reverted:
+//
+//   | control                                    | tests that fail |
+//   |--------------------------------------------|------------------|
+//   | drop the hasFirm === true term (treat any hasFirm as a firm) | 1 |
+//   | drop the onSignup term (bounce from anywhere)                | 1 |
+//   | drop the mfaPending === false term (bounce mid-challenge)    | 1 |
+
+import { shouldBounceFromSignup } from "./guardDecision.ts";
+
+const signupBase = {
+  hasSession: true, mfaPending: false, hasFirm: true, onSignup: true,
+} as const;
+const bounces = (over: Partial<typeof signupBase>) =>
+  shouldBounceFromSignup({ ...signupBase, ...over });
+
+test("a fully authenticated session with an existing firm is bounced from /signup", () => {
+  assert.equal(bounces({}), true);
+});
+
+test("a firm-less session (mid-signup) is left alone", () => {
+  assert.equal(bounces({ hasFirm: false }), false);
+});
+
+test("a still-resolving firm lookup is left alone, not treated as having a firm", () => {
+  assert.equal(bounces({ hasFirm: null }), false);
+});
+
+test("no session means nothing to bounce", () => {
+  assert.equal(bounces({ hasSession: false }), false);
+});
+
+test("a page outside /signup is never bounced by this rule", () => {
+  assert.equal(bounces({ onSignup: false }), false);
+});
+
+test("an unresolved or owed MFA challenge is not bounced — /login's own redirect handles it", () => {
+  assert.equal(bounces({ mfaPending: true }), false);
+  assert.equal(bounces({ mfaPending: null }), false);
+});
+
+// ── /onboarding wizard ───────────────────────────────────────────────────────
+// sweep-auth-and-public-04: /onboarding is PUBLIC, so mayRenderProtected()
+// never gets asked about it and the wizard rendered Step 1 with no session at
+// all — "Auth session missing!" on submit, a blank email in the greeting.
+//
+// NEGATIVE CONTROL: dropping the `hasSession` term (always render once
+// loading is done) fails the one test that matters here.
+
+import { mayRenderOnboardingWizard } from "./guardDecision.ts";
+
+test("a resolved session renders the wizard", () => {
+  assert.equal(mayRenderOnboardingWizard({ loading: false, hasSession: true }), true);
+});
+
+test("no session, once resolved, does NOT render the wizard", () => {
+  // The bug: this used to render Step 1 regardless.
+  assert.equal(mayRenderOnboardingWizard({ loading: false, hasSession: false }), false);
+});
+
+test("still loading renders the wizard's own placeholder rather than the expired-link state", () => {
+  // Avoids flashing "expired" before the session has even been restored.
+  assert.equal(mayRenderOnboardingWizard({ loading: true, hasSession: false }), true);
+  assert.equal(mayRenderOnboardingWizard({ loading: true, hasSession: true }), true);
+});

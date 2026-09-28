@@ -927,6 +927,27 @@ def close_godown(
     return api_response(True, result)
 
 
+@router.post("/godowns/{godown_id}/reopen")
+def reopen_godown(
+    godown_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Reopen a closed godown. Does not restore it as the default."""
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"ok": True, "reopened": True})
+    firm_id = current_user.get("firm_id") or ""
+    result = _loc().reopen_godown(_loc_db(), firm_id=firm_id,
+                                  client_id=client_id, godown_id=godown_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result.get("refusal"))
+    log_event(firm_id, "godown", godown_id, "reopen",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"))
+    return api_response(True, result)
+
+
 @router.get("/batches")
 def list_batches(
     client_id: str = Query(...),

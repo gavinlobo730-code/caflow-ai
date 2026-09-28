@@ -14,6 +14,7 @@
  */
 import { paiseFromRupeeInput, bpsFromPercentInput, parseQuantity } from "../money/rupeeInput.ts";
 import type { InvoiceLine } from "../invoices/gst";
+import type { PurchaseBillLine } from "../purchases/billEditor";
 
 export interface ServiceCatalogueItem {
   id: string;
@@ -70,6 +71,29 @@ export function serviceToLine(item: ServiceCatalogueItem): Pick<InvoiceLine, "de
     rate: item.default_rate_paise ? String(item.default_rate_paise / 100) : "",
     gst_rate: item.gst_rate_bps == null ? 0 : item.gst_rate_bps / 100,
     unit: item.unit ?? "",
+  };
+}
+
+/** Purchase-side counterpart of `serviceToLine` — uses `purchase_price_paise`,
+ * NOT `default_rate_paise` (the SELL price). Shared (sweep-client-purchases-07)
+ * so every purchase-side picker prefills the same way instead of drifting: the
+ * New Purchase Bill line and the Recurring Bill template line both pick a
+ * Product/Service from the same catalogue and must land on the same GST rate,
+ * HSN/SAC, unit and rate for it, or the two forms silently disagree about what
+ * one catalogue item means. The parameter is a `Pick`, not the full
+ * `ServiceCatalogueItem`, because callers load different projections of the
+ * row (a purchase-bill draft holds the whole item; a recurring template only
+ * ever needs these five fields off it).
+ */
+export function purchaseServiceToLine(
+  item: Pick<ServiceCatalogueItem, "description" | "hsn_sac" | "purchase_price_paise" | "gst_rate_bps" | "unit">,
+): Pick<PurchaseBillLine, "description" | "hsn_sac" | "rate" | "gst_rate" | "unit"> {
+  return {
+    description: (item.description ?? "").trim(),
+    hsn_sac: item.hsn_sac ?? "",
+    rate: item.purchase_price_paise ? String(item.purchase_price_paise / 100) : "",
+    gst_rate: item.gst_rate_bps == null ? 0 : item.gst_rate_bps / 100,
+    unit: item.unit ?? "NOS",
   };
 }
 

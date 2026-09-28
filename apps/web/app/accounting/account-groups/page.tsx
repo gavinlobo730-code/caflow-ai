@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import Link from "next/link";
 import { ChevronLeft, Layers, Plus } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -58,6 +58,12 @@ function LedgerDialog({ account, onClose, onSaved }:
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const nameId = useId();
+  const codeId = useId();
+  const typeId = useId();
+  const parentGroupId = useId();
+  const subGroupId = useId();
+  const natureId = useId();
 
   async function save() {
     setError("");
@@ -101,23 +107,24 @@ function LedgerDialog({ account, onClose, onSaved }:
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="block text-2xs font-medium text-ps-label mb-1">Ledger name</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
+            <label htmlFor={nameId} className="block text-2xs font-medium text-ps-label mb-1">Ledger name</label>
+            <input id={nameId} name="name" className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                    value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-2xs font-medium text-ps-label mb-1">Code</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs font-mono"
+            <label htmlFor={codeId} className="block text-2xs font-medium text-ps-label mb-1">Code</label>
+            <input id={codeId} name="code" className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs font-mono"
                    value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-2xs font-medium text-ps-label mb-1">Type</label>
+            <label htmlFor={account ? undefined : typeId} className="block text-2xs font-medium text-ps-label mb-1">Type</label>
             {account ? (
               // Fixed once anything can have been posted — it decides which side
               // of the trial balance this account falls on.
               <p className="text-xs text-ps-label py-2">{account.account_type}</p>
             ) : (
-              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
+              <select id={typeId} name="account_type"
+                      className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                       value={form.account_type}
                       onChange={e => setForm(f => ({ ...f, account_type: e.target.value }))}>
                 {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -125,15 +132,15 @@ function LedgerDialog({ account, onClose, onSaved }:
             )}
           </div>
           <div>
-            <label className="block text-2xs font-medium text-ps-label mb-1">Parent group</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
+            <label htmlFor={parentGroupId} className="block text-2xs font-medium text-ps-label mb-1">Parent group</label>
+            <input id={parentGroupId} name="parent_group" className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                    placeholder="Current Assets"
                    value={form.parent_group}
                    onChange={e => setForm(f => ({ ...f, parent_group: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-2xs font-medium text-ps-label mb-1">Sub group</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
+            <label htmlFor={subGroupId} className="block text-2xs font-medium text-ps-label mb-1">Sub group</label>
+            <input id={subGroupId} name="sub_group" className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                    placeholder="Sundry Debtors"
                    value={form.sub_group}
                    onChange={e => setForm(f => ({ ...f, sub_group: e.target.value }))} />
@@ -146,10 +153,10 @@ function LedgerDialog({ account, onClose, onSaved }:
             "Bank Account" reaches Cash & Cash Equivalents and a blank reaches
             the coarse fallback for the account's type. */}
         <div>
-          <label className="block text-2xs font-medium text-ps-label mb-1">
+          <label htmlFor={natureId} className="block text-2xs font-medium text-ps-label mb-1">
             Nature (for the Balance Sheet)
           </label>
-          <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
+          <input id={natureId} name="account_subtype" className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                  placeholder="Bank Account, Trade Receivables, Plant &amp; Machinery…"
                  value={form.account_subtype}
                  onChange={e => setForm(f => ({ ...f, account_subtype: e.target.value }))} />

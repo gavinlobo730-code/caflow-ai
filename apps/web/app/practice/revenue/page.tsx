@@ -41,7 +41,7 @@ function Revenue() {
     { label: "Active Schedules", value: String(activeSchedules) },
   ];
   const links = [
-    { href: "/practice/billing", label: "Billing", icon: Receipt },
+    { href: "/practice/billing", label: "Billing Schedules", icon: Receipt },
     { href: "/practice/collections", label: "Collections", icon: Wallet },
     { href: "/practice/ar", label: "AR Aging", icon: ClipboardList },
   ];

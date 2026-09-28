@@ -9,7 +9,7 @@
  * - Bulk insert via callback
  */
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { X, Download, Upload, AlertCircle, CheckCircle, Plus } from "lucide-react";
 import * as XLSX from "xlsx";
 import { LogoIcon } from "@/components/LogoIcon";
@@ -167,6 +167,18 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
   const [fileError, setFileError] = useState<string | null>(null);
   const [resolveTarget, setResolveTarget] = useState<{ resolver: ReferenceResolver; name: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Escape closes the dialog, matching every other modal shell
+  // (components/ui/modal.tsx, drawer.tsx, confirm-dialog.tsx) — except while
+  // the import itself is in flight, the same guard the Cancel/X controls
+  // don't need because they stay visible but this needs to state explicitly.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && step !== "importing") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, step]);
 
   function downloadCsvTemplate() {
     // A plain CSV the user can open in Excel / Google Sheets / Tally export tools.

@@ -30,22 +30,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, History } from "lucide-react";
 import { api, type AuditEntry } from "@/lib/api";
+import { describeChanges, istStamp } from "@/components/accounting/entryHistoryFields";
 
 /** A line's audit row is keyed to its parent entry, so one request covers both. */
 export const JOURNAL_HISTORY_TYPES = "journal_entry,journal_line";
 
 const PAGE = 25;
-
-function istStamp(iso: string): string {
-  // Stored UTC, shown IST — the rule for every time this product displays.
-  try {
-    return new Date(iso).toLocaleString("en-IN", {
-      timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short",
-    });
-  } catch {
-    return iso;
-  }
-}
 
 function actionLabel(action: string): string {
   return action.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -56,19 +46,6 @@ function actionClass(action: string): string {
   if (action === "create") return "bg-green-50 text-green-700";
   if (action === "approve") return "bg-blue-50 text-blue-700";
   return "bg-state-attention-surface text-state-attention";
-}
-
-/** The fields that actually moved, so a reader is not handed two whole rows. */
-export function changedFields(entry: AuditEntry): string[] {
-  const before = (entry.old_data ?? {}) as Record<string, unknown>;
-  const after = (entry.new_data ?? {}) as Record<string, unknown>;
-  const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
-  const moved: string[] = [];
-  for (const k of keys) {
-    if (k === "updated_at") continue;   // every update moves it; it says nothing
-    if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) moved.push(k);
-  }
-  return moved.sort();
 }
 
 export default function EntryHistory({ entryId }: { entryId: string }) {
@@ -138,7 +115,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
           {entries.length > 0 && (
             <ul className="divide-y divide-ps-border">
               {entries.map((e) => {
-                const moved = changedFields(e);
+                const changes = describeChanges(e);
                 return (
                   <li key={e.id} className="px-5 py-3 text-xs">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -155,10 +132,16 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
                         {istStamp(e.created_at)} IST
                       </span>
                     </div>
-                    {moved.length > 0 && (
-                      <p className="mt-1 text-ps-label">
-                        Changed: <span className="font-mono text-2xs">{moved.join(", ")}</span>
-                      </p>
+                    {changes.length > 0 && (
+                      <ul className="mt-1 space-y-0.5">
+                        {changes.map((c) => (
+                          <li key={c.key} className="text-ps-label">
+                            {c.label}: <span className="text-ps-hint">{c.before}</span>
+                            {" → "}
+                            <span className="text-ps-ink">{c.after}</span>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </li>
                 );

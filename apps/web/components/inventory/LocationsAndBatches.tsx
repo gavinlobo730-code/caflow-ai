@@ -21,7 +21,7 @@
  *   the server's.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Plus, AlertCircle, Info, Warehouse, ArrowRightLeft, Trash2, Boxes } from "lucide-react";
+import { Plus, AlertCircle, Info, Warehouse, ArrowRightLeft, Trash2, Boxes, RotateCcw } from "lucide-react";
 import { request } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { todayLocalISO } from "@/lib/dateMath";
@@ -123,12 +123,38 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
   useEffect(() => { load(); }, [load]);
 
   async function closeGodown(g: Godown) {
+    // A single misclick used to permanently close a godown with nothing
+    // asking first. This does not delete anything recorded against it — it
+    // just stops it taking new stock and being offered as a destination —
+    // and it can be reopened, both of which the dialog says so the CA is not
+    // choosing blind.
+    if (!confirm(
+      `Close ${g.name}? It stops taking new stock movements and won't be ` +
+      `offered as a destination any more. Nothing recorded against it is ` +
+      `deleted, and you can reopen it later.`,
+    )) return;
     try {
-      await request(`/api/inventory/godowns/${g.id}?client_id=${encodeURIComponent(clientId)}`,
+      const res = await request<{ success: boolean; data: { ok: boolean; closed: boolean }; error: string | null }>(
+        `/api/inventory/godowns/${g.id}?client_id=${encodeURIComponent(clientId)}`,
         { method: "DELETE" });
+      if (!res.success) { setError(res.error ?? "Couldn't close the godown."); return; }
+      setError("");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't close the godown.");
+    }
+  }
+
+  async function reopenGodown(g: Godown) {
+    try {
+      const res = await request<{ success: boolean; data: { ok: boolean; reopened: boolean }; error: string | null }>(
+        `/api/inventory/godowns/${g.id}/reopen?client_id=${encodeURIComponent(clientId)}`,
+        { method: "POST" });
+      if (!res.success) { setError(res.error ?? "Couldn't reopen the godown."); return; }
+      setError("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't reopen the godown.");
     }
   }
 
@@ -174,7 +200,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
               </thead>
               <tbody className="divide-y divide-ps-border">
                 {godowns.map((g) => (
-                  <tr key={g.id} className={g.is_active ? "" : "opacity-50"}>
+                  <tr key={g.id} className={g.is_active ? "" : "opacity-60"}>
                     <td className="px-5 py-2 text-ps-ink">
                       {g.name}
                       {g.is_default && (
@@ -182,12 +208,22 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                           default
                         </span>
                       )}
+                      {!g.is_active && (
+                        <span className="ml-1.5 text-3xs px-1.5 py-0.5 rounded bg-ps-muted text-ps-label">
+                          Closed
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-2 text-ps-label">{g.state_code ?? "—"}</td>
                     <td className="px-5 py-2 font-mono text-2xs text-ps-label">
                       {/* Not recorded is its own answer: whether a transfer is a
-                          supply cannot be determined without it. */}
-                      {g.gstin ?? <span className="font-sans text-state-attention">Not recorded</span>}
+                          supply cannot be determined without it. A CLOSED
+                          godown cannot take a transfer any more, so the
+                          warning is withheld once it stops being something to
+                          act on. */}
+                      {g.is_active
+                        ? (g.gstin ?? <span className="font-sans text-state-attention">Not recorded</span>)
+                        : (g.gstin ?? <span className="font-sans text-ps-hint">—</span>)}
                     </td>
                     <td className="px-5 py-2 text-right tabular-nums">
                       {formatPaise(detail
@@ -195,10 +231,15 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                         .reduce((t, r) => t + r.value_paise, 0))}
                     </td>
                     <td className="px-5 py-2 text-right">
-                      {g.is_active && (
+                      {g.is_active ? (
                         <button onClick={() => closeGodown(g)} aria-label={`Close ${g.name}`}
                           className="p-1 rounded hover:bg-state-problem-hover text-red-600">
                           <Trash2 size={12} />
+                        </button>
+                      ) : (
+                        <button onClick={() => reopenGodown(g)} aria-label={`Reopen ${g.name}`}
+                          className="p-1 rounded hover:bg-ps-hover text-ps-label">
+                          <RotateCcw size={12} />
                         </button>
                       )}
                     </td>

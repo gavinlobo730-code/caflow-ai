@@ -20,13 +20,19 @@ export const PUBLIC_PREFIXES = [
  * Public routes that are EXACT, not prefixes.
  *
  * `/onboarding` is the firm SIGNUP wizard and has to run before a firm exists,
- * so it is public — but it was a PREFIX, and `/onboarding/checklist` is a
- * STAFF screen (the client-onboarding workflow tracker, which calls
+ * so it is public — but it was a PREFIX, and `/onboarding/checklist` was a
+ * STAFF screen (the client-onboarding workflow tracker, which called
  * `api.onboarding.listActive`). So a signed-out visitor was handed that screen
  * instead of the login page, and AuthGuard skipped its redirect. The API call
- * behind it still needs a token, so nothing leaked — the page simply rendered
- * empty at a URL that should have bounced. `app/onboarding/` holds exactly one
- * page today; a later multi-step wizard adds its steps here by name.
+ * behind it still needed a token, so nothing leaked — the page simply rendered
+ * empty at a URL that should have bounced.
+ *
+ * That tracker has since moved to /clients/onboarding (sweep-auth-and-public-05
+ * — sharing a path prefix with an unrelated wizard was confusing on its own,
+ * quite apart from this bug), and /onboarding/checklist is now a staff-only
+ * redirect stub kept for bookmarks, still correctly excluded by being a
+ * sub-route of an EXACT entry. `app/onboarding/` holds exactly one page today;
+ * a later multi-step wizard adds its steps here by name.
  */
 export const PUBLIC_EXACT = ["/onboarding"];
 

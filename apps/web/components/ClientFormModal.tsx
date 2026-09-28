@@ -67,6 +67,19 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
     setError(null);
   }, [editClient, open]);
 
+  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
+  // — guarded on `open` since this component stays mounted (and its other
+  // effects run) even while hidden, and on `saving` so a save in flight can't
+  // be abandoned mid-request.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !saving) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, saving, onClose]);
+
   function set(field: keyof CreateClientInput, value: string | boolean) {
     setForm(f => ({ ...f, [field]: value }));
   }

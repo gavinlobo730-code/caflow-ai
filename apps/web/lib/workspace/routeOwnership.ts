@@ -30,16 +30,14 @@ export type WorkspaceId =
   | "practice" | "knowledge" | "engagements";
 
 export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | null {
-  // ⚠️ ASKED BEFORE THE PREFIX CHAIN, and it is the one route here that needs
-  // to be. `/onboarding/checklist` is the CLIENT-onboarding workflow tracker
-  // ("Client Onboarding" is its own heading), not a step of the firm signup
-  // wizard it shares a path prefix with — it reads `api.onboarding.listActive`
-  // and walks a client through engagement setup. Sharing the prefix is what
-  // made `AppShell`'s NO_SHELL list strip its sidebar, so the one screen that
-  // tracks client onboarding rendered with no navigation and no ⌘K, and
-  // nothing in the product linked to it. It belongs to Clients.
-  if (pathname.startsWith("/onboarding/checklist")) return "clients";
-
+  // The CLIENT-onboarding workflow tracker ("Client Onboarding" is its own
+  // heading) used to sit at /onboarding/checklist, sharing a path prefix with
+  // the firm signup wizard at /onboarding — which made `AppShell`'s NO_SHELL
+  // list strip its sidebar, so it rendered with no navigation and no ⌘K, and
+  // nothing in the product linked to it. It now lives at /clients/onboarding
+  // and reaches Clients through the ordinary /clients prefix check below,
+  // with no special case needed. /onboarding/checklist is a redirect stub
+  // kept for bookmarks and answers null here, same as /onboarding itself.
   if (
     pathname === "/" ||
     pathname.startsWith("/calendar") ||
@@ -81,8 +79,7 @@ export function getActiveWorkspaceForPathname(pathname: string): WorkspaceId | n
   // `docs/architecture/10-payroll.md` specifies the 13th top-level workspace
   // and this is it. Order is the whole mechanism: a prefix chain answers with
   // the first branch that matches, so a narrower prefix has to be asked first
-  // or it is unreachable — the same reason `/onboarding/checklist` is at the
-  // top of this function.
+  // or it is unreachable.
   if (pathname.startsWith("/payroll")) return "payroll";
 
   if (

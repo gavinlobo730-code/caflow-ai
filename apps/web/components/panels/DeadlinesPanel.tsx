@@ -26,8 +26,8 @@ import { cn, isExactPath } from "@/lib/utils";
 
 const DEADLINE_ITEMS = [
   { href: "/deadlines", label: "All Deadlines", icon: Calendar, typeParam: null },
-  { href: "/deadlines?type=GSTR1",  label: "GSTR-1",      icon: Receipt,    typeParam: "GSTR1"  },
-  { href: "/deadlines?type=GSTR3B", label: "GSTR-3B",     icon: Receipt,    typeParam: "GSTR3B" },
+  { href: "/deadlines?type=GSTR1",  label: "GSTR-1 deadlines",  icon: Receipt,    typeParam: "GSTR1"  },
+  { href: "/deadlines?type=GSTR3B", label: "GSTR-3B deadlines", icon: Receipt,    typeParam: "GSTR3B" },
   { href: "/deadlines?type=ITR",    label: "Income Tax",  icon: Calculator, typeParam: "ITR"    },
   { href: "/deadlines?type=TDS",    label: "TDS",         icon: Landmark,   typeParam: "TDS"    },
   { href: "/deadlines?type=MCA",    label: "MCA",         icon: Building2,  typeParam: "MCA"    },

@@ -5,6 +5,7 @@ import { CheckCircle2, Circle, User, Loader2 } from "lucide-react";
 import { yearEndApi, type ReviewStep, type ReviewHistory, type ReviewStatus } from "@/lib/api/yearEnd";
 import { Skeleton, FormSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
+import { useRefreshEngagement } from "../_engagementRefresh";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -39,6 +40,11 @@ export default function ReviewPage() {
   // window.location, not useParams(): on the deployed static export every
   // dynamic segment is "_placeholder" (see ../_engagementId.ts).
   const engagementId = useEngagementId();
+  // Every action below flips the engagement's own status (draft -> in_review,
+  // in_review -> approved, approved -> locked, locked -> draft on Reopen).
+  // This tab's own state already reflects that on success; the workspace
+  // header's status chip does not unless it is told to re-fetch.
+  const refreshEngagement = useRefreshEngagement();
 
   const [reviewData, setReviewData] = useState<ReviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,6 +95,7 @@ export default function ReviewPage() {
       setComment("");
       setActionMsg({ msg: "Action completed successfully.", ok: true });
       await load();
+      refreshEngagement();
     } catch (err) {
       setActionMsg({ msg: err instanceof Error ? err.message : "Action failed", ok: false });
     } finally {

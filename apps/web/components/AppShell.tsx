@@ -46,12 +46,15 @@ function getRealPathname(): string {
 //
 // `/onboarding` is EXACT, and that is a fix rather than a tidy-up. It is the
 // firm SIGNUP wizard, which legitimately has no sidebar because there is no
-// firm yet — but `/onboarding/checklist` is the CLIENT-onboarding workflow
-// tracker ("Client Onboarding" is its own heading), a staff screen that walks
-// a client through engagement setup. As a prefix it lost the rail, the panel
-// and ⌘K, so the one screen that tracks client onboarding had no navigation
-// at all and nothing in the product linked to it. It belongs to the Clients
-// workspace (see lib/workspace/routeOwnership.ts).
+// firm yet. `/onboarding/checklist` used to be a DIFFERENT screen entirely —
+// the CLIENT-onboarding workflow tracker ("Client Onboarding" is its own
+// heading), a staff screen that walks a client through engagement setup — and
+// as a PREFIX match this list had lost it the rail, the panel and ⌘K, so it
+// had no navigation at all and nothing in the product linked to it. It now
+// lives at /clients/onboarding, in the Clients workspace it belongs to (see
+// lib/workspace/routeOwnership.ts); /onboarding/checklist is a redirect stub
+// kept for bookmarks and needs no entry here, since it renders no content of
+// its own to strip a shell from.
 const NO_SHELL_PREFIXES = [
   "/login",
   "/signup",

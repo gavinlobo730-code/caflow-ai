@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link2, Search, Check, Loader2, ShieldAlert } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import type { ClientSummary } from "@/lib/api";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
 
@@ -37,10 +38,14 @@ export default function AssignmentsPage() {
     (async () => {
       try {
         const [t, c] = await Promise.all([
-          api.team.list() as Promise<ApiResp<Member[] | { members: Member[] }>>,
+          // GET /api/team answers { team: [...], total } (routers/team.py) —
+          // never `members`. Reading the wrong key left the staff list
+          // permanently empty however many staff the firm had.
+          api.team.list() as Promise<ApiResp<{ team: Member[] }>>,
           api.clients.list(),
         ]);
-        const mem = Array.isArray(t.data) ? t.data : (t.data?.members ?? []);
+        if (!t.success) throw new Error(t.error ?? "Failed to load staff");
+        const mem = arrayOrEmpty<Member>(objectOrNull<{ team: unknown }>(t.data)?.team);
         setMembers(mem.filter((m) => m.role !== "Partner")); // Partners are firm-wide; no assignment needed
         setClients(c.data?.clients ?? []);
       } catch (e) {

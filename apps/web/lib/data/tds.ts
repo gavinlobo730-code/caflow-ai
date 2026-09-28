@@ -356,6 +356,12 @@ export type DeductionExplain = {
   reason: string | null;
   rate_pct: number;
   tds_paise: number;
+  /** Which limb of the section's rate was applied and why — e.g. "Charged at
+   *  the individual/HUF rate: PAN 4th character P." A freshly-typed vendor
+   *  with no matching record silently gets the higher, non-individual rate
+   *  (see domain/tds/tds_computer.is_company_pan), and this is the one place
+   *  the CA is told which limb landed and on what basis. */
+  rate_basis: string;
   fy_prior_taxable_paise: number;
   fy_prior_tds_paise: number;
   gaps: string[];

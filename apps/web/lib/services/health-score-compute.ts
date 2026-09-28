@@ -77,11 +77,19 @@ function toClientHealth(raw: RawClientHealth): ClientHealth {
 }
 
 /** Latest health score, without triggering a calculation. Null if none
- * exists yet (a client that has never been visited/calculated). */
+ * exists yet (a client that has never been visited/calculated, or the
+ * internal practice client, which is never scored at all).
+ *
+ * GET /api/health/clients/{id} answers 200 with `data: null` for "no score
+ * yet" rather than a 404 (sweep-accounting-hub-1-03, sweep-tds-mca-11) — a
+ * client that has not been calculated is not a failure. Checked explicitly
+ * rather than left to `toClientHealth` to throw on a null spread: that would
+ * still land in the catch below and read the same to a caller, but it is an
+ * exception standing in for an ordinary answer. */
 export async function getLatestHealthScore(clientId: string): Promise<ClientHealth | null> {
   try {
-    const res = (await api.health.client(clientId)) as ApiResp<RawClientHealth>;
-    return toClientHealth(res.data);
+    const res = (await api.health.client(clientId)) as ApiResp<RawClientHealth | null>;
+    return res.data ? toClientHealth(res.data) : null;
   } catch {
     return null;
   }

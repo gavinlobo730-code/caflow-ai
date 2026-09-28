@@ -28,7 +28,7 @@ import { formatDate as formatDateShared } from "@/lib/services/formatting";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { formatPaise as formatPaiseINR } from "@/lib/services/formatting";
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -124,6 +124,15 @@ function formatDateTime(iso: string | null): string {
   });
 }
 
+// Template content is stored HTML (the seeded templates start with `<h2>…`),
+// so slicing it raw for a card preview showed the markup itself. A plain
+// regex rather than DOMParser: this page pre-renders under `output: "export"`
+// (apps/web/next.config.mjs), so the component runs at build time in Node,
+// where there is no DOM to parse.
+function stripHtmlPreview(html: string): string {
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 // The fee crosses the API as integer paise, and it goes through the one
 // parser. What was here stripped every non-digit and then multiplied by 100:
 // "1234.56" became the digits "123456" and then ₹1,23,456 — a HUNDREDFOLD
@@ -194,9 +203,14 @@ interface CreateEngagementModalProps {
   onCreated: (letter: EngagementLetter) => void;
   initialLeadId?: string | null;
   initialName?: string | null;
+  /** The lead's own already-captured Estimated Monthly Fee, in paise. Zero
+   *  and null are both "not set" — the pipeline's own LeadCard only shows the
+   *  fee when it is greater than zero — so neither prefills the field. */
+  initialFeePaise?: number | null;
+  initialEmail?: string | null;
 }
 
-function CreateEngagementModal({ open, onClose, templates, onCreated, initialLeadId, initialName }: CreateEngagementModalProps) {
+function CreateEngagementModal({ open, onClose, templates, onCreated, initialLeadId, initialName, initialFeePaise, initialEmail }: CreateEngagementModalProps) {
   const [form, setForm] = useState({
     title: "",
     template_id: "",
@@ -211,10 +225,32 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
 
   useEffect(() => {
     if (open) {
-      setForm({ title: "", template_id: "", recipient_name: initialName ?? "", fee_rupees: "", recipient_email: "", start_date: "", expiry_date: "" });
+      setForm({
+        title: "",
+        template_id: "",
+        recipient_name: initialName ?? "",
+        // Convert through the one paise→rupees-string formatter (lib/money/rupeeInput.ts)
+        // rather than a float division typed into the field.
+        fee_rupees: initialFeePaise != null && initialFeePaise > 0 ? rupeeInputFromPaise(initialFeePaise) : "",
+        recipient_email: initialEmail ?? "",
+        start_date: "",
+        expiry_date: "",
+      });
       setErr(null);
     }
-  }, [open, initialName]);
+  }, [open, initialName, initialFeePaise, initialEmail]);
+
+  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
+  // — guarded on `open` and on `saving` so a create in flight can't be
+  // abandoned mid-request.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !saving) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, saving, onClose]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -398,6 +434,18 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
     }
   }, [open, initial]);
 
+  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
+  // — guarded on `open` and on `saving` so a save in flight can't be
+  // abandoned mid-request.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !saving) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, saving, onClose]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -550,6 +598,18 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
       setShowRegenConfirm(false);
     }
   }, [letter]);
+
+  // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
+  // — guarded on `letter` (this modal's own "open") and on `actionLoading` so
+  // an action in flight can't be abandoned mid-request.
+  useEffect(() => {
+    if (!letter) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !actionLoading) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [letter, actionLoading, onClose]);
 
   async function doAction(path: string, body?: Record<string, unknown>) {
     setActionLoading(true);
@@ -1157,15 +1217,25 @@ function EngagementsPageInner() {
   // Incoming lead context (from pipeline "Create Engagement" — H16). Prefills + links the new engagement.
   const [incomingLeadId, setIncomingLeadId] = useState<string | null>(null);
   const [incomingName, setIncomingName] = useState<string | null>(null);
+  const [incomingFeePaise, setIncomingFeePaise] = useState<number | null>(null);
+  const [incomingEmail, setIncomingEmail] = useState<string | null>(null);
 
   // On mount, read lead context from query params and auto-open the create modal.
+  // fee_paise and email carry the lead's own already-captured Estimated
+  // Monthly Fee and Recipient Email, so "Draft Engagement" doesn't force the
+  // CA to retype data the product already has.
   useEffect(() => {
     const leadId = searchParams.get("lead_id");
     const name = searchParams.get("name");
+    const paramFeePaise = searchParams.get("fee_paise");
+    const email = searchParams.get("email");
     const isNew = searchParams.get("new") === "1";
     if (isNew || leadId) {
       setIncomingLeadId(leadId);
       setIncomingName(name);
+      const feePaise = paramFeePaise ? Number(paramFeePaise) : NaN;
+      setIncomingFeePaise(Number.isFinite(feePaise) ? feePaise : null);
+      setIncomingEmail(email);
       setShowCreateEngagement(true);
     }
   }, [searchParams]);
@@ -1538,7 +1608,7 @@ function EngagementsPageInner() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-ps-label line-clamp-2">{t.content.slice(0, 120)}…</p>
+                  <p className="text-xs text-ps-label line-clamp-2">{stripHtmlPreview(t.content).slice(0, 120)}…</p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => { setEditTemplate(t); setShowCreateTemplate(true); }}
@@ -1597,10 +1667,14 @@ function EngagementsPageInner() {
           setShowCreateEngagement(false);
           setIncomingLeadId(null);
           setIncomingName(null);
+          setIncomingFeePaise(null);
+          setIncomingEmail(null);
         }}
         templates={templates}
         initialLeadId={incomingLeadId}
         initialName={incomingName}
+        initialFeePaise={incomingFeePaise}
+        initialEmail={incomingEmail}
         onCreated={(letter) => {
           setLetters((prev) => [letter, ...prev]);
         }}
