@@ -1403,6 +1403,15 @@ function DepreciationTab({ clientId }: { clientId: string }) {
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load assets — the request failed or timed out.</p>
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
+      ) : rows.length === 0 ? (
+        // apex-bank-assets-inventory-12b. The sibling Asset Register tab
+        // already says this when there is nothing to show; this table had no
+        // such branch and rendered a bare header over an empty body instead.
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <p className="px-5 py-8 text-xs text-ps-hint text-center">
+            No assets in the register for this client.
+          </p>
+        </div>
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
