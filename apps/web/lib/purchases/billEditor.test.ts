@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {
   isValidBillLine, previewBillTotals, validateBillEditor, findBlockedCreditHits,
   BLOCKED_CREDIT_REASONS, blockedCreditProblems, ineligibleGstPaise,
-  buildLinePayload, lineIsItcEligible, reasonForHintLabel,
+  buildLinePayload, lineIsItcEligible, reasonForHintLabel, supplySplitPreview,
   type PurchaseBillLine,
 } from "./billEditor.ts";
 
@@ -329,4 +329,40 @@ test("an invalid line never reaches the payload", () => {
   // parseFloat("1,25,000") is 1. The filter is isValidBillLine, which refuses
   // it outright rather than sending a one-rupee line.
   assert.equal(buildLinePayload([base({ rate: "1,25,000" })]).length, 0);
+});
+
+// ── sweep-client-purchases-03: the caption must not contradict the figures ──
+
+test("a picked vendor with no state or GSTIN is NOT reported as 'pick a vendor'", () => {
+  const p = supplySplitPreview("27", { state_code: null, gstin: null });
+  assert.equal(p.basis, "vendor_state_unknown");
+  assert.equal(p.isInterstate, false); // what the server books: routers/purchase_bills.py
+  assert.doesNotMatch(p.caption, /Pick a vendor/);
+  assert.match(p.caption, /no state or GSTIN recorded/);
+  assert.match(p.caption, /CGST \+ SGST/);
+});
+
+test("a client with no state is named as the unknown side", () => {
+  const p = supplySplitPreview("", { state_code: "29", gstin: null });
+  assert.equal(p.basis, "client_state_unknown");
+  assert.equal(p.isInterstate, false);
+  assert.match(p.caption, /client has no GSTIN or state/);
+});
+
+test("nothing picked still asks for a vendor", () => {
+  const p = supplySplitPreview("27", null);
+  assert.equal(p.basis, "no_vendor");
+  assert.match(p.caption, /Pick a vendor/);
+});
+
+test("the vendor's GSTIN prefix answers where its state column is empty — the server's order", () => {
+  const inter = supplySplitPreview("27", { state_code: "", gstin: "29AABCU9603R1ZJ" });
+  assert.equal(inter.basis, "both_known");
+  assert.equal(inter.isInterstate, true);
+  assert.match(inter.caption, /^Interstate — IGST/);
+  // The recorded state column wins over the GSTIN, as it does in
+  // _resolve_vendor_and_interstate.
+  const intra = supplySplitPreview("27", { state_code: "27", gstin: "29AABCU9603R1ZJ" });
+  assert.equal(intra.isInterstate, false);
+  assert.match(intra.caption, /^Intra-state — CGST \+ SGST/);
 });
