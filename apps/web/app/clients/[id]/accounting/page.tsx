@@ -3635,7 +3635,12 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
   async function exportXLSX(reportType: "pl" | "bs" | "trial") {
     setExporting(reportType);
     try {
-      const XLSX = (await import("xlsx")).default;
+      // Not `.default` — xlsx 0.18.5 resolves through its "module" entry
+      // (xlsx.mjs), which has no default export, so `.default` is `undefined`
+      // and `buildWorkbook(XLSX, ...)` throws reading `XLSX.utils`. The
+      // namespace object IS `typeof import("xlsx")`, which is what
+      // `buildWorkbook` (lib/export/xlsx.ts) declares its first parameter as.
+      const XLSX = await import("xlsx");
       const { rows, sheetName, moneyColumns } = await buildReportSheet(reportType);
       const wb = buildWorkbook(XLSX, { rows, moneyColumns, sheetName });
       const base = reportType === "pl" ? "PL" : reportType === "bs" ? "BalanceSheet" : "Trial-Balance";
@@ -3650,7 +3655,8 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
   async function shareToPortal(reportType: "pl" | "bs" | "trial") {
     setSharing(reportType);
     try {
-      const XLSX = (await import("xlsx")).default;
+      // See the identical comment in exportXLSX — no `.default` here either.
+      const XLSX = await import("xlsx");
       const labelMap = { pl: "Profit & Loss", bs: "Balance Sheet", trial: "Trial Balance" };
       const label = `${labelMap[reportType]} (${basisLabel}) — FY ${financialYear}`;
       const fileName = `${reportType}-${basis}-FY${financialYear}-${Date.now()}.xlsx`;
