@@ -224,12 +224,25 @@ class AICopilotRepository(BaseRepository):
         result = _get_db().table("ai_messages").insert(msg).execute()
         saved = result.data[0]
         # Conversation stats: the RPC atomically increments message_count and
-        # stamps last_message_at/updated_at (migration 156). The previous code
-        # wrapped this call in a second .update() that wrote the RPC's return
-        # value back into message_count — the function returned void, so
-        # `.data or 0` permanently reset the count to 0 on every message
-        # (caught by the R2.2 adversarial review).
-        _get_db().rpc("increment_message_count", {"conv_id": conversation_id}).execute()
+        # stamps last_message_at/updated_at (migration 156), RETURNING the new
+        # count. The previous code wrapped this call in a second .update()
+        # that wrote the RPC's return value back into message_count — the
+        # function returned void then, so `.data or 0` permanently reset the
+        # count to 0 on every message (caught by the R2.2 adversarial review).
+        # It returns the new count now, which is what lets this branch title
+        # the conversation off the first USER message the same way the mock
+        # branch always has — production conversations were otherwise stuck
+        # at "New Conversation" forever, since nothing else ever called
+        # update_conversation_title.
+        new_count = (
+            _get_db()
+            .rpc("increment_message_count", {"conv_id": conversation_id})
+            .execute()
+            .data
+        )
+        if role == "user" and new_count == 1:
+            title = content[:60] + ("..." if len(content) > 60 else "")
+            self.update_conversation_title(conversation_id, title)
         return saved
 
     def get_message(self, firm_id: str, message_id: str) -> Optional[dict]:
