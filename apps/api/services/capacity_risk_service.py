@@ -179,6 +179,8 @@ def as_payload(answer: rule.CapacityRisk) -> dict:
             for w in answer.weeks
         ],
         "overdue_items": answer.overdue_items,
+        "overdue_tasks": answer.overdue_tasks,
+        "overdue_compliance": answer.overdue_compliance,
         "undated_items": answer.undated_items,
         "obligations_folded_into_tasks": answer.obligations_folded_into_tasks,
         "median_week_items": answer.median_week_items,

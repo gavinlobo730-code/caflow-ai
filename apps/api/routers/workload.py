@@ -5,6 +5,7 @@ from models.common import api_response
 from core.permissions import rbac
 from core.authz import filter_by_client
 from repositories.capacity_repository import capacity_repo, DEFAULT_WEEKLY_HOURS, DEFAULT_MAX_TASKS
+from services import capacity_risk_service
 
 from datetime import date, timedelta
 from core.ist_clock import ist_today
@@ -13,8 +14,17 @@ router = APIRouter(prefix="/api/workload", tags=["workload"])
 
 
 def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    # sweep-team-hub-04: this router reads `public.users` to build the firm's
+    # roster (get_team_workload, get_user_workload). Under USE_USER_JWT,
+    # get_supabase() returns the CALLER's own JWT client, and `users`' RLS
+    # SELECT policy (`users_own_row_select`) shows a caller exactly one row —
+    # itself — the same defect `repositories/user_repository.py`'s header
+    # documents for the identity router. The service role bypasses that, and
+    # every query here already carries its own `.eq("firm_id", …)` (plus
+    # filter_by_client on the task rows), which is the tenant boundary per
+    # CLAUDE.md's "Tenancy and access" — so this is not a widening of scope.
+    from core.supabase_client import get_service_supabase
+    return get_service_supabase()
 
 
 class CapacityUpdate(BaseModel):
@@ -87,13 +97,16 @@ def capacity_risk_forecast(
     weekly throughput. Load is measured against the practice's own median week.
 
     Assignment-scoped through `filter_by_client`, like every other firm-wide
-    read here, so a Manager sees the risk in their own book."""
-    from core.supabase_client import get_supabase
-    from services import capacity_risk_service
+    read here, so a Manager sees the risk in their own book.
 
+    Uses the SAME service-role client as the rest of this router (see
+    `_get_db`'s docstring) — `capacity_risk_service.capacity_risk` reads
+    `users` for the roster alongside `tasks`/`compliance_calendar`/
+    `user_capacity`, and a caller-JWT client would silently under-report the
+    team to "1 person" the same way `get_team_workload` did."""
     try:
         return api_response(True, capacity_risk_service.capacity_risk(
-            get_supabase(), current_user, weeks_ahead=weeks_ahead))
+            _get_db(), current_user, weeks_ahead=weeks_ahead))
     except Exception as e:
         return api_response(False, None, str(e))
 
