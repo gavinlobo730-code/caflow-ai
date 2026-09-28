@@ -47,6 +47,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+from domain.money_text import rupees_paise
+
 #: Rule 138(1). In integer paise — ₹50,000.
 EWAY_THRESHOLD_PAISE: int = 50_000_00
 
@@ -184,8 +186,8 @@ def assess(lines: list) -> EwayAssessment:
         out.verdict = "undetermined"
         out.reason = (
             f"Every goods line is nil-rated or exempt. The consignment value "
-            f"is {out.consignment_value_paise} paise, but Rule 138(14) lists "
-            f"cases where no e-way bill is required whatever the value."
+            f"is ₹{rupees_paise(out.consignment_value_paise)}, but Rule 138(14) "
+            f"lists cases where no e-way bill is required whatever the value."
         )
         out.gaps.append(
             "Rule 138(14) — including the goods specified in the Annexure to "
@@ -197,16 +199,16 @@ def assess(lines: list) -> EwayAssessment:
     if out.exceeds_threshold:
         out.verdict = "required"
         out.reason = (
-            f"Consignment value {out.consignment_value_paise} paise exceeds "
-            f"the ₹50,000 limit in Rule 138(1). Explanation 2 to Rule 138(1) "
-            f"measures it INCLUDING the tax and cess charged in the document, "
-            f"not on the taxable value alone."
+            f"Consignment value ₹{rupees_paise(out.consignment_value_paise)} "
+            f"exceeds the ₹50,000 limit in Rule 138(1). Explanation 2 to Rule "
+            f"138(1) measures it INCLUDING the tax and cess charged in the "
+            f"document, not on the taxable value alone."
         )
     else:
         out.verdict = "not_required"
         out.reason = (
-            f"Consignment value {out.consignment_value_paise} paise does not "
-            f"exceed the ₹50,000 limit in Rule 138(1), measured including the "
-            f"tax charged in the document (Explanation 2)."
+            f"Consignment value ₹{rupees_paise(out.consignment_value_paise)} "
+            f"does not exceed the ₹50,000 limit in Rule 138(1), measured "
+            f"including the tax charged in the document (Explanation 2)."
         )
     return out

@@ -15,6 +15,8 @@ from uuid import uuid4
 from xml.etree.ElementTree import Element, SubElement, tostring
 import xml.etree.ElementTree as ET
 
+from domain.money_text import rupees_paise
+
 _logger = logging.getLogger("caflow.xbrl")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -221,9 +223,9 @@ def _check_balance_equation(data: dict) -> list[str]:
 
     if total_assets != total_equity_liab:
         return [
-            f"Balance Sheet does not balance: Total Assets ({total_assets} paise) != "
-            f"Total Equity & Liabilities ({total_equity_liab} paise), "
-            f"difference {total_assets - total_equity_liab} paise"
+            f"Balance Sheet does not balance: Total Assets (₹{rupees_paise(total_assets)}) != "
+            f"Total Equity & Liabilities (₹{rupees_paise(total_equity_liab)}), "
+            f"difference ₹{rupees_paise(total_assets - total_equity_liab)}"
         ]
     return []
 

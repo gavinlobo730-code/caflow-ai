@@ -45,6 +45,8 @@ from __future__ import annotations
 
 from typing import Optional, Sequence
 
+from domain.money_text import rupees_paise
+
 BPS = 10_000
 
 
@@ -84,8 +86,9 @@ def discount_for(gross_paise: int,
         raise ValueError("a discount cannot be negative")
     if out > gross_paise:
         raise ValueError(
-            f"discount of {out} paise exceeds the line value of {gross_paise} "
-            "paise — the value of a supply cannot be negative")
+            f"discount of ₹{rupees_paise(out)} exceeds the line value of "
+            f"₹{rupees_paise(gross_paise)} — the value of a supply cannot be "
+            "negative")
     return out
 
 
@@ -111,8 +114,9 @@ def allocate(total_paise: int, weights: Sequence[int]) -> list[int]:
         return [0] * n
     if total_paise > base:
         raise ValueError(
-            f"document discount of {total_paise} paise exceeds the invoice "
-            f"value of {base} paise — the value of a supply cannot be negative")
+            f"document discount of ₹{rupees_paise(total_paise)} exceeds the "
+            f"invoice value of ₹{rupees_paise(base)} — the value of a supply "
+            "cannot be negative")
 
     # Integer arithmetic throughout, so the browser's BigInt mirror is exact
     # rather than approximately equal: `n // base` is the floor of the share and

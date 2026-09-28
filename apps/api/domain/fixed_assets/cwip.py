@@ -39,6 +39,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Iterable, Optional
 
+from domain.money_text import rupees_paise
+
 #: The four bands, in the order the prescribed table prints them. Months rather
 #: than years so the arithmetic is exact — "1-2 years" measured in days would
 #: disagree with itself across a leap year.
@@ -263,7 +265,7 @@ def reportable_reason(project: Project, spent_paise: int, as_of: date) -> Option
     if (project.approved_cost_paise is not None
             and spent_paise > int(project.approved_cost_paise)):
         reasons.append("cost has exceeded the approved "
-                       f"{project.approved_cost_paise} paise")
+                       f"₹{rupees_paise(project.approved_cost_paise)}")
     return " and ".join(reasons) or None
 
 
