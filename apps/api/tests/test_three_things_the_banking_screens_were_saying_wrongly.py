@@ -139,6 +139,28 @@ def test_the_running_balance_check_still_agrees_with_the_marker_present():
     assert balance_agreement(parse_csv(_WITH_OPENING)).get("agrees") is True
 
 
+def test_reimporting_a_statement_with_a_balance_marker_leaves_no_stray_header():
+    # The marker is never stored as a bank_transaction, so its hash can never
+    # land in `existing` and it reads as "new" on every re-import — even one
+    # where both real rows already exist. Before the fix that kept `new_rows`
+    # non-empty at the first dedup guard (it still held the marker), so the
+    # re-import fell through to insert a degenerate bank_statements header:
+    # one day wide (the marker's own date), 0 debits, 0 credits, row_count 0.
+    db = FakeDB()
+    banking_service.import_normalized(
+        db, FIRM, CLIENT, "Generic", "123", parse_csv(_WITH_OPENING))
+    assert len(db.store["bank_statements"]) == 1   # the real import's header
+
+    res = banking_service.import_normalized(
+        db, FIRM, CLIENT, "Generic", "123", parse_csv(_WITH_OPENING))
+    assert res["statement_id"] is None
+    assert res["imported"] == 0
+    assert res["duplicates_skipped"] == 2
+    assert res["balance_rows_skipped"] == 1
+    # No second, stray header — the list still shows exactly the one real import.
+    assert len(db.store["bank_statements"]) == 1
+
+
 # ---------------------------------------------------------------------------
 # ACC-26
 # ---------------------------------------------------------------------------
