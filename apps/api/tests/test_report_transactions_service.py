@@ -27,6 +27,8 @@ class _Query:
     def __init__(self, rows):
         self._rows = rows
         self._eq, self._in, self._gte, self._lte, self._is = {}, {}, {}, {}, {}
+        self._gt, self._order, self._limit = {}, None, None
+        self.executed = 0
 
     def select(self, *_a, **_k):
         return self
@@ -51,9 +53,25 @@ class _Query:
         self._is[k] = v
         return self
 
+    # The three calls core.db_paging.fetch_all adds to every page. Honoured,
+    # not ignored, so a test can hold more rows than one page and see paging.
+    def gt(self, k, v):
+        self._gt[k] = v
+        return self
+
+    def order(self, k, *_a, **_k):
+        self._order = k
+        return self
+
+    def limit(self, n):
+        self._limit = n
+        return self
+
     def execute(self):
         rows = []
         for r in self._rows:
+            if any(str(r.get(k)) <= str(v) for k, v in self._gt.items()):
+                continue
             if any(r.get(k) != v for k, v in self._eq.items()):
                 continue
             if any(r.get(k) not in v for k, v in self._in.items()):
@@ -65,6 +83,12 @@ class _Query:
             if "deleted_at" in self._is and r.get("deleted_at") is not None:
                 continue
             rows.append(dict(r))
+        if self._order:
+            rows.sort(key=lambda r: str(r.get(self._order)))
+        if self._limit is not None:
+            # PostgREST's own cap — a response is never longer than this.
+            rows = rows[: self._limit]
+        rows = rows[:1000]
         return type("R", (), {"data": rows})()
 
 
@@ -83,9 +107,15 @@ def _sale(**over):
         "is_interstate": False, "supply_state_code": "27",
         "taxable_amount_paise": 100_000, "cgst_paise": 9_000, "sgst_paise": 9_000,
         "igst_paise": 0, "total_paise": 118_000, "paid_paise": 0,
+        "debit_note_paise": 0, "credited_paise": 0,
         "status": "issued", "deleted_at": None,
     }
     row.update(over)
+    if "outstanding_paise" not in over:
+        # Migration 278's GENERATED expression, transcribed: the fake stands in
+        # for Postgres, which computes it on every write.
+        row["outstanding_paise"] = (row["total_paise"] + row["debit_note_paise"]
+                                    - row["paid_paise"] - row["credited_paise"])
     return row
 
 
@@ -96,9 +126,15 @@ def _bill(**over):
         "is_interstate": True, "taxable_amount_paise": 50_000, "cgst_paise": 0,
         "sgst_paise": 0, "igst_paise": 9_000, "total_paise": 59_000,
         "paid_paise": 0, "tds_paise": 5_000, "tds_section": "194C",
+        "credit_note_paise": 0, "debited_paise": 0,
         "status": "received", "deleted_at": None,
     }
     row.update(over)
+    row.setdefault("net_payable_paise", row["total_paise"] - row["tds_paise"])
+    if "outstanding_paise" not in over:
+        # 278 on purchase_bills starts from NET payable, not the gross total.
+        row["outstanding_paise"] = (row["net_payable_paise"] + row["credit_note_paise"]
+                                    - row["paid_paise"] - row["debited_paise"])
     return row
 
 
@@ -166,12 +202,30 @@ def test_draft_and_cancelled_sales_are_excluded():
     assert [r["id"] for r in rows] == ["s3"]
 
 
-def test_cancelled_purchases_are_excluded():
-    bills = [_bill(id="b1", status="cancelled"), _bill(id="b2", status="received")]
+def test_a_part_paid_or_paid_sale_is_still_a_transaction():
+    """The module's own rule is "not a draft and not cancelled", and the set
+    used to hold only "issued": a PART-paid invoice dropped off the Outstanding
+    Invoices report with money still owed on it, and a PAID one dropped off
+    the P&L although a paid sale is still turnover."""
+    sales = [_sale(id="s1", status="issued"),
+             _sale(id="s2", status="partially_paid", paid_paise=59_000),
+             _sale(id="s3", status="paid", paid_paise=118_000)]
+
+    rows = {r["id"]: r for r in svc.list_transactions(_db(sales=sales), FIRM)}
+
+    assert set(rows) == {"s1", "s2", "s3"}
+    assert rows["s2"]["outstanding_paise"] == 59_000
+    assert rows["s3"]["outstanding_paise"] == 0
+
+
+def test_cancelled_and_draft_purchases_are_excluded_and_paid_ones_are_not():
+    bills = [_bill(id="b1", status="cancelled"), _bill(id="b2", status="received"),
+             _bill(id="b3", status="draft"), _bill(id="b4", status="partially_paid"),
+             _bill(id="b5", status="paid")]
 
     rows = svc.list_transactions(_db(bills=bills), FIRM)
 
-    assert [r["id"] for r in rows] == ["b2"]
+    assert sorted(r["id"] for r in rows) == ["b2", "b4", "b5"]
 
 
 def test_an_unrecognised_status_is_excluded_rather_than_assumed():
@@ -197,6 +251,25 @@ def test_outstanding_is_total_less_paid():
     rows = svc.list_transactions(_db(sales=[_sale(total_paise=118_000, paid_paise=18_000)]), FIRM)
 
     assert rows[0]["outstanding_paise"] == 100_000
+
+
+def test_outstanding_is_the_documents_own_generated_column():
+    """CLAUDE.md: read `outstanding_paise`, never re-subtract. A §34 credit
+    note of ₹18,000 against a ₹1,18,000 invoice leaves ₹1,00,000 owed — `total
+    − paid` said ₹1,18,000, because it cannot see the note."""
+    rows = svc.list_transactions(_db(sales=[_sale(credited_paise=18_000)]), FIRM)
+
+    assert rows[0]["outstanding_paise"] == 100_000
+
+
+def test_a_bills_outstanding_starts_from_what_is_payable_after_tds():
+    """migration 278 generates purchase_bills.outstanding_paise from
+    net_payable_paise: the ₹5,000 §194C withheld is owed to the government,
+    not the vendor, so the vendor is owed ₹54,000 of a ₹59,000 bill."""
+    rows = svc.list_transactions(_db(bills=[_bill()]), FIRM)
+
+    assert rows[0]["total_paise"] == 59_000
+    assert rows[0]["outstanding_paise"] == 54_000
 
 
 def test_outstanding_is_zero_when_fully_paid():
@@ -406,3 +479,26 @@ def test_every_amount_is_an_integer(field):
 
     for r in rows:
         assert isinstance(r[field], int), f"{r['transaction_type']}.{field}"
+
+
+# ── Every row, not the first thousand ───────────────────────────────────────
+
+def test_a_firm_with_more_documents_than_one_response_gets_all_of_them():
+    """reports-documents-04: a firm with 5,656 issued invoices was shown 1,000,
+    because PostgREST caps a response and the reads were a bare `.execute()`.
+    The fake caps every response at 1,000 exactly as PostgREST does."""
+    sales = [_sale(id=f"s{i:05d}", customer_id=f"cus{i % 400}",
+                   invoice_date=f"2026-04-{1 + i % 28:02d}")
+             for i in range(2_345)]
+    customers = [{"id": f"cus{i}", "firm_id": FIRM, "name": f"Customer {i}"}
+                 for i in range(400)]
+    db = FakeDB(client_sales_invoices=sales, purchase_bills=[],
+                customers=customers, vendors=[])
+
+    rows = svc.list_transactions(db, FIRM)
+
+    assert len(rows) == 2_345
+    assert len({r["id"] for r in rows}) == 2_345
+    assert sum(r["outstanding_paise"] for r in rows) == 2_345 * 118_000
+    # 400 parties is more than one `in.()` chunk; every one still has a name.
+    assert all(r["party_name"].startswith("Customer ") for r in rows)
