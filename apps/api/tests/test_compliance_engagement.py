@@ -50,8 +50,14 @@ def _isolate(monkeypatch):
     CLIENT_INDEX.update({c["id"]: c for c in MOCK_CLIENTS})
 
 
-def _client(client_id, firm=FIRM):
-    return client_repo.create({"id": client_id, "firm_id": firm, "client_name": f"Client {client_id}"})
+def _client(client_id, firm=FIRM, gstin="27AAPFU0939F1ZV"):
+    # gstin defaults to a registered client (a real, check-digit-valid GSTIN
+    # from tests/fixtures/gstin.json) because every existing caller of this
+    # helper is exercising GST obligation generation for a client assumed to
+    # be registered — see test_a_client_with_no_gstin_gets_no_gst_obligations
+    # for the unregistered case this default exists to keep apart from it.
+    return client_repo.create({"id": client_id, "firm_id": firm, "client_name": f"Client {client_id}",
+                               "gstin": gstin})
 
 
 def _engagement(service_type, firm=FIRM, client="CL-1", assigned_to="prep-1",
@@ -311,6 +317,77 @@ def test_generate_default_for_client_direct_call_is_pure_gst():
     assert res["generated"] == 25
     recs = compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-DIRECT")
     assert all(r["compliance_type"] == "GST" for r in recs)
+
+
+# ── No GSTIN recorded means no GST obligations ───────────────────────────────
+# sweep-gst-hub-05: generate_default_for_client and the GST leg of
+# generate_for_engagement never checked that the client had a GSTIN, so an
+# unregistered client (no gstin — CGST Act s.25) was told it owed GSTR-1/3B/9
+# regardless. Only a REGISTERED client owes them.
+
+def test_the_fallback_generates_nothing_for_a_client_with_no_gstin_recorded():
+    _client("CL-UNREGISTERED", gstin="")
+    res = ob.generate_default_for_client(FIRM, "CL-UNREGISTERED", FY, actor=ACTOR)
+    assert res == {"generated": 0, "skipped": 0, "generated_ids": []}
+    assert compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-UNREGISTERED") == []
+
+
+def test_an_active_gst_engagement_generates_nothing_for_a_client_with_no_gstin():
+    """The engagement leg has the same gate: a "GST Compliance" engagement for
+    a client whose GSTIN was never recorded owes no GSTR-1/3B/9 either."""
+    _client("CL-UNREG-ENG", gstin=None)
+    eng = _engagement("GST Compliance", client="CL-UNREG-ENG")
+    res = ob.generate_for_engagement(FIRM, eng, FY, actor=ACTOR)
+    assert res["generated"] == 0 and res["skipped"] == 0
+    assert compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-UNREG-ENG") == []
+
+
+def test_recording_the_gstin_later_makes_the_fallback_generate_on_the_next_run():
+    """The realistic sequence: onboarded before the GSTIN arrived, then
+    recorded once the registration comes through."""
+    _client("CL-LATE-GSTIN", gstin="")
+    res = ob.generate_default_for_client(FIRM, "CL-LATE-GSTIN", FY, actor=ACTOR)
+    assert res["generated"] == 0
+
+    CLIENT_INDEX["CL-LATE-GSTIN"]["gstin"] = "27AAPFU0939F1ZV"
+    res2 = ob.generate_default_for_client(FIRM, "CL-LATE-GSTIN", FY, actor=ACTOR)
+    assert res2["generated"] == 25
+    assert len(compliance_records_repo.find_all(firm_id=FIRM, client_id="CL-LATE-GSTIN")) == 25
+
+
+def test_a_gst_engagement_for_a_client_this_module_cannot_read_still_generates():
+    """A missing/unreadable client row is "cannot tell", not "definitely
+    unregistered" — the same direction gst_profile_for already takes for an
+    unreadable filing frequency. In production an engagement's own client_id
+    always resolves; this is what stops a broken read silently erasing a real
+    client's whole year of GST obligations."""
+    eng = _engagement("GST Compliance", client="CL-NO-SUCH-ROW")
+    res = ob.generate_for_engagement(FIRM, eng, FY, actor=ACTOR)
+    assert res["generated"] == 25
+
+
+def test_has_gstin_reads_the_primary_registration_column():
+    _client("CL-REG", gstin="27AAPFU0939F1ZV")
+    _client("CL-UNREG", gstin="")
+    assert ob.has_gstin("CL-REG", FIRM) is True
+    assert ob.has_gstin("CL-UNREG", FIRM) is False
+
+
+def test_has_gstin_is_true_for_a_client_it_cannot_read_at_all():
+    assert ob.has_gstin("CL-DOES-NOT-EXIST", FIRM) is True
+
+
+def test_a_failed_client_read_generates_gst_rather_than_dropping_it(monkeypatch):
+    """The opposite safe direction from has_non_resident_vendors, deliberately
+    — see has_gstin's own docstring. A read failure here must not silently
+    erase a real, registered client's whole year of GST obligations."""
+    import services.compliance_obligation_service as m
+
+    def _boom(*a, **k):
+        raise RuntimeError("client store unreachable")
+
+    monkeypatch.setattr(client_repo, "find_by_id", _boom)
+    assert m.has_gstin("CL-1", FIRM) is True
 
 
 # ── Assignment chain ─────────────────────────────────────────────────────────

@@ -31,6 +31,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   AlertCircle,
@@ -88,6 +89,25 @@ const CATEGORY_ORDER = [
   "Inactive Client",
   "FD Maturing Soon",
 ];
+
+// Where clicking a row should send the CA. Every row carries a client_id
+// EXCEPT "DSC Expiry" (a certificate is held by a person, not a client —
+// `domain/risk/register.py::expiring_dscs` says so, and there is nothing
+// client-scoped to open for it). The GST/TDS/MCA substrings mirror the same
+// test `app/clients/[id]/compliance/page.tsx` already runs against
+// `compliance_type` to choose its own sub-tab — this is the same rule, not a
+// second one, so the two cannot drift about which returns are which.
+function riskActionHref(r: RiskRow): string | null {
+  if (!r.client_id) return null;
+  const text = [r.risk_type, ...Object.values(r.particulars ?? {})].join(" ");
+  if (/GSTR/i.test(text)) return `/clients/${r.client_id}/compliance/gst`;
+  if (/TDS|24Q|26Q/i.test(text)) return `/clients/${r.client_id}/compliance/tds`;
+  if (/MCA|ROC|DIR/i.test(text)) return `/clients/${r.client_id}/compliance/mca`;
+  if (r.risk_type === "Overdue Filing" || r.risk_type === "Advance Tax Default") {
+    return `/clients/${r.client_id}/compliance`;
+  }
+  return `/clients/${r.client_id}`;
+}
 
 function riskColor(level: string) {
   const m: Record<string, string> = {
@@ -181,7 +201,15 @@ function CategoryCard({ title, rows }: { title: string; rows: RiskRow[] }) {
             <tbody>
               {rows.map((r, i) => (
                 <tr key={`${r.client_id}-${r.risk_type}-${i}`} className="border-b border-ps-border last:border-0">
-                  <td className="px-4 py-3 font-medium text-ps-ink">{r.client_name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {r.client_id ? (
+                      <Link href={`/clients/${r.client_id}`} className="text-ps-ink hover:text-brand hover:underline">
+                        {r.client_name}
+                      </Link>
+                    ) : (
+                      <span className="text-ps-ink">{r.client_name}</span>
+                    )}
+                  </td>
                   {columns.map((c) => (
                     <td key={c} className="px-4 py-3 text-ps-label">
                       {r.particulars?.[c] ?? <span className="text-ps-hint">—</span>}
@@ -257,7 +285,9 @@ export default function RisksPage() {
     {
       key: "clientName", header: "Client", accessor: (r) => r.client_name,
       searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (r) => <span className="font-medium text-ps-ink">{r.client_name}</span>,
+      render: (r) => r.client_id
+        ? <Link href={`/clients/${r.client_id}`} className="font-medium text-ps-ink hover:text-brand hover:underline">{r.client_name}</Link>
+        : <span className="font-medium text-ps-ink">{r.client_name}</span>,
     },
     {
       key: "riskType", header: "Risk Type", accessor: (r) => r.risk_type, sortable: true,
@@ -296,7 +326,12 @@ export default function RisksPage() {
     },
     {
       key: "action", header: "Recommended Action", accessor: (r) => r.action,
-      render: (r) => <span className="text-ps-label max-w-xs text-xs block">{r.action}</span>,
+      render: (r) => {
+        const href = riskActionHref(r);
+        return href
+          ? <Link href={href} className="text-ps-label hover:text-brand hover:underline max-w-xs text-xs block">{r.action}</Link>
+          : <span className="text-ps-label max-w-xs text-xs block">{r.action}</span>;
+      },
     },
   ], []);
 
