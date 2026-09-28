@@ -150,6 +150,10 @@ export interface ResolvedClient {
   client_name: string;
   entity_type?: string;
   gstin?: string;
+  /** `active` or `archived`. Read so the bar can say a client is archived and
+   *  offer to restore it (sweep-clients-admin-05) — every module still opens
+   *  for an archived client, so without it nothing on the screen said so. */
+  status?: string | null;
 }
 
 export interface ClientNavContextValue {
@@ -219,7 +223,7 @@ export function ClientNavProvider({ children }: ClientNavProviderProps) {
     }
     supabase
       .from("clients")
-      .select("id, client_name, entity_type, gstin")
+      .select("id, client_name, entity_type, gstin, status")
       .eq("id", clientId)
       // `.maybeSingle()`, deliberately, where the bar used `.single()`: single
       // answers an ERROR for zero rows, so "this client does not exist" and
