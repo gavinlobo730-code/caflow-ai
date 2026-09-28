@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
 import { Plus, X } from "lucide-react";
@@ -36,6 +36,11 @@ import { Callout } from "@/components/ui/callout";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+// NOT exported: a Next.js `page.tsx` module may only export the framework's
+// own reserved names (default, generateStaticParams, ...) — an extra named
+// export here fails `tsc` against `.next/types/app/relationships/page.ts`.
+// The entity detail page keeps its own copy of this shape for its Edit
+// action rather than importing it from here.
 type EntityType =
   | "Individual"
   | "Proprietorship"
@@ -47,6 +52,15 @@ type EntityType =
   | "Society"
   | "HUF"
   | "Other";
+
+interface EntityFormValues {
+  full_name: string;
+  entity_type: EntityType;
+  pan: string;
+  gstin: string;
+  email: string;
+  phone: string;
+}
 
 interface Entity {
   id: string;
@@ -95,14 +109,145 @@ const ENTITY_TYPE_COLORS: Record<EntityType, string> = {
   Other:            "bg-gray-100 text-gray-600",
 };
 
-const EMPTY_FORM = {
+const EMPTY_FORM: EntityFormValues = {
   full_name: "",
-  entity_type: "Individual" as EntityType,
+  entity_type: "Individual",
   pan: "",
   gstin: "",
   email: "",
   phone: "",
 };
+
+// ─── Add Entity form ────────────────────────────────────────────────────────
+//
+// Extracted purely for readability inside this page. NOT exported: a
+// `page.tsx` may only export the framework's own reserved names, so this
+// can't be shared with the entity detail page directly — its Edit action
+// (EntityDetailClient.tsx) keeps its own copy of the same field set and
+// layout instead.
+
+function EntityFormModal({
+  title,
+  form,
+  setForm,
+  onCancel,
+  onSave,
+  saving,
+  saveError,
+  saveLabel,
+  savingLabel,
+  saveDisabled,
+}: {
+  title: string;
+  form: EntityFormValues;
+  setForm: Dispatch<SetStateAction<EntityFormValues>>;
+  onCancel: () => void;
+  onSave: () => void;
+  saving: boolean;
+  saveError: string | null;
+  saveLabel: string;
+  savingLabel: string;
+  /** An extra condition (e.g. another action in flight) that also disables Save. */
+  saveDisabled?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 bg-brand/60 flex items-center justify-center z-50 px-4">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-sm font-semibold text-brand">{title}</h2>
+          <button onClick={onCancel} className="text-gray-400 hover:text-gray-700">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-gray-600 font-medium">Full Name *</label>
+            <input
+              value={form.full_name}
+              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+              placeholder="Individual or entity name"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 font-medium">Entity Type</label>
+            <select
+              value={form.entity_type}
+              onChange={(e) => setForm((f) => ({ ...f, entity_type: e.target.value as EntityType }))}
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+            >
+              {ENTITY_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-600 font-medium">PAN</label>
+              <input
+                value={form.pan}
+                onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
+                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+                placeholder="AAAAA9999A"
+                maxLength={10}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 font-medium">GSTIN</label>
+              <input
+                value={form.gstin}
+                onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
+                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+                placeholder="22AAAAA0000A1ZC"
+                maxLength={15}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-600 font-medium">Email</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+                placeholder="contact@example.com"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 font-medium">Phone</label>
+              <input
+                type="tel"
+                value={form.phone}
+                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+                placeholder="+91 98765 43210"
+              />
+            </div>
+          </div>
+        </div>
+        {saveError && <Callout tone="problem">{saveError}</Callout>}
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onCancel}
+            className="flex-1 text-sm text-gray-600 border border-gray-300 py-2 rounded-md hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving || !!saveDisabled || !form.full_name.trim()}
+            className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
+          >
+            {saving ? savingLabel : saveLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -280,103 +425,20 @@ export default function RelationshipsPage() {
         )}
       />
 
-      {/* Add Entity Modal */}
+      {/* Add Entity Modal — see EntityFormModal above */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-brand/60 flex items-center justify-center z-50 px-4">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-semibold text-brand">Add Entity</h2>
-              <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-700">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-600 font-medium">Full Name *</label>
-                <input
-                  value={form.full_name}
-                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                  placeholder="Individual or entity name"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600 font-medium">Entity Type</label>
-                <select
-                  value={form.entity_type}
-                  onChange={(e) => setForm({ ...form, entity_type: e.target.value as EntityType })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                >
-                  {ENTITY_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-600 font-medium">PAN</label>
-                  <input
-                    value={form.pan}
-                    onChange={(e) => setForm({ ...form, pan: e.target.value.toUpperCase() })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                    placeholder="AAAAA9999A"
-                    maxLength={10}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 font-medium">GSTIN</label>
-                  <input
-                    value={form.gstin}
-                    onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                    placeholder="22AAAAA0000A1ZC"
-                    maxLength={15}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-600 font-medium">Email</label>
-                  <input
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                    placeholder="contact@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 font-medium">Phone</label>
-                  <input
-                    type="tel"
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-                    placeholder="+91 98765 43210"
-                  />
-                </div>
-              </div>
-            </div>
-            {saveError && <Callout tone="problem">{saveError}</Callout>}
-            <div className="flex gap-2 mt-5">
-              <button
-                onClick={() => setModalOpen(false)}
-                className="flex-1 text-sm text-gray-600 border border-gray-300 py-2 rounded-md hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddEntity}
-                disabled={actionInFlight || !form.full_name.trim()}
-                className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-              >
-                {saving ? "Adding…" : "Add Entity"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <EntityFormModal
+          title="Add Entity"
+          form={form}
+          setForm={setForm}
+          onCancel={() => setModalOpen(false)}
+          onSave={handleAddEntity}
+          saving={saving}
+          saveError={saveError}
+          saveLabel="Add Entity"
+          savingLabel="Adding…"
+          saveDisabled={detectLoading}
+        />
       )}
     </div>
   );

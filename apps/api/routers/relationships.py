@@ -177,6 +177,7 @@ class EntityUpdateIn(BaseModel):
     address: Optional[str] = None
     date_of_birth: Optional[str] = None
     notes: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class EntityRoleIn(BaseModel):
