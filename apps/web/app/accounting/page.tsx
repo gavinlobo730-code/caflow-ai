@@ -5,6 +5,8 @@ import Link from "next/link";
 import { RefreshCw, Target, FileText, ClipboardCheck, IndianRupee, Scale, Lock, Landmark, Users, Clock, Building2, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { NAV_GROUPS } from "@/components/panels/AccountingPanel";
+import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
 
 // Phase 3 consolidation: this is the firm ADMINISTRATION hub only. Day-to-day
 // accounting — journals, ledger, trial balance, P&L, balance sheet, cash flow,
@@ -39,8 +41,49 @@ const ADMIN_CARDS: {
   { label: "Lock Financial Year", description: "Lock closed years to prevent accidental edits — Partner only", href: "/accounting/lock-year", icon: Lock },
 ];
 
+// sweep-accounting-hub-1-04: the sidebar (AccountingPanel's NAV_GROUPS) has
+// five groups — Chart of accounts, Registers, Across clients, Period close,
+// Firm — and this page had a card for Registers and Period close only, so a
+// CA landing here (rather than arriving already inside the sidebar) had no
+// way to reach Schedule III Mapping, Account Groups, COA import/export, the
+// cross-client worklists, Fee Billing or Data Migration. These three groups'
+// labels, hrefs, icons and permissions are read straight off NAV_GROUPS below
+// rather than copied into a second ADMIN_CARDS-shaped list, so a screen added
+// to one of them shows up here too. Only the one-line description is local —
+// NAV_GROUPS carries none, because the sidebar has no room for one.
+const EXTRA_SECTIONS = ["Chart of accounts", "Across clients", "Firm"] as const;
+
+const EXTRA_SECTION_DESCRIPTIONS: Record<string, string> = {
+  "/accounting/schedule-iii-mapping": "Map each account to its Schedule III caption for the balance sheet and P&L",
+  "/accounting/account-groups": "Organise the chart of accounts into groups and sub-groups",
+  "/accounting/coa-import": "Import a chart of accounts from Tally, Busy, QuickBooks, Zoho or Excel CSV",
+  "/accounting/coa-export": "Export the firm's chart of accounts",
+  "/accounting/banking": "Clients whose bank lines still need review or matching",
+  "/accounting/invoices": "Clients whose sales invoices need attention",
+  "/accounting/purchases": "Clients whose purchase bills need attention",
+  "/accounting/fixed-assets": "Clients with depreciation or fixed-asset items outstanding",
+  "/accounting/year-end": "Clients whose year-end closing needs attention",
+  "/billing": "Manage CA firm fee engagements and invoices",
+  "/migration": "Import a client's books from Tally, Busy, QuickBooks or Zoho",
+};
+
 export default function AccountingHubPage() {
   const [practiceId, setPracticeId] = useState<string | null>(null);
+  const { can } = usePermissions();
+  const { userRole } = useAuth();
+
+  // Same filter AccountingPanel applies to the same NAV_GROUPS, so a card
+  // never offers a link its own sidebar would have hidden.
+  const extraGroups = NAV_GROUPS.filter(
+    (g) => g.heading !== null && (EXTRA_SECTIONS as readonly string[]).includes(g.heading),
+  ).map((g) => ({
+    heading: g.heading as string,
+    items: g.items.filter(
+      (i) =>
+        (!i.requires || can(i.requires[0], i.requires[1])) &&
+        (!i.partnerOnly || userRole === "Partner"),
+    ),
+  })).filter((g) => g.items.length > 0);
 
   useEffect(() => {
     api.practice.get()
@@ -107,6 +150,33 @@ export default function AccountingHubPage() {
           </Link>
         ))}
       </div>
+
+      {/* sweep-accounting-hub-1-04: the sidebar's Chart of accounts, Across
+          clients and Firm sections, with no card here until now. */}
+      {extraGroups.map((group) => (
+        <div key={group.heading}>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ps-hint mb-2">{group.heading}</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {group.items.map((item) => (
+              <Link key={item.href} href={item.href}>
+                <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+                  <CardContent className="pt-5 pb-4 flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-brand/10 flex items-center justify-center shrink-0">
+                      <item.icon size={18} className="text-brand" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-ps-ink">{item.label}</p>
+                      <p className="text-xs text-ps-label mt-0.5 leading-tight">
+                        {EXTRA_SECTION_DESCRIPTIONS[item.href] ?? ""}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

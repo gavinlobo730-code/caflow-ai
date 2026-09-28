@@ -72,7 +72,7 @@ import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
  * `/payroll` BEFORE `/accounting`, so nothing here owns those routes any more
  * and re-adding one would put payroll in two places again.
  */
-type NavItem = {
+export type NavItem = {
   label: string;
   href: string;
   icon: typeof GitBranch;
@@ -81,7 +81,13 @@ type NavItem = {
   partnerOnly?: boolean;
 };
 
-const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
+// Exported so app/accounting/page.tsx can build its own quick-access cards for
+// the sections it does not already have a hand-written card for (Chart of
+// accounts, Across clients, Firm — sweep-accounting-hub-1-04) straight off
+// this list, rather than keeping a second, hand-maintained one that drifts
+// from it the way the panel and the landing page once drifted from each
+// other (see the file docstring above).
+export const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
   {
     heading: null,
     items: [
