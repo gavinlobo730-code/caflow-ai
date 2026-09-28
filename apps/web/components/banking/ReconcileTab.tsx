@@ -223,19 +223,22 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
   const loadReport = useCallback(async (id: string) => {
     setLoadingReport(true); setSel({}); setError(null);
     try {
-      const res = (await api.banking.reconciliations.report(id)) as { success: boolean; data: ReconReport };
+      // report() and brs() are two independent reads of the same session, so
+      // they fire together rather than the tie-out waiting on the document as
+      // well — this was the serial staircase behind the slow-load finding.
+      // brs() is caught on its own, same as before: it needs a ledger account
+      // linked to the bank account and says so when there is none, which must
+      // not take the reconciling screen down with it.
+      const [res, b] = await Promise.all([
+        api.banking.reconciliations.report(id) as Promise<{ success: boolean; data: ReconReport }>,
+        (api.banking.reconciliations.brs(id) as Promise<{ success: boolean; data: Brs }>)
+          .catch(() => ({ success: false, data: null as unknown as Brs })),
+      ]);
       if (!res.success) throw new Error("Couldn't load the reconciliation report.");
       setReport(res.data);
       setAdj(((res.data.reconciliation.adjustments_paise || 0) / 100).toFixed(2));
       setAdjReason(res.data.reconciliation.adjustments_reason || "");
-      // Its own request, and a failure here never blocks the tie-out: the
-      // statement needs a ledger account linked to the bank account and says so
-      // when there is none, which must not take the reconciling screen down
-      // with it.
-      try {
-        const b = (await api.banking.reconciliations.brs(id)) as { success: boolean; data: Brs };
-        setBrs(b.success ? b.data : null);
-      } catch { setBrs(null); }
+      setBrs(b.success ? b.data : null);
     } catch (e) {
       setReport(null);
       setError(e instanceof Error ? e.message : "Couldn't load the reconciliation report.");
