@@ -88,6 +88,36 @@ export interface CFAggregate {
    *  the window, so opening + netChange will not tie to closing and the UI must
    *  say so rather than show a figure quietly missing a period. */
   complete: boolean;
+  /**
+   * True only when the INDIRECT operating reconciliation itself ties out
+   * (`operating_reconciliation.ties_out`) in every loaded column — a
+   * DIFFERENT check from `reconciles`, which also folds in the opening/closing
+   * cash-balance tie-out. Kept apart so a banner can say which one actually
+   * failed (apex-accounting-reports-03): a mismatch here means net profit,
+   * depreciation and working-capital movements do not add up to the operating
+   * cash the backend actually classified — the old single banner blamed
+   * "change in cash balances" for this, which is the wrong diagnosis, since
+   * that tie-out was perfectly fine.
+   */
+  opReconciles: boolean;
+  /**
+   * Σ over loaded columns of (actual operating cash − what the indirect
+   * reconciliation computes from net profit, depreciation, non-operating
+   * adjustments and working-capital movements). Zero whenever opReconciles is
+   * true. A flow quantity — like netChange, it adds across contiguous
+   * periods — so it is meaningful summed, unlike opening/closing balances.
+   */
+  opReconciliationDiffPaise: number;
+}
+
+/** actual operating cash minus the indirect reconciliation's own total — the
+ *  same subtraction `ties_out` is a boolean of. Exported so the one place that
+ *  computes it (here) is also the one place a caller reads it from. */
+export function opReconciliationDiff(r: CFRecon): number {
+  return r.net_cash_operating_paise - (
+    r.net_profit_paise + r.non_operating_adjust_paise
+    + r.depreciation_addback_paise + r.working_capital_change_paise
+  );
 }
 
 /**
@@ -111,6 +141,8 @@ export function aggregateCashFlow(columns: CFColumn[]): CFAggregate | null {
     closing: withData[withData.length - 1].data.closing_cash_paise,
     reconciles: withData.every((c) => c.data.reconciles),
     complete: withData.length === columns.length,
+    opReconciles: withData.every((c) => c.data.operating_reconciliation.ties_out),
+    opReconciliationDiffPaise: sum((d) => opReconciliationDiff(d.operating_reconciliation)),
   };
 }
 

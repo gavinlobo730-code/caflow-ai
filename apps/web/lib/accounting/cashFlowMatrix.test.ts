@@ -8,7 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  cfUnion, cfAmount, aggregateCashFlow, cashFlowTiesOut,
+  cfUnion, cfAmount, aggregateCashFlow, cashFlowTiesOut, opReconciliationDiff,
   type CFColumn, type CFData, type CFSection,
 } from "./cashFlowMatrix.ts";
 
@@ -151,6 +151,72 @@ test("ties-out is exact, not approximate", () => {
   // Integer paise throughout. A statement out by one paise is out.
   const cols = [col("Apr", data({ opening_cash_paise: 100, net_change_paise: 1, closing_cash_paise: 102 }))];
   assert.equal(cashFlowTiesOut(aggregateCashFlow(cols)), false);
+});
+
+// ── The operating reconciliation is a DIFFERENT check from the cash-balance
+// tie-out (apex-accounting-reports-03) ───────────────────────────────────────
+// Before the backend fix, a cash-bearing Opening entry made
+// operating_reconciliation.ties_out false while opening + netChange still
+// equalled closing perfectly — so the two checks really can disagree, and a
+// banner that only ever named the balance tie-out was diagnosing the wrong
+// one. These pin the presentation arithmetic that lets the UI tell them apart.
+
+const RECON_OK = {
+  net_profit_paise: 10000, non_operating_adjust_paise: 0,
+  depreciation_addback_paise: 0, working_capital_change_paise: -10000,
+  net_cash_operating_paise: 0, ties_out: true,
+};
+
+test("opReconciliationDiff is zero when the reconciliation ties out", () => {
+  assert.equal(opReconciliationDiff(RECON_OK), 0);
+});
+
+test("opReconciliationDiff is the shortfall the Apex entry produced", () => {
+  // net_cash_operating_paise 0, but net_profit 0 + depreciation 0 +
+  // working_capital -4,054,000 (the Trade Payables leg) = -4,054,000: the
+  // reconciliation's own total is short of actual operating cash by exactly
+  // that amount, the live production figure.
+  const recon = {
+    net_profit_paise: 0, non_operating_adjust_paise: 0,
+    depreciation_addback_paise: 0, working_capital_change_paise: -4054000,
+    net_cash_operating_paise: 0, ties_out: false,
+  };
+  assert.equal(opReconciliationDiff(recon), 4054000);
+});
+
+test("aggregateCashFlow reports opReconciles apart from reconciles", () => {
+  // The cash-balance tie-out holds (opening + netChange == closing on both
+  // columns) while the operating reconciliation does not — so `reconciles` is
+  // false (it folds ties_out in) but the two must be individually inspectable.
+  const bad = { ...RECON_OK, ties_out: false, net_cash_operating_paise: -4054000 };
+  const cols = [col("Apr", data({
+    opening_cash_paise: 0, net_change_paise: -4054000, closing_cash_paise: -4054000,
+    reconciles: false, operating_reconciliation: bad,
+  }))];
+  const agg = aggregateCashFlow(cols)!;
+  assert.equal(agg.reconciles, false);
+  assert.equal(agg.opReconciles, false);
+  assert.ok(cashFlowTiesOut(agg), "the balance tie-out itself is fine here");
+});
+
+test("one column failing the operating reconciliation fails the aggregate", () => {
+  const cols = [
+    col("Apr", data({ operating_reconciliation: RECON_OK })),
+    col("May", data({ operating_reconciliation: { ...RECON_OK, ties_out: false } })),
+  ];
+  assert.equal(aggregateCashFlow(cols)!.opReconciles, false);
+});
+
+test("opReconciliationDiffPaise adds across periods like a flow", () => {
+  const short = {
+    net_profit_paise: 0, non_operating_adjust_paise: 0, depreciation_addback_paise: 0,
+    working_capital_change_paise: -1000, net_cash_operating_paise: 0, ties_out: false,
+  };
+  const cols = [
+    col("Apr", data({ operating_reconciliation: short })),
+    col("May", data({ operating_reconciliation: short })),
+  ];
+  assert.equal(aggregateCashFlow(cols)!.opReconciliationDiffPaise, 2000);
 });
 
 // ── Bounded concurrency ──────────────────────────────────────────────────────
