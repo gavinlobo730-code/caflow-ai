@@ -180,6 +180,18 @@ export function InvoiceEditor({
   // invoice, which is the exact fault SALES-24 was about, arriving by a
   // different road.
   const lastAutoFilled = useRef<string | null>(null);
+  // apex-sales-purchases-11: WHICH (client, date) that suggestion was fetched
+  // for. setInvoiceNo(d.suggested_number) below re-triggers the very effect
+  // that just ran — invoiceNo is one of its dependencies — and without this the
+  // second run asked the server the identical question it had just answered.
+  // A bare "typed === lastAutoFilled.current" check would be enough to skip
+  // THAT re-run, but it would also skip a REAL one: the CA changes the invoice
+  // date without ever touching the box, the effect fires because invoiceDate
+  // changed, and the on-screen number (still the old auto-fill) still equals
+  // lastAutoFilled.current — exactly the SALES-24 case the ref above exists
+  // to keep fresh. Recording the (client, date) the suggestion was FOR lets
+  // the skip fire only when nothing has actually changed since.
+  const lastAutoFilledFor = useRef<{ clientId: string; invoiceDate: string } | null>(null);
   const [numberSeries, setNumberSeries] = useState<{
     suggested_number: string | null;
     series_head: string;
@@ -318,6 +330,17 @@ export function InvoiceEditor({
   useEffect(() => {
     if (!clientId || isLocked) return;
     const typed = invoiceNo.trim();
+    // apex-sales-purchases-11: this effect's own setInvoiceNo(d.suggested_number)
+    // below re-triggers it, because invoiceNo is a dependency. If the box still
+    // reads exactly what WE last put there, and the (client, date) it was
+    // suggested for hasn't moved on, nothing has changed since that answer
+    // arrived — asking again would be the identical request. See
+    // lastAutoFilledFor's own comment for why the (client, date) check matters.
+    if (typed && typed === lastAutoFilled.current
+        && lastAutoFilledFor.current?.clientId === clientId
+        && lastAutoFilledFor.current?.invoiceDate === invoiceDate) {
+      return;
+    }
     let cancelled = false;
     const t = setTimeout(() => {
       (async () => {
@@ -337,7 +360,16 @@ export function InvoiceEditor({
           if (!isEdit && !numberTouched.current && replaceable && d.suggested_number
               && d.suggested_number !== typed) {
             lastAutoFilled.current = d.suggested_number;
+            lastAutoFilledFor.current = { clientId, invoiceDate };
             setInvoiceNo(d.suggested_number);
+            // Keep the dirty-check snapshot in lockstep — the same technique
+            // the line-item rehydration effect below uses — so a brand-new
+            // invoice form does not read as "Unsaved changes" the instant it
+            // auto-fills a number nobody has typed yet. Guarded by the same
+            // !isEdit the outer condition already established: an edit's
+            // snapshot must keep the number the document was actually saved
+            // with, not whatever the series suggests next.
+            initialSnapshot.current = { ...initialSnapshot.current, invoiceNo: d.suggested_number };
           }
         } catch {
           // Best-effort. The number stays typeable and the server refuses an
