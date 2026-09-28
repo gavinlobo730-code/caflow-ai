@@ -10,6 +10,8 @@ import { writeTimelineEvent } from "@/lib/services/timeline";
 import { api, type PortalContact } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
+import { portalStatusBadge } from "@/lib/portal/badge";
+import { portalInviteEmailFailureMessage } from "@/lib/portal/inviteError";
 
 export default function PortalPage() {
   // A timeline event records WHEN SOMETHING HAPPENED, so its financial year is
@@ -103,10 +105,16 @@ export default function PortalPage() {
     if (!clientId || !inviteEmail.trim()) return;
     setLoading(true);
     setInviteError(null);
+    // inviteContact() below commits the contact row server-side (already
+    // "invited") before the browser ever attempts to send the sign-in email,
+    // so that row can exist even when everything after this point fails —
+    // tracked here so `finally` knows whether there is anything new to show.
+    let contactCreated = false;
     try {
       const email = inviteEmail.trim();
       const res = await api.portal.inviteContact(clientId, { email });
       if (!res.success) throw new Error(res.error ?? "Failed to create the invite");
+      contactCreated = true;
       const token = res.data.contact.invite_token;
 
       const supabase = getSupabaseClient();
@@ -116,10 +124,13 @@ export default function PortalPage() {
       const { error: otpErr } = await supabase.auth.signInWithOtp({
         email, options: { emailRedirectTo: portalUrl },
       });
-      if (otpErr) throw new Error(otpErr.message);
+      // The contact above is already committed and "invited" whichever way
+      // this goes — only the email send itself can still fail here, most
+      // often Supabase Auth's own send-rate limit after a quick run of
+      // invites. Say so plainly rather than surfacing Supabase's raw
+      // wording, which reads as though the invite had done nothing at all.
+      if (otpErr) throw new Error(portalInviteEmailFailureMessage(otpErr.message));
 
-      const refreshed = await loadContacts(clientId);
-      if (refreshed) setContacts(refreshed);
       setInviteSent(true);
 
       try {
@@ -139,6 +150,14 @@ export default function PortalPage() {
     } catch (err) {
       setInviteError(err instanceof Error ? err.message : "Failed to send invite");
     } finally {
+      // Refresh even on failure: when the email send is what failed, the
+      // contact was still created and is now "invited" in the list below —
+      // showing that immediately, instead of only after the next full page
+      // load, is the whole point of this refresh.
+      if (contactCreated) {
+        const refreshed = await loadContacts(clientId);
+        if (refreshed) setContacts(refreshed);
+      }
       setLoading(false);
     }
   }
@@ -149,6 +168,11 @@ export default function PortalPage() {
   const active = contacts.filter((c) => c.status === "active");
   const invited = contacts.filter((c) => c.status === "invited");
   const enabled = active.length > 0 || invited.length > 0;
+  const badge = portalStatusBadge(active.length, invited.length);
+  const badgeClass =
+    badge.tone === "active" ? "bg-green-100 text-green-700"
+      : badge.tone === "invited" ? "bg-state-attention-surface text-state-attention"
+      : "bg-ps-muted text-ps-label";
   const mostRecentInvite = [...contacts].sort(
     (a, b) => new Date(b.invited_at ?? 0).getTime() - new Date(a.invited_at ?? 0).getTime()
   )[0];
@@ -172,12 +196,8 @@ export default function PortalPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span
-              className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                enabled ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"
-              }`}
-            >
-              {enabled ? "Active" : "Not enabled"}
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badgeClass}`}>
+              {badge.label}
             </span>
             <button
               onClick={handleOpenInvite}
