@@ -60,12 +60,26 @@ export async function writeTimelineEvent(
   }
 }
 
+/** Where the previous page ended: its LAST event, in feed order. */
+export interface TimelineCursor {
+  created_at: string;
+  id: string;
+}
+
 export interface GetTimelineOptions {
   clientId: string;
   category?: EventCategory;
   financialYear?: string;
   limit?: number;
-  offset?: number;
+  /** Return only events strictly after this one in feed order — the next page.
+   *
+   *  A CURSOR, NOT AN OFFSET. The feed is newest first, so an event written
+   *  while somebody is reading shifts every offset by one and the next page
+   *  repeats a row; and `created_at` alone is not a total order (a posting
+   *  writes several events in one statement), so rows sharing it could land
+   *  either side of a page boundary. The order is (created_at, id) descending,
+   *  which is total, and the cursor names a position in it. */
+  before?: TimelineCursor;
 }
 
 export async function getClientTimeline(
@@ -79,11 +93,18 @@ export async function getClientTimeline(
       .eq("client_id", options.clientId)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(options.limit ?? 50);
 
     if (options.category) query = query.eq("category", options.category);
     if (options.financialYear) query = query.eq("financial_year", options.financialYear);
-    if (options.offset) query = query.range(options.offset, options.offset + (options.limit ?? 50) - 1);
+    if (options.before) {
+      // (created_at, id) < (cursor.created_at, cursor.id), spelled for
+      // PostgREST. The timestamp is double-quoted because it carries `.` and
+      // `:`, both reserved inside a logical filter.
+      const { created_at: at, id } = options.before;
+      query = query.or(`created_at.lt."${at}",and(created_at.eq."${at}",id.lt.${id})`);
+    }
 
     const { data, error } = await query;
     if (error) return { success: false, data: [], error: error.message };
