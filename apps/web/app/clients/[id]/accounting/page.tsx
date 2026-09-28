@@ -34,6 +34,7 @@ import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/componen
 import { toast } from "@/components/ui/use-toast";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { formatIstLabelled } from "@/lib/dates/formatIst";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
 import { PartyBreakdown } from "@/components/accounting/PartyBreakdown";
 import { CostCentresTab } from "@/components/accounting/CostCentresTab";
@@ -3213,7 +3214,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
                           {busy[j.id] ? "Posting…" : "Approve & Post"}
                         </button>
                       ) : (
-                        <span className="text-ps-label">{j.posted_at ? String(j.posted_at).slice(0, 16).replace("T", " ") : "—"}</span>
+                        <span className="text-ps-label">{formatIstLabelled(j.posted_at)}</span>
                       )}
                     </td>
                   </tr>
@@ -3454,7 +3455,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
                 activeRun?.id === r.id ? "bg-brand-dark text-white" : "bg-ps-muted text-ps-label hover:bg-ps-border"
               }`}
             >
-              {String(r.started_at).slice(0, 16).replace("T", " ")} · {r.trigger === "manual" ? "Manual" : "Scheduled"} ·{" "}
+              {formatIstLabelled(r.started_at)} · {r.trigger === "manual" ? "Manual" : "Scheduled"} ·{" "}
               {r.status === "failed" ? "Failed" : `${r.findings_count} finding${r.findings_count === 1 ? "" : "s"}`}
             </button>
           ))}
