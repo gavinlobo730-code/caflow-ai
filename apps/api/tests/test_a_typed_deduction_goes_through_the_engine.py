@@ -153,6 +153,46 @@ def test_no_pan_floors_the_rate_at_twenty_percent(app_db):
     assert d["tds_paise"] == 20_000_00
 
 
+# ── which limb of the rate was applied, and why (sweep-tds-mca-08) ───────────
+#
+# is_company_pan() reads the PAN's 4th character to pick 194C's 1%/2% split,
+# and defaults to the higher, non-individual rate wherever it cannot — so a
+# freshly-typed vendor with a synthetic or absent PAN was silently charged the
+# higher rate with nothing on the row saying so. rate_basis names the limb and
+# the character (or the absence) that decided it, on every row.
+
+def test_rate_basis_names_the_individual_limb_and_the_pan_character(app_db):
+    app, _ = app_db
+    d = _post(app, section="194C", deductee_pan=PAN_INDIVIDUAL,
+              payment_amount_paise=5_00_000_00).json()["data"]
+    basis = d["explain"]["rate_basis"]
+    assert "individual/HUF" in basis
+    assert "PAN 4th character P" in basis
+
+
+def test_rate_basis_names_the_non_individual_limb_and_the_pan_character(app_db):
+    app, _ = app_db
+    d = _post(app, section="194C", deductee_pan=PAN_COMPANY,
+              payment_amount_paise=5_00_000_00).json()["data"]
+    basis = d["explain"]["rate_basis"]
+    assert "non-individual" in basis
+    assert "PAN 4th character C" in basis
+
+
+def test_rate_basis_explains_the_default_when_there_is_no_pan(app_db):
+    """A freshly-typed vendor with no matching record must not silently get
+    the higher rate with no statement of why — the finding's own complaint."""
+    app, _ = app_db
+    d = _post(app, section="194C", deductee_pan=None,
+              payment_amount_paise=5_00_000_00).json()["data"]
+    basis = d["explain"]["rate_basis"]
+    assert "non-individual" in basis
+    assert "no PAN is on file" in basis
+    # No PAN also floors the section itself is silent about — but the rate
+    # story is the individual/company limb, told apart from s.206AA's floor.
+    assert d["tds_rate_pct"] == 20.0  # s.206AA floor, still named separately
+
+
 # ── the aggregate, which the browser had no notion of ────────────────────────
 
 def test_the_fy_aggregate_triggers_and_credits_what_was_already_withheld(app_db):

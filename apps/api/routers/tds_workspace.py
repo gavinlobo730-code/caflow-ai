@@ -468,6 +468,13 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
             db, firm_id=firm_id, client_id=client_id, section=section,
             deductee_pan=pan, on=when, exclude_id=exclude_id)
 
+    # Individual or company is read off the PAN's 4th character, not asked.
+    # s.194C is 1% for an individual and 2% for a company, and the old screen
+    # charged everyone 2%. Captured once so the same answer both drives the
+    # engine and explains itself below — asking is_company_pan twice could
+    # answer differently only if it were not pure, but two call sites reading
+    # one fact is still one fact to get wrong.
+    is_company = is_company_pan(pan)
     try:
         res = TDSComputer().resolve_tds(
             section=section,
@@ -477,10 +484,7 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
             # later entry.
             fy_prior_taxable_paise=prior_taxable,
             fy_prior_tds_paise=prior_tds,
-            # Individual or company is read off the PAN's 4th character, not
-            # asked. s.194C is 1% for an individual and 2% for a company, and
-            # the old screen charged everyone 2%.
-            is_company=is_company_pan(pan),
+            is_company=is_company,
             # The FY the PAYMENT falls in, not today's — a deduction entered
             # late for a prior year must use that year's law.
             fy=manual_register.fy_label(when),
@@ -499,6 +503,24 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
     # have changed it, and a gap that appears only sometimes reads as a fault
     # in the data rather than a known limit of the calculation.
     gaps = [manual_register.GAP_REGISTERS_NOT_UNIFIED]
+
+    # WHICH limb of the section's rate was applied, and why — stated on every
+    # row, not only where a CA happens to ask, because a silently-applied
+    # non-individual rate on a freshly-typed vendor with no matching record
+    # looks identical to a correctly-applied individual rate on the figure
+    # alone. Mirrors is_company_pan()'s own reasoning (domain/tds/tds_computer.py):
+    # the 4th character of the PAN decides, and no usable PAN defaults to the
+    # higher, non-individual rate.
+    if pan and len(pan) >= 4:
+        rate_basis = (
+            f"Charged at the {'non-individual' if is_company else 'individual/HUF'} "
+            f"rate: PAN 4th character {pan[3].upper()}."
+        )
+    else:
+        rate_basis = (
+            "Charged at the non-individual rate: no PAN is on file to read the "
+            "payee's type from, so the higher rate applies by default."
+        )
 
     row = {
         "firm_id": firm_id,
@@ -538,6 +560,7 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
         "reason": getattr(res, "reason", None),
         "rate_pct": res.rate_bps / 100,
         "tds_paise": res.tds_paise,
+        "rate_basis": rate_basis,
         "fy_prior_taxable_paise": prior_taxable,
         "fy_prior_tds_paise": prior_tds,
         "gaps": gaps,

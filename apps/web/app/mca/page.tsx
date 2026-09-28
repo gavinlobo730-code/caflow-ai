@@ -25,7 +25,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
-import { todayLocalISO, daysBetweenLocalISO, toLocalISO, computeOverdueStatus } from "@/lib/dateMath";
+import { todayLocalISO, daysBetweenLocalISO, toLocalISO, computeOverdueStatus, currentFinancialYearLabel } from "@/lib/dateMath";
+import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { Callout } from "@/components/ui/callout";
 import { formatCroreLakh } from "@/lib/money/format";
 
@@ -179,10 +180,15 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   onAdded: (f: MCAFiling) => void;
 }) {
   const { toast } = useToast();
+  // FORM_TYPES below are all Companies Act 2013 forms (AOC-4, MGT-7/7A, ADT-1,
+  // INC-20A, DIR-3 KYC, CHG-1, MSME-1), so the picker only offers clients
+  // actually incorporated under that Act — an LLP or a proprietorship has no
+  // AOC-4/MGT-7 obligation to record here (see lib/entityObligations.ts).
+  const companyClients = useMemo(() => clients.filter(c => isCompaniesActCompany(c.entity_type)), [clients]);
   const [clientId, setClientId] = useState("");
   const [cin, setCin] = useState("");
   const [formType, setFormType] = useState("AOC-4");
-  const [period, setPeriod] = useState("FY 2025-26");
+  const [period, setPeriod] = useState(() => `FY ${currentFinancialYearLabel()}`);
   const [dueDate, setDueDate] = useState("");
   const [srn, setSrn] = useState("");
   const [status, setStatus] = useState<FilingStatus>("Pending");
@@ -195,7 +201,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
     setSaving(true); setErr(null);
     try {
       const sb = getSupabaseClient();
-      const selectedClient = clients.find(c => c.id === clientId);
+      const selectedClient = companyClients.find(c => c.id === clientId);
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to MCA portal
       const { data, error } = await sb.from("mca_filings").insert({
         firm_id: firmId,
@@ -237,7 +243,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
             <label className="text-xs font-medium text-ps-body block mb-1">Client</label>
             <div className="w-full">
               <ClientLookup
-                clients={clients}
+                clients={companyClients}
                 value={clientId}
                 onChange={setClientId}
                 ariaLabel="Client"
