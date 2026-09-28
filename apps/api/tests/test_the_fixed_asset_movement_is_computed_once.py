@@ -199,6 +199,31 @@ def test_a_ledger_that_disagrees_with_the_register_is_STATED():
     assert "25,000.00" in gaps and "20,000.00" in gaps and "5,000.00" in gaps
 
 
+# ── an empty register is not a ledger problem (apex-bank-assets-inventory-12a) ─
+
+def test_a_client_with_zero_assets_is_told_so_not_warned_about_the_ledger():
+    """`movement_gaps` used to reach the "could not be read from the ledger"
+    sentence whenever `posted_charge_paise is None`, with no check for whether
+    the register itself held anything — so a client who genuinely has no
+    fixed assets, whose Depreciation Expense account naturally resolves to
+    nothing cached for the period, was told their ledger might be broken."""
+    m = fam.movement_from_rows([], FY_END)
+    assert m.classes == []
+    gaps = fam.movement_gaps(m, None)
+    assert gaps == ["No assets are recorded for this client."]
+    assert not any("ledger" in g for g in gaps), (
+        "an empty register must not blame the ledger for having nothing to say")
+
+
+def test_an_asset_on_the_register_still_gets_the_real_ledger_caveat():
+    """The register-is-empty gate must not swallow the genuine caveat once
+    there is at least one asset to be uncertain about."""
+    m = fam.movement_from_rows([_asset(accumulated_depreciation_paise=20_000_00)], FY_END)
+    assert m.classes != []
+    gaps = fam.movement_gaps(m, None)
+    assert any("could not be read from the ledger" in g for g in gaps)
+
+
 def test_a_ledger_that_agrees_says_nothing():
     m = fam.movement_from_rows([
         _asset(accumulated_depreciation_paise=30_000_00,

@@ -247,8 +247,21 @@ def movement_gaps(movement: Movement, posted_charge_paise: Optional[int]) -> lis
     `posted_charge_paise` is what the LEDGER carries for the year, or None
     where it could not be read. None is a gap, never a zero: a zero would be a
     claim that nothing was charged.
+
+    A REGISTER WITH NO ASSETS IS NOT A LEDGER PROBLEM (apex-bank-assets-
+    inventory-12a). `posted_charge_paise is None` used to reach the
+    "could not be read from the ledger" sentence unconditionally — including
+    for a client who genuinely has no fixed assets, where the Depreciation
+    Expense account naturally resolves to nothing cached for the period. That
+    told the CA their ledger might be broken over a client with nothing to
+    depreciate. `movement.classes` is empty exactly when the caller's `rows`
+    were, so it is the one place this module can tell "nothing was found" from
+    "nothing is there" apart.
     """
     gaps: list[str] = []
+    if not movement.classes:
+        gaps.append("No assets are recorded for this client.")
+        return gaps
     if not movement.windowed:
         gaps.append("No financial year was given, so this shows the register as "
                     "it stands rather than the year's movement.")
