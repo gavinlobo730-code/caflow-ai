@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from models.client import ClientCreate, ClientUpdate
 from models.common import api_response
@@ -15,6 +17,7 @@ from core.authz import effective_client_ids, can_access_client
 from core.ist_clock import ist_today
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
+_logger = logging.getLogger("caflow.clients")
 
 
 def _supabase_enabled() -> bool:
@@ -258,10 +261,45 @@ def update_client(client_id: str, body: ClientUpdate, current_user: dict = Depen
             detail="Use POST /api/clients/{id}/archive to archive a client"
         )
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    # Read BEFORE client_repo.update(): in mock mode CLIENT_INDEX hands back
+    # the SAME mutable dict from both find_by_id and update, so capturing the
+    # pre-change frequency after the write would silently read the value the
+    # write just set (old_freq == new_freq always, every switch a no-op).
+    old_gst_filing_frequency = existing.get("gst_filing_frequency")
     updated = client_repo.update(client_id, updates)
     log_event(firm_id, "client", client_id, "update",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               old_data={k: existing.get(k) for k in updates}, new_data=updates)
+
+    # apex-overview-practice-01: a GST filing-frequency switch (Rule 61A) was
+    # written straight to clients.gst_filing_frequency with no reconciliation
+    # of the compliance_records already generated at the OLD frequency — so
+    # the sidebar correctly showed "quarterly" while the compliance calendar
+    # kept the stale monthly GSTR-1/GSTR-3B rows (they were never regenerated
+    # until the NEXT unrelated obligation-generation sweep, and even then the
+    # narrow dedup key silently dropped every new quarterly row — see
+    # compliance_obligation_service._reconcile_stale_gst_obligations).
+    # Trigger the reconciliation on the write that actually changes the
+    # frequency, so a switch takes effect on the calendar immediately rather
+    # than waiting on an unrelated run. Best-effort: a failure here must not
+    # fail the client update itself (the same posture as the audit/timeline
+    # hooks above and generate_for_engagement's own _audit_timeline_generate).
+    if "gst_filing_frequency" in updates:
+        # NOT str(v): GSTFilingFrequency(str, Enum)'s __str__ is Enum's own
+        # "GSTFilingFrequency.QUARTERLY", not the plain value — but the member
+        # IS a real str subclass, so .strip().lower() called directly on it
+        # (enum member or a plain string already, either way) gives "quarterly".
+        old_freq = (old_gst_filing_frequency or "monthly").strip().lower()
+        new_freq = updates["gst_filing_frequency"].strip().lower()
+        if old_freq != new_freq:
+            try:
+                from services.compliance_obligation_service import generate_due
+                generate_due(firm_id, client_id=client_id, actor=current_user)
+            except Exception:
+                _logger.exception(
+                    "GST filing frequency changed for client %s but the compliance "
+                    "calendar could not be reconciled — run POST "
+                    "/api/compliance/obligations/generate for this client.", client_id)
     return api_response(True, {"client": updated})
 
 

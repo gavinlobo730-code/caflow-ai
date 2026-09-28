@@ -20,7 +20,8 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
 
     def find_by_id(self, id: str) -> Optional[dict]:
         if _USE_MOCK:
-            return next((r for r in MOCK_COMPLIANCE_RECORDS if r["id"] == id), None)
+            return next((r for r in MOCK_COMPLIANCE_RECORDS
+                        if r["id"] == id and not r.get("deleted_at")), None)
         result = _get_db().table("compliance_records").select("*").eq("id", id).is_("deleted_at", "null").maybe_single().execute()
         return result.data
 
@@ -33,7 +34,12 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
         exclude_statuses: Optional[list[str]] = None,
     ) -> list[dict]:
         if _USE_MOCK:
-            records = list(MOCK_COMPLIANCE_RECORDS)
+            # Mirrors the real branch's unconditional `.is_("deleted_at",
+            # "null")` — a soft-deleted row (compliance_obligation_service's
+            # GST-frequency reconciliation is the first writer) must not keep
+            # reappearing as "existing" on the next generation run, in mock
+            # mode any more than in production.
+            records = [r for r in MOCK_COMPLIANCE_RECORDS if not r.get("deleted_at")]
             if firm_id:
                 records = [r for r in records if r.get("firm_id") == firm_id]
             if client_id:
@@ -108,6 +114,31 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
         payload["updated_at"] = self.now_iso()
         result = _get_db().table("compliance_records").update(payload).eq("id", id).execute()
         return result.data[0] if result.data else None
+
+    def soft_delete(self, id: str) -> bool:
+        """Mark one obligation deleted without erasing it — the row the audit
+        trail and any reconciliation gap still name stays readable by id, it
+        simply stops being "existing" for find_all/find_by_id and stops
+        occupying migrations 108/168's partial unique index (`WHERE
+        deleted_at IS NULL`). Used by
+        compliance_obligation_service._reconcile_stale_gst_obligations to
+        free a stale monthly obligation's period_start so the correctly
+        shaped quarterly (or vice versa) one can be inserted there."""
+        now = self.now_iso()
+        if _USE_MOCK:
+            record = next((r for r in MOCK_COMPLIANCE_RECORDS if r["id"] == id), None)
+            if not record:
+                return False
+            record["deleted_at"] = now
+            record["updated_at"] = now
+            return True
+        result = (
+            _get_db().table("compliance_records")
+            .update({"deleted_at": now, "updated_at": now})
+            .eq("id", id)
+            .execute()
+        )
+        return bool(result.data)
 
 
 compliance_records_repo = ComplianceRecordsRepository()
