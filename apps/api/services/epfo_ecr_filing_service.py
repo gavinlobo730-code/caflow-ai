@@ -131,6 +131,28 @@ def finalised_months(db, *, firm_id: str, client_id: str) -> list[str]:
                    if seq.is_month(r.get("month"))})
 
 
+def latest_unreleased_month(db, *, firm_id: str, client_id: str) -> Optional[str]:
+    """The most recent wage month with a DRAFT or REVIEW run, or None.
+
+    apex-payroll-yearend-11. `finalised_months` answering `[]` is genuinely
+    ambiguous: it is what a client with no payroll run of any status looks
+    like, and it is also what a client with a draft sitting right there on the
+    Month selector looks like — "no month has been run here yet" is honest
+    about the first and misleading about the second, since a run genuinely
+    exists. This is the one extra fact `outstanding_note` needs to tell them
+    apart; it names no return type and decides nothing about EPFO's sequence,
+    which stays exactly `finalised_months`'s question.
+    """
+    if not db or not client_id:
+        return None
+    rows = (db.table("payroll_runs").select("month, status")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .not_.in_("status", list(FINALISED_RUN_STATUSES))
+            .execute().data) or []
+    months = {str(r.get("month") or "") for r in rows if seq.is_month(r.get("month"))}
+    return max(months) if months else None
+
+
 def record_filing(
     db, *, firm_id: str, client_id: str, wage_month: str, return_type: str,
     status: str = seq.SUBMITTED, submitted_on: Optional[str] = None,

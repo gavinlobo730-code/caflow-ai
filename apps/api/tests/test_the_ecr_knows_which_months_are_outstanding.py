@@ -33,7 +33,8 @@ import pytest
 from domain.payroll import ecr_sequence as seq
 from domain.payroll.ecr_sequence import (
     APPROVED, REGULAR, REVISED, SUBMITTED, SUPPLEMENTARY,
-    FiledMember, RecordedFiling, decide_returns, outstanding_months, sequence_for,
+    FiledMember, RecordedFiling, decide_returns, outstanding_months,
+    outstanding_note, sequence_for,
 )
 
 API = Path(__file__).resolve().parents[1]
@@ -127,6 +128,43 @@ def test_a_malformed_month_is_dropped_rather_than_breaking_the_sequence():
     s = sequence_for("2026-06", finalised_months=["2026-04", "not-a-month", ""],
                      filings=[])
     assert s.outstanding == ("2026-04",)
+
+
+# ── outstanding_note's own sentence (apex-payroll-yearend-11) ───────────────
+#
+# `months_known_from is None` is genuinely ambiguous on its own: it is what a
+# client with NO payroll run at all looks like, and it is also what a client
+# with only a DRAFT run looks like — finalised_months cannot see a draft. "No
+# month has been run here yet" is false of the second case, since a run
+# genuinely exists on the Month selector.
+
+def test_no_run_of_any_status_keeps_the_original_sentence():
+    note = outstanding_note((), None)
+    assert "no month has been run here yet" in note
+    assert "draft" not in note
+
+
+def test_a_draft_run_gets_its_own_sentence_naming_the_month():
+    note = outstanding_note((), None, latest_unreleased_month="2026-09")
+    assert "2026-09 is still a draft" in note
+    assert "EPFO ordering applies once a month is finalised" in note
+    assert "no month has been run here yet" not in note
+
+
+def test_the_draft_sentence_is_asked_only_when_months_known_from_is_none():
+    """A client who HAS a released month is never told about a draft here —
+    outstanding_months already answers the real question for them, and a
+    caller passing latest_unreleased_month alongside a real months_known_from
+    must not resurrect the draft sentence over a genuine outstanding list."""
+    note = outstanding_note((), "2026-04", latest_unreleased_month="2026-09")
+    assert "still a draft" not in note
+    assert "among those run here since 2026-04" in note
+
+
+def test_a_real_outstanding_list_is_unaffected_by_a_draft_argument():
+    note = outstanding_note(("2026-04",), "2026-04", latest_unreleased_month="2026-09")
+    assert "EPFO is waiting for 1 wage month" in note
+    assert "draft" not in note
 
 
 # ── Which return type a month needs ──────────────────────────────────────────

@@ -110,19 +110,36 @@ function YearEndWorkspaceInner() {
 
   const [engagement, setEngagement] = useState<YearEndEngagement | null>(null);
 
-  // The URL is the source of truth for which stage is open, so a link or a
-  // browser Back lands where the reader expects.
-  const tabParam = searchParams.get("tab");
-  const stage: StageId = isStageId(tabParam) ? tabParam : DEFAULT_STAGE;
+  // Which stage is open is LOCAL STATE, not a re-read of the URL on every
+  // render — apex-payroll-yearend-06. `router.replace` is a Next.js App
+  // Router client navigation, and this is a STATIC EXPORT (CLAUDE.md:
+  // `output: "export"`) served through Cloudflare Pages: there is no server
+  // to answer the RSC/Flight request a soft navigation needs for a real,
+  // non-static `engagementId` route, so every stage switch silently fell back
+  // to a FULL BROWSER RELOAD — re-fetching users, permissions, clients,
+  // health and the engagement itself from scratch on every click, 2-6 seconds
+  // each. The initial value is still read off the URL once, on mount, so a
+  // deep link (`?tab=checklist`) and the browser's own Back button still land
+  // on the right stage.
+  const [stage, setStage] = useState<StageId>(() => {
+    const tabParam = searchParams.get("tab");
+    return isStageId(tabParam) ? tabParam : DEFAULT_STAGE;
+  });
 
   const basePath = `/clients/${clientId}/year-end/${engagementId}/`;
 
   function openStage(next: StageId) {
-    const q = new URLSearchParams(searchParams.toString());
+    setStage(next);
+    // COSMETIC ONLY: this updates what the address bar shows without asking
+    // Next.js to navigate anywhere, so `ActiveStage` below re-renders purely
+    // client-side off the `stage` state set above — no RSC fetch, no reload.
+    // `window.location.search` (not `searchParams.toString()`) so a query
+    // param this page did not put there survives the round trip too.
+    const q = new URLSearchParams(window.location.search);
     if (next === DEFAULT_STAGE) q.delete("tab");
     else q.set("tab", next);
     const qs = q.toString();
-    router.replace(qs ? `${basePath}?${qs}` : basePath, { scroll: false });
+    window.history.replaceState(null, "", qs ? `${basePath}?${qs}` : basePath);
   }
 
   // `engagement` starts null and the header renders skeleton chips while it is

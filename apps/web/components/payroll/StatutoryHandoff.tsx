@@ -820,8 +820,18 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
     })();
   }, [clientId]);
 
+  const run = runs.find((r) => r.id === runId);
+  // The one predicate the render-gating message below already used, reused
+  // rather than restated: a draft or review run has nothing to hand off — the
+  // returns report contributions actually made — and `run_handoff` refuses it
+  // with a 409 (apex-payroll-yearend-08). Calling it anyway wasted a round
+  // trip for a state this component can already see, and before the backend
+  // fix above it also surfaced as a raw FastAPI {"detail": ...} body the
+  // envelope check just below could not read into `res.error`.
+  const isReleased = !!run && (run.status === "finalized" || run.status === "paid");
+
   const load = useCallback(async () => {
-    if (!runId) { setHandoff(null); return; }
+    if (!runId || !isReleased) { setHandoff(null); return; }
     setErr(null);
     try {
       const res = await api.payroll.runHandoff(runId);
@@ -831,11 +841,9 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
       setHandoff(null);
       setErr(e instanceof Error ? e.message : "That did not load.");
     }
-  }, [runId]);
+  }, [runId, isReleased]);
 
   useEffect(() => { load(); }, [load]);
-
-  const run = runs.find((r) => r.id === runId);
 
   if (loading) {
     return <p className="p-5 text-xs text-ps-hint">Loading…</p>;
@@ -895,7 +903,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
         ))
       ) : !err ? (
         <p className="text-xs text-ps-hint">
-          {run && run.status !== "finalized" && run.status !== "paid"
+          {run && !isReleased
             ? "This month is still a draft. The returns report contributions "
               + "actually made, so finalise it under Release first."
             : "Nothing statutory arises from this month."}
