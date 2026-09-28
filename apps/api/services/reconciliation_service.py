@@ -32,7 +32,7 @@ from typing import Optional
 
 from domain.accounting import ledger_anomalies
 from domain.reporting.sources import SupabaseLedgerSource
-from core.db_paging import fetch_all
+from core.db_paging import fetch_all, fetch_all_in
 
 _logger = logging.getLogger("caflow.reconciliation")
 
@@ -155,11 +155,17 @@ def check_missing_cogs_journals(db, firm_id: str, client_id: str, entries) -> li
     if not by_invoice:
         return []
 
-    invoices = _paginate_all(lambda: (
-        db.table("client_sales_invoices").select("id, invoice_no")
-        .eq("firm_id", firm_id).eq("client_id", client_id)
-        .in_("id", list(by_invoice.keys()))
-    ))
+    # CHUNKED (fetch_all_in): an IN list of every invoice id, sent whole, is a
+    # PostgREST filter riding in the URL — measured on Apex Trading Solutions
+    # (~5,645 invoice ids) this exceeded httpx's own URL-length ceiling
+    # ("URL component 'query' too long") before the request ever reached the
+    # gateway, so this check has never once completed for that client and the
+    # nightly sweep reported "Check failed to run" silently, every night.
+    invoices = fetch_all_in(
+        lambda: (db.table("client_sales_invoices").select("id, invoice_no")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)),
+        "id", list(by_invoice.keys()),
+        label="reconciliation.missing_cogs_journals.invoices")
     invoice_no_by_id = {i["id"]: (i.get("invoice_no") or i["id"]) for i in invoices}
 
     posted_refs = {e.reference_no for e in entries.values() if e.reference_no}
@@ -204,11 +210,16 @@ def check_missing_inventory_receipt_journals(db, firm_id: str, client_id: str, e
     if not by_bill:
         return []
 
-    bills = _paginate_all(lambda: (
-        db.table("purchase_bills").select("id, bill_no")
-        .eq("firm_id", firm_id).eq("client_id", client_id)
-        .in_("id", list(by_bill.keys()))
-    ))
+    # CHUNKED (fetch_all_in): the same failure mode as the COGS check above,
+    # confirmed live on Apex Trading Solutions with ~755 bill ids (~29,000
+    # characters) — there the gateway itself returned 400 "JSON could not be
+    # generated" rather than httpx refusing to build the request, but the
+    # effect on this check was identical: it never ran.
+    bills = fetch_all_in(
+        lambda: (db.table("purchase_bills").select("id, bill_no")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)),
+        "id", list(by_bill.keys()),
+        label="reconciliation.missing_inventory_receipt_journals.bills")
     bill_no_by_id = {b["id"]: (b.get("bill_no") or b["id"]) for b in bills}
 
     posted_refs = {e.reference_no for e in entries.values() if e.reference_no}
@@ -382,12 +393,16 @@ def check_bank_reconciliation_discrepancies(db, firm_id: str, client_id: str, en
         return []
 
     # Every transaction still attached to any of these sessions, keyed by id.
+    # CHUNKED (fetch_all_in): `sessions` is every COMPLETED reconciliation this
+    # client has ever run — unbounded the same way the invoice and bill ids
+    # above are — so the same defect class applies here too.
     session_ids = [s["id"] for s in sessions]
-    live_txns = _paginate_all(lambda: (
-        db.table("bank_transactions")
-        .select("id, reconciliation_id, debit_paise, credit_paise, posted_journal_id")
-        .eq("firm_id", firm_id).in_("reconciliation_id", session_ids)
-    ))
+    live_txns = fetch_all_in(
+        lambda: (db.table("bank_transactions")
+                 .select("id, reconciliation_id, debit_paise, credit_paise, posted_journal_id")
+                 .eq("firm_id", firm_id)),
+        "reconciliation_id", session_ids,
+        label="reconciliation.bank_reconciliation_discrepancies.live_txns")
     live_by_id = {t["id"]: t for t in live_txns}
 
     findings: list[dict] = []

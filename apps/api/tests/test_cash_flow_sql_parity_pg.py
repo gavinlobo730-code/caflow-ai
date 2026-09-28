@@ -77,9 +77,9 @@ AID = {a.id: str(uuid.uuid5(uuid.NAMESPACE_DNS, f"cfparity.{a.id}")) for a in AC
 BY_UUID = {v: k for k, v in AID.items()}
 
 
-def je(jid, lines, date="2026-06-01"):
+def je(jid, lines, date="2026-06-01", entry_type="Journal"):
     return JournalEntry(id=jid, entry_date=date, client_id=CLIENT, firm_id=FIRM,
-                        entry_type="Journal", lines=tuple(JournalLine(*l) for l in lines))
+                        entry_type=entry_type, lines=tuple(JournalLine(*l) for l in lines))
 
 
 # ── Scenarios ────────────────────────────────────────────────────────────────
@@ -144,6 +144,19 @@ SCENARIOS: list[tuple[str, list]] = [
         # account_id, and this scenario is what proves they break the same way.
         je("t1", [("bank", 100000, 0), ("fa", 0, 50000), ("accdep", 0, 50000)]),
     ]),
+    ("opening entry with a cash leg and a non-cash leg — apex-accounting-reports-03", [
+        # Dr Bank 1,00,000 / Dr Trade Payables 40,54,000 / Cr Opening Balance
+        # Equity 41,54,000, dated exactly on the window's own start date — the
+        # Apex Trading Solutions shape. Before the fix its whole cash went to
+        # FINANCING (any equity leg wins the entry's activity) while the Trade
+        # Payables leg fed working_capital in the indirect reconciliation, so
+        # op_reconciles came back false by exactly ₹40,54,000. A plain credit
+        # sale is included so the scenario is not all-zero besides the
+        # opening entry.
+        je("obcash", [("bank", 100000, 0), ("ap", 4054000, 0), ("obe", 0, 4154000)],
+           START, entry_type="Opening"),
+        je("s7", [("ar", 10000, 0), ("rev", 0, 10000)]),
+    ]),
     ("combined ledger", [
         OPENING,
         je("m1", [("ar", 118000, 0), ("rev", 0, 100000), ("gstout", 0, 18000)]),
@@ -189,7 +202,7 @@ INSERT INTO clients (id, firm_id, client_name, entity_type)
             "INSERT INTO journal_entries "
             "(id, firm_id, client_id, entry_date, reference_no, narration, entry_type, "
             " is_posted, status) VALUES ("
-            f"'{eid}', '{FIRM}', '{CLIENT}', '{e.entry_date}', 'REF-{i}', 'n', 'Journal', "
+            f"'{eid}', '{FIRM}', '{CLIENT}', '{e.entry_date}', 'REF-{i}', 'n', {_q(e.entry_type)}, "
             "true, 'posted');"
         )
         for ln in e.lines:
@@ -292,6 +305,52 @@ def test_opening_cash_excludes_the_first_day_itself(db):
     doc = _sql_report(db, "2026-04-01", "2027-03-31")
     assert doc["opening_cash_paise"] == 0, "an entry ON the start date leaked into opening cash"
     assert doc["closing_cash_paise"] == 12345
+    assert _normalise(doc) == _python_report(entries)
+
+
+def test_a_cash_bearing_opening_entry_still_reconciles(db):
+    """apex-accounting-reports-03, the confirmed production defect.
+
+    An Opening entry (entry_type = 'Opening') carrying BOTH a bank leg and a
+    non-cash leg — Dr Bank / Dr Trade Payables / Cr Opening Balance Equity,
+    dated on the window's own start date, exactly Apex Trading Solutions'
+    FY2026-27 shape. The old guard in `recon` only skipped a non-cash entry
+    that touched equity (`e.cash = 0 AND e.has_equity`, migration 276); this
+    entry's cash is never zero, so it fell through as an ordinary
+    operating-period entry: `_activity_of_entry` sends its WHOLE cash to
+    financing the moment any leg touches equity, while its Trade Payables leg
+    is an ordinary operating liability and fed working_capital in the indirect
+    reconciliation — a movement the actual cash sections never saw. The
+    reconciliation was short by exactly the Trade Payables amount and
+    `operating_reconciliation.ties_out` (and therefore `reconciles`) came back
+    false.
+
+    The fix treats the whole entry as a POSITION rather than a FLOW: excluded
+    from every section and the reconciliation, its bank legs folded into
+    opening cash instead."""
+    entries = [
+        je("obcash", [("bank", 100000, 0), ("ap", 4054000, 0), ("obe", 0, 4154000)],
+           START, entry_type="Opening"),
+        je("s7", [("ar", 10000, 0), ("rev", 0, 10000)]),
+    ]
+    assert _psql(db, _seed_sql(entries)).returncode == 0
+    doc = _sql_report(db)
+
+    assert doc["operating_reconciliation"]["ties_out"] is True, (
+        "the operating reconciliation must tie out with a cash-bearing "
+        "Opening entry present"
+    )
+    assert doc["reconciles"] is True
+    assert doc["opening_cash_paise"] == 100000, (
+        "the Opening entry's bank legs belong in opening cash, not left to "
+        "reconcile (or fail to) as a period flow"
+    )
+    assert doc["financing"]["total_paise"] == 0, (
+        "an Opening entry must not be attributed to financing merely because "
+        "one of its legs touches equity"
+    )
+    assert doc["operating"]["total_paise"] == 0
+    assert doc["investing"]["total_paise"] == 0
     assert _normalise(doc) == _python_report(entries)
 
 

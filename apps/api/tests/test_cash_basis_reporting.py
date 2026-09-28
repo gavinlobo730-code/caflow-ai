@@ -47,10 +47,11 @@ ACCOUNTS = [
 
 # ── builders ────────────────────────────────────────────────────────────────
 
-def _je(jid, lines, date="2026-04-10", reversal_of=None):
+def _je(jid, lines, date="2026-04-10", reversal_of=None, source_type=None, source_id=None):
     return JournalEntry(
         id=jid, entry_date=date, client_id=CLIENT, firm_id=FIRM,
         entry_type="x", lines=tuple(JournalLine(*l) for l in lines), reversal_of=reversal_of,
+        source_type=source_type, source_id=source_id,
     )
 
 
@@ -331,6 +332,37 @@ def test_unallocated_receipt_parks_as_advance_not_revenue():
     assert any("Advance from Customers" in n for n in liab)
 
 
+# ── Trial Balance shows a synthetic control account's REAL name (apex- ─────────
+# accounting-reports-02, defect 2). CashBasisProjector._ensure_synthetic
+# registers "__advance_to_vendors__" / "__advance_customers__" into
+# snap.accounts as a SIDE EFFECT of projecting, only when the chart carries no
+# real advance account of its own. trial_balance()'s legacy() branch used to
+# copy `accounts = dict(snap.accounts)` BEFORE calling self._lines(snap,
+# basis) — the very call that registers it — so the copy handed to the
+# builder never saw it, and builders._acc's own fallback for an unresolved id
+# (name=account_id) rendered the row under the raw sentinel id rather than
+# its real name. profit_loss/balance_sheet never had this bug: both pass
+# snap.accounts straight through rather than copying it first.
+
+def test_trial_balance_shows_synthetic_advance_accounts_real_name():
+    # A chart with no advance-to-vendors account at all — real or name-
+    # matched — so an unattributed payment (no linked bill) forces
+    # _ensure_synthetic to register one.
+    minimal_accounts = [
+        Account("ap", "2100", "Trade Payables", "Liability", system_key="ap"),
+        Account("bank", "1000", "Bank", "Asset", "Bank", system_key="bank"),
+    ]
+    svc = ReportingService(InMemoryLedgerSource(
+        accounts=minimal_accounts,
+        entries=[_je("jp", [("ap", 3000, 0), ("bank", 0, 3000)])],
+        payments=[Payment("P", None, "jp", 3000)],  # unattributed — no linked bill
+    ))
+    tb = svc.trial_balance(FIRM, CLIENT, FY_END, basis="cash")
+    row = next(l for l in tb["lines"] if l["account_id"] == "__advance_to_vendors__")
+    assert row["account_name"] == "Advance to Vendors"      # not the raw sentinel id
+    assert tb["is_balanced"] and tb["difference_paise"] == 0
+
+
 # ── Cost of Sales / Gross Profit (task #104) ────────────────────────────────────
 
 def test_cogs_split_into_cost_of_sales_not_operating_expenses():
@@ -361,6 +393,80 @@ def test_cogs_split_holds_on_cash_basis_too():
     pl = cash_pl(svc)
     assert pl["cost_of_sales"]["total_paise"] == 4000
     assert pl["gross_profit_paise"] == -4000
+
+
+# ── A document's OWN inventory-movement companion journal (apex-accounting- ────
+# reports-02, defect 3). domain/inventory_service.py posts the -INV/-COGS
+# reclassification as a SEPARATE journal entry from the document's own
+# primary accrual entry, sharing that document's source_type/source_id
+# (journal_source.PURCHASE_BILL/SALES_INVOICE) but carrying its OWN entry id —
+# a different id from purchase_bills.journal_entry_id /
+# client_sales_invoices.journal_entry_id, the only id bill_by_journal /
+# invoice_by_journal key on. Unrecognised, it fell to _passthrough, which
+# lets it straight through (neither leg is A/R or A/P) while the document's
+# OWN primary journal (the offsetting Dr Purchases / Cr COGS side) is
+# correctly dropped as an accrual document a few lines above — leaving a bare
+# Cr Purchases with nothing to net it, which drove Purchases NEGATIVE on the
+# cash-basis P&L/TB for any client with real goods purchases.
+
+def test_unpaid_bills_own_inv_companion_does_not_go_negative_on_cash_basis():
+    b, jb = bill("B", "jb", [("exp1", 5000)])
+    # The bill's -INV companion (post_inventory_receipt_journal_entry):
+    # Dr Inventory / Cr Purchases (exp1) — same document, own entry id,
+    # same source_type/source_id as jb.
+    j_inv = _je("jb-INV", [("invacct", 5000, 0), ("exp1", 0, 5000)],
+                source_type="purchase_bill", source_id="B")
+    svc = build(entries=[jb, j_inv], bills=[b])
+    pl = cash_pl(svc)
+    # Nothing has been paid — cash-basis Purchases must be NIL, not a bare
+    # -5000 left over from the companion's unmatched credit.
+    assert exp_total(pl) == 0
+    assert_tb_balances(svc, "cash")
+
+
+def test_paid_bill_recognises_expense_once_despite_its_inv_companion():
+    b, jb = bill("B", "jb", [("exp1", 5000)])
+    j_inv = _je("jb-INV", [("invacct", 5000, 0), ("exp1", 0, 5000)],
+                source_type="purchase_bill", source_id="B")
+    p, jp = payment("P", "jp", "B", 5000)
+    svc = build(entries=[jb, j_inv, jp], bills=[b], payments=[p])
+    pl = cash_pl(svc)
+    # Recognised exactly once — from the payment's own linked-bill
+    # distribution (_bill_distribution, reading the bill's own primary
+    # journal) — never doubled and never negative from the companion.
+    assert exp_total(pl) == 5000
+    assert_tb_balances(svc, "cash")
+
+
+def test_unpaid_invoices_own_cogs_companion_does_not_leak_into_cash_basis():
+    inv_a, je_a = invoice("A", "ja", [("rev1", 10000)])
+    # The invoice's -COGS companion (post_cogs_journal_entry):
+    # Dr Cost of Goods Sold / Cr Inventory — same document, own entry id,
+    # same source_type/source_id as je_a.
+    j_cogs = _je("ja-COGS", [("cogs", 4000, 0), ("invacct", 0, 4000)],
+                 source_type="sales_invoice", source_id="A")
+    svc = build(entries=[je_a, j_cogs], invoices=[inv_a])
+    pl = cash_pl(svc)
+    # Nothing collected — cash-basis revenue AND cost of sales are both nil,
+    # not a COGS charge recognised independently of any cash movement.
+    assert rev_total(pl) == 0
+    assert pl["cost_of_sales"]["total_paise"] == 0
+    assert_tb_balances(svc, "cash")
+
+
+def test_inventory_movement_companion_untouched_on_accrual():
+    """The fix is cash-basis only — accrual reporting is the posted ledger
+    as-is (ReportingService._lines), so the companion journal's own legs must
+    still show up there exactly as posted."""
+    b, jb = bill("B", "jb", [("exp1", 5000)])
+    j_inv = _je("jb-INV", [("invacct", 5000, 0), ("exp1", 0, 5000)],
+                source_type="purchase_bill", source_id="B")
+    svc = build(entries=[jb, j_inv], bills=[b])
+    pl = accrual_pl(svc)
+    # jb debits exp1 5000, j_inv credits exp1 5000 back out — nets to nil,
+    # which is exactly what the accrual books already show.
+    assert exp_total(pl) == 0
+    assert_tb_balances(svc, "accrual")
 
 
 # ── DIRECT entries touching A/R or A/P — cash-basis edge (task #104) ────────────

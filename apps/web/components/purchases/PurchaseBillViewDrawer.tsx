@@ -24,7 +24,7 @@ import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEdit
 import { FormSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
 import { todayLocalISO } from "@/lib/dateMath";
-import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
+import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 // Vendor-payment modes — must match the purchase_payments.payment_mode CHECK
 // constraint (migration 050, widened by 161: bank/cash/cheque/upi/neft/rtgs/
 // online). Identical to the sales-side receipt modes.
@@ -147,16 +147,21 @@ export function PurchaseBillViewDrawer({
   async function openJournal() {
     const next = !showJournal;
     setShowJournal(next);
-    if (next && !journal && bill?.journal_entry_id && bill.bill_date) {
+    if (next && !journal && bill?.journal_entry_id) {
       setJournalLoading(true);
       try {
         const token = await getAuthToken();
-        const r = await apiGet(
-          `/api/accounting/journal?client_id=${clientId}&start_date=${bill.bill_date}&end_date=${bill.bill_date}`,
-          token,
-        );
-        const entries = (r.data as JournalEntry[]) ?? [];
-        setJournal(entries.find((e) => e.id === bill.journal_entry_id) ?? null);
+        // The document's own journal_entry_id, straight to the real, DB-backed
+        // single-entry endpoint (GET /api/accounting/journal/{id}) — not a
+        // date-windowed LIST search. GET /api/accounting/journal (the list
+        // route) reads MOCK_JOURNAL_ENTRIES only, in every deployment, so it
+        // always came back with zero rows here (apex-sales-purchases-01).
+        const r = await apiGet(`/api/accounting/journal/${bill.journal_entry_id}`, token);
+        // `{}` is truthy, so a bare `r.data as JournalEntry` would pass an
+        // `if (!journal)` guard straight through and then throw on
+        // `journal.lines.map(...)` — objectWithLists both kind-checks `data`
+        // and guarantees `lines` is a real array either way.
+        setJournal(r.success ? objectWithLists<JournalEntry>(r.data, "lines") : null);
       } catch {
         onToast("Unable to load the journal entry", "error");
       } finally {

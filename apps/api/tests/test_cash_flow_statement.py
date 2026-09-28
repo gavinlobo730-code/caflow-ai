@@ -39,9 +39,9 @@ ACCOUNTS = [
 ]
 
 
-def je(jid, lines, date="2026-06-01"):
+def je(jid, lines, date="2026-06-01", entry_type="x"):
     return JournalEntry(id=jid, entry_date=date, client_id=CLIENT, firm_id=FIRM,
-                        entry_type="x", lines=tuple(JournalLine(*l) for l in lines))
+                        entry_type=entry_type, lines=tuple(JournalLine(*l) for l in lines))
 
 
 # ₹10,000 opening cash, introduced before the window (capital). Affects opening only.
@@ -331,6 +331,65 @@ def test_capital_introduced_in_cash_is_still_financing():
     assert total(s, "financing") == 50000
     assert s["net_change_paise"] == 50000
     assert_reconciles(s)
+
+
+# ── A CASH-BEARING opening entry (apex-accounting-reports-03) ────────────────
+# OB_BALANCE/OB_STOCK above have no bank leg, so only the narrower `cash == 0
+# and has_equity` guard (migration 276) has ever been needed to keep them out
+# of the reconciliation. Apex Trading Solutions' FY2026-27 books carry an
+# entry_type == "Opening" entry that also has a REAL bank leg — Dr Bank + Dr
+# Trade Payables / Cr Opening Balance Equity — and that guard never fires for
+# it, because its cash is not zero. It fell straight through as an ordinary
+# operating-period entry: `_activity_of_entry` sends the WHOLE cash to
+# financing the instant any leg touches equity, while the Trade Payables leg
+# is an ordinary operating liability and fed working_capital — a movement the
+# actual cash sections never saw — so `operating_reconciliation.ties_out` came
+# back false by exactly the Trade Payables amount (₹40,54,000 on the live
+# client). Tagging the entry `entry_type == "Opening"` is what lets it be
+# excluded WHOLE, cash leg included, rather than widening the equity guard.
+OB_CASH_BEARING = je(
+    "ob-cash", [("bank", 100000, 0), ("ap", 4054000, 0), ("obe", 0, 4154000)],
+    "2026-04-01", entry_type="Opening",
+)
+
+
+def test_a_cash_bearing_opening_entry_still_reconciles():
+    """The regression, at the Python level (tests/test_cash_flow_sql_parity_
+    pg.py pins the same shape against the SQL function). Before the fix this
+    failed exactly as op_reconciles/ties_out coming back False."""
+    s = cf(svc_for([OB_CASH_BEARING, CREDIT_SALE]))
+    assert_reconciles(s)
+
+
+def test_a_cash_bearing_opening_entry_is_excluded_whole_not_just_its_equity_leg():
+    """The precise mechanism: the Trade Payables leg must not leak into working
+    capital, and the entry's cash must not be attributed to financing merely
+    because one of its OTHER legs touches equity."""
+    s = cf(svc_for([OB_CASH_BEARING, CREDIT_SALE]))
+    r = s["operating_reconciliation"]
+    assert r["net_profit_paise"] == 10000            # from CREDIT_SALE only
+    assert r["working_capital_change_paise"] == -10000, (
+        "the Opening entry's Trade Payables leg leaked into working capital — "
+        "it is a position, not a movement of the period"
+    )
+    assert total(s, "financing") == 0, (
+        "an Opening entry's cash must not be attributed to financing just "
+        "because one of its legs touches equity"
+    )
+    assert total(s, "operating") == 0
+    assert line_for(s, "financing", "obe") is None
+
+
+def test_a_cash_bearing_opening_entrys_cash_is_folded_into_opening_cash():
+    """Its bank leg is real cash and belongs somewhere: opening cash, since the
+    entry states the balance the books were opened with rather than a flow
+    that happened during the period being reported. closing_cash_paise needs
+    no equivalent fold — it is a cumulative bank balance through `end_date`
+    with no entry_type filter, so it already carries this leg."""
+    s = cf(svc_for([OB_CASH_BEARING, CREDIT_SALE]))
+    assert s["opening_cash_paise"] == 100000
+    assert s["closing_cash_paise"] == 100000
+    assert s["net_change_paise"] == 0
 
 
 # ── Cross-scenario invariants ─────────────────────────────────────────────────

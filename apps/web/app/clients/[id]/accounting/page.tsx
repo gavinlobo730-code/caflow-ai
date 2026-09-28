@@ -29,7 +29,7 @@ import { splitPeriodColumns, periodSplitNotice, resolvePeriodRange, type PeriodM
 import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
 import { documentTarget, noRouteReason, sourceLabel, journalEntryHref }
   from "@/lib/accounting/sourceDocument";
-import { cfUnion, cfAmount, aggregateCashFlow, mapWithLimit, type CFData, type CFSection, type CFColumn } from "@/lib/accounting/cashFlowMatrix";
+import { cfUnion, cfAmount, aggregateCashFlow, cashFlowTiesOut, mapWithLimit, type CFData, type CFSection, type CFColumn } from "@/lib/accounting/cashFlowMatrix";
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/use-toast";
 
@@ -2970,9 +2970,26 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
               </button>
             </div>
           )}
+          {/* Two DIFFERENT checks, worded apart (apex-accounting-reports-03):
+              the operating-activities reconciliation (net profit + depreciation
+              ± working capital tying to the operating cash actually posted) and
+              the opening/closing cash-balance tie-out are independent, and a
+              banner that only ever named the second was the wrong diagnosis for
+              a failure of the first — with no figure anywhere to show a CA
+              where the difference went. */}
           {!agg.reconciles && (
             <div className="bg-state-attention-surface border border-state-attention-border rounded px-3 py-2 text-xs text-state-attention">
-              Cash flow does not reconcile to the change in cash balances for this period. Please review the ledger.
+              {!agg.opReconciles ? (
+                <>
+                  The operating-activities reconciliation does not tie out for this period — net profit, depreciation and working-capital movements do not add up to the operating cash actually posted.{" "}
+                  <span className="font-semibold">Unreconciled difference: {fmtSigned(agg.opReconciliationDiffPaise)}.</span>{" "}
+                  Please review the ledger.
+                </>
+              ) : !cashFlowTiesOut(agg) ? (
+                <>Cash flow does not reconcile to the change in cash balances for this period. Please review the ledger.</>
+              ) : (
+                <>Cash flow does not reconcile for this period. Please review the ledger.</>
+              )}
             </div>
           )}
 
@@ -3635,7 +3652,12 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
   async function exportXLSX(reportType: "pl" | "bs" | "trial") {
     setExporting(reportType);
     try {
-      const XLSX = (await import("xlsx")).default;
+      // Not `.default` — xlsx 0.18.5 resolves through its "module" entry
+      // (xlsx.mjs), which has no default export, so `.default` is `undefined`
+      // and `buildWorkbook(XLSX, ...)` throws reading `XLSX.utils`. The
+      // namespace object IS `typeof import("xlsx")`, which is what
+      // `buildWorkbook` (lib/export/xlsx.ts) declares its first parameter as.
+      const XLSX = await import("xlsx");
       const { rows, sheetName, moneyColumns } = await buildReportSheet(reportType);
       const wb = buildWorkbook(XLSX, { rows, moneyColumns, sheetName });
       const base = reportType === "pl" ? "PL" : reportType === "bs" ? "BalanceSheet" : "Trial-Balance";
@@ -3650,7 +3672,8 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
   async function shareToPortal(reportType: "pl" | "bs" | "trial") {
     setSharing(reportType);
     try {
-      const XLSX = (await import("xlsx")).default;
+      // See the identical comment in exportXLSX — no `.default` here either.
+      const XLSX = await import("xlsx");
       const labelMap = { pl: "Profit & Loss", bs: "Balance Sheet", trial: "Trial Balance" };
       const label = `${labelMap[reportType]} (${basisLabel}) — FY ${financialYear}`;
       const fileName = `${reportType}-${basis}-FY${financialYear}-${Date.now()}.xlsx`;

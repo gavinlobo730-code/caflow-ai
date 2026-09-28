@@ -9,6 +9,7 @@
  * the existing receipts and credit-notes endpoints.
  */
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { objectWithLists } from "@/lib/api/shape";
 import { useState, useEffect, useCallback } from "react";
 import {
   CheckCircle, Download, Pencil, Send, Trash2, Copy, CreditCard, FilePlus2,
@@ -152,16 +153,21 @@ export function InvoiceViewDrawer({
   async function openJournal() {
     const next = !showJournal;
     setShowJournal(next);
-    if (next && !journal && inv?.journal_entry_id && inv.invoice_date) {
+    if (next && !journal && inv?.journal_entry_id) {
       setJournalLoading(true);
       try {
         const token = await getAuthToken();
-        const r = await apiGet(
-          `/api/accounting/journal?client_id=${clientId}&start_date=${inv.invoice_date}&end_date=${inv.invoice_date}`,
-          token,
-        );
-        const entries = (r.data as JournalEntry[]) ?? [];
-        setJournal(entries.find((e) => e.id === inv.journal_entry_id) ?? null);
+        // The document's own journal_entry_id, straight to the real, DB-backed
+        // single-entry endpoint (GET /api/accounting/journal/{id}) — not a
+        // date-windowed LIST search. GET /api/accounting/journal (the list
+        // route) reads MOCK_JOURNAL_ENTRIES only, in every deployment, so it
+        // always came back with zero rows here (apex-sales-purchases-01).
+        const r = await apiGet(`/api/accounting/journal/${inv.journal_entry_id}`, token);
+        // `{}` is truthy, so a bare `r.data as JournalEntry` would pass an
+        // `if (!journal)` guard straight through and then throw on
+        // `journal.lines.map(...)` — objectWithLists both kind-checks `data`
+        // and guarantees `lines` is a real array either way.
+        setJournal(r.success ? objectWithLists<JournalEntry>(r.data, "lines") : null);
       } catch {
         onToast("Unable to load the journal entry", "error");
       } finally {

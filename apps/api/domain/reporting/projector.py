@@ -14,6 +14,8 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 
+from domain.accounting import journal_source as JS
+
 from .model import JournalEntry, LedgerSnapshot, ProjectedLine, apportion
 from .resolver import AccountResolver
 
@@ -30,6 +32,10 @@ class CashBasisProjector:
 
     Per posted entry in the report window:
       INVOICE / BILL / CREDIT_NOTE -> dropped (accrual recognition only)
+      INVENTORY MOVEMENT COMPANION -> dropped alongside its own document (the
+                  -INV/-COGS/-COGSTRUEUP/-INVRET journals inventory_service.py
+                  posts as a SEPARATE entry sharing the document's source_type/
+                  source_id — see _is_inventory_movement_companion)
       RECEIPT  -> keep cash legs; recognise revenue from allocated invoices
       PAYMENT  -> keep cash leg; recognise expense from the linked bill
       REVERSAL -> re-project the original entry and negate it
@@ -75,7 +81,56 @@ class CashBasisProjector:
                 or eid in self.s.bill_by_journal
                 or eid in self.s.creditnote_by_journal):
             return []  # accrual recognition document — no cash effect on its own
+        if self._is_inventory_movement_companion(entry):
+            return []  # the SAME document's own inventory reclass — see docstring
         return self._passthrough(entry, sign)
+
+    def _is_inventory_movement_companion(self, entry: JournalEntry) -> bool:
+        """True for a sale/purchase document's OWN inventory-movement posting —
+        the -INV / -COGSTRUEUP / -INVRET journals `domain/inventory_service.py`
+        posts ALONGSIDE (never inside) the document's primary accrual entry:
+        Dr Inventory / Cr Purchases for a bill's own -INV receipt journal
+        (`post_inventory_receipt_journal_entry`), Dr Cost of Goods Sold /
+        Cr Inventory for an invoice's own -COGS sale journal
+        (`post_cogs_journal_entry`), and their true-up/return mirrors.
+
+        Each of these carries the SAME `source_type`/`source_id` as the
+        document's own primary journal — `journal_source.PURCHASE_BILL` +
+        `bill.id`, `journal_source.SALES_INVOICE` + `invoice.id` —
+        `inventory_service`'s own module comment explains why it is posted as
+        a SEPARATE journal entry rather than threaded into the existing
+        posting ("this keeps the already-live invoice/bill journal logic
+        completely untouched, so an inventory-posting failure can never
+        affect it"). But a separate entry means a DIFFERENT entry id from the
+        one the document itself points at
+        (`purchase_bills.journal_entry_id` / `client_sales_invoices.
+        journal_entry_id`), which is the ONLY id `bill_by_journal` /
+        `invoice_by_journal` above key on — so the companion was invisible to
+        that check.
+
+        Left unrecognised it fell to `_passthrough`, which has no reason to
+        touch it (neither leg is A/R or A/P), so it was let straight through:
+        a bill's -INV journal's bare Cr Purchases survived on cash basis with
+        nothing to offset it, because the bill's OWN primary journal (the Dr
+        Purchases side) is correctly dropped as an accrual recognition
+        document a few lines above. On a client with real goods purchases
+        that drove Purchases NEGATIVE on the cash-basis P&L and Trial Balance
+        (apex-accounting-reports-02).
+
+        It is treated as PART of the same accrual document and dropped for
+        exactly the same reason the primary journal is: an inventory
+        reclassification has no cash leg of its own, and there is no
+        allocation-driven mechanism (unlike a receipt/payment) to recognise it
+        again later — inventing one is the larger rework this fix does not
+        attempt."""
+        source_id = entry.source_id
+        if source_id is None:
+            return False
+        if entry.source_type == JS.PURCHASE_BILL:
+            return source_id in self.s.bills
+        if entry.source_type == JS.SALES_INVOICE:
+            return source_id in self.s.invoices
+        return False
 
     # ── projections ───────────────────────────────────────────────────────────
 

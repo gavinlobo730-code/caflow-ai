@@ -446,6 +446,12 @@ def cash_flow(entries: list, accounts: dict[str, Account],
         net profit + depreciation add-back − non-operating gains ± working capital.
       • Non-cash entries (depreciation, year-end closing, accruals — no bank leg)
         are EXCLUDED from every section.
+      • An OPENING entry (entry_type == "Opening", or source_type == "Opening" —
+        services/opening_balance_service.py) is a POSITION, never a period FLOW,
+        whatever legs it carries. Excluded whole from every section AND the
+        reconciliation; its bank legs go into opening cash instead. See the
+        exclusion below for why a cash-bearing one cannot be caught by the
+        equity guard that handles the non-cash case.
 
     Reconciliation is meaningful, not tautological:
       O + I + F == net cash change == (independent) closing − opening cash, AND
@@ -463,10 +469,39 @@ def cash_flow(entries: list, accounts: dict[str, Account],
     working_capital = 0          # Δ operating current assets/liabilities
     non_cash_excluded = 0
     total_cash = 0
+    opening_fold = 0              # cash legs of OPENING entries — folded into opening cash
 
     for e in entries:
         elines = e.lines
         cash = sum(l.debit_paise - l.credit_paise for l in elines if l.account_id in bank_ids)
+
+        # ── Opening entries are a POSITION, not a FLOW (apex-accounting-reports-03) ──
+        # A brought-forward balance dated inside the reporting window (a client
+        # onboarded mid-year, or an opening entry redated to fall in this FY) can
+        # carry a real bank leg alongside its non-cash ones — e.g. Dr Bank + Dr
+        # Trade Payables / Cr Opening Balance Equity. The equity guard below only
+        # catches a NON-cash entry (`cash == 0 and has_equity`); this one has
+        # cash != 0, so it fell straight through as an ordinary operating-period
+        # entry. Its Trade Payables leg then landed in working_capital while its
+        # cash — classified by `_activity_of_entry`, which picks financing over
+        # operating the moment any leg touches equity — went to FINANCING in
+        # full, so the indirect reconciliation carried a movement the actual
+        # cash sections never saw. `operating_reconciles` came back false by
+        # exactly that leg (a live client was short by ₹40,54,000), and there was
+        # no way to express "the books are fine, the STATEMENT's own shape can't
+        # hold this row" other than failing the tie-out.
+        #
+        # So an Opening entry is excluded here, in full, before any
+        # classification runs — never just the equity leg — and its cash is
+        # folded into opening_cash_paise below, which is where a position
+        # belongs. `closing_cash_paise` needs no adjustment: it already sums
+        # every bank leg up to `end_date` independently of entry_type, so it
+        # already carries this entry's cash correctly; only `opening_cash_paise`
+        # was missing it, because the entry is dated ON OR AFTER `start_date`
+        # and so never reached the ledger's own opening balance.
+        if e.entry_type == "Opening" or e.source_type == "Opening":
+            opening_fold += cash
+            continue
         total_cash += cash
         nonbank = [l for l in elines if l.account_id not in bank_ids]
 
@@ -530,6 +565,13 @@ def cash_flow(entries: list, accounts: dict[str, Account],
                     depreciation += l.debit_paise - l.credit_paise   # non-cash add-back
             elif _classify_activity(a) == "operating":
                 working_capital += l.credit_paise - l.debit_paise    # Δ operating WC
+
+    # Fold any in-window Opening entries' cash into opening_cash_paise — the
+    # caller computed it independently of entry_type (a cumulative bank balance
+    # as of the day before `start_date`), so an Opening entry dated ON or AFTER
+    # `start_date` was never part of it. closing_cash_paise needs no matching
+    # adjustment: it is cumulative through `end_date` and already includes it.
+    opening_cash_paise = opening_cash_paise + opening_fold
 
     operating_profit = net_profit - non_operating_pl                 # strip disposal gain/loss
     # Meaningful cross-check (HIGH-2): the indirect operating reconciliation must

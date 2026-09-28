@@ -23,7 +23,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from core.ist_clock import ist_today, ist_fy_label
+from core.ist_clock import ist_today, ist_fy_label, fy_bounds
 from core.ist_clock import fy_quarters as _fy_quarter_windows
 from services import compliance_engine as ce
 from repositories.compliance_records_repository import compliance_records_repo
@@ -36,6 +36,14 @@ _logger = logging.getLogger("caflow.compliance_ops")
 # Engagement statuses whose obligations are actively generated/tracked.
 _ACTIVE_ENGAGEMENT_STATUSES = ("Active", "In Progress", "Review")
 _OPEN_OBLIGATION = lambda s: s not in ("Filed", "Completed")  # noqa: E731
+
+# GSTR1/GSTR3B/PMT06 are the three obligation types whose PERIOD SHAPE depends
+# on the client's own GST filing frequency (Rule 61A) — a monthly and a
+# quarterly obligation both start on the 1st of a month, but cover different
+# periods. GSTR9 is deliberately excluded: _gst_obligations emits it "the same
+# either way", so it never collides across a frequency switch and needs none
+# of the reconciliation below.
+_GST_FREQUENCY_SENSITIVE_TYPES = frozenset({"GSTR1", "GSTR3B", "PMT06"})
 
 
 # ── Pure helpers (deterministic; no I/O) ─────────────────────────────────────
@@ -928,10 +936,93 @@ def _audit_timeline_generate(firm_id: str, rec: dict, actor: Optional[dict]) -> 
         pass
 
 
+def _reconcile_stale_gst_obligations(firm_id: str, client_id: str, financial_year: str,
+                                     specs: list[dict], existing: list[dict]) -> tuple[set, set, list[str]]:
+    """A GST filing-frequency switch (Rule 61A) reuses the SAME period_start
+    keys the OLD frequency's obligations already occupy — a monthly and a
+    quarterly GSTR-1/GSTR-3B/PMT-06 both start on the 1st of a month — so the
+    narrow (obligation_type, period_start) dedup key the insert loop used to
+    use alone treats a stale MONTHLY row as "already generated" and silently
+    skips the correct QUARTERLY one at the same period_start. Confirmed on
+    Apex Trading Solutions: monthly obligations generated 04-07-2026, switched
+    to quarterly 29-08-2026, and every one of the 8 quarterly GSTR1/GSTR3B
+    rows collided with a stale monthly row and was skipped — while PMT-06,
+    whose period_start (the 1st of the FIRST TWO months of each quarter) does
+    NOT collide with a monthly GSTR1/GSTR3B period_start, generated fine.
+
+    Only GSTR1/GSTR3B/PMT06 are frequency-shaped (see
+    _GST_FREQUENCY_SENSITIVE_TYPES); every other obligation type keeps the
+    caller's own narrow-key dedup, untouched.
+
+    Scoped to the financial year being generated — a row from an earlier or
+    later year cannot collide with this year's period_start values anyway,
+    but there is no reason to walk the client's whole compliance history to
+    find that out.
+
+    Returns
+        seen3        {(obligation_type, period_start, period_end)} already on
+                    file and matching a CURRENT spec exactly — the wider key
+                    the caller's insert loop dedupes the frequency-sensitive
+                    specs on.
+        blocked_ps   {(obligation_type, period_start)} of a row that does NOT
+                    match a current spec but was left in place because real
+                    work is already on it (not "Not Started") — the narrow
+                    key at that period_start is still occupied in the
+                    database (migrations 108/168's partial unique index), so
+                    the caller must not attempt to insert a new spec there.
+        gaps         one sentence per row in blocked_ps, for the caller to
+                    fold into its own statutory_gaps — the same "named,
+                    machine-readable, beside the obligation it is about"
+                    shape as every other gap this module reports. A row this
+                    function silently reconciles needs no sentence; one it
+                    could not touch does.
+
+    Every OTHER row (Not Started, and not matching a current spec) is
+    soft-deleted here — the partial unique index only applies WHERE
+    deleted_at IS NULL, so this is what frees the period_start for the new,
+    differently-shaped spec to be inserted at.
+    """
+    fy_start, fy_end = fy_bounds(financial_year)
+    gst_specs = [s for s in specs if s["obligation_type"] in _GST_FREQUENCY_SENSITIVE_TYPES]
+    spec_keys3 = {(s["obligation_type"], s["period_start"], s["period_end"]) for s in gst_specs}
+
+    seen3: set = set()
+    blocked_ps: set = set()
+    gaps: list[str] = []
+    for r in existing:
+        otype = r.get("obligation_type")
+        if otype not in _GST_FREQUENCY_SENSITIVE_TYPES:
+            continue
+        ps = str(r.get("period_start") or "")[:10]
+        if not (fy_start <= ps <= fy_end):
+            continue
+        pe = str(r.get("period_end") or "")[:10]
+        key3 = (otype, ps, pe)
+        if key3 in spec_keys3:
+            seen3.add(key3)
+            continue
+        if (r.get("status") or "Not Started") != "Not Started":
+            label = r.get("period_label") or f"{otype} for the period starting {ps}"
+            gaps.append(
+                f"{label} is {r.get('status')} and was not replaced when the GST "
+                "filing frequency changed — a CA should reconcile it manually."
+            )
+            blocked_ps.add((otype, ps))
+            continue
+        compliance_records_repo.soft_delete(r["id"])
+    return seen3, blocked_ps, gaps
+
+
 def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
                             actor: Optional[dict] = None, agm_date: Optional[str] = None) -> dict:
     """Idempotently generate obligations for one engagement + FY. One obligation per
-    (obligation_type, period_start); re-running creates no duplicates."""
+    (obligation_type, period_start); re-running creates no duplicates.
+
+    GSTR1/GSTR3B/PMT06 are the exception — see _reconcile_stale_gst_obligations.
+    Their dedup key widens to (obligation_type, period_start, period_end)
+    because those three change SHAPE with the client's GST filing frequency,
+    and a stale row from the old frequency is soft-deleted to make room for
+    the new one rather than silently blocking it."""
     client_id = engagement["client_id"]
     freq, state_code = gst_profile_for(client_id, firm_id)
     # Read once per engagement, not once per obligation — Rule 31A(4)(b)'s 27Q
@@ -953,14 +1044,28 @@ def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
     existing = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
     seen = {(r.get("obligation_type"), str(r.get("period_start"))[:10])
             for r in existing if r.get("obligation_type")}
+    # GSTR1/GSTR3B/PMT06 reconcile on the WIDER (obligation_type, period_start,
+    # period_end) key — see _reconcile_stale_gst_obligations. A stale row a
+    # frequency switch left behind is soft-deleted here (freeing its
+    # period_start for the correctly-shaped spec below); a row with real work
+    # on it is left alone and named in reconciliation_gaps instead.
+    seen3, blocked_ps, reconciliation_gaps = _reconcile_stale_gst_obligations(
+        firm_id, client_id, financial_year, specs, existing)
     generated: list[str] = []
     skipped = 0
     now = _now_iso()
     for s in specs:
-        key = (s["obligation_type"], s["period_start"])
-        if key in seen:
-            skipped += 1
-            continue
+        otype = s["obligation_type"]
+        if otype in _GST_FREQUENCY_SENSITIVE_TYPES:
+            key3 = (otype, s["period_start"], s["period_end"])
+            if key3 in seen3 or (otype, s["period_start"]) in blocked_ps:
+                skipped += 1
+                continue
+        else:
+            key = (otype, s["period_start"])
+            if key in seen:
+                skipped += 1
+                continue
         payload = {
             "firm_id": firm_id, "client_id": client_id, "engagement_id": engagement["id"],
             "compliance_type": s["compliance_type"], "obligation_type": s["obligation_type"],
@@ -974,7 +1079,10 @@ def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
             "assigned_at": now if engagement.get("assigned_to") else None,
         }
         rec = compliance_records_repo.create(payload)
-        seen.add(key)
+        if otype in _GST_FREQUENCY_SENSITIVE_TYPES:
+            seen3.add((otype, s["period_start"], s["period_end"]))
+        else:
+            seen.add((otype, s["period_start"]))
         generated.append(rec["id"])
         _audit_timeline_generate(firm_id, rec, actor)
     out = {"generated": len(generated), "skipped": skipped, "generated_ids": generated}
@@ -983,8 +1091,9 @@ def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
     # every spec that carried one, INCLUDING the ones dedup skipped: an
     # assumed due date already on the row is still assumed on the second run,
     # and a gap that stops being reported the moment it has been written is a
-    # gap nobody ever sees.
-    gaps = sorted({g for s in specs for g in s.get("statutory_gaps", ())})
+    # gap nobody ever sees. reconciliation_gaps join the same list — a row a
+    # frequency switch could not safely replace is exactly that kind of gap.
+    gaps = sorted({g for s in specs for g in s.get("statutory_gaps", ())} | set(reconciliation_gaps))
     if gaps:
         out["statutory_gaps"] = gaps
     return out
@@ -1017,13 +1126,27 @@ def generate_default_for_client(firm_id: str, client_id: str, financial_year: st
     existing = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
     seen = {(r.get("obligation_type"), str(r.get("period_start"))[:10])
             for r in existing if r.get("obligation_type")}
+    # GSTR1/GSTR3B/PMT06 reconcile on the WIDER (obligation_type, period_start,
+    # period_end) key — see _reconcile_stale_gst_obligations and
+    # generate_for_engagement's own use of it, above. This fallback's whole
+    # spec set is GST (GSTR9 aside, which never collides across a frequency
+    # switch), so nearly every row generated here goes through it.
+    seen3, blocked_ps, reconciliation_gaps = _reconcile_stale_gst_obligations(
+        firm_id, client_id, financial_year, specs, existing)
     generated: list[str] = []
     skipped = 0
     for s in specs:
-        key = (s["obligation_type"], s["period_start"])
-        if key in seen:
-            skipped += 1
-            continue
+        otype = s["obligation_type"]
+        if otype in _GST_FREQUENCY_SENSITIVE_TYPES:
+            key3 = (otype, s["period_start"], s["period_end"])
+            if key3 in seen3 or (otype, s["period_start"]) in blocked_ps:
+                skipped += 1
+                continue
+        else:
+            key = (otype, s["period_start"])
+            if key in seen:
+                skipped += 1
+                continue
         payload = {
             "firm_id": firm_id, "client_id": client_id, "engagement_id": None,
             "compliance_type": s["compliance_type"], "obligation_type": s["obligation_type"],
@@ -1032,10 +1155,16 @@ def generate_default_for_client(firm_id: str, client_id: str, financial_year: st
             "status": "Not Started", "priority": "medium",
         }
         rec = compliance_records_repo.create(payload)
-        seen.add(key)
+        if otype in _GST_FREQUENCY_SENSITIVE_TYPES:
+            seen3.add((otype, s["period_start"], s["period_end"]))
+        else:
+            seen.add((otype, s["period_start"]))
         generated.append(rec["id"])
         _audit_timeline_generate(firm_id, rec, actor)
-    return {"generated": len(generated), "skipped": skipped, "generated_ids": generated}
+    out = {"generated": len(generated), "skipped": skipped, "generated_ids": generated}
+    if reconciliation_gaps:
+        out["statutory_gaps"] = sorted(reconciliation_gaps)
+    return out
 
 
 def generate_due(firm_id: str, client_id: Optional[str] = None, financial_year: Optional[str] = None,

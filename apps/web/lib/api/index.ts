@@ -3489,7 +3489,11 @@ export const api = {
     // captions the engine could not honour, and spelled five others
     // differently, which is how nine live mappings were being discarded.
     scheduleIiiCaptions: () => request("/api/accounting/schedule-iii/captions"),
-    journal: (params?: Record<string, string>) => request(`/api/accounting/journal${params ? "?" + new URLSearchParams(params) : ""}`),
+    // GET /api/accounting/journal (a date-windowed LIST across every entry) is
+    // retired (apex-sales-purchases-01) — it read mock data only, in every
+    // deployment, and this helper's one caller (six document-view drawers'
+    // journal drill-through) now calls getJournalEntry below with the
+    // document's own journal_entry_id instead of searching a date window.
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
     /* ACC-13, migration 418. Cost centres are a DIMENSION on a journal line —
        they change no figure, no total and no statutory output — so they live

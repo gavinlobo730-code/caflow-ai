@@ -347,14 +347,29 @@ class ReportingService:
             snap = self.source.snapshot(firm_id, client_id, start, as_of)
             opening = (self.source.snapshot(firm_id, client_id, None, opening_end)
                        if start else None)
+            # Project the lines FIRST — before copying snap.accounts. On cash
+            # basis, CashBasisProjector registers a synthetic control account
+            # (e.g. "__advance_to_vendors__") into snap.accounts as a SIDE
+            # EFFECT of projecting, via _ensure_synthetic, whenever the chart
+            # has no real one. `accounts = dict(snap.accounts)` used to run
+            # BEFORE this call, so the copy handed to the builder never saw
+            # the synthetic account get registered, and builders._acc's own
+            # fallback for an unknown id (name=account_id) rendered the row
+            # under the raw sentinel "__advance_to_vendors__" instead of
+            # "Advance to Vendors". profit_loss/balance_sheet never had this:
+            # both pass snap.accounts straight through rather than copying it,
+            # so Python's left-to-right argument evaluation already ran the
+            # projection (and its registration) before that argument is read.
+            lines = self._lines(snap, basis)
+            opening_lines = self._lines(opening, basis) if opening else None
             # The windowed snapshot's account map can miss an account that only
             # moved BEFORE the period; the opening one carries it.
             accounts = dict(snap.accounts)
             if opening:
                 accounts = {**opening.accounts, **accounts}
             return with_gap(builders.trial_balance(
-                self._lines(snap, basis), accounts, as_of, basis,
-                opening_lines=self._lines(opening, basis) if opening else None,
+                lines, accounts, as_of, basis,
+                opening_lines=opening_lines,
                 start_date=start))
 
         if not self._passbook_applicable(basis, client_id):
