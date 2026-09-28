@@ -17,7 +17,9 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
-from domain.reporting.year_end_lines import schedule_line_for_account
+from domain.reporting.year_end_lines import (
+    schedule_line_for_account, statutory_schedule_bucket,
+)
 # M2 audit finding: every endpoint below resolved its engagement by firm_id
 # alone (_get_engagement, live mode) or not at all (_mock_engagement_meta,
 # mock mode — checked existence only, not even firm_id); list_versions and
@@ -365,18 +367,45 @@ def _fetch_schedule_from_db(db, eng: dict, schedule_type: str) -> dict:
     fy_start      = eng["fy_start"]
     fy_end        = eng["fy_end"]
 
-    # Which schedule_line codes each schedule tab is made of.
+    # Which schedule_line codes each schedule tab is made of. This is the
+    # COARSE Schedule III bucket only — GST Output Tax Payable, TDS Payable,
+    # TDS Payable - Salary, PF/ESI/PT Payable, Net Salary Payable, Income Tax
+    # Payable and Compensation Cess Payable all resolve to the SAME line,
+    # `other_current_liabilities`, because that is the only Balance Sheet
+    # caption Schedule III gives a statutory current liability. Listing that
+    # line under "gst", "tds" AND "payables" used to be the whole selection,
+    # which is why all three tabs rendered the identical account set
+    # (confirmed on Apex Trading Solutions production data). The finer split
+    # between them is `statutory_schedule_bucket`, applied per account below —
+    # not by inventing a fourth, finer schedule_line, which would need every
+    # OTHER reader of schedule_line_for_account (the live Balance Sheet
+    # included) taught a distinction Schedule III itself does not draw.
+    #
+    # `other_current_assets` is on "gst" and "tds" for the ASSET-side control
+    # accounts — GST Input Tax Credit, Compensation Cess Input Credit, TDS
+    # Receivable — which share subtype 'Tax' and land on that one line for the
+    # identical reason. Before this it was in NEITHER tab's list, which is why
+    # the GST schedule showed GST Output only, with no Input/ITC row.
     _schedule_to_lines = {
         "cash_bank":   ["cash_and_bank"],
         "receivables": ["trade_receivables", "short_term_loans_and_advances"],
         "payables":    ["trade_payables", "other_current_liabilities"],
         "fixed_assets":["tangible_assets", "intangible_assets", "capital_wip"],
         "loans":       ["long_term_borrowings", "short_term_borrowings"],
-        "gst":         ["other_current_liabilities", "short_term_loans_and_advances"],
-        "tds":         ["short_term_loans_and_advances", "other_current_liabilities"],
+        "gst":         ["other_current_liabilities", "short_term_loans_and_advances",
+                         "other_current_assets"],
+        "tds":         ["short_term_loans_and_advances", "other_current_liabilities",
+                         "other_current_assets"],
     }
 
     target_lines = _schedule_to_lines.get(schedule_type, [])
+
+    # The finer split ON TOP of the coarse line above: which schedule tab a
+    # GST- or TDS-flavoured control account belongs to, per
+    # domain.reporting.year_end_lines.statutory_schedule_bucket. Only "gst"
+    # and "tds" ask for one; every other tab (including "payables") takes
+    # whatever lands on its coarse lines, same as before.
+    _wanted_statutory_bucket = {"gst": "gst", "tds": "tds"}.get(schedule_type)
 
     # WHICH LEDGERS BELONG ON THIS SCHEDULE IS DERIVED FROM THE ACCOUNT, and a
     # row in account_group_mappings overrides it. This used to read that table
@@ -394,7 +423,7 @@ def _fetch_schedule_from_db(db, eng: dict, schedule_type: str) -> dict:
     accounts_res = (
         db.table("chart_of_accounts")
         .select("id, account_name, account_code, account_type, account_subtype, "
-                "schedule_iii_mapping")
+                "schedule_iii_mapping, system_account_key")
         .eq("firm_id", firm_id)
         .or_(f"client_id.eq.{client_id},client_id.is.null")
         .execute()
@@ -418,9 +447,28 @@ def _fetch_schedule_from_db(db, eng: dict, schedule_type: str) -> dict:
         line = overrides.get(acct["id"]) or schedule_line_for_account(
             acct.get("account_type"), acct.get("account_subtype"),
             acct.get("schedule_iii_mapping"))
-        if line in target_lines:
-            account_ids.append(acct["id"])
-            accts_map[acct["id"]] = acct
+        if line not in target_lines:
+            continue
+
+        bucket = statutory_schedule_bucket(
+            acct.get("system_account_key"), acct.get("account_name"))
+
+        # "gst"/"tds": only the accounts THIS tab's own bucket claims — this
+        # is what stops the two tabs rendering the same rows.
+        if _wanted_statutory_bucket is not None and bucket != _wanted_statutory_bucket:
+            continue
+        # "payables": a GST- or TDS-bucketed control account now has its own
+        # tab, so it no longer also shows here. Everything else that lands on
+        # trade_payables/other_current_liabilities (ordinary creditors, and a
+        # statutory due neither bucket claims, such as Income Tax Payable)
+        # is unaffected and still appears — Payables aggregates Trade
+        # Payables with every OTHER current liability, deliberately, because
+        # Schedule III gives those no line of their own either.
+        if schedule_type == "payables" and bucket is not None:
+            continue
+
+        account_ids.append(acct["id"])
+        accts_map[acct["id"]] = acct
 
     line_items = []
     total_paise = 0  # integer paise — never float
