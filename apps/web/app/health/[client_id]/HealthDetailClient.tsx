@@ -11,6 +11,10 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import {
+  HEALTH_DIMENSIONS, HEALTH_DIMENSION_KEYS, gradeOf, weightLabel as weightBpToLabel,
+  type HealthDimensionKey, type HealthGrade,
+} from "@/lib/health/vocabulary";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -30,15 +34,10 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-// Product Bible Chapter 16 — 7 dimensions
-type DimensionKey =
-  | "compliance_health"
-  | "accounting_quality"
-  | "work_progress"
-  | "document_health"
-  | "ai_risk_signals"
-  | "open_notices"
-  | "client_responsiveness";
+// Product Bible Chapter 16 — 7 dimensions. The keys, names and weights are
+// `lib/health/vocabulary.ts`, pinned to `domain/health/scoring.py` from the
+// Python side; this screen used to carry its own copy of all three.
+type DimensionKey = HealthDimensionKey;
 
 interface DimensionValue {
   score: number;
@@ -46,7 +45,7 @@ interface DimensionValue {
   weighted: number;  // integer contribution
 }
 
-type Grade = "Healthy" | "Good" | "Needs Attention" | "At Risk" | "Critical";
+type Grade = HealthGrade;
 
 interface ClientHealthDetail {
   client_id: string;
@@ -113,31 +112,19 @@ interface ApiResponse<T> {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-// Product Bible Chapter 16 — dimension display labels and weights
-const DIMENSION_META: Record<DimensionKey, { label: string; weightLabel: string; description: string }> = {
-  compliance_health:     { label: "Compliance Health",     weightLabel: "25%", description: "Overdue returns, late filings, pending notices" },
-  accounting_quality:    { label: "Accounting Quality",    weightLabel: "20%", description: "Bank reconciliation age, unclosed periods" },
-  work_progress:         { label: "Work Progress",         weightLabel: "15%", description: "Overdue and at-risk work items" },
-  document_health:       { label: "Document Health",       weightLabel: "15%", description: "Outstanding requests, missing required docs" },
-  ai_risk_signals:       { label: "AI Risk Signals",       weightLabel: "10%", description: "Open critical insights and warnings" },
-  open_notices:          { label: "Open Notices",          weightLabel: "10%", description: "Government notices by age and deadline" },
-  client_responsiveness: { label: "Client Responsiveness", weightLabel: "5%",  description: "Portal login recency, upload delay" },
-};
+// Product Bible Chapter 16 — dimension display labels and weights, from the
+// one vocabulary rather than a copy of it.
+const DIMENSION_META: Record<DimensionKey, { label: string; weightLabel: string; description: string }> =
+  Object.fromEntries(HEALTH_DIMENSIONS.map((d) => [
+    d.key, { label: d.label, weightLabel: weightBpToLabel(d.weightBp), description: d.description },
+  ])) as Record<DimensionKey, { label: string; weightLabel: string; description: string }>;
 
-const DIMENSION_KEYS = Object.keys(DIMENSION_META) as DimensionKey[];
+const DIMENSION_KEYS: DimensionKey[] = [...HEALTH_DIMENSION_KEYS];
 
-// Matches DIMENSION_WEIGHTS_BP in routers/health.py exactly (basis points,
-// sums to 10000 = 100%) — needed client-side only to reconstruct legacy rows
-// that predate the `dimensions` JSONB column (migration 169).
-const DIMENSION_WEIGHTS_BP: Record<DimensionKey, number> = {
-  compliance_health: 2500,
-  accounting_quality: 2000,
-  work_progress: 1500,
-  document_health: 1500,
-  ai_risk_signals: 1000,
-  open_notices: 1000,
-  client_responsiveness: 500,
-};
+// The weights, in basis points — needed client-side only to reconstruct legacy
+// rows that predate the `dimensions` JSONB column (migration 169).
+const DIMENSION_WEIGHTS_BP: Record<DimensionKey, number> =
+  Object.fromEntries(HEALTH_DIMENSIONS.map((d) => [d.key, d.weightBp])) as Record<DimensionKey, number>;
 
 // Legacy override form dimension keys mapped to new names
 const OVERRIDE_DIMENSION_OPTIONS = DIMENSION_KEYS;
@@ -192,11 +179,6 @@ function formatDate(dateStr: string | null | undefined): string {
   } catch {
     return dateStr;
   }
-}
-
-function weightBpToLabel(bp: number): string {
-  // basis points → "25%" string
-  return `${bp / 100}%`;
 }
 
 // ─── Dimension Card ───────────────────────────────────────────────────────────
@@ -434,7 +416,9 @@ export default function ClientHealthDetailPage() {
         client_id: clientId,
         client_name: String(row.client_name ?? "—"),
         overall_score: Number(row.overall_score ?? 0),
-        grade: (row.grade ?? row.health_grade ?? "Critical") as Grade,
+        // The server's word where it is one of the five; a legacy letter or
+        // nothing is read as the band of the score, never shown as a grade.
+        grade: gradeOf(row.grade ?? row.health_grade, Number(row.overall_score ?? 0)),
         trend: String(row.trend ?? "+0"),
         dimensions,
         hard_override: (row.hard_override as string | null) ?? null,

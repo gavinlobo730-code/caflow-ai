@@ -292,14 +292,22 @@ def test_a_picker_only_offers_dimensions_the_engine_has():
     honour — the `attachmentsReadOnly` discipline. The client tab used to offer
     the legacy flat columns, so every override recorded there named a
     dimension the model does not have."""
-    src = io.open(_CLIENT_SCREEN, encoding="utf-8").read()
-    start = src.index("const OVERRIDE_DIMENSIONS")
-    block = src[start:src.index("};", start)]
+    # RESTATED, NOT RELAXED (sweep-client-misc-04). This used to find a
+    # literal `const OVERRIDE_DIMENSIONS` block in the client tab. The picker is
+    # now built from `lib/health/vocabulary.ts` — the same list the cards beside
+    # it render — so the rule is: both pickers iterate the one vocabulary, and
+    # `test_one_health_vocabulary.py` pins that vocabulary to the engine key for
+    # key. Checking a spelling here would have failed on a change that made the
+    # thing it cares about strictly better.
+    for path in (_CLIENT_SCREEN, _FIRM_SCREEN):
+        src = io.open(path, encoding="utf-8").read()
+        assert "@/lib/health/vocabulary" in src, f"{path.name} keeps its own list"
+        for legacy in ("relationship_risk_score", "financial_risk_score",
+                       "engagement_health_score"):
+            assert f"{legacy}:" not in src, f"{path.name} still offers {legacy}"
+    vocab = io.open(_WEB / "lib" / "health" / "vocabulary.ts", encoding="utf-8").read()
     for dimension in scoring.DIMENSIONS:
-        assert f"{dimension}:" in block, f"the picker is missing {dimension}"
-    for legacy in ("relationship_risk_score", "financial_risk_score",
-                   "engagement_health_score"):
-        assert f"{legacy}:" not in block, f"the picker still offers {legacy}"
+        assert f'key: "{dimension}"' in vocab, f"the picker is missing {dimension}"
 
 
 def test_the_router_re_exports_the_domain_objects_rather_than_copying_them():

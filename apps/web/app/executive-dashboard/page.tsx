@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
+import { gradeForScore } from "@/lib/health/vocabulary";
 import { ATTENTION, BRAND, GOLD, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -56,18 +57,20 @@ function fmtRupees(paise: number): string {
   return `₹${rupees}`;
 }
 
+// The firm's figure is the average of its clients' health scores, on the same
+// 0–100 scale, so it takes the SAME bands (`lib/health/vocabulary`, pinned to
+// `domain/health/scoring.GRADE_BANDS`). It had a ladder of its own — 85/70/55,
+// "Excellent / Good / Fair / Critical" — the third in the browser beside the
+// client badge's and the engine's, so one number read three ways.
 function healthColor(score: number): string {
-  if (score >= 85) return READY;
-  if (score >= 70) return ATTENTION;
-  if (score >= 55) return ATTENTION;
+  const band = gradeForScore(score);
+  if (band === "Healthy") return READY;
+  if (band === "Good" || band === "Needs Attention") return ATTENTION;
   return PROBLEM;
 }
 
 function healthLabel(score: number): string {
-  if (score >= 85) return "Excellent";
-  if (score >= 70) return "Good";
-  if (score >= 55) return "Fair";
-  return "Critical";
+  return gradeForScore(score);
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
