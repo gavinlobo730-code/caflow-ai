@@ -62,6 +62,13 @@ interface Batch {
 
 interface StockItem { id: string; name: string }
 
+// apex-bank-assets-inventory-07. The register (`/api/inventory/items`, a
+// potentially large per-item fetch) was read TWICE per page load — once by
+// the parent page's own `load()`, and again here, independently, inside this
+// component's own effect. The parent already has the answer by the time this
+// component mounts (both are triggered by the same page render), so it is
+// passed down as a prop instead of being asked for a second time.
+
 interface Expiry {
   bucket_order: string[];
   bucket_labels: Record<string, string>;
@@ -76,13 +83,18 @@ interface Expiry {
 
 const INPUT = "w-full px-2.5 py-1.5 border border-ps-border rounded-lg text-xs";
 
-export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf: string }) {
+export function LocationsAndBatches({ clientId, asOf, items }: {
+  clientId: string; asOf: string;
+  /** Already fetched by the parent page's own register load — see the note
+   *  above `StockItem`. Used only to label a lot's item in the Lots table and
+   *  to populate the Add Lot / transfer item pickers. */
+  items: StockItem[];
+}) {
   const [godowns, setGodowns] = useState<Godown[]>([]);
   const [unallocatedMeans, setUnallocatedMeans] = useState("");
   const [detail, setDetail] = useState<DetailRow[]>([]);
   const [expiry, setExpiry] = useState<Expiry | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
-  const [items, setItems] = useState<StockItem[]>([]);
   const [addingBatch, setAddingBatch] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -91,7 +103,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [g, d, e, b, it] = await Promise.all([
+      const [g, d, e, b] = await Promise.all([
         request<{ success: boolean; data: { godowns: Godown[]; unallocated_means: string }; error: string | null }>(
           `/api/inventory/godowns?client_id=${encodeURIComponent(clientId)}`),
         request<{ success: boolean; data: { rows: DetailRow[] }; error: string | null }>(
@@ -100,8 +112,6 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
           `/api/inventory/expiry?client_id=${encodeURIComponent(clientId)}&as_of=${asOf}`),
         request<{ success: boolean; data: Batch[]; error: string | null }>(
           `/api/inventory/batches?client_id=${encodeURIComponent(clientId)}`),
-        request<{ success: boolean; data: StockItem[]; error: string | null }>(
-          `/api/inventory/items?client_id=${encodeURIComponent(clientId)}`),
       ]);
       if (!g.success || !d.success || !e.success || !b.success) {
         throw new Error(g.error ?? d.error ?? e.error ?? b.error ?? "Couldn't load.");
@@ -111,7 +121,6 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
       setDetail(d.data.rows ?? []);
       setExpiry(objectWithLists<Expiry>(e.data, "bucket_order", "notes", "rows"));
       setBatches(b.data ?? []);
-      setItems(it.success ? (it.data ?? []) : []);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't load stock locations.");
@@ -159,6 +168,22 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
   }
 
   if (loading) return <TableSkeleton />;
+
+  // apex-bank-assets-inventory-10. `error` was set in the catch block and
+  // rendered as a banner, but nothing then stopped the three sub-panels below
+  // it from rendering their own EMPTY-state text off their untouched initial
+  // state — so a genuine fetch failure looked exactly like a client with no
+  // godowns, no stock movements and no lots recorded. Only when there is
+  // truly nothing already on screen to fall back to: a reload that fails
+  // AFTER a successful one keeps showing what was last loaded, with the
+  // banner on top of it, rather than hiding data the CA already had.
+  if (error && !godowns.length && !detail.length && !batches.length) {
+    return (
+      <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 text-xs text-state-problem flex gap-2">
+        <AlertCircle size={13} className="shrink-0 mt-0.5" /><span>{error}</span>
+      </div>
+    );
+  }
 
   const unallocated = detail.filter((r) => !r.godown_id);
 

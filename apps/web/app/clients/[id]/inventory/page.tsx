@@ -13,7 +13,7 @@
  * Clicking a row opens that item's movement ledger, mirroring the Accounting
  * tab's ledger drill-down: its own date range, defaulting to the client's FY.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { RefreshCw, AlertTriangle, ClipboardEdit, Loader2, TrendingDown } from "lucide-react";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
@@ -196,6 +196,14 @@ export default function InventoryPage() {
   // constraint rather than duplicating — but the CA would see a failure for a
   // click that worked.
   const [openingCount, setOpeningCount] = useState(false);
+  // apex-bank-assets-inventory-06. `load` fires again on every `asAt` change
+  // with no request-sequencing at all, so switching the as-at date quickly —
+  // click, click, click — let an earlier, SLOWER response land after a later,
+  // faster one and overwrite it: whichever call happened to resolve LAST won,
+  // regardless of which date it was actually answering. Bumped before every
+  // fetch and captured locally, so a call whose sequence number has since been
+  // superseded discards its own answer instead of applying it.
+  const loadSeqRef = useRef(0);
 
   async function startCount() {
     if (!clientId || clientId === "_placeholder" || openingCount) return;
@@ -223,6 +231,13 @@ export default function InventoryPage() {
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
+    // This call's own number. `isCurrent()` reads it back against the ref at
+    // the moment a result is about to be APPLIED — never at the moment it was
+    // fetched — so a call superseded while its request was in flight discards
+    // its own answer instead of writing it under whatever date is on screen
+    // by the time it resolves.
+    const seq = ++loadSeqRef.current;
+    const isCurrent = () => seq === loadSeqRef.current;
     setLoading(true);
     try {
       if (asAt) {
@@ -230,6 +245,7 @@ export default function InventoryPage() {
           success: boolean; data: StockPosition | null;
         };
         if (!res.success || !res.data) throw new Error("load failed");
+        if (!isCurrent()) return;
         // The element type is taken FROM `StockPosition` rather than spelled
         // here: a hand-written shape is a second description of the payload,
         // and it went wrong on the first attempt — it named two fields and the
@@ -263,13 +279,15 @@ export default function InventoryPage() {
         success: boolean; data: StockItem[] | null;
       };
       if (!res.success || !res.data) throw new Error("load failed");
+      if (!isCurrent()) return;
       setItems(arrayOrEmpty(res.data));
       setLoadFailed(false);
     } catch {
+      if (!isCurrent()) return;
       setItems([]);
       setLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [clientId, asAt]);
 
@@ -425,12 +443,39 @@ export default function InventoryPage() {
           <CostFormulaPanel clientId={clientId} />
         </div>
 
+        {/* apex-bank-assets-inventory-11. The comments on the three panels
+            below all say the register is what answers "what do I hold" and
+            that they sit BELOW it — but the register itself used to be the
+            LAST thing on the page, after all three. Moved here, immediately
+            after the cost formula and before Locations and Batches, so the
+            DOM order finally matches what those comments already assert. */}
+        <DataTable
+          data={items}
+          columns={columns}
+          getRowId={(i) => i.id}
+          loading={loading}
+          error={loadFailed ? "Couldn't load the stock register — the request failed or timed out." : null}
+          onRetry={load}
+          onRefresh={load}
+          searchPlaceholder="Search by product name or HSN…"
+          initialSort={{ key: "name", dir: "asc" }}
+          exportFilename="inventory-stock-register"
+          persistKey="inventory.items"
+          emptyTitle="No stock-tracked products yet"
+          emptyDescription="Mark a Product/Service as a Product (not Service) and give it an opening quantity to start tracking stock."
+          onRowClick={(item) => setDrillDown(item)}
+        />
+
         {/* INV-03a — where the stock is and which lot it came from. Below the
             register rather than above it: the register is still the answer to
             "what do I hold", and this answers "where, and how long has it
-            got". The as-at date is the register's own, so the two agree. */}
+            got". The as-at date is the register's own, so the two agree.
+            `items` is this page's own already-fetched register — passed down
+            rather than re-fetched, since apex-bank-assets-inventory-07 found
+            this component independently calling api.inventory.items() again
+            on every load, the same request this page had just made. */}
         <div className="mb-4">
-          <LocationsAndBatches clientId={clientId} asOf={asAt || todayLocalISO()} />
+          <LocationsAndBatches clientId={clientId} asOf={asAt || todayLocalISO()} items={items} />
         </div>
 
         {/* INV-04 — how long the units ON HAND have been held. Beside
@@ -451,22 +496,6 @@ export default function InventoryPage() {
         <div className="mb-4">
           <ReorderPanel clientId={clientId} asOf={asAt || todayLocalISO()} />
         </div>
-        <DataTable
-          data={items}
-          columns={columns}
-          getRowId={(i) => i.id}
-          loading={loading}
-          error={loadFailed ? "Couldn't load the stock register — the request failed or timed out." : null}
-          onRetry={load}
-          onRefresh={load}
-          searchPlaceholder="Search by product name or HSN…"
-          initialSort={{ key: "name", dir: "asc" }}
-          exportFilename="inventory-stock-register"
-          persistKey="inventory.items"
-          emptyTitle="No stock-tracked products yet"
-          emptyDescription="Mark a Product/Service as a Product (not Service) and give it an opening quantity to start tracking stock."
-          onRowClick={(item) => setDrillDown(item)}
-        />
       </div>
 
       {countError && <Callout tone="problem">{countError}</Callout>}
