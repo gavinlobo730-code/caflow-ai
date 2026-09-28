@@ -12,7 +12,7 @@ import { Plus, RefreshCw, X, MessageCircle, IndianRupee, Download, Clock } from 
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { api, ENGAGEMENT_TRANSITIONS } from "@/lib/api";
-import type { FeeEngagementStatus } from "@/lib/api";
+import type { ApiResp, FeeEngagementStatus } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -21,7 +21,10 @@ import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import type { Client } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
 // A payload field is not a list until something has checked.
-import { arrayOrEmpty } from "@/lib/api/shape";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
+// Indian grouping (D6) from the one authority; this screen's own formatter
+// grouped the Western way (₹1,234,567).
+import { formatPaise as fmtPaise } from "@/lib/money/format";
 import { isOwedFeeInvoice, type FeeInvoiceStatus } from "@/lib/constants/feeInvoiceStatus";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -92,14 +95,6 @@ type Tab = "dashboard" | "engagements" | "invoices" | "outstanding" | "receipts"
 const SERVICE_TYPES: ServiceType[] = ["GST Filing", "ITR Filing", "Accounting", "Payroll", "MCA", "Audit", "Advisory"];
 const BILLING_CYCLES: BillingCycle[] = ["Monthly", "Quarterly", "Annual"];
 const PAYMENT_MODES: PaymentMode[] = ["NEFT", "RTGS", "Cheque", "Cash", "UPI"];
-
-/** Convert paise to ₹ string with 2 decimal places — integer arithmetic only */
-function fmtPaise(paise: number): string {
-  const rupees = Math.floor(paise / 100);
-  const paiseRemainder = paise % 100;
-  const rupeesStr = rupees.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return "₹" + rupeesStr + "." + String(paiseRemainder).padStart(2, "0");
-}
 
 function fmtDate(date: string): string {
   if (!date) return "—";
@@ -234,7 +229,9 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
 function AddReceiptModal({ invoices, onClose, onSaved }: {
   invoices: Invoice[];
   onClose: () => void;
-  onSaved: () => void;
+  /** The receipt the server recorded, or null if it answered success with a
+   *  body that is not one (the page reloads either way). */
+  onSaved: (receipt: Receipt | null) => void;
 }) {
   // Money is received against what is OWED — never a Draft nobody was sent, a
   // Cancelled invoice, or one already Paid. Same set as Aged Debtors and the
@@ -257,13 +254,17 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
       // Records through the backend (updates paid_paise and only marks the
       // invoice Paid once cumulative receipts cover its total — a partial
       // receipt no longer force-marks the whole invoice as paid).
-      await api.billing.recordFeeReceipt(invoiceId, {
+      const res = (await api.billing.recordFeeReceipt(invoiceId, {
         receipt_date: receiptDate,
         amount_paise: amtPaise,
         payment_mode: paymentMode,
         reference_no: referenceNo || undefined,
-      });
-      onSaved();
+      })) as ApiResp<unknown> | null;
+      // Check the envelope, not the transport: a refusal can arrive as 200
+      // with `success: false`, and closing the modal on one tells the CA a
+      // receipt exists that does not.
+      if (!res?.success) throw new Error(res?.error || "The server did not record this receipt.");
+      onSaved(objectOrNull<Receipt>(res.data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -379,7 +380,11 @@ export default function BillingPage() {
   const actionInFlight = raisingInvoice || runningOverdueCheck;
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  // `recorded` is a receipt the server has just confirmed. It stays on the list
+  // whatever the read below returns, so the Receipts tab never says "No
+  // receipts recorded" over a receipt the CA was just told succeeded — a CA who
+  // believes it failed records it a second time.
+  const load = useCallback(async (recorded?: Receipt | null) => {
     setLoading(true);
     setError(null);
     try {
@@ -418,6 +423,10 @@ export default function BillingPage() {
         const inv = invs.find(i => i.id === r.invoice_id);
         return { ...r, invoice_no: inv?.invoice_no, client_name: inv?.client_name };
       });
+      if (recorded && !recs.some(r => r.id === recorded.id)) {
+        const inv = invs.find(i => i.id === recorded.invoice_id);
+        recs.unshift({ ...recorded, invoice_no: inv?.invoice_no, client_name: inv?.client_name });
+      }
 
       setEngagements(engs);
       setInvoices(invs);
@@ -548,6 +557,24 @@ export default function BillingPage() {
     }
   }
 
+  // The receipt goes on the list at once, from the server's own answer, and the
+  // page then reloads so the invoice's status comes back as the server decided
+  // it — Paid only once cumulative receipts cover the total, which is the
+  // server's rule and not this screen's.
+  async function handleReceiptRecorded(receipt: Receipt | null) {
+    setShowReceiptModal(false);
+    setNotice(null);
+    const inv = receipt ? invoices.find(i => i.id === receipt.invoice_id) : undefined;
+    if (receipt) {
+      const row: Receipt = { ...receipt, invoice_no: inv?.invoice_no, client_name: inv?.client_name };
+      setReceipts(prev => (prev.some(r => r.id === row.id) ? prev : [row, ...prev]));
+    }
+    await load(receipt);
+    setNotice(receipt
+      ? `Receipt of ${fmtPaise(receipt.amount_paise)} recorded${inv ? ` against ${inv.invoice_no}` : ""}.`
+      : "Receipt recorded.");
+  }
+
   async function handleDownloadPdf(invoiceId: string) {
     setDownloadingId(invoiceId);
     try {
@@ -604,7 +631,7 @@ export default function BillingPage() {
           <h1 className="text-lg md:text-xl font-semibold text-ps-ink">Fee Billing</h1>
           <p className="text-sm text-ps-label mt-0.5">Manage CA firm fee engagements and invoices</p>
         </div>
-        <button onClick={load} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
+        <button onClick={() => load()} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
           <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
@@ -937,7 +964,7 @@ export default function BillingPage() {
         <AddReceiptModal
           invoices={invoices}
           onClose={() => setShowReceiptModal(false)}
-          onSaved={() => { setShowReceiptModal(false); load(); }}
+          onSaved={handleReceiptRecorded}
         />
       )}
     </div>
