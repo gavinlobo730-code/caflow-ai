@@ -11,7 +11,8 @@ Context enrichment pattern:
   that questions like "which clients are at risk?" are answered from actual
   DB state rather than hallucinated figures.
 
-Uses Groq API (llama-3.3-70b-versatile) with firm-isolated context injection.
+Uses Groq's text model (GROQ_TEXT_MODEL, through domain/ai/groq_text) with
+firm-isolated context injection.
 """
 from __future__ import annotations
 
@@ -20,11 +21,15 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
+from domain.ai import groq_text
 
 _logger = logging.getLogger("caflow.ai_copilot")
 
 _GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-_MODEL = "llama-3.3-70b-versatile"
+# No model constant: it was a hardcoded "llama-3.3-70b-versatile" while
+# GROQ_TEXT_MODEL existed for exactly this, and it was also what every
+# summary recorded as `model_used` — including summaries whose text was
+# the canned mock below. groq_text.text_model() is the one answer.
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 # ── Repository accessors (lazy to avoid circular imports) ──────────────────────
@@ -321,40 +326,44 @@ class AICopilotService:
         return messages
 
     async def _call_groq(self, messages: list[dict]) -> tuple[str, int]:
-        """Call Groq API. Returns (reply_text, tokens_used)."""
-        if not _GROQ_API_KEY:
-            last_user = next(
-                (m["content"] for m in reversed(messages) if m["role"] == "user"), ""
-            )
-            return self._mock_response(last_user), 0
-        try:
-            import httpx
+        """Ask Groq. Returns (reply_text, tokens_used), or RAISES.
 
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {_GROQ_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": _MODEL,
-                        "messages": messages,
-                        "max_tokens": 2048,
-                        "temperature": 0.3,
-                    },
+        ⚠️ THIS USED TO CATCH EVERY FAILURE AND RETURN `_mock_response` — a
+        canned paragraph chosen by keyword — as though the model had said it.
+        In production that was every reply: on 27-09-2026 each stored copilot
+        answer carried tokens_used = 0 and was the mock's GST text word for
+        word, including the answer to "Which workflows have failed
+        recently?". Client and compliance intelligence then UPSERTED that text
+        into ai_summaries with a model name beside it, and the executive
+        dashboard showed the mock's health-score paragraph as the firm's
+        summary. It also hid the fault: /api/assistant, failing on the same
+        key and model, was reported broken while this was reported working.
+
+        So a failure is now said, not papered over — an HTTPException with
+        domain/ai/groq_text's sentence (what is wrong, and whether retrying
+        can help), which FastAPI answers as {"detail": ...} and lib/api
+        renders. The canned text survives for exactly one case: mock mode (no
+        SUPABASE_URL — local dev and the test suite) with no key, where there
+        is no model to ask and nobody mistakes the answer for a real one.
+        get_executive_dashboard catches this and keeps its own computed
+        summary, which is the honest fallback there.
+        """
+        from fastapi import HTTPException
+
+        if not _GROQ_API_KEY:
+            if _USE_MOCK:
+                last_user = next(
+                    (m["content"] for m in reversed(messages) if m["role"] == "user"), ""
                 )
-                response.raise_for_status()
-                data = response.json()
-                content = data["choices"][0]["message"]["content"]
-                tokens = data.get("usage", {}).get("total_tokens", 0)
-                return content, tokens
-        except Exception as exc:
-            _logger.error("Groq API error: %s", exc)
-            last_user = next(
-                (m["content"] for m in reversed(messages) if m["role"] == "user"), ""
-            )
-            return self._mock_response(last_user), 0
+                return self._mock_response(last_user), 0
+            raise HTTPException(status_code=503, detail=(
+                "The AI copilot is not configured on this server: GROQ_API_KEY "
+                "is not set."))
+        try:
+            return await groq_text.chat(
+                messages, api_key=_GROQ_API_KEY, max_tokens=2048, temperature=0.3)
+        except groq_text.ProviderFailed as exc:
+            raise HTTPException(status_code=exc.http_status, detail=exc.sentence) from exc
 
     def _mock_response(self, question: str) -> str:
         q = question.lower()
@@ -493,7 +502,7 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
                     "tokens_used": tokens,
                     "client_name": client_name,
                 },
-                "model_used": _MODEL,
+                "model_used": groq_text.text_model(),
                 "expires_at": (now + timedelta(hours=6)).isoformat(),
             },
         )
@@ -638,7 +647,7 @@ Cite CGST Act / IT Act sections where relevant."""
                     f"Compliance health score: {compliance_score}/100",
                 ],
                 "metadata": {"tokens_used": tokens, "overdue_count": len(overdue_tasks)},
-                "model_used": _MODEL,
+                "model_used": groq_text.text_model(),
                 "expires_at": (now + timedelta(hours=2)).isoformat(),
             },
         )
@@ -977,7 +986,7 @@ Firm data as of {ist_now().strftime('%d %B %Y')}:
                     f"{tasks_overdue} overdue tasks",
                 ],
                 "metadata": dashboard_data,
-                "model_used": _MODEL,
+                "model_used": groq_text.text_model(),
                 "expires_at": (now + timedelta(hours=1)).isoformat(),
             },
         )

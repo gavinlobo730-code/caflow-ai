@@ -184,10 +184,12 @@ OUTBOUND_MODULES: dict[str, str] = {
     # ── the AI providers, both backend-only (CLAUDE.md) ──────────────────────
     "routers/ai_copilot.py":
         "Groq, for the copilot's chat completions (api.groq.com)",
-    "routers/assistant.py":
-        "Groq, the same endpoint, for the assistant",
-    "domain/ai_copilot_service.py":
-        "Groq, the same endpoint, from the copilot's domain layer",
+    # The assistant (routers/assistant.py) and the copilot's domain layer
+    # (domain/ai_copilot_service.py) both call through this one module now;
+    # neither imports an HTTP client of its own any more.
+    "domain/ai/groq_text.py":
+        "Groq, the same endpoint (api.groq.com chat completions), for the "
+        "assistant and the copilot's domain layer",
     "domain/financial_analysis_service.py":
         "Groq, the same endpoint, for the narrative analysis",
     "routers/document_intelligence_v1.py":
