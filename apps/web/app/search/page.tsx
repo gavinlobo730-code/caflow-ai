@@ -1,62 +1,25 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Search, Users, CheckSquare, FileText, Shield } from "lucide-react";
+import { Search, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api } from "@/lib/api";
 import Link from "next/link";
+// The palette's own client for /api/search — one request, one result shape,
+// one set of category labels. This page used to carry a copy of each, and
+// searched only on Enter while rendering "No results" off the text box: so a
+// CA typing here saw "No results" for a term nobody had searched for.
+import {
+  runSearch,
+  SEARCH_MIN_LENGTH,
+  CATEGORY_ICONS,
+  CATEGORY_LABELS,
+  type SearchResult,
+} from "@/components/SearchModal";
 
-type SearchResult = {
-  id: string;
-  category: "clients" | "tasks" | "compliance" | "journals" | "accounts";
-  title: string;
-  subtitle: string;
-  href: string;
-};
-
-const CATEGORY_ICONS = {
-  clients: Users,
-  tasks: CheckSquare,
-  compliance: Shield,
-  journals: FileText,
-  accounts: FileText,
-};
-
-const CATEGORY_LABELS = {
-  clients: "Clients",
-  tasks: "Tasks",
-  compliance: "Compliance",
-  journals: "Journal Entries",
-  accounts: "Accounts",
-};
-
-// M2: search goes through the backend /api/search, which enforces client
-// assignment server-side. Unauthorized clients are never returned.
-async function runSearch(query: string): Promise<{ results: SearchResult[]; error: string | null }> {
-  if (!query.trim()) return { results: [], error: null };
-  try {
-    const res = await api.search(query.trim());
-    if (!res.success) {
-      return { results: [], error: res.error ?? "Search failed." };
-    }
-    return {
-      results: (res.data?.results ?? []).map((r) => ({
-        id: r.id,
-        category: (r.category as SearchResult["category"]) ?? "clients",
-        title: r.title,
-        subtitle: r.subtitle ?? "",
-        href: r.href,
-      })),
-      error: null,
-    };
-  } catch (e) {
-    // Distinguishes "search failed" from "no results" — a masked failure
-    // previously rendered identically to a genuine zero-match search.
-    return { results: [], error: e instanceof Error ? e.message : "Search failed. Please try again." };
-  }
-}
+/** Same pause as the palette before a keystroke becomes a request. */
+const DEBOUNCE_MS = 300;
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -66,33 +29,62 @@ function SearchContent() {
   const [loading, setLoading] = useState(false);
   // Distinguishes "search failed" from "no results found".
   const [searchError, setSearchError] = useState<string | null>(null);
+  // The term the results (or the error) on screen ANSWER. "No results" is
+  // shown only when this equals what is typed — until then the answer for the
+  // current term has not come back, and saying "none" would be a guess.
+  const [searchedFor, setSearchedFor] = useState<string | null>(null);
+  // Answers can arrive out of order; only the latest request's is kept.
+  const latest = useRef(0);
 
   const search = useCallback(async (q: string) => {
-    if (!q.trim()) { setResults([]); setSearchError(null); return; }
+    const term = q.trim();
+    const seq = ++latest.current;
+    if (term.length < SEARCH_MIN_LENGTH) {
+      setResults([]);
+      setSearchError(null);
+      setSearchedFor(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const { results: res, error } = await runSearch(q);
+      const { results: res, error } = await runSearch(term);
+      if (seq !== latest.current) return;
       setResults(res);
       setSearchError(error);
+      setSearchedFor(term);
     } catch (e) {
+      if (seq !== latest.current) return;
       setResults([]);
       setSearchError(e instanceof Error ? e.message : "The search could not be run.");
+      setSearchedFor(term);
     } finally {
-      setLoading(false);
+      if (seq === latest.current) setLoading(false);
     }
   }, []);
 
+  // A link from the palette (Enter with no row selected) or a shared URL.
   useEffect(() => {
-    const q = searchParams.get("q") ?? "";
-    setQuery(q);
-    if (q) search(q);
-  }, [searchParams, search]);
+    setQuery(searchParams.get("q") ?? "");
+  }, [searchParams]);
+
+  // As the palette does: search as the CA types, after a pause.
+  useEffect(() => {
+    const t = setTimeout(() => search(query), DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [query, search]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    router.push(`/search?q=${encodeURIComponent(query)}`);
-    search(query);
+    // Keeps the URL shareable; the debounced search above does the fetching.
+    router.replace(`/search?q=${encodeURIComponent(query)}`);
   }
+
+  const term = query.trim();
+  const tooShort = term.length > 0 && term.length < SEARCH_MIN_LENGTH;
+  // Typed, but the answer for THIS term is not back yet (debounce or request).
+  const pending = term.length >= SEARCH_MIN_LENGTH && (loading || searchedFor !== term);
+  const answered = !pending && term.length >= SEARCH_MIN_LENGTH && searchedFor === term;
 
   const grouped = results.reduce<Record<string, SearchResult[]>>((acc, r) => {
     if (!acc[r.category]) acc[r.category] = [];
@@ -118,8 +110,8 @@ function SearchContent() {
           </div>
         </form>
 
-        {loading && (
-          <div className="space-y-3">
+        {pending && (
+          <div className="space-y-3" role="status" aria-label="Searching">
             {[1, 2, 3].map(i => (
               <div key={i} className="bg-white border rounded-lg px-4 py-3 space-y-1.5">
                 <Skeleton className="h-3 w-2/3" />
@@ -129,7 +121,7 @@ function SearchContent() {
           </div>
         )}
 
-        {!loading && query && searchError && (
+        {answered && searchError && (
           <Card>
             <CardContent className="py-12 text-center">
               <Search size={32} className="mx-auto mb-3 text-red-300" />
@@ -144,20 +136,26 @@ function SearchContent() {
           </Card>
         )}
 
-        {!loading && query && !searchError && results.length === 0 && (
+        {answered && !searchError && results.length === 0 && (
           <Card>
             <CardContent className="py-12 text-center text-ps-hint">
               <Search size={32} className="mx-auto mb-3 opacity-30" />
-              <p>No results for &quot;{query}&quot;</p>
+              <p>No results for &quot;{term}&quot;</p>
             </CardContent>
           </Card>
         )}
 
-        {!loading && !query && (
+        {tooShort && (
+          <p className="text-ps-hint text-center mt-12">
+            Type at least {SEARCH_MIN_LENGTH} characters to search.
+          </p>
+        )}
+
+        {!term && (
           <p className="text-ps-hint text-center mt-12">Search clients, tasks, filings, journals...</p>
         )}
 
-        {Object.entries(grouped).map(([cat, items]) => {
+        {answered && !searchError && Object.entries(grouped).map(([cat, items]) => {
           const Icon = CATEGORY_ICONS[cat as keyof typeof CATEGORY_ICONS] ?? FileText;
           return (
             <div key={cat} className="mb-6">

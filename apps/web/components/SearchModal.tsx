@@ -6,8 +6,13 @@ import { api } from "@/lib/api";
 import { useRouter, usePathname } from "next/navigation";
 import { matchScreens, screenHref, isScreensOnly, SCREENS_ONLY_PREFIX } from "@/lib/navigation/screens";
 import { Skeleton } from "@/components/ui/skeleton";
+import { arrayOrEmpty } from "@/lib/api/shape";
 
-type SearchResult = {
+// THE ONE CLIENT FOR /api/search. The palette and the /search page both read
+// these — the page used to keep its own copy of the type, the labels and
+// `runSearch`, which had already drifted: it knew five of the backend's nine
+// categories, so a lead or a DSC result rendered under a blank heading.
+export type SearchResult = {
   id: string;
   category:
     | "screens"
@@ -25,7 +30,7 @@ type SearchResult = {
   href: string;
 };
 
-const CATEGORY_ICONS = {
+export const CATEGORY_ICONS = {
   screens: Compass,
   clients: Users,
   tasks: CheckSquare,
@@ -38,7 +43,7 @@ const CATEGORY_ICONS = {
   dsc: ShieldCheck,
 };
 
-const CATEGORY_LABELS = {
+export const CATEGORY_LABELS = {
   screens: "Go to",
   clients: "Clients",
   tasks: "Tasks",
@@ -54,13 +59,19 @@ const CATEGORY_LABELS = {
 // M2: search now goes through the backend /api/search, which enforces client
 // assignment server-side. The browser no longer queries Supabase directly, so a
 // user can only discover entities for clients they are authorized to access.
-async function runSearch(query: string): Promise<{ results: SearchResult[]; error: string | null }> {
-  if (!query.trim() || query.length < 2) return { results: [], error: null };
+/** The server answers nothing below this many characters
+ *  (`routers/search.py`), so neither caller asks it to. */
+export const SEARCH_MIN_LENGTH = 2;
+
+export async function runSearch(query: string): Promise<{ results: SearchResult[]; error: string | null }> {
+  if (query.trim().length < SEARCH_MIN_LENGTH) return { results: [], error: null };
   try {
     const res = await api.search(query.trim());
     if (!res.success) return { results: [], error: res.error ?? "Search failed." };
     return {
-      results: (res.data?.results ?? []).map((r) => ({
+      results: arrayOrEmpty<{ id: string; category: string; title: string; subtitle?: string; href: string }>(
+        res.data?.results,
+      ).map((r) => ({
         id: r.id,
         category: (r.category as SearchResult["category"]) ?? "clients",
         title: r.title,
