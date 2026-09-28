@@ -23,6 +23,7 @@ import { apiCall, apiGet, getAuthToken } from "@/lib/invoices/shared";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
+import { purchaseServiceToLine } from "@/lib/catalogue/service";
 import { formatPaise } from "@/lib/services/formatting";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
@@ -78,7 +79,22 @@ export interface RecurringBillTemplate {
 }
 
 interface Vendor { id: string; name: string }
-interface CatalogueItem { id: string; name: string; kind?: string | null }
+// Widened from { id, name, kind } (sweep-client-purchases-07): the picker
+// used to fetch only enough to render the dropdown, so a pick set nothing
+// but `service_catalogue_id` and every other line field silently stayed
+// blank — unlike PurchaseBillEditor's picker, which loads the whole item and
+// prefills from it via the shared `purchaseServiceToLine`. These five extra
+// columns are exactly what that function reads.
+interface CatalogueItem {
+  id: string;
+  name: string;
+  kind?: string | null;
+  description?: string | null;
+  hsn_sac?: string | null;
+  gst_rate_bps?: number | null;
+  purchase_price_paise?: number | null;
+  unit?: string | null;
+}
 
 /** Taxable value of a template, before tax — what the bill engine will charge on. */
 function templateBase(lines: RecurringBillLine[]): number {
@@ -118,7 +134,8 @@ export function RecurringBills({ clientId }: { clientId: string }) {
         apiGet(`/api/recurring-purchase-bills?client_id=${encodeURIComponent(clientId)}`, token),
         selectAll(() => supabase.from("vendors").select("id, name")
           .eq("client_id", clientId).eq("is_active", true).order("name").order("id")),
-        selectAll(() => supabase.from("service_catalogue").select("id, name, kind")
+        selectAll(() => supabase.from("service_catalogue")
+          .select("id, name, kind, description, hsn_sac, gst_rate_bps, purchase_price_paise, unit")
           .eq("client_id", clientId).order("name").order("id")),
       ]);
       if (!tplRes.success) throw new Error(tplRes.error ?? "Could not load templates");
@@ -390,6 +407,22 @@ function blankLine(): DraftLine {
   };
 }
 
+/** Catalogue pick → template-line prefill (sweep-client-purchases-07), via
+ *  the shared `purchaseServiceToLine` so this form can't drift from
+ *  PurchaseBillEditor's picker about what one catalogue item means. `gst_rate`
+ *  is re-stringified because DraftLine keeps every numeric field as typed
+ *  text, same as every other field on this line. */
+function catalogueItemToDraftPatch(item: CatalogueItem): Partial<DraftLine> {
+  const prefill = purchaseServiceToLine(item);
+  return {
+    description: prefill.description,
+    hsn_sac: prefill.hsn_sac,
+    rate: prefill.rate,
+    gst_rate: String(prefill.gst_rate),
+    unit: prefill.unit,
+  };
+}
+
 function paiseToRupeeText(paise: number): string {
   // Integer division and remainder, never a float divide — see
   // lib/money/rupeeInput for why a rupee amount is never round-tripped
@@ -586,6 +619,7 @@ function RecurringBillEditor({
                         items={catalogue}
                         value={l.service_catalogue_id}
                         onChange={(id) => setLine(i, { service_catalogue_id: id })}
+                        onSelect={(item) => { if (item) setLine(i, catalogueItemToDraftPatch(item)); }}
                         getId={(c) => c.id}
                         getLabel={(c) => c.name}
                         getSearchFields={(c) => [c.name]}

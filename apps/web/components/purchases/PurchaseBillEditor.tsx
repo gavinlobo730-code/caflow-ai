@@ -16,7 +16,7 @@ import { VendorLookup, type VendorLike } from "@/components/lookups/VendorLookup
 import { AccountLookup, type AccountLike } from "@/components/lookups/AccountLookup";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
-import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
+import { purchaseServiceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { UQC_CODES } from "@/lib/constants/uqc";
 import { estimateBaseMinor } from "@/lib/services/currencyPreview";
 import { useServerTdsPreview } from "@/lib/purchases/serverTdsPreview";
@@ -56,21 +56,6 @@ type EditorLine = PurchaseBillLine & {
   hsnMatches?: ServiceCatalogueItem[];
 };
 const EMPTY_LINE: PurchaseBillLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "NOS", expense_account_id: "", service_catalogue_id: "" };
-
-/** Purchase-side product/service prefill — uses purchase_price_paise, NOT
- * default_rate_paise (the SELL price). The old inline-modal form used
- * lib/catalogue/service.ts's serviceToLine here, which is sales-side and
- * silently pre-filled the SELL price on every purchase bill line picked
- * from the catalogue — fixed here. */
-function purchaseServiceToLine(item: ServiceCatalogueItem): Partial<PurchaseBillLine> {
-  return {
-    description: (item.description ?? "").trim(),
-    hsn_sac: item.hsn_sac ?? "",
-    rate: item.purchase_price_paise ? String(item.purchase_price_paise / 100) : "",
-    gst_rate: item.gst_rate_bps == null ? 0 : item.gst_rate_bps / 100,
-    unit: item.unit ?? "NOS",
-  };
-}
 
 function todayISO(): string {
   return todayLocalISO();
