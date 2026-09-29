@@ -245,15 +245,35 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
 
   const acct = bankAccountId ? { bank_account_id: bankAccountId } : {};
 
+  /** apex-bank-assets-inventory-08. Three independent effects fire on mount —
+   *  one loads rows, one loads counts, and a third calls `settle()`, which
+   *  itself calls `loadCounts()` again at its own top — so a page opening on
+   *  an already-settled account (nothing undrafted, nothing trusted-pending)
+   *  still asked for the counts twice within the same tick. `inflightRef`
+   *  shares the one request between them: a second call arriving before the
+   *  first has resolved gets back the SAME promise instead of firing a second
+   *  one. This changes nothing about WHEN either effect runs — settle stays
+   *  triggered by its own effect, pinned to `[clientId]` alone, exactly as
+   *  before (see settle's own docstring) — only how many requests go out. */
+  const inflightCountsRef = useRef<Promise<Counts> | null>(null);
   const loadCounts = useCallback(async () => {
-    const res = (await api.banking.entries.counts({ client_id: clientId, ...acct })) as
-      { success: boolean; data: Partial<Counts> | null };
-    // ZERO first: a backend that does not yet send `tds_decision_pending`
-    // would otherwise make it undefined, and `undefined > 0` is false but
-    // `{counts.tds_decision_pending}` renders nothing where a number belongs.
-    const merged = { ...ZERO, ...(res.data ?? {}) };
-    if (res.success) setCounts(merged);
-    return merged;
+    if (inflightCountsRef.current) return inflightCountsRef.current;
+    const promise = (async () => {
+      const res = (await api.banking.entries.counts({ client_id: clientId, ...acct })) as
+        { success: boolean; data: Partial<Counts> | null };
+      // ZERO first: a backend that does not yet send `tds_decision_pending`
+      // would otherwise make it undefined, and `undefined > 0` is false but
+      // `{counts.tds_decision_pending}` renders nothing where a number belongs.
+      const merged = { ...ZERO, ...(res.data ?? {}) };
+      if (res.success) setCounts(merged);
+      return merged;
+    })();
+    inflightCountsRef.current = promise;
+    try {
+      return await promise;
+    } finally {
+      inflightCountsRef.current = null;
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, bankAccountId]);
 
@@ -329,9 +349,15 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
   const settle = useCallback(async () => {
     if (busyRef.current || !clientId || clientId === "_placeholder") return;
     busyRef.current = true;
+    // apex-bank-assets-inventory-08. The trailing reload() used to run
+    // unconditionally in `finally`, so even a settle() that found nothing
+    // undrafted and nothing trusted-pending still re-fetched both the counts
+    // and the rows — a second full refetch of a screen that had not changed.
+    let changedSomething = false;
     try {
       let c = await loadCounts();
       if (c.undrafted > 0) {
+        changedSomething = true;
         let done = 0; const totalToDo = c.undrafted;
         setProgress({ label: "Proposing entries", done, total: totalToDo });
         for (let i = 0; i < 200; i++) {
@@ -345,15 +371,18 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
       }
       if (c.trusted_pending > 0) {
         const n = await passLoop({ only_trusted: true, label: "Passing trusted-rule entries", total: c.trusted_pending });
-        if (n.passed > 0) toast({ title: `${n.passed} passed by trusted rules`,
+        if (n.passed > 0) {
+          changedSomething = true;
+          toast({ title: `${n.passed} passed by trusted rules`,
                                  description: n.failed ? `${n.failed} refused — the reason is on each line.` : undefined });
+        }
       }
     } catch (e) {
       toast({ title: "Couldn't finish proposing", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setProgress(null);
       busyRef.current = false;
-      await reload();
+      if (changedSomething) await reload();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, loadCounts, reload]);
