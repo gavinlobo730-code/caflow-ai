@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Library, Search, Plus, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -25,6 +25,21 @@ export default function ClientKnowledgePage() {
   const [form, setForm] = useState({ title: "", content: "", tags: "" });
   const [saving, setSaving] = useState(false);
 
+  // apex-overview-practice-07(d): `load` used to close over `query` and run
+  // from a `useEffect([load])` — so it re-ran on EVERY keystroke with no
+  // debounce, and a SEPARATE Enter-key handler fired it again on top. Two
+  // requests in flight at once raced: an earlier, slower keystroke's
+  // response could land AFTER a later, faster one's and overwrite it with
+  // results for a query the box no longer shows.
+  //
+  // `latestQuery` is the stale-response guard: `load` is now given the exact
+  // query text it was asked to search for, and applies its result only if
+  // that text still matches what the input holds by the time the response
+  // comes back — an in-flight request for an old query can never clobber a
+  // newer one.
+  const latestQuery = useRef(query);
+  useEffect(() => { latestQuery.current = query; }, [query]);
+
   // Default (empty-query) load reads client-scoped articles directly from
   // Supabase — this is what kb.search_articles degenerates to when `query`
   // is empty: .eq("client_id", ...).eq("is_archived", false), ordered by
@@ -35,13 +50,14 @@ export default function ClientKnowledgePage() {
   // re-implement that check here. Once the CA types a real search query, that
   // becomes relevance-ranked search and stays backend-routed (same reasoning
   // as ServiceCataloguePicker).
-  const load = useCallback(async () => {
+  const load = useCallback(async (q: string) => {
     if (!clientId) return;
     setLoading(true); setError(null);
     try {
-      if (query) {
-        const r = await api.knowledge.clientArticles(clientId, query) as ApiResp<Article[]>;
-        setArticles(r.data ?? []);
+      let result: Article[];
+      if (q) {
+        const r = await api.knowledge.clientArticles(clientId, q) as ApiResp<Article[]>;
+        result = r.data ?? [];
       } else {
         const supabase = getSupabaseClient();
         const { data } = await selectAll(() =>
@@ -50,12 +66,37 @@ export default function ClientKnowledgePage() {
             .eq("client_id", clientId)
             .eq("is_archived", false)
             .order("updated_at", { ascending: false }));
-        setArticles((data as Article[]) ?? []);
+        result = (data as Article[]) ?? [];
       }
-    } catch (e) { setError(e instanceof Error ? e.message : "Failed to load"); }
-    finally { setLoading(false); }
+      if (latestQuery.current === q) setArticles(result);
+    } catch (e) {
+      if (latestQuery.current === q) setError(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      if (latestQuery.current === q) setLoading(false);
+    }
+  }, [clientId]);
+
+  // Loads immediately when the client changes (no debounce — there is
+  // nothing to wait for, unlike a keystroke), then debounces ~300ms behind
+  // further typing so a fast typist fires one request per pause rather than
+  // one per character.
+  const isFirstLoadForThisClient = useRef(true);
+  useEffect(() => {
+    isFirstLoadForThisClient.current = true;
+  }, [clientId]);
+  useEffect(() => {
+    if (!clientId) return;
+    if (isFirstLoadForThisClient.current) {
+      isFirstLoadForThisClient.current = false;
+      load(query);
+      return;
+    }
+    const timer = setTimeout(() => load(query), 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `load` is
+    // stable per clientId (see its own deps); including it here would fire
+    // this effect on every render for no reason.
   }, [clientId, query]);
-  useEffect(() => { load(); }, [load]);
 
   async function createArticle(e: React.FormEvent) {
     e.preventDefault();
@@ -71,7 +112,7 @@ export default function ClientKnowledgePage() {
       });
       setShowForm(false);
       setForm({ title: "", content: "", tags: "" });
-      await load();
+      await load(query);
     } catch (e) { setError(e instanceof Error ? e.message : "Create failed"); }
     finally { setSaving(false); }
   }
@@ -89,12 +130,14 @@ export default function ClientKnowledgePage() {
               <Plus size={13} /> New article
             </button>
           )}
-          <button onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
+          <button onClick={() => load(query)} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
         </div>
       </div>
       <div className="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-1.5 bg-white mb-4">
         <Search size={14} className="text-gray-400" />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()}
+        {/* No Enter-key handler: the debounced effect above already covers
+            every keystroke, Enter included, ~300ms after typing stops. */}
+        <input value={query} onChange={(e) => setQuery(e.target.value)}
           placeholder="Search client articles…" className="flex-1 text-sm outline-none" />
       </div>
       {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
