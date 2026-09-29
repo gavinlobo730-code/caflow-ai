@@ -182,13 +182,16 @@ class Phase2JournalService:
                     })
 
             _ccy = self._currency_kwargs(db, invoice, firm_id, client_id, lines)
+            customer_name = self._party_name(
+                db, firm_id, client_id, "customers", invoice.get("customer_id"), "customer"
+            )
             return self._create_journal(
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
                 entry_date=invoice.get("invoice_date", str(datetime.now(timezone.utc).date())),
                 reference_no=invoice["invoice_no"],
-                narration=f"Sales invoice {invoice['invoice_no']} to customer — CGST Act §9",
+                narration=f"Sales invoice {invoice['invoice_no']} to {customer_name} — CGST Act §9",
                 entry_type="Sales",
                 lines=lines,
                 source_type=JS.SALES_INVOICE, source_id=invoice.get("id"),
@@ -869,8 +872,11 @@ class Phase2JournalService:
 
             section_note = bill.get("tds_section", "194C") if tds_paise > 0 else "NA"
             rcm_note = " (reverse charge, CGST Act §9)" if bill.get("is_reverse_charge") else ""
+            vendor_name = self._party_name(
+                db, firm_id, client_id, "vendors", bill.get("vendor_id"), "vendor"
+            )
             narration = (
-                f"Purchase bill {bill.get('bill_no', 'N/A')} from vendor{rcm_note} — "
+                f"Purchase bill {bill.get('bill_no', 'N/A')} from {vendor_name}{rcm_note} — "
                 f"IT Act §{section_note}"
             )
 
@@ -2076,6 +2082,41 @@ class Phase2JournalService:
             f"Required account not found: {name_pattern}. "
             "Please set up Chart of Accounts before posting."
         )
+
+    def _party_name(
+        self, db, firm_id: str, client_id: str, table: str,
+        party_id: Optional[str], fallback: str,
+    ) -> str:
+        """The customer's or vendor's own name, for an entry-level narration.
+
+        apex-accounting-reports-09: journal_for_sales_invoice hard-coded
+        "to customer" and journal_for_purchase_bill "from vendor" — every
+        sales and purchase journal's own narration named no party at all,
+        which is what the Day Book and Recent Entries actually show a CA.
+
+        A single-row lookup by id, not a report over the ledger — CLAUDE.md's
+        reporting-performance rule is about reads proportional to transaction
+        volume, and this is the same shape as _find_account's own per-posting
+        lookup above. Falls back to a neutral word rather than raising or
+        propagating an exception: a customer or vendor row that is missing,
+        deleted, or unreadable must never block posting the journal itself,
+        the same posture SALES-13 takes for a document's own party fallback.
+        """
+        if not party_id:
+            return fallback
+        try:
+            resp = (db.table(table).select("name")
+                    .eq("id", party_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                    .limit(1).execute())
+            if resp.data and resp.data[0].get("name"):
+                return resp.data[0]["name"]
+        except Exception as e:
+            from core.observability import capture_posting_failure
+            capture_posting_failure(
+                e, operation="_party_name", firm_id=firm_id, client_id=client_id,
+                table=table, party_id=party_id,
+            )
+        return fallback
 
     def exchange_rate_service(self, db):
         """The ExchangeRateService available to the posting pipeline (Phase 2, Task 3).
