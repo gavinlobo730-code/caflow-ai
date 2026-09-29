@@ -75,6 +75,27 @@ def test_the_reason_says_the_tax_is_included():
     assert "tax" in out.reason
 
 
+def test_the_reason_is_formatted_in_rupees_not_raw_paise():
+    """apex-sales-purchases-02: the sentence used to interpolate raw integer
+    paise straight into the reason — "Consignment value 116307 paise does not
+    exceed..." — which reaches CompliancePanel verbatim and disagrees with the
+    browser fallback's rupee formatting. It must read in rupees, grouped the
+    Indian way, and never carry the literal word "paise"."""
+    below = assess([EwayLine(hsn_sac="7306", taxable_amount_paise=1_16_307,
+                             gst_rate_bps=0)])
+    assert "paise" not in below.reason
+    assert "₹1,163.07" in below.reason
+
+    above = assess([EwayLine(hsn_sac="7306", taxable_amount_paise=60_00_000,
+                             igst_paise=10_80_000, gst_rate_bps=1800)])
+    assert "paise" not in above.reason
+    assert "₹70,800.00" in above.reason
+
+    wholly_exempt = assess([EwayLine(hsn_sac="0401", taxable_amount_paise=80_000_00,
+                                     gst_rate_bps=0)])
+    assert "paise" not in wholly_exempt.reason
+
+
 def test_a_wholly_exempt_consignment_is_refused_rather_than_guessed():
     """Rule 138(14) lists fourteen cases needing no e-way bill whatever the
     value, including the goods in the Annexure to Rule 138 — which this

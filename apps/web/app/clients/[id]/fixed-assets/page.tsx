@@ -222,12 +222,19 @@ export default function FixedAssetsPage() {
   // reading window.location.search once on mount misses it — the tab stays
   // wherever it was and the address bar disagrees with the screen.
   // useSearchParams() re-renders this effect on every URL change, mount or not.
+  // apex-sales-purchases-09: keyed on the searchParams OBJECT this used to
+  // re-run on every unrelated query-string write elsewhere on the page and
+  // snap the tab back to whatever ?tab= still said. Keyed on the tab/doc
+  // VALUES instead, so it only re-fires when one of those actually changes.
   const tabDeepLinkParams = useSearchParams();
+  const tabParam = tabDeepLinkParams.get("tab");
+  const docParam = tabDeepLinkParams.get("doc");
   useEffect(() => {
     const { tab: t, doc } = openedAt(tabDeepLinkParams.toString());
     if (t && TABS.some((x) => x.id === t)) setTab(t as FATab);
     setOpenDoc(doc);
-  }, [tabDeepLinkParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam, docParam]);
 
   return (
     <div className="flex flex-col h-full bg-ps-bg">

@@ -2017,13 +2017,19 @@ export default function PayrollPage() {
   // not, and TABS is still not a dependency: rebuilt every render with the
   // same content, it would otherwise re-run this and undo the reader's own
   // tab click.
+  // apex-sales-purchases-09: keyed on the searchParams OBJECT this used to
+  // re-run on every unrelated query-string write elsewhere on the page and
+  // snap the tab back to whatever ?tab= still said. Keyed on the tab/doc
+  // VALUES instead, so it only re-fires when one of those actually changes.
   const tabDeepLinkParams = useSearchParams();
+  const tabParam = tabDeepLinkParams.get("tab");
+  const docParam = tabDeepLinkParams.get("doc");
   useEffect(() => {
     const { tab: t, doc } = openedAt(tabDeepLinkParams.toString());
     if (t && TABS.some((x) => x.id === t)) setTab(t as Tab);
     setOpenDoc(doc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabDeepLinkParams]);
+  }, [tabParam, docParam]);
 
   return (
     <div className="flex flex-col h-full bg-ps-bg">

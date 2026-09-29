@@ -181,6 +181,19 @@ def test_more_than_2b_is_capped_per_head_and_never_on_the_total():
     assert got.verdicts[0].verdict == r36.MORE_THAN_2B
 
 
+def test_the_more_than_2b_reason_is_in_rupees_not_raw_paise():
+    """apex-sales-purchases-02: the reason interpolated raw integer paise
+    straight into the sentence ("IGST 1800000 paise"), which reaches the
+    GSTR-2B Recon screen verbatim. It must read in rupees, grouped the Indian
+    way, and never carry the literal word "paise"."""
+    got = r36.assess([_book("b1", "INV/1", igst=1_800_000)],
+                     {"b1": _filed(cgst=900_000, sgst=900_000)},
+                     have_2b=True)
+    reason = got.verdicts[0].reason
+    assert "paise" not in reason
+    assert "₹18,000.00" in reason
+
+
 def test_a_negative_book_figure_is_not_capped_up():
     """A note reducing credit is fed in as negative tax. `min(book, filed)` is
     the rule — the cap withholds, it never grants — so a −₹5,000 line against a
