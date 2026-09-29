@@ -29,10 +29,25 @@ WHAT THIS MODULE IS
       and body are LOGGED first — the thing somebody with Render's logs needs
       and the thing the old 502 threw away.
 
-    ⚠️ It does not change the default model. Whether Groq still serves
-    `llama-3.3-70b-versatile` to this account could not be checked from here
-    (egress is refused); the next failure now names the cause, and if it is a
-    retirement the remedy is setting GROQ_TEXT_MODEL, which needs no deploy.
+    ⚠️ At the time this module was written it did NOT change the default
+    model, because whether Groq still served `llama-3.3-70b-versatile` to
+    this account could not be checked from here (egress refused) — the plan
+    was: the next failure names the cause, and if it is a retirement the
+    remedy is setting GROQ_TEXT_MODEL, which needs no deploy.
+
+WHAT HAPPENED NEXT (29-09-2026)
+    That retirement arrived. A real call against this account now returns a
+    live `model_not_found` 404 for `llama-3.3-70b-versatile`, confirming the
+    exact failure this module was built to name — and a web search found
+    Groq's own announcement of the deprecation, for free/developer accounts
+    from 17-06-2026, naming `openai/gpt-oss-120b` as the replacement.
+    `DEFAULT_TEXT_MODEL` is updated to it directly, rather than leaving every
+    deployment to discover the 404 and set `GROQ_TEXT_MODEL` by hand — the
+    env var still exists for whatever Groq retires next, but there is no
+    reason to ship a default known to be dead. ⚠️ The replacement name is
+    `[S]`-graded: this environment's egress proxy still refuses a direct
+    fetch of Groq's own docs page, so it rests on a search engine's summary
+    of Groq's announcement, not a firsthand read of the primary source.
 """
 from __future__ import annotations
 
@@ -47,7 +62,20 @@ _logger = logging.getLogger("caflow.ai.groq")
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 #: The same default the document-extraction routers use, so all Groq text
 #: callers agree when nothing is configured.
-DEFAULT_TEXT_MODEL = "llama-3.3-70b-versatile"
+#:
+#: `llama-3.3-70b-versatile` (the default until 29-09-2026) is retired: a real
+#: call against this account now returns a live `model_not_found` 404, and a
+#: web search found Groq announcing the deprecation of
+#: `llama-3.3-70b-versatile` (and `llama-3.1-8b-instant`) for free/developer
+#: accounts from 17-06-2026, naming `openai/gpt-oss-120b` as the stated
+#: replacement (`qwen/qwen3.6-27b` mentioned as an alternative). `[S]`-graded:
+#: this environment's egress proxy refuses a direct fetch of Groq's own docs
+#: page, so that announcement is read from a search engine's summary, not the
+#: primary source — the same discipline `domain/gst/late_filing.py` and
+#: others in this codebase mark with `[S]` for exactly this reason. If Groq
+#: has since moved again, the remedy is still what this module's own history
+#: already says: set GROQ_TEXT_MODEL, which needs no deploy.
+DEFAULT_TEXT_MODEL = "openai/gpt-oss-120b"
 DEFAULT_TIMEOUT_S = 30.0
 
 _MODEL_GONE = {"model_not_found", "model_decommissioned", "model_deprecated"}

@@ -11,18 +11,32 @@
  * contact — folding them together would mean one page guessing which kind of
  * invite it holds, and guessing wrong would bind the wrong thing.
  *
- * Flow: wait for the magic-link session → present the token to
- * POST /api/portal/employee/accept-invite (this is the step that sets
- * auth_user_id and portal_enabled) → collect a password so they can sign in
- * again at /portal/login without needing a fresh link every time.
+ * Flow: briefly check for an ALREADY-forming magic-link session (the real
+ * emailed link, now that PortalAccessModal actually triggers Supabase to
+ * send one) → if none turns up, mint one directly from the bare token via
+ * POST /api/portal/employee/activation-session + supabase.auth.verifyOtp →
+ * present the token to POST /api/portal/employee/accept-invite (this is the
+ * step that sets auth_user_id and portal_enabled) → collect a password so
+ * they can sign in again at /portal/login without needing a fresh link every
+ * time.
+ *
+ * WHY BOTH PATHS EXIST, NOT JUST THE SECOND ONE
+ *     A bare `?token=...` URL — which is what this page has always been
+ *     opened with, real email or courtesy fallback alike — carries no
+ *     Supabase auth hash fragment, so there is never anything for
+ *     `detectSessionInUrl` to find; polling `getSession()` here always timed
+ *     out into "This invitation cannot be used" until now. The short poll
+ *     below still runs first, cheaply, so a session that genuinely is mid-
+ *     flight (a real magic link opened in this same tab a moment ago) is
+ *     used as-is rather than displaced by a second, redundant one.
  *
  * The query parameter is `token`, matching employee_portal_service's
  * activation_url(). The client page uses `invite` — they are separate links and
  * neither should be assumed to match the other.
  *
  * Same reauthentication-nonce fallback as /portal/activate and onboarding: a
- * magic-link session that is not "recently signed in" needs
- * reauthenticate() → updateUser({ password, nonce }). See lib/auth/reauth.ts.
+ * session that is not "recently signed in" needs reauthenticate() →
+ * updateUser({ password, nonce }). See lib/auth/reauth.ts.
  *
  * Re-visiting a spent link: the token is single use, so the second accept
  * fails. That is only an error if this identity has no access yet — someone who
@@ -31,6 +45,7 @@
 import { useState, useEffect, useRef, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import type { EmailOtpType } from "@supabase/supabase-js";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
@@ -77,8 +92,11 @@ export default function EmployeeActivatePage() {
         if (!cancelled) setStage("invalid");
         return;
       }
-      // The magic link signs the browser in as it opens (detectSessionInUrl),
-      // but not synchronously — poll rather than read once.
+
+      // A genuine magic-link URL signs the browser in as it opens
+      // (detectSessionInUrl), but not synchronously — poll briefly rather
+      // than read once, so a session that is already mid-flight is used
+      // as-is instead of minting a second, redundant one below.
       let session = null;
       for (let attempt = 0; attempt < SESSION_WAIT_ATTEMPTS; attempt++) {
         const { data } = await supabase.auth.getSession();
@@ -86,7 +104,32 @@ export default function EmployeeActivatePage() {
         await new Promise((r) => setTimeout(r, SESSION_WAIT_INTERVAL_MS));
       }
       if (cancelled) return;
-      if (!session) { setStage("invalid"); return; }
+
+      // No session formed on its own — this is the ordinary case, since
+      // neither the emailed link nor its copy-paste fallback has ever
+      // carried one. Mint a session directly from the bare token instead of
+      // giving up: the token itself is what proves who this is.
+      if (!session) {
+        try {
+          const minted = await api.portalSelf.mintEmployeeActivationSession(token);
+          if (!minted.success || !minted.data) {
+            throw new Error(minted.error ?? "Could not verify this invitation.");
+          }
+          const { error: verifyErr } = await supabase.auth.verifyOtp({
+            token_hash: minted.data.token_hash,
+            type: minted.data.verification_type as EmailOtpType,
+          });
+          if (cancelled) return;
+          if (verifyErr) throw verifyErr;
+        } catch {
+          if (cancelled) return;
+          const active = await alreadyActivated();
+          if (cancelled) return;
+          if (active) router.replace("/portal/employee");
+          else setStage("invalid");
+          return;
+        }
+      }
 
       try {
         await api.portalSelf.acceptEmployeeInvite(token);

@@ -533,7 +533,9 @@ class TestMergeFieldRenderingMock:
         assert "{{client_name}}" not in content
 
     def test_generate_renders_fee_in_rupees(self):
-        """fee_amount_paise 500000 → ₹5000 in rendered content.
+        """fee_amount_paise 500000 → ₹5,000 in rendered content, Indian-grouped
+        (decision D6 — domain/money_text.group_indian is the one grouping rule
+        in the product).
         Integer arithmetic — CGST Act compliance, never float."""
         from routers.engagement_letters import create_template, create_engagement, generate_engagement
         from routers.engagement_letters import TemplateIn, EngagementIn
@@ -552,8 +554,58 @@ class TestMergeFieldRenderingMock:
             eng_id = eng["data"]["engagement"]["id"]
             result = generate_engagement(engagement_id=eng_id, current_user=USER_MANAGER_A)
         content = result["data"]["rendered_content"]
-        assert "₹5000" in content
+        assert "₹5,000" in content
         assert "{{engagement_fee}}" not in content
+
+    def test_generate_does_not_double_apply_the_rupee_sign(self):
+        """A default template's own `{{engagement_fee}}` placeholder must not
+        carry a literal ₹ of its own beside it — `_format_fee`'s return value
+        already carries the sign, and both together rendered "₹₹18000" on every
+        one of the six seeded templates."""
+        from routers.engagement_letters import (
+            create_engagement, generate_engagement, _seed_default_templates,
+        )
+        from routers.engagement_letters import EngagementIn
+        with patch("routers.engagement_letters._db", return_value=None):
+            templates = _seed_default_templates(None, USER_MANAGER_A["firm_id"], None)
+            for tmpl in templates:
+                eng = create_engagement(
+                    body=EngagementIn(title="Fee test", fee_amount_paise=1_800_000,
+                                      template_id=tmpl["id"]),
+                    current_user=USER_MANAGER_A,
+                )
+                eng_id = eng["data"]["engagement"]["id"]
+                result = generate_engagement(engagement_id=eng_id, current_user=USER_MANAGER_A)
+                content = result["data"]["rendered_content"]
+                assert "₹₹" not in content, f"doubled rupee sign in {tmpl['name']!r}: {content}"
+                assert "₹18,000" in content, f"expected a grouped ₹18,000 in {tmpl['name']!r}: {content}"
+
+    def test_generate_renders_a_human_readable_date_not_raw_iso(self):
+        """{{engagement_date}} is a date a CLIENT reads in a signed document —
+        it must not be the raw ISO string `ist_today()` produces."""
+        import re
+        from routers.engagement_letters import create_template, create_engagement, generate_engagement
+        from routers.engagement_letters import TemplateIn, EngagementIn
+        tmpl_body = TemplateIn(
+            name="T", service_type="GST Compliance",
+            content="<p>Date: {{engagement_date}}</p><p>Start: {{start_date}}</p>",
+        )
+        with patch("routers.engagement_letters._db", return_value=None):
+            tmpl = create_template(body=tmpl_body, current_user=USER_MANAGER_A)
+            tmpl_id = tmpl["data"]["template"]["id"]
+            eng = create_engagement(
+                body=EngagementIn(title="Date test", fee_amount_paise=0,
+                                  template_id=tmpl_id, start_date="2026-04-01"),
+                current_user=USER_MANAGER_A,
+            )
+            eng_id = eng["data"]["engagement"]["id"]
+            result = generate_engagement(engagement_id=eng_id, current_user=USER_MANAGER_A)
+        content = result["data"]["rendered_content"]
+        # Neither date is left as a raw YYYY-MM-DD string.
+        assert not re.search(r"\d{4}-\d{2}-\d{2}", content), \
+            f"a raw ISO date reached the letter: {content}"
+        # start_date was recorded as 1 April 2026 — the human-readable form.
+        assert "01 Apr 2026" in content
 
     def test_generate_renders_partner_name(self):
         from routers.engagement_letters import create_template, create_engagement, generate_engagement
@@ -562,7 +614,10 @@ class TestMergeFieldRenderingMock:
             name="T", service_type="GST Compliance",
             content="<p>Signed: {{partner_name}}</p>",
         )
-        user = {**USER_MANAGER_A, "name": "CA Priya Sharma"}
+        # current_user carries "full_name" (core/auth.py's own shape), never
+        # "name" — a mock user with only "name" is what let this bug pass
+        # review the first time.
+        user = {**USER_MANAGER_A, "full_name": "CA Priya Sharma"}
         with patch("routers.engagement_letters._db", return_value=None):
             tmpl = create_template(body=tmpl_body, current_user=user)
             tmpl_id = tmpl["data"]["template"]["id"]
@@ -575,6 +630,10 @@ class TestMergeFieldRenderingMock:
             result = generate_engagement(engagement_id=eng_id, current_user=user)
         content = result["data"]["rendered_content"]
         assert "CA Priya Sharma" in content
+        # The client's own sign-off must never read as the staff member's
+        # login email — that is what current_user.get("name") (a key the real
+        # principal dict does not carry) fell back to.
+        assert user["email"] not in content
 
     def test_render_merge_fields_function_directly(self):
         """Unit test for the _render_merge_fields helper."""
@@ -594,12 +653,16 @@ class TestMergeFieldRenderingMock:
         assert "Suresh" in result
 
     def test_format_fee_function_integer_arithmetic(self):
-        """_format_fee uses integer paise arithmetic, never float — CGST Act compliance."""
+        """_format_fee uses integer paise arithmetic, never float — CGST Act
+        compliance — and Indian digit grouping (decision D6), via the one
+        grouping implementation in domain/money_text.group_indian."""
         from routers.engagement_letters import _format_fee
-        assert _format_fee(500000) == "₹5000"   # ₹5,000 (500000 paise)
-        assert _format_fee(100) == "₹1"          # ₹1 (100 paise)
-        assert _format_fee(150) == "₹1.50"       # ₹1.50 (150 paise)
-        assert _format_fee(0) == "₹0"            # zero fee
+        assert _format_fee(500000) == "₹5,000"     # ₹5,000 (500000 paise)
+        assert _format_fee(100) == "₹1"            # ₹1 (100 paise)
+        assert _format_fee(150) == "₹1.50"         # ₹1.50 (150 paise)
+        assert _format_fee(0) == "₹0"              # zero fee
+        assert _format_fee(1_800_000) == "₹18,000"     # ₹18,000 (the reported bug's own figure)
+        assert _format_fee(123_400_000) == "₹12,34,000"  # Indian grouping past 4 digits (12,34,000, not 1,234,000)
 
 
 # ─── Task 6: firm_id Isolation ────────────────────────────────────────────────

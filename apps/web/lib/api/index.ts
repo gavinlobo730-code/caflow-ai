@@ -2533,7 +2533,31 @@ async function sessionTokenWithTimeout(): Promise<string | undefined> {
 }
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = await sessionTokenWithTimeout();
+  // getSession() itself can fail on the FIRST call of a page's lifetime — not
+  // only by hanging (the 10s bound above), but by rejecting outright: the auth
+  // client's own one-time startup (reading the stored session, and racing a
+  // background token refresh against it) can throw on a cold read that a
+  // repeat read right after does not. Nothing has been sent to the backend
+  // yet at this point — this runs BEFORE fetchWithTimeout — so a retry costs
+  // nothing extra and is not a duplicate write, unlike retrying the fetch
+  // itself below. Without this, the FIRST click of a session (e.g. Post
+  // Entry on a fresh page load) surfaced "Could not verify your session —
+  // please retry." with no request ever reaching the network, and the exact
+  // same click, unchanged, worked immediately after: the transient failure
+  // had already cleared by then. Only one retry, immediately (no sleep — this
+  // is the auth client resolving itself, not a sleeping backend to wait out);
+  // a second failure in a row is a real problem and the original error is
+  // what the CA should see.
+  let token: string | undefined;
+  try {
+    token = await sessionTokenWithTimeout();
+  } catch (firstError) {
+    try {
+      token = await sessionTokenWithTimeout();
+    } catch {
+      throw firstError;
+    }
+  }
 
   let res: Response;
   try {
@@ -3490,7 +3514,13 @@ export const api = {
   },
   accounting: {
     accounts: () => request("/api/accounting/accounts"),
-    createAccount: (data: unknown) => request("/api/accounting/accounts", { method: "POST", body: JSON.stringify(data) }),
+    // `client_id` is a QUERY param on the backend (POST /api/accounting/accounts),
+    // never part of the body — omitting it creates a firm-level account every
+    // client shares, which is the right default for nothing a CA types from a
+    // client's own Chart of Accounts screen.
+    createAccount: (data: unknown, clientId?: string) => request(
+      `/api/accounting/accounts${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ""}`,
+      { method: "POST", body: JSON.stringify(data) }),
     updateAccount: (id: string, data: unknown) => request(`/api/accounting/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     // The Schedule III captions a mapping may be set to, served by the module
     // that does the classifying. The mapping screen used to carry its own
@@ -5064,6 +5094,14 @@ export const api = {
     acceptEmployeeInvite: (token: string) =>
       request<ApiResp<{ employee_id: string; name?: string; client_id?: string }>>(
         "/api/portal/employee/accept-invite",
+        { method: "POST", body: JSON.stringify({ token }) }),
+    // Turns a bare invite token into the ingredients for a real Supabase
+    // session (supabase.auth.verifyOtp({ token_hash, type })) — no session
+    // required to call this, since the token itself is what authorises it.
+    // See services/employee_portal_service.mint_activation_session.
+    mintEmployeeActivationSession: (token: string) =>
+      request<ApiResp<{ token_hash: string; verification_type: string }>>(
+        "/api/portal/employee/activation-session",
         { method: "POST", body: JSON.stringify({ token }) }),
     // me/dashboard select the active client explicitly via X-Portal-Client-Id when
     // the identity belongs to more than one client (no implicit switching).

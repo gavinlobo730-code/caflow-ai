@@ -67,6 +67,8 @@ def test_the_model_sent_is_the_one_the_environment_names(monkeypatch, groq_calls
 
 def test_with_nothing_set_it_is_the_same_default_invoice_extraction_uses(
         monkeypatch, groq_calls):
+    from domain.ai.groq_text import DEFAULT_TEXT_MODEL
+
     mod = _fresh_copy(monkeypatch, None)
     mod._extract_with_groq("DRC-01 notice text")
 
@@ -74,4 +76,4 @@ def test_with_nothing_set_it_is_the_same_default_invoice_extraction_uses(
         "_dv1_copy_for_model_test", _MODULE.with_name("document_intelligence_v1.py"))
     v1 = importlib.util.module_from_spec(v1_spec)
     v1_spec.loader.exec_module(v1)
-    assert groq_calls[-1]["model"] == v1._GROQ_TEXT_MODEL == "llama-3.3-70b-versatile"
+    assert groq_calls[-1]["model"] == v1._GROQ_TEXT_MODEL == DEFAULT_TEXT_MODEL

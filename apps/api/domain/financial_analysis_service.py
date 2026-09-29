@@ -5,26 +5,33 @@ Sheet. Ratios are computed here from the SAME backend-authoritative paise
 totals the reporting engine (domain/reporting) already returns — no figure is
 derived anywhere else.
 
-Uses Groq API (llama-3.3-70b-versatile), same call shape as
-domain/ai_copilot_service.py. The prompt contains ONLY the numbers computed
-below; the model is instructed to use no other knowledge and invent nothing,
-since a hallucinated figure in a CA's working file is a real risk. When Groq
-is unavailable (no GROQ_API_KEY, or the call fails) this falls back to a
-deterministic, non-AI narrative built from the same numbers, so the panel is
-never empty and a Groq outage never surfaces as a broken UI. Advisory only —
-never used to auto-file or auto-submit anything.
+Uses Groq's text model (GROQ_TEXT_MODEL, through domain/ai/groq_text's shared
+default), same call shape as domain/ai_copilot_service.py. The prompt
+contains ONLY the numbers computed below; the model is instructed to use no
+other knowledge and invent nothing, since a hallucinated figure in a CA's
+working file is a real risk. When Groq is unavailable (no GROQ_API_KEY, or
+the call fails) this falls back to a deterministic, non-AI narrative built
+from the same numbers, so the panel is never empty and a Groq outage never
+surfaces as a broken UI. Advisory only — never used to auto-file or
+auto-submit anything.
+
+⚠️ Until 29-09-2026 this module hardcoded "llama-3.3-70b-versatile" with no
+env-var override at all — not even the GROQ_TEXT_MODEL fallback pattern the
+other Groq callers use — so when that model was retired this path had no
+config remedy, only a code change. It now reads
+domain.ai.groq_text.text_model(), the one place that decision is made.
 """
 from __future__ import annotations
 
 import logging
 import os
 from typing import Optional
+from domain.ai.groq_text import text_model
 from domain.money_text import rupees_paise
 
 _logger = logging.getLogger("caflow.financial_analysis")
 
 _GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-_MODEL = "llama-3.3-70b-versatile"
 
 _SYSTEM_PROMPT = """You are a financial analysis assistant for an Indian Chartered Accountant reviewing a client's Profit & Loss and Balance Sheet.
 
@@ -126,7 +133,7 @@ async def _call_groq(messages: list[dict]) -> Optional[str]:
             response = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {_GROQ_API_KEY}", "Content-Type": "application/json"},
-                json={"model": _MODEL, "messages": messages, "max_tokens": 300, "temperature": 0.3},
+                json={"model": text_model(), "messages": messages, "max_tokens": 300, "temperature": 0.3},
             )
             response.raise_for_status()
             data = response.json()

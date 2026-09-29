@@ -264,6 +264,15 @@ def compute(bills: Iterable[Bill], *, financial_year: str) -> Section43BHResult:
     fy_start, fy_end = _fy_bounds(financial_year)
     out: list[BillOutcome] = []
     gaps: list[str] = []
+    # A gap is a fact about the VENDOR (unclassified) or about a BILL missing a
+    # date — and a busy vendor can have dozens of bills a year, so appending
+    # one identical sentence per bill (Form 3CD clause 26, PRACTICE-SYNC-2026)
+    # turned a single fact into a wall of duplicated text: 29 unclassified
+    # vendors with 25-36 bills each rendered as ~755 near-identical lines. Both
+    # are counted per vendor here and each vendor gets exactly ONE line, naming
+    # how many of their bills it covers.
+    unclassified_bill_counts: dict[str, int] = {}
+    no_date_bill_counts: dict[str, int] = {}
     caveats: list[str] = [FIRST_PROVISO_DOES_NOT_APPLY]
     #: ACCEPTANCE_DATE_NOT_HELD is added only if some bill actually used the
     #: proxy. Before PUR-25 every bill did, so it was unconditional; a caveat
@@ -284,12 +293,8 @@ def compute(bills: Iterable[Bill], *, financial_year: str) -> Section43BHResult:
 
     for b in bills:
         if b.msme_status is None:
-            gaps.append(
-                f"{b.vendor_name}: MSMED classification not recorded. §43B(h) "
-                f"reaches a MICRO or SMALL enterprise only (MSMED §2(n)), and "
-                f"whether this supplier is one is a fact about their Udyam "
-                f"registration that no ledger holds. Their bills are left out "
-                f"until it is recorded.")
+            unclassified_bill_counts[b.vendor_name] = (
+                unclassified_bill_counts.get(b.vendor_name, 0) + 1)
             out.append(BillOutcome(
                 b.bill_id, b.bill_no, b.vendor_name,
                 b.bill_date.isoformat() if b.bill_date else None,
@@ -308,8 +313,8 @@ def compute(bills: Iterable[Bill], *, financial_year: str) -> Section43BHResult:
             continue
 
         if b.bill_date is None:
-            gaps.append(f"{b.vendor_name}: a bill with no date, so the §15 "
-                        f"period cannot be measured.")
+            no_date_bill_counts[b.vendor_name] = (
+                no_date_bill_counts.get(b.vendor_name, 0) + 1)
             out.append(BillOutcome(
                 b.bill_id, b.bill_no, b.vendor_name, None, None, "", None,
                 b.total_paise, b.deductible_paise, 0, 0, (), 0, 0,
@@ -414,6 +419,27 @@ def compute(bills: Iterable[Bill], *, financial_year: str) -> Section43BHResult:
 
     if any_proxied:
         caveats.append(ACCEPTANCE_DATE_NOT_HELD)
+
+    # ONE line per vendor, not one per bill — see the counters' own comment
+    # above. Sorted by vendor name so the order is stable across runs (a dict
+    # preserves insertion order, which is the order bills happened to arrive
+    # in, not a reading order a CA would recognise).
+    for vendor_name in sorted(unclassified_bill_counts):
+        count = unclassified_bill_counts[vendor_name]
+        bill_word = "bill" if count == 1 else "bills"
+        gaps.append(
+            f"{vendor_name}: MSMED classification not recorded, covering "
+            f"{count} {bill_word} this year. §43B(h) reaches a MICRO or SMALL "
+            f"enterprise only (MSMED §2(n)), and whether this supplier is one "
+            f"is a fact about their Udyam registration that no ledger holds. "
+            f"Their bills are left out until it is recorded.")
+    for vendor_name in sorted(no_date_bill_counts):
+        count = no_date_bill_counts[vendor_name]
+        bill_word = "bill" if count == 1 else "bills"
+        gaps.append(
+            f"{vendor_name}: {count} {bill_word} with no date, so the §15 "
+            f"period cannot be measured.")
+
     return Section43BHResult(
         financial_year=financial_year, disallowed_paise=disallowed,
         allowed_on_payment_paise=allowed_back, bills=tuple(out),

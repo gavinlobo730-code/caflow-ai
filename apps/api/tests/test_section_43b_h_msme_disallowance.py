@@ -122,6 +122,65 @@ def test_an_unclassified_vendor_is_named_and_left_out():
     assert "Udyam" in r.gaps[0]
 
 
+def test_an_unclassified_vendors_many_bills_are_one_gap_not_one_per_bill():
+    """Form 3CD clause 26 rendered ~755 near-identical lines from 29 vendors
+    with 25-36 bills each — one copy of the SAME sentence per bill of an
+    unclassified vendor, because the fact ('this vendor's MSME status is not
+    recorded') is about the VENDOR and was being reported per BILL. Every one
+    of a busy vendor's bills still shows the gap in `bills[i].reason`
+    individually; the SUMMARY names the vendor once and says how many."""
+    bills = [
+        _bill(bill_id=f"b{i}", bill_no=f"INV-{i}", vendor_id="v1",
+              vendor_name="Sharma Traders", msme_status=None, payments=())
+        for i in range(30)
+    ]
+    r = compute(bills, financial_year=FY)
+    assert len(r.bills) == 30, "every bill still gets its own row in the register"
+    assert all(b.reason == rule.GAP_MSME_STATUS_NOT_CLASSIFIED for b in r.bills)
+    matches = [g for g in r.gaps if "Sharma Traders" in g]
+    assert len(matches) == 1, (
+        f"expected ONE gap line for the vendor's 30 bills, got {len(matches)}: "
+        f"{matches}")
+    assert "30 bills" in matches[0]
+    assert "Udyam" in matches[0]
+
+
+def test_two_unclassified_vendors_each_get_their_own_one_line_gap():
+    """Grouping is PER VENDOR, not a single blanket sentence for the whole
+    return — two different suppliers are two different Udyam facts."""
+    bills = [
+        _bill(bill_id="b1", vendor_id="v1", vendor_name="Acme Tools",
+              msme_status=None, payments=()),
+        _bill(bill_id="b2", vendor_id="v2", vendor_name="Beta Traders",
+              msme_status=None, payments=()),
+        _bill(bill_id="b3", vendor_id="v2", vendor_name="Beta Traders",
+              msme_status=None, payments=()),
+    ]
+    r = compute(bills, financial_year=FY)
+    unclassified_gaps = [g for g in r.gaps if "Udyam" in g]
+    assert len(unclassified_gaps) == 2
+    acme = next(g for g in unclassified_gaps if "Acme Tools" in g)
+    beta = next(g for g in unclassified_gaps if "Beta Traders" in g)
+    assert "1 bill" in acme
+    assert "2 bills" in beta
+
+
+def test_a_vendors_many_undated_bills_are_also_one_gap_not_one_per_bill():
+    """Same defect, same fix, on the sibling gap: a bill with no date is a
+    fact about that DOCUMENT, but a vendor whose bills are routinely entered
+    without one still owes ONE sentence, not one per undated bill."""
+    bills = [
+        _bill(bill_id=f"b{i}", vendor_id="v3", vendor_name="Gupta & Sons",
+              bill_date=None, payments=())
+        for i in range(5)
+    ]
+    r = compute(bills, financial_year=FY)
+    matches = [g for g in r.gaps if "Gupta & Sons" in g]
+    assert len(matches) == 1, f"expected one line, got {len(matches)}: {matches}"
+    assert "5 bills" in matches[0]
+    assert "no date" in matches[0]
+
+
 # ── the amount ───────────────────────────────────────────────────────────────
 
 def test_the_disallowance_is_the_DEDUCTION_not_the_gross_invoice():

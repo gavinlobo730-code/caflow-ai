@@ -43,6 +43,7 @@ import { DrCr } from "@/components/ui/drcr";
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 import { objectWithLists } from "@/lib/api/shape";
+import { Field, Input, Select } from "@/components/ui/field";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -344,7 +345,7 @@ export default function AccountingPage() {
           <AccountingDashboard clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} accounts={accounts} onNavigate={setTab} />
         )}
         {tab === "coa" && (
-          <ChartOfAccounts accounts={accounts} loading={accsLoading} error={accountsError} onRefresh={loadAccounts} onDrillDown={openDrillDown} />
+          <ChartOfAccounts clientId={clientId} accounts={accounts} loading={accsLoading} error={accountsError} onRefresh={loadAccounts} onDrillDown={openDrillDown} />
         )}
         {tab === "journal" && (
           <JournalList clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
@@ -388,6 +389,7 @@ export default function AccountingPage() {
           financialYear={financialYear}
           initialAccountId={drillDown.accountId}
           onClose={() => setDrillDown(null)}
+          onAccountUpdated={loadAccounts}
         />
       )}
     </div>
@@ -621,8 +623,14 @@ function DashCard({ label, value, accent, action }: { label: string; value: stri
 
 // ── Chart of Accounts ──────────────────────────────────────────────────────
 
-function ChartOfAccounts({ accounts, loading, error, onRefresh, onDrillDown }: { accounts: Account[]; loading: boolean; error?: string | null; onRefresh: () => void; onDrillDown: (accountId: string) => void }) {
+function ChartOfAccounts({ clientId, accounts, loading, error, onRefresh, onDrillDown }: { clientId: string; accounts: Account[]; loading: boolean; error?: string | null; onRefresh: () => void; onDrillDown: (accountId: string) => void }) {
   const TYPE_ORDER = ["Asset", "Liability", "Equity", "Revenue", "Expense"];
+  // ACC-30: POST /api/accounting/accounts has taken create requests since it
+  // was built (rbac-guarded, firm_id-scoped, the real chart_of_accounts
+  // table) and no screen ever called it — this table rendered, and nothing
+  // on it could add a row. `api.accounting.createAccount` sat in lib/api
+  // unused for the same reason.
+  const [showAdd, setShowAdd] = useState(false);
 
   // Type-grouping context preserved as a colored badge in the Type column (flat,
   // sortable table). Type order also drives the default account_type sort tie-break.
@@ -655,6 +663,12 @@ function ChartOfAccounts({ accounts, loading, error, onRefresh, onDrillDown }: {
     <div className="space-y-4 max-w-ps-data mx-auto">
       <div className="flex items-center justify-between">
         <p className="text-xs text-ps-label">{accounts.length} accounts</p>
+        <button
+          onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
+        >
+          <Plus size={12} /> Add Account
+        </button>
       </div>
 
       <DataTable
@@ -673,6 +687,205 @@ function ChartOfAccounts({ accounts, loading, error, onRefresh, onDrillDown }: {
         emptyDescription="Accounts are seeded from the firm-level chart of accounts."
         onRowClick={(a) => onDrillDown(a.id)}
       />
+
+      {showAdd && (
+        <AddAccountModal clientId={clientId} onClose={() => setShowAdd(false)} onSaved={onRefresh} />
+      )}
+    </div>
+  );
+}
+
+// ── Add / Edit Account ──────────────────────────────────────────────────────
+
+const ACCOUNT_TYPES = ["Asset", "Liability", "Equity", "Revenue", "Expense"] as const;
+
+function AddAccountModal({ clientId, onClose, onSaved }: {
+  clientId: string; onClose: () => void; onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    name: "", code: "", account_type: "Asset" as typeof ACCOUNT_TYPES[number],
+    account_subtype: "", parent_group: "", sub_group: "",
+  });
+  // Client-scoped is the default: a CA adding an account from THIS client's
+  // own Chart of Accounts means it for this client. A firm-level account
+  // (client_id NULL, shared by every client of the firm) is the exception —
+  // offered rather than assumed, because a stray firm-level account from a
+  // client screen would appear on every OTHER client's chart too.
+  const [firmWide, setFirmWide] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  // See AddAssetDrawer's submittingRef: `disabled={saving}` alone lags a
+  // genuinely back-to-back double dispatch by one render.
+  const submittingRef = useRef(false);
+
+  async function save() {
+    if (submittingRef.current) return;
+    if (!form.name.trim()) { setError("Account name is required."); return; }
+    if (!form.code.trim()) {
+      setError("An account code is required — it is what the chart is ordered and matched by.");
+      return;
+    }
+    submittingRef.current = true;
+    setSaving(true); setError("");
+    try {
+      const body = {
+        name: form.name.trim(),
+        code: form.code.trim(),
+        account_type: form.account_type,
+        account_subtype: form.account_subtype.trim() || undefined,
+        parent_group: form.parent_group.trim() || undefined,
+        sub_group: form.sub_group.trim() || undefined,
+      };
+      const j = await api.accounting.createAccount(body, firmWide ? undefined : clientId) as
+        { success: boolean; data?: unknown; error?: string | null };
+      if (!j.success) throw new Error(j.error ?? "Failed to create the account.");
+      onSaved(); onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to create the account.");
+    } finally {
+      submittingRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white w-[440px] h-full overflow-y-auto shadow-2xl flex flex-col">
+        <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
+          <h2 className="text-sm font-semibold text-ps-ink">Add Account</h2>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
+        </div>
+
+        <div className="flex-1 px-6 py-5 space-y-4 text-xs">
+          {error && <Callout tone="problem">{error}</Callout>}
+
+          <Field label="Account Name" required>
+            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. HDFC Bank — Current A/c" />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Code" required hint="Unique for this chart; orders the table.">
+              <Input value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} placeholder="1001" />
+            </Field>
+            <Field label="Type" required>
+              <Select value={form.account_type} onChange={(e) => setForm((f) => ({ ...f, account_type: e.target.value as typeof ACCOUNT_TYPES[number] }))}>
+                {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </Select>
+            </Field>
+          </div>
+          <Field label="Subtype" hint="The account's own nature — 'Bank Account', 'Trade Receivables' — used to place it on the Balance Sheet / P&L.">
+            <Input value={form.account_subtype} onChange={(e) => setForm((f) => ({ ...f, account_subtype: e.target.value }))} placeholder="e.g. Bank Account" />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Group" hint="e.g. Current Assets">
+              <Input value={form.parent_group} onChange={(e) => setForm((f) => ({ ...f, parent_group: e.target.value }))} />
+            </Field>
+            <Field label="Sub-group" hint="e.g. Bank Accounts">
+              <Input value={form.sub_group} onChange={(e) => setForm((f) => ({ ...f, sub_group: e.target.value }))} />
+            </Field>
+          </div>
+          <label className="flex items-start gap-2 text-2xs text-ps-body pt-1">
+            <input type="checkbox" className="mt-0.5" checked={firmWide} onChange={(e) => setFirmWide(e.target.checked)} />
+            <span>
+              Shared across every client of the firm (firm-level). Leave this
+              unchecked for an account that belongs to this client only.
+            </span>
+          </label>
+        </div>
+
+        <div className="px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
+          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+          <button onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
+            {saving ? "Saving…" : "Add Account"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditAccountModal({ account, onClose, onSaved }: {
+  account: Account; onClose: () => void; onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    name: account.account_name,
+    code: account.account_code,
+    account_subtype: account.account_subtype ?? "",
+    is_active: account.is_active,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const submittingRef = useRef(false);
+
+  async function save() {
+    if (submittingRef.current) return;
+    if (!form.name.trim()) { setError("Account name is required."); return; }
+    if (!form.code.trim()) { setError("Account code is required."); return; }
+    submittingRef.current = true;
+    setSaving(true); setError("");
+    try {
+      const body: Record<string, unknown> = {};
+      if (form.name.trim() !== account.account_name) body.name = form.name.trim();
+      if (form.code.trim() !== account.account_code) body.code = form.code.trim();
+      const subtype = form.account_subtype.trim();
+      if (subtype !== (account.account_subtype ?? "")) body.account_subtype = subtype;
+      if (form.is_active !== account.is_active) body.is_active = form.is_active;
+      if (Object.keys(body).length === 0) { onClose(); return; }
+      const j = await api.accounting.updateAccount(account.id, body) as
+        { success: boolean; data?: unknown; error?: string | null };
+      if (!j.success) throw new Error(j.error ?? "Failed to update the account.");
+      onSaved(); onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to update the account.");
+    } finally {
+      submittingRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  return (
+    // stopPropagation UNCONDITIONALLY, not only on a backdrop click: this
+    // modal renders as a sibling of LedgerDrillDown's own content box (not a
+    // descendant of it), so a click anywhere in here — including on an
+    // input, not just the backdrop — would otherwise bubble up to that
+    // outer modal's own `onClick={onClose}` and close THE LEDGER behind it.
+    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4"
+         onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col">
+        <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
+          <h2 className="text-sm font-semibold text-ps-ink">Edit Account</h2>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 text-xs">
+          {error && <Callout tone="problem">{error}</Callout>}
+
+          <Field label="Account Name" required>
+            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Code" required>
+              <Input value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
+            </Field>
+            <Field label="Type" hint="Not editable — it decides which side of the trial balance the account falls on, so changing it after a posting would silently restate every report.">
+              <Input value={account.account_type} disabled />
+            </Field>
+          </div>
+          <Field label="Subtype" hint="The account's own nature — used to place it on the Balance Sheet / P&L.">
+            <Input value={form.account_subtype} onChange={(e) => setForm((f) => ({ ...f, account_subtype: e.target.value }))} placeholder="e.g. Bank Account" />
+          </Field>
+          <label className="flex items-center gap-2 text-2xs text-ps-body">
+            <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))} />
+            Active
+          </label>
+        </div>
+
+        <div className="px-5 py-4 border-t border-ps-border flex gap-3 shrink-0">
+          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+          <button onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1081,16 +1294,21 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
 const LEDGER_PAGE_SIZE = 100;
 
 function LedgerDrillDown({
-  accounts, clientId, financialYear, initialAccountId, onClose,
+  accounts, clientId, financialYear, initialAccountId, onClose, onAccountUpdated,
 }: {
   accounts: Account[];
   clientId: string;
   financialYear: string;
   initialAccountId: string;
   onClose: () => void;
+  /** ACC-30: re-fetches the chart after an edit, so a renamed account's new
+   *  name reaches this modal (via the `accounts` prop) and the Chart of
+   *  Accounts table behind it, without either holding a second copy. */
+  onAccountUpdated: () => void;
 }) {
   const router = useRouter();
   const [accountId, setAccountId] = useState(initialAccountId);
+  const [editing, setEditing] = useState(false);
   const fyRange = fyDateRange(financialYear);
   const [startDate, setStartDate] = useState(fyRange.start);
   const [endDate, setEndDate] = useState(fyRange.end);
@@ -1159,6 +1377,9 @@ function LedgerDrillDown({
   const bal = (paise: number, isDebit: boolean) => <DrCr paise={paise} isDebit={isDebit} quiet />;
   const hasActivity = !!ledger && (ledger.lines.length > 0 || ledger.opening_balance_paise !== 0);
   const accountName = ledger?.account_name ?? accounts.find((a) => a.id === accountId)?.account_name ?? "";
+  // ACC-30: the full row, for the Edit action — `accounts` is the same list
+  // fed by the parent's loadAccounts, so this is never a second fetch.
+  const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
   // Ledger line columns. Money is paise → right-aligned via `fmt` (formatPaise).
   // The running balance is the backend's authoritative per-row figure — sorting
@@ -1210,7 +1431,17 @@ function LedgerDrillDown({
             <p className="text-sm font-semibold text-ps-ink">{accountName || "Ledger"}</p>
             <p className="text-2xs text-ps-hint mt-0.5">Account ledger</p>
           </div>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Back">×</button>
+          <div className="flex items-center gap-3">
+            {selectedAccount && (
+              <button
+                onClick={() => setEditing(true)}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                Edit
+              </button>
+            )}
+            <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Back">×</button>
+          </div>
         </div>
 
         <div className="px-5 py-3 border-b border-ps-border flex items-end gap-3 flex-wrap shrink-0">
@@ -1338,6 +1569,14 @@ function LedgerDrillDown({
           ) : null}
         </div>
       </div>
+
+      {editing && selectedAccount && (
+        <EditAccountModal
+          account={selectedAccount}
+          onClose={() => setEditing(false)}
+          onSaved={onAccountUpdated}
+        />
+      )}
     </div>
   );
 }

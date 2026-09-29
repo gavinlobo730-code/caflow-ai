@@ -104,6 +104,31 @@ def portal_dashboard(portal: dict = Depends(get_current_portal_client)):
 
 # ─── Employee portal activation ──────────────────────────────────────────────
 
+class MintEmployeeActivationSessionBody(BaseModel):
+    token: str
+
+
+@router.post("/employee/activation-session")
+def mint_employee_activation_session(body: MintEmployeeActivationSessionBody):
+    """Turn a bare invite token into a real Supabase session — no Authorization
+    header, no prior session. This is deliberately the one endpoint in this
+    router with NO auth dependency at all: before it succeeds there is no
+    session to require one from, and the invite token itself is what
+    authorises the call, exactly as it authorises accept-invite below.
+
+    See employee_portal_service.mint_activation_session for why this exists:
+    neither the emailed activation link nor its "share this another way"
+    fallback ever carried a real Supabase session, so the activation page's
+    documented "wait for the magic-link session" step had nothing to wait
+    for. The browser redeems the result with `supabase.auth.verifyOtp({
+    token_hash, type})` — the same operation Supabase's own client performs
+    automatically when a genuine magic-link URL is opened — and only THEN
+    calls accept-invite below with the session that produces.
+    """
+    result = employee_portal_service.mint_activation_session(body.token)
+    return api_response(True, result)
+
+
 class AcceptEmployeeInviteBody(BaseModel):
     token: str
 

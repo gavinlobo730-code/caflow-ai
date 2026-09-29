@@ -148,3 +148,24 @@ export interface OnboardingGuardState {
 export function mayRenderOnboardingWizard(state: OnboardingGuardState): boolean {
   return state.loading || state.hasSession;
 }
+
+// ── No `users` row: /onboarding OR /portal/login ────────────────────────────
+//
+// AuthGuard's own effect sends a signed-in session with `hasFirm === false`
+// to /onboarding — right for the case that state exists for (a brand-new
+// firm signup whose bootstrap hasn't run yet) and wrong for a PORTAL CLIENT
+// hitting a staff-only URL directly: a portal contact's identity lives in
+// `client_portal_users`, not `public.users`, so it resolves to hasFirm=false
+// too, and lands the same business owner on "Welcome! Let's set up your
+// firm... Create Password / Firm Profile" — a wizard for somebody who already
+// has a password and does not run a firm. No data leaks (the redirect fires
+// before anything staff-only is fetched); it is simply the wrong page.
+//
+// Whether the signed-in identity IS a portal client is an async fact (a
+// database read keyed on auth_user_id — see lib/portal/clientAccess.ts) and
+// cannot live in this dependency-free file; this is the one-line DECISION
+// once that fact is known, kept here and tested the same way as the rest of
+// this module.
+export function noFirmRedirectTarget(isPortalClient: boolean): "/portal/login" | "/onboarding" {
+  return isPortalClient ? "/portal/login" : "/onboarding";
+}

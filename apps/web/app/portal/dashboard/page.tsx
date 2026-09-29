@@ -135,12 +135,25 @@ export default function PortalDashboardPage() {
     let cancelled = false;
     (async () => {
       const supabase = getSupabaseClient();
+      let hasSession = false;
       for (let attempt = 0; attempt < 10; attempt++) {
         const { data } = await supabase.auth.getSession();
-        if (data?.session) break;
+        if (data?.session) { hasSession = true; break; }
         await new Promise((r) => setTimeout(r, 500));
       }
       if (cancelled) return;
+      // No session ever turned up — a stale tab left open after signing out,
+      // a bookmark to this exact URL, a refresh after the token expired with
+      // nothing to restore. Calling the API here would only draw a raw 401
+      // back ("Missing or invalid Authorization header"), which this used to
+      // render straight into the page with no header, no nav and no way
+      // back in. There is nothing to load without a session, so go to the
+      // login screen rather than to that string.
+      if (!hasSession) {
+        setRedirecting(true);
+        router.replace("/portal/login");
+        return;
+      }
       try {
         if (inviteToken) {
           // Best-effort: an already-accepted/expired token here just means the
@@ -172,6 +185,18 @@ export default function PortalDashboardPage() {
         setMemberships(ms);
         if (ms.length === 1) setActiveClient(ms[0].client_id);
       } catch (e) {
+        // A request that reached here despite the session check above means
+        // the session was found a moment ago and is rejected now — expired
+        // with no live refresh token, revoked, or otherwise stale. There is
+        // no page to recover into except signing in again, and a raw backend
+        // error string is never something a client should be shown here.
+        const { data: recheck } = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (!recheck?.session) {
+          setRedirecting(true);
+          router.replace("/portal/login");
+          return;
+        }
         setError(e instanceof Error ? e.message : "Unable to load your portal");
       } finally {
         if (!cancelled) setLoading(false);
@@ -303,6 +328,10 @@ export default function PortalDashboardPage() {
 
   const downloadStatement = async () => {
     if (!activeClient) return;
+    // Belt and suspenders alongside the disabled button above: the same
+    // "nothing to download" condition the empty state already names must
+    // never ALSO surface as a raw backend error in the notice banner.
+    if (statement === null || statement.available === false) return;
     setBusy(true); setNotice(null);
     try { await api.portalSelf.statementPdf(activeClient, stmtStart || undefined, stmtEnd || undefined); }
     catch (e) { setNotice(e instanceof Error ? e.message : "Could not download statement"); }
@@ -466,7 +495,20 @@ export default function PortalDashboardPage() {
                 </label>
                 <button disabled={busy} onClick={reloadStatement}
                   className="rounded-lg border border-ps-border px-3 py-1 text-xs text-ps-ink hover:border-ps-hint disabled:opacity-40">Apply</button>
-                <button disabled={busy} onClick={downloadStatement}
+                {/* Disabled rather than merely caught: with no statement to
+                    download, api.portalSelf.statementPdf 404s with "No
+                    statement available for this client." — the SAME
+                    condition the friendly empty-state below already names —
+                    and a caught 404 sets `notice`, which renders as its own
+                    red banner ABOVE every tab's content (line ~411). A client
+                    who clicked this while looking at "No statement is
+                    available..." saw both at once: one plain sentence and,
+                    stacked above it, the backend's raw error text. Disabling
+                    the button here removes the second message rather than
+                    reformatting it — there is nothing further to say once
+                    the empty state has already said it. */}
+                <button disabled={busy || statement === null || statement.available === false}
+                  onClick={downloadStatement}
                   className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1 text-xs text-white disabled:opacity-40">
                   <Download size={13} /> Download PDF
                 </button>
