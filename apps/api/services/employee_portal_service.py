@@ -223,6 +223,122 @@ def _find_pending_by_token(token: str, db):
     return rows[0] if rows else None
 
 
+_INVALID_INVITE = HTTPException(status_code=404, detail="Invalid or expired invite.")
+
+
+def _pending_unexpired_invite(token: str, db) -> Optional[dict]:
+    """The invite `token` names, if it is still pending AND not past its
+    expiry — the two checks `accept_employee_invite` and
+    `mint_activation_session` both need before doing anything else with a
+    token. Split out so the expiry arithmetic exists once; the two callers
+    still raise their own generic error rather than sharing an exception
+    instance across requests."""
+    invite = _find_pending_by_token(token, db)
+    if not invite:
+        return None
+    expires_at = invite.get("portal_invite_expires_at")
+    if not expires_at:
+        return None
+    exp = (expires_at if isinstance(expires_at, datetime)
+           else datetime.fromisoformat(str(expires_at).replace("Z", "+00:00")))
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < datetime.now(timezone.utc):
+        return None
+    return invite
+
+
+def mint_activation_session(token: str, db=None) -> dict:
+    """Turn a bare, unauthenticated invite token into a real Supabase session
+    the FRONTEND can establish for itself — no email round trip, no prior
+    session required.
+
+    WHY THIS EXISTS
+        The activation page's documented flow was "wait for the magic-link
+        session that a Supabase-sent email already established, then present
+        the token" — but nothing ever made Supabase send that email: neither
+        this endpoint's own emailed link nor the activation URL returned
+        alongside it (the "share this link another way" fallback the CA sees
+        in PortalAccessModal) carries a Supabase auth hash fragment, because
+        neither was ever produced by Supabase's Auth API. Both are bare
+        `?token=...` URLs, so `detectSessionInUrl` has nothing to detect and
+        the page's own polling times out into "This invitation cannot be
+        used" — every time, for both links, regardless of which one is used.
+
+        `PortalAccessModal.tsx`'s `invite()` now ALSO calls
+        `supabase.auth.signInWithOtp(...)` from the browser, the same way the
+        client portal's `handleSendInvite` does, so the REAL emailed link
+        works going forward. This function is what makes the bare token work
+        too — the fallback link, and anyone who lands here before that email
+        arrives or after it is lost.
+
+    WHAT IT DOES
+        Validates the token exactly as `accept_employee_invite` does (pending,
+        not expired) — but does NOT consume it or bind anything; only
+        `accept_employee_invite` does that, once a real session exists. Then
+        asks Supabase's ADMIN API (service role only; there is no client-side
+        equivalent) to mint a sign-in link for the invite's OWN email address
+        — never a caller-supplied one, for the same reason `sender_type` is
+        never taken from a request body elsewhere in this codebase — and
+        returns the raw ingredients (`token_hash` + `verification_type`) for
+        the browser to redeem with `supabase.auth.verifyOtp({token_hash,
+        type})`. That call is the SAME operation `detectSessionInUrl` performs
+        automatically when a real magic-link URL is opened; this just supplies
+        its inputs directly instead of via a URL hash fragment, using the anon
+        key like any other client-side auth call — nothing here bypasses RLS
+        on the browser's own eventual session.
+
+        `type="invite"` is tried first because it creates the underlying
+        Supabase Auth user on demand, which covers the common case of an
+        employee who has never signed in before. It is retried as
+        `type="magiclink"` on any failure, which is what a SECOND invite to an
+        employee who already has a Supabase identity looks like (activated
+        once, revoked, and re-invited — `revoke_employee_portal` clears
+        `auth_user_id` and `portal_enabled` but does not delete the
+        underlying Supabase user, so `generate_link` would otherwise refuse
+        with an "already registered" error type this SDK version does not
+        expose a stable code for).
+
+    Every rejection before the Admin API call raises the SAME generic 404
+    `accept_employee_invite` does, for the same probing-resistance reason. A
+    failure IN the Admin API call is reported separately and honestly — the
+    caller already holds a token proven valid, so there is no oracle risk in
+    saying the problem is transient rather than folding it into "invalid".
+    """
+    db = db or (None if _USE_MOCK else _db())
+    invite = _pending_unexpired_invite(token, db)
+    if not invite:
+        raise _INVALID_INVITE
+
+    email = (invite.get("email") or "").strip()
+    if not email:
+        raise _INVALID_INVITE
+
+    if _USE_MOCK:
+        # No Supabase Auth to call in mock/dev mode. The mock auth_user_id
+        # mirrors what accept_employee_invite's own mock caller supplies
+        # elsewhere in this test suite, so a test exercising the full
+        # mint -> verify -> accept sequence has something real to bind.
+        return {"token_hash": f"mock-token-hash-{token_hash(token)[:16]}",
+                "verification_type": "magiclink", "email": email}
+
+    admin = db.auth.admin
+    try:
+        resp = admin.generate_link({"type": "invite", "email": email})
+    except Exception:
+        try:
+            resp = admin.generate_link({"type": "magiclink", "email": email})
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Could not start your sign-in session. Please try again "
+                       "in a moment, or ask your employer to resend the invitation.",
+            ) from exc
+
+    props = resp.properties
+    return {"token_hash": props.hashed_token, "verification_type": props.verification_type}
+
+
 def accept_employee_invite(token: str, auth_user_id: str, email: str, db=None) -> dict:
     """Bind a Supabase identity to the invited employee.
 
@@ -231,21 +347,11 @@ def accept_employee_invite(token: str, auth_user_id: str, email: str, db=None) -
     which tokens exist.
     """
     db = db or (None if _USE_MOCK else _db())
-    invite = _find_pending_by_token(token, db)
-    generic = HTTPException(status_code=404, detail="Invalid or expired invite.")
+    generic = _INVALID_INVITE
+    invite = _pending_unexpired_invite(token, db)
     if not invite:
         raise generic
     if not auth_user_id:
-        raise generic
-
-    expires_at = invite.get("portal_invite_expires_at")
-    if not expires_at:
-        raise generic
-    exp = (expires_at if isinstance(expires_at, datetime)
-           else datetime.fromisoformat(str(expires_at).replace("Z", "+00:00")))
-    if exp.tzinfo is None:
-        exp = exp.replace(tzinfo=timezone.utc)
-    if exp < datetime.now(timezone.utc):
         raise generic
     if (invite.get("email") or "").strip().lower() != (email or "").strip().lower():
         raise generic

@@ -5,11 +5,31 @@
  *  The activation link comes back ONCE, from this call. Only its sha256 is
  *  stored server-side, so it can never be fetched again — which is why the link
  *  is shown here for copying, not just emailed and forgotten. Re-inviting mints
- *  a fresh link and invalidates this one. */
+ *  a fresh link and invalidates this one.
+ *
+ *  THE BROWSER ALSO SENDS THE REAL SIGN-IN EMAIL, THE SAME WAY THE CLIENT
+ *  PORTAL DOES (apps/web/app/clients/[id]/portal/page.tsx:handleSendInvite).
+ *  `POST .../portal-invite` only records the invite server-side and mints the
+ *  single-use token — it does not, and cannot, make Supabase Auth send
+ *  anything, and `_send_invite_email` on the backend sends a plain HTML link
+ *  with no Supabase session behind it at all. Opening that bare link (or the
+ *  identical one shown below for copying) used to poll for a magic-link
+ *  session that was never coming and always end in "This invitation cannot
+ *  be used" — the activation page waits for `detectSessionInUrl` to parse an
+ *  auth hash fragment, and only a URL Supabase's own Auth API produced ever
+ *  carries one. `signInWithOtp({ email, options: { emailRedirectTo } })` is
+ *  what asks Supabase to actually send that email, redirecting back to this
+ *  same activation URL with the session attached — it does not touch or
+ *  require the CA's own signed-in session on this browser, exactly as it
+ *  does not on the client-portal invite. The backend's own email keeps
+ *  working as the courtesy fallback if this send fails (rate limits, mainly)
+ *  — the invite record itself is already committed either way. */
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { portalInviteEmailFailureMessage } from "@/lib/portal/inviteError";
 import { type Employee } from "@/components/payroll/shared";
 
 export function PortalAccessModal({ employee, onClose, onChanged }: {
@@ -40,10 +60,25 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
   async function invite() {
     setBusy(true); setErr(null);
     try {
-      const res = await api.payroll.invitePortal(employee.id, email.trim());
-      setLink(res.data?.activation_url ?? null);
-      onChanged(`Invitation sent to ${email.trim()}.`);
-      setStatus((s) => s ? { ...s, invite_pending: true, email: email.trim() } : s);
+      const trimmed = email.trim();
+      const res = await api.payroll.invitePortal(employee.id, trimmed);
+      if (!res.success) throw new Error(res.error ?? "Couldn't send the invitation.");
+      const activationUrl = res.data?.activation_url ?? null;
+      setLink(activationUrl);
+
+      // The record is already committed server-side at this point — only the
+      // sign-in email itself can still fail below (most often Supabase
+      // Auth's own send-rate limit), which is why a failure here still
+      // leaves the invite usable via the copyable link and a later re-send.
+      if (activationUrl) {
+        const { error: otpErr } = await getSupabaseClient().auth.signInWithOtp({
+          email: trimmed, options: { emailRedirectTo: activationUrl },
+        });
+        if (otpErr) throw new Error(portalInviteEmailFailureMessage(otpErr.message));
+      }
+
+      onChanged(`Invitation sent to ${trimmed}.`);
+      setStatus((s) => s ? { ...s, invite_pending: true, email: trimmed } : s);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't send the invitation.");
     } finally { setBusy(false); }
