@@ -1645,7 +1645,16 @@ export type ScheduleIiiRatioNote = {
   variance_threshold_bps: number;
   has_prior_year: boolean;
   ratios: ScheduleIiiRatio[];
+  /** Ratios that moved by more than the threshold, whether or not an
+   *  explanation has been recorded — the total `needs_explanation_count` is
+   *  the unexplained subset of. */
+  moved_count: number;
   needs_explanation_count: number;
+  /** Set only when `fy` is the current, still-open financial year — e.g.
+   *  "year to date to 15 Sep 2026". Null once the year has closed, so a
+   *  part-year figure is never silently compared against a prior full year
+   *  without saying so. */
+  current_period_label: string | null;
   gaps: { code: string; message: string }[];
 };
 
