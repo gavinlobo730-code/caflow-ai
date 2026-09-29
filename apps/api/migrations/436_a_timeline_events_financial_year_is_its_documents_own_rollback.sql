@@ -1,0 +1,13 @@
+-- Rollback for 436.
+--
+-- There is no schema change to revert — 436 is a pure data correction, no
+-- DDL, no COMMENT change, nothing structural. And the data it moved cannot be
+-- safely put back: the values it overwrote were WRONG (the FY the event was
+-- POSTED in rather than the FY its document's own date falls in), 436 did not
+-- capture them anywhere before overwriting them, and reconstructing "the FY
+-- the row was written in" after the fact is not something the row itself
+-- still records. Restoring the old, wrong label would just reintroduce the
+-- defect 436 exists to fix, on exactly the rows it corrected.
+--
+-- Same posture as migration 399's rollback: nothing to undo, said plainly,
+-- rather than a script that pretends to.
