@@ -106,10 +106,13 @@ export default function ClientLifecyclePage() {
     financial_year: "", service_type: "", renewal_date: "", value_paise: "", notes: "",
   });
   const [savingRenewal, setSavingRenewal] = useState(false);
+  // Per-workflow, not a single flag: several cards can be on screen at once
+  // and cancelling one must not disable the Cancel button on another.
+  const [cancellingWorkflowId, setCancellingWorkflowId] = useState<string | null>(null);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
-  const actionInFlight = creatingWorkflow || savingRenewal;
+  const actionInFlight = creatingWorkflow || savingRenewal || cancellingWorkflowId !== null;
 
   const loadAll = useCallback(async () => {
     if (!clientId) return;
@@ -183,6 +186,33 @@ export default function ClientLifecyclePage() {
       setError(e instanceof Error ? e.message : "Failed to create workflow");
     } finally {
       setCreatingWorkflow(false);
+    }
+  }
+
+  async function handleCancelWorkflow(workflowId: string) {
+    // Soft-cancel only — routers/lifecycle.py's PATCH .../status never
+    // deletes the row, so this confirm is about the workflow no longer being
+    // tracked, not about losing its history.
+    const ok = await confirmDialog({
+      title: "Cancel this onboarding workflow?",
+      message: "The checklist and its progress stay on record, but this workflow will no longer count as in progress. This can't be undone from here.",
+      confirmLabel: "Cancel onboarding",
+    });
+    if (!ok) return;
+    setCancellingWorkflowId(workflowId);
+    try {
+      const json: ApiResponse<OnboardingWorkflow> = await apiFetch(
+        `/api/lifecycle/onboarding/${workflowId}/status`,
+        { method: "PATCH", body: JSON.stringify({ status: "cancelled" }) }
+      );
+      if (!json.success) throw new Error(json.error ?? "Failed to cancel workflow");
+      setWorkflows((prev) =>
+        prev.map((wf) => (wf.id === workflowId ? { ...wf, status: "cancelled" } : wf))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to cancel workflow");
+    } finally {
+      setCancellingWorkflowId(null);
     }
   }
 
@@ -296,9 +326,15 @@ export default function ClientLifecyclePage() {
                     <div className="flex items-center gap-2">
                       {wf.status === "completed"
                         ? <CheckCircle size={16} className="text-green-400" />
+                        : wf.status === "cancelled"
+                        ? <X size={16} className="text-gray-400" />
                         : <Clock size={16} className="text-amber-400" />}
-                      <span className="text-sm font-medium text-gray-800">
-                        {wf.status === "completed" ? "Onboarding Completed" : "Onboarding In Progress"}
+                      <span className={`text-sm font-medium ${wf.status === "cancelled" ? "text-gray-500" : "text-gray-800"}`}>
+                        {wf.status === "completed"
+                          ? "Onboarding Completed"
+                          : wf.status === "cancelled"
+                          ? "Onboarding Cancelled"
+                          : "Onboarding In Progress"}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
@@ -306,6 +342,15 @@ export default function ClientLifecyclePage() {
                       <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                         <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
                       </div>
+                      {wf.status === "in_progress" && (
+                        <button
+                          onClick={() => handleCancelWorkflow(wf.id)}
+                          disabled={actionInFlight}
+                          className="text-3xs text-state-problem hover:underline disabled:opacity-50 shrink-0"
+                        >
+                          {cancellingWorkflowId === wf.id ? "Cancelling…" : "Cancel"}
+                        </button>
+                      )}
                     </div>
                   </div>
                   {tasks.length > 0 && (

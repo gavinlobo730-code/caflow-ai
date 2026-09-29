@@ -336,7 +336,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             </button>
             <button
               type="submit" disabled={saving}
-              className="flex-1 rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-brand-dark disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {saving ? "Saving…" : editClient ? "Save Changes" : "Add Client"}
             </button>
