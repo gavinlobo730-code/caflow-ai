@@ -25,6 +25,40 @@ VALID_TRANSITIONS: dict[str, list[str]] = {
 }
 
 
+def _assert_return_period_has_ended(record: dict) -> None:
+    """apex-overview-practice-02: a RETURN cannot be marked Filed before its
+    own period has ended — a June GSTR-3B filed in May is nonsensical however
+    the button was reached. `RETURN_OBLIGATION_TYPES` (services/
+    compliance_obligation_service.py, the obligation-type vocabulary's home)
+    is the one list of which obligation types this reaches; PMT-06, the
+    monthly TDS deposit and advance tax are deliberately not in it, because
+    those are lawfully paid mid-period.
+
+    A manual record (no `obligation_type` — Module D's own create_record
+    never sets one) is never a return by this test, so a CA's own free-form
+    compliance_type entries are untouched."""
+    # Lazy import: services/compliance_obligation_service.py already imports
+    # this module (lazily, inside its own functions, for exactly this
+    # reason), so this mirrors the existing services-from-domain pattern
+    # `_audit_transition` uses two functions below for audit_service/
+    # timeline_service rather than adding a new module-level cross-import.
+    from services.compliance_obligation_service import RETURN_OBLIGATION_TYPES
+    obligation_type = record.get("obligation_type")
+    if obligation_type not in RETURN_OBLIGATION_TYPES:
+        return
+    period_end = record.get("period_end")
+    if not period_end:
+        return  # compliance_records.period_end is DATE NOT NULL; nothing to check if a row somehow lacks one
+    period_end_d = date.fromisoformat(str(period_end)[:10])
+    if ist_today() < period_end_d:
+        raise ValidationError(
+            "status",
+            f"Cannot mark this {obligation_type} record Filed before its own "
+            f"period ends on {period_end_d.isoformat()}. A return declares a "
+            f"period that has not closed yet."
+        )
+
+
 def _compute_risk_score(record: dict) -> int:
     """Compute risk score (0-100) integer. Never float."""
     status = record["status"]
@@ -191,6 +225,8 @@ class ComplianceRecordService:
                     "status",
                     f"Cannot transition from '{old_status}' to '{new_status}'. Allowed: {allowed}"
                 )
+            if new_status == "Filed":
+                _assert_return_period_has_ended(record)
             updates["status"] = new_status
             if new_status == "Filed" and not record.get("filed_date"):
                 # filed_date IS a date column, and a filing date is a date —

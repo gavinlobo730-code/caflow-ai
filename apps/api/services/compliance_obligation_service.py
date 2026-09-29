@@ -45,6 +45,33 @@ _OPEN_OBLIGATION = lambda s: s not in ("Filed", "Completed")  # noqa: E731
 # of the reconciliation below.
 _GST_FREQUENCY_SENSITIVE_TYPES = frozenset({"GSTR1", "GSTR3B", "PMT06"})
 
+# The obligation types that are RETURNS — a document that declares a period
+# and so cannot lawfully be filed before that period has ended. Read by
+# domain/compliance_record_service.update_record (apex-overview-practice-02):
+# nothing checked that a return's own period_end had passed before a
+# transition to "Filed" was accepted, so a June GSTR-3B could be marked filed
+# in May.
+#
+# Deliberately EXCLUDES the PAYMENT types this same generator emits — PMT06
+# (Rule 61A QRMP challan), the monthly non-salary TDS deposit and payroll's
+# own salary deposit, and ADVANCE_TAX (§208's four instalments) — because
+# those are lawfully, and routinely, paid *during* the period they belong to
+# rather than after it closes. Folding them in here would refuse an ordinary
+# 15 June advance-tax payment.
+#
+# The TDS quarterly statements keep their STABLE 1961-Act obligation_type
+# (TDS24Q/TDS26Q/TDS27Q/TDS27EQ) across the 01-04-2026 vocabulary fork —
+# domain/tds/vocabulary.py translates the FORM NUMBER (138/140/144/143) only
+# at the display/filing boundary and this internal key is never rekeyed (see
+# the comment beside `_spec("TDS24Q", ...)` above) — so no separate post-2026
+# entries are needed here for the check to keep reaching a post-fork quarter.
+RETURN_OBLIGATION_TYPES = frozenset({
+    "GSTR1", "GSTR3B", "GSTR9", "GSTR9C",
+    "TDS24Q", "TDS26Q", "TDS27Q", "TDS27EQ",
+    "ITR",
+    "MCA_ADT1", "MCA_AOC4", "MCA_MGT7",
+})
+
 
 # ── Pure helpers (deterministic; no I/O) ─────────────────────────────────────
 
@@ -781,6 +808,19 @@ def ce_date(v) -> date:
     return v if isinstance(v, date) else date.fromisoformat(str(v)[:10])
 
 
+def _pretty_due_date(v) -> str:
+    """"DD Mon YYYY", matching the "%d %b %Y" convention already used for a
+    due date shown to a human elsewhere in this codebase (domain/
+    ai_insight_service.py, domain/notification_fixtures.py) — apex-overview-
+    practice-06's escalation message used to interpolate the raw ISO string
+    (`2026-09-20`) instead. Falls back to the raw string rather than raising:
+    a malformed due_date must not turn a best-effort notification fatal."""
+    try:
+        return ce_date(v).strftime("%d %b %Y")
+    except (TypeError, ValueError):
+        return str(v)
+
+
 def obligations_for_service(service_type: str, financial_year: str,
                             agm_date: Optional[str] = None,
                             gst_frequency: str = ce.MONTHLY,
@@ -1275,9 +1315,16 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) 
              "due_3": "due in 3 days", "due_7": "due in 7 days"}.get(tier, tier)
     try:
         from services.timeline_service import timeline_service
+        # apex-overview-practice-06: this used to read
+        # "GSTR3B GSTR-3B August 2026 ... (due 2026-09-20)" — the
+        # obligation_type PREFIX duplicated what period_label already names
+        # (a GSTR-3B period is already called "GSTR-3B August 2026"), and the
+        # date was the raw ISO string rather than the "%d %b %Y" this
+        # codebase shows a human elsewhere. period_label alone is what a CA
+        # actually reads as the obligation's name.
         timeline_service.log(rec.get("client_id", ""), "compliance", f"Compliance {label}",
-                             f"{rec.get('obligation_type', '')} {rec.get('period_label', '')} "
-                             f"is {label} (due {str(rec.get('due_date'))[:10]})", severity,
+                             f"{rec.get('period_label', '')} "
+                             f"is {label} (due {_pretty_due_date(rec.get('due_date'))})", severity,
                              firm_id=firm_id, entity_type="compliance_record", entity_id=rec.get("id"))
     except Exception:  # pragma: no cover
         pass
@@ -1299,7 +1346,9 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) 
             notifications_repo.create({
                 "firm_id": firm_id, "user_id": uid, "type": "compliance_due",
                 "title": f"Compliance {label}: {rec.get('obligation_type', '')}",
-                "body": f"{rec.get('period_label', '')} due {str(rec.get('due_date'))[:10]}",
+                # Same raw-ISO-date defect in a different spelling, found by
+                # the same grep — CLAUDE.md's own bug-fixing rule.
+                "body": f"{rec.get('period_label', '')} due {_pretty_due_date(rec.get('due_date'))}",
                 "severity": "critical" if tier in ("overdue", "due_1") else "high",
                 "metadata": {"compliance_record_id": rec.get("id"), "tier": tier},
             })
@@ -1330,8 +1379,23 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
         tier = escalation_tier((ce_date(due) - today).days)
         if tier is None:
             continue
-        if str(r.get("last_escalated_on") or "")[:10] == today_s and r.get("last_escalated_tier") == tier:
+        last_tier = r.get("last_escalated_tier")
+        last_on = str(r.get("last_escalated_on") or "")[:10]
+        if last_on == today_s and last_tier == tier:
             continue  # already escalated at this tier today (anti-spam / idempotent)
+        # apex-overview-practice-06: "overdue" is a TERMINAL tier — nothing
+        # escalates further from it — so the (tier, day) check above never
+        # repeats once due_date has passed: every later day is a DIFFERENT
+        # calendar day at the SAME tier, so this fired again every single day
+        # an obligation stayed open (one Apex record escalated 41 days
+        # running). Once already escalated at "overdue", re-notify at most
+        # WEEKLY instead — the same cadence an obligation gets on its way IN
+        # to being overdue (due_7 → due_3 → due_1 are each their own tier a
+        # week, then 3 days, then a day apart; overdue keeps that rhythm
+        # rather than firing daily or never again).
+        if tier == "overdue" and last_tier == "overdue" and last_on:
+            if (today - ce_date(last_on)).days < 7:
+                continue
         _notify_internal(firm_id, r, tier, actor)
         compliance_records_repo.update(r["id"], {"last_escalated_tier": tier, "last_escalated_on": today_s})
         counts[tier] += 1
