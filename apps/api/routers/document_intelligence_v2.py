@@ -26,6 +26,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
+from domain.ai.groq_text import DEFAULT_TEXT_MODEL
 
 router = APIRouter(prefix="/api/document-intelligence-v2", tags=["document_intelligence_v2"])
 _logger = logging.getLogger("caflow.doc_intel_v2")
@@ -33,14 +34,15 @@ _logger = logging.getLogger("caflow.doc_intel_v2")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
 # The model is read from the same variable document_intelligence_v1 reads,
-# with the same default. This path hardcoded the literal, so the one knob
-# CLAUDE.md names for a retired or renamed Groq model ("the next retirement is
-# a config change") would have moved invoice extraction and left notice
-# extraction asking for the old name — and a model Groq no longer serves
-# surfaces here only as the endpoint's generic 502. Whether that is what the
-# live 502 of 27-09-2026 was is not known from here: the logged
-# "Groq notice extraction failed: ..." line on Render says.
-_GROQ_TEXT_MODEL = os.environ.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
+# with the same default — imported from domain/ai/groq_text rather than
+# duplicated as a literal, so this path and v1 cannot drift from one another
+# again the way this file's own history records: it once hardcoded the
+# literal, so the one knob CLAUDE.md names for a retired or renamed Groq
+# model ("the next retirement is a config change") would have moved invoice
+# extraction and left notice extraction asking for the old name — and a
+# model Groq no longer serves surfaces here only as the endpoint's generic
+# 502.
+_GROQ_TEXT_MODEL = os.environ.get("GROQ_TEXT_MODEL", DEFAULT_TEXT_MODEL)
 
 # ── Mock stores ───────────────────────────────────────────────────────────────
 _MOCK_NOTICES: dict[str, dict] = {}

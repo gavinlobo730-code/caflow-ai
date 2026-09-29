@@ -121,13 +121,19 @@ def test_with_nothing_configured_every_groq_text_caller_asks_for_one_default(gro
 # ── What a refusal says ──────────────────────────────────────────────────────
 
 def test_a_retired_model_is_named_and_not_called_transient(groq, client):
+    # The sentence names the model THIS SERVER asked for (groq_text.text_model(),
+    # unset here so it is the shared default) — never a model name parsed out of
+    # Groq's own message text, which is why the stub's body below is free to name
+    # anything and the assertion is pinned to the configured default instead of a
+    # literal that would go stale the next time that default moves.
+    model = groq_text.DEFAULT_TEXT_MODEL
     groq.respond = _refuse(400, "model_decommissioned",
-                           "The model `llama-3.3-70b-versatile` has been decommissioned.")
+                           f"The model `{model}` has been decommissioned.")
     r = _ask(client)
 
     assert r.status_code == 502
     detail = r.json()["detail"]
-    assert "no longer serves the model 'llama-3.3-70b-versatile'" in detail, detail
+    assert f"no longer serves the model '{model}'" in detail, detail
     assert "GROQ_TEXT_MODEL" in detail and "retrying will not help" in detail
     assert "try again" not in detail.lower()
 
