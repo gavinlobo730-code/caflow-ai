@@ -53,7 +53,6 @@ export function CostCentresTab({
   financialYear: string;
 }) {
   const [centres, setCentres] = useState<CostCentre[]>([]);
-  const [report, setReport] = useState<CostCentreAllocationPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -61,31 +60,52 @@ export function CostCentresTab({
   const [name, setName] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  // The master (centres) and the departmental result (report) are loaded
+  // and rendered SEPARATELY. The master is a handful of rows a CA is about
+  // to act on — retire one, add another — and migration 435 made the report
+  // fast too, but there is no reason the master's render should ever wait on
+  // the report's: the two answer different questions, and a slow or failing
+  // report must not blank a screen whose main job (the master) already
+  // loaded (apex-accounting-reports-13).
+  const [report, setReport] = useState<CostCentreAllocationPayload | null>(null);
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  const loadCentres = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [list, alloc] = await Promise.all([
-        api.accounting.costCentres(clientId, true),
-        api.accounting.costCentreAllocation(clientId, financialYear),
-      ]);
+      const list = await api.accounting.costCentres(clientId, true);
       if (!list?.success) throw new Error(list?.error || "Could not load cost centres");
       setCentres(arrayOrEmpty<CostCentre>((list.data as { cost_centres?: unknown })?.cost_centres));
-      // The refusal path answers HTTP 200 with success:false, and a frontend
-      // ahead of its backend answers a payload without these keys — either
-      // would otherwise reach `.map` on undefined. See CLAUDE.md.
-      setReport(alloc?.success
-        ? objectWithLists<CostCentreAllocationPayload>(
-            alloc.data, "centres", "centres_with_no_activity", "notes")
-        : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load cost centres");
     } finally {
       setLoading(false);
     }
+  }, [clientId]);
+
+  const loadReport = useCallback(async () => {
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const alloc = await api.accounting.costCentreAllocation(clientId, financialYear);
+      // The refusal path answers HTTP 200 with success:false, and a frontend
+      // ahead of its backend answers a payload without these keys — either
+      // would otherwise reach `.map` on undefined. See CLAUDE.md.
+      if (!alloc?.success) throw new Error(alloc?.error || "Could not load the departmental result");
+      setReport(objectWithLists<CostCentreAllocationPayload>(
+        alloc.data, "centres", "centres_with_no_activity", "notes"));
+    } catch (e) {
+      setReport(null);
+      setReportError(e instanceof Error ? e.message : "Could not load the departmental result");
+    } finally {
+      setReportLoading(false);
+    }
   }, [clientId, financialYear]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void loadCentres(); }, [loadCentres]);
+  useEffect(() => { void loadReport(); }, [loadReport]);
 
   async function add() {
     setSaveError(null);
@@ -99,14 +119,17 @@ export function CostCentresTab({
     setCode("");
     setName("");
     setAdding(false);
-    await load();
+    // A new centre with no activity still belongs in the report's own
+    // centres_with_no_activity list, so both reload — but neither awaits
+    // the other.
+    await Promise.all([loadCentres(), loadReport()]);
   }
 
   async function retire(centre: CostCentre) {
     const res = await api.accounting.updateCostCentre(centre.id, clientId, {
       is_active: !centre.is_active,
     });
-    if (res?.success) await load();
+    if (res?.success) await Promise.all([loadCentres(), loadReport()]);
   }
 
   const rows: CostCentreResult[] = report
@@ -123,7 +146,7 @@ export function CostCentresTab({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => void load()}
+            onClick={() => { void loadCentres(); void loadReport(); }}
             className="inline-flex items-center gap-1.5 rounded-lg border border-ps-border bg-white px-3 py-1.5 text-sm text-ps-body hover:bg-ps-hover transition-colors"
           >
             <RefreshCw size={14} />
@@ -178,7 +201,7 @@ export function CostCentresTab({
         </div>
       )}
 
-      {error && <ErrorState message={error} onRetry={() => void load()} />}
+      {error && <ErrorState message={error} onRetry={() => void loadCentres()} />}
       {!error && loading && <p className="text-sm text-ps-hint">Loading…</p>}
 
       {!error && !loading && centres.length === 0 && (
@@ -235,7 +258,13 @@ export function CostCentresTab({
             </p>
           </section>
 
-          {rows.length > 0 && (
+          {reportError && (
+            <ErrorState message={reportError} onRetry={() => void loadReport()} />
+          )}
+          {!reportError && reportLoading && (
+            <p className="text-sm text-ps-hint">Loading the departmental result…</p>
+          )}
+          {!reportError && !reportLoading && rows.length > 0 && (
             <section className="bg-white rounded-xl border border-ps-border overflow-hidden">
               <h3 className="text-sm font-semibold text-ps-ink px-4 pt-4 pb-2">
                 Income and expenditure, FY {financialYear}

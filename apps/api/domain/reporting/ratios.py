@@ -352,11 +352,22 @@ GAP_NO_PRIOR = (
 
 def build(current: Components, prior: Optional[Components] = None,
           principal_repaid_paise: Optional[int] = None,
-          explanations: Optional[dict[str, str]] = None) -> dict:
+          explanations: Optional[dict[str, str]] = None,
+          current_period_label: Optional[str] = None) -> dict:
     """The clause (Q) ratio table for one year, against its preceding year.
 
     `principal_repaid_paise` is the one figure a human supplies — see GAP_DSCR.
     `explanations` maps a ratio key to the CA's words for a >25% movement.
+
+    `current_period_label` is set by the CALLER (services/ratio_analysis_
+    service.py, which knows what today is) to something like "year to date to
+    15 Sep 2026" when `current` covers a financial year still in progress —
+    this module has no calendar of its own. Comparing a part-year `current`
+    against a FULL `prior` year is exactly what produces a misleading >25%
+    variance on every seasonal or simply-not-finished-yet line (apex-
+    accounting-reports-20): the ratio itself is not wrong, but the label next
+    to it must say the two periods are not the same length, because nothing
+    here shortens the comparison window to match.
     """
     expl = explanations or {}
 
@@ -504,7 +515,9 @@ def build(current: Components, prior: Optional[Components] = None,
                     "24 March 2021"),
         "variance_threshold_bps": VARIANCE_THRESHOLD_BPS,
         "has_prior_year": prior is not None,
+        "current_period_label": current_period_label,
         "ratios": [r.as_dict() for r in rows],
+        "moved_count": sum(1 for r in rows if r.needs_explanation),
         "needs_explanation_count": sum(
             1 for r in rows if r.needs_explanation and not r.explanation),
         "gaps": [{"code": c, "message": m} for c, m in gaps],

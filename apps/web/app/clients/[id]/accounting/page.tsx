@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, Fragment } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, CheckCircle, Printer, Download, Share2, Trash2, Undo2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -25,7 +25,7 @@ import {
   plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER, BS_ASSET_ORDER, BS_LIAB_ORDER, BS_EQ_ORDER,
 } from "@/lib/accounting/scheduleIiiCaptions";
 import PeriodPicker from "@/components/PeriodPicker";
-import { splitPeriodColumns, periodSplitNotice, resolvePeriodRange, type PeriodMode, type Granularity, type PeriodColumn } from "@/lib/dates/periods";
+import { splitPeriodColumns, periodSplitNotice, resolvePeriodRange, type PeriodMode, type Granularity, type PeriodColumn, type LedgerSpan } from "@/lib/dates/periods";
 import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
 import { documentTarget, noRouteReason, sourceLabel, journalEntryHref }
   from "@/lib/accounting/sourceDocument";
@@ -34,6 +34,7 @@ import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/componen
 import { toast } from "@/components/ui/use-toast";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { formatIstLabelled } from "@/lib/dates/formatIst";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
 import { PartyBreakdown } from "@/components/accounting/PartyBreakdown";
 import { CostCentresTab } from "@/components/accounting/CostCentresTab";
@@ -220,6 +221,14 @@ export default function AccountingPage() {
   // choice. The header is gone; the pickers set this value directly, so the
   // year a CA picks on Trial Balance is the year Profit & Loss opens on.
   const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
+  // Lifted here rather than called separately inside TrialBalance,
+  // ProfitAndLoss, BalanceSheet, CashFlow and FXReports (apex-accounting-
+  // reports-12): every one of those is a sibling tab that unmounts when
+  // another tab is shown, so five separate `useLedgerSpan(clientId)` calls
+  // meant GET /api/accounting/ledger-span was re-fetched every time a CA
+  // switched back to a report tab, instead of once per client for this whole
+  // page.
+  const ledgerSpan = useLedgerSpan(clientId);
   // The tab lives in the URL, not only in state, so it survives leaving the
   // page and coming back — which the journal editor does on every save. Before
   // this, "Back to Journal" landed the CA on the Dashboard.
@@ -230,11 +239,25 @@ export default function AccountingPage() {
     () => (TABS.some((t) => t.id === urlTab) ? (urlTab as AccountingTab) : "dashboard"));
   // Back/forward, and arriving from the editor, both change the URL without
   // going through setTab.
+  //
+  // Depending on `tab` here (as this once did) is the bug: `setTab` updates
+  // `tab` SYNCHRONOUSLY on the next render, but `router.replace` updates
+  // `useSearchParams()` ASYNCHRONOUSLY — so the render right after a click
+  // sees the NEW `tab` next to the STILL-OLD `urlTab`, this effect reads that
+  // as an external change and reverts `tab` back to `urlTab`, and then the
+  // click's own state update re-advances it, remounting every tab component
+  // (and every mounted tab's data fetches) two or three times per click.
+  // `tabRef` tracks the tab this page itself last set, so the effect depends
+  // on `urlTab` ALONE and reacts only to a genuinely external URL change
+  // (back/forward, a deep link, returning from the editor) — never its own
+  // pending `replace()`.
+  const tabRef = useRef(tab);
+  useEffect(() => { tabRef.current = tab; }, [tab]);
   useEffect(() => {
-    if (urlTab && TABS.some((t) => t.id === urlTab) && urlTab !== tab) {
+    if (urlTab && TABS.some((t) => t.id === urlTab) && urlTab !== tabRef.current) {
       setTabState(urlTab as AccountingTab);
     }
-  }, [urlTab, tab]);
+  }, [urlTab]);
   const setTab = useCallback((next: AccountingTab) => {
     setTabState(next);
     const params = new URLSearchParams(tabParams.toString());
@@ -330,16 +353,16 @@ export default function AccountingPage() {
           <JournalList clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} mode="day_book" />
         )}
         {tab === "trial" && (
-          <TrialBalance clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} onDrillDown={openDrillDown} />
+          <TrialBalance clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} onDrillDown={openDrillDown} ledgerSpan={ledgerSpan} />
         )}
         {tab === "pl" && (
-          <ProfitAndLoss clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} onDrillDown={openDrillDown} />
+          <ProfitAndLoss clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} onDrillDown={openDrillDown} ledgerSpan={ledgerSpan} />
         )}
         {tab === "balance-sheet" && (
-          <BalanceSheet clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} onDrillDown={openDrillDown} />
+          <BalanceSheet clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} onDrillDown={openDrillDown} ledgerSpan={ledgerSpan} />
         )}
         {tab === "cashflow" && (
-          <CashFlow clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
+          <CashFlow clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} ledgerSpan={ledgerSpan} />
         )}
         {tab === "approvals" && (
           <ApprovalQueue clientId={clientId} />
@@ -354,7 +377,7 @@ export default function AccountingPage() {
           <CostCentresTab clientId={clientId} financialYear={financialYear} />
         )}
         {tab === "reports" && (
-          <FinancialReports clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} mcActive={mcActive} />
+          <FinancialReports clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} mcActive={mcActive} ledgerSpan={ledgerSpan} />
         )}
       </div>
 
@@ -530,19 +553,27 @@ function AccountingDashboard({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <DashCard label="Posted Entries (FY)" value={unknownIfFailed(String(stats.journal_count))} accent="gray" action={() => onNavigate("journal")} />
+        <DashCard label="Posted Entries (FY)" value={unknownIfFailed(String(stats.journal_count))} accent="gray" action={() => onNavigate("day-book")} />
         <DashCard label="Unmatched Bank Txns" value={unknownIfFailed(String(stats.unmatched_bank))} accent={!loadFailed && stats.unmatched_bank > 0 ? "amber" : "gray"} action={() => router.push(`/clients/${clientId}/bank/`)} />
         {/* Not behind the placeholder: the chart of accounts has its own loader
             and its own error, so it is still trustworthy when this one failed. */}
         <DashCard label="Accounts" value={String(accounts.length)} accent="gray" action={() => onNavigate("coa")} />
       </div>
 
-      {/* Recent journal entries */}
+      {/* Recently posted entries. Its own query has no entry_date filter (it
+          orders by created_at and takes the last 5), so the label says
+          "posted" rather than pinning it to the FY picker above — a client
+          with thousands of entries this year sees the newest ones regardless
+          of window. "View all" goes to the Day Book, which is unfiltered by
+          source_type: the Journal tab below only ever shows manual entries
+          (apex-accounting-reports-10), so a client with zero manual entries
+          would land on "No manual journal entries" however many postings
+          this list is showing. */}
       {recentEntries.length > 0 && (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">
-            <p className="text-xs font-semibold text-ps-body">Recent Entries</p>
-            <button onClick={() => onNavigate("journal")} className="text-xs text-blue-600 hover:underline">View all</button>
+            <p className="text-xs font-semibold text-ps-body">Recently Posted</p>
+            <button onClick={() => onNavigate("day-book")} className="text-xs text-blue-600 hover:underline">View all</button>
           </div>
           <table className="w-full text-xs">
             <tbody className="divide-y divide-ps-border">
@@ -738,15 +769,26 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       // four-wide. It did not just run slowly, it failed, and this tab showed
       // "Couldn't load journal entries". Keyset makes each page a bounded seek:
       // 835 aggregate runs, ~32 ms. See selectAllKeyset for the full numbers.
-      const { data, error: fetchErr } = await selectAllKeyset(() => supabase
-        .from("journal_entries")
-        // Alias the embed to `lines` so it matches the JournalEntry type (and the
-        // amount column, which sums debit_paise across the entry's lines).
-        .select("id, entry_date, reference_no, narration, entry_type, is_posted, source_type, lines:journal_lines(account_id, debit_paise, credit_paise, narration)")
-        .eq("client_id", clientId)
-        .is("deleted_at", null)
-        .gte("entry_date", journalRange.start)
-        .lte("entry_date", journalRange.end));
+      // MANUAL mode filters source_type ON THE SERVER (apex-accounting-reports-11):
+      // this tab shows only manual entries in that mode, so paging a client's
+      // whole FY of auto-posted entries just to discard them in the browser —
+      // and reading zero rows as "no manual journal entries" only after fetching
+      // everything — is exactly the read-proportional-to-the-ledger CLAUDE.md's
+      // reporting-performance rule forbids. Day Book needs every source_type by
+      // definition, so it carries no such filter.
+      const { data, error: fetchErr } = await selectAllKeyset(() => {
+        let q = supabase
+          .from("journal_entries")
+          // Alias the embed to `lines` so it matches the JournalEntry type (and the
+          // amount column, which sums debit_paise across the entry's lines).
+          .select("id, entry_date, reference_no, narration, entry_type, is_posted, source_type, lines:journal_lines(account_id, debit_paise, credit_paise, narration)")
+          .eq("client_id", clientId)
+          .is("deleted_at", null)
+          .gte("entry_date", journalRange.start)
+          .lte("entry_date", journalRange.end);
+        if (!dayBook) q = q.eq("source_type", "manual");
+        return q;
+      });
       if (fetchErr) throw fetchErr;
       // Display order, applied after the walk: keyset pages by id, so the
       // newest-first ordering the table wants is restored here.
@@ -761,7 +803,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
     } finally {
       setEntriesLoading(false);
     }
-  }, [clientId, journalRange.start, journalRange.end]);
+  }, [clientId, journalRange.start, journalRange.end, dayBook]);
 
   useEffect(() => { loadEntries(); }, [loadEntries]);
 
@@ -1302,7 +1344,7 @@ function LedgerDrillDown({
 
 // ── Trial Balance ──────────────────────────────────────────────────────────
 
-function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillDown }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; onDrillDown: (accountId: string) => void }) {
+function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillDown, ledgerSpan }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; onDrillDown: (accountId: string) => void; ledgerSpan: LedgerSpan }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -1332,7 +1374,6 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
   const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const ledgerSpan = useLedgerSpan(clientId);
   const period = useMemo(
     () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, "total", undefined, ledgerSpan)[0],
     [periodMode, financialYear, customFrom, customTo, ledgerSpan],
@@ -1569,7 +1610,7 @@ function fxDelta(paise: number) {
   return <span className={`font-mono ${cls}`}>{paise === 0 ? "—" : `${sign}${formatPaise(paise)}`}</span>;
 }
 
-function FXReports({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
+function FXReports({ clientId, financialYear, onFinancialYearChange, ledgerSpan }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; ledgerSpan: LedgerSpan }) {
   const [view, setView] = useState<FXView>("exposure");
   const [ccy, setCcy] = useState<string>("all");
   const [data, setData] = useState<unknown>(null);
@@ -1585,7 +1626,6 @@ function FXReports({ clientId, financialYear, onFinancialYearChange }: { clientI
   const [periodMode, setPeriodMode] = useState<PeriodMode>("this_fy");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const ledgerSpan = useLedgerSpan(clientId);
   const period = useMemo(
     () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, "total", undefined, ledgerSpan)[0],
     [periodMode, financialYear, customFrom, customTo, ledgerSpan],
@@ -1921,7 +1961,7 @@ interface PLColumnResult {
   error?: boolean;
 }
 
-function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrillDown }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; onDrillDown: (accountId: string) => void }) {
+function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrillDown, ledgerSpan }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; onDrillDown: (accountId: string) => void; ledgerSpan: LedgerSpan }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -1939,7 +1979,6 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
   // "All Time" means the client's actual posted books, not the 1900-2999
   // placeholder — without this a Monthly/Quarterly split over All Time exceeds
   // the column cap and silently collapses back to a single total.
-  const ledgerSpan = useLedgerSpan(clientId);
   const columnDefs = useMemo(
     () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, granularity, undefined, ledgerSpan),
     [periodMode, financialYear, customFrom, customTo, granularity, ledgerSpan],
@@ -2253,7 +2292,7 @@ interface BSColumnResult {
   error?: boolean;
 }
 
-function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillDown }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; onDrillDown: (accountId: string) => void }) {
+function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillDown, ledgerSpan }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; onDrillDown: (accountId: string) => void; ledgerSpan: LedgerSpan }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -2268,7 +2307,6 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
   // "All Time" means the client's actual posted books, not the 1900-2999
   // placeholder — without this a Monthly/Quarterly split over All Time exceeds
   // the column cap and silently collapses back to a single total.
-  const ledgerSpan = useLedgerSpan(clientId);
   const columnDefs = useMemo(
     () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, granularity, undefined, ledgerSpan),
     [periodMode, financialYear, customFrom, customTo, granularity, ledgerSpan],
@@ -2760,7 +2798,7 @@ function CFMatrix({ columns }: { columns: CFColumn[] }) {
   );
 }
 
-function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
+function CashFlow({ clientId, financialYear, onFinancialYearChange, ledgerSpan }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; ledgerSpan: LedgerSpan }) {
   const [columns, setColumns] = useState<CFColumn[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -2778,7 +2816,6 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange }: { clientId
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [granularity, setGranularity] = useState<Granularity>("total");
-  const ledgerSpan = useLedgerSpan(clientId);
 
   const columnDefs = useMemo(
     () => splitPeriodColumns(periodMode, financialYear, { from: customFrom, to: customTo }, granularity, undefined, ledgerSpan),
@@ -3177,7 +3214,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
                           {busy[j.id] ? "Posting…" : "Approve & Post"}
                         </button>
                       ) : (
-                        <span className="text-ps-label">{j.posted_at ? String(j.posted_at).slice(0, 16).replace("T", " ") : "—"}</span>
+                        <span className="text-ps-label">{formatIstLabelled(j.posted_at)}</span>
                       )}
                     </td>
                   </tr>
@@ -3418,7 +3455,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
                 activeRun?.id === r.id ? "bg-brand-dark text-white" : "bg-ps-muted text-ps-label hover:bg-ps-border"
               }`}
             >
-              {String(r.started_at).slice(0, 16).replace("T", " ")} · {r.trigger === "manual" ? "Manual" : "Scheduled"} ·{" "}
+              {formatIstLabelled(r.started_at)} · {r.trigger === "manual" ? "Manual" : "Scheduled"} ·{" "}
               {r.status === "failed" ? "Failed" : `${r.findings_count} finding${r.findings_count === 1 ? "" : "s"}`}
             </button>
           ))}
@@ -3523,7 +3560,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
  * opening one replaces the index (with a way back). FX is the first such
  * drill-in; the next report follows the same shape.
  */
-function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcActive }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; mcActive: boolean }) {
+function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcActive, ledgerSpan }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; mcActive: boolean; ledgerSpan: LedgerSpan }) {
   // Which grouped report is open; null = the hub index.
   const [openReport, setOpenReport] = useState<null | "fx">(null);
   // Exports follow the same basis the user is viewing (URL-persisted).
@@ -3731,7 +3768,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
         >
           ← All reports
         </button>
-        <FXReports clientId={clientId} financialYear={financialYear} onFinancialYearChange={onFinancialYearChange} />
+        <FXReports clientId={clientId} financialYear={financialYear} onFinancialYearChange={onFinancialYearChange} ledgerSpan={ledgerSpan} />
       </div>
     );
   }

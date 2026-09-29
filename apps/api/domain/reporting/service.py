@@ -16,11 +16,11 @@ import logging
 import os
 import time
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Iterator, Optional
 
 from core.db_paging import fetch_all
-from core.ist_clock import fy_bounds, ist_today
+from core.ist_clock import fy_bounds, ist_fy_label, ist_today
 
 from . import balance_cache
 from . import builders
@@ -731,7 +731,35 @@ class ReportingService:
             if trend_builder.has_records(trend_builder.components_of(pl, bs)):
                 years.append((fy, pl, bs))
 
-        return trend_builder.build(years, list(fy_labels), unreadable)
+        return trend_builder.build(years, list(fy_labels), unreadable,
+                                   latest_period_label=self._latest_period_label(
+                                       firm_id, client_id, years))
+
+    def _latest_period_label(self, firm_id: str, client_id: Optional[str],
+                             years: list[tuple[str, dict, dict]]) -> Optional[str]:
+        """"year to date to 15 Sep 2026" when the trend's RIGHTMOST column is a
+        financial year still in progress, or None.
+
+        `years` is chronological, so the latest is `years[-1]`. Comparing its
+        movement against the year before it is the same apples-to-oranges
+        problem ratios.py's own docstring names (apex-accounting-reports-20):
+        a part year sits beside four full ones with nothing saying so.
+        """
+        if not years:
+            return None
+        latest_fy = years[-1][0]
+        if latest_fy != ist_fy_label():
+            return None
+        db = getattr(self.source, "db", None)
+        if db is None:
+            return None
+        from services.ledger_span_service import ledger_span
+        start, _end = fy_bounds(latest_fy)
+        scoped = [client_id] if client_id else None
+        last = ledger_span(db, firm_id, scoped).get("last_entry_date")
+        if not last or last < start:
+            return None
+        return "year to date to " + datetime.strptime(last, "%Y-%m-%d").strftime("%d %b %Y")
 
     def cash_flow_statement(self, firm_id: str, client_id: Optional[str],
                             start_date: Optional[str], end_date: Optional[str],
